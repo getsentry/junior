@@ -53,6 +53,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   activateAgentTurnAuthorizationRecovery,
+  createAgentTurnAuthorizationCompletionId,
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
@@ -756,7 +757,11 @@ export async function GET(
       : undefined;
   const prepared = recoverableSession
     ? await prepareAgentTurnAuthorizationRecovery({
-        authorizationCompletionId: crypto.randomUUID(),
+        authorizationCompletionId: createAgentTurnAuthorizationCompletionId({
+          attemptId: state,
+          authorizationKind: "plugin",
+          provider,
+        }),
         authorizationKind: "plugin",
         conversationId: stored.resumeConversationId!,
         expectedVersion: recoverableSession.version,
@@ -865,12 +870,15 @@ export async function GET(
   }
 
   if (prepared && recovery) {
-    await activateAgentTurnAuthorizationRecovery({
+    const activated = await activateAgentTurnAuthorizationRecovery({
       authorizationCompletionId: recovery.authorizationCompletionId,
       conversationId: prepared.conversationId,
       expectedVersion: prepared.version,
       sessionId: prepared.sessionId,
     });
+    if (!activated) {
+      throw new Error("OAuth turn changed while activating callback recovery");
+    }
   }
   await stateAdapter.delete(stateKey);
 

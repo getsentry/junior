@@ -7,6 +7,7 @@
  * `junior_conversation_events` so resumes can materialize the exact continuable
  * boundary without duplicating the event history.
  */
+import { createHash } from "node:crypto";
 import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
 import {
   actorSchema,
@@ -42,6 +43,17 @@ const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
 const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
+
+/** Derive one opaque receipt ID shared by duplicate callbacks for an auth attempt. */
+export function createAgentTurnAuthorizationCompletionId(args: {
+  attemptId: string;
+  authorizationKind: "mcp" | "plugin";
+  provider: string;
+}): string {
+  return createHash("sha256")
+    .update(`${args.authorizationKind}:${args.provider}:${args.attemptId}`)
+    .digest("hex");
+}
 
 export type AgentTurnSessionStatus =
   | "running"

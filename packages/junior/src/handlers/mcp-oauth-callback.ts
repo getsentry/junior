@@ -55,6 +55,7 @@ import {
 } from "@/chat/services/pending-auth";
 import {
   activateAgentTurnAuthorizationRecovery,
+  createAgentTurnAuthorizationCompletionId,
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
@@ -675,7 +676,11 @@ export async function GET(
         : undefined;
     const prepared = recoverableSession
       ? await prepareAgentTurnAuthorizationRecovery({
-          authorizationCompletionId: crypto.randomUUID(),
+          authorizationCompletionId: createAgentTurnAuthorizationCompletionId({
+            attemptId: state,
+            authorizationKind: "mcp",
+            provider,
+          }),
           authorizationKind: "mcp",
           conversationId: pendingSession.conversationId,
           expectedVersion: recoverableSession.version,
@@ -708,12 +713,15 @@ export async function GET(
           recovery?.authorizationCompletionId,
         );
     if (prepared && recovery) {
-      await activateAgentTurnAuthorizationRecovery({
+      const activated = await activateAgentTurnAuthorizationRecovery({
         authorizationCompletionId: recovery.authorizationCompletionId,
         conversationId: prepared.conversationId,
         expectedVersion: prepared.version,
         sessionId: prepared.sessionId,
       });
+      if (!activated) {
+        throw new Error("MCP turn changed while activating callback recovery");
+      }
     }
     try {
       await deleteMcpAuthSession(authSession.authSessionId);

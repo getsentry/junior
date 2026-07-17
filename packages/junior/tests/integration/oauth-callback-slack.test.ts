@@ -506,6 +506,143 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
+  it("converges concurrent callbacks for the same OAuth-paused turn", async () => {
+    const conversationId = "slack:C123:1700000000.016";
+    const sessionId = "turn_msg_concurrent";
+    const state = "eval-oauth-concurrent-state";
+    const source = slackSource("1700000000.016");
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      source,
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+        userName: "dcramer",
+      },
+    });
+    await stateAdapterModule.getStateAdapter().set(`oauth-state:${state}`, {
+      userId: "U123",
+      provider: "eval-oauth",
+      channelId: "C123",
+      destination: SLACK_DESTINATION,
+      source,
+      threadTs: "1700000000.016",
+      pendingMessage: "list my sentry issues",
+      resumeConversationId: conversationId,
+      resumeSessionId: sessionId,
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [
+            {
+              id: "msg.concurrent",
+              role: "user",
+              text: "list my sentry issues",
+              createdAtMs: 1,
+              author: { userId: "U123", userName: "dcramer" },
+            },
+          ],
+          processing: {
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              actorId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
+    executeAgentRunMock.mockResolvedValue(
+      completedAgentRun({
+        text: "Here are your Sentry issues.",
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "list my sentry issues" }],
+            timestamp: 1,
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Here are your Sentry issues." }],
+            timestamp: 2,
+          },
+        ] as any,
+        diagnostics: makeDiagnostics(),
+      }),
+    );
+
+    const queue = createConversationWorkQueueTestAdapter();
+    const beginCallback = async () => {
+      const callbacks: Array<() => Promise<unknown> | void> = [];
+      const { GET } = await import("@/handlers/oauth-callback");
+      const { ConversationTurnLifecycleService } =
+        await import("@/chat/conversations/turn-lifecycle");
+      const { getConversationEventStore } = await import("@/chat/db");
+      const response = await GET(
+        new Request(
+          `https://junior.example.com/api/oauth/callback/eval-oauth?state=${state}&code=eval-oauth-code`,
+        ),
+        "eval-oauth",
+        (task) => {
+          callbacks.push(typeof task === "function" ? task : () => task);
+        },
+        {
+          agentRunner: testAgentRunner,
+          agentContinueOptions: {
+            queue,
+            state: stateAdapterModule.getStateAdapter(),
+          },
+          turnLifecycle: new ConversationTurnLifecycleService(
+            getConversationEventStore(),
+          ),
+        },
+      );
+      return { callbacks, response };
+    };
+
+    const attempts = await Promise.all([beginCallback(), beginCallback()]);
+    expect(attempts.map(({ response }) => response.status)).toEqual([200, 200]);
+    await Promise.all(
+      attempts.flatMap(({ callbacks }) =>
+        callbacks.map((callback) => callback()),
+      ),
+    );
+
+    expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({ state: "completed" });
+    const persisted = await stateAdapterModule.getStateAdapter().get<{
+      conversation?: {
+        processing?: { activeTurnId?: string; pendingAuth?: unknown };
+      };
+    }>(`thread-state:${conversationId}`);
+    expect(persisted?.conversation?.processing).toMatchObject({
+      activeTurnId: undefined,
+      pendingAuth: undefined,
+    });
+  });
+
   it("recovers a committed OAuth credential when candidate activation crashes", async () => {
     const conversationId = "slack:C123:1700000000.014";
     const sessionId = "turn_msg_14";
@@ -1241,6 +1378,65 @@ describe("oauth callback slack integration", () => {
       conversation?: { processing?: { activeTurnId?: string } };
     }>(`thread-state:${conversationId}`);
     expect(repaired?.conversation?.processing?.activeTurnId).toBeUndefined();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
+  it("cleans a terminal auth session when its stale continuation is delivered", async () => {
+    const conversationId = "slack:C123:1700000000.015";
+    const sessionId = "turn_msg_stale_auth";
+    const session = await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "failed",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.015"),
+      piMessages: [],
+      actor: { platform: "slack", teamId: "T123", userId: "U123" },
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [],
+          processing: {
+            activeTurnId: sessionId,
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              actorId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+
+    const { continueSlackAgentRun } =
+      await import("@/chat/runtime/agent-continue-runner");
+    await expect(
+      continueSlackAgentRun(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          expectedVersion: session.version,
+          sessionId,
+        },
+        { agentRunner: testAgentRunner },
+      ),
+    ).resolves.toBe(false);
+
+    const persisted = await stateAdapterModule.getStateAdapter().get<{
+      conversation?: {
+        processing?: { activeTurnId?: string; pendingAuth?: unknown };
+      };
+    }>(`thread-state:${conversationId}`);
+    expect(persisted?.conversation?.processing).toMatchObject({
+      activeTurnId: undefined,
+      pendingAuth: undefined,
+    });
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 });

@@ -92,6 +92,8 @@ export async function wakeAuthorizationCompletedAgentTurn(
 export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
+  // Immediate callback scheduling is primary. The one-minute heartbeat repairs
+  // from the existing operational feed, which retains the latest 5,000 writes.
   const recoveries = (await listAgentTurnSessionSummaries(5_000)).filter(
     (summary) =>
       summary.state === "awaiting_resume" &&

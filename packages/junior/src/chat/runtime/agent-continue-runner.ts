@@ -343,6 +343,27 @@ export async function continueSlackAgentRun(
           payload.conversationId,
           payload.sessionId,
         );
+        if (
+          sessionRecord?.state === "completed" ||
+          sessionRecord?.state === "failed" ||
+          sessionRecord?.state === "abandoned"
+        ) {
+          const terminalState = await getPersistedThreadState(
+            payload.conversationId,
+          );
+          const terminalConversation =
+            coerceThreadConversationState(terminalState);
+          clearPendingAuth(terminalConversation, payload.sessionId);
+          if (
+            terminalConversation.processing.activeTurnId === payload.sessionId
+          ) {
+            terminalConversation.processing.activeTurnId = undefined;
+          }
+          await persistThreadStateById(payload.conversationId, {
+            conversation: terminalConversation,
+          });
+          return false;
+        }
         const authorizationCompleted =
           sessionRecord?.resumeReason === "auth" &&
           (await isAgentTurnAuthorizationRecoveryActive({
