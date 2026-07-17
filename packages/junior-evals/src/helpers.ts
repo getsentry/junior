@@ -47,6 +47,36 @@ type HarnessEvalResult = EvalResult & {
   sessionMessages: NormalizedMessage[];
 };
 
+type ReactionAddedMessage = NormalizedMessage & {
+  role: "assistant";
+  content: {
+    type: "reaction_added";
+    emoji: string;
+  };
+};
+
+function isReactionAddedMessage(
+  message: NormalizedMessage,
+): message is ReactionAddedMessage {
+  const content = message.content;
+  return (
+    message.role === "assistant" &&
+    message.metadata?.event_type === "reaction_added" &&
+    content !== null &&
+    typeof content === "object" &&
+    !Array.isArray(content) &&
+    content.type === "reaction_added" &&
+    typeof content.emoji === "string"
+  );
+}
+
+/** Returns typed reaction emoji side effects recorded in an eval session. */
+export function reactionEmojis(session: NormalizedSession): string[] {
+  return session.messages
+    .filter(isReactionAddedMessage)
+    .map((message) => message.content.emoji);
+}
+
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
   for (const call of result.slackAdapter.statusCalls) {

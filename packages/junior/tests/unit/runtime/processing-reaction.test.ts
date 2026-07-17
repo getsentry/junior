@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const addReactionToMessage = vi.fn();
-const removeReactionFromMessage = vi.fn();
+const addReactionToMessage =
+  vi.fn<typeof import("@/chat/slack/outbound").addReactionToMessage>();
+const removeReactionFromMessage =
+  vi.fn<typeof import("@/chat/slack/outbound").removeReactionFromMessage>();
 
 vi.mock("@/chat/slack/outbound", () => ({
-  addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
-  removeReactionFromMessage: (...args: unknown[]) =>
-    removeReactionFromMessage(...args),
+  addReactionToMessage,
+  removeReactionFromMessage,
 }));
 
 vi.mock("@/chat/config", () => ({
