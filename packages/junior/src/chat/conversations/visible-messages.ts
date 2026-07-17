@@ -37,8 +37,13 @@ export async function hydrateConversationMessages(args: {
   args.conversation.compactions = history.compaction
     ? projectVisibleConversationCompactions([history.compaction])
     : [];
+  const historyFromSeq =
+    history.compaction?.data.type === "visible_context_compacted"
+      ? history.compaction.data.historyFromSeq
+      : 0;
   args.conversation.messages = projectVisibleConversationMessages(
     history.events,
+    { historyFromSeq },
   );
   updateConversationStats(args.conversation);
 }
