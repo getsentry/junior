@@ -44,6 +44,15 @@ describe("operator legacy session log decode", () => {
         sessionId: "session_1",
         provider: "github",
       },
+      {
+        schemaVersion: 2,
+        type: "tool_execution_started",
+        sessionId: "session_1",
+        createdAtMs: 2,
+        toolCallId: "legacy-tool-call",
+        toolName: "legacy-tool",
+        args: { token: "legacy-sensitive-token" },
+      },
     ];
 
     await expect(

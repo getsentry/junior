@@ -195,7 +195,6 @@ const toolExecutionStartedEventDataSchema = z
     type: z.literal("tool_execution_started"),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1),
-    args: z.unknown().optional(),
   })
   .strict();
 

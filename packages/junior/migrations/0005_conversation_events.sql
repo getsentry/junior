@@ -70,6 +70,11 @@ SET "payload" = "payload" - 'historyMode'
 WHERE "type" = 'subagent_started'
 	AND jsonb_typeof("payload") = 'object'
 	AND "payload" ? 'historyMode';--> statement-breakpoint
+UPDATE "junior_conversation_events"
+SET "payload" = "payload" - 'args'
+WHERE "type" = 'tool_execution_started'
+	AND jsonb_typeof("payload") = 'object'
+	AND "payload" ? 'args';--> statement-breakpoint
 UPDATE "junior_conversation_events" AS snapshot
 SET "payload" =
 	(snapshot."payload" - 'compactions') ||

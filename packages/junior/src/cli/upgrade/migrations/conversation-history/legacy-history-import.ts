@@ -251,7 +251,6 @@ export function convertLegacySessionLog(args: {
             type: "tool_execution_started",
             toolCallId: entry.toolCallId,
             toolName: entry.toolName,
-            ...(entry.args !== undefined ? { args: entry.args } : {}),
           },
           entry.createdAtMs,
         );
