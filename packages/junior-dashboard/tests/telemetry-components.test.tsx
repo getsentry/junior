@@ -272,7 +272,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Open conversation");
   });
 
-  it("keeps the parent error status when child detail says completed", () => {
+  it("keeps the terminal parent error when child detail says completed", () => {
     const child = conversation([], {
       conversationId: "child-1",
       displayTitle: "Advisor review",
@@ -347,7 +347,8 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain("running ·");
+    expect(drawerHtml).toContain("completed ·");
+    expect(drawerHtml).not.toContain("running ·");
     expect(drawerHtml).toContain("Open conversation");
   });
 
