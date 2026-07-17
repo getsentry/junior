@@ -1,16 +1,22 @@
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
-import type { ConversationEvent } from "@/chat/conversations/history";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
+import {
+  conversationEventSchema,
+  type ConversationEvent,
+} from "@/chat/conversations/history";
+import { readRootVisibility } from "@/chat/conversations/sql/privacy";
 import type { Conversation } from "@/chat/conversations/store";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
-import { projectConversationReportEvents } from "./events";
+import {
+  conversationReportSourceEventTypes,
+  projectConversationReportEvents,
+} from "./events";
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
+import { juniorConversationEvents } from "@/db/schema";
 import type { ApiRoute } from "../route";
 import { parseParams } from "../http";
 import { conversationParamsSchema } from "../schema";
@@ -70,32 +76,47 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
 ): Promise<ConversationDetailReport | undefined> {
-  const executor = getSqlExecutor();
-  return executor.transaction(async () =>
-    withConversationEventLock(executor, conversationId, async () => {
-      const { rootConversationId, visibility } = await resolveRootVisibility(
-        executor,
-        conversationId,
-      );
-      const record = await readConversationRecordFromSql(conversationId);
-      if (!record) return undefined;
-      const events =
-        await createSqlConversationEventStore(executor).loadHistory(
-          conversationId,
-        );
-      const effectiveVisibility =
-        visibility === "public" || visibility === "private"
-          ? visibility
-          : undefined;
-      return projectConversationDetail({
-        ...record,
-        effectiveVisibility,
-        events,
-        privacyConversationId: rootConversationId,
-        usage: record.usage ?? undefined,
-      });
+  const record = await readConversationRecordFromSql(conversationId);
+  if (!record) return undefined;
+
+  const { rootConversationId, visibility } = await readRootVisibility(
+    getSqlExecutor(),
+    conversationId,
+  );
+  const rows = await getDb()
+    .select()
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        inArray(
+          juniorConversationEvents.type,
+          conversationReportSourceEventTypes,
+        ),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+  const events = rows.map((row) =>
+    conversationEventSchema.parse({
+      schemaVersion: row.schemaVersion,
+      seq: row.seq,
+      contextEpoch: row.contextEpoch,
+      ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+      createdAtMs: row.createdAt.getTime(),
+      data: { ...row.payload, type: row.type },
     }),
   );
+  const effectiveVisibility =
+    visibility === "public" || visibility === "private"
+      ? visibility
+      : undefined;
+  return projectConversationDetail({
+    ...record,
+    effectiveVisibility,
+    events,
+    privacyConversationId: rootConversationId,
+    usage: record.usage ?? undefined,
+  });
 }
 
 /** Load one conversation from its canonical event history. */

@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationDetail } from "@/api/conversations/detail";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { purgeConversation } from "@/chat/conversations/retention";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -194,24 +193,6 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve = done;
   });
   return { promise, resolve };
-}
-
-async function waitUntilWaitingOnEventTable(
-  observer: ReturnType<typeof createPostgresJuniorSqlExecutor>,
-): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const [row] = await observer.query<{ count: number }>(`
-      select count(*)::integer as count
-      from pg_stat_activity
-      where datname = current_database()
-        and pid <> pg_backend_pid()
-        and wait_event_type = 'Lock'
-        and query ilike '%junior_conversation_events%'
-    `);
-    if ((row?.count ?? 0) > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("Detail read did not block while loading event history");
 }
 
 async function waitUntilApplicationWaitsOnLock(
@@ -433,126 +414,6 @@ describe("dashboard canonical event reporting", () => {
       expect(detail.events).toEqual([]);
     }
   });
-
-  it("linearizes detail reads before concurrent appends, privacy flips, and purges", async () => {
-    const rootConversationId = "slack:C-reporting:concurrent-detail";
-    const childConversationId = "child:reporting-concurrent-detail";
-    await recordRoot(rootConversationId, "public");
-    await createChild({
-      childConversationId,
-      parentConversationId: rootConversationId,
-    });
-
-    const blocker = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-reporting-table-blocker",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const observer = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-reporting-lock-observer",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const mutator = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-reporting-mutator",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const appender = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-reporting-appender",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const purger = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-reporting-purger",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const tableLocked = deferred();
-    const releaseTable = deferred();
-    const blockerDone = blocker.transaction(async () => {
-      await blocker.execute(
-        "LOCK TABLE junior_conversation_events IN ACCESS EXCLUSIVE MODE",
-      );
-      tableLocked.resolve();
-      await releaseTable.promise;
-    });
-
-    try {
-      await tableLocked.promise;
-      const completionOrder: string[] = [];
-      const detailPromise = requireDetail(childConversationId).then(
-        (detail) => {
-          completionOrder.push("read");
-          return detail;
-        },
-      );
-      await waitUntilWaitingOnEventTable(observer);
-
-      const [rootRow] = await observer
-        .db()
-        .select({ destinationId: juniorConversations.destinationId })
-        .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, rootConversationId));
-      if (!rootRow?.destinationId) throw new Error("Missing destination");
-
-      const flipPromise = mutator
-        .db()
-        .update(juniorDestinations)
-        .set({ visibility: "private" })
-        .where(eq(juniorDestinations.id, rootRow.destinationId))
-        .then(() => {
-          completionOrder.push("privacy-flip");
-        });
-      const appendPromise = createSqlConversationEventStore(appender)
-        .append(childConversationId, [
-          {
-            data: {
-              type: "visible_message_recorded",
-              messageId: `${childConversationId}:late-visible`,
-              role: "assistant",
-              text: "Late private payload",
-            },
-            createdAtMs: 100,
-          },
-        ])
-        .then(() => {
-          completionOrder.push("append");
-        });
-      const purgePromise = purgeConversation(purger, rootConversationId, {
-        nowMs: 200,
-      }).then(() => {
-        completionOrder.push("purge");
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      expect(completionOrder).toEqual([]);
-
-      releaseTable.resolve();
-      await blockerDone;
-      const [detail] = await Promise.all([
-        detailPromise,
-        flipPromise,
-        appendPromise,
-        purgePromise,
-      ]);
-
-      expect(completionOrder[0]).toBe("read");
-      expect(detail.eventHistory).toEqual({ status: "available" });
-      expect(JSON.stringify(detail)).toContain("Child answer");
-
-      const finalDetail = await requireDetail(childConversationId);
-      expect(["expired", "redacted"]).toContain(
-        finalDetail.eventHistory.status,
-      );
-      expect(JSON.stringify(finalDetail)).not.toContain("Late private payload");
-    } finally {
-      releaseTable.resolve();
-      await blockerDone.catch(() => undefined);
-      await Promise.all([
-        blocker.close(),
-        observer.close(),
-        mutator.close(),
-        appender.close(),
-        purger.close(),
-      ]);
-    }
-  }, 15_000);
 
   it("deletes physical child event and message rows when an append wins before tree purge", async () => {
     const rootConversationId = "slack:C-reporting:append-purge-root";
