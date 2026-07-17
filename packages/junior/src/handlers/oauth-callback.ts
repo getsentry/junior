@@ -28,7 +28,10 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
+import {
+  buildDeliveredTurnStatePatch,
+  buildRecoveredDeliveredTurnStatePatch,
+} from "@/chat/runtime/delivered-turn-state";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   buildOAuthTokenRequest,
@@ -68,9 +71,11 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
   turnLifecycle?: ConversationTurnLifecycle;
 }
 
@@ -92,7 +97,7 @@ function htmlErrorResponse(
 async function persistCompletedOAuthReplyState(args: {
   conversationId: string;
   sessionId: string;
-  reply: AgentRunResult;
+  reply?: AgentRunResult;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
@@ -102,13 +107,19 @@ async function persistCompletedOAuthReplyState(args: {
   });
   const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(conversation, args.sessionId);
-  const statePatch = buildDeliveredTurnStatePatch({
-    artifacts,
-    conversation,
-    reply: args.reply,
-    sessionId: args.sessionId,
-    userMessageId: userMessage?.id,
-  });
+  const statePatch = args.reply
+    ? buildDeliveredTurnStatePatch({
+        artifacts,
+        conversation,
+        reply: args.reply,
+        sessionId: args.sessionId,
+        userMessageId: userMessage?.id,
+      })
+    : buildRecoveredDeliveredTurnStatePatch({
+        conversation,
+        sessionId: args.sessionId,
+        userMessageId: userMessage?.id,
+      });
 
   await persistThreadStateById(args.conversationId, {
     ...statePatch,
@@ -277,12 +288,13 @@ async function resumeOAuthSessionRecordTurn(
     threadTs: stored.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
+    initialText: "",
+    agentRunner: options.agentRunner,
+    recoverableSlackDelivery: options.recoverableSlackDelivery,
     lifecycleCorrelation: {
       conversationId: stored.resumeConversationId,
       turnId: resolvedSessionId,
     },
-    initialText: "",
-    agentRunner: options.agentRunner,
     turnLifecycle: options.turnLifecycle,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
@@ -466,6 +478,12 @@ async function resumeOAuthSessionRecordTurn(
             reply,
           });
         },
+        onRecoveredSuccess: async () => {
+          await persistCompletedOAuthReplyState({
+            conversationId: stored.resumeConversationId!,
+            sessionId: lockedSessionId,
+          });
+        },
         onPostDeliveryCommitFailure: async () => {
           await failAgentTurnSessionRecord({
             conversationId: stored.resumeConversationId!,
@@ -542,6 +560,7 @@ async function resumePendingOAuthMessage(
     messageTs,
     connectedText: "",
     agentRunner: options.agentRunner,
+    recoverableSlackDelivery: options.recoverableSlackDelivery,
     turnLifecycle: options.turnLifecycle,
     replyContext: {
       input: {

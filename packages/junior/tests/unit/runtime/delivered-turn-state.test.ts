@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
+import {
+  buildDeliveredTurnStatePatch,
+  buildRecoveredDeliveredTurnStatePatch,
+} from "@/chat/runtime/delivered-turn-state";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
@@ -56,5 +59,40 @@ describe("delivered turn state", () => {
         text: "delivered reply",
       }),
     ]);
+  });
+
+  it("repairs derived conversation state from a canonical terminal", () => {
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        processing: {
+          activeTurnId: "turn-1",
+          pendingAuth: {
+            kind: "plugin",
+            provider: "github",
+            actorId: "U123",
+            sessionId: "turn-1",
+            linkSentAtMs: 1,
+          },
+        },
+      },
+    });
+    conversation.messages.push({
+      id: "message-1",
+      role: "user",
+      text: "continue",
+      createdAtMs: 1,
+    });
+
+    const repaired = buildRecoveredDeliveredTurnStatePatch({
+      conversation,
+      sessionId: "turn-1",
+      userMessageId: "message-1",
+    });
+
+    expect(repaired.conversation.processing).toMatchObject({
+      activeTurnId: undefined,
+      pendingAuth: undefined,
+    });
+    expect(repaired.conversation.messages[0]?.meta?.replied).toBe(true);
   });
 });

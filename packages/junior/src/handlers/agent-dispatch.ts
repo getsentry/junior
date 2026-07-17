@@ -4,9 +4,11 @@ import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 interface AgentDispatchHandlerOptions {
   agentRunner: AgentRunner;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
 }
 
@@ -24,6 +26,7 @@ export async function POST(
   waitUntil(() =>
     processAgentDispatchCallback(payload, {
       agentRunner: options.agentRunner,
+      recoverableSlackDelivery: options.recoverableSlackDelivery,
       turnLifecycle: options.turnLifecycle,
     }).catch((error) => {
       logException(

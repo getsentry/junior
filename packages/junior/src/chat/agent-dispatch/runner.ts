@@ -37,11 +37,14 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { planSlackReplyPosts } from "@/chat/slack/reply";
 import {
-  planSlackReplyPosts,
-  postSlackApiReplyPosts,
-} from "@/chat/slack/reply";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
+  buildSlackReplyBlocks,
+  buildSlackReplyFooter,
+} from "@/chat/slack/footer";
+import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import { persistWithRetry } from "@/chat/services/persist-retry";
@@ -69,6 +72,7 @@ const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 
 export interface AgentDispatchRunnerDeps {
   agentRunner: AgentRunner;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
   scheduleCallback?: typeof scheduleDispatchCallback;
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
@@ -79,6 +83,10 @@ function getUserMessageId(dispatch: DispatchRecord): string {
 }
 
 function getAssistantMessageId(dispatch: DispatchRecord): string {
+  return buildDeterministicAssistantMessageId(getDispatchTurnId(dispatch.id));
+}
+
+function getLegacyAssistantMessageId(dispatch: DispatchRecord): string {
   return `dispatch:${dispatch.id}:assistant`;
 }
 
@@ -280,13 +288,57 @@ export async function processAgentDispatchCallback(
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
     await hydrateConversationMessages({ conversation, conversationId });
+    const pendingDelivery = await deps.recoverableSlackDelivery.loadByTurn({
+      conversationId,
+      turnId,
+    });
+    if (pendingDelivery) {
+      const recovered =
+        await deps.recoverableSlackDelivery.advance(pendingDelivery);
+      if (recovered.outcome === "pending") {
+        await markDispatch({ dispatch, status: "awaiting_resume" });
+        return;
+      }
+      await hydrateConversationMessages({ conversation, conversationId });
+    }
+    const priorTerminal =
+      await deps.recoverableSlackDelivery.loadTerminalOutcome({
+        conversationId,
+        turnId,
+        acceptanceEvidence: "visible_assistant",
+      });
     const deliveredMessage = conversation.messages.find(
       (message) =>
-        message.id === getAssistantMessageId(dispatch) &&
+        (message.id === getAssistantMessageId(dispatch) ||
+          message.id === getLegacyAssistantMessageId(dispatch)) &&
         message.meta?.replied === true &&
         typeof message.meta.slackTs === "string",
     );
-    if (typeof deliveredMessage?.meta?.slackTs === "string") {
+    if (priorTerminal) {
+      lifecycleStart = {
+        conversationId,
+        turnId,
+        createdAtMs: nowMs,
+        inputMessageIds: [getUserMessageId(dispatch)],
+        surface: "api",
+      };
+      await deps.turnLifecycle.start(lifecycleStart);
+      lifecycleTerminalized = true;
+      await persistRuntimePatch({
+        threadId: conversationId,
+        conversation,
+        artifacts: coerceThreadArtifactsState(persisted),
+      });
+      await markDispatch({
+        dispatch,
+        status: priorTerminal.modelSucceeded ? "completed" : "failed",
+        ...(typeof deliveredMessage?.meta?.slackTs === "string"
+          ? { resultMessageTs: deliveredMessage.meta.slackTs }
+          : {}),
+      });
+      return;
+    }
+    if (deliveredMessage) {
       lifecycleStart = {
         conversationId,
         turnId,
@@ -302,10 +354,15 @@ export async function processAgentDispatchCallback(
         failureCode: "persistence_failed",
       });
       lifecycleTerminalized = true;
+      await persistRuntimePatch({
+        threadId: conversationId,
+        conversation,
+        artifacts: coerceThreadArtifactsState(persisted),
+      });
       await markDispatch({
         dispatch,
         status: "completed",
-        resultMessageTs: deliveredMessage.meta.slackTs,
+        resultMessageTs: deliveredMessage.meta!.slackTs!,
       });
       return;
     }
@@ -460,43 +517,106 @@ export async function processAgentDispatchCallback(
     }
 
     const deliveryReply = ensureVisibleDeliveryText(reply);
-    failureCode = "delivery_failed";
-    const resultMessageTs = await postSlackApiReplyPosts({
-      channelId: dispatch.destination.channelId,
-      posts: planSlackReplyPosts({ reply: deliveryReply }),
-      footer: buildSlackReplyFooter({
+    if (dispatch.source.platform !== "slack") {
+      throw new Error("Slack dispatch delivery requires a Slack source");
+    }
+    const plannedPosts = planSlackReplyPosts({ reply: deliveryReply }).filter(
+      (post) => post.text.trim().length > 0,
+    );
+    let resultMessageTs: string | undefined;
+    let deliveryTerminalized = false;
+    if (plannedPosts.length > 0) {
+      failureCode = "delivery_failed";
+      const footer = buildSlackReplyFooter({ conversationId });
+      const intent = await deps.recoverableSlackDelivery.createIntent({
         conversationId,
-      }),
-    });
-    failureCode = "persistence_failed";
-
-    // Slack accepted the reply: everything after this point serves duplicate
-    // suppression and bookkeeping, and must not turn into a failed dispatch
-    // that a retry would re-post. Persist the delivered marker
-    // (`meta.slackTs`, checked by the redelivery guard above) immediately and
-    // durably before the dispatch is marked terminal so the crash window
-    // between post and marker stays as small as possible. The retry-and-swallow
-    // `persistRuntimePatch` below appends canonical visible-message facts, so
-    // no separate transcript persist runs outside that guarded block.
-    markConversationMessage(conversation, userMessageId, {
-      replied: true,
-      skippedReason: undefined,
-    });
-    if (reply.deliveryPlan?.postThreadText !== false) {
-      upsertConversationMessage(conversation, {
-        id: getAssistantMessageId(dispatch),
-        role: "assistant",
-        text:
-          normalizeConversationText(deliveryReply.text) || "[empty response]",
-        createdAtMs: nowMs,
-        author: {
-          userName: botConfig.userName,
-          isBot: true,
+        turnId,
+        deliveryId: `slack:${turnId}`,
+        modelMessages: reply.piMessages ?? [],
+        command: {
+          route: { channelId: dispatch.destination.channelId },
+          publicLocator: createSlackDeliveryLocator(),
+          session: {
+            surface: "slack",
+            source: dispatch.source,
+            destination: dispatch.destination,
+            destinationVisibility: dispatch.destinationVisibility,
+            actor: dispatch.actor,
+            startedAtMs: dispatch.createdAtMs,
+          },
+          parts: plannedPosts.map((post, index) => {
+            const blocks = buildSlackReplyBlocks(
+              post.text,
+              index === plannedPosts.length - 1 ? footer : undefined,
+            );
+            return {
+              text: post.text,
+              ...(blocks ? { blocks } : {}),
+            };
+          }),
+          completion: {
+            turnId,
+            inputMessageIds: [userMessageId],
+            assistantMessage: {
+              messageId: getAssistantMessageId(dispatch),
+              text:
+                normalizeConversationText(deliveryReply.text) ||
+                "[empty response]",
+              createdAtMs: nowMs,
+              author: { userName: botConfig.userName, isBot: true },
+            },
+            model: { modelId: reply.diagnostics.modelId },
+            ...(reply.diagnostics.durationMs !== undefined
+              ? { durationMs: reply.diagnostics.durationMs }
+              : {}),
+            ...(reply.diagnostics.usage
+              ? { usage: reply.diagnostics.usage }
+              : {}),
+            ...(reply.diagnostics.reasoningLevel
+              ? { reasoningLevel: reply.diagnostics.reasoningLevel }
+              : {}),
+            sliceId: 1,
+            terminal: failure
+              ? {
+                  outcome: "failed" as const,
+                  failureCode: "model_execution_failed" as const,
+                  ...(finalizedFailureEventId
+                    ? { eventId: finalizedFailureEventId }
+                    : {}),
+                }
+              : { outcome: "success" as const },
+          },
         },
-        meta: {
-          replied: true,
-          slackTs: resultMessageTs,
-        },
+      });
+      const delivery = await deps.recoverableSlackDelivery.advance(intent);
+      if (delivery.outcome === "pending") {
+        await markDispatch({ dispatch, status: "awaiting_resume" });
+        return;
+      }
+      lifecycleTerminalized = true;
+      deliveryTerminalized = true;
+      await hydrateConversationMessages({ conversation, conversationId });
+      if (delivery.outcome === "failed") {
+        await persistRuntimePatch({
+          threadId: conversationId,
+          conversation,
+          artifacts,
+          sandboxId,
+          sandboxDependencyProfileHash,
+        });
+        await markDispatch({
+          dispatch,
+          status: "failed",
+          errorMessage: "Slack rejected the dispatched reply.",
+        });
+        return;
+      }
+      resultMessageTs = delivery.messageTs;
+      failureCode = "persistence_failed";
+    } else {
+      markConversationMessage(conversation, userMessageId, {
+        replied: true,
+        skippedReason: undefined,
       });
     }
     updateConversationStats(conversation);
@@ -551,7 +671,9 @@ export async function processAgentDispatchCallback(
         },
       });
     }
-    if (postDeliveryPersistenceFailed) {
+    if (deliveryTerminalized) {
+      lifecycleTerminalized = true;
+    } else if (postDeliveryPersistenceFailed) {
       await deps.turnLifecycle.fail({
         conversationId,
         turnId,
@@ -584,7 +706,7 @@ export async function processAgentDispatchCallback(
       dispatch,
       status: failure ? "failed" : "completed",
       ...(failure ? { errorMessage: failure } : {}),
-      resultMessageTs,
+      ...(resultMessageTs ? { resultMessageTs } : {}),
     });
     if (!failure && !postDeliveryPersistenceFailed) {
       try {

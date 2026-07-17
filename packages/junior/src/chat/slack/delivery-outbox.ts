@@ -66,7 +66,11 @@ export class PendingDeliveryLeaseLostError extends Error {
 }
 
 function initialProgress(): PendingConversationDeliveryProgress {
-  return { acceptedPartCount: 0, currentState: { status: "pending" } };
+  return {
+    acceptedPartCount: 0,
+    acceptedMessageTs: [],
+    currentState: { status: "pending" },
+  };
 }
 
 function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
@@ -195,7 +199,10 @@ export async function createPendingConversationDelivery(
       const parsed = parseRow(existing);
       if (
         parsed.deliveryId !== deliveryId ||
-        !isDeepStrictEqual(parsed.command, command)
+        !isDeepStrictEqual(
+          JSON.parse(JSON.stringify(sanitizePostgresJson(parsed.command))),
+          JSON.parse(JSON.stringify(sanitizePostgresJson(command))),
+        )
       ) {
         throw new Error(
           "Conversation already has a different pending delivery",
@@ -449,6 +456,7 @@ export async function recordPendingDeliveryAccepted(
   args: {
     deliveryId: string;
     lease: PendingDeliveryLease;
+    messageTs: string;
     nowMs: number;
   },
 ): Promise<PendingConversationDelivery> {
@@ -461,6 +469,7 @@ export async function recordPendingDeliveryAccepted(
       }
       return {
         acceptedPartCount: progress.acceptedPartCount + 1,
+        acceptedMessageTs: [...progress.acceptedMessageTs, args.messageTs],
         currentState: { status: "pending" },
       };
     },
@@ -656,6 +665,7 @@ export async function terminalizeAcceptedPendingDelivery(
     lease: PendingDeliveryLease;
     nowMs: number;
     finalizer: (input: {
+      acceptedMessageTs: string[];
       command: PendingConversationDeliveryCommand;
     }) => Promise<void>;
   },
@@ -697,7 +707,10 @@ export async function terminalizeAcceptedPendingDelivery(
           "Pending delivery conflicts with an existing turn terminal",
         );
       }
-      await args.finalizer({ command: current.command });
+      await args.finalizer({
+        acceptedMessageTs: current.progress.acceptedMessageTs,
+        command: current.command,
+      });
       const terminal = await canonicalEventByKey(
         executor,
         args.conversationId,
@@ -748,6 +761,7 @@ export async function terminalizeFailedPendingDelivery(
     lease: PendingDeliveryLease;
     nowMs: number;
     finalizer: (input: {
+      acceptedMessageTs: string[];
       command: PendingConversationDeliveryCommand;
       failureCode: z.output<typeof conversationDeliveryFailureCodeSchema>;
     }) => Promise<void>;
@@ -794,7 +808,11 @@ export async function terminalizeFailedPendingDelivery(
           "Pending delivery conflicts with an existing turn terminal",
         );
       }
-      await args.finalizer({ command: current.command, failureCode });
+      await args.finalizer({
+        acceptedMessageTs: current.progress.acceptedMessageTs,
+        command: current.command,
+        failureCode,
+      });
       const terminal = await canonicalEventByKey(
         executor,
         args.conversationId,

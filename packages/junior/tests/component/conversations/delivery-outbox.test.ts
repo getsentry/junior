@@ -230,6 +230,7 @@ describe("pending conversation delivery outbox", () => {
         recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
           lease: claimed.lease!,
+          messageTs: "1700000000.000001",
           nowMs: 1_103,
         }),
       ).rejects.toBeInstanceOf(PendingDeliveryLeaseLostError);
@@ -258,6 +259,7 @@ describe("pending conversation delivery outbox", () => {
       const firstAccepted = await recordPendingDeliveryAccepted(fixture.sql, {
         deliveryId: DELIVERY_ID,
         lease,
+        messageTs: "1700000000.000001",
         nowMs: 1_003,
       });
       expect(firstAccepted.nextPartIndex).toBe(1);
@@ -355,6 +357,7 @@ describe("pending conversation delivery outbox", () => {
         await recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
           lease,
+          messageTs: `1700000000.00000${index + 1}`,
           nowMs: 1_011 + index * 2,
         });
       }

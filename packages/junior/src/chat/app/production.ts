@@ -19,6 +19,7 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -96,6 +97,7 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 /** Return the production queue callback options for conversation work. */
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
@@ -123,6 +125,7 @@ export function createProductionConversationWorkOptions(options: {
       resumeAwaitingContinuation: async (conversationId) =>
         await resumeAwaitingSlackContinuation(conversationId, {
           agentRunner,
+          recoverableSlackDelivery: options.recoverableSlackDelivery,
           turnLifecycle: options.turnLifecycle,
           scheduleSessionCompletedPluginTasks:
             services.replyExecutor?.scheduleSessionCompletedPluginTasks,

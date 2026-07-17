@@ -34,7 +34,10 @@ import {
   persistThreadStateById,
   getChannelConfigurationServiceById,
 } from "@/chat/runtime/thread-state";
-import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
+import {
+  buildDeliveredTurnStatePatch,
+  buildRecoveredDeliveredTurnStatePatch,
+} from "@/chat/runtime/delivered-turn-state";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
@@ -82,12 +85,14 @@ import {
 } from "@/chat/pi/transcript";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
 /** Runtime ports for agent continuation scheduling. */
 export interface AgentContinueRunnerOptions {
   agentRunner: AgentRunner;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
   turnLifecycle?: ConversationTurnLifecycle;
   resumeTurn?: typeof resumeSlackTurn;
   scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
@@ -100,7 +105,7 @@ export interface AgentContinueRunnerOptions {
 /** Persist a delivered continuation reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
   sessionRecord: AgentTurnSessionRecord;
-  reply: AgentRunResult;
+  reply?: AgentRunResult;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(
     args.sessionRecord.conversationId,
@@ -115,13 +120,19 @@ async function persistCompletedReplyState(args: {
     conversation,
     args.sessionRecord.sessionId,
   );
-  const statePatch = buildDeliveredTurnStatePatch({
-    artifacts,
-    conversation,
-    reply: args.reply,
-    sessionId: args.sessionRecord.sessionId,
-    userMessageId: userMessage?.id,
-  });
+  const statePatch = args.reply
+    ? buildDeliveredTurnStatePatch({
+        artifacts,
+        conversation,
+        reply: args.reply,
+        sessionId: args.sessionRecord.sessionId,
+        userMessageId: userMessage?.id,
+      })
+    : buildRecoveredDeliveredTurnStatePatch({
+        conversation,
+        sessionId: args.sessionRecord.sessionId,
+        userMessageId: userMessage?.id,
+      });
 
   await persistThreadStateById(args.sessionRecord.conversationId, {
     ...statePatch,
@@ -304,11 +315,12 @@ export async function continueSlackAgentRun(
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
+    agentRunner: options.agentRunner,
+    recoverableSlackDelivery: options.recoverableSlackDelivery,
     lifecycleCorrelation: {
       conversationId: payload.conversationId,
       turnId: payload.sessionId,
     },
-    agentRunner: options.agentRunner,
     turnLifecycle: options.turnLifecycle,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
@@ -458,6 +470,11 @@ export async function continueSlackAgentRun(
             await persistCompletedReplyState({
               sessionRecord: activeSessionRecord,
               reply,
+            });
+          },
+          onRecoveredSuccess: async () => {
+            await persistCompletedReplyState({
+              sessionRecord: activeSessionRecord,
             });
           },
           onFailure: async () => {

@@ -72,3 +72,24 @@ export function buildDeliveredTurnStatePatch(args: {
     sandboxDependencyProfileHash: args.reply.sandboxDependencyProfileHash,
   };
 }
+
+/** Repair derived thread state after canonical SQL proves delivery completed. */
+export function buildRecoveredDeliveredTurnStatePatch(args: {
+  conversation: ThreadConversationState;
+  sessionId: string;
+  userMessageId?: string;
+}): { conversation: ThreadConversationState } {
+  const conversation = structuredClone(args.conversation);
+  clearPendingAuth(conversation, args.sessionId);
+  markConversationMessage(conversation, args.userMessageId, {
+    replied: true,
+    skippedReason: undefined,
+  });
+  markTurnCompleted({
+    conversation,
+    nowMs: Date.now(),
+    sessionId: args.sessionId,
+    updateConversationStats,
+  });
+  return { conversation };
+}

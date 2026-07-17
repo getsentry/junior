@@ -66,6 +66,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { createProductionRecoverableSlackDelivery } from "@/chat/app/services";
 
 export { defineJuniorPlugins } from "./plugins";
 export type {
@@ -599,6 +600,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     replyExecutor: { agentRunner, turnLifecycle },
     sandbox: { tracePropagation },
   };
+  const recoverableSlackDelivery = createProductionRecoverableSlackDelivery();
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
@@ -636,6 +638,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      recoverableSlackDelivery,
       turnLifecycle,
     });
   });
@@ -643,6 +646,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      recoverableSlackDelivery,
       turnLifecycle,
     });
   });
@@ -650,6 +654,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
       agentRunner,
+      recoverableSlackDelivery,
       turnLifecycle,
     });
   });
@@ -668,6 +673,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       options?.conversationWork ??
       createProductionConversationWorkOptions({
         agentRunner,
+        recoverableSlackDelivery,
         turnLifecycle,
         services: runtimeServiceOverrides,
       });

@@ -8,7 +8,16 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationMessageStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
+import {
+  postRecoverableSlackMessage,
+  reconcileRecoverableSlackMessage,
+} from "@/chat/slack/outbound";
 
 function makeDiagnostics(
   outcome: "success" | "execution_failure" | "provider_error" = "success",
@@ -148,73 +157,7 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
-  it("posts the safe fallback when failure-state persistence fails", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
-    const { getConversationEventStore } = await import("@/chat/db");
-    const conversationId = "slack:T123:C123:1700000000.009";
-    const turnId = "turn_1700000000_009";
-
-    await expect(
-      resumeSlackTurn({
-        messageText: "Resume the failed turn",
-        channelId: "C123",
-        threadTs: "1700000000.009",
-        inputMessageIds: ["msg.9"],
-        lifecycleCorrelation: { conversationId, turnId },
-        replyContext: {
-          routing: {
-            credentialContext: {
-              actor: { type: "user", userId: "U123" },
-            },
-            correlation: { conversationId, turnId },
-            destination: TEST_SLACK_DESTINATION,
-            source: testSlackSource("1700000000.009"),
-            actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          },
-        },
-        agentRunner: {
-          run: async () => {
-            throw new Error("resume failed");
-          },
-        },
-        onFailure: async () => {
-          throw new Error("failure state unavailable");
-        },
-      }),
-    ).rejects.toThrow("failure state unavailable");
-
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.009",
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that. Reference: `event_id=",
-          ),
-        }),
-      }),
-    ]);
-
-    const lifecycle = (
-      await getConversationEventStore().loadHistory(conversationId)
-    ).filter((event) => event.data.type.startsWith("turn_"));
-    expect(lifecycle.map((event) => event.data)).toEqual([
-      expect.objectContaining({
-        type: "turn_started",
-        turnId,
-        inputMessageIds: ["msg.9"],
-        surface: "slack",
-      }),
-      expect.objectContaining({
-        type: "turn_failed",
-        turnId,
-        failureCode: "persistence_failed",
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-      }),
-    ]);
-  });
-
-  it("uses correlation IDs for resumed reply footers", async () => {
+  it("recovers an accepted correlated reply without rerunning or reposting", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
     const { upsertAgentTurnSessionRecord } =
@@ -234,13 +177,42 @@ describe("oauth resume slack integration", () => {
       },
       source: testSlackSource("1700000000.007"),
     });
+    await getConversationMessageStore().record("conversation-1", [
+      {
+        messageId: "message-turn-1",
+        role: "user",
+        text: "continue this turn",
+        createdAtMs: Date.now(),
+      },
+    ]);
+    const recoverableSlackDelivery = new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      {
+        post: postRecoverableSlackMessage,
+        reconcile: reconcileRecoverableSlackMessage,
+      },
+    );
+    const run = vi.fn(async () =>
+      completedAgentRun({
+        text: "done",
+        diagnostics: makeDiagnostics("success", {
+          durationMs: 500,
+          usage: {
+            outputTokens: 7,
+          },
+        }),
+      }),
+    );
+    const onSuccess = vi.fn(async () => undefined);
+    const onRecoveredSuccess = vi.fn(async () => undefined);
 
-    await resumeAuthorizedRequest({
+    const resumeArgs: Parameters<typeof resumeAuthorizedRequest>[0] = {
       messageText: "continue this turn",
       channelId: "C123",
       threadTs: "1700000000.007",
       connectedText: "",
       inputMessageIds: ["message-turn-1"],
+      recoverableSlackDelivery,
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
       ),
@@ -258,19 +230,17 @@ describe("oauth resume slack integration", () => {
           },
         },
       },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: "done",
-            diagnostics: makeDiagnostics("success", {
-              durationMs: 500,
-              usage: {
-                outputTokens: 7,
-              },
-            }),
-          }),
-      },
-    });
+      agentRunner: { run },
+      onSuccess,
+      onRecoveredSuccess,
+    };
+
+    await resumeAuthorizedRequest(resumeArgs);
+    await resumeAuthorizedRequest(resumeArgs);
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onRecoveredSuccess).toHaveBeenCalledTimes(1);
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({

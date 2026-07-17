@@ -68,19 +68,19 @@ export interface RecoverableSlackDeliveryPort {
     channelId: string;
     metadata: SlackDeliveryMetadata;
     text: string;
-    threadTs: string;
+    threadTs?: string;
   }): Promise<RecoverableSlackPostResult>;
   reconcile(input: {
     channelId: string;
     cursor?: string;
     metadata: SlackDeliveryMetadata;
     oldestTs: string;
-    threadTs: string;
+    threadTs?: string;
   }): Promise<RecoverableSlackReconciliationResult>;
 }
 
 export type RecoverableSlackDeliveryOutcome =
-  | { outcome: "accepted" }
+  | { outcome: "accepted"; messageTs?: string }
   | { outcome: "failed" }
   | { outcome: "pending"; retryAtMs: number };
 
@@ -123,6 +123,7 @@ async function recordVisibleAssistantSql(
   command: PendingConversationDeliveryCommand,
   text: string,
   nowMs: number,
+  messageTs?: string,
 ): Promise<void> {
   const messages = createSqlConversationMessageStore(sql);
   const baselines = await sql
@@ -149,7 +150,7 @@ async function recordVisibleAssistantSql(
       text,
       author: assistant.author,
       createdAtMs: assistant.createdAtMs,
-      meta: { replied: true },
+      meta: { replied: true, ...(messageTs ? { slackTs: messageTs } : {}) },
     }),
   ]);
   for (const inputMessageId of command.completion.inputMessageIds) {
@@ -163,6 +164,7 @@ async function finalizeAcceptedSql(
   conversationId: string,
   command: PendingConversationDeliveryCommand,
   nowMs: number,
+  messageTs?: string,
 ): Promise<void> {
   await recordVisibleAssistantSql(
     sql,
@@ -170,6 +172,7 @@ async function finalizeAcceptedSql(
     command,
     command.completion.assistantMessage.text,
     nowMs,
+    messageTs,
   );
   const lifecycle = new ConversationTurnLifecycleService(
     createSqlConversationEventStore(sql),
@@ -424,6 +427,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
             current = await recordPendingDeliveryAccepted(this.sql, {
               deliveryId: current.deliveryId,
               lease,
+              messageTs: reconciliation.ts,
               nowMs: reconciliationNow,
             });
             continue;
@@ -541,6 +545,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
           current = await recordPendingDeliveryAccepted(this.sql, {
             deliveryId: current.deliveryId,
             lease,
+            messageTs: post.ts,
             nowMs: postNow,
           });
           continue;
@@ -584,7 +589,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
             turnId: current.turnId,
             lease,
             nowMs: this.now(),
-            finalizer: async ({ command }) => {
+            finalizer: async ({ acceptedMessageTs, command }) => {
               if (current.progress.acceptedPartCount === 0) {
                 await rollbackRejectedModel(
                   this.sql,
@@ -604,6 +609,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
                     .map((part) => part.text)
                     .join("\n\n"),
                   this.now(),
+                  acceptedMessageTs.at(-1),
                 );
               }
               await new ConversationTurnLifecycleService(
@@ -634,12 +640,13 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
           turnId: current.turnId,
           lease,
           nowMs: this.now(),
-          finalizer: async ({ command }) => {
+          finalizer: async ({ acceptedMessageTs, command }) => {
             await finalizeAcceptedSql(
               this.sql,
               current.conversationId,
               command,
               this.now(),
+              acceptedMessageTs.at(-1),
             );
           },
         });
@@ -652,7 +659,10 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
         if (terminal) return { outcome: terminal.deliveryOutcome };
         throw error;
       }
-      return { outcome: "accepted" };
+      return {
+        outcome: "accepted",
+        messageTs: current.progress.acceptedMessageTs.at(-1),
+      };
     } finally {
       const stillPending = await loadPendingDeliveryByTurn(this.sql, {
         conversationId: current.conversationId,

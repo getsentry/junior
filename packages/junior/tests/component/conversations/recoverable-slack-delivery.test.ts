@@ -159,6 +159,7 @@ describe("recoverable Slack delivery", () => {
       ).toHaveLength(2);
       await expect(test.service.advance(test.pending)).resolves.toEqual({
         outcome: "accepted",
+        messageTs: "1718123457.000002",
       });
       expect(port.post).toHaveBeenCalledTimes(2);
       expect(port.reconcile).not.toHaveBeenCalled();
@@ -229,6 +230,7 @@ describe("recoverable Slack delivery", () => {
       });
       await expect(test.service.advance(pending!)).resolves.toEqual({
         outcome: "accepted",
+        messageTs: "1718123457.000002",
       });
       expect(post).toHaveBeenCalledTimes(2);
       expect(reconcile).toHaveBeenCalledTimes(1);
@@ -271,7 +273,10 @@ describe("recoverable Slack delivery", () => {
             turnId: "turn-1",
           }))!,
         ),
-      ).resolves.toEqual({ outcome: "accepted" });
+      ).resolves.toEqual({
+        outcome: "accepted",
+        messageTs: "1718123457.000002",
+      });
       expect(reconcile).toHaveBeenCalledTimes(2);
       expect(reconcile.mock.calls[1]?.[0]).not.toHaveProperty("cursor");
       expect(reconcile.mock.calls[0]?.[0].oldestTs).toBe("0.000000");

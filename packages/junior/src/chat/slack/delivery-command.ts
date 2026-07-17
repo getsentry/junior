@@ -54,7 +54,10 @@ export const pendingConversationDeliveryCommandSchema = z
     route: z
       .object({
         channelId: z.string().regex(/^[CDG][A-Z0-9]+$/),
-        threadTs: z.string().regex(/^\d+(?:\.\d+)?$/),
+        threadTs: z
+          .string()
+          .regex(/^\d+(?:\.\d+)?$/)
+          .optional(),
       })
       .strict(),
     publicLocator: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
@@ -217,9 +220,15 @@ export type PendingConversationDeliveryCurrentState = z.output<
 export const pendingConversationDeliveryProgressSchema = z
   .object({
     acceptedPartCount: z.number().int().nonnegative(),
+    acceptedMessageTs: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)).default([]),
     currentState: pendingConversationDeliveryCurrentStateSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (progress) =>
+      progress.acceptedMessageTs.length === progress.acceptedPartCount,
+    "accepted Slack receipts must align with accepted parts",
+  );
 
 export type PendingConversationDeliveryProgress = z.output<
   typeof pendingConversationDeliveryProgressSchema

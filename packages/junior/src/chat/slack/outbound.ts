@@ -441,16 +441,18 @@ export async function reconcileRecoverableSlackMessage(input: {
   cursor?: string;
   metadata: SlackDeliveryMetadata;
   oldestTs: string;
-  threadTs: string;
+  threadTs?: string;
 }): Promise<RecoverableSlackReconciliationResult> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Recoverable Slack message reconciliation",
   );
-  const threadTs = requireSlackMessageTimestamp(
-    input.threadTs,
-    "Recoverable Slack message reconciliation",
-  );
+  const threadTs = input.threadTs
+    ? requireSlackMessageTimestamp(
+        input.threadTs,
+        "Recoverable Slack message reconciliation",
+      )
+    : undefined;
   const oldestTs = requireSlackMessageTimestamp(
     input.oldestTs,
     "Recoverable Slack message reconciliation",
@@ -470,15 +472,24 @@ export async function reconcileRecoverableSlackMessage(input: {
     }
 
     const cursor = readNonEmptyString(input.cursor);
-    const response = await client.conversations.replies({
-      channel: channelId,
-      ts: threadTs,
-      oldest: oldestTs,
-      inclusive: true,
-      include_all_metadata: true,
-      limit: SLACK_RECONCILIATION_PAGE_SIZE,
-      ...(cursor ? { cursor } : {}),
-    });
+    const response = threadTs
+      ? await client.conversations.replies({
+          channel: channelId,
+          ts: threadTs,
+          oldest: oldestTs,
+          inclusive: true,
+          include_all_metadata: true,
+          limit: SLACK_RECONCILIATION_PAGE_SIZE,
+          ...(cursor ? { cursor } : {}),
+        })
+      : await client.conversations.history({
+          channel: channelId,
+          oldest: oldestTs,
+          inclusive: true,
+          include_all_metadata: true,
+          limit: SLACK_RECONCILIATION_PAGE_SIZE,
+          ...(cursor ? { cursor } : {}),
+        });
     for (const rawMessage of response.messages ?? []) {
       const message = rawMessage as unknown as Record<string, unknown>;
       if (

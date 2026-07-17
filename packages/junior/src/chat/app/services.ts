@@ -37,6 +37,7 @@ import {
   reconcileRecoverableSlackMessage,
 } from "@/chat/slack/outbound";
 import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 
@@ -57,6 +58,14 @@ export interface JuniorRuntimeServiceOverrides {
     tracePropagation?: SandboxEgressTracePropagationConfig;
   };
   visionContext?: Partial<VisionContextDeps>;
+}
+
+/** Compose the production SQL and Slack ports for durable reply delivery. */
+export function createProductionRecoverableSlackDelivery(): RecoverableSlackDelivery {
+  return new RecoverableSlackDeliveryService(getSqlExecutor(), {
+    post: postRecoverableSlackMessage,
+    reconcile: reconcileRecoverableSlackMessage,
+  });
 }
 
 export function createJuniorRuntimeServices(
@@ -103,10 +112,7 @@ export function createJuniorRuntimeServices(
         }),
       recoverableSlackDelivery:
         overrides.replyExecutor?.recoverableSlackDelivery ??
-        new RecoverableSlackDeliveryService(getSqlExecutor(), {
-          post: postRecoverableSlackMessage,
-          reconcile: reconcileRecoverableSlackMessage,
-        }),
+        createProductionRecoverableSlackDelivery(),
       turnLifecycle:
         overrides.replyExecutor?.turnLifecycle ??
         new ConversationTurnLifecycleService(getConversationEventStore()),
