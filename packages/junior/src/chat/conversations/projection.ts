@@ -187,16 +187,13 @@ export async function loadTurnProjection(args: {
       await eventStore.loadCurrentEpoch(args.conversationId),
     );
   }
-  const history = await eventStore.loadHistory(args.conversationId);
-  const committedEvent = history.find(
-    (event) => event.seq === args.committedSeq,
+  const epochEvents = await eventStore.loadEpochContaining(
+    args.conversationId,
+    args.committedSeq,
   );
-  if (!committedEvent) {
+  if (!epochEvents) {
     return undefined;
   }
-  const epochEvents = history.filter(
-    (event) => event.contextEpoch === committedEvent.contextEpoch,
-  );
   const localEvents = args.includeTail
     ? epochEvents
     : epochEvents.filter((event) => event.seq <= args.committedSeq);

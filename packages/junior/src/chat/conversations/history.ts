@@ -401,6 +401,17 @@ export interface ConversationEventStore {
   startEpoch(conversationId: string, opts: ContextEpochStart): Promise<void>;
   /** Events of the highest epoch in `seq` order (all types; caller filters). */
   loadCurrentEpoch(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events in the epoch containing `seq`, or undefined when it is absent. */
+  loadEpochContaining(
+    conversationId: string,
+    seq: number,
+  ): Promise<ConversationEvent[] | undefined>;
+  /** Visible-message facts across every epoch. */
+  loadVisibleHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Latest visible-context compaction snapshot, if one exists. */
+  loadLatestVisibleCompaction(
+    conversationId: string,
+  ): Promise<ConversationEvent | undefined>;
   /** All events across every epoch in `seq` order, for audit and reporting. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
 }

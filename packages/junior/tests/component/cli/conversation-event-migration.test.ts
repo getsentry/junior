@@ -454,6 +454,7 @@ ORDER BY indexname
         { name: "junior_conversation_events_conversation_id_seq_pk" },
         { name: "junior_conversation_events_epoch_idx" },
         { name: "junior_conversation_events_idempotency_idx" },
+        { name: "junior_conversation_events_type_idx" },
       ]);
     } finally {
       await fixture.close();

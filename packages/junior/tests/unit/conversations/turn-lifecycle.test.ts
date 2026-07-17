@@ -49,6 +49,18 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history;
   }
 
+  async loadEpochContaining(): Promise<ConversationEvent[]> {
+    return this.history;
+  }
+
+  async loadVisibleHistory(): Promise<ConversationEvent[]> {
+    return this.history;
+  }
+
+  async loadLatestVisibleCompaction(): Promise<ConversationEvent | undefined> {
+    return undefined;
+  }
+
   async loadHistory(): Promise<ConversationEvent[]> {
     return this.history;
   }

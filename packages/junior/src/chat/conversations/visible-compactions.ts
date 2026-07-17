@@ -25,9 +25,12 @@ export async function persistConversationCompactions(args: {
   conversationId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const existing = projectVisibleConversationCompactions(
-    await eventStore.loadHistory(args.conversationId),
+  const latest = await eventStore.loadLatestVisibleCompaction(
+    args.conversationId,
   );
+  const existing = latest
+    ? projectVisibleConversationCompactions([latest])
+    : [];
   if (isDeepStrictEqual(existing, args.conversation.compactions)) {
     return;
   }
