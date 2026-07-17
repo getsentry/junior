@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { migrateConversationVisibleMessageEvents } from "@/cli/upgrade/migrations/conversation-visible-message-events";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
 import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-history/session-log";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
@@ -53,6 +54,106 @@ async function executeStatements(
 }
 
 describe("conversation event migration", () => {
+  it("normalizes a compacted suffix after ordered import and resequence", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const migrationsBeforeConversationEvents = [
+      "0000_initial.sql",
+      "0001_conversation_metrics.sql",
+      "0002_conversation_message_search.sql",
+      "0003_peaceful_scalphunter.sql",
+      "0004_useful_magus.sql",
+    ].flatMap(migrationStatements);
+    const conversationId = "conversation-compacted-upgrade";
+
+    try {
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationsBeforeConversationEvents,
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+          conversation_id, created_at, last_activity_at, updated_at,
+          execution_status
+        ) VALUES ($1, $2, $2, $2, 'idle')`,
+        [conversationId, new Date("2026-07-14T10:00:00.000Z")],
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversation_messages (
+          conversation_id, message_id, role, text, created_at
+        ) VALUES ($1, 'covered-old', 'user', 'must stay compacted', $2)`,
+        [conversationId, new Date("2026-07-14T10:00:01.000Z")],
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0005_conversation_events.sql"),
+      );
+
+      const stateAdapter = getStateAdapter();
+      await stateAdapter.connect();
+      await stateAdapter.set(`thread-state:${conversationId}`, {
+        conversation: {
+          compactions: [
+            {
+              id: "legacy-compaction",
+              summary: "900 earlier messages",
+              createdAtMs: Date.parse("2026-07-14T10:00:02.000Z"),
+              coveredMessageIds: Array.from(
+                { length: 500 },
+                (_, index) => `covered-${index}`,
+              ),
+            },
+          ],
+          messages: [
+            {
+              id: "live",
+              role: "user",
+              text: "must remain live",
+              createdAtMs: Date.parse("2026-07-14T10:00:03.000Z"),
+            },
+          ],
+          stats: { compactedMessageCount: 900 },
+        },
+      });
+
+      await expect(
+        importConversationFromLegacy(conversationId, {
+          executor: fixture.sql,
+          sessionLogStore: { read: async () => [] },
+        }),
+      ).resolves.toEqual({ imported: true });
+
+      await expect(
+        migrateConversationVisibleMessageEvents(
+          { io: { info: () => {} }, stateAdapter },
+          { batchSize: 1, executor: fixture.sql },
+        ),
+      ).resolves.toMatchObject({ migrated: 1, missing: 0 });
+
+      const store = createSqlConversationEventStore(fixture.sql);
+      const visible = await store.loadVisibleHistory(conversationId);
+      expect(visible.compaction?.data).toEqual({
+        type: "visible_context_compacted",
+        historyFromSeq: 2,
+        compactions: [
+          {
+            id: "legacy-compaction",
+            summary: "900 earlier messages",
+            createdAtMs: Date.parse("2026-07-14T10:00:02.000Z"),
+            coveredMessageCount: 900,
+          },
+        ],
+      });
+      expect(visible.events.map((event) => event.seq)).toEqual([2]);
+      expect(
+        projectVisibleConversationMessages(visible.events, {
+          historyFromSeq: 2,
+        }).map((message) => message.id),
+      ).toEqual(["live"]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("imports external history before visible-message rows seal the conversation", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const migrationsBeforeConversationEvents = [

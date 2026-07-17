@@ -70,14 +70,19 @@ describe("visible message projection", () => {
   it.each([
     "visible_message_metadata_updated",
     "visible_message_replied",
-  ] as const)("ignores %s without a live recorded baseline", (type) => {
+  ] as const)("rejects %s without an uncompacted baseline", (type) => {
     const data =
       type === "visible_message_metadata_updated"
         ? { type, messageId: "missing", meta: { late: true } }
         : { type, messageId: "missing" };
-    expect(projectVisibleConversationMessages([event(0, 1_000, data)])).toEqual(
-      [],
-    );
+    expect(() =>
+      projectVisibleConversationMessages([event(0, 1_000, data)]),
+    ).toThrow("before visible_message_recorded");
+    expect(
+      projectVisibleConversationMessages([event(10, 1_000, data)], {
+        historyFromSeq: 10,
+      }),
+    ).toEqual([]);
   });
 
   it("rejects duplicate recorded baselines", () => {

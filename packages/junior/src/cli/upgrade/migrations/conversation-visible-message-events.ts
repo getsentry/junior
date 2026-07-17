@@ -107,6 +107,10 @@ interface SqlVisibleEvent {
   type: string;
 }
 
+interface VisibleCompactionAnchorRow {
+  messageId: string | null;
+}
+
 function timestampMs(value: Date | string): number {
   return value instanceof Date ? value.getTime() : new Date(value).getTime();
 }
@@ -272,6 +276,88 @@ function sqlVisibleEvents(events: NewConversationEvent[]): SqlVisibleEvent[] {
   });
 }
 
+async function loadVisibleCompactionAnchor(
+  executor: JuniorSqlExecutor,
+  conversationId: string,
+): Promise<VisibleCompactionAnchorRow | undefined> {
+  const [row] = await executor.query<VisibleCompactionAnchorRow>(
+    `WITH snapshot AS (
+       SELECT payload
+       FROM junior_conversation_events
+       WHERE conversation_id = $1
+         AND type = 'visible_context_compacted'
+       ORDER BY seq DESC
+       LIMIT 1
+     )
+     SELECT (
+       SELECT event.payload->>'messageId'
+       FROM junior_conversation_events event
+       WHERE event.conversation_id = $1
+         AND event.type = 'visible_message_recorded'
+         AND event.seq >= (snapshot.payload->>'historyFromSeq')::integer
+       ORDER BY event.seq
+       LIMIT 1
+     ) AS "messageId"
+     FROM snapshot`,
+    [conversationId],
+  );
+  return row;
+}
+
+async function normalizeVisibleCompactionBoundary(
+  executor: JuniorSqlExecutor,
+  conversationId: string,
+  anchor: VisibleCompactionAnchorRow | undefined,
+): Promise<void> {
+  if (!anchor) return;
+  let historyFromSeq: number;
+  if (anchor.messageId) {
+    const [baseline] = await executor.query<{ seq: number }>(
+      `SELECT seq
+       FROM junior_conversation_events
+       WHERE conversation_id = $1
+         AND type = 'visible_message_recorded'
+         AND payload->>'messageId' = $2
+       ORDER BY seq
+       LIMIT 1`,
+      [conversationId, anchor.messageId],
+    );
+    if (!baseline) {
+      throw new Error(
+        `Visible compaction anchor ${anchor.messageId} disappeared during resequence`,
+      );
+    }
+    historyFromSeq = baseline.seq;
+  } else {
+    const [end] = await executor.query<{ seq: number }>(
+      `SELECT coalesce(max(seq), -1)::integer + 1 AS seq
+       FROM junior_conversation_events
+       WHERE conversation_id = $1`,
+      [conversationId],
+    );
+    historyFromSeq = end?.seq ?? 0;
+  }
+  await executor.execute(
+    `WITH snapshot AS (
+       SELECT ctid
+       FROM junior_conversation_events
+       WHERE conversation_id = $1
+         AND type = 'visible_context_compacted'
+       ORDER BY seq DESC
+       LIMIT 1
+     )
+     UPDATE junior_conversation_events event
+     SET payload = jsonb_set(
+       event.payload,
+       '{historyFromSeq}',
+       to_jsonb($2::integer)
+     )
+     FROM snapshot
+     WHERE event.ctid = snapshot.ctid`,
+    [conversationId, historyFromSeq],
+  );
+}
+
 /** Insert missing facts and resequence one conversation in a single SQL lock. */
 async function mergeVisibleEvents(
   executor: JuniorSqlExecutor,
@@ -283,6 +369,10 @@ async function mergeVisibleEvents(
     `junior_conversation:event:${conversationId}`,
     async () => {
       await executor.transaction(async () => {
+        const compactionAnchor = await loadVisibleCompactionAnchor(
+          executor,
+          conversationId,
+        );
         await executor.execute(
           `WITH input AS (
              SELECT *
@@ -393,6 +483,11 @@ async function mergeVisibleEvents(
            FROM ranked
            WHERE event.ctid = ranked.ctid`,
           [conversationId],
+        );
+        await normalizeVisibleCompactionBoundary(
+          executor,
+          conversationId,
+          compactionAnchor,
         );
       });
     },

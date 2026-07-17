@@ -54,9 +54,16 @@ function storedMeta(message: ConversationMessage): Record<string, unknown> {
   };
 }
 
+function missingBaselineError(event: VisibleMessageEvent): Error {
+  return new Error(
+    `Visible message event ${event.data.type} at seq ${event.seq} references ${event.data.messageId} before visible_message_recorded`,
+  );
+}
+
 /** Reduce canonical visible-message facts into the destination-facing transcript. */
 export function projectVisibleConversationMessages(
   events: ConversationEvent[],
+  options: { historyFromSeq?: number } = {},
 ): ConversationMessage[] {
   const byId = new Map<string, ProjectedMessage>();
 
@@ -81,9 +88,10 @@ export function projectVisibleConversationMessages(
       continue;
     }
 
-    // A compacted prefix can have a later metadata/reply fact inside the live
-    // suffix query. Its absent baseline means the whole message stays compacted.
-    if (!current) continue;
+    if (!current) {
+      if ((options.historyFromSeq ?? 0) > 0) continue;
+      throw missingBaselineError(event);
+    }
     if (data.type === "visible_message_metadata_updated") {
       const merged = { ...storedMeta(current.message), ...data.meta };
       const { author: _author, meta: _meta, ...baseline } = current.message;

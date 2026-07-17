@@ -59,7 +59,10 @@ const legacyThreadStateSnapshotSchema = z.object({
       compactions: z.array(legacyCompactionSchema).optional(),
       messages: z.array(legacyVisibleMessageSchema).optional(),
       stats: z
-        .object({ updatedAtMs: z.number().finite().optional() })
+        .object({
+          compactedMessageCount: z.number().finite().optional(),
+          updatedAtMs: z.number().finite().optional(),
+        })
         .passthrough()
         .optional(),
     })
@@ -85,6 +88,7 @@ export interface LegacyImportDeps {
 /** Read legacy transcript data from `thread-state:<id>`. */
 async function loadThreadStateSnapshot(conversationId: string): Promise<{
   compactions: LegacyConversationCompaction[];
+  compactedMessageCount?: number;
   messages: ThreadConversationMessage[];
   lastActivityAtMs?: number;
 }> {
@@ -98,6 +102,9 @@ async function loadThreadStateSnapshot(conversationId: string): Promise<{
   return {
     compactions: conversation?.compactions ?? [],
     messages: conversation?.messages ?? [],
+    ...(conversation?.stats?.compactedMessageCount !== undefined
+      ? { compactedMessageCount: conversation.stats.compactedMessageCount }
+      : {}),
     ...(conversation?.stats?.updatedAtMs !== undefined
       ? { lastActivityAtMs: conversation.stats.updatedAtMs }
       : {}),
@@ -159,7 +166,7 @@ export async function importConversationFromLegacy(
         messages: await deps.loadVisibleMessages(conversationId),
       }
     : await loadThreadStateSnapshot(conversationId);
-  const { compactions, messages: visible } = snapshot;
+  const { compactedMessageCount, compactions, messages: visible } = snapshot;
 
   if (
     entries.length === 0 &&
@@ -199,11 +206,24 @@ export async function importConversationFromLegacy(
     fallbackCreatedAtMs,
   });
   if (compactions.length > 0) {
-    const compacted = compactions.map((compaction) => ({
+    const storedCount = compactions.reduce(
+      (count, compaction) => count + compaction.coveredMessageIds.length,
+      0,
+    );
+    const statsCount =
+      typeof compactedMessageCount === "number" &&
+      Number.isFinite(compactedMessageCount) &&
+      compactedMessageCount > 0
+        ? Math.floor(compactedMessageCount)
+        : 0;
+    const totalCount = Math.max(storedCount, statsCount);
+    const compacted = compactions.map((compaction, index) => ({
       id: compaction.id,
       summary: compaction.summary,
       createdAtMs: compaction.createdAtMs,
-      coveredMessageCount: compaction.coveredMessageIds.length,
+      coveredMessageCount:
+        compaction.coveredMessageIds.length +
+        (index === 0 ? totalCount - storedCount : 0),
     }));
     converted.events.push({
       seq: converted.events.length,
