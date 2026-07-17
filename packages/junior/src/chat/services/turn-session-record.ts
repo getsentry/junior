@@ -15,6 +15,7 @@ import {
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
+import { AgentContinuationSliceLimitError } from "@/chat/services/agent-continuation-errors";
 
 export const AGENT_CONTINUE_MAX_SLICES = 48;
 
@@ -535,7 +536,9 @@ export async function persistTimeoutSessionRecord(args: {
           : {}),
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
+        errorMessage: new AgentContinuationSliceLimitError(
+          AGENT_CONTINUE_MAX_SLICES,
+        ).message,
         ...((args.actor ?? latestSessionRecord?.actor)
           ? { actor: args.actor ?? latestSessionRecord?.actor }
           : {}),

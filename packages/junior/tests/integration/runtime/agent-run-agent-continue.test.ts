@@ -396,7 +396,9 @@ describe("executeAgentRun agent continuation", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
 
-    expect(error).toBeInstanceOf(Error);
+    const { AgentContinuationSliceLimitError } =
+      await import("@/chat/services/agent-continuation-errors");
+    expect(error).toBeInstanceOf(AgentContinuationSliceLimitError);
     expect(error).not.toHaveProperty("text");
     expect(error.message).toContain("slice limit");
 
