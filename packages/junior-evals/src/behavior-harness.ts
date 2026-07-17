@@ -1751,10 +1751,7 @@ function buildRuntimeServices(
             delete process.env.VERCEL_OIDC_TOKEN;
           }
           try {
-            const pendingToolInvocations: Array<{
-              invocation: EvalToolInvocation;
-              params: Record<string, unknown>;
-            }> = [];
+            const pendingToolInvocations: EvalToolInvocation[] = [];
             const outcome = await executeAgentRun({
               ...runRequest,
               policy: {
@@ -1775,19 +1772,16 @@ function buildRuntimeServices(
                 onToolInvocation: (invocation) => {
                   const evalInvocation = toEvalToolInvocation(invocation);
                   observations.toolInvocations.push(evalInvocation);
-                  pendingToolInvocations.push({
-                    invocation: evalInvocation,
-                    params: invocation.params,
-                  });
+                  pendingToolInvocations.push(evalInvocation);
                 },
                 onToolResult: (result) => {
                   const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.params === result.params,
+                    (candidate) => candidate.tool === result.toolName,
                   );
                   if (pendingIndex === -1) {
                     return;
                   }
-                  const [{ invocation }] = pendingToolInvocations.splice(
+                  const [invocation] = pendingToolInvocations.splice(
                     pendingIndex,
                     1,
                   );

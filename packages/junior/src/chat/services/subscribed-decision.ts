@@ -67,7 +67,9 @@ const replyDecisionSchema = z
       .min(0)
       .max(1)
       .describe("Classifier confidence from 0 to 1."),
-    reason: z.string().optional().describe("Short reason for the decision."),
+    reason: z
+      .string()
+      .describe("Short reason for the decision; use an empty string if none."),
   })
   .strict();
 
