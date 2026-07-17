@@ -8,6 +8,7 @@ import {
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
+  readEvalMcpAuthorizationCodeExchanges,
 } from "../msw/handlers/eval-mcp-auth";
 import {
   getCapturedSlackApiCalls,
@@ -561,7 +562,7 @@ describe("mcp oauth callback slack integration", () => {
     );
   });
 
-  it("recovers a committed MCP credential when candidate activation crashes", async () => {
+  it("does not consume the MCP code while conversation ownership is busy", async () => {
     const threadId = "slack:C123:1700000000.014";
     const sessionId = "turn_user-14";
     const source = slackSource("1700000000.014");
@@ -609,22 +610,10 @@ describe("mcp oauth callback slack integration", () => {
 
     const adapter = stateAdapterModule.getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
-    const originalSet = adapter.set.bind(adapter);
-    let recoveryWrites = 0;
-    const setSpy = vi
-      .spyOn(adapter, "set")
-      .mockImplementation(
-        async (key: string, value: unknown, ttlMs?: number) => {
-          if (
-            key === `junior:agent_turn_session:${threadId}:${sessionId}` &&
-            ++recoveryWrites === 2
-          ) {
-            throw new Error("candidate activation unavailable");
-          }
-          await originalSet(key, value, ttlMs);
-        },
-      );
-    const response =
+    const { acquireActiveLock } = await import("@/chat/state/locks");
+    const busyLock = await acquireActiveLock(adapter, threadId);
+    if (!busyLock) throw new Error("Expected active conversation lock");
+    const blockedResponse =
       await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
@@ -632,9 +621,9 @@ describe("mcp oauth callback slack integration", () => {
         agentRunner: testAgentRunner,
         agentContinueOptions: { queue, state: adapter },
       });
-    setSpy.mockRestore();
 
-    expect(response.status).toBe(500);
+    expect(blockedResponse.status).toBe(500);
+    expect(readEvalMcpAuthorizationCodeExchanges()).toBe(0);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       mcpAuthStoreModule.getMcpAuthSession(authProvider.authSessionId),
@@ -644,49 +633,36 @@ describe("mcp oauth callback slack integration", () => {
         "U123",
         EVAL_MCP_AUTH_PROVIDER,
       ),
+    ).resolves.toEqual(
+      expect.not.objectContaining({
+        authorizationCompletionId: expect.any(String),
+        tokens: expect.any(Object),
+      }),
+    );
+    expect(queue.sentRecords()).toHaveLength(0);
+    await adapter.releaseLock(busyLock);
+
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
+        agentContinueOptions: { queue, state: adapter },
+      });
+
+    expect(response.status).toBe(200);
+    expect(readEvalMcpAuthorizationCodeExchanges()).toBe(1);
+    await expect(
+      mcpAuthStoreModule.getMcpStoredOAuthCredentials(
+        "U123",
+        EVAL_MCP_AUTH_PROVIDER,
+      ),
     ).resolves.toMatchObject({
       authorizationCompletionId: expect.any(String),
       tokens: expect.any(Object),
     });
-    await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
-    ).resolves.toMatchObject({
-      authorizationRecovery: { active: false },
-    });
-    await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
-    ).resolves.toMatchObject({ resumeReason: "auth" });
-    expect(queue.sentRecords()).toHaveLength(0);
-    const { recoverAuthorizationCompletedAgentTurns } =
-      await import("@/chat/services/agent-continue");
-    await expect(
-      recoverAuthorizationCompletedAgentTurns({ queue, state: adapter }),
-    ).resolves.toBe(1);
     expect(queue.sentRecords()).toHaveLength(1);
-
-    const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/runtime/agent-continue-runner");
-    const { processConversationQueueMessage } =
-      await import("@/chat/task-execution/vercel-callback");
-    const { ConversationTurnLifecycleService } =
-      await import("@/chat/conversations/turn-lifecycle");
-    const { getConversationEventStore } = await import("@/chat/db");
-    const turnLifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        state: adapter,
-        run: async ({ conversationId }) => {
-          await resumeAwaitingSlackContinuation(conversationId, {
-            agentRunner: testAgentRunner,
-            turnLifecycle,
-          });
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "completed" });
 
     expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([

@@ -54,6 +54,7 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
+  activateAgentTurnAuthorizationRecovery,
   createAgentTurnAuthorizationCompletionId,
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
@@ -603,30 +604,93 @@ async function isCurrentMcpAuthorizationAttempt(
   );
 }
 
-/** Commit one shared credential mutation only while this attempt owns the thread. */
-async function runCurrentMcpCredentialMutation<T>(
-  authSession: McpAuthSessionState,
-  provider: string,
-  mutation: () => Promise<T>,
-): Promise<T> {
-  if (!authSession.channelId || !authSession.threadTs) {
-    throw new McpOAuthAttemptExpiredError();
-  }
-
-  const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
+/** Exchange and persist one MCP callback while owning its exact parked turn. */
+async function finalizeOwnedMcpAuthorization(args: {
+  authorizationCode: string;
+  pendingSession: McpAuthSessionState;
+  provider: string;
+  options: McpOAuthCallbackOptions;
+  recovery?: {
+    authorizationCompletionId: string;
+    expectedVersion: number;
+  };
+}): Promise<McpAuthSessionState> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const lock = await acquireActiveLock(stateAdapter, threadId);
+  const lock = await acquireActiveLock(
+    stateAdapter,
+    args.pendingSession.conversationId,
+  );
   if (!lock) {
     throw new Error(
-      `Could not acquire MCP OAuth callback lock for ${threadId}`,
+      `Could not acquire MCP OAuth callback lock for ${args.pendingSession.conversationId}`,
     );
   }
   try {
-    if (!(await isCurrentMcpAuthorizationAttempt(authSession, provider))) {
+    const current = args.recovery
+      ? await getAgentTurnSessionRecord(
+          args.pendingSession.conversationId,
+          args.pendingSession.sessionId,
+        )
+      : undefined;
+    if (
+      !(await isCurrentMcpAuthorizationAttempt(
+        args.pendingSession,
+        args.provider,
+      ))
+    ) {
       throw new McpOAuthAttemptExpiredError();
     }
-    return await mutation();
+    if (
+      args.recovery &&
+      (!current ||
+        current.state !== "awaiting_resume" ||
+        current.resumeReason !== "auth" ||
+        current.version !== args.recovery.expectedVersion ||
+        current.authorizationRecovery?.authorizationCompletionId !==
+          args.recovery.authorizationCompletionId)
+    ) {
+      throw new McpOAuthAttemptExpiredError();
+    }
+
+    const authSession = await finalizeMcpAuthorization(
+      args.provider,
+      args.pendingSession.authSessionId,
+      args.authorizationCode,
+      async (mutation) => {
+        if (
+          !(await isCurrentMcpAuthorizationAttempt(
+            args.pendingSession,
+            args.provider,
+          ))
+        ) {
+          throw new McpOAuthAttemptExpiredError();
+        }
+        return await mutation();
+      },
+      args.recovery?.authorizationCompletionId,
+    );
+    if (args.recovery) {
+      const activated = await activateAgentTurnAuthorizationRecovery({
+        authorizationCompletionId: args.recovery.authorizationCompletionId,
+        conversationId: args.pendingSession.conversationId,
+        expectedVersion: args.recovery.expectedVersion,
+        sessionId: args.pendingSession.sessionId,
+      });
+      if (!activated?.destination) {
+        throw new Error("MCP turn changed while activating callback recovery");
+      }
+      await scheduleAgentContinue(
+        {
+          conversationId: activated.conversationId,
+          destination: activated.destination,
+          expectedVersion: activated.version,
+          sessionId: activated.sessionId,
+        },
+        args.options.agentContinueOptions,
+      );
+    }
+    return authSession;
   } finally {
     await stateAdapter.releaseLock(lock);
   }
@@ -699,21 +763,26 @@ export async function GET(
         (await getMcpStoredOAuthCredentials(recovery.userId, recovery.provider))
           ?.authorizationCompletionId === recovery.authorizationCompletionId
       : false;
-    const authSession = receiptCommitted
-      ? pendingSession
-      : await finalizeMcpAuthorization(
-          provider,
-          state,
-          code,
-          async (mutation) =>
-            await runCurrentMcpCredentialMutation(
-              pendingSession,
-              provider,
-              mutation,
-            ),
-          recovery?.authorizationCompletionId,
-        );
-    if (prepared && recovery) {
+    let authSession: McpAuthSessionState;
+    if (!receiptCommitted) {
+      authSession = await finalizeOwnedMcpAuthorization({
+        authorizationCode: code,
+        pendingSession,
+        provider,
+        options,
+        ...(prepared && recovery
+          ? {
+              recovery: {
+                authorizationCompletionId: recovery.authorizationCompletionId,
+                expectedVersion: prepared.version,
+              },
+            }
+          : {}),
+      });
+    } else {
+      authSession = pendingSession;
+    }
+    if (prepared && recovery && receiptCommitted) {
       const completed = await activateAndScheduleAgentTurnAuthorizationRecovery(
         {
           authorizationCompletionId: recovery.authorizationCompletionId,

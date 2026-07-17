@@ -80,6 +80,8 @@ async function runRecoverableSchedulingCase(args: {
     sessionId: turnId,
     sliceId: 2,
     state: "awaiting_resume",
+    cumulativeDurationMs: 1_000,
+    cumulativeUsage: { totalTokens: 1_000 },
     piMessages: [],
     resumeReason: "auth",
     source: testSlackSource(threadTs),
@@ -103,7 +105,10 @@ async function runRecoverableSchedulingCase(args: {
   const run = vi.fn(async () =>
     completedAgentRun({
       text: "done",
-      diagnostics: makeDiagnostics(args.modelOutcome),
+      diagnostics: makeDiagnostics(args.modelOutcome, {
+        durationMs: 500,
+        usage: { outputTokens: 7 },
+      }),
     }),
   );
   await resumeSlackTurn({
@@ -111,6 +116,7 @@ async function runRecoverableSchedulingCase(args: {
     channelId: "C123",
     threadTs,
     inputMessageIds: [messageId],
+    sliceId: 2,
     recoverableSlackDelivery: new RecoverableSlackDeliveryService(
       getSqlExecutor(),
       { post, reconcile: vi.fn() },
@@ -447,6 +453,17 @@ describe("oauth resume slack integration", () => {
     expect(modelFailure.schedule).not.toHaveBeenCalled();
     expect(deliveryFailure.run).toHaveBeenCalledOnce();
     expect(deliveryFailure.schedule).not.toHaveBeenCalled();
+    await expect(
+      getAgentTurnSessionRecord(
+        deliveryFailure.conversationId,
+        deliveryFailure.turnId,
+      ),
+    ).resolves.toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { totalTokens: 1_007 },
+      sliceId: 2,
+      state: "failed",
+    });
   });
 
   it("records one terminal failure when a correlated resume fails", async () => {

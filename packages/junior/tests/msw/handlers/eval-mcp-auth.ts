@@ -12,6 +12,7 @@ const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
 const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
+let authorizationCodeExchanges = 0;
 
 function unauthorizedResponse() {
   return new HttpResponse(null, {
@@ -35,7 +36,14 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
   );
 }
 
-export function resetEvalMcpAuthMockState(): void {}
+export function resetEvalMcpAuthMockState(): void {
+  authorizationCodeExchanges = 0;
+}
+
+/** Return the number of authorization-code token exchanges. */
+export function readEvalMcpAuthorizationCodeExchanges(): number {
+  return authorizationCodeExchanges;
+}
 
 export const evalMcpAuthHandlers = [
   http.get(
@@ -360,6 +368,7 @@ export const evalMcpAuthHandlers = [
     const bodyText = await request.text();
     const params = new URLSearchParams(bodyText);
     const code = params.get("code");
+    authorizationCodeExchanges += 1;
     if (code !== EVAL_MCP_AUTH_CODE) {
       return HttpResponse.json(
         {

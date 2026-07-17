@@ -14,7 +14,6 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
-  failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
@@ -32,6 +31,7 @@ import type {
 import type { PendingConversationDelivery } from "@/chat/slack/delivery-outbox";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
+import { addAgentTurnUsage } from "@/chat/usage";
 
 const DEFAULT_RECOVERY_LIMIT = 25;
 
@@ -91,7 +91,12 @@ async function repairOwnedTerminalizingSlackDelivery(
       input.deliveryOutcome === "accepted"
         ? "Delivered terminal failure reply"
         : "Slack rejected the final turn reply";
-    if (!sessionRecord) {
+    if (
+      !sessionRecord ||
+      (sessionRecord.state !== "completed" &&
+        sessionRecord.state !== "failed" &&
+        sessionRecord.state !== "abandoned")
+    ) {
       const projection = await loadTurnProjection({
         conversationId,
         committedSeq: command.completion.model.committedSeq,
@@ -101,9 +106,22 @@ async function repairOwnedTerminalizingSlackDelivery(
         throw new Error("Terminal turn projection is unavailable");
       }
       await upsertAgentTurnSessionRecord({
+        ...(command.session.channelName
+          ? { channelName: command.session.channelName }
+          : {}),
         conversationId,
-        cumulativeDurationMs: command.completion.durationMs,
-        cumulativeUsage: command.completion.usage,
+        ...(sessionRecord?.cumulativeDurationMs !== undefined ||
+        command.completion.durationMs !== undefined
+          ? {
+              cumulativeDurationMs:
+                (sessionRecord?.cumulativeDurationMs ?? 0) +
+                (command.completion.durationMs ?? 0),
+            }
+          : {}),
+        cumulativeUsage: addAgentTurnUsage(
+          sessionRecord?.cumulativeUsage,
+          command.completion.usage,
+        ),
         destination: command.session.destination,
         destinationVisibility: command.session.destinationVisibility,
         source: command.session.source,
@@ -113,19 +131,10 @@ async function repairOwnedTerminalizingSlackDelivery(
         surface: command.session.surface,
         piMessages: projection.messages,
         modelId: projection.modelId ?? command.completion.model.modelId,
-        actor: command.session.actor,
-        reasoningLevel: command.completion.reasoningLevel,
-        errorMessage,
-      });
-    } else if (
-      sessionRecord.state !== "completed" &&
-      sessionRecord.state !== "failed" &&
-      sessionRecord.state !== "abandoned"
-    ) {
-      await failAgentTurnSessionRecord({
-        conversationId,
-        expectedVersion: sessionRecord.version,
-        sessionId,
+        actor: command.session.actor ?? sessionRecord?.actor,
+        reasoningLevel:
+          command.completion.reasoningLevel ?? sessionRecord?.reasoningLevel,
+        loadedSkillNames: sessionRecord?.loadedSkillNames,
         errorMessage,
       });
     }

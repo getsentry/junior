@@ -1544,6 +1544,7 @@ async function autoCompleteMcpOauth(args: {
   completions: AuthorizationCompletion[];
   provider: string;
   consumedStates: Set<string>;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
 }): Promise<boolean> {
   const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
   if (provider !== EVAL_MCP_AUTH_PROVIDER) {
@@ -1580,6 +1581,7 @@ async function autoCompleteMcpOauth(args: {
     state: delivered.state,
     code: getDefaultAuthCode("mcp-oauth", provider),
     agentRunner: args.agentRunner,
+    recoverableSlackDelivery: args.recoverableSlackDelivery,
   });
   if (response.status !== 200) {
     throw new Error(
@@ -1611,6 +1613,7 @@ async function autoCompleteOauth(args: {
   completions: AuthorizationCompletion[];
   provider: string;
   consumedStates: Set<string>;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
 }): Promise<boolean> {
   const provider = args.provider.trim() || EVAL_OAUTH_PROVIDER;
   const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
@@ -1648,6 +1651,7 @@ async function autoCompleteOauth(args: {
     state: delivered.state,
     code: getDefaultAuthCode("oauth", provider),
     agentRunner: args.agentRunner,
+    recoverableSlackDelivery: args.recoverableSlackDelivery,
   });
   if (response.status !== 200) {
     throw new Error(
@@ -2137,6 +2141,7 @@ async function processEvents(args: {
         completions: args.observations.authorizationCompletions,
         provider,
         consumedStates: consumedMcpOauthStates,
+        recoverableSlackDelivery,
       });
     }
     for (const provider of env.autoCompleteOauthProviders) {
@@ -2145,6 +2150,7 @@ async function processEvents(args: {
         completions: args.observations.authorizationCompletions,
         provider,
         consumedStates: consumedOauthStates,
+        recoverableSlackDelivery,
       });
     }
   };
