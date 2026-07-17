@@ -76,7 +76,8 @@ export function isSandboxUnavailableError(error: unknown): boolean {
       searchable.includes("sandbox_stopped") ||
       searchable.includes("status=410") ||
       searchable.includes("status code 410") ||
-      searchable.includes("no longer available")
+      searchable.includes("no longer available") ||
+      searchable.includes("stream was closed and is not accepting commands")
     );
   });
 }
