@@ -76,7 +76,11 @@ export function isSandboxUnavailableError(error: unknown): boolean {
       searchable.includes("sandbox_stopped") ||
       searchable.includes("status=410") ||
       searchable.includes("status code 410") ||
-      searchable.includes("no longer available")
+      searchable.includes("no longer available") ||
+      // Expired/invalid sandbox session tokens return 403 {invalidToken:true}
+      searchable.includes("invalidtoken") ||
+      (searchable.includes("status=403") &&
+        searchable.includes("sandboxes/sessions"))
     );
   });
 }
