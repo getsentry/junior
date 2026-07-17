@@ -15,9 +15,9 @@ import {
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import { AgentContinuationSliceLimitError } from "@/chat/services/agent-continuation-errors";
+import { TurnStepLimitExceededError } from "@/chat/services/turn-step-limit";
 
-export const AGENT_CONTINUE_MAX_SLICES = 48;
+export const MAX_STEPS_PER_TURN = 100;
 
 export interface TurnSessionContext {
   conversationId?: string;
@@ -499,7 +499,7 @@ export async function persistTimeoutSessionRecord(args: {
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     );
-    if (nextSliceId > AGENT_CONTINUE_MAX_SLICES) {
+    if (nextSliceId > MAX_STEPS_PER_TURN) {
       return await upsertAgentTurnSessionRecord({
         ...((args.channelName ?? latestSessionRecord?.channelName)
           ? {
@@ -536,9 +536,8 @@ export async function persistTimeoutSessionRecord(args: {
           : {}),
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        errorMessage: new AgentContinuationSliceLimitError(
-          AGENT_CONTINUE_MAX_SLICES,
-        ).message,
+        errorMessage: new TurnStepLimitExceededError(MAX_STEPS_PER_TURN)
+          .message,
         ...((args.actor ?? latestSessionRecord?.actor)
           ? { actor: args.actor ?? latestSessionRecord?.actor }
           : {}),

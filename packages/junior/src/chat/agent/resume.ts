@@ -29,7 +29,7 @@ import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRunDurability } from "@/chat/agent/request";
-import { AgentContinuationSliceLimitError } from "@/chat/services/agent-continuation-errors";
+import { TurnStepLimitExceededError } from "@/chat/services/turn-step-limit";
 
 type LoadedSessionRecordState = Awaited<
   ReturnType<typeof loadTurnSessionRecord>
@@ -263,7 +263,7 @@ export function createResumeState(args: ResumeStateArgs) {
             },
           };
         }
-        throw new AgentContinuationSliceLimitError(currentSliceId);
+        throw new TurnStepLimitExceededError(currentSliceId);
       }
 
       if (error instanceof AuthorizationPauseError) {

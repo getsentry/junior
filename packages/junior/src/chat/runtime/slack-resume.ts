@@ -47,9 +47,9 @@ import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
-  AgentContinuationSliceLimitError,
-  buildAgentContinuationLimitResponse,
-} from "@/chat/services/agent-continuation-errors";
+  TurnStepLimitExceededError,
+  buildTurnStepLimitResponse,
+} from "@/chat/services/turn-step-limit";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -207,8 +207,8 @@ async function postResumeFailureReply(args: {
       channelId: args.channelId,
       threadTs: args.threadTs,
       text:
-        args.error instanceof AgentContinuationSliceLimitError
-          ? buildAgentContinuationLimitResponse(args.eventId)
+        args.error instanceof TurnStepLimitExceededError
+          ? buildTurnStepLimitResponse(args.eventId)
           : buildTurnFailureResponse(args.eventId),
     });
   } catch (error) {

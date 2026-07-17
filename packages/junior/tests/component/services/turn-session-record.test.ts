@@ -261,8 +261,7 @@ describe("persistAuthPauseSessionRecord", () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const conversationId = "slack:C123:legacy-summary";
-    const indexKey =
-      `junior:agent_turn_session:conversation:${conversationId}:index`;
+    const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
     const requester = {
       platform: "slack",
       teamId: "T123",
@@ -270,7 +269,11 @@ describe("persistAuthPauseSessionRecord", () => {
       userName: "alice",
     };
 
-    await stateAdapter.appendToList(indexKey, { invalid: true }, { ttlMs: 60_000 });
+    await stateAdapter.appendToList(
+      indexKey,
+      { invalid: true },
+      { ttlMs: 60_000 },
+    );
     await stateAdapter.appendToList(
       indexKey,
       {
@@ -697,8 +700,8 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("fails timeout sessions instead of scheduling beyond the slice cap", async () => {
-    const { AGENT_CONTINUE_MAX_SLICES, persistTimeoutSessionRecord } =
+  it("fails timeout sessions instead of scheduling beyond the step limit", async () => {
+    const { MAX_STEPS_PER_TURN, persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
@@ -715,7 +718,7 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: MAX_STEPS_PER_TURN,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -727,7 +730,7 @@ describe("persistAuthPauseSessionRecord", () => {
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
-        currentSliceId: AGENT_CONTINUE_MAX_SLICES,
+        currentSliceId: MAX_STEPS_PER_TURN,
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
@@ -735,9 +738,9 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: MAX_STEPS_PER_TURN,
       cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("slice limit"),
+      errorMessage: expect.stringContaining("step limit"),
       piMessages,
     });
 
@@ -745,9 +748,9 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: MAX_STEPS_PER_TURN,
       cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("slice limit"),
+      errorMessage: expect.stringContaining("step limit"),
       piMessages,
     });
   });

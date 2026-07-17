@@ -261,7 +261,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
-import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
+import { MAX_STEPS_PER_TURN } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -359,7 +359,7 @@ describe("executeAgentRun agent continuation", () => {
     ]);
   });
 
-  it("throws terminal timeout failures instead of returning an error reply after the slice cap", async () => {
+  it("throws terminal timeout failures instead of returning an error reply after the step limit", async () => {
     promptMode.value = "continueSettlesAfterAbort";
     const piMessages: PiMessage[] = [
       {
@@ -372,7 +372,7 @@ describe("executeAgentRun agent continuation", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: MAX_STEPS_PER_TURN,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -396,11 +396,11 @@ describe("executeAgentRun agent continuation", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
 
-    const { AgentContinuationSliceLimitError } =
-      await import("@/chat/services/agent-continuation-errors");
-    expect(error).toBeInstanceOf(AgentContinuationSliceLimitError);
+    const { TurnStepLimitExceededError } =
+      await import("@/chat/services/turn-step-limit");
+    expect(error).toBeInstanceOf(TurnStepLimitExceededError);
     expect(error).not.toHaveProperty("text");
-    expect(error.message).toContain("slice limit");
+    expect(error.message).toContain("step limit");
 
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-timeout-cap",
@@ -409,8 +409,8 @@ describe("executeAgentRun agent continuation", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
-      errorMessage: expect.stringContaining("slice limit"),
+      sliceId: MAX_STEPS_PER_TURN,
+      errorMessage: expect.stringContaining("step limit"),
     });
   });
 
