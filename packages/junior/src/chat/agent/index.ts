@@ -388,7 +388,6 @@ async function executeAgentRunInPrivacyContext(
           conversationId: sessionConversationId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          args: event.args,
         });
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a

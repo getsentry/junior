@@ -233,6 +233,38 @@ describe("operator legacy conversation history conversion", () => {
       expect(event.createdAtMs).toBeLessThan(before);
     }
   });
+
+  it("drops legacy tool arguments from canonical events", () => {
+    const { events } = convertLegacySessionLog({
+      conversationId: CONVERSATION_ID,
+      fallbackCreatedAtMs: FALLBACK_MS,
+      entries: [
+        {
+          schemaVersion: 2,
+          type: "tool_execution_started",
+          sessionId: "session_0",
+          createdAtMs: 20,
+          toolCallId: "legacy-tool-call",
+          toolName: "legacy-tool",
+          args: { token: "legacy-sensitive-token" },
+        },
+      ],
+    });
+
+    expect(events).toEqual([
+      {
+        seq: 0,
+        contextEpoch: 0,
+        createdAtMs: 20,
+        data: {
+          type: "tool_execution_started",
+          toolCallId: "legacy-tool-call",
+          toolName: "legacy-tool",
+        },
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("legacy-sensitive-token");
+  });
 });
 
 describe("convertAdvisorMessages", () => {

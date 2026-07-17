@@ -371,7 +371,8 @@ describe("conversation event migration", () => {
         ) VALUES
           ($1, 2, 3, 'authorization_completed', NULL, $2::jsonb, $4),
           ($1, 1, 2, 'pi_message', 'assistant', $3::jsonb, $4),
-          ($1, 3, 3, 'subagent_started', NULL, $5::jsonb, $4)`,
+          ($1, 3, 3, 'subagent_started', NULL, $5::jsonb, $4),
+          ($1, 4, 3, 'tool_execution_started', NULL, $6::jsonb, $4)`,
         [
           "conversation-one",
           JSON.stringify({
@@ -393,6 +394,11 @@ describe("conversation event migration", () => {
             subagentKind: "advisor",
             childConversationId: "advisor:conversation-one",
             historyMode: "shared",
+          }),
+          JSON.stringify({
+            toolCallId: "tool-call-one",
+            toolName: "search",
+            args: { token: "legacy-sensitive-token" },
           }),
         ],
       );
@@ -497,6 +503,19 @@ ORDER BY seq
           seq: 3,
           type: "subagent_started",
         },
+        {
+          contextEpoch: 3,
+          conversationId: "conversation-one",
+          createdAt: new Date("2026-07-14T10:01:00.000Z"),
+          idempotencyKey: null,
+          payload: {
+            toolCallId: "tool-call-one",
+            toolName: "search",
+          },
+          schemaVersion: 1,
+          seq: 4,
+          type: "tool_execution_started",
+        },
       ]);
       const decoded = await createSqlConversationEventStore(
         fixture.sql,
@@ -505,6 +524,7 @@ ORDER BY seq
         "message",
         "authorization_completed",
         "subagent_started",
+        "tool_execution_started",
       ]);
       expect(decoded[2]?.data).toEqual({
         type: "subagent_started",
@@ -512,6 +532,12 @@ ORDER BY seq
         subagentKind: "advisor",
         childConversationId: "advisor:conversation-one",
       });
+      expect(decoded[3]?.data).toEqual({
+        type: "tool_execution_started",
+        toolCallId: "tool-call-one",
+        toolName: "search",
+      });
+      expect(JSON.stringify(decoded)).not.toContain("legacy-sensitive-token");
       await expect(
         fixture.sql.query<{ count: number }>(
           `SELECT count(*)::integer AS count

@@ -418,7 +418,6 @@ export async function recordAuthorizationCompleted(args: {
 /** Record a host-observed parent tool start without adding it to Pi replay. */
 export async function recordToolExecutionStarted(args: {
   conversationId: string;
-  args?: unknown;
   createdAtMs?: number;
   toolCallId: string;
   toolName: string;
@@ -429,7 +428,6 @@ export async function recordToolExecutionStarted(args: {
         type: "tool_execution_started",
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        ...(args.args !== undefined ? { args: args.args } : {}),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },

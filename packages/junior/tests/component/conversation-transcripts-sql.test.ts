@@ -168,6 +168,14 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
   ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
+      type: "tool_execution_started",
+      toolCallId: "tool-call-1",
+      toolName: "search",
+      args: { token: "must-not-be-persisted" },
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
       type: "visible_context_compacted",
       historyFromSeq: 0,
       compactions: [
