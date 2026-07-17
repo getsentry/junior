@@ -30,7 +30,7 @@ export interface ConversationMessage {
 }
 
 export interface ConversationCompaction {
-  coveredMessageIds: string[];
+  coveredMessageCount: number;
   createdAtMs: number;
   id: string;
   summary: string;
@@ -177,17 +177,15 @@ export function coerceThreadConversationState(
     const summary = toOptionalString(item.summary);
     const createdAtMs = toOptionalNumber(item.createdAtMs);
     if (!id || !summary || !createdAtMs) continue;
-    const coveredMessageIds = Array.isArray(item.coveredMessageIds)
-      ? item.coveredMessageIds.filter(
-          (entry): entry is string =>
-            typeof entry === "string" && entry.length > 0,
-        )
-      : [];
+    const coveredMessageCount = toOptionalNumber(item.coveredMessageCount);
     compactions.push({
       id,
       summary,
       createdAtMs,
-      coveredMessageIds,
+      coveredMessageCount:
+        coveredMessageCount === undefined
+          ? 0
+          : Math.max(0, Math.floor(coveredMessageCount)),
     });
   }
 

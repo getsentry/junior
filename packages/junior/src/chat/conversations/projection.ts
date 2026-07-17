@@ -190,14 +190,12 @@ export async function loadTurnProjection(args: {
   const epochEvents = await eventStore.loadEpochContaining(
     args.conversationId,
     args.committedSeq,
+    args.includeTail ? undefined : args.committedSeq,
   );
   if (!epochEvents) {
     return undefined;
   }
-  const localEvents = args.includeTail
-    ? epochEvents
-    : epochEvents.filter((event) => event.seq <= args.committedSeq);
-  return projectConversationEvents(localEvents);
+  return projectConversationEvents(epochEvents);
 }
 
 /** Load MCP providers durably connected in this conversation's current epoch. */

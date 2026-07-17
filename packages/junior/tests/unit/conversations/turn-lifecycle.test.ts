@@ -53,12 +53,11 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history;
   }
 
-  async loadVisibleHistory(): Promise<ConversationEvent[]> {
-    return this.history;
-  }
-
-  async loadLatestVisibleCompaction(): Promise<ConversationEvent | undefined> {
-    return undefined;
+  async loadVisibleHistory(): Promise<{
+    events: ConversationEvent[];
+    compaction: ConversationEvent | undefined;
+  }> {
+    return { events: this.history, compaction: undefined };
   }
 
   async loadHistory(): Promise<ConversationEvent[]> {

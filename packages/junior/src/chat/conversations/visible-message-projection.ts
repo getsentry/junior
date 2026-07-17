@@ -54,12 +54,6 @@ function storedMeta(message: ConversationMessage): Record<string, unknown> {
   };
 }
 
-function missingBaselineError(event: VisibleMessageEvent): Error {
-  return new Error(
-    `Visible message event ${event.data.type} at seq ${event.seq} references ${event.data.messageId} before visible_message_recorded`,
-  );
-}
-
 /** Reduce canonical visible-message facts into the destination-facing transcript. */
 export function projectVisibleConversationMessages(
   events: ConversationEvent[],
@@ -87,7 +81,9 @@ export function projectVisibleConversationMessages(
       continue;
     }
 
-    if (!current) throw missingBaselineError(event);
+    // A compacted prefix can have a later metadata/reply fact inside the live
+    // suffix query. Its absent baseline means the whole message stays compacted.
+    if (!current) continue;
     if (data.type === "visible_message_metadata_updated") {
       const merged = { ...storedMeta(current.message), ...data.meta };
       const { author: _author, meta: _meta, ...baseline } = current.message;
@@ -101,16 +97,11 @@ export function projectVisibleConversationMessages(
     current.repliedAtMs ??= event.createdAtMs;
   }
 
-  return [...byId.values()]
-    .map(({ message, repliedAtMs }) => {
-      if (repliedAtMs === undefined) return message;
-      return {
-        ...message,
-        meta: { ...(message.meta ?? {}), replied: true },
-      };
-    })
-    .sort(
-      (left, right) =>
-        left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id),
-    );
+  return [...byId.values()].map(({ message, repliedAtMs }) => {
+    if (repliedAtMs === undefined) return message;
+    return {
+      ...message,
+      meta: { ...(message.meta ?? {}), replied: true },
+    };
+  });
 }

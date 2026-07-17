@@ -460,4 +460,73 @@ ORDER BY indexname
       await fixture.close();
     }
   }, 15_000);
+
+  it("converts covered visible-message ids to a suffix boundary", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        historicalPreDrizzleEventDdl,
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0004_useful_magus.sql"),
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+          conversation_id, created_at, last_activity_at, updated_at,
+          execution_status
+        ) VALUES ($1, $2, $2, $2, 'idle')`,
+        ["conversation-compacted", new Date("2026-07-14T10:00:00.000Z")],
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_agent_steps (
+          conversation_id, seq, context_epoch, type, role, payload, created_at
+        ) VALUES
+          ($1, 0, 0, 'visible_message_recorded', NULL, $2::jsonb, $5),
+          ($1, 1, 0, 'visible_message_recorded', NULL, $3::jsonb, $5),
+          ($1, 2, 0, 'visible_context_compacted', NULL, $4::jsonb, $5)`,
+        [
+          "conversation-compacted",
+          JSON.stringify({ messageId: "covered", role: "user", text: "old" }),
+          JSON.stringify({ messageId: "live", role: "user", text: "new" }),
+          JSON.stringify({
+            compactions: [
+              {
+                id: "compaction-1",
+                summary: "old summary",
+                createdAtMs: 1_000,
+                coveredMessageIds: ["covered"],
+              },
+            ],
+          }),
+          new Date("2026-07-14T10:01:00.000Z"),
+        ],
+      );
+
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0005_conversation_events.sql"),
+      );
+
+      const store = createSqlConversationEventStore(fixture.sql);
+      const history = await store.loadVisibleHistory("conversation-compacted");
+      expect(history.events.map((event) => event.seq)).toEqual([1]);
+      expect(history.compaction?.data).toEqual({
+        type: "visible_context_compacted",
+        historyFromSeq: 1,
+        compactions: [
+          {
+            id: "compaction-1",
+            summary: "old summary",
+            createdAtMs: 1_000,
+            coveredMessageCount: 1,
+          },
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
 });

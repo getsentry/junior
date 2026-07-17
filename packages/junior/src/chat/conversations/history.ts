@@ -234,10 +234,11 @@ const visibleMessageRepliedEventDataSchema = z
 const visibleContextCompactedEventDataSchema = z
   .object({
     type: z.literal("visible_context_compacted"),
+    historyFromSeq: z.number().int().nonnegative(),
     compactions: z.array(
       z
         .object({
-          coveredMessageIds: z.array(z.string()),
+          coveredMessageCount: z.number().int().nonnegative(),
           createdAtMs: z.number(),
           id: z.string().min(1),
           summary: z.string(),
@@ -405,13 +406,13 @@ export interface ConversationEventStore {
   loadEpochContaining(
     conversationId: string,
     seq: number,
+    throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined>;
-  /** Visible-message facts across every epoch. */
-  loadVisibleHistory(conversationId: string): Promise<ConversationEvent[]>;
-  /** Latest visible-context compaction snapshot, if one exists. */
-  loadLatestVisibleCompaction(
-    conversationId: string,
-  ): Promise<ConversationEvent | undefined>;
+  /** Live visible-message facts and their latest compaction snapshot. */
+  loadVisibleHistory(conversationId: string): Promise<{
+    events: ConversationEvent[];
+    compaction: ConversationEvent | undefined;
+  }>;
   /** All events across every epoch in `seq` order, for audit and reporting. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
 }

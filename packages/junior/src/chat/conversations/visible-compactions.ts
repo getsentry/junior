@@ -25,19 +25,34 @@ export async function persistConversationCompactions(args: {
   conversationId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const latest = await eventStore.loadLatestVisibleCompaction(
-    args.conversationId,
-  );
-  const existing = latest
-    ? projectVisibleConversationCompactions([latest])
+  const history = await eventStore.loadVisibleHistory(args.conversationId);
+  const existing = history.compaction
+    ? projectVisibleConversationCompactions([history.compaction])
     : [];
   if (isDeepStrictEqual(existing, args.conversation.compactions)) {
     return;
   }
+  const liveMessageIds = new Set(
+    args.conversation.messages.map((message) => message.id),
+  );
+  const historyFromSeq = history.events.find(
+    (event) =>
+      event.data.type === "visible_message_recorded" &&
+      liveMessageIds.has(event.data.messageId),
+  )?.seq;
+  const nextHistoryFromSeq =
+    historyFromSeq ??
+    Math.max(
+      history.compaction?.data.type === "visible_context_compacted"
+        ? history.compaction.data.historyFromSeq
+        : 0,
+      (history.events.at(-1)?.seq ?? -1) + 1,
+    );
   await eventStore.append(args.conversationId, [
     {
       data: {
         type: "visible_context_compacted",
+        historyFromSeq: nextHistoryFromSeq,
         compactions: args.conversation.compactions,
       },
       createdAtMs:

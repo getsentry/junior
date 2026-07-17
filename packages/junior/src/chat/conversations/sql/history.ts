@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lte,
+  sql,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
@@ -216,6 +226,7 @@ class SqlConversationEventStore implements ConversationEventStore {
   async loadEpochContaining(
     conversationId: string,
     seq: number,
+    throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined> {
     const [boundary] = await this.executor
       .db()
@@ -238,33 +249,20 @@ class SqlConversationEventStore implements ConversationEventStore {
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
           eq(juniorConversationEvents.contextEpoch, boundary.contextEpoch),
+          throughSeq === undefined
+            ? undefined
+            : lte(juniorConversationEvents.seq, throughSeq),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
   }
 
-  async loadVisibleHistory(
-    conversationId: string,
-  ): Promise<ConversationEvent[]> {
-    const rows = await this.executor
-      .db()
-      .select()
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, conversationId),
-          inArray(juniorConversationEvents.type, visibleHistoryEventTypes),
-        ),
-      )
-      .orderBy(asc(juniorConversationEvents.seq));
-    return rows.map(eventFromRow);
-  }
-
-  async loadLatestVisibleCompaction(
-    conversationId: string,
-  ): Promise<ConversationEvent | undefined> {
-    const [row] = await this.executor
+  async loadVisibleHistory(conversationId: string): Promise<{
+    events: ConversationEvent[];
+    compaction: ConversationEvent | undefined;
+  }> {
+    const [compactionRow] = await this.executor
       .db()
       .select()
       .from(juniorConversationEvents)
@@ -276,7 +274,24 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .orderBy(desc(juniorConversationEvents.seq))
       .limit(1);
-    return row ? eventFromRow(row) : undefined;
+    const compaction = compactionRow ? eventFromRow(compactionRow) : undefined;
+    const historyFromSeq =
+      compaction?.data.type === "visible_context_compacted"
+        ? compaction.data.historyFromSeq
+        : 0;
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          inArray(juniorConversationEvents.type, visibleHistoryEventTypes),
+          gte(juniorConversationEvents.seq, historyFromSeq),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return { events: rows.map(eventFromRow), compaction };
   }
 
   async loadHistory(conversationId: string): Promise<ConversationEvent[]> {
