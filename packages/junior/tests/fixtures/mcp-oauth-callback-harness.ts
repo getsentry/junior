@@ -1,16 +1,11 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore } from "@/chat/db";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
   waitUntilCallbacks,
   testWaitUntil,
 } from "./oauth-callback-after-harness";
 import { realAgentRunner } from "./agent-runner";
-
-const testTurnLifecycle: ConversationTurnLifecycle = {
-  start: async () => undefined,
-  complete: async () => undefined,
-  fail: async () => undefined,
-};
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
@@ -29,7 +24,9 @@ export async function runMcpOauthCallbackRoute(args: {
     testWaitUntil,
     {
       agentRunner: args.agentRunner ?? realAgentRunner,
-      turnLifecycle: testTurnLifecycle,
+      turnLifecycle: new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ),
     },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);

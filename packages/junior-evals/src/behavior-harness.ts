@@ -63,14 +63,14 @@ import {
 } from "@sentry/junior-scheduler";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
-import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
+import { processAgentDispatchCallback } from "@/chat/agent-dispatch/runner";
+import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
-import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -2387,6 +2387,7 @@ async function processEvents(args: {
         `Scheduled eval task did not create a dispatch: ${JSON.stringify({ runs, savedTask })}`,
       );
     }
+    const dispatchCallOffset = readCapturedSlackApiCalls().length;
     for (const run of dispatchedRuns) {
       const dispatch = await getDispatchRecord(run.dispatchId!);
       if (!dispatch) {
@@ -2398,7 +2399,24 @@ async function processEvents(args: {
       if (!callback) {
         throw new Error("Scheduled eval dispatch callback was not captured.");
       }
-      await runAgentDispatchSlice(callback, { agentRunner, turnLifecycle });
+      await processAgentDispatchCallback(callback, {
+        agentRunner,
+        turnLifecycle,
+      });
+    }
+    const deliveredPosts = collectSlackArtifactsFromCapturedCalls(
+      readCapturedSlackApiCalls().slice(dispatchCallOffset),
+    ).channelPosts;
+    for (const post of deliveredPosts) {
+      args.observations.sessionMessages.push({
+        role: "assistant",
+        content: post.text,
+        metadata: {
+          event_type: post.thread_ts ? "thread_post" : "channel_post",
+          channel: post.channel,
+          ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
+        },
+      });
     }
   };
 

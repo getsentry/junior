@@ -97,7 +97,9 @@ export function createTools(
     ? resolveChannelCapabilities(slackContext.sourceChannelId)
     : undefined;
   const canSendFilesToActiveConversation = Boolean(
-    slackContext && slackSourceCapabilities?.canSendMessage,
+    slackContext &&
+    slackSourceCapabilities?.canSendMessage &&
+    context.conversationId?.startsWith("slack:"),
   );
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
@@ -187,7 +189,7 @@ export function createTools(
       );
     }
 
-    if (rawChannelCapabilities.canSendMessage) {
+    if (canSendFilesToActiveConversation) {
       tools.sendMessage = createSendMessageTool(slackContext, state, (input) =>
         readSandboxFileUpload(context.sandbox, input),
       );

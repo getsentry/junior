@@ -140,6 +140,22 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackThreadRead");
   });
 
+  it("omits sendMessage when runtime delivery owns an internal dispatch", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        conversationId: "agent-dispatch:dispatch-123",
+        surface: "api",
+      },
+    );
+
+    expect(tools).not.toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackThreadRead");
+  });
+
   it("registers delivery tools from assistant context channel in DM turns", () => {
     const tools = createTools(
       [],

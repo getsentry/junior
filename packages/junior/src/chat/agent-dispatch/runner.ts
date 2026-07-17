@@ -185,8 +185,8 @@ function canClaimDispatch(record: DispatchRecord, nowMs: number): boolean {
   return true;
 }
 
-/** Run one serverless slice for a core-owned agent dispatch. */
-export async function runAgentDispatchSlice(
+/** Process one authenticated callback as a serverless dispatch execution slice. */
+export async function processAgentDispatchCallback(
   callback: DispatchCallback,
   deps: AgentDispatchRunnerDeps,
 ): Promise<void> {
