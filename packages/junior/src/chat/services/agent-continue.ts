@@ -88,22 +88,22 @@ export async function wakeAuthorizationCompletedAgentTurn(
   }
 }
 
-/** Re-drive completed auth callbacks from their exact durable candidates. */
+/** Re-drive completed auth callbacks from indexed turn-session recovery state. */
 export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
-  const candidates = (await listAgentTurnSessionSummaries(5_000)).filter(
+  const recoveries = (await listAgentTurnSessionSummaries(5_000)).filter(
     (summary) =>
       summary.state === "awaiting_resume" &&
       summary.resumeReason === "auth" &&
       summary.authorizationRecovery,
   );
   let recovered = 0;
-  for (const candidate of candidates) {
+  for (const recoverySummary of recoveries) {
     try {
       const session = await getAgentTurnSessionRecord(
-        candidate.conversationId,
-        candidate.sessionId,
+        recoverySummary.conversationId,
+        recoverySummary.sessionId,
       );
       if (
         !session ||
@@ -134,9 +134,9 @@ export async function recoverAuthorizationCompletedAgentTurns(
         if (!committed) continue;
         const activated = await activateAgentTurnAuthorizationRecovery({
           authorizationCompletionId: recovery.authorizationCompletionId,
-          conversationId: candidate.conversationId,
+          conversationId: recoverySummary.conversationId,
           expectedVersion: session.version,
-          sessionId: candidate.sessionId,
+          sessionId: recoverySummary.sessionId,
         });
         if (!activated) continue;
         resumable = activated;
@@ -155,8 +155,8 @@ export async function recoverAuthorizationCompletedAgentTurns(
       logException(
         error,
         "authorization_completed_resume_recovery_failed",
-        { conversationId: candidate.conversationId },
-        { "app.ai.session_id": candidate.sessionId },
+        { conversationId: recoverySummary.conversationId },
+        { "app.ai.session_id": recoverySummary.sessionId },
         "Failed to recover an authorized turn awaiting a durable wake",
       );
     }

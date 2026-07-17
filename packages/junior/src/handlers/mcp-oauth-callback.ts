@@ -668,17 +668,25 @@ export async function GET(
       pendingSession.conversationId,
       pendingSession.sessionId,
     );
-    const prepared = sessionRecord
+    const recoverableSession =
+      sessionRecord?.state === "awaiting_resume" &&
+      sessionRecord.resumeReason === "auth"
+        ? sessionRecord
+        : undefined;
+    const prepared = recoverableSession
       ? await prepareAgentTurnAuthorizationRecovery({
           authorizationCompletionId: crypto.randomUUID(),
           authorizationKind: "mcp",
           conversationId: pendingSession.conversationId,
-          expectedVersion: sessionRecord.version,
+          expectedVersion: recoverableSession.version,
           provider,
           sessionId: pendingSession.sessionId,
           userId: pendingSession.userId,
         })
       : undefined;
+    if (recoverableSession && !prepared) {
+      throw new Error("MCP turn changed while preparing callback recovery");
+    }
     const recovery = prepared?.authorizationRecovery;
     const receiptCommitted = recovery
       ? recovery.active ||

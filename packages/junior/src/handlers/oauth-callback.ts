@@ -749,17 +749,25 @@ export async function GET(
           stored.resumeSessionId,
         )
       : undefined;
-  const prepared = sessionRecord
+  const recoverableSession =
+    sessionRecord?.state === "awaiting_resume" &&
+    sessionRecord.resumeReason === "auth"
+      ? sessionRecord
+      : undefined;
+  const prepared = recoverableSession
     ? await prepareAgentTurnAuthorizationRecovery({
         authorizationCompletionId: crypto.randomUUID(),
         authorizationKind: "plugin",
         conversationId: stored.resumeConversationId!,
-        expectedVersion: sessionRecord.version,
+        expectedVersion: recoverableSession.version,
         provider,
         sessionId: stored.resumeSessionId!,
         userId: stored.userId,
       })
     : undefined;
+  if (recoverableSession && !prepared) {
+    throw new Error("OAuth turn changed while preparing callback recovery");
+  }
   const recovery = prepared?.authorizationRecovery;
   const receiptCommitted = recovery
     ? recovery.active ||
