@@ -186,28 +186,34 @@ function startLeaseCheckIn(args: {
   leaseToken: string;
   onLostLease: () => void;
   options: ProcessConversationWorkOptions;
-}): ReturnType<typeof setInterval> {
-  const timer = setInterval(() => {
+}): { stop(): Promise<void> } {
+  let inFlight: Promise<void> | undefined;
+  let stopped = false;
+  const checkIn = (): void => {
+    if (stopped || inFlight) {
+      return;
+    }
     const nowMs = now(args.options);
-    void checkInConversationWork({
+    const renewal = checkInConversationWork({
       conversationId: args.conversationId,
       leaseToken: args.leaseToken,
       conversationStore: args.options.conversationStore,
       nowMs,
       state: args.options.state,
-    }).then(
-      (checkedIn) => {
-        if (!checkedIn) {
-          args.onLostLease();
-          logWarn(
-            "conversation_work_check_in_failed",
-            { conversationId: args.conversationId },
-            {},
-            "Conversation work check-in lost its lease",
-          );
+    })
+      .then((checkedIn) => {
+        if (checkedIn) {
+          return;
         }
-      },
-      (error) => {
+        args.onLostLease();
+        logWarn(
+          "conversation_work_check_in_failed",
+          { conversationId: args.conversationId },
+          {},
+          "Conversation work check-in lost its lease",
+        );
+      })
+      .catch((error) => {
         logException(
           error,
           "conversation_work_check_in_failed",
@@ -215,11 +221,25 @@ function startLeaseCheckIn(args: {
           {},
           "Conversation work check-in failed",
         );
-      },
-    );
+      })
+      .finally(() => {
+        if (inFlight === renewal) {
+          inFlight = undefined;
+        }
+      });
+    inFlight = renewal;
+  };
+  const timer = setInterval(() => {
+    checkIn();
   }, args.options.checkInIntervalMs ?? CONVERSATION_WORK_CHECK_IN_INTERVAL_MS);
   (timer as { unref?: () => void }).unref?.();
-  return timer;
+  return {
+    async stop(): Promise<void> {
+      stopped = true;
+      clearInterval(timer);
+      await inFlight;
+    },
+  };
 }
 
 /** Process one queue wake-up for a conversation. */
@@ -328,7 +348,7 @@ export async function processConversationWork(
   const markLeaseLost = (): void => {
     leaseLost = true;
   };
-  const timer = startLeaseCheckIn({
+  const leaseCheckIn = startLeaseCheckIn({
     conversationId,
     leaseToken: lease.leaseToken,
     onLostLease: markLeaseLost,
@@ -404,6 +424,7 @@ export async function processConversationWork(
 
   try {
     const result = await options.run(workerContext);
+    await leaseCheckIn.stop();
     if (result.status === "lost_lease") {
       await requestLostLeaseRecovery({
         conversationId,
@@ -562,6 +583,7 @@ export async function processConversationWork(
     );
     return { status: "completed" };
   } catch (error) {
+    await leaseCheckIn.stop();
     const errorNowMs = now(options);
     // A failed run must not both NACK the queue delivery and schedule a
     // recovery nudge. Once durable recovery state is recorded and one nudge is
@@ -644,6 +666,6 @@ export async function processConversationWork(
     }
     return { status: "failed" };
   } finally {
-    clearInterval(timer);
+    await leaseCheckIn.stop();
   }
 }

@@ -6,7 +6,11 @@
  * calls the same agent boundary as Slack replies, persists visible result
  * state, and schedules follow-up slices when a turn needs to continue.
  */
-import { botConfig } from "@/chat/config";
+import {
+  botConfig,
+  FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  getChatConfig,
+} from "@/chat/config";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
@@ -69,7 +73,13 @@ import {
 } from "./store";
 import type { DispatchCallback, DispatchRecord } from "./types";
 
-const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
+function getDispatchSliceLeaseMs(): number {
+  return (
+    (getChatConfig().functionMaxDurationSeconds +
+      FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+    1000
+  );
+}
 
 export interface AgentDispatchRunnerDeps {
   agentRunner: AgentRunner;
@@ -234,6 +244,7 @@ export async function processAgentDispatchCallback(
     deps.scheduleSessionCompletedPluginTasks ??
     scheduleSessionCompletedPluginTasks;
   const nowMs = Date.now();
+  const sliceLeaseMs = getDispatchSliceLeaseMs();
   const isDeliveryCallback = callback.kind === "delivery";
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(
@@ -254,7 +265,7 @@ export async function processAgentDispatchCallback(
       ...(isDeliveryCallback
         ? {}
         : {
-            leaseExpiresAtMs: nowMs + DISPATCH_SLICE_LEASE_MS,
+            leaseExpiresAtMs: nowMs + sliceLeaseMs,
             status: "running" as const,
           }),
     });
@@ -289,7 +300,7 @@ export async function processAgentDispatchCallback(
   await stateAdapter.connect();
   const destinationLock = await stateAdapter.acquireLock(
     destinationLockId,
-    DISPATCH_SLICE_LEASE_MS,
+    sliceLeaseMs,
   );
   if (!destinationLock) {
     if (isDeliveryCallback) {

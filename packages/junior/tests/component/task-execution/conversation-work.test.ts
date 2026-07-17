@@ -84,6 +84,52 @@ function metadataEventsStore(events: string[]): ConversationStore {
   };
 }
 
+function controlConversationLeaseRenewal(baseState: StateAdapter): {
+  arm(): void;
+  attempts(): number;
+  release(): void;
+  started: Promise<void>;
+  state: StateAdapter;
+} {
+  const started = deferred<void>();
+  const release = deferred<void>();
+  let armed = false;
+  let attempts = 0;
+  const state = new Proxy(baseState, {
+    get(target, property, receiver) {
+      if (property === "acquireLock") {
+        return async (
+          threadId: Parameters<StateAdapter["acquireLock"]>[0],
+          ttlMs: Parameters<StateAdapter["acquireLock"]>[1],
+        ) => {
+          if (armed && String(threadId).includes(":mutation")) {
+            attempts += 1;
+            if (attempts === 1) {
+              started.resolve();
+              await release.promise;
+            }
+          }
+          return await target.acquireLock(threadId, ttlMs);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StateAdapter;
+  return {
+    arm() {
+      armed = true;
+    },
+    attempts: () => attempts,
+    release() {
+      armed = false;
+      release.resolve();
+    },
+    started: started.promise,
+    state,
+  };
+}
+
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
@@ -1280,6 +1326,102 @@ describe("conversation work execution", () => {
 
     finish.resolve();
     await expect(running).resolves.toEqual({ status: "completed" });
+  });
+
+  it("keeps slow periodic lease renewal single-flight", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    const renewal = controlConversationLeaseRenewal(baseState);
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state: renewal.state,
+    });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      checkInIntervalMs: 15_000,
+      queue,
+      run: async (context) => {
+        await context.attempt.drain(async () => {});
+        renewal.arm();
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+      state: renewal.state,
+    });
+
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(15_000);
+    await renewal.started;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renewal.attempts()).toBe(1);
+
+    renewal.release();
+    await vi.waitFor(async () => {
+      await expect(
+        getConversationWorkState({
+          conversationId: CONVERSATION_ID,
+          state: renewal.state,
+        }),
+      ).resolves.toMatchObject({
+        lease: {
+          lastCheckInAtMs: 16_000,
+          leaseExpiresAtMs: 16_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+        },
+      });
+    });
+
+    finish.resolve();
+    await expect(running).resolves.toEqual({ status: "completed" });
+  });
+
+  it("joins an in-flight lease renewal before worker teardown", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    const renewal = controlConversationLeaseRenewal(baseState);
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state: renewal.state,
+    });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    let settled = false;
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      checkInIntervalMs: 15_000,
+      queue,
+      run: async (context) => {
+        await context.attempt.drain(async () => {});
+        renewal.arm();
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+      state: renewal.state,
+    });
+    void running.then(() => {
+      settled = true;
+    });
+
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(15_000);
+    await renewal.started;
+    finish.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    renewal.release();
+    await expect(running).resolves.toEqual({ status: "completed" });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renewal.attempts()).toBe(1);
   });
 
   it("reports lost lease after periodic check-in loses ownership", async () => {
