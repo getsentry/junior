@@ -16,6 +16,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
+  upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import { markTurnFailed } from "@/chat/runtime/turn";
@@ -28,11 +29,14 @@ import type {
   RecoverableSlackDeliveryOutcome,
   RecoverableSlackDeliveryTerminalizingInput,
 } from "@/chat/slack/recoverable-delivery";
+import type { PendingConversationDelivery } from "@/chat/slack/delivery-outbox";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 
 const DEFAULT_RECOVERY_LIMIT = 25;
 
 /** Repair session and derived thread state before terminal delivery deletion. */
-export async function repairTerminalizingSlackDelivery(
+async function repairOwnedTerminalizingSlackDelivery(
   input: RecoverableSlackDeliveryTerminalizingInput,
 ): Promise<void> {
   const command = input.command;
@@ -82,21 +86,49 @@ export async function repairTerminalizingSlackDelivery(
         },
       });
     }
-  } else if (
-    sessionRecord &&
-    sessionRecord.state !== "completed" &&
-    sessionRecord.state !== "failed" &&
-    sessionRecord.state !== "abandoned"
-  ) {
-    await failAgentTurnSessionRecord({
-      conversationId,
-      expectedVersion: sessionRecord.version,
-      sessionId,
-      errorMessage:
-        input.deliveryOutcome === "accepted"
-          ? "Delivered terminal failure reply"
-          : "Slack rejected the final turn reply",
-    });
+  } else {
+    const errorMessage =
+      input.deliveryOutcome === "accepted"
+        ? "Delivered terminal failure reply"
+        : "Slack rejected the final turn reply";
+    if (!sessionRecord) {
+      const projection = await loadTurnProjection({
+        conversationId,
+        committedSeq: command.completion.model.committedSeq,
+        includeTail: false,
+      });
+      if (!projection) {
+        throw new Error("Terminal turn projection is unavailable");
+      }
+      await upsertAgentTurnSessionRecord({
+        conversationId,
+        cumulativeDurationMs: command.completion.durationMs,
+        cumulativeUsage: command.completion.usage,
+        destination: command.session.destination,
+        destinationVisibility: command.session.destinationVisibility,
+        source: command.session.source,
+        sessionId,
+        sliceId: command.completion.sliceId,
+        state: "failed",
+        surface: command.session.surface,
+        piMessages: projection.messages,
+        modelId: projection.modelId ?? command.completion.model.modelId,
+        actor: command.session.actor,
+        reasoningLevel: command.completion.reasoningLevel,
+        errorMessage,
+      });
+    } else if (
+      sessionRecord.state !== "completed" &&
+      sessionRecord.state !== "failed" &&
+      sessionRecord.state !== "abandoned"
+    ) {
+      await failAgentTurnSessionRecord({
+        conversationId,
+        expectedVersion: sessionRecord.version,
+        sessionId,
+        errorMessage,
+      });
+    }
   }
 
   const currentState = await getPersistedThreadState(conversationId);
@@ -130,6 +162,43 @@ export async function repairTerminalizingSlackDelivery(
   await persistThreadStateById(conversationId, patch);
 }
 
+interface AdvanceSlackDeliveryArgs {
+  delivery: RecoverableSlackDelivery;
+  intent: PendingConversationDelivery;
+  beforeRepair?: (
+    input: RecoverableSlackDeliveryTerminalizingInput,
+  ) => Promise<void>;
+}
+
+/** Advance a delivery while the caller owns the active conversation lock. */
+export async function advanceOwnedSlackDeliveryWithTerminalRepair(
+  args: AdvanceSlackDeliveryArgs,
+): Promise<RecoverableSlackDeliveryOutcome> {
+  return await args.delivery.advance(args.intent, {
+    beforeTerminalize: async (input) => {
+      await args.beforeRepair?.(input);
+      await repairOwnedTerminalizingSlackDelivery(input);
+    },
+  });
+}
+
+/** Acquire turn ownership before advancing and repairing a Slack delivery. */
+export async function advanceSlackDeliveryWithTerminalRepair(
+  args: AdvanceSlackDeliveryArgs,
+): Promise<RecoverableSlackDeliveryOutcome> {
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireActiveLock(state, args.intent.conversationId);
+  if (!lock) {
+    return { outcome: "pending", retryAtMs: Date.now() + 5_000 };
+  }
+  try {
+    return await advanceOwnedSlackDeliveryWithTerminalRepair(args);
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
 async function scheduleCompletedDeliveryPlugins(args: {
   command: RecoverableSlackDeliveryTerminalizingInput["command"];
   conversationId: string;
@@ -159,8 +228,9 @@ export async function recoverDueSlackDeliveries(args: {
   let recovered = 0;
   for (const intent of pending) {
     try {
-      const outcome = await args.delivery.advance(intent, {
-        beforeTerminalize: repairTerminalizingSlackDelivery,
+      const outcome = await advanceSlackDeliveryWithTerminalRepair({
+        delivery: args.delivery,
+        intent,
       });
       await scheduleCompletedDeliveryPlugins({
         command: intent.command,
@@ -184,17 +254,21 @@ export async function recoverDueSlackDeliveries(args: {
   return recovered;
 }
 
-/** Recover one known turn before a resume handler decides whether Pi may run. */
-export async function recoverSlackDeliveryForTurn(args: {
+async function recoverSlackDeliveryForTurnWithOwnership(args: {
   conversationId: string;
   delivery?: RecoverableSlackDelivery;
+  ownsActiveLock: boolean;
   turnId: string;
 }): Promise<RecoverableSlackDeliveryOutcome | undefined> {
   if (!args.delivery) return undefined;
   const pending = await args.delivery.loadByTurn(args);
   if (pending) {
-    const outcome = await args.delivery.advance(pending, {
-      beforeTerminalize: repairTerminalizingSlackDelivery,
+    const advance = args.ownsActiveLock
+      ? advanceOwnedSlackDeliveryWithTerminalRepair
+      : advanceSlackDeliveryWithTerminalRepair;
+    const outcome = await advance({
+      delivery: args.delivery,
+      intent: pending,
     });
     await scheduleCompletedDeliveryPlugins({
       command: pending.command,
@@ -209,4 +283,28 @@ export async function recoverSlackDeliveryForTurn(args: {
     acceptanceEvidence: "visible_assistant",
   });
   return terminal ? { outcome: terminal.deliveryOutcome } : undefined;
+}
+
+/** Recover one known turn after acquiring active conversation ownership. */
+export async function recoverSlackDeliveryForTurn(args: {
+  conversationId: string;
+  delivery?: RecoverableSlackDelivery;
+  turnId: string;
+}): Promise<RecoverableSlackDeliveryOutcome | undefined> {
+  return await recoverSlackDeliveryForTurnWithOwnership({
+    ...args,
+    ownsActiveLock: false,
+  });
+}
+
+/** Recover one known turn while the caller owns active conversation state. */
+export async function recoverOwnedSlackDeliveryForTurn(args: {
+  conversationId: string;
+  delivery?: RecoverableSlackDelivery;
+  turnId: string;
+}): Promise<RecoverableSlackDeliveryOutcome | undefined> {
+  return await recoverSlackDeliveryForTurnWithOwnership({
+    ...args,
+    ownsActiveLock: true,
+  });
 }

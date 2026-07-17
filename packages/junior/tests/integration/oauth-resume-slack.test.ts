@@ -4,7 +4,8 @@ import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
 } from "@/chat/slack/output";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -137,7 +138,6 @@ async function runRecoverableSchedulingCase(args: {
 describe("oauth resume slack integration", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
-    vi.resetModules();
     await disconnectStateAdapter();
   });
 
@@ -255,6 +255,13 @@ describe("oauth resume slack integration", () => {
       },
       source: testSlackSource("1700000000.007"),
     });
+    await expect(
+      getAgentTurnSessionRecord("conversation-1", "turn-1"),
+    ).resolves.toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      cumulativeDurationMs: 1_000,
+    });
     await getConversationMessageStore().record("conversation-1", [
       {
         messageId: "message-turn-1",
@@ -292,6 +299,7 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.007",
       connectedText: "",
       inputMessageIds: ["message-turn-1"],
+      sliceId: 2,
       recoverableSlackDelivery,
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
@@ -316,16 +324,49 @@ describe("oauth resume slack integration", () => {
     };
 
     await resumeAuthorizedRequest(resumeArgs);
-    const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    await expect(
+      getAgentTurnSessionRecord("conversation-1", "turn-1"),
+    ).resolves.toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      cumulativeDurationMs: 1_000,
+    });
+    const state = getStateAdapter();
+    await state.connect();
+    const activeRuntimeLock = await acquireActiveLock(state, "conversation-1");
+    expect(activeRuntimeLock).not.toBeNull();
+    try {
+      const blockedWaitUntil = createWaitUntilCollector();
+      const blockedResponse = await heartbeat(
+        new Request("https://example.invalid/api/internal/heartbeat", {
+          headers: { authorization: "Bearer heartbeat-secret" },
+        }),
+        blockedWaitUntil.fn,
+        { recoverableSlackDelivery },
+      );
+      expect(blockedResponse.status).toBe(202);
+      await blockedWaitUntil.flush();
+
+      const blockedLifecycle = (
+        await getConversationEventStore().loadHistory("conversation-1")
+      ).filter((event) => event.data.type.startsWith("turn_"));
+      expect(blockedLifecycle.map((event) => event.data.type)).toEqual([
+        "turn_started",
+      ]);
+    } finally {
+      await state.releaseLock(activeRuntimeLock!);
+    }
+
+    const recoveryWaitUntil = createWaitUntilCollector();
+    const recoveryResponse = await heartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
-      waitUntil.fn,
+      recoveryWaitUntil.fn,
       { recoverableSlackDelivery },
     );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
+    expect(recoveryResponse.status).toBe(202);
+    await recoveryWaitUntil.flush();
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(onSuccess).toHaveBeenCalledTimes(1);
@@ -369,7 +410,14 @@ describe("oauth resume slack integration", () => {
     ]);
     await expect(
       getAgentTurnSessionRecord("conversation-1", "turn-1"),
-    ).resolves.toMatchObject({ state: "completed" });
+    ).resolves.toMatchObject({
+      state: "completed",
+      sliceId: 2,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: {
+        totalTokens: 1_007,
+      },
+    });
   });
 
   it("schedules completed plugins once only for successful recoverable resumes", async () => {

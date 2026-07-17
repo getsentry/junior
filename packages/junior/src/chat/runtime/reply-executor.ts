@@ -137,12 +137,10 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 import { modelIdForProfile } from "@/chat/model-profile";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import { advanceSlackDeliveryWithTerminalRepair } from "@/chat/runtime/slack-delivery-recovery";
 import type { PendingConversationDelivery } from "@/chat/slack/delivery-outbox";
 import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
 import { buildSlackReplyBlocks } from "@/chat/slack/footer";
@@ -810,56 +808,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }));
           return drainParkedInputToEventLog(parkedPairs);
         };
-        /**
-         * Repair every Redis-backed terminal projection after SQL has become
-         * authoritative. None of these derived writes may turn a delivered or
-         * definitively rejected reply into a fresh agent failure; only losing
-         * ownership while acknowledging durable inbox work propagates.
-         */
-        const repairCanonicalTerminal = async (args: {
+        /** Finish mailbox and plugin work after centralized terminal repair. */
+        const finishCanonicalTerminal = async (args: {
           ack:
             | { kind: "all" }
             | { kind: "messages"; messageIds: readonly string[] };
           deliveryId: string;
           deliveryOutcome: "accepted" | "failed";
-          inputMessageId?: string;
           modelSucceeded: boolean;
-          sessionSummary: Parameters<typeof recordAgentTurnSessionSummary>[0];
           turnId: string;
           runtimePatch?: Omit<ThreadStatePatch, "conversation">;
         }): Promise<void> => {
           const attributes = { "app.delivery.id": args.deliveryId };
-          try {
-            await hydrateConversationMessages({
-              conversation: preparedState.conversation,
-              conversationId,
-            });
-            if (args.deliveryOutcome === "accepted") {
-              markTurnClosed({
-                conversation: preparedState.conversation,
-                nowMs: Date.now(),
-                sessionId: args.turnId,
-                updateConversationStats,
-              });
-            } else {
-              markTurnFailed({
-                conversation: preparedState.conversation,
-                nowMs: Date.now(),
-                sessionId: args.turnId,
-                userMessageId: args.inputMessageId,
-                markConversationMessage,
-                updateConversationStats,
-              });
-            }
-            await persistThreadRuntimeStateWithRetry(thread, {
-              ...args.runtimePatch,
-              conversation: preparedState.conversation,
-            });
-          } catch {
-            throw new TurnInputDeferredError(
-              "Slack delivery runtime repair is awaiting retry",
-              5_000,
-            );
+          if (args.runtimePatch) {
+            await persistThreadRuntimeStateWithRetry(thread, args.runtimePatch);
           }
           try {
             await options.onTurnStatePersisted?.();
@@ -870,14 +832,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               turnTraceContext,
               attributes,
               "Failed to confirm repaired Slack delivery runtime state",
-            );
-          }
-          try {
-            await recordAgentTurnSessionSummary(args.sessionSummary);
-          } catch {
-            throw new TurnInputDeferredError(
-              "Slack delivery session repair is awaiting retry",
-              5_000,
             );
           }
           if (
@@ -923,10 +877,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             })
           : undefined;
         if (pendingDelivery) {
-          const recovery =
-            await deps.services.recoverableSlackDelivery.advance(
-              pendingDelivery,
-            );
+          const recovery = await advanceSlackDeliveryWithTerminalRepair({
+            delivery: deps.services.recoverableSlackDelivery,
+            intent: pendingDelivery,
+          });
           if (recovery.outcome === "pending") {
             throw new TurnInputDeferredError(
               "Slack delivery is awaiting retry or reconciliation",
@@ -936,7 +890,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const recoveredSuccessfully =
             recovery.outcome === "accepted" &&
             pendingDelivery.command.completion.terminal.outcome === "success";
-          await repairCanonicalTerminal({
+          await finishCanonicalTerminal({
             ack:
               pendingDelivery.turnId === turnId
                 ? { kind: "all" }
@@ -947,32 +901,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   },
             deliveryId: pendingDelivery.deliveryId,
             deliveryOutcome: recovery.outcome,
-            inputMessageId:
-              pendingDelivery.command.completion.inputMessageIds[0],
             modelSucceeded: recoveredSuccessfully,
             turnId: pendingDelivery.turnId,
-            sessionSummary: {
-              ...(pendingDelivery.command.session.channelName
-                ? { channelName: pendingDelivery.command.session.channelName }
-                : {}),
-              conversationId: conversationId!,
-              cumulativeDurationMs:
-                pendingDelivery.command.completion.durationMs,
-              cumulativeUsage: pendingDelivery.command.completion.usage,
-              sessionId: pendingDelivery.turnId,
-              sliceId: pendingDelivery.command.completion.sliceId,
-              startedAtMs: pendingDelivery.command.session.startedAtMs,
-              state: recoveredSuccessfully ? "completed" : "failed",
-              actor: pendingDelivery.command.session.actor,
-              destination: pendingDelivery.command.session.destination,
-              destinationVisibility:
-                pendingDelivery.command.session.destinationVisibility,
-              source: pendingDelivery.command.session.source,
-              traceId: getActiveTraceId(),
-              modelId: pendingDelivery.command.completion.model.modelId,
-              reasoningLevel: pendingDelivery.command.completion.reasoningLevel,
-              surface: pendingDelivery.command.session.surface,
-            },
           });
           if (pendingDelivery.turnId !== turnId) {
             throw new TurnInputDeferredError(
@@ -992,29 +922,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           : undefined;
         if (priorTerminal && conversationId) {
           const modelSucceeded = priorTerminal.modelSucceeded;
-          await repairCanonicalTerminal({
+          await finishCanonicalTerminal({
             ack: { kind: "all" },
             deliveryId: `slack:${turnId}`,
             deliveryOutcome: priorTerminal.deliveryOutcome,
-            inputMessageId: preparedState.userMessageId,
             modelSucceeded,
             turnId,
-            sessionSummary: {
-              ...(channelName ? { channelName } : {}),
-              conversationId,
-              cumulativeDurationMs: 0,
-              sessionId: turnId,
-              sliceId: 1,
-              startedAtMs: message.metadata.dateSent.getTime(),
-              state: modelSucceeded ? "completed" : "failed",
-              actor: executionActor,
-              destination,
-              destinationVisibility,
-              source,
-              traceId: getActiveTraceId(),
-              modelId: botConfig.modelId,
-              surface: "slack",
-            },
           });
           return;
         }
@@ -1859,7 +1772,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               durableDeliveryIntent = delivery;
               await beforeFirstResponsePost();
               const deliveryOutcome =
-                await deps.services.recoverableSlackDelivery.advance(delivery);
+                await advanceSlackDeliveryWithTerminalRepair({
+                  delivery: deps.services.recoverableSlackDelivery,
+                  intent: delivery,
+                });
               if (deliveryOutcome.outcome === "pending") {
                 shouldPersistFailureState = false;
                 throw new TurnInputDeferredError(
@@ -1871,31 +1787,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 lifecycleTerminalized = true;
                 persistedAtLeastOnce = true;
                 shouldPersistFailureState = false;
-                await repairCanonicalTerminal({
+                await finishCanonicalTerminal({
                   ack: { kind: "all" },
                   deliveryId: delivery.deliveryId,
                   deliveryOutcome: "failed",
-                  inputMessageId: preparedState.userMessageId,
                   modelSucceeded: false,
                   turnId,
-                  sessionSummary: {
-                    ...(channelName ? { channelName } : {}),
-                    conversationId: conversationId!,
-                    cumulativeDurationMs: reply.diagnostics.durationMs,
-                    cumulativeUsage: reply.diagnostics.usage,
-                    sessionId: turnId,
-                    sliceId: 1,
-                    startedAtMs: message.metadata.dateSent.getTime(),
-                    state: "failed",
-                    actor: executionActor,
-                    destination,
-                    destinationVisibility,
-                    source,
-                    traceId: getActiveTraceId(),
-                    modelId: reply.diagnostics.modelId,
-                    reasoningLevel: reply.diagnostics.reasoningLevel,
-                    surface: "slack",
-                  },
                 });
                 return;
               }
@@ -2032,36 +1929,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (recoverableDeliveryTerminalized && conversationId) {
             const { conversation: _conversation, ...runtimePatch } =
               completedState;
-            await repairCanonicalTerminal({
+            await finishCanonicalTerminal({
               ack: { kind: "all" },
               deliveryId:
                 durableDeliveryIntent?.deliveryId ?? `slack:${turnId}`,
               deliveryOutcome: "accepted",
-              inputMessageId: preparedState.userMessageId,
               modelSucceeded: reply.diagnostics.outcome === "success",
               turnId,
               runtimePatch,
-              sessionSummary: {
-                channelName,
-                conversationId,
-                cumulativeDurationMs: reply.diagnostics.durationMs,
-                cumulativeUsage: reply.diagnostics.usage,
-                sessionId: turnId,
-                sliceId: 1,
-                startedAtMs: message.metadata.dateSent.getTime(),
-                state:
-                  reply.diagnostics.outcome === "success"
-                    ? "completed"
-                    : "failed",
-                actor: executionActor,
-                destination,
-                destinationVisibility,
-                source,
-                traceId: getActiveTraceId(),
-                modelId: reply.diagnostics.modelId,
-                reasoningLevel: reply.diagnostics.reasoningLevel,
-                surface: "slack",
-              },
             });
             return;
           }
@@ -2167,35 +2042,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldPersistFailureState = false;
               finalReplyDelivered = terminal.deliveryOutcome === "accepted";
               persistedAtLeastOnce = true;
-              const command = durableDeliveryIntent.command;
               const modelSucceeded = terminal.modelSucceeded;
-              await repairCanonicalTerminal({
+              await finishCanonicalTerminal({
                 ack: { kind: "all" },
                 deliveryId: durableDeliveryIntent.deliveryId,
                 deliveryOutcome: terminal.deliveryOutcome,
-                inputMessageId: command.completion.inputMessageIds[0],
                 modelSucceeded,
                 turnId: durableDeliveryIntent.turnId,
-                sessionSummary: {
-                  ...(command.session.channelName
-                    ? { channelName: command.session.channelName }
-                    : {}),
-                  conversationId,
-                  cumulativeDurationMs: command.completion.durationMs,
-                  cumulativeUsage: command.completion.usage,
-                  sessionId: durableDeliveryIntent.turnId,
-                  sliceId: command.completion.sliceId,
-                  startedAtMs: command.session.startedAtMs,
-                  state: modelSucceeded ? "completed" : "failed",
-                  actor: command.session.actor,
-                  destination: command.session.destination,
-                  destinationVisibility: command.session.destinationVisibility,
-                  source: command.session.source,
-                  traceId: getActiveTraceId(),
-                  modelId: command.completion.model.modelId,
-                  reasoningLevel: command.completion.reasoningLevel,
-                  surface: command.session.surface,
-                },
               });
               return;
             }

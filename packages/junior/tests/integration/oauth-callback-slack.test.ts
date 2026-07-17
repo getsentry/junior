@@ -643,7 +643,7 @@ describe("oauth callback slack integration", () => {
     });
   });
 
-  it("recovers a committed OAuth credential when candidate activation crashes", async () => {
+  it("recovers a committed OAuth credential when activation stays busy", async () => {
     const conversationId = "slack:C123:1700000000.014";
     const sessionId = "turn_msg_14";
     const source = slackSource("1700000000.014");
@@ -717,7 +717,12 @@ describe("oauth callback slack integration", () => {
       );
     if (!sessionRecord) throw new Error("Expected an auth-paused session");
     await turnSessionStoreModule.prepareAgentTurnAuthorizationRecovery({
-      authorizationCompletionId: "prepared-before-exchange",
+      authorizationCompletionId:
+        turnSessionStoreModule.createAgentTurnAuthorizationCompletionId({
+          attemptId: "eval-oauth-busy-state",
+          authorizationKind: "plugin",
+          provider: "eval-oauth",
+        }),
       authorizationKind: "plugin",
       conversationId,
       expectedVersion: sessionRecord.version,
@@ -732,19 +737,22 @@ describe("oauth callback slack integration", () => {
     ).resolves.toBe(0);
     expect(queue.sentRecords()).toHaveLength(0);
     const originalSet = adapter.set.bind(adapter);
-    let recoveryWrites = 0;
+    const { acquireActiveLock } = await import("@/chat/state/locks");
+    let releaseBusyLock: Promise<void> | undefined;
     const setSpy = vi
       .spyOn(adapter, "set")
       .mockImplementation(
         async (key: string, value: unknown, ttlMs?: number) => {
-          if (
-            key ===
-              `junior:agent_turn_session:${conversationId}:${sessionId}` &&
-            ++recoveryWrites === 1
-          ) {
-            throw new Error("candidate activation unavailable");
-          }
           await originalSet(key, value, ttlMs);
+          if (key === "oauth-token:U123:eval-oauth" && !releaseBusyLock) {
+            const busyLock = await acquireActiveLock(adapter, conversationId);
+            if (!busyLock) throw new Error("Expected callback race lock");
+            releaseBusyLock = new Promise((resolve) => {
+              setTimeout(() => {
+                void adapter.releaseLock(busyLock).then(resolve);
+              }, 350);
+            });
+          }
         },
       );
     await expect(
@@ -755,8 +763,9 @@ describe("oauth callback slack integration", () => {
         agentRunner: testAgentRunner,
         agentContinueOptions: { queue, state: adapter },
       }),
-    ).rejects.toThrow("candidate activation unavailable");
+    ).rejects.toThrow("OAuth turn changed while activating callback recovery");
     setSpy.mockRestore();
+    await releaseBusyLock;
 
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(

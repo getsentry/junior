@@ -54,12 +54,10 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
-  activateAgentTurnAuthorizationRecovery,
   createAgentTurnAuthorizationCompletionId,
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
-  prepareAgentTurnAuthorizationRecovery,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -67,6 +65,8 @@ import {
 } from "@/chat/conversations/projection";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import {
+  activateAndScheduleAgentTurnAuthorizationRecovery,
+  prepareAgentTurnAuthorizationRecoveryUnderActiveLock,
   scheduleAgentContinue,
   wakeAuthorizationCompletedAgentTurn,
   type ScheduleAgentContinueOptions,
@@ -466,6 +466,7 @@ async function resumeAuthorizedMcpTurn(args: {
         messageText: lockedUserMessage.text,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
+        sliceId: lockedSessionRecord.sliceId,
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,
@@ -675,7 +676,7 @@ export async function GET(
         ? sessionRecord
         : undefined;
     const prepared = recoverableSession
-      ? await prepareAgentTurnAuthorizationRecovery({
+      ? await prepareAgentTurnAuthorizationRecoveryUnderActiveLock({
           authorizationCompletionId: createAgentTurnAuthorizationCompletionId({
             attemptId: state,
             authorizationKind: "mcp",
@@ -713,13 +714,16 @@ export async function GET(
           recovery?.authorizationCompletionId,
         );
     if (prepared && recovery) {
-      const activated = await activateAgentTurnAuthorizationRecovery({
-        authorizationCompletionId: recovery.authorizationCompletionId,
-        conversationId: prepared.conversationId,
-        expectedVersion: prepared.version,
-        sessionId: prepared.sessionId,
-      });
-      if (!activated) {
+      const completed = await activateAndScheduleAgentTurnAuthorizationRecovery(
+        {
+          authorizationCompletionId: recovery.authorizationCompletionId,
+          conversationId: prepared.conversationId,
+          expectedVersion: prepared.version,
+          sessionId: prepared.sessionId,
+        },
+        options.agentContinueOptions,
+      );
+      if (!completed) {
         throw new Error("MCP turn changed while activating callback recovery");
       }
     }

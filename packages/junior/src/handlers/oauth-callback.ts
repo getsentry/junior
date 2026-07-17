@@ -52,12 +52,10 @@ import { lookupSlackActor } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  activateAgentTurnAuthorizationRecovery,
   createAgentTurnAuthorizationCompletionId,
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
-  prepareAgentTurnAuthorizationRecovery,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -71,6 +69,8 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
+  activateAndScheduleAgentTurnAuthorizationRecovery,
+  prepareAgentTurnAuthorizationRecoveryUnderActiveLock,
   scheduleAgentContinue,
   wakeAuthorizationCompletedAgentTurn,
   type ScheduleAgentContinueOptions,
@@ -466,6 +466,7 @@ async function resumeOAuthSessionRecordTurn(
           : (stored.pendingMessage ?? lockedUserMessage.text),
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
+        sliceId: lockedSessionRecord.sliceId,
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,
@@ -756,7 +757,7 @@ export async function GET(
       ? sessionRecord
       : undefined;
   const prepared = recoverableSession
-    ? await prepareAgentTurnAuthorizationRecovery({
+    ? await prepareAgentTurnAuthorizationRecoveryUnderActiveLock({
         authorizationCompletionId: createAgentTurnAuthorizationCompletionId({
           attemptId: state,
           authorizationKind: "plugin",
@@ -782,7 +783,6 @@ export async function GET(
         recovery.authorizationCompletionId,
       ))
     : false;
-
   if (!receiptCommitted) {
     let tokenResponse: Response;
     try {
@@ -858,6 +858,8 @@ export async function GET(
       ...(account ? { account } : {}),
     };
     if (recovery) {
+      // Persist the receipt immediately after consuming the one-time code.
+      // Activation is separately fenced and heartbeat can recover it later.
       await userTokenStore.setForAuthorizationCompletion(
         stored.userId,
         provider,
@@ -870,12 +872,15 @@ export async function GET(
   }
 
   if (prepared && recovery) {
-    const activated = await activateAgentTurnAuthorizationRecovery({
-      authorizationCompletionId: recovery.authorizationCompletionId,
-      conversationId: prepared.conversationId,
-      expectedVersion: prepared.version,
-      sessionId: prepared.sessionId,
-    });
+    const activated = await activateAndScheduleAgentTurnAuthorizationRecovery(
+      {
+        authorizationCompletionId: recovery.authorizationCompletionId,
+        conversationId: prepared.conversationId,
+        expectedVersion: prepared.version,
+        sessionId: prepared.sessionId,
+      },
+      options.agentContinueOptions,
+    );
     if (!activated) {
       throw new Error("OAuth turn changed while activating callback recovery");
     }

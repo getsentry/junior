@@ -26,6 +26,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { createProductionRecoverableSlackDelivery } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { parseOAuthStatePayload } from "@/chat/oauth-flow";
 import type { EmittedLogRecord } from "@/chat/logging";
@@ -52,6 +53,7 @@ import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
@@ -1824,6 +1826,7 @@ function buildRuntimeServices(
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
   steeringDelivery: SteeringDelivery,
   turnLifecycle: ConversationTurnLifecycle,
+  recoverableSlackDelivery: RecoverableSlackDelivery,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
@@ -1872,6 +1875,7 @@ function buildRuntimeServices(
       : {}),
     replyExecutor: {
       turnLifecycle,
+      recoverableSlackDelivery,
       agentRunner: {
         run: async (request) => {
           const pendingSteeringDelivery = steeringDelivery.deliver;
@@ -2098,6 +2102,7 @@ async function processEvents(args: {
   env: HarnessEnvironment;
   agentRunner: AgentRunner;
   turnLifecycle: ConversationTurnLifecycle;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
@@ -2112,6 +2117,7 @@ async function processEvents(args: {
     env,
     agentRunner,
     turnLifecycle,
+    recoverableSlackDelivery,
     getSlackAdapter,
     conversationWorkQueue,
     slackRuntime,
@@ -2202,6 +2208,7 @@ async function processEvents(args: {
             resumeAwaitingContinuation: async (conversationId) =>
               await resumeAwaitingSlackContinuation(conversationId, {
                 agentRunner,
+                recoverableSlackDelivery,
                 scheduleAgentContinue: async (request) => {
                   await scheduleAgentContinue(request, {
                     queue: conversationWorkQueue,
@@ -2215,6 +2222,7 @@ async function processEvents(args: {
                     },
                   });
                 },
+                turnLifecycle,
               }),
             runtime: workerRuntime,
             state: env.stateAdapter,
@@ -2401,6 +2409,7 @@ async function processEvents(args: {
       }
       await processAgentDispatchCallback(callback, {
         agentRunner,
+        recoverableSlackDelivery,
         turnLifecycle,
       });
     }
@@ -2692,6 +2701,7 @@ export async function runEvalScenario(
     const turnLifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
+    const recoverableSlackDelivery = createProductionRecoverableSlackDelivery();
     const services = buildRuntimeServices(
       scenario,
       env,
@@ -2700,6 +2710,7 @@ export async function runEvalScenario(
       conversationWorkQueue,
       steeringDelivery,
       turnLifecycle,
+      recoverableSlackDelivery,
       options.signal,
     );
     const evalAgentRunner = services.replyExecutor?.agentRunner;
@@ -2717,6 +2728,7 @@ export async function runEvalScenario(
       env,
       agentRunner: evalAgentRunner,
       turnLifecycle,
+      recoverableSlackDelivery,
       getSlackAdapter: () => slackAdapter,
       conversationWorkQueue,
       slackRuntime,

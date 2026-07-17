@@ -90,8 +90,8 @@ import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecy
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 import {
-  recoverSlackDeliveryForTurn,
-  repairTerminalizingSlackDelivery,
+  advanceOwnedSlackDeliveryWithTerminalRepair,
+  recoverOwnedSlackDeliveryForTurn,
 } from "@/chat/runtime/slack-delivery-recovery";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
@@ -376,7 +376,7 @@ export async function continueSlackAgentRun(
       let sessionRecord: AgentTurnSessionRecord | undefined;
       try {
         if (
-          await recoverSlackDeliveryForTurn({
+          await recoverOwnedSlackDeliveryForTurn({
             conversationId: payload.conversationId,
             delivery: options.recoverableSlackDelivery,
             turnId: payload.sessionId,
@@ -528,6 +528,7 @@ export async function continueSlackAgentRun(
         return {
           messageText: userMessage.text,
           inputMessageIds: [userMessage.id],
+          sliceId: activeSessionRecord.sliceId,
           messageTs: getTurnUserSlackMessageTs(userMessage),
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
@@ -734,8 +735,9 @@ async function failStrandedSessionWithFallback(args: {
       },
     },
   });
-  await args.recoverableSlackDelivery.advance(intent, {
-    beforeTerminalize: repairTerminalizingSlackDelivery,
+  await advanceOwnedSlackDeliveryWithTerminalRepair({
+    delivery: args.recoverableSlackDelivery,
+    intent,
   });
 }
 

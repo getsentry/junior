@@ -1024,14 +1024,14 @@ export async function prepareAgentTurnAuthorizationRecovery(args: {
   if (
     !existing ||
     existing.state !== "awaiting_resume" ||
-    existing.resumeReason !== "auth" ||
-    existing.version !== args.expectedVersion
+    existing.resumeReason !== "auth"
   ) {
     return undefined;
   }
   const current = existing.authorizationRecovery;
   if (current) {
     if (
+      current.authorizationCompletionId !== args.authorizationCompletionId ||
       current.authorizationKind !== args.authorizationKind ||
       current.provider !== args.provider ||
       current.userId !== args.userId
@@ -1049,6 +1049,7 @@ export async function prepareAgentTurnAuthorizationRecovery(args: {
     );
     return existing;
   }
+  if (existing.version !== args.expectedVersion) return undefined;
   const stored = await getStoredAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,

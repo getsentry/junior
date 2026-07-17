@@ -55,7 +55,7 @@ import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
-import { repairTerminalizingSlackDelivery } from "@/chat/runtime/slack-delivery-recovery";
+import { advanceSlackDeliveryWithTerminalRepair } from "@/chat/runtime/slack-delivery-recovery";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -336,10 +336,10 @@ export async function processAgentDispatchCallback(
       turnId,
     });
     if (pendingDelivery) {
-      const recovered = await deps.recoverableSlackDelivery.advance(
-        pendingDelivery,
-        { beforeTerminalize: repairTerminalizingSlackDelivery },
-      );
+      const recovered = await advanceSlackDeliveryWithTerminalRepair({
+        delivery: deps.recoverableSlackDelivery,
+        intent: pendingDelivery,
+      });
       if (recovered.outcome === "pending") {
         await parkPendingDelivery({
           dispatch,
@@ -670,8 +670,9 @@ export async function processAgentDispatchCallback(
           },
         },
       });
-      const delivery = await deps.recoverableSlackDelivery.advance(intent, {
-        beforeTerminalize: repairTerminalizingSlackDelivery,
+      const delivery = await advanceSlackDeliveryWithTerminalRepair({
+        delivery: deps.recoverableSlackDelivery,
+        intent,
       });
       if (delivery.outcome === "pending") {
         await parkPendingDelivery({

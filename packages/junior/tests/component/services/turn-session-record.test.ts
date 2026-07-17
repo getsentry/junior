@@ -253,6 +253,136 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
+  it.each(["plugin", "mcp"] as const)(
+    "rejects a different %s authorization attempt for one parked turn",
+    async (authorizationKind) => {
+      const {
+        prepareAgentTurnAuthorizationRecovery,
+        upsertAgentTurnSessionRecord,
+      } = await import("@/chat/state/turn-session");
+      const conversationId = `slack:C123:auth-attempt-${authorizationKind}`;
+      const sessionId = `turn-auth-attempt-${authorizationKind}`;
+      const parked = await upsertAgentTurnSessionRecord({
+        modelId: "test/model",
+        conversationId,
+        destination: SLACK_DESTINATION,
+        piMessages: [userMessage("connect")],
+        resumeReason: "auth",
+        sessionId,
+        sliceId: 2,
+        source: SLACK_SOURCE,
+        state: "awaiting_resume",
+        surface: "slack",
+      });
+      const prepared = await prepareAgentTurnAuthorizationRecovery({
+        authorizationCompletionId: "first-attempt",
+        authorizationKind,
+        conversationId,
+        expectedVersion: parked.version,
+        provider: "provider",
+        sessionId,
+        userId: "U123",
+      });
+      if (!prepared) throw new Error("Expected prepared recovery");
+
+      await expect(
+        prepareAgentTurnAuthorizationRecovery({
+          authorizationCompletionId: "newer-attempt",
+          authorizationKind,
+          conversationId,
+          expectedVersion: prepared.version,
+          provider: "provider",
+          sessionId,
+          userId: "U123",
+        }),
+      ).rejects.toThrow(
+        "Authorization recovery intent does not match callback",
+      );
+    },
+  );
+
+  it("does not resume after mailbox failure wins the auth callback race", async () => {
+    const {
+      failAgentTurnSessionRecord,
+      prepareAgentTurnAuthorizationRecovery,
+      upsertAgentTurnSessionRecord,
+    } = await import("@/chat/state/turn-session");
+    const { activateAndScheduleAgentTurnAuthorizationRecovery } =
+      await import("@/chat/services/agent-continue");
+    const { acquireActiveLock } = await import("@/chat/state/locks");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const { ConversationTurnLifecycleService } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { createConversationWorkQueueTestAdapter } =
+      await import("../../fixtures/conversation-work");
+    const conversationId = "slack:C123:callback-mailbox-race";
+    const sessionId = "turn-callback-mailbox-race";
+    const parked = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      destination: SLACK_DESTINATION,
+      piMessages: [userMessage("connect")],
+      resumeReason: "auth",
+      sessionId,
+      sliceId: 2,
+      source: SLACK_SOURCE,
+      state: "awaiting_resume",
+      surface: "slack",
+    });
+    const prepared = await prepareAgentTurnAuthorizationRecovery({
+      authorizationCompletionId: "callback-receipt",
+      authorizationKind: "plugin",
+      conversationId,
+      expectedVersion: parked.version,
+      provider: "provider",
+      sessionId,
+      userId: "U123",
+    });
+    if (!prepared) throw new Error("Expected prepared recovery");
+    const lifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
+    await lifecycle.start({
+      conversationId,
+      createdAtMs: 1,
+      inputMessageIds: ["message-callback-mailbox-race"],
+      surface: "slack",
+      turnId: sessionId,
+    });
+
+    const state = getStateAdapter();
+    await state.connect();
+    const mailboxLock = await acquireActiveLock(state, conversationId);
+    if (!mailboxLock) throw new Error("Expected mailbox lock");
+    const queue = createConversationWorkQueueTestAdapter();
+    const activation = activateAndScheduleAgentTurnAuthorizationRecovery(
+      {
+        authorizationCompletionId: "callback-receipt",
+        conversationId,
+        expectedVersion: prepared.version,
+        sessionId,
+      },
+      { queue, state },
+    );
+    await lifecycle.fail({
+      conversationId,
+      createdAtMs: 2,
+      failureCode: "agent_run_failed",
+      turnId: sessionId,
+    });
+    await failAgentTurnSessionRecord({
+      conversationId,
+      errorMessage: "Mailbox terminalized the parked turn",
+      expectedVersion: prepared.version,
+      sessionId,
+    });
+    await state.releaseLock(mailboxLock);
+
+    await expect(activation).resolves.toBeUndefined();
+    expect(queue.sentRecords()).toHaveLength(0);
+  });
+
   it("reads legacy requester summaries and skips invalid index entries", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listBoundedAgentTurnSessionSummariesForConversation } =

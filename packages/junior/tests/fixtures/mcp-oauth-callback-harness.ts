@@ -7,6 +7,7 @@ import {
   testWaitUntil,
 } from "./oauth-callback-after-harness";
 import { realAgentRunner } from "./agent-runner";
+import { createConversationWorkQueueTestAdapter } from "./conversation-work";
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
@@ -29,7 +30,11 @@ export async function runMcpOauthCallbackRoute(args: {
       agentRunner: args.agentRunner ?? realAgentRunner,
       ...(args.agentContinueOptions
         ? { agentContinueOptions: args.agentContinueOptions }
-        : {}),
+        : {
+            agentContinueOptions: {
+              queue: createConversationWorkQueueTestAdapter(),
+            },
+          }),
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
       ),

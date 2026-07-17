@@ -14,6 +14,13 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 import { TurnInputDeferredError } from "@/chat/runtime/turn";
 import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -339,31 +346,28 @@ describe("Slack behavior: finalized thread replies", () => {
         diagnostics: makeDiagnostics(),
       }),
     );
-    let pending: unknown;
     let advances = 0;
     const scheduleSessionCompletedPluginTasks = vi.fn();
-    const recoverableSlackDelivery = {
-      loadByTurn: vi.fn(async () => pending as never),
-      loadByConversation: vi.fn(async () => pending as never),
-      listDue: vi.fn(async () => []),
-      loadTerminalOutcome: vi.fn(async () => undefined),
-      createIntent: vi.fn(async (args) => {
-        pending = {
-          ...args,
-          nextAttemptAtMs: Date.now(),
-          command: args.command,
-        };
-        return pending as never;
-      }),
-      advance: vi.fn(async () => {
-        advances += 1;
-        if (advances === 1) {
-          return { outcome: "pending" as const, retryAtMs: Date.now() };
-        }
-        pending = undefined;
-        return { outcome: "accepted" as const };
-      }),
-    };
+    const recoverableSlackDelivery = new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      {
+        post: vi.fn(async () => {
+          advances += 1;
+          if (advances === 1) {
+            return {
+              outcome: "retryable_absence" as const,
+              reason: "rate_limited" as const,
+              retryAtMs: Date.now(),
+            };
+          }
+          return {
+            outcome: "accepted" as const,
+            ts: parseSlackMessageTs("1700006008.001")!,
+          };
+        }),
+        reconcile: vi.fn(),
+      },
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -400,14 +404,45 @@ describe("Slack behavior: finalized thread replies", () => {
     ).resolves.toBeUndefined();
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(recoverableSlackDelivery.createIntent).toHaveBeenCalledTimes(1);
-    expect(recoverableSlackDelivery.advance).toHaveBeenCalledTimes(2);
+    expect(advances).toBe(2);
     expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledOnce();
     expect(
       (await listAgentTurnSessionSummariesForConversation(thread.id)).find(
         (summary) => summary.sessionId === "turn_m-final-recovery",
       )?.state,
     ).toBe("completed");
+    await expect(
+      getAgentTurnSessionRecord(thread.id, "turn_m-final-recovery"),
+    ).resolves.toMatchObject({ state: "completed" });
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(thread.id)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      {
+        type: "turn_started",
+        turnId: "turn_m-final-recovery",
+        inputMessageIds: ["m-final-recovery"],
+        surface: "slack",
+      },
+      {
+        type: "turn_completed",
+        turnId: "turn_m-final-recovery",
+        outcome: "success",
+      },
+    ]);
+    const persistedConversation = coerceThreadConversationState(
+      await getPersistedThreadState(thread.id),
+    );
+    await hydrateConversationMessages({
+      conversation: persistedConversation,
+      conversationId: thread.id,
+    });
+    expect(persistedConversation.processing.activeTurnId).toBeUndefined();
+    expect(
+      persistedConversation.messages.find(
+        (entry) => entry.id === "m-final-recovery",
+      )?.meta?.replied,
+    ).toBe(true);
     expect(thread.posts).toEqual([]);
   });
 
@@ -535,75 +570,20 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(
       scheduleSessionCompletedPluginTasks.mock.invocationCallOrder[0],
     ).toBeLessThan(ack.mock.invocationCallOrder[0]!);
-    expect(
-      (await listAgentTurnSessionSummariesForConversation(thread.id)).find(
-        (summary) => summary.sessionId === "turn_prior-terminal",
-      )?.state,
-    ).toBe("completed");
-  });
-
-  it("defers acknowledgement until required terminal runtime repair succeeds", async () => {
-    const thread = createTestThread({
-      id: "slack:C0FINAL:1700006015.000",
-    });
-    thread.setState = vi.fn(async () => {
-      throw new Error("runtime state unavailable");
-    });
-    const ack = vi.fn();
-    const run = vi.fn();
-    const scheduleSessionCompletedPluginTasks = vi.fn();
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run },
-          recoverableSlackDelivery: {
-            loadByConversation: vi.fn(async () => undefined),
-            loadByTurn: vi.fn(async () => undefined),
-            listDue: vi.fn(async () => []),
-            loadTerminalOutcome: vi.fn(async () => ({
-              deliveryOutcome: "accepted" as const,
-              modelSucceeded: true,
-            })),
-            createIntent: vi.fn(),
-            advance: vi.fn(),
-          },
-          scheduleSessionCompletedPluginTasks,
-        },
-      },
-    });
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "prior-terminal-repair",
-          text: "<@U0APP> already delivered",
-          isMention: true,
-          threadId: thread.id,
-        }),
-        { destination: createTestDestination(thread), ack },
-      ),
-    ).rejects.toBeInstanceOf(TurnInputDeferredError);
-
-    expect(run).not.toHaveBeenCalled();
-    expect(scheduleSessionCompletedPluginTasks).not.toHaveBeenCalled();
-    expect(ack).not.toHaveBeenCalled();
   });
 
   it("repairs the failed outcome after a definitive Slack rejection", async () => {
     const ack = vi.fn();
-    const recoverableSlackDelivery = {
-      loadByConversation: vi.fn(async () => undefined),
-      loadByTurn: vi.fn(async () => undefined),
-      listDue: vi.fn(async () => []),
-      loadTerminalOutcome: vi.fn(async () => undefined),
-      createIntent: vi.fn(async (args) => ({
-        ...args,
-        nextAttemptAtMs: Date.now(),
-        command: args.command,
-      })),
-      advance: vi.fn(async () => ({ outcome: "failed" as const })),
-    };
+    const recoverableSlackDelivery = new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      {
+        post: vi.fn(async () => ({
+          outcome: "definitive_failure" as const,
+          reason: "api_rejected" as const,
+        })),
+        reconcile: vi.fn(),
+      },
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {

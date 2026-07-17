@@ -12,7 +12,11 @@ import {
   getAgentTurnSessionRecord,
   isAgentTurnAuthorizationRecoveryActive,
   listAgentTurnSessionSummaries,
+  prepareAgentTurnAuthorizationRecovery,
+  type AgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -21,6 +25,9 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { sleep } from "@/chat/sleep";
+
+const AUTHORIZATION_RECOVERY_LOCK_RETRY_MS = 250;
 
 export interface AgentContinueRequest {
   conversationId: string;
@@ -33,6 +40,84 @@ export interface ScheduleAgentContinueOptions {
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;
+}
+
+interface AuthorizationRecoveryIdentity {
+  authorizationCompletionId: string;
+  conversationId: string;
+  expectedVersion: number;
+  sessionId: string;
+}
+
+async function acquireAuthorizationRecoveryLock(
+  conversationId: string,
+): Promise<Awaited<ReturnType<typeof acquireActiveLock>>> {
+  const state = getStateAdapter();
+  const immediate = await acquireActiveLock(state, conversationId);
+  if (immediate) return immediate;
+  await sleep(AUTHORIZATION_RECOVERY_LOCK_RETRY_MS);
+  return await acquireActiveLock(state, conversationId);
+}
+
+/** Prepare an auth recovery without racing a mailbox-owned terminal transition. */
+export async function prepareAgentTurnAuthorizationRecoveryUnderActiveLock(
+  args: Parameters<typeof prepareAgentTurnAuthorizationRecovery>[0],
+): Promise<AgentTurnSessionRecord | undefined> {
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireAuthorizationRecoveryLock(args.conversationId);
+  if (!lock) return undefined;
+  try {
+    return await prepareAgentTurnAuthorizationRecovery(args);
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+/**
+ * Activate an exact parked auth session and durably wake it under turn ownership.
+ */
+export async function activateAndScheduleAgentTurnAuthorizationRecovery(
+  args: AuthorizationRecoveryIdentity,
+  options: ScheduleAgentContinueOptions = {},
+): Promise<AgentTurnSessionRecord | undefined> {
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireAuthorizationRecoveryLock(args.conversationId);
+  if (!lock) return undefined;
+  try {
+    const current = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+    if (
+      !current ||
+      current.state !== "awaiting_resume" ||
+      current.resumeReason !== "auth" ||
+      current.version !== args.expectedVersion ||
+      current.authorizationRecovery?.authorizationCompletionId !==
+        args.authorizationCompletionId
+    ) {
+      return undefined;
+    }
+
+    const activated = current.authorizationRecovery.active
+      ? current
+      : await activateAgentTurnAuthorizationRecovery(args);
+    if (!activated?.destination) return undefined;
+    await scheduleAgentContinue(
+      {
+        conversationId: activated.conversationId,
+        destination: activated.destination,
+        expectedVersion: activated.version,
+        sessionId: activated.sessionId,
+      },
+      options,
+    );
+    return activated;
+  } finally {
+    await state.releaseLock(lock);
+  }
 }
 
 /** Mark an exact auth callback complete, then durably wake its paused session. */
@@ -58,22 +143,17 @@ export async function wakeAuthorizationCompletedAgentTurn(
       );
       return;
     }
-    const completed = await isAgentTurnAuthorizationRecoveryActive({
-      conversationId: args.conversationId,
-      expectedVersion: sessionRecord.version,
-      sessionId: args.sessionId,
-    });
-    if (completed) {
-      await scheduleAgentContinue(
-        {
-          conversationId: sessionRecord.conversationId,
-          destination: sessionRecord.destination,
-          expectedVersion: sessionRecord.version,
-          sessionId: sessionRecord.sessionId,
-        },
-        options,
-      );
-    }
+    const recovery = sessionRecord.authorizationRecovery;
+    if (!recovery?.active) return;
+    await activateAndScheduleAgentTurnAuthorizationRecovery(
+      {
+        authorizationCompletionId: recovery.authorizationCompletionId,
+        conversationId: sessionRecord.conversationId,
+        expectedVersion: sessionRecord.version,
+        sessionId: sessionRecord.sessionId,
+      },
+      options,
+    );
   } catch (error) {
     logException(
       error,
@@ -117,7 +197,6 @@ export async function recoverAuthorizationCompletedAgentTurns(
       }
       const recovery = session.authorizationRecovery;
       if (!recovery) continue;
-      let resumable = session;
       if (!recovery.active) {
         const committed =
           recovery.authorizationKind === "plugin"
@@ -134,24 +213,17 @@ export async function recoverAuthorizationCompletedAgentTurns(
               )?.authorizationCompletionId ===
               recovery.authorizationCompletionId;
         if (!committed) continue;
-        const activated = await activateAgentTurnAuthorizationRecovery({
+      }
+      const completed = await activateAndScheduleAgentTurnAuthorizationRecovery(
+        {
           authorizationCompletionId: recovery.authorizationCompletionId,
           conversationId: recoverySummary.conversationId,
           expectedVersion: session.version,
           sessionId: recoverySummary.sessionId,
-        });
-        if (!activated) continue;
-        resumable = activated;
-      }
-      await scheduleAgentContinue(
-        {
-          conversationId: resumable.conversationId,
-          destination: resumable.destination!,
-          expectedVersion: resumable.version,
-          sessionId: resumable.sessionId,
         },
         options,
       );
+      if (!completed) continue;
       recovered += 1;
     } catch (error) {
       logException(
