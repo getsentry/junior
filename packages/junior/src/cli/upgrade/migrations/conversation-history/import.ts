@@ -13,10 +13,7 @@
  * it after the legacy Redis operator-migration horizon passes.
  */
 import { z } from "zod";
-import {
-  type ConversationCompaction,
-  type ConversationMessage as ThreadConversationMessage,
-} from "@/chat/state/conversation";
+import { type ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -52,7 +49,9 @@ const legacyCompactionSchema = z.object({
   createdAtMs: z.number().finite(),
   id: z.string(),
   summary: z.string(),
-}) satisfies z.ZodType<ConversationCompaction>;
+});
+
+type LegacyConversationCompaction = z.output<typeof legacyCompactionSchema>;
 
 const legacyThreadStateSnapshotSchema = z.object({
   conversation: z
@@ -76,7 +75,7 @@ export interface LegacyImportDeps {
   loadVisibleMessages?: (
     conversationId: string,
   ) => Promise<ThreadConversationMessage[]>;
-  legacyCompactions?: ConversationCompaction[];
+  legacyCompactions?: LegacyConversationCompaction[];
   /** Conversation metadata used for imported creation and activity clocks. */
   conversationRecord?: Conversation;
   /** Latest activity recovered from the legacy thread-state payload. */
@@ -85,7 +84,7 @@ export interface LegacyImportDeps {
 
 /** Read legacy transcript data from `thread-state:<id>`. */
 async function loadThreadStateSnapshot(conversationId: string): Promise<{
-  compactions: ConversationCompaction[];
+  compactions: LegacyConversationCompaction[];
   messages: ThreadConversationMessage[];
   lastActivityAtMs?: number;
 }> {
@@ -108,7 +107,7 @@ async function loadThreadStateSnapshot(conversationId: string): Promise<{
 function intrinsicTimestamps(
   entries: SessionLogEntry[],
   visible: ThreadConversationMessage[],
-  compactions: ConversationCompaction[],
+  compactions: LegacyConversationCompaction[],
 ): number[] {
   const candidates: number[] = [];
   const pushMessageTs = (message: PiMessage): void => {
@@ -200,10 +199,20 @@ export async function importConversationFromLegacy(
     fallbackCreatedAtMs,
   });
   if (compactions.length > 0) {
+    const compacted = compactions.map((compaction) => ({
+      id: compaction.id,
+      summary: compaction.summary,
+      createdAtMs: compaction.createdAtMs,
+      coveredMessageCount: compaction.coveredMessageIds.length,
+    }));
     converted.events.push({
       seq: converted.events.length,
       contextEpoch: converted.events.at(-1)?.contextEpoch ?? 0,
-      data: { type: "visible_context_compacted", compactions },
+      data: {
+        type: "visible_context_compacted",
+        historyFromSeq: 0,
+        compactions: compacted,
+      },
       createdAtMs: compactions.at(-1)?.createdAtMs ?? fallbackCreatedAtMs,
     });
   }

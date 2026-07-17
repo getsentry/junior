@@ -152,7 +152,7 @@ describe("conversation state", () => {
     conversation.compactions.push({
       id: "compaction-1",
       summary: "older context",
-      coveredMessageIds: ["m1"],
+      coveredMessageCount: 1,
       createdAtMs: 2,
     });
     const patch = buildConversationStatePatch(conversation);

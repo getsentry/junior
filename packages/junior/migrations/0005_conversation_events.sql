@@ -70,3 +70,34 @@ SET "payload" = "payload" - 'historyMode'
 WHERE "type" = 'subagent_started'
 	AND jsonb_typeof("payload") = 'object'
 	AND "payload" ? 'historyMode';--> statement-breakpoint
+UPDATE "junior_conversation_events" AS snapshot
+SET "payload" =
+	(snapshot."payload" - 'compactions') ||
+	jsonb_build_object(
+		'historyFromSeq',
+		coalesce((
+			SELECT max(recorded."seq") + 1
+			FROM "junior_conversation_events" AS recorded
+			WHERE recorded."conversation_id" = snapshot."conversation_id"
+				AND recorded."seq" < snapshot."seq"
+				AND recorded."type" = 'visible_message_recorded'
+				AND EXISTS (
+					SELECT 1
+					FROM jsonb_array_elements(snapshot."payload"->'compactions') AS compaction,
+						jsonb_array_elements_text(compaction->'coveredMessageIds') AS covered_id(value)
+					WHERE covered_id.value = recorded."payload"->>'messageId'
+				)
+		), 0),
+		'compactions',
+		coalesce((
+			SELECT jsonb_agg(
+				(compaction - 'coveredMessageIds') ||
+				jsonb_build_object(
+					'coveredMessageCount',
+					jsonb_array_length(compaction->'coveredMessageIds')
+				)
+			)
+			FROM jsonb_array_elements(snapshot."payload"->'compactions') AS compaction
+		), '[]'::jsonb)
+	)
+WHERE snapshot."type" = 'visible_context_compacted';--> statement-breakpoint

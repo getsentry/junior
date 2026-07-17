@@ -31,22 +31,15 @@ export async function hydrateConversationMessages(args: {
     args.conversation.messages = [];
     return;
   }
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadVisibleHistory(args.conversationId);
-  const latestCompaction = await eventStore.loadLatestVisibleCompaction(
+  const history = await getConversationEventStore().loadVisibleHistory(
     args.conversationId,
   );
-  args.conversation.compactions = latestCompaction
-    ? projectVisibleConversationCompactions([latestCompaction])
+  args.conversation.compactions = history.compaction
+    ? projectVisibleConversationCompactions([history.compaction])
     : [];
-  const coveredIds = new Set(
-    args.conversation.compactions.flatMap(
-      (compaction) => compaction.coveredMessageIds,
-    ),
-  );
   args.conversation.messages = projectVisibleConversationMessages(
-    events,
-  ).filter((message) => !coveredIds.has(message.id));
+    history.events,
+  );
   updateConversationStats(args.conversation);
 }
 

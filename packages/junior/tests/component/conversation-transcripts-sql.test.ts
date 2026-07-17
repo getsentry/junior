@@ -33,6 +33,8 @@ import {
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { createConversationMemoryService } from "@/chat/services/conversation-memory";
+import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
@@ -167,9 +169,10 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
   expect(
     conversationEventDataSchema.safeParse({
       type: "visible_context_compacted",
+      historyFromSeq: 0,
       compactions: [
         {
-          coveredMessageIds: ["m1"],
+          coveredMessageCount: 1,
           createdAtMs: 1_000,
           id: "compaction-1",
           summary: "Earlier context",
@@ -345,7 +348,7 @@ describe("conversation transcript SQL stores", () => {
       {
         id: "compaction-1",
         summary: "Earlier visible context",
-        coveredMessageIds: ["m1", "m2"],
+        coveredMessageCount: 2,
         createdAtMs: 2_000,
       },
     ];
@@ -623,6 +626,46 @@ describe("conversation transcript SQL stores", () => {
     }
   });
 
+  it("does not decode events after a fixed epoch boundary", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+      await store.append(CONVERSATION_ID, [
+        {
+          data: { type: "message", message: userMessage("committed") },
+          createdAtMs: 1_000,
+        },
+        {
+          data: { type: "mcp_provider_connected", provider: "github" },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_conversation_events (
+  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+) VALUES ($1, 2, 0, 1, 'message', '{}'::jsonb, $2)
+`,
+        [CONVERSATION_ID, new Date(3_000).toISOString()],
+      );
+
+      await expect(
+        store.loadEpochContaining(CONVERSATION_ID, 1, 1),
+      ).resolves.toEqual([
+        expect.objectContaining({ seq: 0 }),
+        expect.objectContaining({ seq: 1 }),
+      ]);
+      await expect(
+        store.loadEpochContaining(CONVERSATION_ID, 1),
+      ).rejects.toThrow(/Invalid input/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("narrow reads do not decode unrelated or superseded events", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -645,31 +688,107 @@ INSERT INTO junior_conversation_events (
           CONVERSATION_ID,
           new Date(1_000).toISOString(),
           JSON.stringify({ messageId: "m1", role: "user", text: "hello" }),
-          JSON.stringify({ compactions: [] }),
+          JSON.stringify({ historyFromSeq: 2, compactions: [] }),
         ],
       );
 
-      await expect(store.loadVisibleHistory(CONVERSATION_ID)).resolves.toEqual([
-        expect.objectContaining({
-          seq: 2,
-          data: expect.objectContaining({
-            type: "visible_message_recorded",
-            messageId: "m1",
+      await expect(store.loadVisibleHistory(CONVERSATION_ID)).resolves.toEqual({
+        events: [
+          expect.objectContaining({
+            seq: 2,
+            data: expect.objectContaining({
+              type: "visible_message_recorded",
+              messageId: "m1",
+            }),
           }),
-        }),
-      ]);
-      await expect(
-        store.loadLatestVisibleCompaction(CONVERSATION_ID),
-      ).resolves.toEqual(
-        expect.objectContaining({
+        ],
+        compaction: expect.objectContaining({
           seq: 3,
-          data: { type: "visible_context_compacted", compactions: [] },
+          data: {
+            type: "visible_context_compacted",
+            historyFromSeq: 2,
+            compactions: [],
+          },
         }),
-      );
+      });
     } finally {
       await fixture.close();
     }
   });
+
+  it("keeps a bounded visible suffix after compacting more than 864 messages", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+      const conversation = coerceThreadConversationState({});
+      conversation.messages = Array.from({ length: 2_000 }, (_, index) => ({
+        id: `message-${index}`,
+        role: "user" as const,
+        text: "x".repeat(3_200),
+        createdAtMs: index + 1,
+      }));
+      await store.append(
+        CONVERSATION_ID,
+        conversation.messages.map((message) => ({
+          data: {
+            type: "visible_message_recorded" as const,
+            messageId: message.id,
+            role: message.role,
+            text: message.text,
+          },
+          createdAtMs: message.createdAtMs,
+        })),
+      );
+
+      const memory = createConversationMemoryService({
+        completeText: async () => ({ text: "summary" }) as never,
+      });
+      await memory.compactConversationIfNeeded(conversation, {});
+      const coveredMessageCount = conversation.compactions.reduce(
+        (count, compaction) => count + compaction.coveredMessageCount,
+        0,
+      );
+      expect(coveredMessageCount).toBe(2_000 - conversation.messages.length);
+      expect(coveredMessageCount).toBeGreaterThan(864);
+      expect(conversation.compactions.length).toBeLessThanOrEqual(16);
+
+      const historyFromSeq = Number(
+        conversation.messages[0]?.id.replace("message-", ""),
+      );
+      await store.append(CONVERSATION_ID, [
+        {
+          data: {
+            type: "visible_context_compacted",
+            historyFromSeq,
+            compactions: conversation.compactions,
+          },
+          createdAtMs: 3_000,
+        },
+      ]);
+      await fixture.sql.execute(
+        `
+UPDATE junior_conversation_events
+SET payload = '{}'::jsonb
+WHERE conversation_id = $1 AND seq = 0
+`,
+        [CONVERSATION_ID],
+      );
+
+      const visible = await store.loadVisibleHistory(CONVERSATION_ID);
+      expect(visible.events[0]?.seq).toBe(historyFromSeq);
+      expect(visible.events).toHaveLength(conversation.messages.length);
+      expect(
+        projectVisibleConversationMessages(visible.events).map(
+          (message) => message.id,
+        ),
+      ).toEqual(conversation.messages.map((message) => message.id));
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
 
   it("round trips provider-neutral isolated subagent history", async () => {
     const fixture = await createLocalJuniorSqlFixture();

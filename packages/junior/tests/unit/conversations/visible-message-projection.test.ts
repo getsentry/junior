@@ -70,14 +70,14 @@ describe("visible message projection", () => {
   it.each([
     "visible_message_metadata_updated",
     "visible_message_replied",
-  ] as const)("rejects %s before its recorded baseline", (type) => {
+  ] as const)("ignores %s without a live recorded baseline", (type) => {
     const data =
       type === "visible_message_metadata_updated"
         ? { type, messageId: "missing", meta: { late: true } }
         : { type, messageId: "missing" };
-    expect(() =>
-      projectVisibleConversationMessages([event(0, 1_000, data)]),
-    ).toThrow("before visible_message_recorded");
+    expect(projectVisibleConversationMessages([event(0, 1_000, data)])).toEqual(
+      [],
+    );
   });
 
   it("rejects duplicate recorded baselines", () => {
@@ -99,7 +99,7 @@ describe("visible message projection", () => {
     ).toThrow("Duplicate visible_message_recorded");
   });
 
-  it("orders equal timestamps by message id", () => {
+  it("preserves canonical event order rather than source timestamps", () => {
     expect(
       projectVisibleConversationMessages([
         event(0, 2_000, {
@@ -121,6 +121,6 @@ describe("visible message projection", () => {
           text: "a",
         }),
       ]).map((message) => message.id),
-    ).toEqual(["a", "b", "later"]);
+    ).toEqual(["later", "b", "a"]);
   });
 });

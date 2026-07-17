@@ -195,7 +195,7 @@ export function buildConversationContext(
     lines.push("<thread-compactions>");
     for (const [index, compaction] of conversation.compactions.entries()) {
       lines.push(
-        `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageIds.length}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
+        `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageCount}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
         compaction.summary,
         "  </compaction>",
       );
@@ -241,15 +241,16 @@ function pruneCompactions(
     .map((entry) => entry.summary)
     .join("\n")
     .slice(0, 3500);
-  const mergedIds = merged
-    .flatMap((entry) => entry.coveredMessageIds)
-    .slice(0, 500);
+  const coveredMessageCount = merged.reduce(
+    (count, entry) => count + entry.coveredMessageCount,
+    0,
+  );
 
   const compacted: ConversationCompaction = {
     id: generateConversationId("compaction"),
     createdAtMs: Date.now(),
     summary: mergedSummary,
-    coveredMessageIds: mergedIds,
+    coveredMessageCount,
   };
   return [compacted, ...compactions.slice(overflowCount)];
 }
@@ -427,7 +428,7 @@ async function compactConversationIfNeededWithDeps(
       id: generateConversationId("compaction"),
       createdAtMs: Date.now(),
       summary,
-      coveredMessageIds: compactedChunk.map((entry) => entry.id),
+      coveredMessageCount: compactedChunk.length,
     });
     conversation.compactions = pruneCompactions(conversation.compactions);
     conversation.messages = conversation.messages.slice(compactCount);

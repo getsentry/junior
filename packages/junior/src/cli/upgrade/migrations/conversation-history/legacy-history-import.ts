@@ -422,7 +422,20 @@ function mergeImportedChronology(
     push(visibleEvents[visibleIndex]!.event, currentEpoch);
     visibleIndex += 1;
   }
-  return merged;
+  const firstVisibleSeq = merged.find(
+    (event) => event.data.type === "visible_message_recorded",
+  )?.seq;
+  return merged.map((event) =>
+    event.data.type === "visible_context_compacted"
+      ? {
+          ...event,
+          data: {
+            ...event.data,
+            historyFromSeq: firstVisibleSeq ?? event.seq + 1,
+          },
+        }
+      : event,
+  );
 }
 
 /**
