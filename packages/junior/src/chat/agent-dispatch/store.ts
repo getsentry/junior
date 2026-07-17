@@ -62,6 +62,8 @@ const dispatchRecordSchema = z
     leaseExpiresAtMs: z.number().finite().optional(),
     maxAttempts: z.number().int().positive(),
     metadata: z.record(z.string(), z.string()).optional(),
+    nextCallbackKind: z.literal("delivery").optional(),
+    nextCallbackAtMs: z.number().finite().optional(),
     plugin: nonEmptyExactStringSchema,
     resultMessageTs: z.string().optional(),
     source: sourceSchema,

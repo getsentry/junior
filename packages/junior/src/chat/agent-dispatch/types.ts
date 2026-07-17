@@ -44,6 +44,8 @@ export interface DispatchRecord {
   maxAttempts: number;
   metadata?: Record<string, string>;
   plugin: string;
+  nextCallbackKind?: "delivery";
+  nextCallbackAtMs?: number;
   resultMessageTs?: string;
   source: Source;
   status: DispatchStatus;
@@ -61,6 +63,7 @@ export interface DispatchProjection {
 export interface DispatchCallback {
   expectedVersion: number;
   id: string;
+  kind?: "delivery";
 }
 
 export interface DispatchCreateResult {

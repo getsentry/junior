@@ -47,6 +47,7 @@ import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { repairTerminalizingSlackDelivery } from "@/chat/runtime/slack-delivery-recovery";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -155,6 +156,8 @@ async function persistRuntimePatch(args: {
 async function markDispatch(args: {
   dispatch: DispatchRecord;
   errorMessage?: string;
+  nextCallbackAtMs?: number;
+  nextCallbackKind?: "delivery";
   resultMessageTs?: string;
   status: DispatchRecord["status"];
 }): Promise<DispatchRecord> {
@@ -168,12 +171,34 @@ async function markDispatch(args: {
     return await updateDispatchRecord(state, {
       ...current,
       status: args.status,
+      nextCallbackAtMs: args.nextCallbackAtMs,
+      nextCallbackKind: args.nextCallbackKind,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       ...(args.resultMessageTs
         ? { resultMessageTs: args.resultMessageTs }
         : {}),
     });
   });
+}
+
+async function parkPendingDelivery(args: {
+  dispatch: DispatchRecord;
+  retryAtMs: number;
+  schedule: typeof scheduleDispatchCallback;
+}): Promise<void> {
+  const pending = await markDispatch({
+    dispatch: args.dispatch,
+    status: "awaiting_resume",
+    nextCallbackAtMs: args.retryAtMs,
+    nextCallbackKind: "delivery",
+  });
+  if (args.retryAtMs <= Date.now()) {
+    await args.schedule({
+      id: pending.id,
+      expectedVersion: pending.version,
+      kind: "delivery",
+    });
+  }
 }
 
 function canClaimDispatch(record: DispatchRecord, nowMs: number): boolean {
@@ -203,22 +228,29 @@ export async function processAgentDispatchCallback(
     deps.scheduleSessionCompletedPluginTasks ??
     scheduleSessionCompletedPluginTasks;
   const nowMs = Date.now();
+  const isDeliveryCallback = callback.kind === "delivery";
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(
       await state.get(getDispatchStorageKey(callback.id)),
     );
     if (
       !current ||
-      !canClaimDispatch(current, nowMs) ||
-      current.version !== callback.expectedVersion
+      current.version !== callback.expectedVersion ||
+      (isDeliveryCallback
+        ? current.nextCallbackKind !== "delivery"
+        : !canClaimDispatch(current, nowMs))
     ) {
       return undefined;
     }
     return await updateDispatchRecord(state, {
       ...current,
       lastCallbackAtMs: nowMs,
-      leaseExpiresAtMs: nowMs + DISPATCH_SLICE_LEASE_MS,
-      status: "running",
+      ...(isDeliveryCallback
+        ? {}
+        : {
+            leaseExpiresAtMs: nowMs + DISPATCH_SLICE_LEASE_MS,
+            status: "running" as const,
+          }),
     });
   });
   if (!claimedDispatch) {
@@ -251,40 +283,23 @@ export async function processAgentDispatchCallback(
     DISPATCH_SLICE_LEASE_MS,
   );
   if (!destinationLock) {
-    await markDispatch({
-      dispatch,
-      status: "pending",
-      errorMessage: "Destination conversation is busy",
-    });
+    if (isDeliveryCallback) {
+      await parkPendingDelivery({
+        dispatch,
+        retryAtMs: Date.now() + 60_000,
+        schedule: scheduleCallback,
+      });
+    } else {
+      await markDispatch({
+        dispatch,
+        status: "pending",
+        errorMessage: "Destination conversation is busy",
+      });
+    }
     return;
   }
 
   try {
-    const startedDispatch = await withDispatchLock(
-      dispatch.id,
-      async (state) => {
-        const current = parseDispatchRecord(
-          await state.get(getDispatchStorageKey(dispatch.id)),
-        );
-        if (
-          !current ||
-          current.status !== "running" ||
-          current.version !== dispatch.version ||
-          current.attempt >= current.maxAttempts
-        ) {
-          return undefined;
-        }
-        return await updateDispatchRecord(state, {
-          ...current,
-          attempt: current.attempt + 1,
-        });
-      },
-    );
-    if (!startedDispatch) {
-      return;
-    }
-    dispatch = startedDispatch;
-
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
     await hydrateConversationMessages({ conversation, conversationId });
@@ -293,10 +308,16 @@ export async function processAgentDispatchCallback(
       turnId,
     });
     if (pendingDelivery) {
-      const recovered =
-        await deps.recoverableSlackDelivery.advance(pendingDelivery);
+      const recovered = await deps.recoverableSlackDelivery.advance(
+        pendingDelivery,
+        { beforeTerminalize: repairTerminalizingSlackDelivery },
+      );
       if (recovered.outcome === "pending") {
-        await markDispatch({ dispatch, status: "awaiting_resume" });
+        await parkPendingDelivery({
+          dispatch,
+          retryAtMs: recovered.retryAtMs,
+          schedule: scheduleCallback,
+        });
         return;
       }
       await hydrateConversationMessages({ conversation, conversationId });
@@ -366,6 +387,32 @@ export async function processAgentDispatchCallback(
       });
       return;
     }
+    if (isDeliveryCallback) {
+      throw new Error("Delivery callback has no pending delivery outcome");
+    }
+
+    const startedDispatch = await withDispatchLock(
+      dispatch.id,
+      async (state) => {
+        const current = parseDispatchRecord(
+          await state.get(getDispatchStorageKey(dispatch.id)),
+        );
+        if (
+          !current ||
+          current.status !== "running" ||
+          current.version !== dispatch.version ||
+          current.attempt >= current.maxAttempts
+        ) {
+          return undefined;
+        }
+        return await updateDispatchRecord(state, {
+          ...current,
+          attempt: current.attempt + 1,
+        });
+      },
+    );
+    if (!startedDispatch) return;
+    dispatch = startedDispatch;
 
     let artifacts = coerceThreadArtifactsState(persisted);
     let sandboxId =
@@ -517,9 +564,6 @@ export async function processAgentDispatchCallback(
     }
 
     const deliveryReply = ensureVisibleDeliveryText(reply);
-    if (dispatch.source.platform !== "slack") {
-      throw new Error("Slack dispatch delivery requires a Slack source");
-    }
     const plannedPosts = planSlackReplyPosts({ reply: deliveryReply }).filter(
       (post) => post.text.trim().length > 0,
     );
@@ -537,7 +581,7 @@ export async function processAgentDispatchCallback(
           route: { channelId: dispatch.destination.channelId },
           publicLocator: createSlackDeliveryLocator(),
           session: {
-            surface: "slack",
+            surface: "api",
             source: dispatch.source,
             destination: dispatch.destination,
             destinationVisibility: dispatch.destinationVisibility,
@@ -588,9 +632,15 @@ export async function processAgentDispatchCallback(
           },
         },
       });
-      const delivery = await deps.recoverableSlackDelivery.advance(intent);
+      const delivery = await deps.recoverableSlackDelivery.advance(intent, {
+        beforeTerminalize: repairTerminalizingSlackDelivery,
+      });
       if (delivery.outcome === "pending") {
-        await markDispatch({ dispatch, status: "awaiting_resume" });
+        await parkPendingDelivery({
+          dispatch,
+          retryAtMs: delivery.retryAtMs,
+          schedule: scheduleCallback,
+        });
         return;
       }
       lifecycleTerminalized = true;
@@ -646,7 +696,7 @@ export async function processAgentDispatchCallback(
         "Failed to persist delivered dispatch state after Slack accepted the reply",
       );
     }
-    if (reply.piMessages?.length) {
+    if (reply.piMessages?.length && !deliveryTerminalized) {
       // Destination acceptance is the completion boundary for the session
       // record too; this call swallows its own persistence failures.
       await completeDeliveredTurn({
@@ -725,6 +775,28 @@ export async function processAgentDispatchCallback(
       }
     }
   } catch (error) {
+    const unresolvedDelivery = await deps.recoverableSlackDelivery.loadByTurn({
+      conversationId,
+      turnId,
+    });
+    if (unresolvedDelivery) {
+      logException(
+        error,
+        "agent_dispatch_delivery_advance_failed",
+        logContext,
+        {},
+        "Failed to advance durable dispatch delivery",
+      );
+      await parkPendingDelivery({
+        dispatch,
+        retryAtMs: Math.max(
+          unresolvedDelivery.nextAttemptAtMs,
+          Date.now() + 5_000,
+        ),
+        schedule: scheduleCallback,
+      });
+      return;
+    }
     if (error instanceof AuthorizationFlowDisabledError) {
       if (lifecycleStart && !lifecycleTerminalized) {
         await deps.turnLifecycle.start(lifecycleStart);

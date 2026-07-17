@@ -14,10 +14,10 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
-import {
-  postRecoverableSlackMessage,
-  reconcileRecoverableSlackMessage,
-} from "@/chat/slack/outbound";
+import { postRecoverableSlackMessage } from "@/chat/slack/outbound";
+import { GET as heartbeat } from "@/handlers/heartbeat";
+import { createWaitUntilCollector } from "../fixtures/wait-until";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 function makeDiagnostics(
   outcome: "success" | "execution_failure" | "provider_error" = "success",
@@ -69,6 +69,8 @@ describe("oauth resume slack integration", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
+    delete process.env.JUNIOR_SCHEDULER_SECRET;
+    vi.useRealTimers();
   });
 
   it("posts resumed status updates through the Slack MSW harness", async () => {
@@ -157,7 +159,8 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
-  it("recovers an accepted correlated reply without rerunning or reposting", async () => {
+  it("recovers a resumed pending delivery on heartbeat without rerunning or reposting", async () => {
+    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
     const { upsertAgentTurnSessionRecord } =
@@ -189,7 +192,7 @@ describe("oauth resume slack integration", () => {
       getSqlExecutor(),
       {
         post: postRecoverableSlackMessage,
-        reconcile: reconcileRecoverableSlackMessage,
+        reconcile: vi.fn(),
       },
     );
     const run = vi.fn(async () =>
@@ -203,7 +206,9 @@ describe("oauth resume slack integration", () => {
         }),
       }),
     );
-    const onSuccess = vi.fn(async () => undefined);
+    const onSuccess = vi.fn(async () => {
+      throw new Error("repair crashed");
+    });
     const onRecoveredSuccess = vi.fn(async () => undefined);
 
     const resumeArgs: Parameters<typeof resumeAuthorizedRequest>[0] = {
@@ -236,11 +241,20 @@ describe("oauth resume slack integration", () => {
     };
 
     await resumeAuthorizedRequest(resumeArgs);
-    await resumeAuthorizedRequest(resumeArgs);
+    const waitUntil = createWaitUntilCollector();
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      waitUntil.fn,
+      { recoverableSlackDelivery },
+    );
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(onSuccess).toHaveBeenCalledTimes(1);
-    expect(onRecoveredSuccess).toHaveBeenCalledTimes(1);
+    expect(onRecoveredSuccess).not.toHaveBeenCalled();
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
@@ -278,6 +292,9 @@ describe("oauth resume slack integration", () => {
       },
       { type: "turn_completed", turnId: "turn-1", outcome: "success" },
     ]);
+    await expect(
+      getAgentTurnSessionRecord("conversation-1", "turn-1"),
+    ).resolves.toMatchObject({ state: "completed" });
   });
 
   it("records one terminal failure when a correlated resume fails", async () => {

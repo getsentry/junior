@@ -34,9 +34,9 @@ runtime orchestration.
 
 ### Recoverable Delivery Ownership
 
-Ordinary finalized assistant replies close the external-acceptance gap through
-the Slack-owned pending-delivery outbox. Private authorization, continuation,
-and nonstandard notice paths are not covered by that outbox.
+Finalized assistant replies, including OAuth and continuation resumes, close
+the external-acceptance gap through the Slack-owned pending-delivery outbox.
+Private authorization and nonstandard notice paths are not covered by it.
 
 `delivery-command.ts` owns the strict persisted Slack reply command and progress
 schemas. `delivery-outbox.ts` owns fenced SQL control state and atomic
@@ -64,6 +64,10 @@ also requires the atomically finalized visible assistant message before it
 classifies another terminal as accepted. Permanent reconciliation rejections
 remain uncertain and use an operator-recovery backoff rather than authorizing a
 duplicate post.
+
+The authenticated heartbeat scans due intents oldest-first. It never invokes
+Pi, and repairs session/thread projections before terminalization deletes the
+last durable retry marker.
 
 `outbound.ts` owns Slack API calls and retry classification. `mrkdwn.ts` owns
 format conversion. `assistant-thread/` owns assistant-thread lifecycle and

@@ -18,6 +18,7 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 /**
  * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
  * authority the resume handlers now read from. Takes the connected adapter so it
@@ -947,6 +948,95 @@ describe("oauth callback slack integration", () => {
 
     expect(response.status).toBe(200);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
+  it("repairs a completed session at the OAuth handler gate without rerunning Pi", async () => {
+    const conversationId = "slack:C123:1700000000.013";
+    const sessionId = "turn_msg_13";
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "completed",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.013"),
+      piMessages: [],
+      actor: { platform: "slack", teamId: "T123", userId: "U123" },
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-completed-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        destination: SLACK_DESTINATION,
+        source: slackSource("1700000000.013"),
+        threadTs: "1700000000.013",
+        pendingMessage: "list my sentry issues",
+        resumeConversationId: conversationId,
+        resumeSessionId: sessionId,
+      });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [
+            {
+              id: "msg.13",
+              role: "user",
+              text: "list my sentry issues",
+              createdAtMs: 1,
+              author: { userId: "U123", userName: "dcramer" },
+            },
+            {
+              id: `assistant:${sessionId}`,
+              role: "assistant",
+              text: "Already delivered",
+              createdAtMs: 2,
+              author: { isBot: true, userName: "junior" },
+              meta: { replied: true },
+            },
+          ],
+          processing: { activeTurnId: sessionId },
+        },
+      });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
+    const delivery = {
+      createIntent: vi.fn(),
+      loadByConversation: vi.fn(async () => undefined),
+      loadByTurn: vi.fn(async () => undefined),
+      listDue: vi.fn(async () => []),
+      loadTerminalOutcome: vi.fn(async () => ({
+        deliveryOutcome: "accepted" as const,
+        modelSucceeded: true,
+      })),
+      advance: vi.fn(),
+    } satisfies RecoverableSlackDelivery;
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-completed-state",
+      code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
+      recoverableSlackDelivery: delivery,
+    });
+
+    expect(response.status).toBe(200);
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
+    expect(delivery.loadTerminalOutcome).toHaveBeenCalledWith({
+      conversationId,
+      turnId: sessionId,
+      acceptanceEvidence: "visible_assistant",
+    });
+    const repaired = await stateAdapterModule.getStateAdapter().get<{
+      conversation?: { processing?: { activeTurnId?: string } };
+    }>(`thread-state:${conversationId}`);
+    expect(repaired?.conversation?.processing?.activeTurnId).toBeUndefined();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 });

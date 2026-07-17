@@ -3,6 +3,8 @@ import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import { recoverDueSlackDeliveries } from "@/chat/runtime/slack-delivery-recovery";
 import { createHeartbeatContext } from "./context";
 import { scheduleDispatchCallback } from "./signing";
 import {
@@ -26,6 +28,8 @@ function isStaleDispatch(args: {
   record: {
     lastCallbackAtMs?: number;
     leaseExpiresAtMs?: number;
+    nextCallbackKind?: "delivery";
+    nextCallbackAtMs?: number;
     status: string;
   };
 }): boolean {
@@ -33,6 +37,15 @@ function isStaleDispatch(args: {
     return (
       typeof args.record.leaseExpiresAtMs === "number" &&
       args.record.leaseExpiresAtMs <= args.nowMs
+    );
+  }
+  if (
+    args.record.status === "awaiting_resume" &&
+    args.record.nextCallbackKind === "delivery"
+  ) {
+    return (
+      typeof args.record.nextCallbackAtMs !== "number" ||
+      args.record.nextCallbackAtMs <= args.nowMs
     );
   }
   if (args.record.status === "awaiting_resume") {
@@ -116,7 +129,10 @@ export async function recoverStaleDispatches(args: {
         });
         continue;
       }
-      if (record.attempt >= record.maxAttempts) {
+      if (
+        record.nextCallbackKind !== "delivery" &&
+        record.attempt >= record.maxAttempts
+      ) {
         await failDispatch({
           record,
           errorMessage: "Dispatch exceeded retry attempts.",
@@ -126,6 +142,9 @@ export async function recoverStaleDispatches(args: {
       await scheduleDispatchCallback({
         id: record.id,
         expectedVersion: record.version,
+        ...(record.nextCallbackKind === "delivery"
+          ? { kind: "delivery" as const }
+          : {}),
       });
       recovered += 1;
     } catch (error) {
@@ -199,11 +218,18 @@ export async function runPluginHeartbeats(args: {
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
   nowMs: number;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
 }): Promise<void> {
   await recoverConversationWork({
     nowMs: args.nowMs,
     queue: args.conversationWorkQueue ?? getVercelConversationWorkQueue(),
   });
+  if (args.recoverableSlackDelivery) {
+    await recoverDueSlackDeliveries({
+      delivery: args.recoverableSlackDelivery,
+      nowMs: args.nowMs,
+    });
+  }
   await recoverStaleDispatches({ nowMs: args.nowMs });
   await runPluginHeartbeats({ nowMs: args.nowMs });
 }

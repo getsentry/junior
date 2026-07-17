@@ -28,6 +28,7 @@ describe("agent dispatch callback signing", () => {
     await scheduleDispatchCallback({
       id: "dispatch_123",
       expectedVersion: 3,
+      kind: "delivery",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -42,6 +43,7 @@ describe("agent dispatch callback signing", () => {
     await expect(verifyDispatchCallbackRequest(request)).resolves.toEqual({
       id: "dispatch_123",
       expectedVersion: 3,
+      kind: "delivery",
     });
   });
 

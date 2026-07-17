@@ -3,9 +3,11 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
 }
 
 function getHeartbeatSecret(): string | undefined {
@@ -45,6 +47,7 @@ export async function GET(
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,
       nowMs,
+      recoverableSlackDelivery: options.recoverableSlackDelivery,
     }).catch((error) => {
       logException(
         error,

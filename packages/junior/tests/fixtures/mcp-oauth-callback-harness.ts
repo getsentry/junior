@@ -6,12 +6,14 @@ import {
   testWaitUntil,
 } from "./oauth-callback-after-harness";
 import { realAgentRunner } from "./agent-runner";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
@@ -24,6 +26,7 @@ export async function runMcpOauthCallbackRoute(args: {
     testWaitUntil,
     {
       agentRunner: args.agentRunner ?? realAgentRunner,
+      recoverableSlackDelivery: args.recoverableSlackDelivery,
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
       ),

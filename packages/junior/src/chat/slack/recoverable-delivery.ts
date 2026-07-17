@@ -11,6 +11,7 @@ import {
   claimPendingConversationDelivery,
   createPendingConversationDelivery,
   loadDeliveryTerminalOutcome,
+  listDuePendingDeliveries,
   loadPendingDeliveryByConversation,
   loadPendingDeliveryByTurn,
   markPendingDeliveryPosting,
@@ -84,6 +85,24 @@ export type RecoverableSlackDeliveryOutcome =
   | { outcome: "failed" }
   | { outcome: "pending"; retryAtMs: number };
 
+export interface RecoverableSlackDeliveryTerminalizingInput {
+  command: PendingConversationDeliveryCommand;
+  conversationId: string;
+  deliveryOutcome: "accepted" | "failed";
+  deliveryId: string;
+  turnId: string;
+}
+
+export interface RecoverableSlackDeliveryAdvanceOptions {
+  /**
+   * Repair non-SQL projections before the durable intent can be deleted.
+   * The callback must be idempotent because a later SQL failure retries it.
+   */
+  beforeTerminalize?: (
+    input: RecoverableSlackDeliveryTerminalizingInput,
+  ) => Promise<void>;
+}
+
 /** Slack delivery capabilities consumed by the turn executor. */
 export interface RecoverableSlackDelivery {
   createIntent(args: {
@@ -100,6 +119,10 @@ export interface RecoverableSlackDelivery {
   loadByConversation(args: {
     conversationId: string;
   }): Promise<PendingConversationDelivery | undefined>;
+  listDue(args: {
+    limit: number;
+    nowMs: number;
+  }): Promise<PendingConversationDelivery[]>;
   loadTerminalOutcome(args: {
     conversationId: string;
     turnId: string;
@@ -107,6 +130,7 @@ export interface RecoverableSlackDelivery {
   }): Promise<PendingDeliveryTerminalOutcome | undefined>;
   advance(
     pending: PendingConversationDelivery,
+    options?: RecoverableSlackDeliveryAdvanceOptions,
   ): Promise<RecoverableSlackDeliveryOutcome>;
 }
 
@@ -349,6 +373,14 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
     return loadPendingDeliveryByConversation(this.sql, args);
   }
 
+  /** List due intents without claiming them. */
+  async listDue(args: {
+    limit: number;
+    nowMs: number;
+  }): Promise<PendingConversationDelivery[]> {
+    return listDuePendingDeliveries(this.sql, args);
+  }
+
   /** Resolve the canonical turn terminal after an ambiguous outbox commit. */
   async loadTerminalOutcome(args: {
     conversationId: string;
@@ -361,6 +393,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
   /** Claim and advance one pending delivery until it must defer or terminalizes. */
   async advance(
     pending: PendingConversationDelivery,
+    options: RecoverableSlackDeliveryAdvanceOptions = {},
   ): Promise<RecoverableSlackDeliveryOutcome> {
     const nowMs = this.now();
     const claimed = await claimPendingConversationDelivery(this.sql, {
@@ -583,6 +616,13 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
       const failed = current.progress.currentState.status === "failed";
       if (failed) {
         try {
+          await options.beforeTerminalize?.({
+            command: current.command,
+            conversationId: current.conversationId,
+            deliveryOutcome: "failed",
+            deliveryId: current.deliveryId,
+            turnId: current.turnId,
+          });
           await terminalizeFailedPendingDelivery(this.sql, {
             conversationId: current.conversationId,
             deliveryId: current.deliveryId,
@@ -634,6 +674,13 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
         return { outcome: "failed" };
       }
       try {
+        await options.beforeTerminalize?.({
+          command: current.command,
+          conversationId: current.conversationId,
+          deliveryOutcome: "accepted",
+          deliveryId: current.deliveryId,
+          turnId: current.turnId,
+        });
         await terminalizeAcceptedPendingDelivery(this.sql, {
           conversationId: current.conversationId,
           deliveryId: current.deliveryId,

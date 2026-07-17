@@ -93,6 +93,51 @@ async function createDelivery(
 }
 
 describe("pending conversation delivery outbox", () => {
+  it("validates the delivery destination independently from source provenance", () => {
+    const base = command();
+    const localSource = {
+      ...base,
+      route: { channelId: "C123" },
+      session: {
+        ...base.session,
+        source: {
+          platform: "local" as const,
+          type: "priv" as const,
+          conversationId: "local:cli:dispatch",
+        },
+      },
+    };
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse(localSource).success,
+    ).toBe(true);
+
+    const crossChannelSource = {
+      ...base,
+      route: { channelId: "C123", threadTs: "1718999999.000001" },
+      session: {
+        ...base.session,
+        source: {
+          platform: "slack" as const,
+          teamId: "T999",
+          channelId: "C999",
+          type: "priv" as const,
+          messageTs: "1718000000.000001",
+          threadTs: "1718000000.000000",
+        },
+      },
+    };
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse(crossChannelSource)
+        .success,
+    ).toBe(true);
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse({
+        ...crossChannelSource,
+        route: { ...crossChannelSource.route, channelId: "C998" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates a narrow immutable command and creates control state idempotently", async () => {
     expect(
       conversationDeliveryFailureCodeSchema.safeParse("retry_exhausted")

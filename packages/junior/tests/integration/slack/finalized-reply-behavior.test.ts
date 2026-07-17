@@ -345,6 +345,7 @@ describe("Slack behavior: finalized thread replies", () => {
     const recoverableSlackDelivery = {
       loadByTurn: vi.fn(async () => pending as never),
       loadByConversation: vi.fn(async () => pending as never),
+      listDue: vi.fn(async () => []),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {
         pending = {
@@ -452,6 +453,7 @@ describe("Slack behavior: finalized thread replies", () => {
           recoverableSlackDelivery: {
             loadByConversation: vi.fn(async () => older),
             loadByTurn: vi.fn(async () => older),
+            listDue: vi.fn(async () => []),
             loadTerminalOutcome: vi.fn(async () => undefined),
             createIntent: vi.fn(),
             advance: vi.fn(async () => ({ outcome: "accepted" as const })),
@@ -499,6 +501,7 @@ describe("Slack behavior: finalized thread replies", () => {
           recoverableSlackDelivery: {
             loadByConversation: vi.fn(async () => undefined),
             loadByTurn: vi.fn(async () => undefined),
+            listDue: vi.fn(async () => []),
             loadTerminalOutcome: vi.fn(async () => ({
               deliveryOutcome: "accepted" as const,
               modelSucceeded: true,
@@ -556,6 +559,7 @@ describe("Slack behavior: finalized thread replies", () => {
           recoverableSlackDelivery: {
             loadByConversation: vi.fn(async () => undefined),
             loadByTurn: vi.fn(async () => undefined),
+            listDue: vi.fn(async () => []),
             loadTerminalOutcome: vi.fn(async () => ({
               deliveryOutcome: "accepted" as const,
               modelSucceeded: true,
@@ -591,6 +595,7 @@ describe("Slack behavior: finalized thread replies", () => {
     const recoverableSlackDelivery = {
       loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
+      listDue: vi.fn(async () => []),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => ({
         ...args,
@@ -650,6 +655,7 @@ describe("Slack behavior: finalized thread replies", () => {
     const recoverableSlackDelivery = {
       loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => intent as never),
+      listDue: vi.fn(async () => []),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {
         intent = {

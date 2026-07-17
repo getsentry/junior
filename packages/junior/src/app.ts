@@ -697,7 +697,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil);
+    return heartbeatGET(c.req.raw, waitUntil, { recoverableSlackDelivery });
   });
 
   app.get("/api/internal/retention", (c) => {

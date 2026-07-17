@@ -32,6 +32,7 @@ import {
   buildDeliveredTurnStatePatch,
   buildRecoveredDeliveredTurnStatePatch,
 } from "@/chat/runtime/delivered-turn-state";
+import { recoverSlackDeliveryForTurn } from "@/chat/runtime/slack-delivery-recovery";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   buildOAuthTokenRequest,
@@ -118,7 +119,7 @@ async function persistCompletedOAuthReplyState(args: {
     : buildRecoveredDeliveredTurnStatePatch({
         conversation,
         sessionId: args.sessionId,
-        userMessageId: userMessage?.id,
+        inputMessageIds: userMessage ? [userMessage.id] : [],
       });
 
   await persistThreadStateById(args.conversationId, {
@@ -254,6 +255,20 @@ async function resumeOAuthSessionRecordTurn(
   );
   if (!sessionRecord) {
     return false;
+  }
+  const recoveredDelivery = await recoverSlackDeliveryForTurn({
+    conversationId: stored.resumeConversationId,
+    delivery: options.recoverableSlackDelivery,
+    turnId: resolvedSessionId,
+  });
+  if (recoveredDelivery) {
+    if (recoveredDelivery.outcome === "accepted") {
+      await persistCompletedOAuthReplyState({
+        conversationId: stored.resumeConversationId,
+        sessionId: resolvedSessionId,
+      });
+    }
+    return true;
   }
   // Terminal session record states are already handled; do not fall through to
   // the pending-message resume which would re-post the original request.

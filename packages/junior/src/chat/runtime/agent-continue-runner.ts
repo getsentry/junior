@@ -86,6 +86,7 @@ import {
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import { recoverSlackDeliveryForTurn } from "@/chat/runtime/slack-delivery-recovery";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -131,7 +132,7 @@ async function persistCompletedReplyState(args: {
     : buildRecoveredDeliveredTurnStatePatch({
         conversation,
         sessionId: args.sessionRecord.sessionId,
-        userMessageId: userMessage?.id,
+        inputMessageIds: userMessage ? [userMessage.id] : [],
       });
 
   await persistThreadStateById(args.sessionRecord.conversationId, {
@@ -327,6 +328,15 @@ export async function continueSlackAgentRun(
     beforeStart: async () => {
       let sessionRecord: AgentTurnSessionRecord | undefined;
       try {
+        if (
+          await recoverSlackDeliveryForTurn({
+            conversationId: payload.conversationId,
+            delivery: options.recoverableSlackDelivery,
+            turnId: payload.sessionId,
+          })
+        ) {
+          return false;
+        }
         sessionRecord = await getAgentTurnSessionRecord(
           payload.conversationId,
           payload.sessionId,

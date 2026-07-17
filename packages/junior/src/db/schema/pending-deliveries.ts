@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -42,6 +43,7 @@ export const juniorPendingDeliveries = pgTable(
     uniqueIndex("junior_pending_deliveries_conversation_idx").on(
       table.conversationId,
     ),
+    index("junior_pending_deliveries_due_idx").on(table.nextAttemptAt),
     check(
       "junior_pending_deliveries_lease_version_check",
       sql`${table.leaseVersion} >= 0`,

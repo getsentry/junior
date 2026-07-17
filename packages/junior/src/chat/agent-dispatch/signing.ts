@@ -41,13 +41,15 @@ function parseDispatchCallback(value: unknown): DispatchCallback | undefined {
   const record = value as Record<string, unknown>;
   if (
     typeof record.id !== "string" ||
-    typeof record.expectedVersion !== "number"
+    typeof record.expectedVersion !== "number" ||
+    (record.kind !== undefined && record.kind !== "delivery")
   ) {
     return undefined;
   }
   return {
     id: record.id,
     expectedVersion: record.expectedVersion,
+    ...(record.kind === "delivery" ? { kind: "delivery" as const } : {}),
   };
 }
 

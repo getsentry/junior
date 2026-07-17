@@ -5,7 +5,7 @@
  * conversation facts and deletes the outbox row under the conversation lock.
  */
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorPendingDeliveries } from "@/db/schema";
@@ -243,6 +243,37 @@ export async function loadPendingDeliveryByConversation(
     .where(eq(juniorPendingDeliveries.conversationId, args.conversationId))
     .limit(1);
   return rows[0] ? parseRow(rows[0]) : undefined;
+}
+
+/** List due, unclaimed delivery intents for bounded background recovery. */
+export async function listDuePendingDeliveries(
+  executor: JuniorSqlDatabase,
+  args: { limit: number; nowMs: number },
+): Promise<PendingConversationDelivery[]> {
+  const nowMs = validateTime(args.nowMs, "nowMs");
+  if (!Number.isInteger(args.limit) || args.limit <= 0) {
+    throw new Error("Pending delivery recovery limit must be positive");
+  }
+  const now = new Date(nowMs);
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorPendingDeliveries)
+    .where(
+      and(
+        lte(juniorPendingDeliveries.nextAttemptAt, now),
+        or(
+          isNull(juniorPendingDeliveries.leaseExpiresAt),
+          lte(juniorPendingDeliveries.leaseExpiresAt, now),
+        ),
+      ),
+    )
+    .orderBy(
+      asc(juniorPendingDeliveries.nextAttemptAt),
+      asc(juniorPendingDeliveries.deliveryId),
+    )
+    .limit(args.limit);
+  return rows.map(parseRow);
 }
 
 /** Claim a due delivery; stale `posting` state becomes uncertain, never pending. */

@@ -200,6 +200,55 @@ describe("recoverable Slack delivery", () => {
     }
   });
 
+  it("retains accepted intent when pre-terminal repair crashes", async () => {
+    let posted = 0;
+    const port: RecoverableSlackDeliveryPort = {
+      post: vi.fn(async () => ({
+        outcome: "accepted" as const,
+        ts: `1718123457.00000${++posted}` as never,
+      })),
+      reconcile: vi.fn(),
+    };
+    const test = await setup(port);
+    const repair = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("repair crashed"))
+      .mockResolvedValue(undefined);
+    try {
+      await expect(
+        test.service.advance(test.pending, {
+          beforeTerminalize: repair,
+        }),
+      ).rejects.toThrow("repair crashed");
+      const retained = await test.service.loadByTurn({
+        conversationId,
+        turnId: "turn-1",
+      });
+      expect(retained?.progress.acceptedPartCount).toBe(2);
+      expect(
+        await test.service.loadTerminalOutcome({
+          conversationId,
+          turnId: "turn-1",
+          acceptanceEvidence: "known_outbox_intent",
+        }),
+      ).toBeUndefined();
+
+      await expect(
+        test.service.advance(retained!, { beforeTerminalize: repair }),
+      ).resolves.toEqual({
+        outcome: "accepted",
+        messageTs: "1718123457.000002",
+      });
+      expect(port.post).toHaveBeenCalledTimes(2);
+      expect(repair).toHaveBeenCalledTimes(2);
+      await expect(
+        test.service.loadByTurn({ conversationId, turnId: "turn-1" }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await test.fixture.close();
+    }
+  });
+
   it("reconciles an ambiguous accepted write without reposting part one", async () => {
     const post = vi
       .fn<RecoverableSlackDeliveryPort["post"]>()

@@ -86,7 +86,7 @@ describe("delivered turn state", () => {
     const repaired = buildRecoveredDeliveredTurnStatePatch({
       conversation,
       sessionId: "turn-1",
-      userMessageId: "message-1",
+      inputMessageIds: ["message-1"],
     });
 
     expect(repaired.conversation.processing).toMatchObject({

@@ -42,9 +42,11 @@ this directory owns product orchestration around it.
   back to the pre-intent cursor. A partial multipart rejection records only the
   accepted Slack prefix as visible, retains full model/tool continuity, and
   terminalizes as `delivery_failed`.
-- Authorization/private notices, resumed continuation delivery, canvas
-  recovery, and generic Chat SDK fallback notices remain outside the ordinary
-  finalized-reply outbox and retain their owning delivery semantics.
+- Final replies from OAuth and continuation resumes use the same outbox.
+  Heartbeat advances due intents without rerunning Pi, and repairs session and
+  derived thread state before terminalization can delete the intent.
+- Authorization/private notices, canvas recovery, and generic Chat SDK
+  fallback notices retain their owning delivery semantics.
 - Recovery repairs canonical conversation state and terminal session metadata;
   exact reconstruction of artifact-only Redis scratch after process loss
   remains a separate bounded follow-up rather than widening the durable reply

@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   actorSchema,
   slackDestinationSchema,
-  slackSourceSchema,
+  sourceSchema,
 } from "@sentry/junior-plugin-api";
 import { agentTurnUsageSchema } from "@/chat/usage";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
@@ -63,8 +63,8 @@ export const pendingConversationDeliveryCommandSchema = z
     publicLocator: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
     session: z
       .object({
-        surface: z.literal("slack"),
-        source: slackSourceSchema,
+        surface: z.enum(["slack", "api"]),
+        source: sourceSchema,
         destination: slackDestinationSchema,
         destinationVisibility: z.enum(["public", "private"]).optional(),
         actor: actorSchema.optional(),
@@ -146,17 +146,10 @@ export const pendingConversationDeliveryCommandSchema = z
         path: ["completion", "model", "rollbackSeq"],
       });
     }
-    const sourceThreadTs =
-      command.session.source.threadTs ?? command.session.source.messageTs;
-    if (
-      command.route.channelId !== command.session.source.channelId ||
-      command.route.channelId !== command.session.destination.channelId ||
-      command.session.source.teamId !== command.session.destination.teamId ||
-      command.route.threadTs !== sourceThreadTs
-    ) {
+    if (command.route.channelId !== command.session.destination.channelId) {
       ctx.addIssue({
         code: "custom",
-        message: "delivery route and session coordinates must match",
+        message: "delivery route must match the session destination",
         path: ["route"],
       });
     }

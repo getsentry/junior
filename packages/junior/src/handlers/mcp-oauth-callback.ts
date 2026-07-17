@@ -29,6 +29,7 @@ import {
   buildDeliveredTurnStatePatch,
   buildRecoveredDeliveredTurnStatePatch,
 } from "@/chat/runtime/delivered-turn-state";
+import { recoverSlackDeliveryForTurn } from "@/chat/runtime/slack-delivery-recovery";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
@@ -150,7 +151,7 @@ async function persistCompletedReplyState(
     : buildRecoveredDeliveredTurnStatePatch({
         conversation,
         sessionId,
-        userMessageId: userMessage?.id,
+        inputMessageIds: userMessage ? [userMessage.id] : [],
       });
 
   await persistThreadStateById(threadId, {
@@ -247,6 +248,21 @@ async function resumeAuthorizedMcpTurn(args: {
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({ conversation, conversationId: threadId });
+  const recoveredDelivery = await recoverSlackDeliveryForTurn({
+    conversationId: authSession.conversationId,
+    delivery: recoverableSlackDelivery,
+    turnId: authSession.sessionId,
+  });
+  if (recoveredDelivery) {
+    if (recoveredDelivery.outcome === "accepted") {
+      await persistCompletedReplyState(
+        authSession.channelId,
+        authSession.threadTs,
+        authSession.sessionId,
+      );
+    }
+    return;
+  }
   const pendingAuth = getConversationPendingAuth({
     conversation,
     kind: "mcp",

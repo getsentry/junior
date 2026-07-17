@@ -6,7 +6,7 @@ import {
   mergeArtifactsState,
   type ThreadStatePatch,
 } from "@/chat/runtime/thread-state";
-import { markTurnCompleted } from "@/chat/runtime/turn";
+import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import {
   markConversationMessage,
   normalizeConversationText,
@@ -75,20 +75,64 @@ export function buildDeliveredTurnStatePatch(args: {
 
 /** Repair derived thread state after canonical SQL proves delivery completed. */
 export function buildRecoveredDeliveredTurnStatePatch(args: {
+  assistantMessage?: {
+    author: { isBot: true; userName: string };
+    createdAtMs: number;
+    messageId: string;
+    text: string;
+  };
   conversation: ThreadConversationState;
   sessionId: string;
-  userMessageId?: string;
+  inputMessageIds?: readonly string[];
 }): { conversation: ThreadConversationState } {
   const conversation = structuredClone(args.conversation);
   clearPendingAuth(conversation, args.sessionId);
-  markConversationMessage(conversation, args.userMessageId, {
-    replied: true,
-    skippedReason: undefined,
-  });
+  for (const messageId of args.inputMessageIds ?? []) {
+    markConversationMessage(conversation, messageId, {
+      replied: true,
+      skippedReason: undefined,
+    });
+  }
+  if (args.assistantMessage) {
+    upsertConversationMessage(conversation, {
+      id: args.assistantMessage.messageId,
+      role: "assistant",
+      text:
+        normalizeConversationText(args.assistantMessage.text) ||
+        "[empty response]",
+      createdAtMs: args.assistantMessage.createdAtMs,
+      author: args.assistantMessage.author,
+      meta: { replied: true },
+    });
+  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
     sessionId: args.sessionId,
+    updateConversationStats,
+  });
+  return { conversation };
+}
+
+/** Repair derived thread state after canonical SQL proves delivery failed. */
+export function buildRecoveredFailedDeliveryStatePatch(args: {
+  conversation: ThreadConversationState;
+  sessionId: string;
+  inputMessageIds?: readonly string[];
+}): { conversation: ThreadConversationState } {
+  const conversation = structuredClone(args.conversation);
+  clearPendingAuth(conversation, args.sessionId);
+  for (const messageId of args.inputMessageIds ?? []) {
+    markConversationMessage(conversation, messageId, {
+      replied: false,
+      skippedReason: "reply failed",
+    });
+  }
+  markTurnFailed({
+    conversation,
+    nowMs: Date.now(),
+    sessionId: args.sessionId,
+    markConversationMessage,
     updateConversationStats,
   });
   return { conversation };

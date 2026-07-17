@@ -684,6 +684,53 @@ describe("plugin heartbeat", () => {
     });
   });
 
+  it("schedules due delivery recovery independently from model attempts and leases", async () => {
+    const fetchMock = mockDispatchCallbackFetch(originalFetch);
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-delivery-recovery",
+        destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
+        input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
+      },
+    });
+    await withDispatchLock(created.record.id, async (state) => {
+      const record = await state.get<DispatchRecord>(
+        getDispatchStorageKey(created.record.id),
+      );
+      if (!record) throw new Error("Expected dispatch record to exist");
+      await updateDispatchRecord(state, {
+        ...record,
+        attempt: record.maxAttempts,
+        leaseExpiresAtMs: Date.parse("2026-05-26T13:00:00.000Z"),
+        nextCallbackAtMs: Date.parse("2026-05-26T12:04:00.000Z"),
+        nextCallbackKind: "delivery",
+        status: "awaiting_resume",
+      });
+    });
+
+    await expect(
+      recoverStaleDispatches({
+        nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
+      }),
+    ).resolves.toBe(1);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: created.record.maxAttempts,
+      status: "awaiting_resume",
+      nextCallbackKind: "delivery",
+    });
+    const callbackRequest = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes("/api/internal/agent-dispatch"),
+    );
+    expect(JSON.parse(String(callbackRequest?.[1]?.body))).toMatchObject({
+      id: created.record.id,
+      kind: "delivery",
+    });
+  });
+
   it("fails stale dispatches when the locked row no longer parses", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
