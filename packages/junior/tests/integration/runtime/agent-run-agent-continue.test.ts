@@ -446,6 +446,40 @@ describe("executeAgentRun agent continuation", () => {
     );
   });
 
+  it("uses the runtime-owned timeout instead of module configuration", async () => {
+    const replyPromise = executeAgentRun({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: TEST_ACTOR,
+        correlation: {
+          conversationId: "conversation-runtime-timeout",
+          turnId: "turn-runtime-timeout",
+          channelId: "C123",
+          threadTs: "1712345.0007",
+        },
+      },
+      policy: { turnTimeoutMs: 25_000 },
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(promptAborted.value).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    const outcome = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(outcome.status).toBe("suspended");
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-runtime-timeout",
+      "turn-runtime-timeout",
+    );
+    expect(sessionRecord?.errorMessage).toBe(
+      "Agent turn timed out after 25000ms",
+    );
+  });
+
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = executeAgentRun({
       input: {

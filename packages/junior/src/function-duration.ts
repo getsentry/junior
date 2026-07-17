@@ -20,3 +20,11 @@ export function dispatchSliceLeaseMs(
 ): number {
   return (functionMaxDurationSeconds + bufferSeconds) * 1000;
 }
+
+/** Reserve host time after agent execution for durable turn finalization. */
+export function agentExecutionBudgetMs(
+  functionMaxDurationSeconds: number,
+  bufferSeconds: number,
+): number {
+  return Math.max(1, (functionMaxDurationSeconds - bufferSeconds) * 1000);
+}

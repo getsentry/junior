@@ -13,6 +13,7 @@ import {
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
+  JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
@@ -167,6 +168,7 @@ function resolveFunctionMaxDuration(
     options.maxDuration ??
     resolveConfiguredFunctionMaxDurationSeconds();
   for (const route of [
+    JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE,
     JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
     JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   ]) {
@@ -218,6 +220,14 @@ function configureVercelDeployment(
   nitro.options.vercel.functions.maxDuration = functionMaxDurationSeconds;
 
   nitro.options.vercel.functionRules ??= {};
+  const existingAgentDispatchRule =
+    nitro.options.vercel.functionRules[JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE] ??
+    {};
+  nitro.options.vercel.functionRules[JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE] = {
+    ...existingAgentDispatchRule,
+    maxDuration: functionMaxDurationSeconds,
+  };
+
   const existingRule =
     nitro.options.vercel.functionRules[
       JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE

@@ -109,6 +109,8 @@ export interface AgentRunRouting {
 
 /** Carries execution limits and dependency overrides for one run slice. */
 export interface AgentRunPolicy {
+  /** Runtime-owned soft timeout for this agent slice, in milliseconds. */
+  turnTimeoutMs?: number;
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */

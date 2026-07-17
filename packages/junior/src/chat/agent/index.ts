@@ -191,7 +191,14 @@ async function executeAgentRunInPrivacyContext(
   assertCorrelationDestinationMatch(routing);
 
   const replyStartedAtMs = Date.now();
-  const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
+  const policyTurnTimeoutMs =
+    typeof policy.turnTimeoutMs === "number" &&
+    Number.isFinite(policy.turnTimeoutMs) &&
+    policy.turnTimeoutMs >= 0
+      ? Math.floor(policy.turnTimeoutMs)
+      : undefined;
+  const configuredTurnDeadlineAtMs =
+    replyStartedAtMs + (policyTurnTimeoutMs ?? botConfig.turnTimeoutMs);
   const policyTurnDeadlineAtMs =
     typeof policy.turnDeadlineAtMs === "number" &&
     Number.isFinite(policy.turnDeadlineAtMs)

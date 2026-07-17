@@ -1,8 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE } from "@/deployment";
 import type { DispatchCallback } from "./types";
 
-const DISPATCH_CALLBACK_PATH = "/api/internal/agent-dispatch";
 const DISPATCH_HMAC_CONTEXT = "junior.agent_dispatch.v1";
 const DISPATCH_SIGNATURE_VERSION = "v1";
 const DISPATCH_MAX_SKEW_MS = 5 * 60 * 1000;
@@ -73,16 +73,19 @@ export async function scheduleDispatchCallback(
 
   const body = JSON.stringify(callback);
   const timestamp = Date.now().toString();
-  const response = await fetch(`${baseUrl}${DISPATCH_CALLBACK_PATH}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [DISPATCH_TIMESTAMP_HEADER]: timestamp,
-      [DISPATCH_SIGNATURE_HEADER]: signBody(secret, timestamp, body),
+  const response = await fetch(
+    `${baseUrl}${JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [DISPATCH_TIMESTAMP_HEADER]: timestamp,
+        [DISPATCH_SIGNATURE_HEADER]: signBody(secret, timestamp, body),
+      },
+      signal: AbortSignal.timeout(DISPATCH_CALLBACK_TIMEOUT_MS),
+      body,
     },
-    signal: AbortSignal.timeout(DISPATCH_CALLBACK_TIMEOUT_MS),
-    body,
-  });
+  );
   if (!response.ok) {
     throw new Error(
       `Agent dispatch callback failed with status ${response.status}`,

@@ -51,7 +51,10 @@ import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
-import { JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE } from "@/deployment";
+import {
+  JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE,
+  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+} from "@/deployment";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
@@ -667,7 +670,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  app.post("/api/internal/agent-dispatch", (c) => {
+  app.post(JUNIOR_AGENT_DISPATCH_CALLBACK_ROUTE, (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
       agentRunner,
       functionMaxDurationSeconds,

@@ -11,7 +11,10 @@ import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   getChatConfig,
 } from "@/chat/config";
-import { dispatchSliceLeaseMs } from "@/function-duration";
+import {
+  agentExecutionBudgetMs,
+  dispatchSliceLeaseMs,
+} from "@/function-duration";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
@@ -238,11 +241,18 @@ export async function processAgentDispatchCallback(
     deps.scheduleSessionCompletedPluginTasks ??
     scheduleSessionCompletedPluginTasks;
   const nowMs = Date.now();
-  const sliceLeaseMs = dispatchSliceLeaseMs(
+  const functionMaxDurationSeconds =
     deps.functionMaxDurationSeconds ??
-      getChatConfig().functionMaxDurationSeconds,
+    getChatConfig().functionMaxDurationSeconds;
+  const sliceLeaseMs = dispatchSliceLeaseMs(
+    functionMaxDurationSeconds,
     FUNCTION_TIMEOUT_BUFFER_SECONDS,
   );
+  const turnTimeoutMs = agentExecutionBudgetMs(
+    functionMaxDurationSeconds,
+    FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  );
+  const turnDeadlineAtMs = nowMs + turnTimeoutMs;
   const isDeliveryCallback = callback.kind === "delivery";
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(
@@ -508,6 +518,8 @@ export async function processAgentDispatchCallback(
         authorizationFlowMode: "disabled",
         configuration,
         channelConfiguration,
+        turnDeadlineAtMs,
+        turnTimeoutMs,
       },
       state: {
         artifactState: artifacts,
