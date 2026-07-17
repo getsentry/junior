@@ -1,12 +1,11 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import {
   conversationEventSchema,
   type ConversationEvent,
 } from "@/chat/conversations/history";
-import { readRootVisibility } from "@/chat/conversations/sql/privacy";
+import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import type { Conversation } from "@/chat/conversations/store";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import {
   conversationReportSourceEventTypes,
@@ -16,7 +15,6 @@ import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
-import { juniorConversationEvents } from "@/db/schema";
 import type { ApiRoute } from "../route";
 import { parseParams } from "../http";
 import { conversationParamsSchema } from "../schema";
@@ -79,24 +77,15 @@ async function readConversationDetailFromSql(
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
-  const { rootConversationId, visibility } = await readRootVisibility(
+  const snapshot = await readConversationEventPrivacySnapshot(
     getSqlExecutor(),
-    conversationId,
+    {
+      conversationId,
+      eventTypes: conversationReportSourceEventTypes,
+    },
   );
-  const rows = await getDb()
-    .select()
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, conversationId),
-        inArray(
-          juniorConversationEvents.type,
-          conversationReportSourceEventTypes,
-        ),
-      ),
-    )
-    .orderBy(asc(juniorConversationEvents.seq));
-  const events = rows.map((row) =>
+  if (!snapshot) return undefined;
+  const events = snapshot.events.map((row) =>
     conversationEventSchema.parse({
       schemaVersion: row.schemaVersion,
       seq: row.seq,
@@ -107,14 +96,14 @@ async function readConversationDetailFromSql(
     }),
   );
   const effectiveVisibility =
-    visibility === "public" || visibility === "private"
-      ? visibility
+    snapshot.visibility === "public" || snapshot.visibility === "private"
+      ? snapshot.visibility
       : undefined;
   return projectConversationDetail({
     ...record,
     effectiveVisibility,
     events,
-    privacyConversationId: rootConversationId,
+    privacyConversationId: snapshot.rootConversationId,
     usage: record.usage ?? undefined,
   });
 }
