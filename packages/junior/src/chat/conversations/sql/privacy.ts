@@ -15,6 +15,12 @@ interface LineageCandidate {
   rootConversationId: string;
 }
 
+/** Root conversation identity and its normalized destination visibility. */
+export interface RootConversationVisibility {
+  rootConversationId: string;
+  visibility: JuniorDestinationVisibility | null;
+}
+
 async function readLineageRow(
   executor: JuniorSqlDatabase,
   conversationId: string,
@@ -59,6 +65,36 @@ async function traceLineage(
   return undefined;
 }
 
+async function readCandidateVisibility(
+  executor: JuniorSqlDatabase,
+  candidate: LineageCandidate,
+  lock: boolean,
+): Promise<RootConversationVisibility> {
+  const query = executor
+    .db()
+    .select({ visibility: juniorDestinations.visibility })
+    .from(juniorDestinations)
+    .where(eq(juniorDestinations.id, candidate.destinationId));
+  const destinations = lock ? await query.for("share") : await query;
+  return {
+    rootConversationId: candidate.rootConversationId,
+    visibility: destinations[0]?.visibility ?? null,
+  };
+}
+
+/** Read a conversation's root privacy authority without locking SQL rows. */
+export async function readRootVisibility(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<RootConversationVisibility> {
+  const candidate = await traceLineage(executor, conversationId);
+  if (!candidate) {
+    return { rootConversationId: conversationId, visibility: null };
+  }
+
+  return readCandidateVisibility(executor, candidate, false);
+}
+
 /**
  * Resolve a conversation's privacy authority from its persisted root.
  *
@@ -69,23 +105,11 @@ async function traceLineage(
 export async function resolveRootVisibility(
   executor: JuniorSqlDatabase,
   conversationId: string,
-): Promise<{
-  rootConversationId: string;
-  visibility: JuniorDestinationVisibility | null;
-}> {
+): Promise<RootConversationVisibility> {
   const candidate = await traceLineage(executor, conversationId);
   if (!candidate) {
     return { rootConversationId: conversationId, visibility: null };
   }
 
-  const destinations = await executor
-    .db()
-    .select({ visibility: juniorDestinations.visibility })
-    .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, candidate.destinationId))
-    .for("share");
-  return {
-    rootConversationId: candidate.rootConversationId,
-    visibility: destinations[0]?.visibility ?? null,
-  };
+  return readCandidateVisibility(executor, candidate, true);
 }

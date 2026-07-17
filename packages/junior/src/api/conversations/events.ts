@@ -5,6 +5,19 @@ import {
   type ConversationReportEventData,
 } from "./schema";
 
+/** Canonical event types that can contribute to the reporting projection. */
+export const conversationReportSourceEventTypes = [
+  "visible_message_recorded",
+  "visible_message_replied",
+  "tool_execution_started",
+  "turn_started",
+  "turn_completed",
+  "turn_failed",
+  "context_epoch_started",
+  "subagent_started",
+  "subagent_ended",
+] as const;
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
