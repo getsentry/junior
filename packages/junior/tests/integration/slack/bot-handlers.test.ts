@@ -1397,6 +1397,103 @@ describe("bot handlers (integration)", () => {
     ]);
   });
 
+  it("does not abandon an auth turn while its resume lock completes", async () => {
+    const conversationId = "slack:C0AUTHRACE:1700000000.000";
+    const activeSessionId = "turn_msg-auth-race";
+    const destination = slackDestination("C0AUTHRACE");
+    const source = createSlackSourceForTest("C0AUTHRACE");
+    const session = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "auth",
+      destination,
+      source,
+      piMessages: turnPiMessages("please use notion"),
+    });
+    await seedStartedTurn({
+      conversationId,
+      messageId: "msg-original",
+      turnId: activeSessionId,
+    });
+    const executeAgentRun = vi.fn().mockResolvedValue(
+      completedAgentRun({
+        text: "The prior turn already completed.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: { agentRunner: { run: executeAgentRun } },
+      },
+    });
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+    const followUp = createTestMessage({
+      id: "msg-auth-race-follow-up",
+      threadId: conversationId,
+      text: "any update?",
+      isMention: true,
+    });
+
+    const state = getStateAdapter();
+    await state.connect();
+    const lock = await acquireActiveLock(state, conversationId);
+    expect(lock).not.toBeNull();
+    try {
+      await expect(
+        slackRuntime.handleNewMention(thread, followUp, { destination }),
+      ).rejects.toThrow("Turn input is deferred until the active resume ends");
+      await upsertAgentTurnSessionRecord({
+        modelId: "test/model",
+        conversationId,
+        sessionId: activeSessionId,
+        sliceId: 1,
+        state: "completed",
+        destination,
+        source,
+        piMessages: session.piMessages,
+      });
+      await getConversationEventStore().append(conversationId, [
+        {
+          idempotencyKey: `turn:${activeSessionId}:terminal`,
+          createdAtMs: 2,
+          data: {
+            type: "turn_completed",
+            turnId: activeSessionId,
+            outcome: "success",
+          },
+        },
+      ]);
+    } finally {
+      await state.releaseLock(lock!);
+    }
+
+    await slackRuntime.handleNewMention(thread, followUp, { destination });
+
+    await expect(
+      getAgentTurnSessionRecord(conversationId, activeSessionId),
+    ).resolves.toMatchObject({ state: "completed" });
+    expect(executeAgentRun).toHaveBeenCalledOnce();
+    expect(
+      (await loadTurnLifecycle(conversationId, activeSessionId)).map(
+        (event) => event.data.type,
+      ),
+    ).toEqual(["turn_started", "turn_completed"]);
+  });
+
   it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
     const conversationId = "slack:C9PARKEDLOG:1700000000.000";
     const destination = slackDestination("C9PARKEDLOG");

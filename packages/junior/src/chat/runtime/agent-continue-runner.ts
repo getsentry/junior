@@ -58,7 +58,7 @@ import {
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
@@ -89,7 +89,11 @@ import { latestReportedProgress } from "@/chat/runtime/report-progress";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
-import { recoverSlackDeliveryForTurn } from "@/chat/runtime/slack-delivery-recovery";
+import {
+  recoverSlackDeliveryForTurn,
+  repairTerminalizingSlackDelivery,
+} from "@/chat/runtime/slack-delivery-recovery";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -281,16 +285,18 @@ function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
   );
 }
 
-async function terminallyFailContinuation(args: {
+interface TerminalContinuationFailure {
   conversationId: string;
   errorMessage: string;
   expectedVersion: number;
   failureCode: ConversationTurnFailureCode;
   sessionId: string;
   turnLifecycle: ConversationTurnLifecycle;
-}): Promise<boolean> {
-  // Every caller owns the conversation lease or resume lock across this
-  // exact-version check and the lifecycle-first terminal transition.
+}
+
+async function terminallyFailOwnedContinuation(
+  args: TerminalContinuationFailure,
+): Promise<boolean> {
   const current = await getAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
@@ -317,6 +323,20 @@ async function terminallyFailContinuation(args: {
     errorMessage: args.errorMessage,
   });
   return failed !== undefined;
+}
+
+async function terminallyFailContinuation(
+  args: TerminalContinuationFailure,
+): Promise<boolean> {
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireActiveLock(state, args.conversationId);
+  if (!lock) return false;
+  try {
+    return await terminallyFailOwnedContinuation(args);
+  } finally {
+    await state.releaseLock(lock);
+  }
 }
 
 /**
@@ -474,8 +494,8 @@ export async function continueSlackAgentRun(
             await failStrandedSessionWithFallback({
               conversationId: payload.conversationId,
               errorMessage: "Stored Slack actor missing for continuation",
+              recoverableSlackDelivery: options.recoverableSlackDelivery,
               sessionRecord: activeSessionRecord,
-              turnLifecycle: options.turnLifecycle,
             });
             return false;
           }
@@ -487,7 +507,7 @@ export async function continueSlackAgentRun(
           };
         }
         if (!activeSessionRecord.source) {
-          await terminallyFailContinuation({
+          await terminallyFailOwnedContinuation({
             conversationId: payload.conversationId,
             expectedVersion: activeSessionRecord.version,
             failureCode: "persistence_failed",
@@ -611,44 +631,49 @@ export async function continueSlackAgentRun(
   });
 }
 
-/** Terminally fail a stranded session and post the standard visible fallback. */
+/** Durably deliver the standard fallback before a stranded session closes. */
 async function failStrandedSessionWithFallback(args: {
   conversationId: string;
   errorMessage: string;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
   sessionRecord: AgentTurnSessionRecord;
-  turnLifecycle: ConversationTurnLifecycle;
 }): Promise<void> {
-  const failed = await terminallyFailContinuation({
-    conversationId: args.conversationId,
-    expectedVersion: args.sessionRecord.version,
-    failureCode: "agent_run_failed",
-    sessionId: args.sessionRecord.sessionId,
-    errorMessage: args.errorMessage,
-    turnLifecycle: args.turnLifecycle,
-  });
-  if (!failed) return;
+  if (!args.recoverableSlackDelivery) {
+    throw new TypeError("Stranded Slack fallback requires durable delivery");
+  }
+  const current = await getAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionRecord.sessionId,
+  );
+  if (
+    !current ||
+    current.version !== args.sessionRecord.version ||
+    current.state === "completed" ||
+    current.state === "failed" ||
+    current.state === "abandoned"
+  ) {
+    return;
+  }
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
     conversation,
     conversationId: args.conversationId,
   });
-  markTurnFailed({
-    conversation,
-    nowMs: Date.now(),
-    sessionId: args.sessionRecord.sessionId,
-    userMessageId: getTurnUserMessage(
-      conversation,
-      args.sessionRecord.sessionId,
-    )?.id,
-    markConversationMessage,
-    updateConversationStats,
-  });
-  await persistThreadStateById(args.conversationId, { conversation });
-
   const thread = parseSlackThreadId(args.conversationId);
-  if (!thread) {
-    return;
+  const userMessage = getTurnUserMessage(
+    conversation,
+    args.sessionRecord.sessionId,
+  );
+  if (
+    !thread ||
+    !userMessage ||
+    !current.destination ||
+    current.destination.platform !== "slack" ||
+    !current.source ||
+    current.source.platform !== "slack"
+  ) {
+    throw new Error("Stranded Slack fallback metadata is incomplete");
   }
   const eventName = "agent_turn_stranded_session_failed";
   const eventId = logException(
@@ -661,12 +686,56 @@ async function failStrandedSessionWithFallback(args: {
     },
     "Stranded running agent session terminally failed",
   );
-  await postSlackMessage({
-    channelId: thread.channelId,
-    threadTs: thread.threadTs,
-    text: buildTurnFailureResponse(
-      requireTurnFailureEventId(eventId, eventName),
-    ),
+  const failureEventId = requireTurnFailureEventId(eventId, eventName);
+  const text = buildTurnFailureResponse(failureEventId);
+  const projection = await loadConversationProjection({
+    conversationId: args.conversationId,
+  });
+  const intent = await args.recoverableSlackDelivery.createIntent({
+    conversationId: args.conversationId,
+    deliveryId: `slack:${current.sessionId}`,
+    turnId: current.sessionId,
+    modelMessages: projection.messages,
+    command: {
+      route: {
+        channelId: thread.channelId,
+        threadTs: thread.threadTs,
+      },
+      publicLocator: createSlackDeliveryLocator(),
+      session: {
+        surface: "slack",
+        source: current.source,
+        destination: current.destination,
+        ...(current.actor ? { actor: current.actor } : {}),
+        ...(current.channelName ? { channelName: current.channelName } : {}),
+        startedAtMs: current.startedAtMs ?? Date.now(),
+      },
+      parts: [{ text }],
+      completion: {
+        turnId: current.sessionId,
+        inputMessageIds: [userMessage.id],
+        assistantMessage: {
+          messageId: buildDeterministicAssistantMessageId(current.sessionId),
+          text,
+          createdAtMs: Date.now(),
+          author: { userName: botConfig.userName, isBot: true },
+        },
+        model: {
+          modelId:
+            current.modelId ??
+            modelIdForProfile(botConfig, projection.modelProfile),
+        },
+        sliceId: current.sliceId,
+        terminal: {
+          outcome: "failed",
+          failureCode: "persistence_failed",
+          eventId: failureEventId,
+        },
+      },
+    },
+  });
+  await args.recoverableSlackDelivery.advance(intent, {
+    beforeTerminalize: repairTerminalizingSlackDelivery,
   });
 }
 
@@ -691,69 +760,73 @@ async function recoverStrandedRunningSession(args: {
   if (!probe) {
     return false;
   }
-  await stateAdapter.releaseLock(probe);
+  let request: AgentContinueRequest | undefined;
+  try {
+    const sessionRecord = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.summary.sessionId,
+    );
+    if (!sessionRecord || sessionRecord.state !== "running") {
+      return false;
+    }
 
-  const sessionRecord = await getAgentTurnSessionRecord(
-    args.conversationId,
-    args.summary.sessionId,
-  );
-  if (!sessionRecord || sessionRecord.state !== "running") {
-    return false;
-  }
-
-  const recoveryProjection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
-  const modelProfile = recoveryProjection.modelProfile;
-  const modelId = modelIdForProfile(botConfig, modelProfile);
-  const recoveryMessages =
-    modelProfile !== STANDARD_MODEL_PROFILE
-      ? [
-          ...stripRuntimeTurnContext(recoveryProjection.messages),
-          ...retainRuntimeTurnContext(sessionRecord.piMessages),
-        ]
-      : sessionRecord.piMessages;
-
-  const parked = await persistYieldSessionRecord({
-    channelName: sessionRecord.channelName,
-    conversationId: args.conversationId,
-    sessionId: sessionRecord.sessionId,
-    currentSliceId: sessionRecord.sliceId,
-    destination: sessionRecord.destination,
-    source: sessionRecord.source,
-    messages: recoveryMessages,
-    errorMessage: "Recovered running session after hard worker death",
-    logContext: {},
-    modelId,
-    actor: sessionRecord.actor,
-    surface: sessionRecord.surface,
-  });
-  if (!parked) {
-    await failStrandedSessionWithFallback({
+    const recoveryProjection = await loadConversationProjection({
       conversationId: args.conversationId,
-      errorMessage:
-        "Stranded running session had no resumable boundary after worker death",
-      sessionRecord,
-      turnLifecycle: args.options.turnLifecycle,
     });
-    return false;
-  }
+    const modelProfile = recoveryProjection.modelProfile;
+    const modelId = modelIdForProfile(botConfig, modelProfile);
+    const recoveryMessages =
+      modelProfile !== STANDARD_MODEL_PROFILE
+        ? [
+            ...stripRuntimeTurnContext(recoveryProjection.messages),
+            ...retainRuntimeTurnContext(sessionRecord.piMessages),
+          ]
+        : sessionRecord.piMessages;
 
-  const request = await getAwaitingAgentContinueRequest({
-    conversationId: args.conversationId,
-    sessionId: sessionRecord.sessionId,
-  });
-  if (!request) {
-    await failStrandedSessionWithFallback({
+    const parked = await persistYieldSessionRecord({
+      channelName: sessionRecord.channelName,
       conversationId: args.conversationId,
-      errorMessage:
-        "Stranded running session could not materialize continuation metadata",
-      sessionRecord: parked,
-      turnLifecycle: args.options.turnLifecycle,
+      sessionId: sessionRecord.sessionId,
+      currentSliceId: sessionRecord.sliceId,
+      destination: sessionRecord.destination,
+      source: sessionRecord.source,
+      messages: recoveryMessages,
+      errorMessage: "Recovered running session after hard worker death",
+      logContext: {},
+      modelId,
+      actor: sessionRecord.actor,
+      surface: sessionRecord.surface,
     });
-    return false;
+    if (!parked) {
+      await failStrandedSessionWithFallback({
+        conversationId: args.conversationId,
+        errorMessage:
+          "Stranded running session had no resumable boundary after worker death",
+        recoverableSlackDelivery: args.options.recoverableSlackDelivery,
+        sessionRecord,
+      });
+      return false;
+    }
+
+    request = await getAwaitingAgentContinueRequest({
+      conversationId: args.conversationId,
+      sessionId: sessionRecord.sessionId,
+    });
+    if (!request) {
+      await failStrandedSessionWithFallback({
+        conversationId: args.conversationId,
+        errorMessage:
+          "Stranded running session could not materialize continuation metadata",
+        recoverableSlackDelivery: args.options.recoverableSlackDelivery,
+        sessionRecord: parked,
+      });
+      return false;
+    }
+  } finally {
+    await stateAdapter.releaseLock(probe);
   }
 
+  if (!request) return false;
   if (await continueSlackAgentRunWithLockRetry(request, args.options)) {
     return true;
   }

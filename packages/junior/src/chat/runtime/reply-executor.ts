@@ -623,6 +623,55 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
+        const terminalizeParkedTurn = async (args: {
+          expectedVersion: number;
+          failureCode: "agent_run_failed" | "persistence_failed";
+          mode: "abandoned" | "failed";
+          sessionId: string;
+          errorMessage: string;
+        }): Promise<boolean> => {
+          if (!conversationId) return false;
+          const stateAdapter = getStateAdapter();
+          await stateAdapter.connect();
+          const lock = await acquireActiveLock(stateAdapter, conversationId);
+          if (!lock) return false;
+          try {
+            const current = await getAgentTurnSessionRecord(
+              conversationId,
+              args.sessionId,
+            );
+            if (
+              !current ||
+              current.version !== args.expectedVersion ||
+              current.state !== "awaiting_resume"
+            ) {
+              return false;
+            }
+            await deps.services.turnLifecycle.fail({
+              conversationId,
+              turnId: args.sessionId,
+              createdAtMs: Date.now(),
+              failureCode: args.failureCode,
+            });
+            const terminal =
+              args.mode === "abandoned"
+                ? await abandonAgentTurnSessionRecord({
+                    conversationId,
+                    expectedVersion: args.expectedVersion,
+                    sessionId: args.sessionId,
+                    errorMessage: args.errorMessage,
+                  })
+                : await failAgentTurnSessionRecord({
+                    conversationId,
+                    expectedVersion: args.expectedVersion,
+                    sessionId: args.sessionId,
+                    errorMessage: args.errorMessage,
+                  });
+            return terminal !== undefined;
+          } finally {
+            await stateAdapter.releaseLock(lock);
+          }
+        };
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentRunSteeringMessage[]> => {
@@ -1032,18 +1081,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // the event-log projection. The abandoned record turns a late
               // OAuth callback into a stale no-op, and its exact pending-auth
               // marker must be cleared because that session cannot resume.
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                turnId: activeTurnId,
-                createdAtMs: Date.now(),
-                failureCode: "agent_run_failed",
-              });
-              await abandonAgentTurnSessionRecord({
-                conversationId,
-                sessionId: activeTurnId,
-                errorMessage:
-                  "Auth-parked session superseded by a new user message",
-              });
+              if (
+                !(await terminalizeParkedTurn({
+                  expectedVersion: sessionRecord.version,
+                  failureCode: "agent_run_failed",
+                  mode: "abandoned",
+                  sessionId: activeTurnId,
+                  errorMessage:
+                    "Auth-parked session superseded by a new user message",
+                }))
+              ) {
+                throw new TurnInputDeferredError();
+              }
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
@@ -1053,19 +1102,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               clearPendingAuth(preparedState.conversation, activeTurnId);
               activeTurnId = undefined;
             } else {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                turnId: activeTurnId,
-                createdAtMs: Date.now(),
-                failureCode: "persistence_failed",
-              });
-              await failAgentTurnSessionRecord({
-                conversationId,
-                expectedVersion: sessionRecord.version,
-                sessionId: activeTurnId,
-                errorMessage:
-                  "Awaiting agent continuation metadata could not be materialized",
-              });
+              if (
+                !(await terminalizeParkedTurn({
+                  expectedVersion: sessionRecord.version,
+                  failureCode: "persistence_failed",
+                  mode: "failed",
+                  sessionId: activeTurnId,
+                  errorMessage:
+                    "Awaiting agent continuation metadata could not be materialized",
+                }))
+              ) {
+                throw new TurnInputDeferredError();
+              }
               markTurnFailed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),

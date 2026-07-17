@@ -953,6 +953,7 @@ export async function listAgentTurnSessionSummariesForConversations(
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */
 export async function abandonAgentTurnSessionRecord(args: {
   conversationId: string;
+  expectedVersion?: number;
   sessionId: string;
   errorMessage?: string;
 }): Promise<AgentTurnSessionRecord | undefined> {
@@ -964,7 +965,9 @@ export async function abandonAgentTurnSessionRecord(args: {
     !existing ||
     existing.state === "completed" ||
     existing.state === "failed" ||
-    existing.state === "abandoned"
+    existing.state === "abandoned" ||
+    (args.expectedVersion !== undefined &&
+      existing.version !== args.expectedVersion)
   ) {
     return undefined;
   }

@@ -18,6 +18,11 @@ import {
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { markTurnFailed } from "@/chat/runtime/turn";
+import {
+  markConversationMessage,
+  updateConversationStats,
+} from "@/chat/services/conversation-memory";
 import type {
   RecoverableSlackDelivery,
   RecoverableSlackDeliveryOutcome,
@@ -38,7 +43,10 @@ export async function repairTerminalizingSlackDelivery(
     sessionId,
   );
 
-  if (input.deliveryOutcome === "accepted") {
+  const turnCompleted =
+    input.deliveryOutcome === "accepted" &&
+    command.completion.terminal.outcome === "success";
+  if (turnCompleted) {
     if (sessionRecord?.state !== "completed") {
       const projection = await loadTurnProjection({
         conversationId,
@@ -84,7 +92,10 @@ export async function repairTerminalizingSlackDelivery(
       conversationId,
       expectedVersion: sessionRecord.version,
       sessionId,
-      errorMessage: "Slack rejected the final turn reply",
+      errorMessage:
+        input.deliveryOutcome === "accepted"
+          ? "Delivered terminal failure reply"
+          : "Slack rejected the final turn reply",
     });
   }
 
@@ -104,6 +115,18 @@ export async function repairTerminalizingSlackDelivery(
           inputMessageIds: command.completion.inputMessageIds,
           sessionId,
         });
+  if (
+    input.deliveryOutcome === "accepted" &&
+    command.completion.terminal.outcome === "failed"
+  ) {
+    markTurnFailed({
+      conversation: patch.conversation,
+      nowMs: Date.now(),
+      sessionId,
+      markConversationMessage,
+      updateConversationStats,
+    });
+  }
   await persistThreadStateById(conversationId, patch);
 }
 

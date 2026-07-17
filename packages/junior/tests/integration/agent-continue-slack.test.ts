@@ -16,6 +16,15 @@ import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationEventStore } from "@/chat/conversations/history";
+import { getConversationMessageStore, getSqlExecutor } from "@/chat/db";
+import {
+  RecoverableSlackDeliveryService,
+  type RecoverableSlackDelivery,
+} from "@/chat/slack/recoverable-delivery";
+import {
+  postRecoverableSlackMessage,
+  reconcileRecoverableSlackMessage,
+} from "@/chat/slack/outbound";
 
 const executeAgentRunMock = vi.fn();
 
@@ -117,6 +126,7 @@ let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
 let turnLifecycle: ConversationTurnLifecycle;
 let conversationEventStore: ConversationEventStore;
+let recoverableSlackDelivery: RecoverableSlackDeliveryService;
 
 async function loadTurnLifecycle(conversationId: string, turnId: string) {
   return (await conversationEventStore.loadHistory(conversationId))
@@ -131,6 +141,7 @@ async function loadTurnLifecycle(conversationId: string, turnId: string) {
 
 function continueAgentRun(args: {
   conversationId: string;
+  delivery?: RecoverableSlackDelivery;
   sessionId: string;
   expectedVersion: number;
 }): Promise<boolean> {
@@ -144,6 +155,7 @@ function continueAgentRun(args: {
       },
       {
         agentRunner: { run: executeAgentRunMock },
+        recoverableSlackDelivery: args.delivery ?? recoverableSlackDelivery,
         turnLifecycle,
         scheduleAgentContinue: (request) =>
           agentContinueServiceModule.scheduleAgentContinue(request, {
@@ -188,6 +200,13 @@ describe("agent continuation Slack integration", () => {
     conversationEventStore = getConversationEventStore();
     turnLifecycle = new ConversationTurnLifecycleService(
       conversationEventStore,
+    );
+    recoverableSlackDelivery = new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      {
+        post: postRecoverableSlackMessage,
+        reconcile: reconcileRecoverableSlackMessage,
+      },
     );
 
     await stateAdapterModule.disconnectStateAdapter();
@@ -821,7 +840,6 @@ describe("agent continuation Slack integration", () => {
       createdAtMs: 1,
       surface: "slack",
     });
-
     const continued = await continueAgentRun({
       conversationId,
       sessionId,
@@ -1106,6 +1124,14 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
+    await getConversationMessageStore().record(conversationId, [
+      {
+        messageId: "msg.10",
+        role: "user",
+        text: "resume this request",
+        createdAtMs: 1,
+      },
+    ]);
 
     await turnLifecycle.start({
       conversationId,
@@ -1114,9 +1140,26 @@ describe("agent continuation Slack integration", () => {
       createdAtMs: 1,
       surface: "slack",
     });
+    let nowMs = 1_000;
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outcome: "retryable_absence" as const,
+        retryAtMs: 1_001,
+      })
+      .mockResolvedValueOnce({
+        outcome: "accepted" as const,
+        ts: "1712345.001001" as never,
+      });
+    const delivery = new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      { post, reconcile: vi.fn() },
+      () => nowMs,
+    );
 
     const continued = await continueAgentRun({
       conversationId,
+      delivery,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -1128,26 +1171,32 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
       ),
+    ).resolves.toMatchObject({ state: "awaiting_resume" });
+    expect(await loadTurnLifecycle(conversationId, sessionId)).toEqual([
+      expect.objectContaining({ type: "turn_started" }),
+    ]);
+
+    nowMs = 1_002;
+    const { recoverDueSlackDeliveries } =
+      await import("@/chat/runtime/slack-delivery-recovery");
+    await expect(recoverDueSlackDeliveries({ delivery, nowMs })).resolves.toBe(
+      1,
+    );
+    expect(post).toHaveBeenCalledTimes(2);
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Stored Slack actor missing for continuation",
+      errorMessage: "Delivered terminal failure reply",
     });
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0010",
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that.",
-          ),
-        }),
-      }),
-    ]);
     expect(await loadTurnLifecycle(conversationId, sessionId)).toEqual([
       expect.objectContaining({ type: "turn_started" }),
       expect.objectContaining({
         type: "turn_failed",
-        failureCode: "agent_run_failed",
+        failureCode: "persistence_failed",
       }),
     ]);
   });
@@ -1429,7 +1478,6 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
-
     const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
@@ -1726,12 +1774,21 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
+    await getConversationMessageStore().record(conversationId, [
+      {
+        messageId: "msg.9",
+        role: "user",
+        text: "resume this request",
+        createdAtMs: 1,
+      },
+    ]);
 
     const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
         {
           agentRunner: { run: executeAgentRunMock },
+          recoverableSlackDelivery,
           turnLifecycle,
         },
       ),
@@ -1746,7 +1803,7 @@ describe("agent continuation Slack integration", () => {
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: expect.stringContaining("no resumable boundary"),
+      errorMessage: "Delivered terminal failure reply",
     });
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
