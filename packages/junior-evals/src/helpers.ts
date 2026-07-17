@@ -84,8 +84,11 @@ function isReactionAddedMessage(
 
 /** Returns typed reaction emoji side effects recorded in an eval session. */
 export function reactionEmojis(session: NormalizedSession): string[] {
-  return session.messages
-    .filter(isReactionAddedMessage)
+  return session.events
+    .filter(
+      (event): event is TranscriptEvent & ReactionAddedMessage =>
+        event.type === "message" && isReactionAddedMessage(event),
+    )
     .map((message) => message.content.emoji);
 }
 
