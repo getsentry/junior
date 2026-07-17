@@ -179,7 +179,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ maxDuration: 300 }).nitro.setup(nitro);
+    juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(vercel.config?.crons).toEqual([
@@ -312,7 +312,7 @@ describe("juniorNitro plugin modules", () => {
     ]);
   });
 
-  it("preserves Vercel max function duration settings", () => {
+  it("rejects non-numeric Vercel max function duration settings", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -332,16 +332,55 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro().nitro.setup(nitro);
-    const vercel = getVercelOptions(nitro);
+    expect(() => juniorNitro().nitro.setup(nitro)).toThrow(
+      'Junior requires a numeric Vercel maxDuration so runtime leases match the host window. Configure juniorNitro({ maxDuration: <seconds> }) instead of maxDuration: "max".',
+    );
+  });
 
+  it("rejects conflicting explicit and existing function durations", () => {
+    const nitro = {
+      hooks: { hook() {} },
+      options: {
+        output: { serverDir: "/tmp/junior-output" },
+        rootDir: "/tmp/junior-app",
+        vercel: { functions: { maxDuration: 120 } },
+        virtual: {},
+      },
+    };
+
+    expect(() => juniorNitro({ maxDuration: 500 }).nitro.setup(nitro)).toThrow(
+      "juniorNitro({ maxDuration: 500 }) conflicts with Nitro Vercel functions.maxDuration 120. Configure the duration once.",
+    );
+  });
+
+  it("injects one custom duration into deployment and runtime config", async () => {
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: { hook() {} },
+      options: {
+        output: { serverDir: "/tmp/junior-output" },
+        rootDir: "/tmp/junior-app",
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({ maxDuration: 500 }).nitro.setup(nitro);
+    const vercel = getVercelOptions(nitro);
+    expect(vercel.functions).toEqual({ maxDuration: 500 });
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
         ?.maxDuration,
-    ).toBe("max");
+    ).toBe(500);
     expect(
       vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]?.maxDuration,
-    ).toBe("max");
+    ).toBe(500);
+
+    const template = virtual["#junior/config"];
+    expect(typeof template).toBe("function");
+    await expect((template as () => Promise<string>)()).resolves.toContain(
+      "export const functionMaxDurationSeconds = 500;",
+    );
   });
 
   it("loads plugin modules lazily when virtual config is rendered", async () => {

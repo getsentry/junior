@@ -8,7 +8,11 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
+import {
+  getChatConfig,
+  getSlackReactionConfig,
+  setSlackReactionConfig,
+} from "@/chat/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -143,6 +147,7 @@ type CreateDashboardApp = (
 interface JuniorVirtualConfig {
   createDashboardApp?: CreateDashboardApp;
   dashboard?: JuniorVirtualDashboardOptions;
+  functionMaxDurationSeconds?: number;
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
   pluginRuntimeRegistrations: string[];
@@ -181,13 +186,21 @@ async function resolveVirtualConfig(): Promise<
     const mod: {
       createDashboardApp?: CreateDashboardApp;
       dashboard?: JuniorVirtualDashboardOptions;
+      functionMaxDurationSeconds?: number;
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
+    const functionMaxDurationSeconds = Object.hasOwn(
+      mod,
+      "functionMaxDurationSeconds",
+    )
+      ? mod.functionMaxDurationSeconds
+      : undefined;
     return {
       createDashboardApp: mod.createDashboardApp,
       dashboard: mod.dashboard,
+      functionMaxDurationSeconds,
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
@@ -532,6 +545,9 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
+  const functionMaxDurationSeconds =
+    virtualConfig?.functionMaxDurationSeconds ??
+    getChatConfig().functionMaxDurationSeconds;
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
@@ -654,6 +670,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
       agentRunner,
+      functionMaxDurationSeconds,
       recoverableSlackDelivery,
       turnLifecycle,
     });

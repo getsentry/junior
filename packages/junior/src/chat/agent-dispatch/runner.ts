@@ -11,6 +11,7 @@ import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   getChatConfig,
 } from "@/chat/config";
+import { dispatchSliceLeaseMs } from "@/function-duration";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
@@ -73,16 +74,9 @@ import {
 } from "./store";
 import type { DispatchCallback, DispatchRecord } from "./types";
 
-function getDispatchSliceLeaseMs(): number {
-  return (
-    (getChatConfig().functionMaxDurationSeconds +
-      FUNCTION_TIMEOUT_BUFFER_SECONDS) *
-    1000
-  );
-}
-
 export interface AgentDispatchRunnerDeps {
   agentRunner: AgentRunner;
+  functionMaxDurationSeconds?: number;
   recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
   scheduleCallback?: typeof scheduleDispatchCallback;
@@ -244,7 +238,11 @@ export async function processAgentDispatchCallback(
     deps.scheduleSessionCompletedPluginTasks ??
     scheduleSessionCompletedPluginTasks;
   const nowMs = Date.now();
-  const sliceLeaseMs = getDispatchSliceLeaseMs();
+  const sliceLeaseMs = dispatchSliceLeaseMs(
+    deps.functionMaxDurationSeconds ??
+      getChatConfig().functionMaxDurationSeconds,
+    FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  );
   const isDeliveryCallback = callback.kind === "delivery";
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(

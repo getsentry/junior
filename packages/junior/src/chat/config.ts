@@ -11,11 +11,11 @@ import {
   modelProfileSchema,
   STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
+import { resolveConfiguredFunctionMaxDurationSeconds } from "@/function-duration";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
-const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
@@ -90,17 +90,6 @@ function parseAgentTurnTimeoutMs(
     );
   }
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, Math.min(value, maxTimeoutMs));
-}
-
-function resolveFunctionMaxDurationSeconds(env: NodeJS.ProcessEnv): number {
-  const raw =
-    env.FUNCTION_MAX_DURATION_SECONDS ??
-    env.QUEUE_CALLBACK_MAX_DURATION_SECONDS;
-  const value = Number.parseInt(raw ?? "", 10);
-  if (Number.isNaN(value) || value <= 0) {
-    return DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  }
-  return value;
 }
 
 function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
@@ -248,7 +237,8 @@ function parseReactionEmoji(
 }
 
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
-  const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
+  const functionMaxDurationSeconds =
+    resolveConfiguredFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
@@ -326,7 +316,8 @@ export function readChatConfig(
   const databaseUrl = readDatabaseUrl(env);
   return {
     bot: readBotConfig(env),
-    functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
+    functionMaxDurationSeconds:
+      resolveConfiguredFunctionMaxDurationSeconds(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),

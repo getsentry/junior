@@ -8,6 +8,7 @@ import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery
 
 interface AgentDispatchHandlerOptions {
   agentRunner: AgentRunner;
+  functionMaxDurationSeconds: number;
   recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
 }
@@ -26,6 +27,7 @@ export async function POST(
   waitUntil(() =>
     processAgentDispatchCallback(payload, {
       agentRunner: options.agentRunner,
+      functionMaxDurationSeconds: options.functionMaxDurationSeconds,
       recoverableSlackDelivery: options.recoverableSlackDelivery,
       turnLifecycle: options.turnLifecycle,
     }).catch((error) => {

@@ -27,6 +27,7 @@ import {
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
+import { resolveConfiguredFunctionMaxDurationSeconds } from "./function-duration";
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
@@ -64,7 +65,6 @@ type RollupLikeConfig = {
   plugins?: unknown[];
 };
 
-const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
 
 function isPluginModuleReference(
@@ -143,9 +143,49 @@ function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
   }
 }
 
-function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
-  const defaultMaxDuration =
-    options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
+function resolveFunctionMaxDuration(
+  nitro: Nitro,
+  options: JuniorNitroOptions,
+): number {
+  const existing = nitro.options.vercel?.functions?.maxDuration;
+  if (existing === "max") {
+    throw new Error(
+      'Junior requires a numeric Vercel maxDuration so runtime leases match the host window. Configure juniorNitro({ maxDuration: <seconds> }) instead of maxDuration: "max".',
+    );
+  }
+  if (
+    options.maxDuration !== undefined &&
+    existing !== undefined &&
+    existing !== options.maxDuration
+  ) {
+    throw new Error(
+      `juniorNitro({ maxDuration: ${options.maxDuration} }) conflicts with Nitro Vercel functions.maxDuration ${existing}. Configure the duration once.`,
+    );
+  }
+  const resolved =
+    existing ??
+    options.maxDuration ??
+    resolveConfiguredFunctionMaxDurationSeconds();
+  for (const route of [
+    JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+    JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  ]) {
+    const routeDuration =
+      nitro.options.vercel?.functionRules?.[route]?.maxDuration;
+    if (routeDuration !== undefined && routeDuration !== resolved) {
+      throw new Error(
+        `Vercel function rule ${route} maxDuration ${routeDuration} conflicts with Junior's configured duration ${resolved}. Configure the duration once with juniorNitro({ maxDuration }).`,
+      );
+    }
+  }
+  return resolved;
+}
+
+function configureVercelDeployment(
+  nitro: Nitro,
+  options: JuniorNitroOptions,
+): number {
+  const functionMaxDurationSeconds = resolveFunctionMaxDuration(nitro, options);
   const queueTopic = resolveConversationWorkQueueTopic({
     topic: options.conversationWorkQueueTopic,
   });
@@ -175,9 +215,7 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   }
 
   nitro.options.vercel.functions ??= {};
-  nitro.options.vercel.functions.maxDuration ??= defaultMaxDuration;
-  const callbackMaxDuration =
-    nitro.options.vercel.functions.maxDuration ?? defaultMaxDuration;
+  nitro.options.vercel.functions.maxDuration = functionMaxDurationSeconds;
 
   nitro.options.vercel.functionRules ??= {};
   const existingRule =
@@ -193,8 +231,8 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
 
   nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
     {
-      maxDuration: callbackMaxDuration,
       ...existingRule,
+      maxDuration: functionMaxDurationSeconds,
       experimentalTriggers: [
         ...otherTriggers,
         {
@@ -216,8 +254,8 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   );
 
   nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] = {
-    maxDuration: callbackMaxDuration,
     ...existingPluginTaskRule,
+    maxDuration: functionMaxDurationSeconds,
     experimentalTriggers: [
       ...otherPluginTaskTriggers,
       {
@@ -226,6 +264,7 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
       },
     ],
   };
+  return functionMaxDurationSeconds;
 }
 
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
@@ -239,7 +278,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
 
-        configureVercelDeployment(nitro, options);
+        const functionMaxDurationSeconds = configureVercelDeployment(
+          nitro,
+          options,
+        );
         bundleOpenTelemetryLoaderHooks(nitro);
 
         applyRolldownTreeshakeWorkaround(nitro);
@@ -277,6 +319,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,
+          functionMaxDurationSeconds,
         });
 
         const copyBuildContent = async () => {
