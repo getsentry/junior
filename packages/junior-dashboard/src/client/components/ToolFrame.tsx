@@ -39,7 +39,10 @@ export function ToolFrame(props: {
           ) : null}
         </>
       }
-      leftClassName="flex-wrap gap-x-1 gap-y-0.5"
+      leftClassName={cn(
+        "gap-x-1 gap-y-0.5",
+        interactive && !open ? "flex-nowrap" : "flex-wrap",
+      )}
       right={
         metaText ? (
           <TranscriptHeadingMeta className="min-w-0 break-words text-[0.8rem] text-[#888]">

@@ -86,11 +86,11 @@ export function TranscriptToolView(props: {
       mobileSummaryMeta={mobileSummaryMeta}
       signature={
         <>
-          <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
+          <strong className="shrink-0 font-bold text-[#d6d6d6]">
             <HighlightText text={toolName} />
           </strong>
           {isPreviewableValue(input) ? (
-            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8] max-md:hidden">
+            <code className="min-w-0 truncate font-[inherit] text-[#b8b8b8] max-md:hidden">
               ({args})
             </code>
           ) : null}
