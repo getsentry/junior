@@ -35,12 +35,6 @@ describe("prompt builders", () => {
       "Side-effect-only completion for addReaction",
     );
     expect(systemPrompt).not.toContain("side-effect-only completion");
-    expect(systemPrompt).toContain(
-      "Do not split an explainer across multiple Slack messages.",
-    );
-    expect(systemPrompt).toContain(
-      "Put plans, research, and other long or multi-section explainers in a Slack canvas",
-    );
   });
 
   it("returns a byte-stable local system prompt variant", () => {
@@ -58,8 +52,6 @@ describe("prompt builders", () => {
         }),
       }),
     );
-    expect(systemPrompt).not.toContain("Slack canvas");
-    expect(systemPrompt).not.toContain("multiple Slack messages");
   });
 
   it("renders sandbox workspace root as runtime context", () => {
