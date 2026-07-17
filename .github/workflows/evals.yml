@@ -167,6 +167,6 @@ jobs:
         run: pnpm --filter @sentry/junior-evals evals
       - name: Publish eval report
         if: always()
-        uses: getsentry/vitest-evals@v0
+        uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
         with:
           results: packages/junior-evals/vitest-results.json

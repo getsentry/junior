@@ -12,6 +12,7 @@ const QUICK_TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/i;
 const QUICK_TUNNEL_START_TIMEOUT_MS = 30_000;
 const QUICK_TUNNEL_CONNECTED_PATTERN = /Registered tunnel connection/i;
 const PUBLIC_HEALTH_TIMEOUT_MS = 20_000;
+const QUICK_TUNNEL_ATTEMPTS = 3;
 const RESET_PATH = "/__junior_eval/reset";
 const STATE_PATH = "/__junior_eval/state";
 
@@ -355,33 +356,46 @@ export async function startEvalEgress(
     configDir = await mkdtemp(path.join(tmpdir(), "junior-eval-egress-"));
     const configPath = path.join(configDir, "config.yml");
     await writeFile(configPath, "{}\n", "utf8");
-    tunnel = spawn(
-      "cloudflared",
-      [
-        "tunnel",
-        "--config",
-        configPath,
-        "--no-autoupdate",
-        "--loglevel",
-        "info",
-        "--protocol",
-        "http2",
-        "--transport-loglevel",
-        "error",
-        "--url",
-        `http://127.0.0.1:${port}`,
-      ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= QUICK_TUNNEL_ATTEMPTS; attempt += 1) {
+      tunnel = spawn(
+        "cloudflared",
+        [
+          "tunnel",
+          "--config",
+          configPath,
+          "--no-autoupdate",
+          "--loglevel",
+          "info",
+          "--protocol",
+          "http2",
+          "--transport-loglevel",
+          "error",
+          "--url",
+          `http://127.0.0.1:${port}`,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      try {
+        const baseUrl = await waitForQuickTunnel(tunnel);
+        await (options.verifyPublicUrl ?? waitForPublicProxy)(baseUrl);
+        return {
+          baseUrl,
+          close,
+          controlToken,
+          controlUrl: new URL(RESET_PATH, `http://127.0.0.1:${port}`).href,
+          stateUrl: new URL(STATE_PATH, `http://127.0.0.1:${port}`).href,
+        };
+      } catch (error) {
+        lastError = error;
+        await stopTunnel(tunnel);
+        tunnel = undefined;
+      }
+    }
+    throw new Error(
+      `Eval egress failed after ${QUICK_TUNNEL_ATTEMPTS} Quick Tunnel attempts`,
+      { cause: lastError },
     );
-    const baseUrl = await waitForQuickTunnel(tunnel);
-    await (options.verifyPublicUrl ?? waitForPublicProxy)(baseUrl);
-    return {
-      baseUrl,
-      close,
-      controlToken,
-      controlUrl: new URL(RESET_PATH, `http://127.0.0.1:${port}`).href,
-      stateUrl: new URL(STATE_PATH, `http://127.0.0.1:${port}`).href,
-    };
   } catch (error) {
     try {
       await close();

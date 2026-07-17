@@ -24,8 +24,9 @@ afterEach(() => {
 });
 
 describe("eval egress", () => {
-  it("owns one server and cloudflared process through teardown", async () => {
+  it("owns one server and retries an unreachable tunnel through teardown", async () => {
     let resetCount = 0;
+    let publicVerificationAttempts = 0;
     const fixtureDir = await mkdtemp(path.join(tmpdir(), "eval-egress-test-"));
     const cloudflaredPath = path.join(fixtureDir, "cloudflared");
     const closeMarker = path.join(fixtureDir, "closed");
@@ -66,8 +67,14 @@ setInterval(() => undefined, 1000);
         resetFixtures: () => {
           resetCount += 1;
         },
-        verifyPublicUrl: async () => undefined,
+        verifyPublicUrl: async () => {
+          publicVerificationAttempts += 1;
+          if (publicVerificationAttempts === 1) {
+            throw new Error("simulated stale Quick Tunnel DNS");
+          }
+        },
       });
+      expect(publicVerificationAttempts).toBe(2);
       expect(egress.baseUrl).toBe("https://eval-suite.trycloudflare.com");
       await expect(
         fetch(egress.controlUrl, {
