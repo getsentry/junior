@@ -31,6 +31,7 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 const PRIVATE_FILE_DOWNLOAD_KEY = "__files.download.private__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
+  "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
   "assistant.threads.setSuggestedPrompts",
@@ -185,6 +186,8 @@ function defaultSlackApiResponse(
   method: SlackApiMethod,
 ): SlackMockHttpResponse {
   switch (method) {
+    case "assistant.search.context":
+      return { body: { ok: true, results: { messages: [], next_cursor: "" } } };
     case "assistant.threads.setStatus":
     case "assistant.threads.setSuggestedPrompts":
     case "assistant.threads.setTitle":

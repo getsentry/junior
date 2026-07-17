@@ -334,6 +334,34 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("treats a no-reply marker mixed with text as silent completion", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: `Done. ${NO_REPLY_MARKER}` },
+          ],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "Do whatever makes sense here",
+      artifactStatePatch: {},
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      modelId: "test-model",
+      reasoningSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("keeps no-reply marker silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [

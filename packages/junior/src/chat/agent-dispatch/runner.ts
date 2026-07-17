@@ -306,7 +306,6 @@ export async function runAgentDispatchSlice(
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
-
     const outcome = await deps.agentRunner.run({
       input: {
         messageText: dispatch.input,
@@ -323,6 +322,7 @@ export async function runAgentDispatchSlice(
             : {}),
         },
         destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
         source: dispatch.source,
         dispatch: {
           actor: dispatch.actor,
@@ -487,6 +487,7 @@ export async function runAgentDispatchSlice(
         usage: reply.diagnostics.usage,
         reasoningLevel: reply.diagnostics.reasoningLevel,
         destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
         source: dispatch.source,
         actor: dispatch.actor,
         surface: "api",

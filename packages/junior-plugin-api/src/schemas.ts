@@ -25,6 +25,9 @@ export const platformSchema = z.enum(["slack", "local"]);
 /** Runtime source visibility visible to plugins. */
 export const sourceTypeSchema = z.enum(["pub", "priv"]);
 
+/** Provider-neutral visibility of a routed destination. */
+export const destinationVisibilitySchema = z.enum(["public", "private"]);
+
 const slackAddressSchema = z
   .object({
     platform: z.literal("slack"),
@@ -190,6 +193,7 @@ export const dispatchOptionsSchema = z
     idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
     credentialSubject: pluginCredentialSubjectSchema.optional(),
     destination: slackDestinationSchema,
+    destinationVisibility: destinationVisibilitySchema,
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     source: sourceSchema,

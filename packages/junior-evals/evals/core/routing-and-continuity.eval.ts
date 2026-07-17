@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   mention,
+  reactionEmojis,
   resourceEventNotification,
   rubric,
   slackEvals,
@@ -228,7 +229,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      initialEvents: [mention("react to this")],
+      initialEvents: [mention("give me a heart reaction")],
       criteria: rubric({
         pass: [
           "The assistant does not add visible thread-reply clutter for this reaction-only request.",
@@ -245,11 +246,14 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         expect.objectContaining({ name: "addReaction" }),
       ]),
     );
+    const emojis = reactionEmojis(result.session);
+    // Final Slack reaction set after processing lifecycle: processing emoji
+    // removed, completed emoji added, plus the user-requested reaction.
+    expect(emojis).not.toContain("eyes");
+    expect(emojis).toEqual(expect.arrayContaining(["white_check_mark"]));
     expect(
-      assistantMessages(result.session).filter(
-        (message) => message.metadata?.event_type === "reaction_added",
-      ).length,
-    ).toBeGreaterThan(0);
+      emojis.some((emoji) => emoji !== "white_check_mark" && emoji !== "eyes"),
+    ).toBe(true);
     expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
   });

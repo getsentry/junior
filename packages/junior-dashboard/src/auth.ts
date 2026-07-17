@@ -29,12 +29,11 @@ export interface DashboardAuth {
 export function sanitizeDashboardSession(
   session: DashboardSession,
 ): DashboardSession {
-  const { email, emailVerified, hostedDomain, name } = session.user;
+  const { email, emailVerified, name } = session.user;
   return dashboardIdentitySchema.parse({
     user: {
       email,
       emailVerified,
-      hostedDomain,
       name,
     },
   });
@@ -87,20 +86,9 @@ export function createDashboardAuth(
           return {
             email: profile.email,
             emailVerified: profile.email_verified,
-            hostedDomain: profile.hd,
             image: profile.picture,
             name: profile.name,
           };
-        },
-      },
-    },
-    user: {
-      additionalFields: {
-        hostedDomain: {
-          type: "string",
-          required: false,
-          input: false,
-          returned: true,
         },
       },
     },

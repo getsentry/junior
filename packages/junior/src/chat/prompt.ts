@@ -376,7 +376,7 @@ const SKILL_POLICY_RULES = [
 const EXECUTION_CONTRACT_RULES = [
   "- Actionable request: act in this turn.",
   "- Continue until done or genuinely blocked. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Completion means the final answer covers the user's actual ask, including requested follow-up checks, and is grounded in the best evidence you could access.",
+  "- Complete the full task, but report only the result and evidence the user needs; do not narrate every step, check, or detail.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- For non-trivial or long-running work, call `reportProgress` early when available, then only when the major phase changes. Routine tool calls should stay silent.",
@@ -449,8 +449,8 @@ function buildOutputSection(platform: PromptPlatform): string {
     openTag,
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
-    "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
-    "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
+    "- Default to one compact thread reply containing the conclusion and only decisive evidence or action. Do not split an explainer across multiple Slack messages.",
+    "- Put plans, research, and other long or multi-section explainers in a Slack canvas; reply with one or two short sentences plus the link, without recapping the canvas.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");

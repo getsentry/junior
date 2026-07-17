@@ -233,6 +233,15 @@ export const conversationStatsItemSchema = z
   })
   .strict();
 
+export const conversationMetricDaySchema = z
+  .object({
+    costUsd: z.number().optional(),
+    date: z.string(),
+    durationMs: z.number(),
+    tokens: z.number().optional(),
+  })
+  .strict();
+
 export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
@@ -240,6 +249,7 @@ export const conversationStatsReportSchema = z
     durationMs: z.number(),
     failed: z.number(),
     generatedAt: z.string(),
+    metricDays: z.array(conversationMetricDaySchema),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
@@ -287,6 +297,7 @@ export type ConversationSubagentTranscriptReport = z.infer<
 >;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;
+export type ConversationMetricDay = z.infer<typeof conversationMetricDaySchema>;
 export type ConversationStatsReport = z.infer<
   typeof conversationStatsReportSchema
 >;

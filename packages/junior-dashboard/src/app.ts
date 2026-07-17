@@ -272,14 +272,18 @@ function isAuthorized(
   allowedEmails: string[],
 ): boolean {
   const email = session.user.email.toLowerCase();
-  const domain = session.user.hostedDomain?.toLowerCase();
+  const emailSeparator = email.lastIndexOf("@");
+  const emailDomain =
+    emailSeparator > 0 ? email.slice(emailSeparator + 1) : undefined;
 
   if (session.user.emailVerified && email && allowedEmails.includes(email)) {
     return true;
   }
 
   return Boolean(
-    session.user.emailVerified && domain && allowedDomains.includes(domain),
+    session.user.emailVerified &&
+      emailDomain &&
+      allowedDomains.includes(emailDomain),
   );
 }
 
@@ -338,9 +342,6 @@ function localAuthBypassSession(
     user: {
       email,
       emailVerified: true,
-      hostedDomain: email.endsWith("@sentry.io")
-        ? "sentry.io"
-        : "localhost.test",
     },
   };
 }
@@ -531,13 +532,12 @@ function pluginRouteContext(
   pluginName: string,
   session: DashboardSession,
 ): PluginApiRouteRequestContext {
-  const { email, emailVerified, hostedDomain, name } = session.user;
+  const { email, emailVerified, name } = session.user;
   return {
     auth: {
       user: {
         email,
         emailVerified,
-        hostedDomain,
         name,
       },
     },

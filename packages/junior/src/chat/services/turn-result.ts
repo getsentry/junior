@@ -3,7 +3,6 @@ import type { LogContext } from "@/chat/logging";
 import {
   containsNoReplyMarker,
   isNoReplyMarker,
-  stripNoReplyMarker,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnReasoningSelection } from "@/chat/services/turn-reasoning-level";
@@ -227,11 +226,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
   const mixedNoReplyMarker =
     !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  const primaryText = exactNoReplyMarker
-    ? ""
-    : mixedNoReplyMarker
-      ? stripNoReplyMarker(rawPrimaryText)
-      : rawPrimaryText;
+  const noReplyRequested = exactNoReplyMarker || mixedNoReplyMarker;
+  const primaryText = noReplyRequested ? "" : rawPrimaryText;
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const successfulToolResults = toolResults.filter(
@@ -244,7 +240,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
-  const silentCompletionSuccess = exactNoReplyMarker;
+  const silentCompletionSuccess = noReplyRequested;
   const baseDeliveryPlan: ReplyDeliveryPlan = {
     mode: "thread",
     postThreadText: true,

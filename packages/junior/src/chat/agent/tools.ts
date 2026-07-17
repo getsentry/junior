@@ -269,6 +269,7 @@ export async function wireAgentTools(
       actor:
         args.currentActor?.platform === "slack" ? args.currentActor : undefined,
       source: runSource,
+      slackActionToken: args.routing.slackActionToken,
     };
   } else {
     if (toolDestination.platform !== "local") {

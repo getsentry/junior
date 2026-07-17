@@ -20,6 +20,7 @@ import {
 } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
+import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendMessageTool } from "@/chat/slack/tools/send-message";
@@ -35,7 +36,7 @@ import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -98,7 +99,7 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackSourceCapabilities?.canSendMessage,
   );
-  const tools: Record<string, AnyToolDefinition> = {
+  const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
     }),
@@ -159,6 +160,11 @@ export function createTools(
           providerTenantId: slackContext.teamId,
         },
         context.conversationId,
+      );
+    }
+    if (context.source.platform === "slack" && context.slackActionToken) {
+      tools.slackPublicSearch = createSlackPublicSearchTool(
+        context.slackActionToken,
       );
     }
     tools.slackUserLookup = createSlackUserLookupTool();

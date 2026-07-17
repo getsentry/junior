@@ -465,6 +465,7 @@ describe("plugin heartbeat", () => {
     const result = await schedulerCtx.agent.dispatch({
       idempotencyKey: "run-1",
       destination: SLACK_DESTINATION,
+      destinationVisibility: "private",
       input: "Run the scheduled task.",
       metadata: { runId: "run-1" },
       source: SLACK_SOURCE,
@@ -521,6 +522,7 @@ describe("plugin heartbeat", () => {
       await ctx.agent.dispatch({
         idempotencyKey: `run-${index}`,
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       });
@@ -530,6 +532,7 @@ describe("plugin heartbeat", () => {
       ctx.agent.dispatch({
         idempotencyKey: "run-over-limit",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       }),
@@ -556,6 +559,7 @@ describe("plugin heartbeat", () => {
             teamId: "not-a-team",
             channelId: "C123",
           },
+          destinationVisibility: "private",
           input: "Run the scheduled task.",
           source: SLACK_SOURCE,
         }),
@@ -566,6 +570,7 @@ describe("plugin heartbeat", () => {
       ctx.agent.dispatch({
         idempotencyKey: "valid-after-invalid",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       }),
@@ -597,6 +602,7 @@ describe("plugin heartbeat", () => {
           teamId: "T123",
           channelId: "D123",
         },
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackDmSource(),
       }),
@@ -620,6 +626,7 @@ describe("plugin heartbeat", () => {
         teamId: "T123",
         channelId: "D123",
       },
+      destinationVisibility: "private",
       input: "Run the scheduled task.",
       source: slackDmSource(),
     });
@@ -647,6 +654,7 @@ describe("plugin heartbeat", () => {
       options: {
         idempotencyKey: "run-exhausted",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       },
@@ -683,6 +691,7 @@ describe("plugin heartbeat", () => {
       options: {
         idempotencyKey: "run-exhausted-corrupt-row",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       },
@@ -744,6 +753,7 @@ describe("plugin heartbeat", () => {
       options: {
         idempotencyKey: "run-terminal-index",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       },
@@ -778,6 +788,7 @@ describe("plugin heartbeat", () => {
       options: {
         idempotencyKey: "run-active-max-attempts",
         destination: SLACK_DESTINATION,
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: SLACK_SOURCE,
       },

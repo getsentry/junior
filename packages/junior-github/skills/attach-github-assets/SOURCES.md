@@ -13,7 +13,7 @@
 
 - **Adopted:** preserve the upstream one-file-per-upload behavior, supported formats, markdown output, and upload endpoint.
 - **Adopted:** preserve the upstream MIT license in the skill directory as explicitly required.
-- **Replaced:** direct `gh auth token` access with Junior's host-managed user credential injection so credentials never enter script output or files.
+- **Replaced:** direct `gh auth token` access with Junior's host-managed, repository-scoped installation credential injection so credentials never enter script output or files.
 - **Replaced:** numeric repository-id override with explicit `owner/repo`; the script resolves the id through authenticated `gh api`.
 - **Narrowed:** automatic activation requires a concrete local path and GitHub destination.
 - **Deferred:** live upload verification because it would create an external GitHub asset; deterministic mocked validation is sufficient for implementation checks.

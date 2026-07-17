@@ -16,8 +16,9 @@ export function ToolValueInspector(props: {
     return <EmptyValue label={props.emptyLabel ?? "No payload"} />;
   }
 
-  if (isRecord(props.value)) {
-    const entries = Object.entries(props.value);
+  const value = parseStructuredString(props.value);
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
     if (entries.length === 0) {
       return <EmptyValue label={props.emptyLabel ?? "Empty object"} />;
     }
@@ -27,9 +28,30 @@ export function ToolValueInspector(props: {
   return (
     <KeyValueRows
       depth={0}
-      entries={[[Array.isArray(props.value) ? "items" : "value", props.value]]}
+      entries={[[Array.isArray(value) ? "items" : "value", value]]}
     />
   );
+}
+
+function parseStructuredString(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+
+  const trimmed = value.trim();
+  if (
+    !(
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    )
+  ) {
+    return value;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return Array.isArray(parsed) || isRecord(parsed) ? parsed : value;
+  } catch {
+    return value;
+  }
 }
 
 function KeyValueRows(props: {

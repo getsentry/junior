@@ -16,6 +16,7 @@ import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
 import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
+import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 
 interface HandoffControl {
@@ -101,6 +102,7 @@ interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
   destination: SlackDestination;
   actor?: SlackActor;
   source: SlackSource;
+  slackActionToken?: SlackActionToken;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
@@ -108,6 +110,7 @@ interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   actor?: LocalActor;
   source: LocalSource;
   slack?: never;
+  slackActionToken?: never;
 }
 
 export type ToolRuntimeContext =

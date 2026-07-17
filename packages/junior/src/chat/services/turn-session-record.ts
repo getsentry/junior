@@ -15,8 +15,8 @@ import {
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-
-export const AGENT_CONTINUE_MAX_SLICES = 48;
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { botConfig } from "@/chat/config";
 
 export interface TurnSessionContext {
   conversationId?: string;
@@ -498,7 +498,7 @@ export async function persistTimeoutSessionRecord(args: {
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     );
-    if (nextSliceId > AGENT_CONTINUE_MAX_SLICES) {
+    if (nextSliceId > botConfig.maxSlicesPerTurn) {
       return await upsertAgentTurnSessionRecord({
         ...((args.channelName ?? latestSessionRecord?.channelName)
           ? {
@@ -535,7 +535,9 @@ export async function persistTimeoutSessionRecord(args: {
           : {}),
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
+        errorMessage: new TurnSliceLimitExceededError(
+          botConfig.maxSlicesPerTurn,
+        ).message,
         ...((args.actor ?? latestSessionRecord?.actor)
           ? { actor: args.actor ?? latestSessionRecord?.actor }
           : {}),

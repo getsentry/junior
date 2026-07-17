@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-maintenance",
-  "version": "0.104.1",
+  "version": "0.105.0",
   "private": false,
   "publishConfig": {
     "access": "public"

@@ -1,180 +1,87 @@
 ---
 name: github-code
-description: Work with GitHub repositories, source code, branches, commits, pushes, pull requests, reviews, diffs, CI runs, and GitHub App credentials for branch and PR workflows. Use for repo implementation tasks, source-code investigation, cloning/fetching, branch and push workflows, PR creation or updates, PR review feedback, GitHub credential or permission failures involving repositories, pushes, or PRs, and GitHub Actions checks. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
+description: Work with GitHub repositories, source code, branches, commits, pull requests, reviews, diffs, CI, and repository credentials. Use for implementation, source investigation, clone/fetch/branch workflows, PR creation or updates, review feedback, GitHub Actions checks, and repository permission failures. Prefer this skill for repository tasks even when they concern a Sentry product.
 ---
 
 # GitHub Code Operations
 
-## Credential contract
-
-- Supported App-owned GitHub operations require no user-managed credential. Junior automatically mints and injects a repository-scoped GitHub App `installation-write` credential.
-- For a pull request from an existing branch, push the branch first, then call `github_createPullRequest`; both operations receive the automatic installation credential.
-- Do not ask the user to authorize GitHub, provide a token, or grant Contents/Pull requests permissions before trying a supported operation.
-- Request remediation only after a supported operation returns evidence of an upstream provider denial. A Junior tool-routing denial means retry with the required tool, not request permissions.
-
-Use `gh` and `git` for repository checkout, source investigation, code changes, commits, and pull request inspection or mutation. Use Junior's `github_createPullRequest` tool instead of `gh pr create` for new pull requests.
+Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh pr create`, for new PRs.
 
 ## References
 
-| Need                                | Load                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------- |
-| Command syntax, permissions, config | [references/api-surface.md](references/api-surface.md)                                 |
-| Failed commands, permission errors  | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Open when you need                     | Read                                                                                   |
+| -------------------------------------- | -------------------------------------------------------------------------------------- |
+| Command syntax, permissions, config    | [references/api-surface.md](references/api-surface.md)                                 |
+| Failed commands or permission recovery | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
-## Core rules
+## Non-negotiable rules
 
-- Resolve the target repo: explicit request wins, then `github.repo` config. Run `jr-rpc config get github.repo` standalone — never chain with `cd`, pipes, `gh`, or `git`.
-- Keep `--repo owner/repo` explicit on all `gh` commands; use `git -C PATH` for local repos.
-- Do not treat this skill's files or `/skills/...` as target repository source.
-- Read repo-local instructions (`AGENTS.md`, `.github/AGENTS.md`, nested equivalents) before editing. When repo, task-specific, and skill instructions conflict, follow the narrower rule.
-- Do not overwrite or revert unrelated user changes.
-- Do not guess architecture, upstream intent, or feedback validity without reading the relevant code, comments, or failing output.
-- Do not claim checks ran unless they did. Do not declare a fix complete without running the chosen check or stating why no credible check was available.
-- Stop on: missing repo access, ambiguous target, destructive op without confirmation, or unresolved permission failure.
+- Resolve the repo from the explicit request, then `github.repo`. Run `jr-rpc config get github.repo` standalone.
+- Keep `--repo owner/repo` explicit on `gh`; use `git -C PATH` for local repos.
+- Read applicable `AGENTS.md` files before editing. Narrower repo/task instructions win.
+- Preserve unrelated work. Never force-push, delete refs, or perform destructive merges.
+- Base conclusions on repository evidence. Do not claim a check ran unless it did.
+- Supported App-owned writes use an automatically injected repository-scoped credential. Try the operation before requesting remediation; ask for no user token.
+- Stop for ambiguous targets, missing access, destructive operations, or unresolved upstream permission failures.
 
 ## Workflow
 
-### 1. Resolve target and state
+### 1. Resolve and inspect
 
-Identify `owner/repo`, local checkout path, default branch, and current branch.
+Identify the repo, checkout, default/current branches, worktree state, repo instructions, package manager, and relevant checks. Prefer an existing checkout; otherwise clone shallowly.
 
-For edit operations, also check:
+A shallow clone is for fast inspection, not history rewriting. Before rebasing, merge-base analysis, blame/history work, or comparing against a base absent locally, fetch the needed refs and deepen incrementally. Use `--unshallow` only when bounded deepening is insufficient. Never use a force push to compensate for incomplete history.
 
-- current branch and uncommitted changes
-- package manager, build tool, monorepo structure
-- relevant test/lint/typecheck commands
-- repo-local instructions that override this skill
+For edits, choose the smallest credible validation path before changing files. Capture a baseline when a failure may be pre-existing.
 
-Choose a validation path before editing:
+### 2. Investigate
 
-- changed-file or package-scoped checks before broad suites
-- targeted tests before full runs
-- repo-native scripts, fixtures, playgrounds, or smoke checks before one-off scaffolding
+Establish where the behavior lives, current versus requested behavior, root cause or gap, and the smallest proof of correctness. Read linked issues, PRs, specs, and failing output when provided. If the request is investigation-only, report evidence without editing.
 
-For risky, user-visible, or long-running changes, capture a baseline before editing. If the baseline already fails, record it as pre-existing.
+For non-trivial architecture, API, security, concurrency, migration, or broad cross-file work, use the available advisor after gathering evidence and before editing. Resolve material concerns in the plan.
 
-Prefer existing local checkouts over cloning. Default to shallow clones.
+### 3. Edit
 
-### 2. Investigate before editing
+Make the smallest coherent change. Follow local patterns and avoid speculative cleanup. After a failed attempt, re-check the root cause before patching again.
 
-Before changing code, establish:
+Before running repo checks, ensure project dependencies are available:
 
-- where the behavior lives
-- what the current vs. requested behavior is
-- root cause or gap the change addresses
-- what smallest check can prove the result
+1. Detect the package manager and lockfile from repo evidence.
+2. If dependencies are missing or the check reports missing packages, run the repo-native frozen/immutable install (`pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`, `bun install --frozen-lockfile`, or the documented equivalent).
+3. Do not regenerate or modify a lockfile merely to make verification run. If the locked install fails, report the exact failure unless dependency changes are part of the task.
 
-Rules:
+Do not install or repair the GitHub plugin runtime itself; that is manifest-owned setup.
 
-- Prefer narrow evidence: file reads, grep, tests, existing issues/PRs, command output.
-- Read referenced issues, PRs, specs, policies, designs, or incidents when the task points to them.
-- For product copy, docs, design, or UI work, inspect the real product/project context before inventing wording or layout.
-- Before editing a bug, know the failure shape: what breaks, where, and under what condition.
-- After a failed fix attempt or strong correction, stop patching symptoms — re-read the evidence and restate the root cause before editing again.
-- If the task is investigation-only, answer from evidence without editing.
+### 4. Verify and review
 
-**Advisor planning checkpoint:** For a non-trivial implementation — especially architecture or API changes, security-sensitive behavior, concurrency, migrations, broad cross-file edits, or work following failed attempts — call the advisor after gathering enough evidence and before editing. Provide the requirements, relevant code and output, constraints, proposed plan, alternatives considered, risks, and intended validation path. Resolve or explicitly account for material concerns before implementing.
+Run targeted changed-file/package checks before broad suites. Separate regressions from baseline failures. For instruction-only changes, run available structural checks and perform a content-consistency review.
 
-### 3. Edit safely
+For non-trivial work, review the final diff and initial results with the available advisor before packaging. Address material correctness, regression, and testing concerns, then rerun affected checks.
 
-- Smallest coherent change that satisfies the request.
-- Follow repo-local style, patterns, and API boundaries.
-- Keep interfaces, exports, config, and public surfaces no broader than the requirement needs.
-- When the change touches related call sites or representations, remove duplication or split logic introduced by the change before finalizing.
-- No drive-by refactors or speculative cleanup.
-- Do not optimize only for passing tests; solve the requested behavior.
-- After meaningful edits, run the smallest relevant repo-real check.
-- On check failure, inspect root cause before patching again.
+### 5. Package every completed edit
 
-For multi-step or risky work, keep a compact checklist of intent, touched files, verification state, next step, and blockers.
+Unless the user explicitly says not to create a PR, every completed repository edit must end in a pushed branch and PR. Default to draft; honor an explicit user or repo instruction to open it ready for review. Do not stop at local changes or a commit.
 
-### 4. Verify before packaging
+1. Reuse the current non-default branch or create a focused branch.
+2. Commit using repo conventions; otherwise use `<type>(<scope>): <Subject>` in imperative present tense, with no agent branding.
+3. Push explicitly with `git push -u origin BRANCH`.
+4. Resolve the actual default branch.
+5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
 
-Before committing and creating a PR for code, config, or docs-as-code changes:
+The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
-- Run the chosen validation path. Separate pre-existing failures from regressions.
-- For docs or instruction-only changes, do a content consistency review instead of claiming automated validation.
-- If no credible check exists, say so explicitly.
+If PR creation is blocked, report the exact failed command/tool call and leave the committed branch intact.
 
-**Advisor review checkpoint:** For a non-trivial implementation, call the advisor after inspecting the final diff and running the initial validation path, but before committing, opening or updating a PR, or reporting completion. Provide the diff, relevant surrounding code, requirements, validation results, known limitations, and any remaining risks. Ask specifically for correctness issues, regressions, missed cases, and testing gaps. Investigate material findings, revise as needed, and rerun affected checks before packaging.
+### 6. Follow and report
 
-### 5. Commit
+When PR creation returns a subscribable resource hint, subscribe to suggested review/CI events. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
 
-Default format when the repo does not specify otherwise:
+Return: repo, branch, PR URL/number, checks and results, pre-existing failures, and anything not run with the reason.
 
-```
-<type>(<scope>): <Subject>
-```
+## Operation notes
 
-Types: `feat`, `fix`, `ref`, `docs`, `test`, `build`, `ci`, `chore`. Imperative present tense, no trailing period, no agent/tool branding. Keep lines under 100 characters.
-
-Body only when it helps reviewers understand _why_.
-
-Footer order: `Fixes`/`Refs` lines.
-
-### 6. Create or update PR
-
-Before creating:
-
-1. Changes committed on a non-default branch.
-2. Push the branch explicitly: `git push -u origin BRANCH`.
-3. Resolve the actual default branch: `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`.
-4. Create with explicit targeting, using that default branch as `base`: `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "<DEFAULT_BRANCH>", title: "...", body: "...", draft: true })`.
-
-Defaults:
-
-- Draft PRs unless the user or repo says otherwise.
-- Reuse an existing PR for the branch; only open a new one when explicitly asked or the work is materially distinct.
-- After new commits, re-evaluate title and body against the current diff.
-
-**Title:** `<type>(<scope>): <Subject>` — same rules as commits, no agent branding.
-
-**Body:**
-
-- Reviewer-facing prose, not diff narration.
-- What changed and why; what was verified; what remains unverified or risky.
-- Issue references when relevant.
-- No checkbox boilerplate, no PII or customer data in public repos.
-
-**Footers** (in order):
-
-1. Issue references (`Fixes #N`, `Refs SENTRY-N`), if any.
-
-**Assignment:** resolve GitHub handles from evidence (`gh api search/users`, org membership, repo history) before assigning requested reviewers or assignees. Skip assignment when the handle cannot be confirmed.
-
-### 7. Subscribe to PR lifecycle
-
-After `github_createPullRequest` succeeds, check whether the result includes a subscribable resource hint. If it does, call `subscribeToResourceEvents` immediately before reporting.
-
-- Use the suggested events from the hint; when absent, request review and CI events.
-- Write a **self-contained intent** that captures repo, PR number, branch, and a single goal: resolve any review concerns and keep the build green. When an event fires, read the signal, address it, push, and report.
-- **Only post an update when there is something meaningful to say.** Report when feedback has been addressed, a build failure has been fixed, the PR is fully green and ready to merge, or the PR has been merged. Stay silent on intermediate CI passes, queued checks, and informational events with no action taken.
-
-If no subscribable hint is present, skip this step.
-
-### 8. Report result
-
-Return: repo, branch, PR URL/number (when applicable), checks run with results, pre-existing failures if any, checks not run and why.
-
-On failure, report the exact command and error. Do not claim success from partial state.
-
-Before finishing, reconcile any plan or checklist stated earlier — mark items as done, blocked, or cancelled.
-
-## Operation-specific notes
-
-**Clone** — shallow by default; deepen only when history is needed. Read repo instructions after cloning, before editing.
-
-**Source investigation** — use local files first, otherwise clone shallowly or use `gh`. Cite evidence: file paths, symbols, PRs, issues, command output.
-
-**PR inspection** — read-only `gh pr` and `gh api` commands. Query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{n}/comments` and `.../reviews`).
-
-**PR mutation** — push before create. Use only the allowlisted REST endpoints in the API reference. Merge, close-with-delete, REST ref mutation, and admin operations are unsupported. Git smart HTTP does not independently prevent force updates or ref deletion; rely on GitHub rulesets and do not request destructive pushes.
-
-**Workflow dispatch** — `gh workflow run` is supported for workflows that declare `workflow_dispatch`. Workflow reruns, cancellations, and other Actions mutations remain unsupported.
-
-## Guardrails
-
-- Default shallow clones; deepen only when needed.
-- Do not attempt destructive merges, force pushes, or ref deletion.
-- Answer source questions from repo evidence, not product framing or memory.
-- Stop and return concrete remediation on missing access or permissions.
+- **Clone/history:** clone shallowly by default; deepen before any operation that relies on omitted ancestry.
+- **PR inspection:** read conversation comments, inline review comments, reviews, diff, and checks.
+- **PR mutation:** push before create; use only supported endpoints in the API reference.
+- **Workflow dispatch:** `gh workflow run` is supported only for workflows declaring `workflow_dispatch`.
+- **Permissions:** a tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.

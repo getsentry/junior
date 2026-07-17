@@ -97,7 +97,7 @@ describe("dashboard mock conversation routes", () => {
     expect(statsBody.costUsd).toBeGreaterThan(0);
     expect(
       Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
-    ).toBe(90 * 24 * 60 * 60 * 1000);
+    ).toBe(89 * 24 * 60 * 60 * 1000);
 
     const locations = await app.fetch(
       new Request("http://localhost/api/locations"),

@@ -77,11 +77,11 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                 <Tooltip
                   content={
                     <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                      <span className="text-white/40">conversations</span>
+                      <span className="text-white/60">conversations</span>
                       <span className="text-right text-white/80">
                         {day.conversations}
                       </span>
-                      <span className="text-white/40">runtime</span>
+                      <span className="text-white/60">runtime</span>
                       <span className="text-right text-white/80">
                         {activityRuntime(day)}
                       </span>

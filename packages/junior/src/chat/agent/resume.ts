@@ -8,6 +8,7 @@
  * executor's catch block stays a thin translation over genuine errors.
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { botConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import {
@@ -29,6 +30,7 @@ import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRunDurability } from "@/chat/agent/request";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 
 type LoadedSessionRecordState = Awaited<
   ReturnType<typeof loadTurnSessionRecord>
@@ -262,10 +264,7 @@ export function createResumeState(args: ResumeStateArgs) {
             },
           };
         }
-        throw new Error(
-          sessionRecord.errorMessage ??
-            (error instanceof Error ? error.message : String(error)),
-        );
+        throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
       }
 
       if (error instanceof AuthorizationPauseError) {

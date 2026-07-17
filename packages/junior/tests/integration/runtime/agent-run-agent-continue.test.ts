@@ -261,7 +261,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
-import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
+import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -359,7 +359,7 @@ describe("executeAgentRun agent continuation", () => {
     ]);
   });
 
-  it("throws terminal timeout failures instead of returning an error reply after the slice cap", async () => {
+  it("throws terminal timeout failures instead of returning an error reply after the execution limit", async () => {
     promptMode.value = "continueSettlesAfterAbort";
     const piMessages: PiMessage[] = [
       {
@@ -372,7 +372,7 @@ describe("executeAgentRun agent continuation", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: botConfig.maxSlicesPerTurn,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -396,9 +396,11 @@ describe("executeAgentRun agent continuation", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
 
-    expect(error).toBeInstanceOf(Error);
+    const { TurnSliceLimitExceededError } =
+      await import("@/chat/services/turn-limit");
+    expect(error).toBeInstanceOf(TurnSliceLimitExceededError);
     expect(error).not.toHaveProperty("text");
-    expect(error.message).toContain("slice limit");
+    expect(error.message).toContain("execution limit");
 
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-timeout-cap",
@@ -407,8 +409,8 @@ describe("executeAgentRun agent continuation", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
-      errorMessage: expect.stringContaining("slice limit"),
+      sliceId: botConfig.maxSlicesPerTurn,
+      errorMessage: expect.stringContaining("execution limit"),
     });
   });
 

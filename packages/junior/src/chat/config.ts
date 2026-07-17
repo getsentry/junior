@@ -14,6 +14,7 @@ import {
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
+const MAX_SLICES_PER_TURN = 100;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -47,6 +48,7 @@ export interface BotConfig {
   reasoningLevel?: TurnReasoningLevel;
   modelContextWindowTokens?: number;
   visionModelId?: string;
+  maxSlicesPerTurn: number;
   turnTimeoutMs: number;
   userName: string;
 }
@@ -274,6 +276,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
+    maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

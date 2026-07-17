@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
   destinationSchema,
+  destinationVisibilitySchema,
   isSlackDestination,
   sourceSchema,
   type SlackDestination,
@@ -52,6 +53,7 @@ const dispatchRecordSchema = z
     createdAtMs: z.number().finite(),
     credentialSubject: credentialSubjectSchema.optional(),
     destination: destinationSchema,
+    destinationVisibility: destinationVisibilitySchema,
     errorMessage: z.string().optional(),
     id: nonEmptyExactStringSchema,
     idempotencyKey: z.string().min(1),
@@ -326,6 +328,7 @@ export async function createOrGetDispatch(args: {
         ? { credentialSubject: args.options.credentialSubject }
         : {}),
       destination: args.options.destination,
+      destinationVisibility: args.options.destinationVisibility,
       id,
       idempotencyKey: args.options.idempotencyKey,
       input: args.options.input,

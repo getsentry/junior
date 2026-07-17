@@ -544,6 +544,10 @@ export function createSchedulerPlugin() {
               idempotencyKey: run.id,
               ...(credentialSubject ? { credentialSubject } : {}),
               destination: task.destination,
+              destinationVisibility:
+                task.conversationAccess?.visibility === "public"
+                  ? "public"
+                  : "private",
               input: task.task.text,
               metadata: dispatchMetadata,
               source: scheduledTaskDispatchSource(task),

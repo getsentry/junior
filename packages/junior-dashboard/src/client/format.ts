@@ -126,6 +126,8 @@ function formatNumber(value: number | undefined): string {
   if (number < 1000) return String(number);
 
   const units: Array<[string, number]> = [
+    ["t", 1_000_000_000_000],
+    ["b", 1_000_000_000],
     ["m", 1_000_000],
     ["k", 1_000],
   ];

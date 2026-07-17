@@ -19,6 +19,7 @@ import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { Button } from "../src/client/components/Button";
 import { PluginReports } from "../src/client/components/PluginReports";
 import { StatusBadge } from "../src/client/components/StatusBadge";
+import { CardHeader } from "../src/client/components/layout/CardHeader";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
@@ -41,6 +42,7 @@ import {
   LocationDetailPageContent,
 } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
@@ -75,6 +77,14 @@ function dashboardData(
         (conversation) => conversation.status === "failed",
       ).length,
       generatedAt: "2026-01-01T00:00:00.000Z",
+      metricDays: [
+        {
+          costUsd: 4.56,
+          date: "2026-01-01",
+          durationMs: 12_000,
+          tokens: 12_345,
+        },
+      ],
       locations: [],
       source: "conversation_index",
       tokens: 12_345,
@@ -159,6 +169,21 @@ function toolRunTurn(
 }
 
 describe("dashboard telemetry components", () => {
+  it("keeps card supporting text on the shared readable contrast tier", () => {
+    const html = renderToStaticMarkup(
+      <CardHeader
+        description="Supporting copy"
+        title="Activity"
+        trailing="90 days"
+      />,
+    );
+
+    expect(html).toContain("text-white/50");
+    expect(html).toContain("text-white/55");
+    expect(html).not.toContain("text-white/30");
+    expect(html).not.toContain("text-white/35");
+  });
+
   it("keeps shared command buttons out of form-submit mode", () => {
     const html = renderToStaticMarkup(<Button>Copy as Markdown</Button>);
     const iconHtml = renderToStaticMarkup(
@@ -1186,15 +1211,27 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(systemHtml).toContain(">System<");
-    expect(systemHtml).toContain(">conversations<");
+    expect(systemHtml).toContain("Token usage");
+    expect(systemHtml).toContain("Model spend");
+    expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain(">12k<");
     expect(systemHtml).toContain(">$4.56<");
+    expect(systemHtml).toContain('role="tablist"');
+    expect(systemHtml).toContain('aria-selected="true"');
     expect(systemHtml).toContain(">Plugins<");
+    expect(systemHtml).toContain(">Skills<");
     expect(systemHtml).toContain(">Scheduler<");
     expect(systemHtml).toContain("github");
-    expect(systemHtml).toContain("triage");
+    expect(systemHtml).not.toContain(">triage<");
     expect(systemHtml).toContain("scheduler");
     expect(systemHtml).toContain("sched_1");
+
+    const skillsHtml = renderToStaticMarkup(
+      <SkillInventory skills={data.skills} />,
+    );
+    expect(skillsHtml).toContain(">Skills<");
+    expect(skillsHtml).toContain(">github<");
+    expect(skillsHtml).toContain(">triage<");
   });
 
   it("renders public locations as primary rows and collapses private activity", () => {
@@ -1432,29 +1469,8 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain(
-      "Conversation metrics refresh failed. Showing cached data.",
-    );
-    expect(html).toContain("90-day pulse");
-  });
-
-  it("does not report a completion rate before any conversation finishes", () => {
-    const data = dashboardData([]);
-    data.conversationStats = {
-      ...data.conversationStats!,
-      active: 2,
-      conversations: 2,
-    };
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("No terminal outcomes");
-    expect(html).not.toContain("100% healthy completion");
-    expect(html).not.toContain("undefined%");
+    expect(html).toContain("Metrics refresh failed. Showing cached data.");
+    expect(html).toContain("Usage over time");
   });
 
   it("renders system page when plugin reports are absent", () => {
@@ -1683,6 +1699,31 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("src/a.ts");
     expect(html).toContain("line one");
     expect(html).not.toContain("{&quot;command&quot;");
+  });
+
+  it("renders serialized JSON tool results as structured values", () => {
+    const html = renderToStaticMarkup(
+      <ToolValueInspector
+        value={JSON.stringify({
+          data: { count: 2, status: "success" },
+          ok: true,
+        })}
+      />,
+    );
+
+    expect(html).toContain("data");
+    expect(html).toContain("count");
+    expect(html).toContain("success");
+    expect(html).toContain("ok");
+    expect(html).not.toContain("{&quot;data&quot;");
+  });
+
+  it("leaves JSON-looking prose as a string", () => {
+    const html = renderToStaticMarkup(
+      <ToolValueInspector value={'{"status": nope}'} />,
+    );
+
+    expect(html).toContain("{&quot;status&quot;: nope}");
   });
 
   it("does not highlight static tool summaries as expandable", () => {

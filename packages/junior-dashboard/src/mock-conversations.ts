@@ -46,7 +46,6 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
-const RECENT_CONVERSATION_STATS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -1193,13 +1192,27 @@ function conversationStatsReportFromSummaries(
   nowMs: number,
   summaries: ConversationSummaryReport[],
 ): ConversationStatsReport {
-  const windowStartMs = nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
+  const windowStart = new Date(nowMs);
+  windowStart.setUTCHours(0, 0, 0, 0);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 89);
+  const windowStartMs = windowStart.getTime();
   const conversations = summaries.filter((conversation) => {
     const lastSeenAt = Date.parse(conversation.lastSeenAt);
     return lastSeenAt >= windowStartMs && lastSeenAt <= nowMs;
   });
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
+  const metricDays = new Map<
+    string,
+    { costUsd?: number; date: string; durationMs: number; tokens?: number }
+  >();
+  for (let offset = 89; offset >= 0; offset -= 1) {
+    const date = new Date(nowMs);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    metricDays.set(key, { date: key, durationMs: 0 });
+  }
   let durationMs = 0;
   let costUsd: number | undefined;
   let tokens: number | undefined;
@@ -1210,6 +1223,17 @@ function conversationStatsReportFromSummaries(
     const conversationCostUsd = usageCostTotal(conversation.cumulativeUsage);
     const conversationTokens = usageTokenTotal(conversation.cumulativeUsage);
     durationMs += conversation.cumulativeDurationMs;
+    const date = conversation.lastSeenAt.slice(0, 10);
+    const metricDay = metricDays.get(date);
+    if (metricDay) {
+      metricDay.durationMs += conversation.cumulativeDurationMs;
+      if (conversationCostUsd !== undefined) {
+        metricDay.costUsd = addUsd(metricDay.costUsd, conversationCostUsd);
+      }
+      if (conversationTokens !== undefined) {
+        metricDay.tokens = (metricDay.tokens ?? 0) + conversationTokens;
+      }
+    }
     costUsd =
       conversationCostUsd === undefined
         ? costUsd
@@ -1235,6 +1259,7 @@ function conversationStatsReportFromSummaries(
     durationMs,
     failed,
     generatedAt: iso(nowMs),
+    metricDays: [...metricDays.values()],
     locations: statsItems(locations),
     actors: statsItems(actors),
     source: "conversation_index",

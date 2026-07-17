@@ -10,6 +10,7 @@ import {
   conversationIdentityMeta,
   conversationActorLabel,
   filterConversationList,
+  formatCompactNumber,
   formatConversationDuration,
   formatCostTotal,
   formatRuntime,
@@ -52,6 +53,11 @@ function transcript(
 }
 
 describe("dashboard token formatting", () => {
+  it("scales large values through billions and trillions", () => {
+    expect(formatCompactNumber(1_912_000_000)).toBe("1.9b");
+    expect(formatCompactNumber(2_100_000_000_000)).toBe("2.1t");
+  });
+
   it("formats cumulative conversation usage", () => {
     expect(
       formatUsageTotal({

@@ -4,10 +4,17 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
+import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
+const actionToken = readSlackActionToken({
+  raw: { action_token: "action-123" },
+});
+if (!actionToken) {
+  throw new Error("test action token did not parse");
+}
 const noopEgress = {
   async fetch() {
     return new Response("ok");
@@ -37,6 +44,7 @@ function ctx(
 
   return {
     conversationId: `slack:${channelId}:1700000000.100000`,
+    slackActionToken: actionToken,
     destination: {
       platform: "slack" as const,
       teamId: "T123",
@@ -84,6 +92,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationHistory");
@@ -91,6 +100,14 @@ describe("Slack tool registration", () => {
     expect(tools.searchConversationHistory?.source?.id).toBe(
       "conversation-history",
     );
+  });
+
+  it("does not register public search without an action token", () => {
+    const context = ctx("C12345");
+    delete context.slackActionToken;
+    const tools = createTools([], {}, context);
+
+    expect(tools).not.toHaveProperty("slackPublicSearch");
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {

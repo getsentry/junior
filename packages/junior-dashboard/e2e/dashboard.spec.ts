@@ -53,7 +53,6 @@ test.beforeAll(async () => {
           user: {
             email: "morgan@sentry.io",
             emailVerified: true,
-            hostedDomain: "sentry.io",
             name: "Dashboard User",
           },
         };
@@ -160,7 +159,7 @@ test("hydrates the built dashboard client in a real browser", async ({
 
   await page.goto(baseURL);
 
-  await expect(page.getByRole("heading", { name: "Junior" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
@@ -190,9 +189,19 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   await page.getByRole("link", { name: "System", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/system`);
-  await expect(page.getByText("Runtime health")).toBeVisible();
-  await expect(page.getByText("Plugins", { exact: true })).toBeVisible();
-  await expect(page.getByText("estimated cost")).toBeVisible();
+  await expect(page.getByText("Usage over time")).toBeVisible();
+  const pluginsTab = page.getByRole("tab", { name: "Plugins" });
+  const skillsTab = page.getByRole("tab", { name: "Skills" });
+  await expect(pluginsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("heading", { name: "Plugins", exact: true }),
+  ).toBeVisible();
+  await skillsTab.click();
+  await expect(skillsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("heading", { name: "Skills", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Model spend")).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
 
   await page.goto(`${baseURL}/people`);

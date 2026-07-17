@@ -13,6 +13,7 @@ import type {
   SystemActor,
 } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createActor, isUserActor, type Actor } from "@/chat/actor";
@@ -27,6 +28,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
+import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
@@ -76,7 +78,14 @@ export interface AgentRunRouting {
   actor?: Actor;
   source: Source;
   slackConversation?: SlackConversationContext;
+  /**
+   * TODO: Move ephemeral Slack credentials into provider-owned turn context so
+   * the Slack tool registry can consume them without extending core routing.
+   */
+  slackActionToken?: SlackActionToken;
   destination: Destination;
+  /** Confirmed visibility of the destination where this run is delivered. */
+  destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: {
     actor?: SystemActor;

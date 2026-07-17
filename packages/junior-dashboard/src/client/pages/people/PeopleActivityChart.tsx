@@ -1,6 +1,7 @@
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
@@ -56,20 +57,16 @@ export function PeopleActivityChart(props: {
 
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <div>
-          <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-            Active people per day
-          </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/50">
-            Distinct verified actors grouped by recorded conversation activity.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 font-mono text-[0.64rem] text-white/55">
-          <span className="size-2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.55)]" />
-          people
-        </div>
-      </div>
+      <CardHeader
+        description="Distinct verified actors grouped by recorded conversation activity."
+        title="Active people per day"
+        trailing={
+          <span className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.55)]" />
+            people
+          </span>
+        }
+      />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <svg
           aria-label="Active people per day"
