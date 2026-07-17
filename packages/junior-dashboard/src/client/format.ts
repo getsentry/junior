@@ -161,23 +161,6 @@ function getUsageComponentTotal(usage: ConversationUsage): number | undefined {
   }, undefined);
 }
 
-/** Format byte counts in lowercase compact units for transcript metadata. */
-export function formatBytes(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "0b";
-  const bytes = Math.max(0, Math.floor(value));
-  if (bytes < 1024) return `${bytes}b`;
-
-  const units: Array<[string, number]> = [
-    ["mb", 1024 * 1024],
-    ["kb", 1024],
-  ];
-  const [suffix, divisor] =
-    units.find(([, threshold]) => bytes >= threshold) ?? units[1]!;
-  const scaled = bytes / divisor;
-  const precision = scaled >= 10 || Number.isInteger(scaled) ? 0 : 1;
-  return `${scaled.toFixed(precision).replace(/\.0$/, "")}${suffix}`;
-}
-
 function transcriptSource(conversation: ConversationTranscript) {
   return conversationTranscriptMessages(conversation);
 }
