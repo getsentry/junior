@@ -69,7 +69,7 @@ For each `it()` case inside a `describeEval()` suite:
 
 - Use the Slack eval harness for Slack/runtime behavior: mentions, thread/channel delivery, OAuth privacy, lifecycle/resume behavior, reactions, and Slack-visible side effects.
 - Use an agent-level harness for prompt, skill routing, tool choice, provider/tool calls, and reply quality when Slack transport is not the behavior under test.
-- The Slack eval harness preserves inbound messages and direct thread replies in observed order. Slack API-captured side effects may be collected afterward. The rubric judge receives only non-empty user-visible text from normalized user and assistant messages; tool calls, artifacts, logs, metadata, and other runtime observations stay outside its prompt.
+- The Slack eval harness preserves inbound messages and direct thread replies. Replies delivered through the Slack API may be collected afterward; other captured Slack side effects stay outside the rubric. The rubric judge receives only non-empty user-visible text from normalized user and assistant messages; tool calls, artifacts, logs, metadata, and other runtime observations stay outside its prompt.
 - When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
 - Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
 
