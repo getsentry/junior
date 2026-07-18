@@ -28,7 +28,6 @@ import {
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
 import {
-  buildSlackReplyBlocks,
   buildSlackReplyFooter,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
@@ -40,7 +39,7 @@ import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
-import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
+import { buildPendingSlackDeliveryCommandDraft } from "@/chat/slack/delivery-command";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import {
@@ -769,7 +768,7 @@ export async function resumeSlackTurn(
           deliveryId: `slack:${lifecycle.turnId}`,
           modelMessages:
             reply.piMessages ?? replyContext.input.piMessages ?? [],
-          command: {
+          command: buildPendingSlackDeliveryCommandDraft({
             route: {
               channelId: runArgs.channelId,
               threadTs: runArgs.threadTs,
@@ -783,50 +782,17 @@ export async function resumeSlackTurn(
               actor: resumeActor,
               startedAtMs: Date.now(),
             },
-            parts: plannedPosts.map((post, index) => {
-              const blocks = buildSlackReplyBlocks(
-                post.text,
-                index === plannedPosts.length - 1 ? footer : undefined,
-              );
-              return {
-                text: post.text,
-                ...(blocks ? { blocks } : {}),
-              };
-            }),
-            completion: {
-              turnId: lifecycle.turnId,
-              inputMessageIds: lifecycle.inputMessageIds ?? [],
-              assistantMessage: {
-                messageId: buildDeterministicAssistantMessageId(
-                  lifecycle.turnId,
-                ),
-                text: reply.text,
-                createdAtMs: Date.now(),
-                author: { userName: botConfig.userName, isBot: true },
-              },
-              model: { modelId: reply.diagnostics.modelId },
-              ...(reply.diagnostics.durationMs !== undefined
-                ? { durationMs: reply.diagnostics.durationMs }
-                : {}),
-              ...(reply.diagnostics.usage
-                ? { usage: reply.diagnostics.usage }
-                : {}),
-              ...(reply.diagnostics.reasoningLevel
-                ? { reasoningLevel: reply.diagnostics.reasoningLevel }
-                : {}),
-              sliceId: runArgs.sliceId ?? 1,
-              terminal:
-                reply.diagnostics.outcome === "success"
-                  ? { outcome: "success" as const }
-                  : {
-                      outcome: "failed" as const,
-                      failureCode: "model_execution_failed" as const,
-                      ...(finalized.eventId
-                        ? { eventId: finalized.eventId }
-                        : {}),
-                    },
-            },
-          },
+            posts: plannedPosts,
+            footer,
+            turnId: lifecycle.turnId,
+            inputMessageIds: lifecycle.inputMessageIds ?? [],
+            assistantText: reply.text,
+            assistantCreatedAtMs: Date.now(),
+            assistantUserName: botConfig.userName,
+            diagnostics: reply.diagnostics,
+            sliceId: runArgs.sliceId ?? 1,
+            failureEventId: finalized.eventId,
+          }),
         });
         let repairedBeforeTerminal = false;
         const delivery = await advanceOwnedSlackDeliveryWithTerminalRepair({

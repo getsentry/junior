@@ -8,6 +8,11 @@ import {
 import { agentTurnUsageSchema } from "@/chat/usage";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { conversationTurnFailureCodeSchema } from "@/chat/conversations/turn-failure";
+import type { AgentTurnDiagnostics } from "@/chat/services/turn-result";
+import {
+  buildSlackReplyBlocks,
+  type SlackReplyFooter,
+} from "@/chat/slack/footer";
 
 /** Stable identifier shared by delivery control state and canonical facts. */
 export const conversationDeliveryIdSchema = z
@@ -172,6 +177,70 @@ export type PendingConversationDeliveryCommandDraft = Omit<
     model: { modelId: string };
   };
 };
+
+export interface BuildPendingSlackDeliveryCommandDraftArgs {
+  assistantCreatedAtMs: number;
+  assistantText: string;
+  assistantUserName: string;
+  diagnostics: AgentTurnDiagnostics;
+  failureEventId?: string;
+  footer?: SlackReplyFooter;
+  inputMessageIds: string[];
+  posts: readonly { text: string }[];
+  publicLocator: string;
+  route: PendingConversationDeliveryCommandDraft["route"];
+  session: PendingConversationDeliveryCommandDraft["session"];
+  sliceId: number;
+  turnId: string;
+}
+
+/** Build the shared persisted command for one finalized Slack reply. */
+export function buildPendingSlackDeliveryCommandDraft(
+  args: BuildPendingSlackDeliveryCommandDraftArgs,
+): PendingConversationDeliveryCommandDraft {
+  return {
+    publicLocator: args.publicLocator,
+    route: args.route,
+    session: args.session,
+    parts: args.posts.map((post, index) => {
+      const blocks = buildSlackReplyBlocks(
+        post.text,
+        index === args.posts.length - 1 ? args.footer : undefined,
+      );
+      return {
+        text: post.text,
+        ...(blocks ? { blocks } : {}),
+      };
+    }),
+    completion: {
+      turnId: args.turnId,
+      inputMessageIds: args.inputMessageIds,
+      assistantMessage: {
+        messageId: buildDeterministicAssistantMessageId(args.turnId),
+        text: args.assistantText,
+        createdAtMs: args.assistantCreatedAtMs,
+        author: { userName: args.assistantUserName, isBot: true },
+      },
+      model: { modelId: args.diagnostics.modelId },
+      ...(args.diagnostics.durationMs !== undefined
+        ? { durationMs: args.diagnostics.durationMs }
+        : {}),
+      ...(args.diagnostics.usage ? { usage: args.diagnostics.usage } : {}),
+      ...(args.diagnostics.reasoningLevel
+        ? { reasoningLevel: args.diagnostics.reasoningLevel }
+        : {}),
+      sliceId: args.sliceId,
+      terminal:
+        args.diagnostics.outcome === "success"
+          ? { outcome: "success" }
+          : {
+              outcome: "failed",
+              failureCode: "model_execution_failed",
+              ...(args.failureEventId ? { eventId: args.failureEventId } : {}),
+            },
+    },
+  };
+}
 
 const pendingDeliveryReadyStateSchema = z
   .object({ status: z.literal("pending") })

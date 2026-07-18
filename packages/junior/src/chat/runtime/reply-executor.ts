@@ -142,8 +142,8 @@ import { modelIdForProfile } from "@/chat/model-profile";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 import { advanceSlackDeliveryWithTerminalRepair } from "@/chat/runtime/slack-delivery-recovery";
 import type { PendingConversationDelivery } from "@/chat/slack/delivery-outbox";
+import { buildPendingSlackDeliveryCommandDraft } from "@/chat/slack/delivery-command";
 import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
-import { buildSlackReplyBlocks } from "@/chat/slack/footer";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 /**
@@ -1687,7 +1687,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   // A reply without a replacement transcript preserves the
                   // model input boundary; absence must not mean "erase it".
                   modelMessages: reply.piMessages ?? piMessages ?? [],
-                  command: {
+                  command: buildPendingSlackDeliveryCommandDraft({
                     publicLocator,
                     route: {
                       channelId: slackChannelId,
@@ -1704,70 +1704,26 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                       ...(channelName ? { channelName } : {}),
                       startedAtMs: message.metadata.dateSent.getTime(),
                     },
-                    parts: visiblePosts.map((post, index) => ({
-                      text: post.text,
-                      ...(buildSlackReplyBlocks(
-                        post.text,
-                        index === visiblePosts.length - 1
-                          ? replyFooter
-                          : undefined,
-                      )
-                        ? {
-                            blocks: buildSlackReplyBlocks(
-                              post.text,
-                              index === visiblePosts.length - 1
-                                ? replyFooter
-                                : undefined,
-                            ),
-                          }
-                        : {}),
-                    })),
-                    completion: {
-                      turnId,
-                      inputMessageIds: [
-                        ...new Set([
-                          ...(options.queuedMessages ?? []).map(
-                            (queued) => queued.message.id,
-                          ),
-                          ...(preparedState.userMessageId
-                            ? [preparedState.userMessageId]
-                            : []),
-                        ]),
-                      ],
-                      assistantMessage: {
-                        messageId: buildDeterministicAssistantMessageId(turnId),
-                        text: normalizeConversationText(reply.text),
-                        createdAtMs: assistantCreatedAtMs,
-                        author: {
-                          userName: botConfig.userName,
-                          isBot: true,
-                        },
-                      },
-                      model: {
-                        modelId: reply.diagnostics.modelId,
-                      },
-                      ...(reply.diagnostics.durationMs !== undefined
-                        ? { durationMs: reply.diagnostics.durationMs }
-                        : {}),
-                      ...(reply.diagnostics.usage
-                        ? { usage: reply.diagnostics.usage }
-                        : {}),
-                      ...(reply.diagnostics.reasoningLevel
-                        ? { reasoningLevel: reply.diagnostics.reasoningLevel }
-                        : {}),
-                      sliceId: 1,
-                      terminal:
-                        reply.diagnostics.outcome === "success"
-                          ? { outcome: "success" }
-                          : {
-                              outcome: "failed",
-                              failureCode: "model_execution_failed",
-                              ...(finalizedFailureEventId
-                                ? { eventId: finalizedFailureEventId }
-                                : {}),
-                            },
-                    },
-                  },
+                    posts: visiblePosts,
+                    footer: replyFooter,
+                    turnId,
+                    inputMessageIds: [
+                      ...new Set([
+                        ...(options.queuedMessages ?? []).map(
+                          (queued) => queued.message.id,
+                        ),
+                        ...(preparedState.userMessageId
+                          ? [preparedState.userMessageId]
+                          : []),
+                      ]),
+                    ],
+                    assistantText: normalizeConversationText(reply.text),
+                    assistantCreatedAtMs,
+                    assistantUserName: botConfig.userName,
+                    diagnostics: reply.diagnostics,
+                    sliceId: 1,
+                    failureEventId: finalizedFailureEventId,
+                  }),
                 });
               durableDeliveryIntent = delivery;
               await beforeFirstResponsePost();
