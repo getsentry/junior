@@ -1,3 +1,4 @@
+/** Exact persisted command and progress schemas for recoverable Slack replies. */
 import { z } from "zod";
 import {
   actorSchema,
@@ -6,8 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { agentTurnUsageSchema } from "@/chat/usage";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
-import { conversationModelMessageSchema } from "./model-message";
-import { conversationTurnFailureCodeSchema } from "./turn-failure";
+import { conversationTurnFailureCodeSchema } from "@/chat/conversations/turn-failure";
 
 /** Stable identifier shared by delivery control state and canonical facts. */
 export const conversationDeliveryIdSchema = z
@@ -87,7 +87,8 @@ export const pendingConversationDeliveryCommandSchema = z
         model: z
           .object({
             modelId: z.string().min(1),
-            messages: z.array(conversationModelMessageSchema),
+            committedSeq: z.number().int().min(-1),
+            rollbackSeq: z.number().int().min(-1),
           })
           .strict(),
         durationMs: z.number().int().nonnegative().optional(),
@@ -132,6 +133,16 @@ export const pendingConversationDeliveryCommandSchema = z
         path: ["completion", "assistantMessage", "messageId"],
       });
     }
+    if (
+      command.completion.model.rollbackSeq >
+      command.completion.model.committedSeq
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "delivery rollback cursor cannot exceed its commit cursor",
+        path: ["completion", "model", "rollbackSeq"],
+      });
+    }
     const sourceThreadTs =
       command.session.source.threadTs ?? command.session.source.messageTs;
     if (
@@ -152,6 +163,19 @@ export const pendingConversationDeliveryCommandSchema = z
 export type PendingConversationDeliveryCommand = z.output<
   typeof pendingConversationDeliveryCommandSchema
 >;
+
+/** Delivery command before canonical model-event cursors are assigned. */
+export type PendingConversationDeliveryCommandDraft = Omit<
+  PendingConversationDeliveryCommand,
+  "completion"
+> & {
+  completion: Omit<
+    PendingConversationDeliveryCommand["completion"],
+    "model"
+  > & {
+    model: { modelId: string };
+  };
+};
 
 const pendingDeliveryReadyStateSchema = z
   .object({ status: z.literal("pending") })
@@ -189,10 +213,10 @@ export type PendingConversationDeliveryCurrentState = z.output<
   typeof pendingConversationDeliveryCurrentStateSchema
 >;
 
-/** Ordered delivery receipts plus the mutable state of the next part. */
+/** Accepted part count plus the mutable state of the next ordered part. */
 export const pendingConversationDeliveryProgressSchema = z
   .object({
-    acceptedReceipts: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
+    acceptedPartCount: z.number().int().nonnegative(),
     currentState: pendingConversationDeliveryCurrentStateSchema,
   })
   .strict();

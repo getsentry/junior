@@ -259,11 +259,18 @@ describe("resumeAuthorizedRequest", () => {
 
   it("schedules plugin tasks after a successful resumed turn", async () => {
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
+    const turnLifecycle = {
+      start: vi.fn(async () => undefined),
+      complete: vi.fn(async () => undefined),
+      fail: vi.fn(async () => undefined),
+    };
 
     await resumeSlackTurn({
       messageText: "continue this turn",
       channelId: "C-test",
       threadTs: "1700000000.0006",
+      inputMessageIds: ["1700000000.0006"],
+      turnLifecycle,
       replyContext: {
         routing: {
           credentialContext: {
@@ -300,6 +307,9 @@ describe("resumeAuthorizedRequest", () => {
       conversationId: "slack:T-test:C-test:1700000000.0006",
       sessionId: "turn_1700000000_0006",
     });
+    expect(turnLifecycle.start).toHaveBeenCalledOnce();
+    expect(turnLifecycle.complete).toHaveBeenCalledOnce();
+    expect(turnLifecycle.fail).not.toHaveBeenCalled();
   });
 
   it("releases the thread lock before scheduling another timeout slice", async () => {

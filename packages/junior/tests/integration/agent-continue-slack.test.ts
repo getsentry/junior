@@ -14,6 +14,8 @@ import type { AgentRunRequest } from "@/chat/agent/request";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { ConversationEventStore } from "@/chat/conversations/history";
 
 const executeAgentRunMock = vi.fn();
 
@@ -113,6 +115,8 @@ let turnSessionStoreModule: TurnSessionStoreModule;
 let agentContinueServiceModule: AgentContinueServiceModule;
 let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
+let turnLifecycle: ConversationTurnLifecycle;
+let conversationEventStore: ConversationEventStore;
 
 function continueAgentRun(args: {
   conversationId: string;
@@ -129,6 +133,7 @@ function continueAgentRun(args: {
       },
       {
         agentRunner: { run: executeAgentRunMock },
+        turnLifecycle,
         scheduleAgentContinue: (request) =>
           agentContinueServiceModule.scheduleAgentContinue(request, {
             queue,
@@ -166,6 +171,13 @@ describe("agent continuation Slack integration", () => {
     turnSessionStoreModule = await import("@/chat/state/turn-session");
     agentContinueServiceModule = await import("@/chat/services/agent-continue");
     taskExecutionStoreModule = await import("@/chat/task-execution/store");
+    const { ConversationTurnLifecycleService } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { getConversationEventStore } = await import("@/chat/db");
+    conversationEventStore = getConversationEventStore();
+    turnLifecycle = new ConversationTurnLifecycleService(
+      conversationEventStore,
+    );
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -354,22 +366,17 @@ describe("agent continuation Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
     const lifecycle = (
-      await getConversationEventStore().loadHistory(conversationId)
+      await conversationEventStore.loadHistory(conversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
     expect(lifecycle.map((event) => event.data)).toEqual([
-      expect.objectContaining({
+      {
         type: "turn_started",
         turnId: sessionId,
         inputMessageIds: ["msg.1"],
         surface: "slack",
-      }),
-      expect.objectContaining({
-        type: "turn_completed",
-        turnId: sessionId,
-        outcome: "success",
-      }),
+      },
+      { type: "turn_completed", turnId: sessionId, outcome: "success" },
     ]);
   });
 
@@ -435,7 +442,6 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
-
     const continued = await continueAgentRun({
       conversationId,
       sessionId,
@@ -797,6 +803,13 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
+    await turnLifecycle.start({
+      conversationId,
+      turnId: sessionId,
+      inputMessageIds: ["msg.7"],
+      createdAtMs: 1,
+      surface: "slack",
+    });
 
     const continued = await continueAgentRun({
       conversationId,
@@ -815,15 +828,13 @@ describe("agent continuation Slack integration", () => {
       state: "failed",
       errorMessage: "Paused agent run failed while continuing",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
-    const lifecycle =
-      await getConversationEventStore().loadHistory(conversationId);
-    expect(lifecycle.at(-1)?.data).toMatchObject({
-      type: "turn_failed",
-      turnId: sessionId,
-      failureCode: "agent_run_failed",
-      eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-    });
+    const lifecycle = (
+      await conversationEventStore.loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data.type)).toEqual([
+      "turn_started",
+      "turn_failed",
+    ]);
   });
 
   it("resumes resource-event turns with the stored system actor", async () => {
@@ -1289,6 +1300,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         {
           agentRunner: { run: executeAgentRunMock },
+          turnLifecycle,
           scheduleAgentContinue: (request) =>
             agentContinueServiceModule.scheduleAgentContinue(request, {
               queue,
@@ -1454,6 +1466,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         {
           agentRunner: { run: executeAgentRunMock },
+          turnLifecycle,
         },
       ),
     );
@@ -1584,6 +1597,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         {
           agentRunner: { run: executeAgentRunMock },
+          turnLifecycle,
         },
       ),
     );

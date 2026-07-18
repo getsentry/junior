@@ -9,7 +9,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
-import { getDb } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
@@ -65,6 +65,7 @@ import {
 } from "@/chat/app/production";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 
 export { defineJuniorPlugins } from "./plugins";
 export type {
@@ -591,8 +592,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const agentRunner = createAgentRunner(executeAgentRun, {
     tracePropagation,
   });
+  const turnLifecycle = new ConversationTurnLifecycleService(
+    getConversationEventStore(),
+  );
   const runtimeServiceOverrides = {
-    replyExecutor: { agentRunner },
+    replyExecutor: { agentRunner, turnLifecycle },
     sandbox: { tracePropagation },
   };
   const slackWebhookServices = createProductionSlackWebhookServices({
@@ -632,17 +636,22 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      turnLifecycle,
     });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      turnLifecycle,
     });
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {
-    return agentDispatchPOST(c.req.raw, waitUntil, { agentRunner });
+    return agentDispatchPOST(c.req.raw, waitUntil, {
+      agentRunner,
+      turnLifecycle,
+    });
   });
 
   let agentContinuePOST:
@@ -659,6 +668,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       options?.conversationWork ??
       createProductionConversationWorkOptions({
         agentRunner,
+        turnLifecycle,
         services: runtimeServiceOverrides,
       });
     return conversationWorkOptions;

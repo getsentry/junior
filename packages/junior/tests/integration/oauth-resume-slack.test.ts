@@ -7,6 +7,8 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore } from "@/chat/db";
 
 function makeDiagnostics(
   outcome: "success" | "execution_failure" | "provider_error" = "success",
@@ -238,6 +240,10 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.007",
       connectedText: "",
+      inputMessageIds: ["message-turn-1"],
+      turnLifecycle: new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ),
       replyContext: {
         routing: {
           credentialContext: {
@@ -290,6 +296,63 @@ describe("oauth resume slack integration", () => {
         }),
       }),
     ]);
+    const lifecycle = (
+      await getConversationEventStore().loadHistory("conversation-1")
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      {
+        type: "turn_started",
+        turnId: "turn-1",
+        inputMessageIds: ["message-turn-1"],
+        surface: "slack",
+      },
+      { type: "turn_completed", turnId: "turn-1", outcome: "success" },
+    ]);
+  });
+
+  it("records one terminal failure when a correlated resume fails", async () => {
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
+    const conversationId = "conversation-resume-failure";
+    const turnId = "turn-resume-failure";
+
+    await resumeAuthorizedRequest({
+      messageText: "continue this turn",
+      channelId: "C123",
+      threadTs: "1700000000.009",
+      connectedText: "",
+      inputMessageIds: ["message-resume-failure"],
+      turnLifecycle: new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ),
+      replyContext: {
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.009"),
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          correlation: { conversationId, turnId },
+        },
+      },
+      agentRunner: {
+        run: async () => {
+          throw new Error("resume failed");
+        },
+      },
+    });
+
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle).toHaveLength(2);
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_failed",
+      turnId,
+      failureCode: "agent_run_failed",
+      eventId: expect.any(String),
+    });
   });
 
   it("posts resumed auth pause notices with the conversation footer", async () => {
@@ -301,6 +364,10 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.008",
       connectedText: "",
+      inputMessageIds: ["message-auth-pause"],
+      turnLifecycle: new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ),
       replyContext: {
         routing: {
           credentialContext: {
@@ -337,6 +404,10 @@ describe("oauth resume slack integration", () => {
       getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
       "conversation-auth-pause",
     );
+    const lifecycle = (
+      await getConversationEventStore().loadHistory("conversation-auth-pause")
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data.type)).toEqual(["turn_started"]);
   });
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
@@ -390,12 +461,18 @@ describe("oauth resume slack integration", () => {
   it("marks resumed provider-error partial replies as interrupted", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
+    const conversationId = "conversation-provider-error";
+    const turnId = "turn-provider-error";
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
       channelId: "C123",
       threadTs: "1700000000.003",
       connectedText: "Connected. Continuing...",
+      inputMessageIds: ["message-provider-error"],
+      turnLifecycle: new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ),
       replyContext: {
         routing: {
           credentialContext: {
@@ -404,6 +481,7 @@ describe("oauth resume slack integration", () => {
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.003"),
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          correlation: { conversationId, turnId },
         },
       },
       agentRunner: {
@@ -426,6 +504,15 @@ describe("oauth resume slack integration", () => {
       getSlackInterruptionMarker().trim(),
     );
     expect(postCalls[1]?.params.text).not.toContain("event_id=");
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_failed",
+      turnId,
+      failureCode: "model_execution_failed",
+      eventId: expect.any(String),
+    });
   });
 
   it("replaces resumed execution-failure replies before Slack planning", async () => {

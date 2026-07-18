@@ -60,6 +60,7 @@ import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -99,6 +100,7 @@ const CALLBACK_PAGES = {
 
 interface McpOAuthCallbackOptions {
   agentRunner: AgentRunner;
+  turnLifecycle?: ConversationTurnLifecycle;
 }
 
 class McpOAuthAttemptExpiredError extends Error {
@@ -208,8 +210,9 @@ async function resumeAuthorizedMcpTurn(args: {
   authSession: McpAuthSessionState;
   agentRunner: AgentRunner;
   provider: string;
+  turnLifecycle?: ConversationTurnLifecycle;
 }): Promise<void> {
-  const { authSession, agentRunner, provider } = args;
+  const { authSession, agentRunner, provider, turnLifecycle } = args;
   if (
     !authSession.channelId ||
     !authSession.destination ||
@@ -264,6 +267,7 @@ async function resumeAuthorizedMcpTurn(args: {
     },
     connectedText: "",
     agentRunner,
+    turnLifecycle,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
@@ -591,6 +595,7 @@ export async function GET(
         authSession,
         agentRunner: options.agentRunner,
         provider,
+        turnLifecycle: options.turnLifecycle,
       }),
     );
 

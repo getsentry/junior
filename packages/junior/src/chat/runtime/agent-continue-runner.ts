@@ -81,12 +81,14 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
 /** Runtime ports for agent continuation scheduling. */
 export interface AgentContinueRunnerOptions {
   agentRunner: AgentRunner;
+  turnLifecycle?: ConversationTurnLifecycle;
   resumeTurn?: typeof resumeSlackTurn;
   scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
@@ -307,6 +309,7 @@ export async function continueSlackAgentRun(
       turnId: payload.sessionId,
     },
     agentRunner: options.agentRunner,
+    turnLifecycle: options.turnLifecycle,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
@@ -406,8 +409,8 @@ export async function continueSlackAgentRun(
 
         return {
           messageText: userMessage.text,
-          messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
+          messageTs: getTurnUserSlackMessageTs(userMessage),
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             input: {

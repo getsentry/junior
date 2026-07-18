@@ -36,7 +36,7 @@ import {
   postRecoverableSlackMessage,
   reconcileRecoverableSlackMessage,
 } from "@/chat/slack/outbound";
-import { RecoverableSlackDeliveryService } from "@/chat/services/recoverable-slack-delivery";
+import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 

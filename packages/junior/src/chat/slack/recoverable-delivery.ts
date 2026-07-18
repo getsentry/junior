@@ -1,4 +1,11 @@
+/**
+ * Recover finalized Slack replies after process loss without rerunning Pi.
+ *
+ * Ambiguous provider writes remain uncertain until Slack reconciliation proves
+ * acceptance or explicitly authorizes a repost.
+ */
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   claimPendingConversationDelivery,
@@ -17,16 +24,25 @@ import {
   terminalizeAcceptedPendingDelivery,
   terminalizeFailedPendingDelivery,
   type PendingConversationDelivery,
-} from "@/chat/conversations/sql/delivery-outbox";
+  type PendingDeliveryAcceptanceEvidence,
+  type PendingDeliveryTerminalOutcome,
+} from "@/chat/slack/delivery-outbox";
 import {
   pendingConversationDeliveryCommandSchema,
   type PendingConversationDeliveryCommand,
-} from "@/chat/conversations/delivery";
+  type PendingConversationDeliveryCommandDraft,
+} from "@/chat/slack/delivery-command";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { commitMessages } from "@/chat/conversations/projection";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema } from "@/chat/pi/messages";
+import type { ConversationModelMessage } from "@/chat/conversations/model-message";
+import {
+  projectConversationEvents,
+  type PiConversationEventProjection,
+} from "@/chat/pi/conversation-events";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { and, eq, inArray } from "drizzle-orm";
 import { juniorConversationMessages } from "@/db/schema";
@@ -45,6 +61,7 @@ const PERMANENT_RECONCILIATION_RETRY_DELAY_MS = 60 * 60 * 1_000;
 const REPOST_GRACE_MS = 30_000;
 const RECONCILIATION_CLOCK_SKEW_MS = 60_000;
 
+/** Narrow provider capability used to post or reconcile one durable part. */
 export interface RecoverableSlackDeliveryPort {
   post(input: {
     blocks?: PendingConversationDeliveryCommand["parts"][number]["blocks"];
@@ -67,26 +84,46 @@ export type RecoverableSlackDeliveryOutcome =
   | { outcome: "failed" }
   | { outcome: "pending"; retryAtMs: number };
 
+/** Slack delivery capabilities consumed by the turn executor. */
+export interface RecoverableSlackDelivery {
+  createIntent(args: {
+    conversationId: string;
+    deliveryId: string;
+    turnId: string;
+    command: PendingConversationDeliveryCommandDraft;
+    modelMessages: ConversationModelMessage[];
+  }): Promise<PendingConversationDelivery>;
+  loadByTurn(args: {
+    conversationId: string;
+    turnId: string;
+  }): Promise<PendingConversationDelivery | undefined>;
+  loadByConversation(args: {
+    conversationId: string;
+  }): Promise<PendingConversationDelivery | undefined>;
+  loadTerminalOutcome(args: {
+    conversationId: string;
+    turnId: string;
+    acceptanceEvidence: PendingDeliveryAcceptanceEvidence;
+  }): Promise<PendingDeliveryTerminalOutcome | undefined>;
+  advance(
+    pending: PendingConversationDelivery,
+  ): Promise<RecoverableSlackDeliveryOutcome>;
+}
+
 function oldestSlackTimestamp(attemptedAtMs: number): string {
   const seconds = Math.max(0, Math.floor(attemptedAtMs / 1_000));
   const micros = Math.max(0, attemptedAtMs % 1_000) * 1_000;
   return `${seconds}.${Math.floor(micros).toString().padStart(6, "0")}`;
 }
 
-async function finalizeAcceptedSql(
+/** Persist the Slack-visible assistant prefix and replied-input facts. */
+async function recordVisibleAssistantSql(
   sql: JuniorSqlDatabase,
   conversationId: string,
   command: PendingConversationDeliveryCommand,
+  text: string,
   nowMs: number,
 ): Promise<void> {
-  if (command.completion.model.messages.length > 0) {
-    await commitMessages({
-      conversationId,
-      modelId: command.completion.model.modelId,
-      messages: command.completion.model.messages as PiMessage[],
-      executor: sql,
-    });
-  }
   const messages = createSqlConversationMessageStore(sql);
   const baselines = await sql
     .db()
@@ -109,7 +146,7 @@ async function finalizeAcceptedSql(
     toStoredConversationMessage({
       id: assistant.messageId,
       role: "assistant",
-      text: assistant.text,
+      text,
       author: assistant.author,
       createdAtMs: assistant.createdAtMs,
       meta: { replied: true },
@@ -118,6 +155,22 @@ async function finalizeAcceptedSql(
   for (const inputMessageId of command.completion.inputMessageIds) {
     await messages.markReplied(conversationId, inputMessageId, nowMs);
   }
+}
+
+/** Commit accepted visible facts and the turn terminal. */
+async function finalizeAcceptedSql(
+  sql: JuniorSqlDatabase,
+  conversationId: string,
+  command: PendingConversationDeliveryCommand,
+  nowMs: number,
+): Promise<void> {
+  await recordVisibleAssistantSql(
+    sql,
+    conversationId,
+    command,
+    command.completion.assistantMessage.text,
+    nowMs,
+  );
   const lifecycle = new ConversationTurnLifecycleService(
     createSqlConversationEventStore(sql),
   );
@@ -141,8 +194,73 @@ async function finalizeAcceptedSql(
   }
 }
 
+function deliveryCommandDraft(
+  command: PendingConversationDeliveryCommand,
+): PendingConversationDeliveryCommandDraft {
+  const {
+    committedSeq: _committedSeq,
+    rollbackSeq: _rollbackSeq,
+    ...model
+  } = command.completion.model;
+  return {
+    ...command,
+    completion: { ...command.completion, model },
+  };
+}
+
+/** Project the exact canonical Pi boundary identified by an event cursor. */
+async function loadSqlProjectionAt(
+  sql: JuniorSqlDatabase,
+  conversationId: string,
+  committedSeq: number,
+): Promise<PiConversationEventProjection | undefined> {
+  const history =
+    await createSqlConversationEventStore(sql).loadHistory(conversationId);
+  const boundary = history.find((event) => event.seq === committedSeq);
+  if (!boundary) return undefined;
+  return projectConversationEvents(
+    history.filter(
+      (event) =>
+        event.contextEpoch === boundary.contextEpoch &&
+        event.seq <= committedSeq,
+    ),
+  );
+}
+
+/** Remove an undelivered model generation from the live Pi epoch. */
+async function rollbackRejectedModel(
+  sql: JuniorSqlDatabase,
+  conversationId: string,
+  command: PendingConversationDeliveryCommand,
+): Promise<void> {
+  const rollbackSeq = command.completion.model.rollbackSeq;
+  const prior =
+    rollbackSeq < 0
+      ? { messages: [], provenance: [], modelId: undefined }
+      : await loadSqlProjectionAt(sql, conversationId, rollbackSeq);
+  if (!prior) {
+    throw new Error("Delivery rollback event boundary no longer exists");
+  }
+  const current = projectConversationEvents(
+    await createSqlConversationEventStore(sql).loadCurrentEpoch(conversationId),
+  );
+  const tailStart = current.seqs.findIndex(
+    (seq) => seq > command.completion.model.committedSeq,
+  );
+  const tailMessages = tailStart < 0 ? [] : current.messages.slice(tailStart);
+  const tailProvenance =
+    tailStart < 0 ? [] : current.provenance.slice(tailStart);
+  await commitMessages({
+    conversationId,
+    modelId: prior.modelId ?? command.completion.model.modelId,
+    messages: [...prior.messages, ...tailMessages],
+    provenance: [...prior.provenance, ...tailProvenance],
+    executor: sql,
+  });
+}
+
 /** Drives one durable Slack reply without ever rerunning the model. */
-export class RecoverableSlackDeliveryService {
+export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery {
   constructor(
     private readonly sql: JuniorSqlDatabase,
     private readonly slack: RecoverableSlackDeliveryPort,
@@ -154,13 +272,63 @@ export class RecoverableSlackDeliveryService {
     conversationId: string;
     deliveryId: string;
     turnId: string;
-    command: PendingConversationDeliveryCommand;
+    command: PendingConversationDeliveryCommandDraft;
+    modelMessages: ConversationModelMessage[];
   }): Promise<PendingConversationDelivery> {
-    return createPendingConversationDelivery(this.sql, {
-      ...args,
-      command: pendingConversationDeliveryCommandSchema.parse(args.command),
-      nowMs: this.now(),
-    });
+    const modelMessages = piMessageSchema.array().parse(args.modelMessages);
+    return withConversationEventLock(this.sql, args.conversationId, async () =>
+      this.sql.transaction(async () => {
+        const existing = await loadPendingDeliveryByTurn(this.sql, args);
+        if (existing) {
+          const committed = await loadSqlProjectionAt(
+            this.sql,
+            args.conversationId,
+            existing.command.completion.model.committedSeq,
+          );
+          if (
+            !isDeepStrictEqual(
+              deliveryCommandDraft(existing.command),
+              args.command,
+            ) ||
+            !isDeepStrictEqual(committed?.messages ?? [], modelMessages)
+          ) {
+            throw new Error(
+              "Pending delivery command does not match its intent",
+            );
+          }
+          return existing;
+        }
+
+        const eventStore = createSqlConversationEventStore(this.sql);
+        const before = projectConversationEvents(
+          await eventStore.loadCurrentEpoch(args.conversationId),
+        );
+        const commit = await commitMessages({
+          conversationId: args.conversationId,
+          modelId: args.command.completion.model.modelId,
+          messages: modelMessages,
+          executor: this.sql,
+        });
+        const command = pendingConversationDeliveryCommandSchema.parse({
+          ...args.command,
+          completion: {
+            ...args.command.completion,
+            model: {
+              ...args.command.completion.model,
+              committedSeq: commit.committedSeq,
+              rollbackSeq: before.seqs.at(-1) ?? -1,
+            },
+          },
+        });
+        return createPendingConversationDelivery(this.sql, {
+          conversationId: args.conversationId,
+          deliveryId: args.deliveryId,
+          turnId: args.turnId,
+          command,
+          nowMs: this.now(),
+        });
+      }),
+    );
   }
 
   /** Load unresolved control state before deciding whether Pi may run. */
@@ -182,8 +350,8 @@ export class RecoverableSlackDeliveryService {
   async loadTerminalOutcome(args: {
     conversationId: string;
     turnId: string;
-    knownIntent?: boolean;
-  }) {
+    acceptanceEvidence: PendingDeliveryAcceptanceEvidence;
+  }): Promise<PendingDeliveryTerminalOutcome | undefined> {
     return loadDeliveryTerminalOutcome(this.sql, args);
   }
 
@@ -207,7 +375,7 @@ export class RecoverableSlackDeliveryService {
         const terminal = await loadDeliveryTerminalOutcome(this.sql, {
           conversationId: pending.conversationId,
           turnId: pending.turnId,
-          knownIntent: true,
+          acceptanceEvidence: "known_outbox_intent",
         });
         if (terminal) return { outcome: terminal.deliveryOutcome };
         return { outcome: "pending", retryAtMs: pending.nextAttemptAtMs };
@@ -256,7 +424,6 @@ export class RecoverableSlackDeliveryService {
             current = await recordPendingDeliveryAccepted(this.sql, {
               deliveryId: current.deliveryId,
               lease,
-              providerMessageId: reconciliation.ts,
               nowMs: reconciliationNow,
             });
             continue;
@@ -374,7 +541,6 @@ export class RecoverableSlackDeliveryService {
           current = await recordPendingDeliveryAccepted(this.sql, {
             deliveryId: current.deliveryId,
             lease,
-            providerMessageId: post.ts,
             nowMs: postNow,
           });
           continue;
@@ -419,6 +585,27 @@ export class RecoverableSlackDeliveryService {
             lease,
             nowMs: this.now(),
             finalizer: async ({ command }) => {
+              if (current.progress.acceptedPartCount === 0) {
+                await rollbackRejectedModel(
+                  this.sql,
+                  current.conversationId,
+                  command,
+                );
+              } else {
+                // Preserve the exact Slack-visible boundary. The full Pi
+                // transcript remains canonical because its tool calls and
+                // side effects happened even though the reply tail did not.
+                await recordVisibleAssistantSql(
+                  this.sql,
+                  current.conversationId,
+                  command,
+                  command.parts
+                    .slice(0, current.progress.acceptedPartCount)
+                    .map((part) => part.text)
+                    .join("\n\n"),
+                  this.now(),
+                );
+              }
               await new ConversationTurnLifecycleService(
                 createSqlConversationEventStore(this.sql),
               ).fail({
@@ -433,7 +620,7 @@ export class RecoverableSlackDeliveryService {
           const terminal = await loadDeliveryTerminalOutcome(this.sql, {
             conversationId: current.conversationId,
             turnId: current.turnId,
-            knownIntent: true,
+            acceptanceEvidence: "known_outbox_intent",
           });
           if (terminal) return { outcome: terminal.deliveryOutcome };
           throw error;
@@ -460,7 +647,7 @@ export class RecoverableSlackDeliveryService {
         const terminal = await loadDeliveryTerminalOutcome(this.sql, {
           conversationId: current.conversationId,
           turnId: current.turnId,
-          knownIntent: true,
+          acceptanceEvidence: "known_outbox_intent",
         });
         if (terminal) return { outcome: terminal.deliveryOutcome };
         throw error;

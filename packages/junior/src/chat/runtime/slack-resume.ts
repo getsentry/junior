@@ -20,12 +20,6 @@ import {
   finalizeFailedTurnReplyWithEvent,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
-import { getConversationEventStore } from "@/chat/db";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
@@ -34,6 +28,7 @@ import {
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
 import {
+  buildSlackReplyBlocks,
   buildSlackReplyFooter,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
@@ -43,6 +38,9 @@ import {
 } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
+import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import {
@@ -52,10 +50,13 @@ import {
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   TurnSliceLimitExceededError,
   buildTurnLimitResponse,
 } from "@/chat/services/turn-limit";
+import { advanceOwnedSlackDeliveryWithTerminalRepair } from "@/chat/runtime/slack-delivery-recovery";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -139,6 +140,14 @@ export class ResumeTurnBusyError extends Error {
   }
 }
 
+/** Leaves a durable delivery intent for a later callback or conversation turn. */
+export class ResumeDeliveryPendingError extends Error {
+  constructor(readonly retryAtMs: number) {
+    super("Resumed Slack delivery is awaiting retry or reconciliation");
+    this.name = "ResumeDeliveryPendingError";
+  }
+}
+
 interface ResumeSlackTurnArgs {
   messageText: string;
   channelId: string;
@@ -149,7 +158,9 @@ interface ResumeSlackTurnArgs {
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
   inputMessageIds?: string[];
+  sliceId?: number;
   lifecycleCorrelation?: ResumeLifecycleCorrelation;
   turnLifecycle?: ConversationTurnLifecycle;
   scheduleSessionCompletedPluginTasks?: (params: {
@@ -157,6 +168,7 @@ interface ResumeSlackTurnArgs {
     sessionId: string;
   }) => Promise<void>;
   onSuccess?: (reply: AgentRunResult) => Promise<void>;
+  onRecoveredSuccess?: () => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
@@ -170,37 +182,6 @@ interface ResumeSlackTurnArgs {
 type ResumeReplyContext = Omit<AgentRunRequest, "input"> & {
   input?: Omit<AgentRunRequest["input"], "messageText">;
 };
-
-interface ResumeLifecycleCorrelation {
-  conversationId: string;
-  turnId: string;
-}
-
-interface ResumeLifecycleContext extends ResumeLifecycleCorrelation {
-  inputMessageIds?: string[];
-  service: ConversationTurnLifecycle;
-}
-
-function getResumeLifecycleContext(
-  args: ResumeSlackTurnArgs,
-  request?: AgentRunRequest,
-): ResumeLifecycleContext | undefined {
-  const correlation = request?.routing.correlation;
-  const conversationId =
-    correlation?.conversationId ?? args.lifecycleCorrelation?.conversationId;
-  const turnId = correlation?.turnId ?? args.lifecycleCorrelation?.turnId;
-  if (!conversationId || !turnId) return undefined;
-  return {
-    conversationId,
-    turnId,
-    ...(args.inputMessageIds?.length
-      ? { inputMessageIds: [...new Set(args.inputMessageIds)] }
-      : {}),
-    service:
-      args.turnLifecycle ??
-      new ConversationTurnLifecycleService(getConversationEventStore()),
-  };
-}
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;
@@ -227,6 +208,31 @@ function getResumeLogContext(
   };
 }
 
+async function scheduleResumeCompletedPluginTasks(args: {
+  conversationId: string;
+  logContext: LogContext;
+  schedule: (params: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<void>;
+  sessionId: string;
+}): Promise<void> {
+  try {
+    await args.schedule({
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "plugin_session_completed_task_schedule_failed",
+      args.logContext,
+      {},
+      "Plugin session.completed task scheduling failed",
+    );
+  }
+}
+
 /** Resolve the conversation identifier used by resumed-turn logs and Slack footers. */
 function getResumeConversationId(
   args: ResumeSlackTurnArgs,
@@ -251,16 +257,63 @@ async function postResumeFailureReply(args: {
   });
 }
 
+interface ResumeLifecycleCorrelation {
+  conversationId: string;
+  turnId: string;
+}
+
+interface ResumeLifecycleContext extends ResumeLifecycleCorrelation {
+  inputMessageIds?: string[];
+}
+
+interface StartedResumeLifecycleContext extends ResumeLifecycleCorrelation {
+  inputMessageIds: string[];
+}
+
+function getResumeLifecycleContext(
+  args: ResumeSlackTurnArgs,
+  request: AgentRunRequest,
+): StartedResumeLifecycleContext | undefined {
+  const conversationId = request.routing.correlation?.conversationId;
+  const turnId = request.routing.correlation?.turnId;
+  if (!conversationId || !turnId) {
+    return undefined;
+  }
+  if (!args.inputMessageIds?.length) {
+    throw new TypeError(
+      "Correlated Slack resume requires durable input message IDs",
+    );
+  }
+  if (!args.turnLifecycle) {
+    throw new TypeError("Correlated Slack resume requires turn lifecycle");
+  }
+  return {
+    conversationId,
+    turnId,
+    inputMessageIds: [...new Set(args.inputMessageIds)],
+  };
+}
+
 async function handleResumeFailure(args: {
   body: string;
   error: unknown;
   eventName: string;
   lockKey: string;
   lifecycle?: ResumeLifecycleContext;
-  failureCode: ConversationTurnFailureCode;
   resumeArgs: ResumeSlackTurnArgs;
 }): Promise<void> {
   const logContext = getResumeLogContext(args.resumeArgs, args.lockKey);
+  if (args.lifecycle) {
+    if (args.lifecycle.inputMessageIds?.length) {
+      await args.resumeArgs.turnLifecycle!.start({
+        conversationId: args.lifecycle.conversationId,
+        turnId: args.lifecycle.turnId,
+        inputMessageIds: args.lifecycle.inputMessageIds,
+        createdAtMs: Date.now(),
+        surface: "slack",
+      });
+    }
+  }
   const capturedEventId = logException(
     args.error,
     args.eventName,
@@ -269,7 +322,6 @@ async function handleResumeFailure(args: {
     args.body,
   );
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
-  let failureStatePersistError: unknown;
   try {
     await args.resumeArgs.onFailure?.(args.error);
   } catch (persistError) {
@@ -280,24 +332,15 @@ async function handleResumeFailure(args: {
       { "app.error.original_event_id": eventId },
       "Failed to persist resumed turn failure state",
     );
-    try {
-      await args.lifecycle?.service.fail({
-        conversationId: args.lifecycle.conversationId,
-        turnId: args.lifecycle.turnId,
+    if (args.lifecycle) {
+      await args.resumeArgs.turnLifecycle!.fail({
+        ...args.lifecycle,
         createdAtMs: Date.now(),
         failureCode: "persistence_failed",
         ...(persistEventId ? { eventId: persistEventId } : {}),
       });
-    } catch (lifecycleError) {
-      logException(
-        lifecycleError,
-        "slack_resume_failure_lifecycle_persist_failed",
-        logContext,
-        { "app.error.original_event_id": eventId },
-        "Failed to record resumed turn persistence failure",
-      );
     }
-    failureStatePersistError = persistError;
+    throw persistError;
   }
   try {
     await postResumeFailureReply({
@@ -309,40 +352,29 @@ async function handleResumeFailure(args: {
   } catch (deliveryError) {
     const deliveryEventId = logException(
       deliveryError,
-      "slack_resume_failure_delivery_failed",
+      "slack_resume_failure_reply_post_failed",
       logContext,
       { "app.error.original_event_id": eventId },
-      "Failed to deliver resumed turn failure state",
+      "Failed to post resumed turn failure reply",
     );
-    try {
-      await args.lifecycle?.service.fail({
-        conversationId: args.lifecycle.conversationId,
-        turnId: args.lifecycle.turnId,
+    if (args.lifecycle) {
+      await args.resumeArgs.turnLifecycle!.fail({
+        ...args.lifecycle,
         createdAtMs: Date.now(),
         failureCode: "delivery_failed",
         ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
       });
-    } catch (lifecycleError) {
-      logException(
-        lifecycleError,
-        "slack_resume_failure_lifecycle_persist_failed",
-        logContext,
-        { "app.error.original_event_id": eventId },
-        "Failed to record resumed turn delivery failure",
-      );
     }
     throw deliveryError;
   }
-  if (failureStatePersistError) {
-    throw failureStatePersistError;
+  if (args.lifecycle) {
+    await args.resumeArgs.turnLifecycle!.fail({
+      ...args.lifecycle,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      eventId,
+    });
   }
-  await args.lifecycle?.service.fail({
-    conversationId: args.lifecycle.conversationId,
-    turnId: args.lifecycle.turnId,
-    createdAtMs: Date.now(),
-    failureCode: args.failureCode,
-    eventId,
-  });
 }
 
 function createResumeReplyContext(
@@ -357,6 +389,9 @@ function createResumeReplyContext(
     throw new TypeError("Slack resume requires a reply context source");
   }
   const source = replyContext.routing.source;
+  if (source.platform !== "slack") {
+    throw new TypeError("Slack resume requires a Slack source");
+  }
   if (replyContext.routing.destination.platform !== "slack") {
     throw new TypeError("Slack resume requires a Slack destination");
   }
@@ -452,9 +487,9 @@ export async function resumeSlackTurn(
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let finalReplyDelivered = false;
+  let recoverableDeliveryTerminalized = false;
   let postDeliveryCommitError: unknown;
-  let lifecycle = getResumeLifecycleContext(args);
-  let failureCode: ConversationTurnFailureCode = "agent_run_failed";
+  let lifecycle: ResumeLifecycleContext | undefined = args.lifecycleCorrelation;
   let runArgs = args;
   try {
     const preparedArgs = await args.beforeStart?.();
@@ -516,15 +551,108 @@ export async function resumeSlackTurn(
     status.update(runArgs.initialStatus);
 
     const replyContext = createResumeReplyContext(runArgs, status);
-    lifecycle = getResumeLifecycleContext(runArgs, replyContext) ?? lifecycle;
-    if (lifecycle?.inputMessageIds?.length) {
-      await lifecycle.service.start({
-        conversationId: lifecycle.conversationId,
-        turnId: lifecycle.turnId,
+    const lifecycleCandidate = getResumeLifecycleContext(runArgs, replyContext);
+    if (lifecycleCandidate) {
+      lifecycle = lifecycleCandidate;
+      await runArgs.turnLifecycle!.start({
+        ...lifecycleCandidate,
         createdAtMs: Date.now(),
-        inputMessageIds: lifecycle.inputMessageIds,
         surface: "slack",
       });
+      const pendingDelivery =
+        await runArgs.recoverableSlackDelivery?.loadByTurn({
+          conversationId: lifecycleCandidate.conversationId,
+          turnId: lifecycleCandidate.turnId,
+        });
+      if (pendingDelivery) {
+        let repairedBeforeTerminal = false;
+        const recovery = await advanceOwnedSlackDeliveryWithTerminalRepair({
+          delivery: runArgs.recoverableSlackDelivery!,
+          intent: pendingDelivery,
+          beforeRepair: async (input) => {
+            if (input.deliveryOutcome === "accepted") {
+              await runArgs.onRecoveredSuccess?.();
+            } else {
+              await runArgs.onFailure?.(
+                new Error("Slack rejected the resumed turn reply"),
+              );
+            }
+            repairedBeforeTerminal = true;
+          },
+        });
+        if (recovery.outcome === "pending") {
+          throw new ResumeDeliveryPendingError(recovery.retryAtMs);
+        }
+        if (repairedBeforeTerminal) {
+          finalReplyDelivered = recovery.outcome === "accepted";
+          recoverableDeliveryTerminalized = true;
+          if (
+            recovery.outcome === "accepted" &&
+            pendingDelivery.command.completion.terminal.outcome === "success"
+          ) {
+            await scheduleResumeCompletedPluginTasks({
+              conversationId: lifecycleCandidate.conversationId,
+              sessionId: lifecycleCandidate.turnId,
+              schedule:
+                runArgs.scheduleSessionCompletedPluginTasks ??
+                scheduleSessionCompletedPluginTasks,
+              logContext: getResumeLogContext(runArgs, lockKey),
+            });
+          }
+          return true;
+        }
+      }
+      const priorTerminal =
+        await runArgs.recoverableSlackDelivery?.loadTerminalOutcome({
+          conversationId: lifecycleCandidate.conversationId,
+          turnId: lifecycleCandidate.turnId,
+          acceptanceEvidence: "visible_assistant",
+        });
+      if (priorTerminal) {
+        if (priorTerminal.deliveryOutcome === "failed") {
+          await runArgs.onFailure?.(
+            new Error("Slack rejected the resumed turn reply"),
+          );
+        } else {
+          const projection = await loadConversationProjection({
+            conversationId: lifecycleCandidate.conversationId,
+          });
+          await persistCompletedSessionRecord({
+            conversationId: lifecycleCandidate.conversationId,
+            sessionId: lifecycleCandidate.turnId,
+            allMessages: projection.messages,
+            modelId: projection.modelId ?? botConfig.modelId,
+            destination: replyContext.routing.destination,
+            destinationVisibility: replyContext.routing.destinationVisibility,
+            source: replyContext.routing.source,
+            actor: resumeActor,
+            surface: "slack",
+            logContext: {
+              threadId: replyContext.routing.correlation?.threadId,
+              actorId: isUserActor(replyContext.routing.actor)
+                ? replyContext.routing.actor.userId
+                : undefined,
+              channelId: runArgs.channelId,
+              runId: replyContext.routing.correlation?.runId,
+              assistantUserName: botConfig.userName,
+            },
+          });
+          finalReplyDelivered = true;
+          recoverableDeliveryTerminalized = true;
+          await runArgs.onRecoveredSuccess?.();
+          if (priorTerminal.modelSucceeded) {
+            await scheduleResumeCompletedPluginTasks({
+              conversationId: lifecycleCandidate.conversationId,
+              sessionId: lifecycleCandidate.turnId,
+              schedule:
+                runArgs.scheduleSessionCompletedPluginTasks ??
+                scheduleSessionCompletedPluginTasks,
+              logContext: getResumeLogContext(runArgs, lockKey),
+            });
+          }
+        }
+        return true;
+      }
     }
     const replyPromise = runArgs.agentRunner.run(replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
@@ -575,9 +703,8 @@ export async function resumeSlackTurn(
               `Resumed run ended ${outcome.status} without a pause handler`,
             ),
             eventName: "slack_resume_turn_failed",
-            failureCode: "agent_run_failed",
-            lifecycle,
             lockKey,
+            lifecycle,
             resumeArgs: runArgs,
           });
         };
@@ -594,16 +721,139 @@ export async function resumeSlackTurn(
       const footer = buildSlackReplyFooter({
         conversationId: getResumeConversationId(runArgs, lockKey),
       });
-      const plannedPosts = planSlackReplyPosts({ reply });
-      failureCode = "delivery_failed";
-      await postSlackApiReplyPosts({
-        channelId: runArgs.channelId,
-        threadTs: runArgs.threadTs,
-        posts: plannedPosts,
-        footer,
-      });
+      const plannedPosts = planSlackReplyPosts({ reply }).filter(
+        (post) => post.text.trim().length > 0,
+      );
+      if (
+        lifecycle &&
+        plannedPosts.length > 0 &&
+        runArgs.recoverableSlackDelivery
+      ) {
+        const deliverySource = replyContext.routing.source;
+        const deliveryDestination = replyContext.routing.destination;
+        if (
+          deliverySource.platform !== "slack" ||
+          deliveryDestination.platform !== "slack"
+        ) {
+          throw new TypeError(
+            "Slack resume delivery requires Slack coordinates",
+          );
+        }
+        const intent = await runArgs.recoverableSlackDelivery.createIntent({
+          conversationId: lifecycle.conversationId,
+          turnId: lifecycle.turnId,
+          deliveryId: `slack:${lifecycle.turnId}`,
+          modelMessages:
+            reply.piMessages ?? replyContext.input.piMessages ?? [],
+          command: {
+            route: {
+              channelId: runArgs.channelId,
+              threadTs: runArgs.threadTs,
+            },
+            publicLocator: createSlackDeliveryLocator(),
+            session: {
+              surface: "slack",
+              source: deliverySource,
+              destination: deliveryDestination,
+              destinationVisibility: replyContext.routing.destinationVisibility,
+              actor: resumeActor,
+              startedAtMs: Date.now(),
+            },
+            parts: plannedPosts.map((post, index) => {
+              const blocks = buildSlackReplyBlocks(
+                post.text,
+                index === plannedPosts.length - 1 ? footer : undefined,
+              );
+              return {
+                text: post.text,
+                ...(blocks ? { blocks } : {}),
+              };
+            }),
+            completion: {
+              turnId: lifecycle.turnId,
+              inputMessageIds: lifecycle.inputMessageIds ?? [],
+              assistantMessage: {
+                messageId: buildDeterministicAssistantMessageId(
+                  lifecycle.turnId,
+                ),
+                text: reply.text,
+                createdAtMs: Date.now(),
+                author: { userName: botConfig.userName, isBot: true },
+              },
+              model: { modelId: reply.diagnostics.modelId },
+              ...(reply.diagnostics.durationMs !== undefined
+                ? { durationMs: reply.diagnostics.durationMs }
+                : {}),
+              ...(reply.diagnostics.usage
+                ? { usage: reply.diagnostics.usage }
+                : {}),
+              ...(reply.diagnostics.reasoningLevel
+                ? { reasoningLevel: reply.diagnostics.reasoningLevel }
+                : {}),
+              sliceId: runArgs.sliceId ?? 1,
+              terminal:
+                reply.diagnostics.outcome === "success"
+                  ? { outcome: "success" as const }
+                  : {
+                      outcome: "failed" as const,
+                      failureCode: "model_execution_failed" as const,
+                      ...(finalized.eventId
+                        ? { eventId: finalized.eventId }
+                        : {}),
+                    },
+            },
+          },
+        });
+        let repairedBeforeTerminal = false;
+        const delivery = await advanceOwnedSlackDeliveryWithTerminalRepair({
+          delivery: runArgs.recoverableSlackDelivery,
+          intent,
+          beforeRepair: async (input) => {
+            if (input.deliveryOutcome === "accepted") {
+              await runArgs.onSuccess?.(reply);
+            } else {
+              await runArgs.onFailure?.(
+                new Error("Slack rejected the resumed turn reply"),
+              );
+            }
+            repairedBeforeTerminal = true;
+          },
+        });
+        if (delivery.outcome === "pending") {
+          throw new ResumeDeliveryPendingError(delivery.retryAtMs);
+        }
+        recoverableDeliveryTerminalized = true;
+        if (delivery.outcome === "failed") {
+          if (!repairedBeforeTerminal) {
+            await runArgs.onFailure?.(
+              new Error("Slack rejected the resumed turn reply"),
+            );
+          }
+          return true;
+        }
+        if (repairedBeforeTerminal) {
+          finalReplyDelivered = true;
+          if (reply.diagnostics.outcome === "success") {
+            await scheduleResumeCompletedPluginTasks({
+              conversationId: lifecycle.conversationId,
+              sessionId: lifecycle.turnId,
+              schedule:
+                runArgs.scheduleSessionCompletedPluginTasks ??
+                scheduleSessionCompletedPluginTasks,
+              logContext: getResumeLogContext(runArgs, lockKey),
+            });
+          }
+          return true;
+        }
+      } else {
+        await postSlackApiReplyPosts({
+          channelId: runArgs.channelId,
+          threadTs: runArgs.threadTs,
+          posts: plannedPosts,
+          footer,
+        });
+      }
       finalReplyDelivered = true;
-      failureCode = "persistence_failed";
       // Destination acceptance is the completion boundary: only now commit the
       // final assistant messages and the terminal completed session record.
       // Persistence is retried and any remaining failure reaches this runtime
@@ -636,18 +886,19 @@ export async function resumeSlackTurn(
         });
       }
       await runArgs.onSuccess?.(reply);
-      if (lifecycle) {
+      if (lifecycle && !recoverableDeliveryTerminalized) {
         if (reply.diagnostics.outcome === "success") {
-          await lifecycle.service.complete({
+          await runArgs.turnLifecycle!.complete({
             conversationId: lifecycle.conversationId,
             turnId: lifecycle.turnId,
             createdAtMs: Date.now(),
-            outcome: plannedPosts.some((post) => post.text.trim().length > 0)
-              ? "success"
-              : "no_reply",
+            outcome:
+              planSlackReplyPosts({ reply }).length === 0
+                ? "no_reply"
+                : "success",
           });
         } else {
-          await lifecycle.service.fail({
+          await runArgs.turnLifecycle!.fail({
             conversationId: lifecycle.conversationId,
             turnId: lifecycle.turnId,
             createdAtMs: Date.now(),
@@ -661,29 +912,39 @@ export async function resumeSlackTurn(
         replyContext.routing.correlation?.conversationId &&
         replyContext.routing.correlation.turnId
       ) {
-        try {
-          const params = {
-            conversationId: replyContext.routing.correlation.conversationId,
-            sessionId: replyContext.routing.correlation.turnId,
-          };
-          if (runArgs.scheduleSessionCompletedPluginTasks) {
-            await runArgs.scheduleSessionCompletedPluginTasks(params);
-          } else {
-            await scheduleSessionCompletedPluginTasks(params);
-          }
-        } catch (scheduleError) {
-          logException(
-            scheduleError,
-            "plugin_session_completed_task_schedule_failed",
-            getResumeLogContext(runArgs, lockKey),
-            {},
-            "Plugin session.completed task scheduling failed",
-          );
-        }
+        await scheduleResumeCompletedPluginTasks({
+          conversationId: replyContext.routing.correlation.conversationId,
+          sessionId: replyContext.routing.correlation.turnId,
+          schedule:
+            runArgs.scheduleSessionCompletedPluginTasks ??
+            scheduleSessionCompletedPluginTasks,
+          logContext: getResumeLogContext(runArgs, lockKey),
+        });
       }
     }
   } catch (error) {
     await status.clear();
+
+    if (error instanceof ResumeDeliveryPendingError) {
+      return true;
+    }
+
+    if (
+      lifecycle &&
+      (await runArgs.recoverableSlackDelivery?.loadByTurn({
+        conversationId: lifecycle.conversationId,
+        turnId: lifecycle.turnId,
+      }))
+    ) {
+      logException(
+        error,
+        "slack_resume_delivery_repair_deferred",
+        getResumeLogContext(runArgs, lockKey),
+        {},
+        "Deferred resumed delivery repair to heartbeat",
+      );
+      return true;
+    }
 
     if (finalReplyDelivered) {
       postDeliveryCommitError = error;
@@ -698,15 +959,30 @@ export async function resumeSlackTurn(
           "Failed to terminalize resumed turn after post-delivery commit failure",
         );
       }
+      const eventId = logException(
+        error,
+        "slack_resume_success_handler_failed",
+        getResumeLogContext(runArgs, lockKey),
+        {},
+        "Failed to persist resumed turn state after final reply delivery",
+      );
+      if (lifecycle && !recoverableDeliveryTerminalized) {
+        await runArgs.turnLifecycle!.fail({
+          conversationId: lifecycle.conversationId,
+          turnId: lifecycle.turnId,
+          createdAtMs: Date.now(),
+          failureCode: "persistence_failed",
+          ...(eventId ? { eventId } : {}),
+        });
+      }
     } else {
       deferredFailureHandler = async () => {
         await handleResumeFailure({
           body: "Failed to resume Slack turn",
           error,
           eventName: "slack_resume_turn_failed",
-          failureCode,
-          lifecycle,
           lockKey,
+          lifecycle,
           resumeArgs: runArgs,
         });
       };
@@ -721,20 +997,6 @@ export async function resumeSlackTurn(
   }
 
   if (postDeliveryCommitError) {
-    const eventId = logException(
-      postDeliveryCommitError,
-      "slack_resume_success_handler_failed",
-      getResumeLogContext(runArgs, lockKey),
-      {},
-      "Failed to persist resumed turn state after final reply delivery",
-    );
-    await lifecycle?.service.fail({
-      conversationId: lifecycle.conversationId,
-      turnId: lifecycle.turnId,
-      createdAtMs: Date.now(),
-      failureCode: "persistence_failed",
-      ...(eventId ? { eventId } : {}),
-    });
     throw postDeliveryCommitError;
   }
 
@@ -761,9 +1023,8 @@ export async function resumeSlackTurn(
         body: "Failed to handle resumed turn pause",
         error: pauseError,
         eventName: "slack_resume_pause_handler_failed",
-        failureCode: "persistence_failed",
-        lifecycle,
         lockKey,
+        lifecycle,
         resumeArgs: runArgs,
       });
       return true;
@@ -787,10 +1048,13 @@ export async function resumeAuthorizedRequest(args: {
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   agentRunner: AgentRunner;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
   inputMessageIds?: string[];
+  sliceId?: number;
   lifecycleCorrelation?: ResumeLifecycleCorrelation;
   turnLifecycle?: ConversationTurnLifecycle;
   onSuccess?: (reply: AgentRunResult) => Promise<void>;
+  onRecoveredSuccess?: () => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
@@ -807,10 +1071,13 @@ export async function resumeAuthorizedRequest(args: {
     lockKey: args.lockKey,
     initialText: args.connectedText,
     agentRunner: args.agentRunner,
+    recoverableSlackDelivery: args.recoverableSlackDelivery,
     inputMessageIds: args.inputMessageIds,
+    sliceId: args.sliceId,
     lifecycleCorrelation: args.lifecycleCorrelation,
     turnLifecycle: args.turnLifecycle,
     onSuccess: args.onSuccess,
+    onRecoveredSuccess: args.onRecoveredSuccess,
     onFailure: args.onFailure,
     onAuthPause: args.onAuthPause,
     onTimeoutPause: args.onTimeoutPause,

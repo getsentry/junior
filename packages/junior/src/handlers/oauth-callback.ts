@@ -67,9 +67,11 @@ import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
+  turnLifecycle?: ConversationTurnLifecycle;
 }
 
 /**
@@ -281,6 +283,7 @@ async function resumeOAuthSessionRecordTurn(
     },
     initialText: "",
     agentRunner: options.agentRunner,
+    turnLifecycle: options.turnLifecycle,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
         stored.resumeConversationId!,
@@ -539,6 +542,7 @@ async function resumePendingOAuthMessage(
     messageTs,
     connectedText: "",
     agentRunner: options.agentRunner,
+    turnLifecycle: options.turnLifecycle,
     replyContext: {
       input: {
         conversationContext,

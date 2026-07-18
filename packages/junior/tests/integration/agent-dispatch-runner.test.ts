@@ -10,8 +10,15 @@ import {
   updateDispatchRecord,
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
-import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  processAgentDispatchCallback as processAgentDispatchCallbackImpl,
+  type AgentDispatchRunnerDeps,
+} from "@/chat/agent-dispatch/runner";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -34,8 +41,39 @@ import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
+  queueSlackRateLimit,
 } from "../msw/handlers/slack-api";
 import { flattenAgentRunRequestForTest } from "../fixtures/agent-runner";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
+import {
+  postRecoverableSlackMessage,
+  reconcileRecoverableSlackMessage,
+} from "@/chat/slack/outbound";
+import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
+import { deferred } from "../fixtures/conversation-work";
+
+async function processAgentDispatchCallback(
+  callback: Parameters<typeof processAgentDispatchCallbackImpl>[0],
+  deps: Omit<
+    AgentDispatchRunnerDeps,
+    "recoverableSlackDelivery" | "turnLifecycle"
+  >,
+): Promise<void> {
+  await processAgentDispatchCallbackImpl(callback, {
+    ...deps,
+    recoverableSlackDelivery: new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      {
+        post: postRecoverableSlackMessage,
+        reconcile: reconcileRecoverableSlackMessage,
+      },
+    ),
+    turnLifecycle: new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    ),
+  });
+}
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -229,7 +267,7 @@ describe("agent dispatch runner", () => {
     });
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -271,10 +309,9 @@ describe("agent dispatch runner", () => {
           }),
         }),
         expect.objectContaining({
-          id: `dispatch:${created.record.id}:assistant`,
+          id: `assistant:dispatch:${created.record.id}`,
           meta: expect.objectContaining({
             slackTs: "1700000000.000001",
-            replied: true,
           }),
         }),
       ]),
@@ -308,18 +345,154 @@ describe("agent dispatch runner", () => {
       await getConversationEventStore().loadHistory(dispatchConversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
     expect(lifecycle.map((event) => event.data)).toEqual([
-      expect.objectContaining({
+      {
         type: "turn_started",
         turnId: `dispatch:${created.record.id}`,
         inputMessageIds: [`dispatch:${created.record.id}:user`],
         surface: "api",
-      }),
-      expect.objectContaining({
+      },
+      {
         type: "turn_completed",
         turnId: `dispatch:${created.record.id}`,
         outcome: "success",
-      }),
+      },
     ]);
+  });
+
+  it.each([120, 500])(
+    "uses the configured %ds host window for the agent deadline and lease",
+    async (functionMaxDurationSeconds) => {
+      const created = await createOrGetDispatch({
+        plugin: "scheduler",
+        nowMs: Date.now(),
+        options: {
+          idempotencyKey: `configured-function-lease-${functionMaxDurationSeconds}`,
+          destination: slackAddress(),
+          destinationVisibility: "private",
+          input: "Run the scheduled task.",
+          source: slackSource(),
+        },
+      });
+      const entered = deferred<void>();
+      const finish = deferred<void>();
+      let turnDeadlineAtMs: number | undefined;
+      let turnTimeoutMs: number | undefined;
+      const running = processAgentDispatchCallback(
+        {
+          id: created.record.id,
+          expectedVersion: created.record.version,
+        },
+        {
+          agentRunner: {
+            run: async (request) => {
+              turnDeadlineAtMs = request.policy?.turnDeadlineAtMs;
+              turnTimeoutMs = request.policy?.turnTimeoutMs;
+              entered.resolve();
+              await finish.promise;
+              return completedAgentRun(createReply());
+            },
+          },
+          functionMaxDurationSeconds,
+        },
+      );
+      await entered.promise;
+
+      const active = await getDispatchRecord(created.record.id);
+      expect(active).toMatchObject({
+        lastCallbackAtMs: expect.any(Number),
+        leaseExpiresAtMs: expect.any(Number),
+        status: "running",
+      });
+      const startedAtMs = active!.lastCallbackAtMs!;
+      expect(turnTimeoutMs).toBe((functionMaxDurationSeconds - 20) * 1000);
+      expect(turnDeadlineAtMs).toBe(
+        startedAtMs + (functionMaxDurationSeconds - 20) * 1000,
+      );
+      expect(active!.leaseExpiresAtMs).toBe(
+        startedAtMs + (functionMaxDurationSeconds + 20) * 1000,
+      );
+
+      const originalFetch = global.fetch;
+      const fetchMock = vi.fn(
+        async (..._args: Parameters<typeof fetch>) =>
+          new Response("Accepted", { status: 202 }),
+      );
+      global.fetch = fetchMock as typeof fetch;
+      try {
+        await expect(
+          recoverStaleDispatches({ nowMs: active!.leaseExpiresAtMs! - 1 }),
+        ).resolves.toBe(0);
+        await expect(
+          recoverStaleDispatches({ nowMs: active!.leaseExpiresAtMs! }),
+        ).resolves.toBe(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      } finally {
+        global.fetch = originalFetch;
+        finish.resolve();
+        await running;
+      }
+    },
+  );
+
+  it("retries pending delivery without consuming another model attempt", async () => {
+    queueSlackRateLimit("chat.postMessage", 0);
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000009",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-delivery-retry",
+        destination: slackAddress(),
+        destinationVisibility: "private",
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    const executeAgentRun = vi.fn(async () => completedAgentRun(createReply()));
+    const scheduledCallbacks: Array<{
+      expectedVersion: number;
+      id: string;
+      kind?: "delivery";
+    }> = [];
+    const scheduleCallback = vi.fn(async (callback) => {
+      scheduledCallbacks.push(callback);
+    });
+
+    await processAgentDispatchCallback(
+      { id: created.record.id, expectedVersion: created.record.version },
+      { agentRunner: { run: executeAgentRun }, scheduleCallback },
+    );
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 1,
+      status: "awaiting_resume",
+      nextCallbackKind: "delivery",
+    });
+    expect(scheduledCallbacks).toEqual([
+      {
+        id: created.record.id,
+        expectedVersion: expect.any(Number),
+        kind: "delivery",
+      },
+    ]);
+
+    await processAgentDispatchCallback(scheduledCallbacks[0]!, {
+      agentRunner: { run: executeAgentRun },
+      scheduleCallback,
+    });
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 1,
+      status: "completed",
+      resultMessageTs: "1700000000.000009",
+    });
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(2);
   });
 
   it("starts dispatches without inherited destination conversation memory", async () => {
@@ -361,7 +534,7 @@ describe("agent dispatch runner", () => {
       return completedAgentRun(createReply());
     });
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -392,7 +565,7 @@ describe("agent dispatch runner", () => {
           id: `dispatch:${created.record.id}:user`,
         }),
         expect.objectContaining({
-          id: `dispatch:${created.record.id}:assistant`,
+          id: `assistant:dispatch:${created.record.id}`,
         }),
       ]),
     );
@@ -413,7 +586,7 @@ describe("agent dispatch runner", () => {
     const dispatchConversationId = getDispatchConversationId(created.record);
     const sideEffectReply = createReply();
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -497,7 +670,7 @@ describe("agent dispatch runner", () => {
         return completedAgentRun(createReply());
       });
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -519,7 +692,7 @@ describe("agent dispatch runner", () => {
         ts: "1700000000.000001",
       }),
     });
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: awaitingResume!.version,
@@ -571,7 +744,7 @@ describe("agent dispatch runner", () => {
       return completedAgentRun(createReply());
     });
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -625,7 +798,7 @@ describe("agent dispatch runner", () => {
       return completedAgentRun(createReply());
     });
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -657,6 +830,7 @@ describe("agent dispatch runner", () => {
         source: slackSource(),
       },
     });
+    const dispatchConversationId = getDispatchConversationId(created.record);
     const state = getStateAdapter();
     await state.connect();
     const originalSet = state.set.bind(state);
@@ -668,43 +842,180 @@ describe("agent dispatch runner", () => {
         }
         return originalSet(key, value, ttlMs);
       });
+    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
     try {
-      await runAgentDispatchSlice(
+      await processAgentDispatchCallback(
         {
           id: created.record.id,
           expectedVersion: created.record.version,
         },
         {
           agentRunner: { run: async () => completedAgentRun(createReply()) },
+          scheduleSessionCompletedPluginTasks,
         },
       );
     } finally {
       setSpy.mockRestore();
     }
 
-    // Delivery already happened: the dispatch is terminal so a retry cannot
-    // re-post, and the persistence failure is logged instead of failing it.
-    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
-      status: "completed",
-      resultMessageTs: "1700000000.000004",
+    // Slack accepted the write, but the durable intent remains until all
+    // derived state is repaired. A delivery callback retries no model work.
+    const awaitingRepair = await getDispatchRecord(created.record.id);
+    expect(awaitingRepair).toMatchObject({
+      attempt: 1,
+      status: "awaiting_resume",
+      nextCallbackKind: "delivery",
     });
+    expect(
+      (
+        await getConversationEventStore().loadHistory(dispatchConversationId)
+      ).filter((event) => event.data.type.startsWith("turn_")),
+    ).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ type: "turn_started" }),
+      }),
+    ]);
 
     const rerunGenerate = vi.fn(async () => {
       throw new Error("must not regenerate a delivered dispatch");
     });
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
-        expectedVersion: created.record.version,
+        expectedVersion: awaitingRepair!.version,
+        kind: "delivery",
       },
       { agentRunner: { run: rerunGenerate } },
     );
     expect(rerunGenerate).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 1,
+      status: "completed",
+      resultMessageTs: "1700000000.000004",
+    });
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(dispatchConversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      turnId: `dispatch:${created.record.id}`,
+      outcome: "success",
+    });
   });
 
-  it("completes the session record after delivering a failed dispatch fallback", async () => {
+  it("recovers an aged side-effect completion before a normal retry", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.now() - 25 * 60 * 60 * 1000,
+      options: {
+        idempotencyKey: "run-terminal-projection-write-fail",
+        destination: slackAddress(),
+        destinationVisibility: "private",
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    const state = getStateAdapter();
+    await state.connect();
+    const ready = await getDispatchRecord(created.record.id);
+    if (!ready) throw new Error("Expected dispatch record to exist");
+    const originalSet = state.set.bind(state);
+    let injectedFailures = 0;
+    const setSpy = vi
+      .spyOn(state, "set")
+      .mockImplementation(async (key, value, ttlMs) => {
+        const dispatch = parseDispatchRecord(value);
+        if (
+          String(key) === getDispatchStorageKey(created.record.id) &&
+          dispatch?.status === "completed"
+        ) {
+          injectedFailures += 1;
+          throw new Error("dispatch state store unavailable");
+        }
+        return originalSet(key, value, ttlMs);
+      });
+    const sideEffectReply = createReply();
+    sideEffectReply.deliveryPlan = {
+      mode: "channel_only",
+      postThreadText: false,
+    };
+
+    try {
+      await processAgentDispatchCallback(
+        {
+          id: created.record.id,
+          expectedVersion: ready.version,
+        },
+        {
+          agentRunner: {
+            run: async () => completedAgentRun(sideEffectReply),
+          },
+        },
+      );
+    } finally {
+      setSpy.mockRestore();
+    }
+
+    expect(injectedFailures).toBe(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 1,
+      maxAttempts: 5,
+      status: "running",
+    });
+
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response("Accepted", { status: 202 }),
+    );
+    global.fetch = fetchMock as typeof fetch;
+    const delivery = new RecoverableSlackDeliveryService(getSqlExecutor(), {
+      post: postRecoverableSlackMessage,
+      reconcile: reconcileRecoverableSlackMessage,
+    });
+    try {
+      await expect(
+        recoverStaleDispatches({
+          nowMs: Date.now() + 10 * 60 * 1000,
+          recoverableSlackDelivery: delivery,
+        }),
+      ).resolves.toBe(1);
+    } finally {
+      global.fetch = originalFetch;
+    }
+    const callbackRequest = fetchMock.mock.calls.at(-1);
+    const callback = JSON.parse(String(callbackRequest?.[1]?.body)) as {
+      id: string;
+      expectedVersion: number;
+      kind: "delivery";
+    };
+    expect(callback).toMatchObject({ id: created.record.id, kind: "delivery" });
+    const rerun = vi.fn(async () => completedAgentRun(sideEffectReply));
+    await processAgentDispatchCallback(callback, {
+      agentRunner: { run: rerun },
+    });
+
+    expect(rerun).not.toHaveBeenCalled();
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 1,
+      status: "completed",
+    });
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(
+        getDispatchConversationId(created.record),
+      )
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      turnId: `dispatch:${created.record.id}`,
+      outcome: "no_reply",
+    });
+  });
+
+  it("fails the session record after delivering a failed dispatch fallback", async () => {
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
         channel: "C123",
@@ -738,7 +1049,7 @@ describe("agent dispatch runner", () => {
       }),
     );
 
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -758,16 +1069,18 @@ describe("agent dispatch runner", () => {
     ).resolves.toMatchObject({
       conversationId: dispatchConversationId,
       sessionId: `dispatch:${created.record.id}`,
-      state: "completed",
+      state: "failed",
       surface: "api",
     });
     const lifecycle = (
       await getConversationEventStore().loadHistory(dispatchConversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle).toHaveLength(2);
     expect(lifecycle.at(-1)?.data).toMatchObject({
       type: "turn_failed",
       turnId: `dispatch:${created.record.id}`,
       failureCode: "model_execution_failed",
+      eventId: expect.any(String),
     });
   });
 
@@ -789,7 +1102,7 @@ describe("agent dispatch runner", () => {
         source: slackSource(),
       },
     });
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
@@ -825,7 +1138,7 @@ describe("agent dispatch runner", () => {
     const rerunGenerate = vi.fn(async () => {
       throw new Error("must not regenerate a delivered dispatch");
     });
-    await runAgentDispatchSlice(
+    await processAgentDispatchCallback(
       {
         id: created.record.id,
         expectedVersion: reverted.version,
@@ -839,6 +1152,78 @@ describe("agent dispatch runner", () => {
       status: "completed",
       resultMessageTs: "1700000000.000005",
     });
+  });
+
+  it("records a persistence failure when a delivered marker has no lifecycle terminal", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-delivered-without-terminal",
+        destination: slackAddress(),
+        destinationVisibility: "private",
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    const conversationId = getDispatchConversationId(created.record);
+    const conversation = coerceThreadConversationState({});
+    conversation.messages.push(
+      {
+        id: `dispatch:${created.record.id}:user`,
+        role: "user",
+        text: "Run the scheduled task.",
+        createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+        author: { userName: "system:scheduler", isBot: true },
+        meta: { replied: true },
+      },
+      {
+        id: `assistant:dispatch:${created.record.id}`,
+        role: "assistant",
+        text: "A delivered fallback whose model outcome is unknown.",
+        createdAtMs: Date.parse("2026-05-26T12:00:01.000Z"),
+        author: { userName: "junior", isBot: true },
+        meta: {
+          replied: true,
+          slackTs: "1700000000.000007",
+        },
+      },
+    );
+    await persistConversationMessages({ conversation, conversationId });
+
+    const rerunGenerate = vi.fn(async () => {
+      throw new Error("must not regenerate a delivered dispatch");
+    });
+    await processAgentDispatchCallback(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { agentRunner: { run: rerunGenerate } },
+    );
+
+    expect(rerunGenerate).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000007",
+    });
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      {
+        type: "turn_started",
+        turnId: `dispatch:${created.record.id}`,
+        inputMessageIds: [`dispatch:${created.record.id}:user`],
+        surface: "api",
+      },
+      {
+        type: "turn_failed",
+        turnId: `dispatch:${created.record.id}`,
+        failureCode: "persistence_failed",
+      },
+    ]);
   });
 
   it("does not burn an attempt when the destination conversation is busy", async () => {
@@ -862,7 +1247,7 @@ describe("agent dispatch runner", () => {
     expect(lock).toBeTruthy();
 
     try {
-      await runAgentDispatchSlice(
+      await processAgentDispatchCallback(
         {
           id: created.record.id,
           expectedVersion: created.record.version,

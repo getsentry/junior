@@ -6,20 +6,24 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 import {
   claimPendingConversationDelivery,
   loadPendingDeliveryByTurn,
-} from "@/chat/conversations/sql/delivery-outbox";
+} from "@/chat/slack/delivery-outbox";
 import {
   RecoverableSlackDeliveryService,
   type RecoverableSlackDeliveryPort,
-} from "@/chat/services/recoverable-slack-delivery";
-import type { PendingConversationDeliveryCommand } from "@/chat/conversations/delivery";
+} from "@/chat/slack/recoverable-delivery";
+import type { PendingConversationDeliveryCommandDraft } from "@/chat/slack/delivery-command";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { ConversationModelMessage } from "@/chat/conversations/model-message";
+import type { PiMessage } from "@/chat/pi/messages";
+import { commitMessages } from "@/chat/conversations/projection";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 
 const conversationId = "slack:C123:1718123456.000000";
 
 function command(
   parts = ["First", "Second"],
-): PendingConversationDeliveryCommand {
+): PendingConversationDeliveryCommandDraft {
   return {
     publicLocator: "0123456789Abcdefgh_-XY",
     route: { channelId: "C123", threadTs: "1718123456.000000" },
@@ -53,13 +57,6 @@ function command(
       },
       model: {
         modelId: "openai/gpt-5.4",
-        messages: [
-          { role: "user", content: [{ type: "text", text: "Question" }] },
-          {
-            role: "assistant",
-            content: [{ type: "text", text: parts.join("\n") }],
-          },
-        ] as unknown as PendingConversationDeliveryCommand["completion"]["model"]["messages"],
       },
       sliceId: 1,
       terminal: { outcome: "success" },
@@ -78,6 +75,15 @@ async function setup(port: RecoverableSlackDeliveryPort) {
       createdAtMs: 900,
     },
   ]);
+  const priorModelMessages = [
+    { role: "user", content: [{ type: "text", text: "Question" }] },
+  ] as unknown as PiMessage[];
+  await commitMessages({
+    conversationId,
+    modelId: "openai/gpt-5.4",
+    messages: priorModelMessages,
+    executor: fixture.sql,
+  });
   let nowMs = 1_000;
   const service = new RecoverableSlackDeliveryService(
     fixture.sql,
@@ -89,6 +95,13 @@ async function setup(port: RecoverableSlackDeliveryPort) {
     deliveryId: "slack:turn-1",
     turnId: "turn-1",
     command: command(),
+    modelMessages: [
+      ...priorModelMessages,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "First\nSecond" }],
+      },
+    ] as unknown as ConversationModelMessage[],
   });
   return {
     fixture,
@@ -101,6 +114,23 @@ async function setup(port: RecoverableSlackDeliveryPort) {
 }
 
 describe("recoverable Slack delivery", () => {
+  it("rejects an empty transcript when retrying a nonempty intent", async () => {
+    const test = await setup({ post: vi.fn(), reconcile: vi.fn() });
+    try {
+      await expect(
+        test.service.createIntent({
+          conversationId,
+          deliveryId: "slack:turn-1",
+          turnId: "turn-1",
+          command: command(),
+          modelMessages: [],
+        }),
+      ).rejects.toThrow("Pending delivery command does not match its intent");
+    } finally {
+      await test.fixture.close();
+    }
+  });
+
   it("posts multipart once and atomically finalizes the accepted turn", async () => {
     let posted = 0;
     const port: RecoverableSlackDeliveryPort = {
@@ -112,6 +142,21 @@ describe("recoverable Slack delivery", () => {
     };
     const test = await setup(port);
     try {
+      expect(test.pending.command.completion.model).toEqual({
+        modelId: "openai/gpt-5.4",
+        committedSeq: expect.any(Number),
+        rollbackSeq: expect.any(Number),
+      });
+      expect(test.pending.command.completion.model).not.toHaveProperty(
+        "messages",
+      );
+      expect(
+        (
+          await createSqlConversationEventStore(test.fixture.sql).loadHistory(
+            conversationId,
+          )
+        ).filter((event) => event.data.type === "message"),
+      ).toHaveLength(2);
       await expect(test.service.advance(test.pending)).resolves.toEqual({
         outcome: "accepted",
       });
@@ -143,6 +188,7 @@ describe("recoverable Slack delivery", () => {
         test.service.loadTerminalOutcome({
           conversationId,
           turnId: "turn-1",
+          acceptanceEvidence: "visible_assistant",
         }),
       ).resolves.toEqual({
         deliveryOutcome: "accepted",
@@ -365,6 +411,21 @@ describe("recoverable Slack delivery", () => {
     };
     const test = await setup(port);
     try {
+      await createSqlConversationEventStore(test.fixture.sql).append(
+        conversationId,
+        [
+          {
+            data: {
+              type: "authorization_completed",
+              kind: "mcp",
+              provider: "linear",
+              actorId: "U123",
+              authorizationId: "auth-1",
+            },
+            createdAtMs: 1_001,
+          },
+        ],
+      );
       await expect(test.service.advance(test.pending)).resolves.toEqual({
         outcome: "failed",
       });
@@ -385,10 +446,33 @@ describe("recoverable Slack delivery", () => {
             event.data.messageId === "assistant:turn-1",
         ),
       ).toBe(false);
+      expect(
+        history.filter((event) => event.data.type === "message"),
+      ).toHaveLength(4);
+      expect(
+        projectConversationEvents(
+          await createSqlConversationEventStore(
+            test.fixture.sql,
+          ).loadCurrentEpoch(conversationId),
+        ).messages,
+      ).toEqual([
+        { role: "user", content: [{ type: "text", text: "Question" }] },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: 'MCP authorization completed for provider "linear". Continue the blocked request and retry the provider operation if needed.',
+            },
+          ],
+          timestamp: 1_001,
+        },
+      ]);
       await expect(
         test.service.loadTerminalOutcome({
           conversationId,
           turnId: "turn-1",
+          acceptanceEvidence: "visible_assistant",
         }),
       ).resolves.toEqual({
         deliveryOutcome: "failed",
@@ -401,6 +485,67 @@ describe("recoverable Slack delivery", () => {
             event.data.messageId === "user-1",
         ),
       ).toBe(false);
+    } finally {
+      await test.fixture.close();
+    }
+  });
+
+  it("retains model continuity when Slack accepted part of a failed multipart reply", async () => {
+    let attempt = 0;
+    const port: RecoverableSlackDeliveryPort = {
+      post: vi.fn(async () => {
+        attempt += 1;
+        return attempt === 1
+          ? ({
+              outcome: "accepted",
+              ts: "1718123457.000001" as never,
+            } as const)
+          : ({
+              outcome: "definitive_failure",
+              reason: "api_rejected",
+            } as const);
+      }),
+      reconcile: vi.fn(),
+    };
+    const test = await setup(port);
+    try {
+      await expect(test.service.advance(test.pending)).resolves.toEqual({
+        outcome: "failed",
+      });
+      expect(
+        projectConversationEvents(
+          await createSqlConversationEventStore(
+            test.fixture.sql,
+          ).loadCurrentEpoch(conversationId),
+        ).messages,
+      ).toEqual([
+        { role: "user", content: [{ type: "text", text: "Question" }] },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "First\nSecond" }],
+        },
+      ]);
+      expect(
+        await createSqlConversationEventStore(test.fixture.sql).loadHistory(
+          conversationId,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              type: "visible_message_recorded",
+              role: "assistant",
+              text: "First",
+            }),
+          }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              type: "turn_failed",
+              failureCode: "delivery_failed",
+            }),
+          }),
+        ]),
+      );
     } finally {
       await test.fixture.close();
     }
@@ -454,6 +599,7 @@ describe("recoverable Slack delivery", () => {
         await service.loadTerminalOutcome({
           conversationId,
           turnId: test.pending.turnId,
+          acceptanceEvidence: "visible_assistant",
         }),
       ).toEqual({ deliveryOutcome: "accepted", modelSucceeded: true });
     } finally {
@@ -479,13 +625,17 @@ describe("recoverable Slack delivery", () => {
       });
 
       await expect(
-        service.loadTerminalOutcome({ conversationId, turnId: "turn-1" }),
+        service.loadTerminalOutcome({
+          conversationId,
+          turnId: "turn-1",
+          acceptanceEvidence: "visible_assistant",
+        }),
       ).resolves.toBeUndefined();
       await expect(
         service.loadTerminalOutcome({
           conversationId,
           turnId: "turn-1",
-          knownIntent: true,
+          acceptanceEvidence: "known_outbox_intent",
         }),
       ).resolves.toEqual({
         deliveryOutcome: "accepted",
@@ -504,7 +654,11 @@ describe("recoverable Slack delivery", () => {
         ],
       );
       await expect(
-        service.loadTerminalOutcome({ conversationId, turnId: "turn-1" }),
+        service.loadTerminalOutcome({
+          conversationId,
+          turnId: "turn-1",
+          acceptanceEvidence: "visible_assistant",
+        }),
       ).resolves.toEqual({
         deliveryOutcome: "accepted",
         modelSucceeded: false,

@@ -11,7 +11,7 @@ import {
 import type {
   PendingConversationDeliveryCommand,
   PendingConversationDeliveryProgress,
-} from "@/chat/conversations/delivery";
+} from "@/chat/slack/delivery-command";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 

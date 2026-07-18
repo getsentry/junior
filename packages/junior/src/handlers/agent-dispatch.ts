@@ -3,9 +3,11 @@ import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 interface AgentDispatchHandlerOptions {
   agentRunner: AgentRunner;
+  turnLifecycle: ConversationTurnLifecycle;
 }
 
 /** Handle the authenticated internal agent-dispatch callback. */
@@ -22,6 +24,7 @@ export async function POST(
   waitUntil(() =>
     runAgentDispatchSlice(payload, {
       agentRunner: options.agentRunner,
+      turnLifecycle: options.turnLifecycle,
     }).catch((error) => {
       logException(
         error,

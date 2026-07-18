@@ -10,12 +10,12 @@ import {
   terminalizeAcceptedPendingDelivery,
   terminalizeFailedPendingDelivery,
   PendingDeliveryLeaseLostError,
-} from "@/chat/conversations/sql/delivery-outbox";
+} from "@/chat/slack/delivery-outbox";
 import {
   conversationDeliveryFailureCodeSchema,
   pendingConversationDeliveryCommandSchema,
   type PendingConversationDeliveryCommand,
-} from "@/chat/conversations/delivery";
+} from "@/chat/slack/delivery-command";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { purgeConversation } from "@/chat/conversations/retention";
@@ -64,12 +64,8 @@ function command(
       },
       model: {
         modelId: "openai/gpt-5.4",
-        messages: [
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "First\nSecond" }],
-          },
-        ],
+        committedSeq: 0,
+        rollbackSeq: -1,
       },
       sliceId: 1,
       terminal: { outcome: "success" },
@@ -121,6 +117,16 @@ describe("pending conversation delivery outbox", () => {
           assistantMessage: {
             ...validCommand.completion.assistantMessage,
             messageId: "assistant:wrong-turn",
+          },
+        },
+      },
+      {
+        ...validCommand,
+        completion: {
+          ...validCommand.completion,
+          model: {
+            ...validCommand.completion.model,
+            rollbackSeq: validCommand.completion.model.committedSeq + 1,
           },
         },
       },
@@ -224,7 +230,6 @@ describe("pending conversation delivery outbox", () => {
         recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
           lease: claimed.lease!,
-          providerMessageId: "1718123457.000001",
           nowMs: 1_103,
         }),
       ).rejects.toBeInstanceOf(PendingDeliveryLeaseLostError);
@@ -253,13 +258,10 @@ describe("pending conversation delivery outbox", () => {
       const firstAccepted = await recordPendingDeliveryAccepted(fixture.sql, {
         deliveryId: DELIVERY_ID,
         lease,
-        providerMessageId: "1718123457.000001",
         nowMs: 1_003,
       });
       expect(firstAccepted.nextPartIndex).toBe(1);
-      expect(firstAccepted.progress.acceptedReceipts).toEqual([
-        "1718123457.000001",
-      ]);
+      expect(firstAccepted.progress.acceptedPartCount).toBe(1);
       await markPendingDeliveryPosting(fixture.sql, {
         deliveryId: DELIVERY_ID,
         lease,
@@ -353,7 +355,6 @@ describe("pending conversation delivery outbox", () => {
         await recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
           lease,
-          providerMessageId: `1718123457.00000${index + 1}`,
           nowMs: 1_011 + index * 2,
         });
       }

@@ -141,8 +141,8 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/visible-messages";
 import { modelIdForProfile } from "@/chat/model-profile";
-import type { RecoverableSlackDeliveryService } from "@/chat/services/recoverable-slack-delivery";
-import type { PendingConversationDelivery } from "@/chat/conversations/sql/delivery-outbox";
+import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import type { PendingConversationDelivery } from "@/chat/slack/delivery-outbox";
 import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
 import { buildSlackReplyBlocks } from "@/chat/slack/footer";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -393,14 +393,7 @@ export interface ReplyExecutorServices {
     sessionId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
-  recoverableSlackDelivery: Pick<
-    RecoverableSlackDeliveryService,
-    | "advance"
-    | "createIntent"
-    | "loadByTurn"
-    | "loadByConversation"
-    | "loadTerminalOutcome"
-  >;
+  recoverableSlackDelivery: RecoverableSlackDelivery;
   turnLifecycle: ConversationTurnLifecycle;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks: (params: {
@@ -812,13 +805,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               ...args.runtimePatch,
               conversation: preparedState.conversation,
             });
-          } catch (repairError) {
-            logException(
-              repairError,
-              "slack_delivery_runtime_repair_failed",
-              turnTraceContext,
-              attributes,
-              "Failed to repair terminal Slack delivery runtime state",
+          } catch {
+            throw new TurnInputDeferredError(
+              "Slack delivery runtime repair is awaiting retry",
+              5_000,
             );
           }
           try {
@@ -834,13 +824,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             await recordAgentTurnSessionSummary(args.sessionSummary);
-          } catch (repairError) {
-            logException(
-              repairError,
-              "slack_delivery_session_repair_failed",
-              turnTraceContext,
-              attributes,
-              "Failed to repair terminal Slack delivery session summary",
+          } catch {
+            throw new TurnInputDeferredError(
+              "Slack delivery session repair is awaiting retry",
+              5_000,
             );
           }
           if (
@@ -950,6 +937,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           ? await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
               conversationId,
               turnId,
+              acceptanceEvidence: "visible_assistant",
             })
           : undefined;
         if (priorTerminal && conversationId) {
@@ -1722,6 +1710,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   conversationId: conversationId!,
                   turnId,
                   deliveryId: `slack:${turnId}`,
+                  // A reply without a replacement transcript preserves the
+                  // model input boundary; absence must not mean "erase it".
+                  modelMessages: reply.piMessages ?? piMessages ?? [],
                   command: {
                     publicLocator,
                     route: {
@@ -1780,7 +1771,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                       },
                       model: {
                         modelId: reply.diagnostics.modelId,
-                        messages: reply.piMessages ?? [],
                       },
                       ...(reply.diagnostics.durationMs !== undefined
                         ? { durationMs: reply.diagnostics.durationMs }
@@ -2065,6 +2055,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
         } catch (error) {
+          if (error instanceof TurnInputDeferredError) {
+            shouldPersistFailureState = false;
+            throw error;
+          }
           if (isTurnInputCommitLostError(error)) {
             shouldPersistFailureState = false;
             throw error;
@@ -2106,7 +2100,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
                 conversationId,
                 turnId: durableDeliveryIntent.turnId,
-                knownIntent: true,
+                acceptanceEvidence: "known_outbox_intent",
               });
             if (terminal) {
               shouldPersistFailureState = false;

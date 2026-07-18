@@ -539,6 +539,53 @@ describe("Slack behavior: finalized thread replies", () => {
     ).toBe("completed");
   });
 
+  it("defers acknowledgement until required terminal runtime repair succeeds", async () => {
+    const thread = createTestThread({
+      id: "slack:C0FINAL:1700006015.000",
+    });
+    thread.setState = vi.fn(async () => {
+      throw new Error("runtime state unavailable");
+    });
+    const ack = vi.fn();
+    const run = vi.fn();
+    const scheduleSessionCompletedPluginTasks = vi.fn();
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: { run },
+          recoverableSlackDelivery: {
+            loadByConversation: vi.fn(async () => undefined),
+            loadByTurn: vi.fn(async () => undefined),
+            loadTerminalOutcome: vi.fn(async () => ({
+              deliveryOutcome: "accepted" as const,
+              modelSucceeded: true,
+            })),
+            createIntent: vi.fn(),
+            advance: vi.fn(),
+          },
+          scheduleSessionCompletedPluginTasks,
+        },
+      },
+    });
+
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "prior-terminal-repair",
+          text: "<@U0APP> already delivered",
+          isMention: true,
+          threadId: thread.id,
+        }),
+        { destination: createTestDestination(thread), ack },
+      ),
+    ).rejects.toBeInstanceOf(TurnInputDeferredError);
+
+    expect(run).not.toHaveBeenCalled();
+    expect(scheduleSessionCompletedPluginTasks).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+  });
+
   it("repairs the failed outcome after a definitive Slack rejection", async () => {
     const ack = vi.fn();
     const recoverableSlackDelivery = {

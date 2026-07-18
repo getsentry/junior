@@ -34,9 +34,14 @@ this directory owns product orchestration around it.
   create a synthetic visible assistant message.
 - Ordinary finalized Slack thread replies use a durable intent before the
   first post, opaque per-part metadata, one-attempt writes, and receipt
-  reconciliation. A redelivered inbox record advances that outbox without
-  rerunning Pi; accepted delivery, final Pi/visible facts, and the turn
-  terminal commit atomically before the inbox is acknowledged.
+  reconciliation. Creating the intent atomically commits model continuity to
+  conversation events and stores only event cursors in the outbox. A redelivered
+  inbox record advances that outbox without rerunning Pi; accepted delivery
+  commits visible facts and the turn terminal before the inbox is acknowledged,
+  while definitive rejection before any accepted part rolls live Pi context
+  back to the pre-intent cursor. A partial multipart rejection records only the
+  accepted Slack prefix as visible, retains full model/tool continuity, and
+  terminalizes as `delivery_failed`.
 - Authorization/private notices, resumed continuation delivery, canvas
   recovery, and generic Chat SDK fallback notices remain outside the ordinary
   finalized-reply outbox and retain their owning delivery semantics.

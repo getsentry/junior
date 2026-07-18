@@ -1,3 +1,9 @@
+/**
+ * SQL control state for recoverable Slack delivery.
+ *
+ * Fenced leases own every mutable transition; terminalization commits canonical
+ * conversation facts and deletes the outbox row under the conversation lock.
+ */
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
@@ -12,10 +18,10 @@ import {
   pendingConversationDeliveryProgressSchema,
   type PendingConversationDeliveryCommand,
   type PendingConversationDeliveryProgress,
-} from "../delivery";
-import { conversationEventDataSchema } from "../history";
-import { ensureConversationRow } from "./conversation-row";
-import { withConversationEventLock } from "./event-lock";
+} from "./delivery-command";
+import { conversationEventDataSchema } from "@/chat/conversations/history";
+import { ensureConversationRow } from "@/chat/conversations/sql/conversation-row";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 
 type PendingDeliveryRow = typeof juniorPendingDeliveries.$inferSelect;
 
@@ -46,6 +52,11 @@ export interface PendingDeliveryTerminalOutcome {
   modelSucceeded: boolean;
 }
 
+/** Evidence available when interpreting a canonical turn terminal. */
+export type PendingDeliveryAcceptanceEvidence =
+  | "known_outbox_intent"
+  | "visible_assistant";
+
 /** Raised when a stale worker tries to mutate state after losing its fence. */
 export class PendingDeliveryLeaseLostError extends Error {
   constructor() {
@@ -55,7 +66,7 @@ export class PendingDeliveryLeaseLostError extends Error {
 }
 
 function initialProgress(): PendingConversationDeliveryProgress {
-  return { acceptedReceipts: [], currentState: { status: "pending" } };
+  return { acceptedPartCount: 0, currentState: { status: "pending" } };
 }
 
 function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
@@ -63,11 +74,11 @@ function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
   const progress = pendingConversationDeliveryProgressSchema.parse(
     row.progress,
   );
-  if (progress.acceptedReceipts.length > command.parts.length) {
+  if (progress.acceptedPartCount > command.parts.length) {
     throw new Error("Pending delivery progress exceeds its command");
   }
   if (
-    progress.acceptedReceipts.length === command.parts.length &&
+    progress.acceptedPartCount === command.parts.length &&
     progress.currentState.status !== "pending"
   ) {
     throw new Error("Completed delivery progress has an active current state");
@@ -81,7 +92,7 @@ function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
     turnId: row.turnId,
     command,
     progress,
-    nextPartIndex: progress.acceptedReceipts.length,
+    nextPartIndex: progress.acceptedPartCount,
     nextAttemptAtMs: row.nextAttemptAt.getTime(),
     ...(row.leaseOwner && row.leaseExpiresAt
       ? {
@@ -157,7 +168,7 @@ export async function createPendingConversationDelivery(
           executor,
           args.conversationId,
           args.turnId,
-          true,
+          "known_outbox_intent",
         )
       ) {
         throw new Error("Delivery is already terminalized");
@@ -335,6 +346,7 @@ export async function releasePendingDeliveryLease(
   if (!rows[0]) throw new PendingDeliveryLeaseLostError();
 }
 
+/** Mutate delivery progress only while the caller still owns its durable fence. */
 async function mutateClaimedProgress(
   executor: JuniorSqlDatabase,
   args: {
@@ -355,7 +367,7 @@ async function mutateClaimedProgress(
     const progress = pendingConversationDeliveryProgressSchema.parse(
       args.mutate(current.progress),
     );
-    if (progress.acceptedReceipts.length > current.command.parts.length) {
+    if (progress.acceptedPartCount > current.command.parts.length) {
       throw new Error("Pending delivery progress exceeds its command");
     }
     const rows = await executor
@@ -431,20 +443,15 @@ export async function markPendingDeliveryRepostable(
   });
 }
 
-/** Append the provider receipt and advance to the next ordered part. */
+/** Record provider acceptance and advance to the next ordered part. */
 export async function recordPendingDeliveryAccepted(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
     lease: PendingDeliveryLease;
-    providerMessageId: string;
     nowMs: number;
   },
 ): Promise<PendingConversationDelivery> {
-  const receipt = z
-    .string()
-    .regex(/^\d+(?:\.\d+)?$/)
-    .parse(args.providerMessageId);
   return mutateClaimedProgress(executor, {
     ...args,
     mutate: (progress) => {
@@ -453,7 +460,7 @@ export async function recordPendingDeliveryAccepted(
         throw new Error(`Cannot accept delivery in ${state.status} state`);
       }
       return {
-        acceptedReceipts: [...progress.acceptedReceipts, receipt],
+        acceptedPartCount: progress.acceptedPartCount + 1,
         currentState: { status: "pending" },
       };
     },
@@ -576,7 +583,7 @@ async function turnTerminalOutcome(
   executor: JuniorSqlDatabase,
   conversationId: string,
   turnId: string,
-  knownIntent: boolean,
+  acceptanceEvidence: PendingDeliveryAcceptanceEvidence,
 ): Promise<PendingDeliveryTerminalOutcome | undefined> {
   const fact = await canonicalEventByKey(
     executor,
@@ -595,7 +602,7 @@ async function turnTerminalOutcome(
   if (fact.type === "turn_failed" && fact.failureCode === "delivery_failed") {
     return { deliveryOutcome: "failed", modelSucceeded: false };
   }
-  if (!knownIntent) {
+  if (acceptanceEvidence === "visible_assistant") {
     const assistantMessageId = buildDeterministicAssistantMessageId(turnId);
     const visibleAssistant = await canonicalEventByKey(
       executor,
@@ -622,13 +629,17 @@ async function turnTerminalOutcome(
 /** Interpret the authoritative turn terminal after an ambiguous SQL commit. */
 export async function loadDeliveryTerminalOutcome(
   executor: JuniorSqlDatabase,
-  args: { conversationId: string; turnId: string; knownIntent?: boolean },
+  args: {
+    conversationId: string;
+    turnId: string;
+    acceptanceEvidence: PendingDeliveryAcceptanceEvidence;
+  },
 ): Promise<PendingDeliveryTerminalOutcome | undefined> {
   return turnTerminalOutcome(
     executor,
     args.conversationId,
     args.turnId,
-    args.knownIntent ?? false,
+    args.acceptanceEvidence,
   );
 }
 
@@ -657,7 +668,7 @@ export async function terminalizeAcceptedPendingDelivery(
           executor,
           args.conversationId,
           args.turnId,
-          true,
+          "known_outbox_intent",
         );
         return terminal?.deliveryOutcome === "accepted"
           ? "already_finalized"
@@ -671,10 +682,7 @@ export async function terminalizeAcceptedPendingDelivery(
       ) {
         throw new Error("Pending delivery belongs to a different conversation");
       }
-      if (
-        current.progress.acceptedReceipts.length !==
-        current.command.parts.length
-      ) {
+      if (current.progress.acceptedPartCount !== current.command.parts.length) {
         throw new Error("Cannot terminalize before every part is accepted");
       }
       if (
@@ -682,7 +690,7 @@ export async function terminalizeAcceptedPendingDelivery(
           executor,
           args.conversationId,
           args.turnId,
-          true,
+          "known_outbox_intent",
         )
       ) {
         throw new Error(
@@ -753,7 +761,7 @@ export async function terminalizeFailedPendingDelivery(
           executor,
           args.conversationId,
           args.turnId,
-          true,
+          "known_outbox_intent",
         );
         return terminal?.deliveryOutcome === "failed"
           ? "already_finalized"
@@ -779,7 +787,7 @@ export async function terminalizeFailedPendingDelivery(
           executor,
           args.conversationId,
           args.turnId,
-          true,
+          "known_outbox_intent",
         )
       ) {
         throw new Error(
