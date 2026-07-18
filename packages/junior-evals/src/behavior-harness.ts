@@ -393,6 +393,7 @@ export interface EvalCanvasArtifact {
 export interface EvalToolInvocation {
   arguments?: Record<string, unknown>;
   tool: string;
+  toolCallId?: string;
   bash_command?: string;
   completed?: boolean;
   error?: string;
@@ -525,12 +526,14 @@ function createReplayWebSearchDeps(
 }
 
 function toEvalToolInvocation(input: {
-  toolName: string;
   params: Record<string, unknown>;
+  toolCallId?: string;
+  toolName: string;
 }): EvalToolInvocation {
   const invocation: EvalToolInvocation = {
     tool: input.toolName,
     arguments: input.params,
+    ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
   };
 
   if (input.toolName.startsWith("slackSchedule")) {
@@ -1776,7 +1779,7 @@ function buildRuntimeServices(
                 },
                 onToolResult: (result) => {
                   const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.tool === result.toolName,
+                    (candidate) => candidate.toolCallId === result.toolCallId,
                   );
                   if (pendingIndex === -1) {
                     return;

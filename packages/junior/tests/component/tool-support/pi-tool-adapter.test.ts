@@ -257,7 +257,9 @@ describe("Pi tool adapter", () => {
 
     await bashTool!.execute("tool-bash", { command: "which gh" });
 
-    expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
+    expect(onToolCall).toHaveBeenCalledWith("tool-bash", "bash", {
+      command: "which gh",
+    });
   });
 
   it("reports structured tool error results to observers", async () => {
@@ -298,6 +300,7 @@ describe("Pi tool adapter", () => {
         ok: false,
         status: "error",
       }),
+      toolCallId: "tool-demo",
       toolName: "demo",
     });
   });

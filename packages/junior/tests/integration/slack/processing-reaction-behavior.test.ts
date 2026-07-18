@@ -255,8 +255,9 @@ describe("Slack behavior: processing reaction", () => {
               };
 
               context?.onToolInvocation?.({
-                toolName: "addReaction",
                 params: { emoji: ":eyes:" },
+                toolCallId: "tool-call-eyes",
+                toolName: "addReaction",
               });
               return completedAgentRun({
                 text: "Done.",
@@ -302,8 +303,9 @@ describe("Slack behavior: processing reaction", () => {
               };
 
               context?.onToolInvocation?.({
-                toolName: "addReaction",
                 params: { emoji: ":heart:" },
+                toolCallId: "tool-call-heart",
+                toolName: "addReaction",
               });
               return completedAgentRun({
                 text: "",

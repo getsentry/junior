@@ -403,12 +403,17 @@ export async function wireAgentTools(
     mcpToolManager.getActiveToolCatalog(),
   );
   const onToolCall = async (
+    toolCallId: string,
     toolName: string,
     params: Record<string, unknown>,
   ) => {
     args.toolCalls.push(toolName);
     try {
-      await args.observers.onToolInvocation?.({ toolName, params });
+      await args.observers.onToolInvocation?.({
+        params,
+        toolCallId,
+        toolName,
+      });
     } catch (error) {
       logWarn(
         "tool_invocation_observer_failed",
