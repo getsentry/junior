@@ -54,7 +54,7 @@ async function executeStatements(
 }
 
 describe("conversation event migration", () => {
-  it("normalizes a compacted suffix after ordered import and resequence", async () => {
+  it("preserves the live suffix and full count from deployed compaction rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const migrationsBeforeConversationEvents = [
       "0000_initial.sql",
@@ -80,13 +80,60 @@ describe("conversation event migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_conversation_messages (
           conversation_id, message_id, role, text, created_at
-        ) VALUES ($1, 'covered-old', 'user', 'must stay compacted', $2)`,
-        [conversationId, new Date("2026-07-14T10:00:01.000Z")],
+        )
+        SELECT
+          $1,
+          'covered-' || lpad(position::text, 3, '0'),
+          'user',
+          'must stay compacted',
+          $2::timestamptz + position * interval '1 second'
+        FROM generate_series(0, 500) position
+        UNION ALL
+        SELECT $1, 'live', 'user', 'must remain live', $3`,
+        [
+          conversationId,
+          new Date("2026-07-14T10:00:01.000Z"),
+          new Date("2026-07-14T10:10:01.000Z"),
+        ],
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_agent_steps (
+          conversation_id, seq, context_epoch, type, role, payload, created_at
+        ) VALUES ($1, 0, 0, 'visible_context_compacted', NULL, $2::jsonb, $3)`,
+        [
+          conversationId,
+          JSON.stringify({
+            compactions: [
+              {
+                id: "legacy-compaction",
+                summary: "501 earlier messages",
+                createdAtMs: Date.parse("2026-07-14T10:09:11.000Z"),
+                coveredMessageIds: Array.from(
+                  { length: 500 },
+                  (_, index) => `covered-${index.toString().padStart(3, "0")}`,
+                ),
+              },
+            ],
+          }),
+          new Date("2026-07-14T10:09:11.000Z"),
+        ],
       );
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
         migrationStatements("0005_conversation_events.sql"),
       );
+
+      await expect(
+        fixture.sql.query<{ coveredIds: number }>(
+          `SELECT jsonb_array_length(
+             payload->'compactions'->0->'coveredMessageIds'
+           )::integer AS "coveredIds"
+           FROM junior_conversation_events
+           WHERE conversation_id = $1
+             AND type = 'visible_context_compacted'`,
+          [conversationId],
+        ),
+      ).resolves.toEqual([{ coveredIds: 500 }]);
 
       const stateAdapter = getStateAdapter();
       await stateAdapter.connect();
@@ -95,11 +142,11 @@ describe("conversation event migration", () => {
           compactions: [
             {
               id: "legacy-compaction",
-              summary: "900 earlier messages",
-              createdAtMs: Date.parse("2026-07-14T10:00:02.000Z"),
+              summary: "501 earlier messages",
+              createdAtMs: Date.parse("2026-07-14T10:09:11.000Z"),
               coveredMessageIds: Array.from(
                 { length: 500 },
-                (_, index) => `covered-${index}`,
+                (_, index) => `covered-${index.toString().padStart(3, "0")}`,
               ),
             },
           ],
@@ -108,47 +155,43 @@ describe("conversation event migration", () => {
               id: "live",
               role: "user",
               text: "must remain live",
-              createdAtMs: Date.parse("2026-07-14T10:00:03.000Z"),
+              createdAtMs: Date.parse("2026-07-14T10:10:01.000Z"),
             },
           ],
-          stats: { compactedMessageCount: 900 },
+          stats: { compactedMessageCount: 501 },
         },
       });
 
       await expect(
-        importConversationFromLegacy(conversationId, {
-          executor: fixture.sql,
-          sessionLogStore: { read: async () => [] },
-        }),
-      ).resolves.toEqual({ imported: true });
-
-      await expect(
         migrateConversationVisibleMessageEvents(
           { io: { info: () => {} }, stateAdapter },
-          { batchSize: 1, executor: fixture.sql },
+          { batchSize: 73, executor: fixture.sql },
         ),
-      ).resolves.toMatchObject({ migrated: 1, missing: 0 });
+      ).resolves.toMatchObject({ migrated: 502, missing: 0 });
 
       const store = createSqlConversationEventStore(fixture.sql);
       const visible = await store.loadVisibleHistory(conversationId);
       expect(visible.compaction?.data).toEqual({
         type: "visible_context_compacted",
-        historyFromSeq: 2,
+        historyFromSeq: 502,
         compactions: [
           {
             id: "legacy-compaction",
-            summary: "900 earlier messages",
-            createdAtMs: Date.parse("2026-07-14T10:00:02.000Z"),
-            coveredMessageCount: 900,
+            summary: "501 earlier messages",
+            createdAtMs: Date.parse("2026-07-14T10:09:11.000Z"),
+            coveredMessageCount: 501,
           },
         ],
       });
-      expect(visible.events.map((event) => event.seq)).toEqual([2]);
+      expect(visible.events.map((event) => event.seq)).toEqual([502]);
       expect(
         projectVisibleConversationMessages(visible.events, {
-          historyFromSeq: 2,
+          historyFromSeq: 502,
         }).map((message) => message.id),
       ).toEqual(["live"]);
+      expect(
+        JSON.stringify(await store.loadHistory(conversationId)),
+      ).not.toContain("coveredMessageIds");
     } finally {
       await fixture.close();
     }
