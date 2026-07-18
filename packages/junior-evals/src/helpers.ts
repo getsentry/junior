@@ -206,6 +206,7 @@ function serializeVisibleTranscript(session: NormalizedSession): string {
 function toAssistantPostMessage(
   post: EvalResult["posts"][number],
 ): NormalizedMessage {
+  const isDirectThreadReply = Boolean(post.channel && post.thread_ts);
   return {
     role: "assistant",
     content: post.text,
@@ -214,7 +215,7 @@ function toAssistantPostMessage(
       ...(post.channel ? { channel: post.channel } : {}),
       ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
       files: post.files,
-      rubric_visible: false,
+      rubric_visible: isDirectThreadReply,
     }),
   };
 }

@@ -275,6 +275,10 @@ async function resumeOAuthSessionRecordTurn(
     threadTs: stored.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
+    lifecycleCorrelation: {
+      conversationId: stored.resumeConversationId,
+      turnId: resolvedSessionId,
+    },
     initialText: "",
     agentRunner: options.agentRunner,
     beforeStart: async () => {
@@ -394,6 +398,7 @@ async function resumeOAuthSessionRecordTurn(
           ? lockedUserMessage.text
           : (stored.pendingMessage ?? lockedUserMessage.text),
         messageTs: lockedMessageTs,
+        inputMessageIds: [lockedUserMessage.id],
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,

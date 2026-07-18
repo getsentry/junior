@@ -258,6 +258,10 @@ async function resumeAuthorizedMcpTurn(args: {
     threadTs: authSession.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
+    lifecycleCorrelation: {
+      conversationId: authSession.conversationId,
+      turnId: resolvedSessionId,
+    },
     connectedText: "",
     agentRunner,
     beforeStart: async () => {
@@ -366,6 +370,7 @@ async function resumeAuthorizedMcpTurn(args: {
       return {
         messageText: lockedUserMessage.text,
         messageTs: lockedMessageTs,
+        inputMessageIds: [lockedUserMessage.id],
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,

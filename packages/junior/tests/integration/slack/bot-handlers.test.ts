@@ -54,6 +54,14 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
   });
 }
 
+function createTurnLifecycleMock() {
+  return {
+    complete: vi.fn(),
+    fail: vi.fn(),
+    start: vi.fn(),
+  };
+}
+
 /**
  * Load a conversation's runtime scratch from thread-state and its visible
  * transcript from SQL, matching how the runtime hydrates the working set.
@@ -495,9 +503,11 @@ describe("bot handlers (integration)", () => {
   });
 
   it("error recovery: posts safe error message when executeAgentRun throws", async () => {
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               throw new Error("LLM unavailable");
@@ -530,6 +540,12 @@ describe("bot handlers (integration)", () => {
     );
     expect(errorPost).toBeDefined();
     expect(String(errorPost)).not.toContain("LLM unavailable");
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "agent_run_failed",
+      }),
+    );
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
@@ -537,9 +553,11 @@ describe("bot handlers (integration)", () => {
     const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
     const promptMessages = turnPiMessages("please answer");
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               // Simulate agent-run durable input checkpoint: the session record
@@ -648,6 +666,12 @@ describe("bot handlers (integration)", () => {
     expect(sessionRecord?.state).toBe("failed");
     const projection = await loadProjection({ conversationId });
     expect(JSON.stringify(projection)).not.toContain(finalText);
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "delivery_failed",
+      }),
+    );
   });
 
   it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
@@ -655,9 +679,11 @@ describe("bot handlers (integration)", () => {
     const sessionId = "turn_msg-post-delivery";
     const finalText = "Delivered before the state store failed.";
     const promptMessages = turnPiMessages("please answer");
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               await upsertAgentTurnSessionRecord({
@@ -780,6 +806,13 @@ describe("bot handlers (integration)", () => {
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
     );
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "persistence_failed",
+      }),
+    );
+    expect(turnLifecycle.complete).not.toHaveBeenCalled();
   });
 
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {

@@ -114,9 +114,10 @@ Representative coverage lives in
 `packages/junior/tests/integration/conversation-sql.test.ts` and the
 conversation storage component tests.
 
-The local runtime writes lifecycle events, and detail reporting reduces
-`turn_failed` to one privacy-safe error marker. Slack delivery, dispatch, and
-continuation recovery remain follow-up work.
+Local, ordinary and resumed Slack, and dispatch runtimes write lifecycle
+events, and detail reporting reduces `turn_failed` to one privacy-safe error
+marker. Crash-safe Slack delivery and continuation recovery remain follow-up
+work.
 
 The structural failure marker never exposes failure code or event ID. An
 independently delivered fallback remains ordinary visible content, so a public
