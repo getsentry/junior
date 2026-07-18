@@ -1973,6 +1973,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Agent turn completed",
             );
           }
+          await options.ack?.();
           await notifyTurnCompleted();
           if (reply.diagnostics.outcome === "success" && conversationId) {
             try {
