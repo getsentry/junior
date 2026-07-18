@@ -231,7 +231,6 @@ function toAssistantPostMessage(
       ...(post.channel ? { channel: post.channel } : {}),
       ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
       files: post.files,
-      rubric_visible: false,
     }),
   };
 }
@@ -277,7 +276,6 @@ function toSessionMessages(result: HarnessEvalResult): NormalizedMessage[] {
             event_type: post.thread_ts ? "thread_post" : "channel_post",
             channel: post.channel,
             ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
-            rubric_visible: false,
           }),
         }),
       ),
