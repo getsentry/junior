@@ -37,6 +37,10 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
+import {
+  registerAuthorizationRecovery,
+  removeAuthorizationRecovery,
+} from "./authorization-recovery-index";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -499,6 +503,7 @@ function buildStoredRecord(args: {
 }
 
 async function setStoredRecord(args: {
+  authorizationRecoveryCompletionIdToRemove?: string;
   conversationStore?: ConversationStore;
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
@@ -523,6 +528,24 @@ async function setStoredRecord(args: {
     args.ttlMs,
   );
   await appendStoredAgentTurnSessionSummary(args.record, args.ttlMs);
+  if (args.authorizationRecoveryCompletionIdToRemove) {
+    await removeAuthorizationRecovery(stateAdapter, {
+      authorizationCompletionId: args.authorizationRecoveryCompletionIdToRemove,
+      conversationId: args.record.conversationId,
+      sessionId: args.record.sessionId,
+    }).catch((error) => {
+      logWarn(
+        "agent_turn_authorization_recovery_cleanup_failed",
+        { conversationId: args.record.conversationId },
+        {
+          "app.ai.session_id": args.record.sessionId,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        },
+        "Failed to remove terminal authorization recovery index entry",
+      );
+    });
+  }
   return materializeAgentTurnSessionRecord(
     args.record,
     {
@@ -551,6 +574,12 @@ async function updateAgentTurnSessionState(args: {
   }
 
   return await setStoredRecord({
+    ...(parsed.authorizationRecovery
+      ? {
+          authorizationRecoveryCompletionIdToRemove:
+            parsed.authorizationRecovery.authorizationCompletionId,
+        }
+      : {}),
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: AGENT_TURN_SESSION_TTL_MS,
@@ -669,6 +698,15 @@ export async function upsertAgentTurnSessionRecord(args: {
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
   return await setStoredRecord({
+    ...((args.state === "completed" ||
+      args.state === "failed" ||
+      args.state === "abandoned") &&
+    existingRecord?.authorizationRecovery
+      ? {
+          authorizationRecoveryCompletionIdToRemove:
+            existingRecord.authorizationRecovery.authorizationCompletionId,
+        }
+      : {}),
     conversationStore: args.conversationStore,
     destinationVisibility: args.destinationVisibility,
     piMessages: args.piMessages,
@@ -1043,6 +1081,12 @@ export async function prepareAgentTurnAuthorizationRecovery(args: {
       args.sessionId,
     );
     if (!stored || stored.version !== existing.version) return undefined;
+    await registerAuthorizationRecovery(getStateAdapter(), {
+      authorizationCompletionId: current.authorizationCompletionId,
+      conversationId: args.conversationId,
+      registeredAtMs: Date.now(),
+      sessionId: args.sessionId,
+    });
     await appendStoredAgentTurnSessionSummary(
       stored,
       AGENT_TURN_SESSION_TTL_MS,
@@ -1055,6 +1099,13 @@ export async function prepareAgentTurnAuthorizationRecovery(args: {
     args.sessionId,
   );
   if (!stored || stored.version !== existing.version) return undefined;
+  const preparedAtMs = Date.now();
+  await registerAuthorizationRecovery(getStateAdapter(), {
+    authorizationCompletionId: args.authorizationCompletionId,
+    conversationId: args.conversationId,
+    registeredAtMs: preparedAtMs,
+    sessionId: args.sessionId,
+  });
   return await setStoredRecord({
     piMessages: existing.piMessages,
     piMessageProvenance: existing.piMessageProvenance,
@@ -1068,7 +1119,7 @@ export async function prepareAgentTurnAuthorizationRecovery(args: {
         active: false,
         authorizationCompletionId: args.authorizationCompletionId,
         authorizationKind: args.authorizationKind,
-        preparedAtMs: Date.now(),
+        preparedAtMs,
         provider: args.provider,
         userId: args.userId,
       },

@@ -791,6 +791,28 @@ describe("oauth callback slack integration", () => {
       ),
     ).resolves.toMatchObject({ resumeReason: "auth" });
     expect(queue.sentRecords()).toHaveLength(0);
+    for (let index = 0; index < 5_001; index += 1) {
+      await adapter.appendToList(
+        "junior:agent_turn_session:index",
+        {
+          conversationId: `unrelated:${index}`,
+          cumulativeDurationMs: 0,
+          lastProgressAtMs: index,
+          sessionId: `unrelated-session:${index}`,
+          sliceId: 1,
+          startedAtMs: index,
+          state: "completed",
+          updatedAtMs: index,
+          version: 1,
+        },
+        { maxLength: 5_000 },
+      );
+    }
+    await expect(
+      adapter.getList("junior:agent_turn_session:index"),
+    ).resolves.not.toContainEqual(
+      expect.objectContaining({ conversationId, sessionId }),
+    );
     let workRequestFailed = false;
     const failingWorkState = new Proxy(adapter, {
       get(target, property, receiver) {
@@ -830,6 +852,9 @@ describe("oauth callback slack integration", () => {
         state: adapter,
       }),
     ).resolves.toBe(1);
+    const { listAuthorizationRecoveries } =
+      await import("@/chat/state/authorization-recovery-index");
+    await expect(listAuthorizationRecoveries(adapter)).resolves.toEqual([]);
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,

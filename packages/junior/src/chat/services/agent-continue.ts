@@ -11,7 +11,6 @@ import {
   activateAgentTurnAuthorizationRecovery,
   getAgentTurnSessionRecord,
   isAgentTurnAuthorizationRecoveryActive,
-  listAgentTurnSessionSummaries,
   prepareAgentTurnAuthorizationRecovery,
   type AgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
@@ -26,6 +25,11 @@ import {
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { sleep } from "@/chat/sleep";
+import {
+  listAuthorizationRecoveries,
+  removeAuthorizationRecovery,
+  type AuthorizationRecoveryIndexEntry,
+} from "@/chat/state/authorization-recovery-index";
 
 const AUTHORIZATION_RECOVERY_LOCK_RETRY_MS = 250;
 
@@ -47,6 +51,26 @@ interface AuthorizationRecoveryIdentity {
   conversationId: string;
   expectedVersion: number;
   sessionId: string;
+}
+
+async function removeAuthorizationRecoveryBestEffort(
+  entry: Pick<
+    AuthorizationRecoveryIndexEntry,
+    "authorizationCompletionId" | "conversationId" | "sessionId"
+  >,
+  state: StateAdapter,
+): Promise<void> {
+  try {
+    await removeAuthorizationRecovery(state, entry);
+  } catch (error) {
+    logException(
+      error,
+      "authorization_recovery_index_cleanup_failed",
+      { conversationId: entry.conversationId },
+      { "app.ai.session_id": entry.sessionId },
+      "Failed to remove a completed authorization recovery index entry",
+    );
+  }
 }
 
 async function acquireAuthorizationRecoveryLock(
@@ -114,6 +138,7 @@ export async function activateAndScheduleAgentTurnAuthorizationRecovery(
       },
       options,
     );
+    await removeAuthorizationRecoveryBestEffort(args, state);
     return activated;
   } finally {
     await state.releaseLock(lock);
@@ -172,31 +197,41 @@ export async function wakeAuthorizationCompletedAgentTurn(
 export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
-  // Immediate callback scheduling is primary. The one-minute heartbeat repairs
-  // from the existing operational feed, which retains the latest 5,000 writes.
-  const recoveries = (await listAgentTurnSessionSummaries(5_000)).filter(
-    (summary) =>
-      summary.state === "awaiting_resume" &&
-      summary.resumeReason === "auth" &&
-      summary.authorizationRecovery,
-  );
+  const state = options.state ?? getStateAdapter();
+  const recoveries = await listAuthorizationRecoveries(state, options.nowMs);
   let recovered = 0;
-  for (const recoverySummary of recoveries) {
+  for (const indexed of recoveries) {
     try {
       const session = await getAgentTurnSessionRecord(
-        recoverySummary.conversationId,
-        recoverySummary.sessionId,
+        indexed.conversationId,
+        indexed.sessionId,
       );
+      // Registration precedes the session write, so a missing record is an
+      // intentional crash gap retained until the index TTL expires.
+      if (!session) continue;
       if (
-        !session ||
+        session.state === "completed" ||
+        session.state === "failed" ||
+        session.state === "abandoned"
+      ) {
+        await removeAuthorizationRecoveryBestEffort(indexed, state);
+        continue;
+      }
+      const recovery = session.authorizationRecovery;
+      if (!recovery) continue;
+      if (
+        recovery.authorizationCompletionId !== indexed.authorizationCompletionId
+      ) {
+        await removeAuthorizationRecoveryBestEffort(indexed, state);
+        continue;
+      }
+      if (
         session.state !== "awaiting_resume" ||
         session.resumeReason !== "auth" ||
         !session.destination
       ) {
         continue;
       }
-      const recovery = session.authorizationRecovery;
-      if (!recovery) continue;
       if (!recovery.active) {
         const committed =
           recovery.authorizationKind === "plugin"
@@ -217,9 +252,9 @@ export async function recoverAuthorizationCompletedAgentTurns(
       const completed = await activateAndScheduleAgentTurnAuthorizationRecovery(
         {
           authorizationCompletionId: recovery.authorizationCompletionId,
-          conversationId: recoverySummary.conversationId,
+          conversationId: indexed.conversationId,
           expectedVersion: session.version,
-          sessionId: recoverySummary.sessionId,
+          sessionId: indexed.sessionId,
         },
         options,
       );
@@ -229,8 +264,8 @@ export async function recoverAuthorizationCompletedAgentTurns(
       logException(
         error,
         "authorization_completed_resume_recovery_failed",
-        { conversationId: recoverySummary.conversationId },
-        { "app.ai.session_id": recoverySummary.sessionId },
+        { conversationId: indexed.conversationId },
+        { "app.ai.session_id": indexed.sessionId },
         "Failed to recover an authorized turn awaiting a durable wake",
       );
     }

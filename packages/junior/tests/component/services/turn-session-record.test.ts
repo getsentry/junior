@@ -377,6 +377,9 @@ describe("persistAuthPauseSessionRecord", () => {
       expectedVersion: prepared.version,
       sessionId,
     });
+    const { listAuthorizationRecoveries } =
+      await import("@/chat/state/authorization-recovery-index");
+    await expect(listAuthorizationRecoveries(state)).resolves.toEqual([]);
     await state.releaseLock(mailboxLock);
 
     await expect(activation).resolves.toBeUndefined();
