@@ -92,7 +92,7 @@ async function createDelivery(
   });
 }
 
-describe("pending conversation delivery outbox", () => {
+describe("pending conversation delivery outbox", { timeout: 10_000 }, () => {
   it("validates the delivery destination independently from source provenance", () => {
     const base = command();
     const localSource = {

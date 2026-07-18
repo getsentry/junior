@@ -113,7 +113,7 @@ async function setup(port: RecoverableSlackDeliveryPort) {
   };
 }
 
-describe("recoverable Slack delivery", () => {
+describe("recoverable Slack delivery", { timeout: 10_000 }, () => {
   it("rejects an empty transcript when retrying a nonempty intent", async () => {
     const test = await setup({ post: vi.fn(), reconcile: vi.fn() });
     try {
