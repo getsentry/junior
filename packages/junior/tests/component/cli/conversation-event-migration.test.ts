@@ -349,18 +349,19 @@ describe("conversation event migration", () => {
       await expect(
         context.stateAdapter.get(activeSessionKey),
       ).resolves.toBeNull();
-      const staleSessionKey = `junior:agent_turn_session:${conversationId}:stale-terminal`;
+      const rerunSessionKey = `junior:agent_turn_session:${conversationId}:rerun-active`;
       await context.stateAdapter.appendToList(turnSessionIndex, {
         conversationId,
-        sessionId: "stale-terminal",
-        state: "failed",
+        sessionId: "rerun-active",
+        state: "running",
       });
-      await context.stateAdapter.set(staleSessionKey, {
+      await context.stateAdapter.set(rerunSessionKey, {
         conversationId,
-        sessionId: "stale-terminal",
-        state: "failed",
+        sessionId: "rerun-active",
+        state: "running",
         committedSeq: 3,
       });
+      const redisCommandCountBeforeRerun = redisCommands.length;
       await expect(
         migrateConversationVisibleMessageEvents(context, {
           batchSize: 1,
@@ -368,8 +369,9 @@ describe("conversation event migration", () => {
         }),
       ).resolves.toMatchObject({ migrated: 0, missing: 0 });
       await expect(
-        context.stateAdapter.get(staleSessionKey),
-      ).resolves.toBeNull();
+        context.stateAdapter.get(rerunSessionKey),
+      ).resolves.toMatchObject({ state: "running", committedSeq: 3 });
+      expect(redisCommands).toHaveLength(redisCommandCountBeforeRerun);
       const events = await eventStore.loadHistory(conversationId);
       expect(
         events.map((event) => ({
