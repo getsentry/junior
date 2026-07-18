@@ -354,6 +354,23 @@ describe("agent continuation Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
+    const { getConversationEventStore } = await import("@/chat/db");
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: sessionId,
+        inputMessageIds: ["msg.1"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: sessionId,
+        outcome: "success",
+      }),
+    ]);
   });
 
   it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
@@ -797,6 +814,15 @@ describe("agent continuation Slack integration", () => {
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Paused agent run failed while continuing",
+    });
+    const { getConversationEventStore } = await import("@/chat/db");
+    const lifecycle =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_failed",
+      turnId: sessionId,
+      failureCode: "agent_run_failed",
+      eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
     });
   });
 

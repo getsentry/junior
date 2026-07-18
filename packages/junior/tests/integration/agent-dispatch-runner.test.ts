@@ -11,7 +11,7 @@ import {
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
-import { getConversationStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -304,6 +304,22 @@ describe("agent dispatch runner", () => {
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},
     );
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(dispatchConversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: `dispatch:${created.record.id}`,
+        inputMessageIds: [`dispatch:${created.record.id}:user`],
+        surface: "api",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: `dispatch:${created.record.id}`,
+        outcome: "success",
+      }),
+    ]);
   });
 
   it("starts dispatches without inherited destination conversation memory", async () => {
@@ -744,6 +760,14 @@ describe("agent dispatch runner", () => {
       sessionId: `dispatch:${created.record.id}`,
       state: "completed",
       surface: "api",
+    });
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(dispatchConversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_failed",
+      turnId: `dispatch:${created.record.id}`,
+      failureCode: "model_execution_failed",
     });
   });
 

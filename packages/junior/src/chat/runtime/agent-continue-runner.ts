@@ -302,6 +302,10 @@ export async function continueSlackAgentRun(
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
+    lifecycleCorrelation: {
+      conversationId: payload.conversationId,
+      turnId: payload.sessionId,
+    },
     agentRunner: options.agentRunner,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
@@ -403,6 +407,7 @@ export async function continueSlackAgentRun(
         return {
           messageText: userMessage.text,
           messageTs: getTurnUserSlackMessageTs(userMessage),
+          inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             input: {

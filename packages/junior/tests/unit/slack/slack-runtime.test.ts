@@ -26,6 +26,7 @@ function createMockDeps(
     getRunId: () => undefined,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
     refreshAssistantThreadContext: vi.fn().mockResolvedValue(undefined),
+    failConversationTurn: vi.fn().mockResolvedValue(undefined),
     logException: vi.fn(() => "evt_test"),
     logWarn: vi.fn(),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),

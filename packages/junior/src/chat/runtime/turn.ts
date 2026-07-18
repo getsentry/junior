@@ -1,10 +1,40 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
+import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 
 export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 
 // ---------------------------------------------------------------------------
 // Turn errors
 // ---------------------------------------------------------------------------
+
+/** Classified Slack turn failure carrying the owning Sentry capture outward. */
+export class ConversationTurnBoundaryError extends Error {
+  readonly eventId?: string;
+  readonly failureCode: ConversationTurnFailureCode;
+
+  constructor(args: {
+    cause: unknown;
+    eventId?: string;
+    failureCode: ConversationTurnFailureCode;
+  }) {
+    super(
+      args.cause instanceof Error ? args.cause.message : String(args.cause),
+      {
+        cause: args.cause,
+      },
+    );
+    this.name = "ConversationTurnBoundaryError";
+    this.eventId = args.eventId;
+    this.failureCode = args.failureCode;
+  }
+}
+
+/** Return a classified Slack boundary failure without erasing its cause. */
+export function getConversationTurnBoundaryError(
+  error: unknown,
+): ConversationTurnBoundaryError | undefined {
+  return error instanceof ConversationTurnBoundaryError ? error : undefined;
+}
 
 /**
  * Queue-worker yield routing: respond.ts returns a suspended AgentRunOutcome
