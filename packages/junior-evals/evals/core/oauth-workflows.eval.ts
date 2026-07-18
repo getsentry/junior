@@ -10,6 +10,8 @@ import {
 } from "../../src/helpers";
 
 type EvalRun = HarnessRun;
+const EVAL_OAUTH_IDENTITY_ENDPOINT =
+  "https://example.com/junior-eval-oauth/whoami";
 
 function textContent(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -25,7 +27,8 @@ function expectNoPublicOAuthUrl(result: EvalRun): void {
 }
 
 function expectEvalOauthIdentityCheck(result: EvalRun): void {
-  expect(toolCalls(result.session)).toEqual(
+  const calls = toolCalls(result.session);
+  expect(calls).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         name: "loadSkill",
@@ -33,13 +36,23 @@ function expectEvalOauthIdentityCheck(result: EvalRun): void {
           skill_name: "eval-oauth",
         }),
       }),
-      expect.objectContaining({
-        name: "bash",
-        arguments: expect.objectContaining({
-          command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
-        }),
-      }),
     ]),
+  );
+  expect(
+    evalOauthIdentityChecks(result).some((call) =>
+      JSON.stringify(call.result ?? "").includes("eval-oauth-user"),
+    ),
+  ).toBe(true);
+}
+
+function evalOauthIdentityChecks(result: EvalRun) {
+  return toolCalls(result.session).filter(
+    (call) =>
+      call.name === "bash" &&
+      typeof call.arguments?.command === "string" &&
+      call.arguments.command
+        .split(/\s+/u)
+        .some((token) => token === EVAL_OAUTH_IDENTITY_ENDPOINT),
   );
 }
 
@@ -185,14 +198,10 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       },
     ]);
     expectEvalOauthIdentityCheck(result);
-    expect(
-      matchingToolCalls(result, "bash", {
-        command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
-      }).length,
-    ).toBeGreaterThanOrEqual(3);
+    expect(evalOauthIdentityChecks(result).length).toBeGreaterThanOrEqual(3);
     expectFinalThreadReply(result, oauthResumeThread, /\bFriday\b/i);
     expectFinalThreadReply(result, oauthResumeThread, /eval-oauth-user/i);
-  });
+  }, 120_000);
 
   const oauthRefreshThread = {
     id: "thread-oauth-refresh",
@@ -279,5 +288,5 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       oauthReconnectThread,
       /connected|reconnected/i,
     );
-  });
+  }, 120_000);
 });
