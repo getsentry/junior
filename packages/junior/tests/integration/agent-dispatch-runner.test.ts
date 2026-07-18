@@ -209,12 +209,14 @@ function slackSource(channelId = "C123") {
 
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "dispatch-runner-secret";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
+    delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
   });
 
