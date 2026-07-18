@@ -830,15 +830,25 @@ export async function migrateConversationVisibleMessageEvents(
     | { conversationId: string; createdAt: Date | string; messageId: string }
     | undefined;
   try {
-    // This hard cut changes physical event positions. Drain resumable turns,
-    // then invalidate terminal cursor records before any SQL sequence changes.
-    const turnCursorRecords = await loadTurnCursorRecords(
-      context,
-      executor,
-      batchSize,
+    const [before] = await executor.query<{ count: number }>(
+      COUNT_MISSING_VISIBLE_EVENTS_SQL,
     );
-    assertNoUnfinishedTurnCursors(turnCursorRecords);
-    await invalidateTerminalTurnCursors(context, turnCursorRecords);
+    if (!before) {
+      throw new Error(
+        "Visible-message event migration could not inspect its projection",
+      );
+    }
+    if (before.count > 0) {
+      // This hard cut changes physical event positions. Drain resumable turns,
+      // then invalidate terminal cursor records before any SQL sequence changes.
+      const turnCursorRecords = await loadTurnCursorRecords(
+        context,
+        executor,
+        batchSize,
+      );
+      assertNoUnfinishedTurnCursors(turnCursorRecords);
+      await invalidateTerminalTurnCursors(context, turnCursorRecords);
+    }
     while (true) {
       const rows = await executor.withLock(VISIBLE_EVENT_BACKFILL_LOCK, () =>
         executor.query<VisibleMessageRow>(LOAD_MISSING_VISIBLE_EVENTS_SQL, [
