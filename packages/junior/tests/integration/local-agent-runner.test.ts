@@ -222,6 +222,7 @@ describe("local agent runner", () => {
 
     expect(invocations).toEqual([
       {
+        toolCallId: "tool-call-1",
         toolName: "createMemory",
         params: { content: "The actor prefers short updates." },
       },
@@ -229,6 +230,7 @@ describe("local agent runner", () => {
     expect(results).toEqual([
       {
         ok: true,
+        toolCallId: "tool-call-1",
         toolName: "createMemory",
         params: { content: "The actor prefers short updates." },
         result: { ok: true },
