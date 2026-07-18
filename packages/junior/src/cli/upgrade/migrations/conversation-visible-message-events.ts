@@ -1,3 +1,4 @@
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { getChatConfig } from "@/chat/config";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import type { ConversationMessageRole } from "@/chat/conversations/messages";
@@ -15,6 +16,11 @@ const VISIBLE_EVENT_BATCH_SIZE = 500;
 const VISIBLE_EVENT_BACKFILL_LOCK =
   "junior:upgrade:conversation-visible-message-events";
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
+const REDIS_SCAN_COUNT = 500;
+
+type RedisCommandClient = {
+  sendCommand<T = unknown>(args: readonly string[]): Promise<T>;
+};
 
 const LOAD_VISIBLE_CONVERSATION_IDS_SQL = `
 SELECT DISTINCT conversation_id
@@ -178,6 +184,65 @@ function turnSessionRecordKey(
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
 }
 
+function rawTurnSessionKeyPattern(): string {
+  const statePrefix = getChatConfig().state.keyPrefix;
+  return `*:cache:${statePrefix ? `${statePrefix}:` : ""}${AGENT_TURN_SESSION_PREFIX}:*`;
+}
+
+async function discoverRawTurnSessionKeys(
+  redisStateAdapter: RedisStateAdapter | undefined,
+): Promise<Map<string, string>> {
+  const client = redisStateAdapter?.getClient() as
+    | RedisCommandClient
+    | undefined;
+  const discovered = new Map<string, string>();
+  if (!client) return discovered;
+
+  let cursor = "0";
+  do {
+    const reply = await client.sendCommand<unknown>([
+      "SCAN",
+      cursor,
+      "MATCH",
+      rawTurnSessionKeyPattern(),
+      "COUNT",
+      String(REDIS_SCAN_COUNT),
+    ]);
+    if (
+      !Array.isArray(reply) ||
+      reply.length !== 2 ||
+      (typeof reply[0] !== "string" && typeof reply[0] !== "number") ||
+      !Array.isArray(reply[1])
+    ) {
+      throw new Error(
+        "Unexpected Redis SCAN response while checking turn-session cursors",
+      );
+    }
+    cursor = String(reply[0]);
+    for (const rawKey of reply[1]) {
+      if (typeof rawKey !== "string") continue;
+      const encoded = await client.sendCommand<unknown>(["GET", rawKey]);
+      if (typeof encoded !== "string") continue;
+      let value: unknown;
+      try {
+        value = JSON.parse(encoded);
+      } catch {
+        continue;
+      }
+      if (!isRecord(value)) continue;
+      const conversationId = toOptionalString(value.conversationId);
+      const sessionId = toOptionalString(value.sessionId);
+      if (!conversationId || !sessionId) continue;
+      discovered.set(
+        turnSessionRecordKey(conversationId, sessionId),
+        conversationId,
+      );
+    }
+  } while (cursor !== "0");
+
+  return discovered;
+}
+
 async function indexedTurnSessionIds(
   context: MigrationContext,
   conversationId: string,
@@ -236,6 +301,48 @@ async function visitVisibleConversations(
   );
 }
 
+async function loadTurnCursorRecords(
+  context: MigrationContext,
+  executor: JuniorSqlExecutor,
+  batchSize: number,
+): Promise<Map<string, Record<string, unknown>>> {
+  await context.stateAdapter.connect();
+  const visibleConversationIds = new Set<string>();
+  await visitVisibleConversations(
+    executor,
+    batchSize,
+    async (conversationId) => {
+      visibleConversationIds.add(conversationId);
+    },
+  );
+
+  const keys = new Set<string>();
+  for (const conversationId of visibleConversationIds) {
+    for (const sessionId of await indexedTurnSessionIds(
+      context,
+      conversationId,
+    )) {
+      keys.add(turnSessionRecordKey(conversationId, sessionId));
+    }
+  }
+  for (const [key, conversationId] of await discoverRawTurnSessionKeys(
+    context.redisStateAdapter,
+  )) {
+    if (visibleConversationIds.has(conversationId)) {
+      keys.add(key);
+    }
+  }
+
+  const records = new Map<string, Record<string, unknown>>();
+  for (const key of keys) {
+    const value = await context.stateAdapter.get<unknown>(key);
+    if (isRecord(value) && hasSeqCursor(value)) {
+      records.set(key, value);
+    }
+  }
+  return records;
+}
+
 async function readLegacyCompactionState(
   context: MigrationContext,
   conversationId: string,
@@ -270,64 +377,35 @@ async function readLegacyCompactionState(
 }
 
 /** Refuse to resequence while a resumable Redis cursor can still be consumed. */
-async function assertNoUnfinishedTurnCursors(
-  context: MigrationContext,
-  executor: JuniorSqlExecutor,
-  batchSize: number,
-): Promise<void> {
-  await context.stateAdapter.connect();
-  await visitVisibleConversations(
-    executor,
-    batchSize,
-    async (conversationId) => {
-      for (const sessionId of await indexedTurnSessionIds(
-        context,
-        conversationId,
-      )) {
-        const key = turnSessionRecordKey(conversationId, sessionId);
-        const value = await context.stateAdapter.get<unknown>(key);
-        if (!isRecord(value) || !hasSeqCursor(value)) continue;
-        if (value.state === "running" || value.state === "awaiting_resume") {
-          throw new Error(
-            `Cannot resequence conversation events while unfinished turn session ${key} retains a seq cursor`,
-          );
-        }
-        if (
-          value.state !== "completed" &&
-          value.state !== "failed" &&
-          value.state !== "abandoned"
-        ) {
-          throw new Error(
-            `Cannot resequence conversation events with invalid cursor-bearing turn session ${key}`,
-          );
-        }
-      }
-    },
-  );
+function assertNoUnfinishedTurnCursors(
+  records: Map<string, Record<string, unknown>>,
+): void {
+  for (const [key, value] of records) {
+    if (value.state === "running" || value.state === "awaiting_resume") {
+      throw new Error(
+        `Cannot resequence conversation events while unfinished turn session ${key} retains a seq cursor`,
+      );
+    }
+    if (
+      value.state !== "completed" &&
+      value.state !== "failed" &&
+      value.state !== "abandoned"
+    ) {
+      throw new Error(
+        `Cannot resequence conversation events with invalid cursor-bearing turn session ${key}`,
+      );
+    }
+  }
 }
 
 /** Invalidate terminal physical-seq cursors before the chronological hard cut. */
 async function invalidateTerminalTurnCursors(
   context: MigrationContext,
-  executor: JuniorSqlExecutor,
-  batchSize: number,
+  records: Map<string, Record<string, unknown>>,
 ): Promise<void> {
-  await visitVisibleConversations(
-    executor,
-    batchSize,
-    async (conversationId) => {
-      for (const sessionId of await indexedTurnSessionIds(
-        context,
-        conversationId,
-      )) {
-        const key = turnSessionRecordKey(conversationId, sessionId);
-        const value = await context.stateAdapter.get<unknown>(key);
-        if (isRecord(value) && hasSeqCursor(value)) {
-          await context.stateAdapter.delete(key);
-        }
-      }
-    },
-  );
+  for (const key of records.keys()) {
+    await context.stateAdapter.delete(key);
+  }
 }
 
 function sqlVisibleEvents(events: NewConversationEvent[]): SqlVisibleEvent[] {
@@ -754,8 +832,13 @@ export async function migrateConversationVisibleMessageEvents(
   try {
     // This hard cut changes physical event positions. Drain resumable turns,
     // then invalidate terminal cursor records before any SQL sequence changes.
-    await assertNoUnfinishedTurnCursors(context, executor, batchSize);
-    await invalidateTerminalTurnCursors(context, executor, batchSize);
+    const turnCursorRecords = await loadTurnCursorRecords(
+      context,
+      executor,
+      batchSize,
+    );
+    assertNoUnfinishedTurnCursors(turnCursorRecords);
+    await invalidateTerminalTurnCursors(context, turnCursorRecords);
     while (true) {
       const rows = await executor.withLock(VISIBLE_EVENT_BACKFILL_LOCK, () =>
         executor.query<VisibleMessageRow>(LOAD_MISSING_VISIBLE_EVENTS_SQL, [
