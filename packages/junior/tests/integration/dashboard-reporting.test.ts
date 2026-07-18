@@ -94,26 +94,6 @@ async function appendVisibleHistory(
     },
     {
       data: {
-        type: "delivery_intended",
-        deliveryId: `${conversationId.replaceAll(":", "_")}_delivery`,
-        correlation: { kind: "turn", turnId: `${conversationId}:turn` },
-        messageId: `${conversationId}:visible`,
-        deliveryKind: "assistant_reply",
-        provider: "slack",
-        partCount: 1,
-      },
-      createdAtMs: 15,
-    },
-    {
-      data: {
-        type: "delivery_accepted",
-        deliveryId: `${conversationId.replaceAll(":", "_")}_delivery`,
-        providerMessageIds: ["123.456"],
-      },
-      createdAtMs: 16,
-    },
-    {
-      data: {
         type: "subagent_started",
         subagentInvocationId: `${conversationId}:subagent-call`,
         subagentKind: "review",
@@ -265,23 +245,13 @@ describe("dashboard canonical event reporting", () => {
         state: "succeeded",
       },
       {
-        type: "delivery",
-        deliveryId: `${conversationId.replaceAll(":", "_")}_delivery`,
-        state: "intended",
-      },
-      {
-        type: "delivery",
-        deliveryId: `${conversationId.replaceAll(":", "_")}_delivery`,
-        state: "accepted",
-      },
-      {
         type: "subagent_started",
         childConversationId: `${conversationId}:child`,
         subagentKind: "review",
       },
       {
         type: "subagent_ended",
-        startedSeq: 7,
+        startedSeq: 5,
         outcome: "success",
       },
       { type: "context_compacted" },
