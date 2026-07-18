@@ -2135,6 +2135,7 @@ async function processEvents(args: {
   const consumedMcpOauthStates = new Set<string>();
 
   const maybeAutoCompleteAuth = async (): Promise<void> => {
+    const callbackCallOffset = readCapturedSlackApiCalls().length;
     for (const provider of env.autoCompleteMcpOauthProviders) {
       await autoCompleteMcpOauth({
         agentRunner,
@@ -2151,6 +2152,26 @@ async function processEvents(args: {
         provider,
         consumedStates: consumedOauthStates,
         recoverableSlackDelivery,
+      });
+    }
+    const callbackPosts = collectSlackArtifactsFromCapturedCalls(
+      readCapturedSlackApiCalls().slice(callbackCallOffset),
+    ).channelPosts;
+    for (const post of callbackPosts) {
+      if (
+        !post.thread_ts ||
+        !findEvalThread(`slack:${post.channel}:${post.thread_ts}`)
+      ) {
+        continue;
+      }
+      args.observations.sessionMessages.push({
+        role: "assistant",
+        content: post.text,
+        metadata: {
+          event_type: "thread_post",
+          channel: post.channel,
+          thread_ts: post.thread_ts,
+        },
       });
     }
   };
