@@ -12,4 +12,5 @@ CREATE TABLE "junior_pending_deliveries" (
 );
 --> statement-breakpoint
 ALTER TABLE "junior_pending_deliveries" ADD CONSTRAINT "junior_pending_deliveries_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "junior_pending_deliveries_conversation_idx" ON "junior_pending_deliveries" USING btree ("conversation_id");
+CREATE UNIQUE INDEX "junior_pending_deliveries_conversation_idx" ON "junior_pending_deliveries" USING btree ("conversation_id");--> statement-breakpoint
+CREATE INDEX "junior_pending_deliveries_due_idx" ON "junior_pending_deliveries" USING btree ("next_attempt_at");

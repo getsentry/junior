@@ -1,6 +1,6 @@
 {
-  "id": "cd03ee3d-359f-4bd5-ab69-699fcc06ef23",
-  "prevId": "cf8b6b75-b49a-40db-b801-dfaac587ae2d",
+  "id": "33056a28-5ffc-4b7b-8c6c-8045411e5cae",
+  "prevId": "5bcf5afe-2cc5-497a-a873-08c54ab1dfb0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -70,6 +70,33 @@
             },
             {
               "expression": "context_epoch",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_conversation_events_type_idx": {
+          "name": "junior_conversation_events_type_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -430,6 +457,12 @@
         "metric_run_id": {
           "name": "metric_run_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         }
@@ -1013,6 +1046,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_pending_deliveries_due_idx": {
+          "name": "junior_pending_deliveries_due_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

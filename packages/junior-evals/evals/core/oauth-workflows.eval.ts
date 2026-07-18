@@ -10,6 +10,8 @@ import {
 } from "../../src/helpers";
 
 type EvalRun = HarnessRun;
+const EVAL_OAUTH_IDENTITY_ENDPOINT =
+  "https://example.com/junior-eval-oauth/whoami";
 
 function textContent(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -48,9 +50,9 @@ function evalOauthIdentityChecks(result: EvalRun) {
     (call) =>
       call.name === "bash" &&
       typeof call.arguments?.command === "string" &&
-      call.arguments.command.includes(
-        "https://example.com/junior-eval-oauth/whoami",
-      ),
+      call.arguments.command
+        .split(/\s+/u)
+        .some((token) => token === EVAL_OAUTH_IDENTITY_ENDPOINT),
   );
 }
 
