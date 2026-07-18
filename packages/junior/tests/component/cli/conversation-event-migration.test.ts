@@ -1,6 +1,8 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { describe, expect, it } from "vitest";
+import { getChatConfig } from "@/chat/config";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { migrateConversationVisibleMessageEvents } from "@/cli/upgrade/migrations/conversation-visible-message-events";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -275,18 +277,38 @@ describe("conversation event migration", () => {
         }),
       ).resolves.toEqual({ imported: true });
 
+      const turnSessionIndex = `junior:agent_turn_session:conversation:${conversationId}:index`;
+      const activeSessionKey = `junior:agent_turn_session:${conversationId}:active-turn`;
+      const statePrefix = getChatConfig().state.keyPrefix;
+      const rawActiveSessionKey = [
+        "chat-sdk:cache",
+        ...(statePrefix ? [statePrefix] : []),
+        activeSessionKey,
+      ].join(":");
+      const redisCommands: string[][] = [];
+      const redisStateAdapter = {
+        getClient: () => ({
+          sendCommand: async (args: readonly string[]) => {
+            redisCommands.push([...args]);
+            if (args[0] === "SCAN") {
+              return ["0", [rawActiveSessionKey]];
+            }
+            if (args[0] === "GET" && args[1] === rawActiveSessionKey) {
+              return JSON.stringify({
+                conversationId,
+                sessionId: "active-turn",
+              });
+            }
+            throw new Error(`Unexpected Redis command ${args.join(" ")}`);
+          },
+        }),
+      } as unknown as RedisStateAdapter;
       const context = {
         io: { info: () => {} },
+        redisStateAdapter,
         stateAdapter: getStateAdapter(),
       };
       await context.stateAdapter.connect();
-      const turnSessionIndex = `junior:agent_turn_session:conversation:${conversationId}:index`;
-      const activeSessionKey = `junior:agent_turn_session:${conversationId}:active-turn`;
-      await context.stateAdapter.appendToList(turnSessionIndex, {
-        conversationId,
-        sessionId: "active-turn",
-        state: "running",
-      });
       await context.stateAdapter.set(activeSessionKey, {
         conversationId,
         sessionId: "active-turn",
@@ -300,6 +322,17 @@ describe("conversation event migration", () => {
           executor: fixture.sql,
         }),
       ).rejects.toThrow("unfinished turn session");
+      expect(redisCommands.slice(0, 2)).toEqual([
+        [
+          "SCAN",
+          "0",
+          "MATCH",
+          `*:cache:${statePrefix ? `${statePrefix}:` : ""}junior:agent_turn_session:*`,
+          "COUNT",
+          "500",
+        ],
+        ["GET", rawActiveSessionKey],
+      ]);
       await context.stateAdapter.set(activeSessionKey, {
         conversationId,
         sessionId: "active-turn",
