@@ -161,9 +161,10 @@ describe("conversation event migration", () => {
       "0001_conversation_metrics.sql",
       "0002_conversation_message_search.sql",
       "0003_peaceful_scalphunter.sql",
+      "0004_useful_magus.sql",
     ].flatMap(migrationStatements);
     const conversationEvents = migrationStatements(
-      "0004_conversation_events.sql",
+      "0005_conversation_events.sql",
     );
     const conversationId = "conversation-visible-events";
 
@@ -341,13 +342,17 @@ describe("conversation event migration", () => {
   it("renames history, preserves rows, and rewrites legacy event payloads", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const conversationEvents = migrationStatements(
-      "0004_conversation_events.sql",
+      "0005_conversation_events.sql",
     );
 
     try {
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
         historicalPreDrizzleEventDdl,
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0004_useful_magus.sql"),
       );
       await fixture.sql.execute(
         `INSERT INTO junior_conversations (

@@ -69,10 +69,9 @@ describe("reporting support", () => {
     expect(matching[0]).not.toHaveProperty("errorMessage");
   });
 
-  it("lists recent conversations for plugin operational reports", async () => {
+  it("lists recent conversations through the conversation reporting API", async () => {
     const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
+    const { readConversationFeed } = await import("@/api/conversations/list");
     const conversationId = "slack:C-reporting-support:plugin-feed";
 
     await getConversationStore().recordActivity({
@@ -89,14 +88,14 @@ describe("reporting support", () => {
       visibility: "public",
     });
 
-    const summary = (await listRecentConversationSummaries(100)).find(
+    const summary = (await readConversationFeed()).conversations.find(
       (item) => item.conversationId === conversationId,
     );
     expect(summary).toMatchObject({
       channelName: "reporting-support-incidents",
       conversationId,
       displayTitle: expect.any(String),
-      source: "slack",
+      surface: "slack",
       status: "completed",
     });
   });
@@ -149,8 +148,7 @@ describe("reporting support", () => {
     },
   ])("redacts $name", async (testCase) => {
     const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
+    const { readConversationFeed } = await import("@/api/conversations/list");
 
     await getConversationStore().recordActivity({
       conversationId: testCase.conversationId,
@@ -170,7 +168,7 @@ describe("reporting support", () => {
       ...(testCase.visibility ? { visibility: testCase.visibility } : {}),
     });
 
-    const summaries = await listRecentConversationSummaries(100);
+    const summaries = (await readConversationFeed()).conversations;
     const serialized = JSON.stringify(summaries);
     const summary = summaries.find(
       (item) => item.conversationId === testCase.conversationId,

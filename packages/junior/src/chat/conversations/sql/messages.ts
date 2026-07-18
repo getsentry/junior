@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   ConversationMessageStore,
@@ -8,7 +8,7 @@ import type {
 import { ensureConversationRow } from "./conversation-row";
 import { withConversationEventLock } from "./event-lock";
 import { createSqlConversationEventStore } from "./history";
-import { juniorConversationMessages, juniorConversations } from "@/db/schema";
+import { juniorConversationMessages } from "@/db/schema";
 import type { NewConversationEvent } from "../history";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
@@ -115,16 +115,6 @@ class SqlConversationMessageStore implements ConversationMessageStore {
         conversationId,
         events,
       );
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: null })
-        .where(
-          and(
-            eq(juniorConversations.conversationId, conversationId),
-            isNotNull(juniorConversations.archivedAt),
-          ),
-        );
       await this.executor
         .db()
         .insert(juniorConversationMessages)

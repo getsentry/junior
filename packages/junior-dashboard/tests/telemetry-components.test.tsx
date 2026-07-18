@@ -27,6 +27,7 @@ import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
+import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
@@ -90,6 +91,14 @@ function systemData(): SystemData {
       durationMs: 2_000,
       failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
+      metricDays: [
+        {
+          costUsd: 4.56,
+          date: "2026-01-01",
+          durationMs: 12_000,
+          tokens: 12_345,
+        },
+      ],
       locations: [],
       source: "conversation_index",
       tokens: 1_200,
@@ -633,6 +642,34 @@ describe("dashboard canonical-event components", () => {
     );
     expect(staleHtml).toContain("Plugin stats failed to load.");
     expect(staleHtml).toContain("Scheduler");
+  });
+
+  it("renders system metrics and capability inventories", () => {
+    const data = systemData();
+    data.plugins = [{ name: "github" }];
+    data.skills = [{ name: "triage", pluginProvider: "github" }];
+
+    const systemHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+    expect(systemHtml).toContain("Usage over time");
+    expect(systemHtml).toContain("Token usage");
+    expect(systemHtml).toContain("Model spend");
+    expect(systemHtml).toContain("Runtime");
+    expect(systemHtml).toContain('role="tablist"');
+    expect(systemHtml).toContain('aria-selected="true"');
+    expect(systemHtml).toContain(">Plugins<");
+    expect(systemHtml).toContain(">Skills<");
+    expect(systemHtml).toContain(">github<");
+    expect(systemHtml).not.toContain(">triage<");
+
+    const skillsHtml = renderToStaticMarkup(
+      <SkillInventory skills={data.skills} />,
+    );
+    expect(skillsHtml).toContain(">github<");
+    expect(skillsHtml).toContain(">triage<");
   });
 
   it("renders plugin records without declared fields safely", () => {
