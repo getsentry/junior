@@ -2707,7 +2707,9 @@ export async function runEvalScenario(
     const turnLifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
-    const recoverableSlackDelivery = createProductionRecoverableSlackDelivery();
+    const recoverableSlackDelivery = createProductionRecoverableSlackDelivery({
+      getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
+    });
     const services = buildRuntimeServices(
       scenario,
       env,
