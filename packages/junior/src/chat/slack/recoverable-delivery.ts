@@ -241,17 +241,12 @@ async function loadSqlProjectionAt(
   conversationId: string,
   committedSeq: number,
 ): Promise<PiConversationEventProjection | undefined> {
-  const history =
-    await createSqlConversationEventStore(sql).loadHistory(conversationId);
-  const boundary = history.find((event) => event.seq === committedSeq);
-  if (!boundary) return undefined;
-  return projectConversationEvents(
-    history.filter(
-      (event) =>
-        event.contextEpoch === boundary.contextEpoch &&
-        event.seq <= committedSeq,
-    ),
+  const epoch = await createSqlConversationEventStore(sql).loadEpochContaining(
+    conversationId,
+    committedSeq,
+    committedSeq,
   );
+  return epoch ? projectConversationEvents(epoch) : undefined;
 }
 
 /** Remove an undelivered model generation from the live Pi epoch. */
