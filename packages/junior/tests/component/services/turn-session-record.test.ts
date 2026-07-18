@@ -301,6 +301,49 @@ describe("persistAuthPauseSessionRecord", () => {
     },
   );
 
+  it("prunes a missing auth recovery record only after the grace period", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const {
+      AUTHORIZATION_RECOVERY_MISSING_RECORD_GRACE_MS,
+      listAuthorizationRecoveries,
+      registerAuthorizationRecovery,
+    } = await import("@/chat/state/authorization-recovery-index");
+    const { recoverAuthorizationCompletedAgentTurns } =
+      await import("@/chat/services/agent-continue");
+    const state = getStateAdapter();
+    const registeredAtMs = Date.now();
+    const entry = {
+      authorizationCompletionId: "incomplete-registration",
+      conversationId: "slack:C123:incomplete-auth-registration",
+      registeredAtMs,
+      sessionId: "turn-incomplete-auth-registration",
+    };
+    await registerAuthorizationRecovery(state, entry);
+
+    const beforeGraceMs =
+      registeredAtMs + AUTHORIZATION_RECOVERY_MISSING_RECORD_GRACE_MS - 1;
+    await expect(
+      recoverAuthorizationCompletedAgentTurns({
+        nowMs: beforeGraceMs,
+        state,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      listAuthorizationRecoveries(state, beforeGraceMs),
+    ).resolves.toEqual([entry]);
+
+    const afterGraceMs = beforeGraceMs + 1;
+    await expect(
+      recoverAuthorizationCompletedAgentTurns({
+        nowMs: afterGraceMs,
+        state,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      listAuthorizationRecoveries(state, afterGraceMs),
+    ).resolves.toEqual([]);
+  });
+
   it("does not resume after mailbox failure wins the auth callback race", async () => {
     const {
       failAgentTurnSessionRecord,

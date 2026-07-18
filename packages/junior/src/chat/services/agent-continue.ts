@@ -26,6 +26,7 @@ import {
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { sleep } from "@/chat/sleep";
 import {
+  AUTHORIZATION_RECOVERY_MISSING_RECORD_GRACE_MS,
   listAuthorizationRecoveries,
   removeAuthorizationRecovery,
   type AuthorizationRecoveryIndexEntry,
@@ -198,7 +199,8 @@ export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
   const state = options.state ?? getStateAdapter();
-  const recoveries = await listAuthorizationRecoveries(state, options.nowMs);
+  const nowMs = options.nowMs ?? Date.now();
+  const recoveries = await listAuthorizationRecoveries(state, nowMs);
   let recovered = 0;
   for (const indexed of recoveries) {
     try {
@@ -206,9 +208,15 @@ export async function recoverAuthorizationCompletedAgentTurns(
         indexed.conversationId,
         indexed.sessionId,
       );
-      // Registration precedes the session write, so a missing record is an
-      // intentional crash gap retained until the index TTL expires.
-      if (!session) continue;
+      const missingRecordIsStale =
+        nowMs - indexed.registeredAtMs >=
+        AUTHORIZATION_RECOVERY_MISSING_RECORD_GRACE_MS;
+      if (!session) {
+        if (missingRecordIsStale) {
+          await removeAuthorizationRecoveryBestEffort(indexed, state);
+        }
+        continue;
+      }
       if (
         session.state === "completed" ||
         session.state === "failed" ||
@@ -218,7 +226,12 @@ export async function recoverAuthorizationCompletedAgentTurns(
         continue;
       }
       const recovery = session.authorizationRecovery;
-      if (!recovery) continue;
+      if (!recovery) {
+        if (missingRecordIsStale) {
+          await removeAuthorizationRecoveryBestEffort(indexed, state);
+        }
+        continue;
+      }
       if (
         recovery.authorizationCompletionId !== indexed.authorizationCompletionId
       ) {

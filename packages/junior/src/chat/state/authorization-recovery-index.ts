@@ -6,6 +6,10 @@ const AUTHORIZATION_RECOVERY_INDEX_KEY =
 const AUTHORIZATION_RECOVERY_INDEX_LOCK_KEY =
   "junior:agent_turn_authorization_recovery:index-lock";
 const AUTHORIZATION_RECOVERY_INDEX_LOCK_TTL_MS = 10_000;
+/** Maximum unresolved callbacks heartbeat can inspect in one bounded pass. */
+export const AUTHORIZATION_RECOVERY_INDEX_MAX_ENTRIES = 1_000;
+/** Time allowed for registration to finish its authoritative session write. */
+export const AUTHORIZATION_RECOVERY_MISSING_RECORD_GRACE_MS = 5 * 60_000;
 
 const authorizationRecoveryIndexEntrySchema = z
   .object({
@@ -22,11 +26,24 @@ export type AuthorizationRecoveryIndexEntry = z.output<
 >;
 
 function parseEntries(value: unknown): AuthorizationRecoveryIndexEntry[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    const parsed = authorizationRecoveryIndexEntrySchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  });
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error("Authorization recovery index is malformed");
+  }
+  if (value.length > AUTHORIZATION_RECOVERY_INDEX_MAX_ENTRIES) {
+    throw new Error("Authorization recovery index exceeds capacity");
+  }
+  const entries: AuthorizationRecoveryIndexEntry[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const parsed = authorizationRecoveryIndexEntrySchema.safeParse(
+      value[index],
+    );
+    if (!parsed.success) {
+      throw new Error("Authorization recovery index is malformed");
+    }
+    entries.push(parsed.data);
+  }
+  return entries;
 }
 
 function entryKey(entry: AuthorizationRecoveryIndexEntry): string {
@@ -84,10 +101,18 @@ export async function registerAuthorizationRecovery(
   const parsed = authorizationRecoveryIndexEntrySchema.parse(entry);
   await mutateIndex(state, Date.now(), (entries) => {
     const key = entryKey(parsed);
-    return [
-      ...entries.filter((candidate) => entryKey(candidate) !== key),
-      parsed,
-    ];
+    const existingIndex = entries.findIndex(
+      (candidate) => entryKey(candidate) === key,
+    );
+    if (existingIndex >= 0) {
+      const next = [...entries];
+      next[existingIndex] = parsed;
+      return next;
+    }
+    if (entries.length >= AUTHORIZATION_RECOVERY_INDEX_MAX_ENTRIES) {
+      throw new Error("Authorization recovery index is at capacity");
+    }
+    return [...entries, parsed];
   });
 }
 
