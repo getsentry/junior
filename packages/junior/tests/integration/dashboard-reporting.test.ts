@@ -245,6 +245,7 @@ describe("dashboard canonical event reporting", () => {
     const detail = await requireDetail(conversationId);
 
     expect(detail.eventHistory).toEqual({ status: "available" });
+    expect(detail.displayTitle).toBe("Canonical event report");
     expect(detail.events.map((event) => event.data)).toEqual([
       {
         type: "visible_message",

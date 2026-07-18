@@ -29,7 +29,6 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
-const RECENT_CONVERSATION_STATS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -531,11 +530,44 @@ function actorLabel(identity: ActorIdentity | undefined): string {
   );
 }
 
+function statsWindowStartMs(nowMs: number): number {
+  const windowStart = new Date(nowMs);
+  windowStart.setUTCHours(0, 0, 0, 0);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 89);
+  return windowStart.getTime();
+}
+
 function windowBounds(nowMs: number) {
   return {
     windowEnd: iso(nowMs),
-    windowStart: iso(nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS),
+    windowStart: iso(statsWindowStartMs(nowMs)),
   };
+}
+
+function conversationMetricDays(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): ConversationStatsReport["metricDays"] {
+  const days = new Map<string, ConversationStatsReport["metricDays"][number]>();
+  for (let offset = 89; offset >= 0; offset -= 1) {
+    const date = new Date(nowMs);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    days.set(key, { date: key, durationMs: 0 });
+  }
+  for (const summary of summaries) {
+    const day = days.get(summary.lastSeenAt.slice(0, 10));
+    if (!day) continue;
+    day.durationMs += summary.cumulativeDurationMs;
+    const tokens = summaryTokenTotal(summary);
+    if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
+    const costUsd = summary.cumulativeUsage?.cost?.total;
+    if (costUsd !== undefined) {
+      day.costUsd = (day.costUsd ?? 0) + costUsd;
+    }
+  }
+  return [...days.values()];
 }
 
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
@@ -572,7 +604,13 @@ export function readMockConversationDetail(
 /** Build mock dashboard stats from canonical-event mock conversations. */
 export function readMockConversationStats(): ConversationStatsReport {
   const nowMs = Date.now();
-  const summaries = mockConversationFeed(nowMs).conversations;
+  const windowStartMs = statsWindowStartMs(nowMs);
+  const summaries = mockConversationFeed(nowMs).conversations.filter(
+    (summary) => {
+      const lastSeenAtMs = Date.parse(summary.lastSeenAt);
+      return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
+    },
+  );
   const total = statsItem("All conversations");
   const actorItems = new Map<string, ConversationStatsItem>();
   const locationItems = new Map<string, ConversationStatsItem>();
@@ -596,6 +634,7 @@ export function readMockConversationStats(): ConversationStatsReport {
     failed: total.failed,
     generatedAt: iso(nowMs),
     locations: [...locationItems.values()],
+    metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",
     tokens: total.tokens,
     ...windowBounds(nowMs),
@@ -788,116 +827,6 @@ export function readMockPeopleProfile(
     totals,
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
     windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
-  };
-}
-
-function conversationStatsReportFromSummaries(
-  nowMs: number,
-  summaries: ConversationSummaryReport[],
-): ConversationStatsReport {
-  const windowStart = new Date(nowMs);
-  windowStart.setUTCHours(0, 0, 0, 0);
-  windowStart.setUTCDate(windowStart.getUTCDate() - 89);
-  const windowStartMs = windowStart.getTime();
-  const conversations = summaries.filter((conversation) => {
-    const lastSeenAt = Date.parse(conversation.lastSeenAt);
-    return lastSeenAt >= windowStartMs && lastSeenAt <= nowMs;
-  });
-  const actors = new Map<string, ConversationStatsItem>();
-  const locations = new Map<string, ConversationStatsItem>();
-  const metricDays = new Map<
-    string,
-    { costUsd?: number; date: string; durationMs: number; tokens?: number }
-  >();
-  for (let offset = 89; offset >= 0; offset -= 1) {
-    const date = new Date(nowMs);
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() - offset);
-    const key = date.toISOString().slice(0, 10);
-    metricDays.set(key, { date: key, durationMs: 0 });
-  }
-  let durationMs = 0;
-  let costUsd: number | undefined;
-  let tokens: number | undefined;
-  let active = 0;
-  let failed = 0;
-
-  for (const conversation of conversations) {
-    const conversationCostUsd = usageCostTotal(conversation.cumulativeUsage);
-    const conversationTokens = usageTokenTotal(conversation.cumulativeUsage);
-    durationMs += conversation.cumulativeDurationMs;
-    const date = conversation.lastSeenAt.slice(0, 10);
-    const metricDay = metricDays.get(date);
-    if (metricDay) {
-      metricDay.durationMs += conversation.cumulativeDurationMs;
-      if (conversationCostUsd !== undefined) {
-        metricDay.costUsd = addUsd(metricDay.costUsd, conversationCostUsd);
-      }
-      if (conversationTokens !== undefined) {
-        metricDay.tokens = (metricDay.tokens ?? 0) + conversationTokens;
-      }
-    }
-    costUsd =
-      conversationCostUsd === undefined
-        ? costUsd
-        : addUsd(costUsd, conversationCostUsd);
-    tokens = addTokenTotal(tokens, conversationTokens);
-    active += conversation.status === "active" ? 1 : 0;
-    failed += conversation.status === "failed" ? 1 : 0;
-
-    const actor = actorLabel(conversation.actorIdentity) ?? "Unknown";
-    const actorItem = actors.get(actor) ?? emptyStatsItem(actor);
-    addConversationStats(actorItem, conversation);
-    actors.set(actor, actorItem);
-
-    const location = locationLabel(conversation);
-    const locationItem = locations.get(location) ?? emptyStatsItem(location);
-    addConversationStats(locationItem, conversation);
-    locations.set(location, locationItem);
-  }
-
-  return {
-    active,
-    conversations: conversations.length,
-    durationMs,
-    failed,
-    generatedAt: iso(nowMs),
-    metricDays: [...metricDays.values()],
-    locations: statsItems(locations),
-    actors: statsItems(actors),
-    source: "conversation_index",
-    ...(costUsd !== undefined ? { costUsd } : {}),
-    ...(tokens !== undefined ? { tokens } : {}),
-    windowEnd: iso(nowMs),
-    windowStart: iso(windowStartMs),
-  };
-}
-
-/** Build mock dashboard stats from the explicit mock conversation feed. */
-export function readMockConversationStats(): ConversationStatsReport {
-  const feed = mockConversationFeed(Date.now());
-  return conversationStatsReportFromSummaries(Date.now(), feed.conversations);
-}
-
-function mockLocationId(channel: string): string {
-  return `mock:${channel}`;
-}
-
-/** Admit only explicitly public mock destinations as named locations. */
-function publicMockLocation(
-  conversation: ConversationSummaryReport,
-): LocationSummaryReport | undefined {
-  const channel = conversation.channel;
-  if (!channel || !PUBLIC_MOCK_CHANNEL_IDS.has(channel)) return undefined;
-  return {
-    ...emptyStatsItem(locationLabel(conversation)),
-    firstSeenAt: conversation.startedAt,
-    id: mockLocationId(channel),
-    kind: "channel",
-    lastSeenAt: conversation.lastSeenAt,
-    provider: "slack",
-    providerDestinationId: channel,
-    visibility: "public",
   };
 }
 
