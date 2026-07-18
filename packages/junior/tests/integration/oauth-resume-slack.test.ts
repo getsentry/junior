@@ -154,6 +154,56 @@ describe("oauth resume slack integration", () => {
     vi.useRealTimers();
   });
 
+  it("posts the safe fallback when failure-state persistence fails", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const conversationId = "slack:T123:C123:1700000000.009";
+    const turnId = "turn_1700000000_009";
+
+    await expect(
+      resumeSlackTurn({
+        messageText: "Resume the failed turn",
+        channelId: "C123",
+        threadTs: "1700000000.009",
+        inputMessageIds: ["msg.9"],
+        lifecycleCorrelation: { conversationId, turnId },
+        turnLifecycle: new ConversationTurnLifecycleService(
+          getConversationEventStore(),
+        ),
+        replyContext: {
+          routing: {
+            credentialContext: {
+              actor: { type: "user", userId: "U123" },
+            },
+            correlation: { conversationId, turnId },
+            destination: TEST_SLACK_DESTINATION,
+            source: testSlackSource("1700000000.009"),
+            actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          },
+        },
+        agentRunner: {
+          run: async () => {
+            throw new Error("resume failed");
+          },
+        },
+        onFailure: async () => {
+          throw new Error("failure state unavailable");
+        },
+      }),
+    ).rejects.toThrow("failure state unavailable");
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.009",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that. Reference: `event_id=",
+          ),
+        }),
+      }),
+    ]);
+  });
+
   it("posts resumed status updates through the Slack MSW harness", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
