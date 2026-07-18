@@ -1,3 +1,4 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import { completeObject, completeText } from "@/chat/pi/client";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
@@ -37,9 +38,13 @@ import {
   reconcileRecoverableSlackMessage,
 } from "@/chat/slack/outbound";
 import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
-import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
+import type {
+  RecoverableSlackDelivery,
+  RecoverableSlackDeliveryPort,
+} from "@/chat/slack/recoverable-delivery";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
@@ -60,15 +65,38 @@ export interface JuniorRuntimeServiceOverrides {
   visionContext?: Partial<VisionContextDeps>;
 }
 
+/** Bind recoverable provider calls to the persisted destination installation. */
+export function createInstallationBoundRecoverableSlackDeliveryPort(args: {
+  getSlackAdapter: () => SlackAdapter;
+}): RecoverableSlackDeliveryPort {
+  return {
+    post: async ({ teamId, ...input }) =>
+      await runWithSlackInstallation({
+        adapter: args.getSlackAdapter(),
+        installation: { teamId },
+        task: async () => await postRecoverableSlackMessage(input),
+      }),
+    reconcile: async ({ teamId, ...input }) =>
+      await runWithSlackInstallation({
+        adapter: args.getSlackAdapter(),
+        installation: { teamId },
+        task: async () => await reconcileRecoverableSlackMessage(input),
+      }),
+  };
+}
+
 /** Compose the production SQL and Slack ports for durable reply delivery. */
-export function createProductionRecoverableSlackDelivery(): RecoverableSlackDelivery {
-  return new RecoverableSlackDeliveryService(getSqlExecutor(), {
-    post: postRecoverableSlackMessage,
-    reconcile: reconcileRecoverableSlackMessage,
-  });
+export function createProductionRecoverableSlackDelivery(args: {
+  getSlackAdapter: () => SlackAdapter;
+}): RecoverableSlackDelivery {
+  return new RecoverableSlackDeliveryService(
+    getSqlExecutor(),
+    createInstallationBoundRecoverableSlackDeliveryPort(args),
+  );
 }
 
 export function createJuniorRuntimeServices(
+  options: { getSlackAdapter: () => SlackAdapter },
   overrides: JuniorRuntimeServiceOverrides = {},
 ): JuniorRuntimeServices {
   const conversationMemory = createConversationMemoryService({
@@ -112,7 +140,7 @@ export function createJuniorRuntimeServices(
         }),
       recoverableSlackDelivery:
         overrides.replyExecutor?.recoverableSlackDelivery ??
-        createProductionRecoverableSlackDelivery(),
+        createProductionRecoverableSlackDelivery(options),
       turnLifecycle:
         overrides.replyExecutor?.turnLifecycle ??
         new ConversationTurnLifecycleService(getConversationEventStore()),

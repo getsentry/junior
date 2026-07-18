@@ -283,6 +283,11 @@ describe("recoverable Slack delivery", () => {
       });
       expect(post).toHaveBeenCalledTimes(2);
       expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(post.mock.calls.map(([input]) => input.teamId)).toEqual([
+        "T123",
+        "T123",
+      ]);
+      expect(reconcile.mock.calls[0]?.[0].teamId).toBe("T123");
     } finally {
       await test.fixture.close();
     }

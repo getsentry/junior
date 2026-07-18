@@ -100,7 +100,10 @@ function upsertSkippedConversationMessage(
 export function createSlackRuntime(
   options: CreateSlackRuntimeOptions,
 ): SlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent> {
-  const services = createJuniorRuntimeServices(options.services);
+  const services = createJuniorRuntimeServices(
+    { getSlackAdapter: options.getSlackAdapter },
+    options.services,
+  );
   const prepareTurnState = createPrepareTurnState({
     compactConversationIfNeeded:
       services.conversationMemory.compactConversationIfNeeded,

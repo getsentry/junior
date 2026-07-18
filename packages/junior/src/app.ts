@@ -69,6 +69,7 @@ import {
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
+  getProductionSlackAdapter,
 } from "@/chat/app/production";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -619,7 +620,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     replyExecutor: { agentRunner, turnLifecycle },
     sandbox: { tracePropagation },
   };
-  const recoverableSlackDelivery = createProductionRecoverableSlackDelivery();
+  const recoverableSlackDelivery = createProductionRecoverableSlackDelivery({
+    getSlackAdapter: getProductionSlackAdapter,
+  });
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });

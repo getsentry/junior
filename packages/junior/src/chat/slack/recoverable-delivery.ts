@@ -68,6 +68,7 @@ export interface RecoverableSlackDeliveryPort {
     blocks?: PendingConversationDeliveryCommand["parts"][number]["blocks"];
     channelId: string;
     metadata: SlackDeliveryMetadata;
+    teamId: string;
     text: string;
     threadTs?: string;
   }): Promise<RecoverableSlackPostResult>;
@@ -76,6 +77,7 @@ export interface RecoverableSlackDeliveryPort {
     cursor?: string;
     metadata: SlackDeliveryMetadata;
     oldestTs: string;
+    teamId: string;
     threadTs?: string;
   }): Promise<RecoverableSlackReconciliationResult>;
 }
@@ -446,6 +448,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
             oldestTs: oldestSlackTimestamp(
               Math.max(0, state.attemptedAtMs - RECONCILIATION_CLOCK_SKEW_MS),
             ),
+            teamId: current.command.session.destination.teamId,
             ...(state.reconciliationCursor
               ? { cursor: state.reconciliationCursor }
               : {}),
@@ -565,6 +568,7 @@ export class RecoverableSlackDeliveryService implements RecoverableSlackDelivery
           channelId: current.command.route.channelId,
           threadTs: current.command.route.threadTs,
           text: part.text,
+          teamId: current.command.session.destination.teamId,
           ...(part.blocks ? { blocks: part.blocks } : {}),
           metadata,
         });
