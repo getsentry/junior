@@ -96,10 +96,19 @@ SET "payload" =
 		'compactions',
 		coalesce((
 			SELECT jsonb_agg(
-				(compaction - 'coveredMessageIds') ||
-				jsonb_build_object(
-					'coveredMessageCount',
-					jsonb_array_length(compaction->'coveredMessageIds')
+					(CASE
+						WHEN EXISTS (
+							SELECT 1
+							FROM "junior_conversation_events" AS recorded
+							WHERE recorded."conversation_id" = snapshot."conversation_id"
+								AND recorded."type" = 'visible_message_recorded'
+						)
+							THEN compaction - 'coveredMessageIds'
+						ELSE compaction
+					END) ||
+					jsonb_build_object(
+						'coveredMessageCount',
+						jsonb_array_length(compaction->'coveredMessageIds')
 				)
 			)
 			FROM jsonb_array_elements(snapshot."payload"->'compactions') AS compaction
