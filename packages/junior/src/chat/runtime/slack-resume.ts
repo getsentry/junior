@@ -269,6 +269,7 @@ async function handleResumeFailure(args: {
     args.body,
   );
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
+  let failureStatePersistError: unknown;
   try {
     await args.resumeArgs.onFailure?.(args.error);
   } catch (persistError) {
@@ -279,14 +280,24 @@ async function handleResumeFailure(args: {
       { "app.error.original_event_id": eventId },
       "Failed to persist resumed turn failure state",
     );
-    await args.lifecycle?.service.fail({
-      conversationId: args.lifecycle.conversationId,
-      turnId: args.lifecycle.turnId,
-      createdAtMs: Date.now(),
-      failureCode: "persistence_failed",
-      ...(persistEventId ? { eventId: persistEventId } : {}),
-    });
-    throw persistError;
+    try {
+      await args.lifecycle?.service.fail({
+        conversationId: args.lifecycle.conversationId,
+        turnId: args.lifecycle.turnId,
+        createdAtMs: Date.now(),
+        failureCode: "persistence_failed",
+        ...(persistEventId ? { eventId: persistEventId } : {}),
+      });
+    } catch (lifecycleError) {
+      logException(
+        lifecycleError,
+        "slack_resume_failure_lifecycle_persist_failed",
+        logContext,
+        { "app.error.original_event_id": eventId },
+        "Failed to record resumed turn persistence failure",
+      );
+    }
+    failureStatePersistError = persistError;
   }
   try {
     await postResumeFailureReply({
@@ -303,14 +314,27 @@ async function handleResumeFailure(args: {
       { "app.error.original_event_id": eventId },
       "Failed to deliver resumed turn failure state",
     );
-    await args.lifecycle?.service.fail({
-      conversationId: args.lifecycle.conversationId,
-      turnId: args.lifecycle.turnId,
-      createdAtMs: Date.now(),
-      failureCode: "delivery_failed",
-      ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
-    });
+    try {
+      await args.lifecycle?.service.fail({
+        conversationId: args.lifecycle.conversationId,
+        turnId: args.lifecycle.turnId,
+        createdAtMs: Date.now(),
+        failureCode: "delivery_failed",
+        ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
+      });
+    } catch (lifecycleError) {
+      logException(
+        lifecycleError,
+        "slack_resume_failure_lifecycle_persist_failed",
+        logContext,
+        { "app.error.original_event_id": eventId },
+        "Failed to record resumed turn delivery failure",
+      );
+    }
     throw deliveryError;
+  }
+  if (failureStatePersistError) {
+    throw failureStatePersistError;
   }
   await args.lifecycle?.service.fail({
     conversationId: args.lifecycle.conversationId,
