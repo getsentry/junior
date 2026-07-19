@@ -98,7 +98,7 @@ function TypingIndicator() {
     <div
       aria-label="Junior is responding"
       aria-live="polite"
-      className="mb-3 ml-[2.125rem] mr-6 flex items-center"
+      className="mb-3 ml-[1.625rem] mr-6 flex items-center"
       role="status"
     >
       <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
