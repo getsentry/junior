@@ -647,6 +647,8 @@ const HARNESS_ENV_KEYS = [
   "JUNIOR_BASE_URL",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "SENTRY_CLIENT_ID",
+  "SENTRY_CLIENT_SECRET",
   "SLACK_BOT_TOKEN",
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
@@ -832,9 +834,16 @@ function recordAssistantPost(
   thread: TestThread,
   post: EvalAssistantPost,
 ): void {
+  const attachmentSummary = post.files
+    .map(
+      (file) =>
+        `[attached ${file.isImage ? "image" : "file"}: ${file.filename}]`,
+    )
+    .join("\n");
+  const content = [post.text, attachmentSummary].filter(Boolean).join("\n");
   observations.sessionMessages.push({
     role: "assistant",
-    content: post.text,
+    content,
     metadata: {
       event_type: post.eventType ?? "thread_post",
       channel: thread.channelId,
@@ -1194,6 +1203,10 @@ function configureCredentialProviderEnv(
     process.env.GITHUB_APP_PRIVATE_KEY = DUMMY_GITHUB_APP_PRIVATE_KEY;
     process.env.GITHUB_APP_BOT_NAME = "junior-eval";
     process.env.GITHUB_APP_BOT_EMAIL = "junior-eval@example.com";
+  }
+  if (providers.has("sentry")) {
+    process.env.SENTRY_CLIENT_ID = "eval-sentry-client-id";
+    process.env.SENTRY_CLIENT_SECRET = "eval-sentry-client-secret";
   }
 }
 

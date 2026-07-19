@@ -431,7 +431,7 @@ export function createSchedulerPlugin() {
         }
         return [
           {
-            text: "Scheduled tasks use system credentials by default. Use the task creator's connected credentials only when they explicitly authorize future scheduled use. Requests such as 'use my account if needed' are ambiguous, not authorization; ask before creating or enabling creator credentials for the task.",
+            text: "Scheduled tasks use system credentials by default. Create clear schedules immediately without asking for confirmation or Slack target identifiers already present in runtime context. Use the task creator's connected credentials only when they explicitly authorize future scheduled use. Requests such as 'use my account if needed' are ambiguous, not authorization; ask before creating or enabling creator credentials for the task.",
           },
         ];
       },
