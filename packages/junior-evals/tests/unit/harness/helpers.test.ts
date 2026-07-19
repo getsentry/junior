@@ -11,7 +11,20 @@ vi.mock("../../../src/behavior-harness", () => ({
   runEvalScenario: runEvalScenarioMock,
 }));
 
-import { slackHarness } from "../../../src/helpers";
+import { mention, slackHarness } from "../../../src/helpers";
+
+it("namespaces generated Slack identities across isolated modules", async () => {
+  const first = mention("first");
+
+  vi.resetModules();
+  const isolated = await import("../../../src/helpers");
+  const second = isolated.mention("second");
+
+  expect(second.thread.id).not.toBe(first.thread.id);
+  expect(second.thread.channel_id).not.toBe(first.thread.channel_id);
+  expect(second.thread.thread_ts).not.toBe(first.thread.thread_ts);
+  expect(second.message.id).not.toBe(first.message.id);
+});
 
 it("includes captured Slack posts in the rubric-visible transcript", async () => {
   runEvalScenarioMock.mockResolvedValueOnce({
