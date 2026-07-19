@@ -556,6 +556,24 @@ export function longReleaseConversation(
       inputTokens: 43,
       outputTokens: 5765,
     },
+    modelUsage: [
+      {
+        modelId: "openai/gpt-5.4",
+        usage: {
+          cachedInputTokens: 1_200_000,
+          inputTokens: 30,
+          outputTokens: 4200,
+        },
+      },
+      {
+        modelId: "openai/gpt-5.6-sol",
+        usage: {
+          cachedInputTokens: 66_200,
+          inputTokens: 13,
+          outputTokens: 1565,
+        },
+      },
+    ],
     surface: "slack",
     actorIdentity: {
       fullName: "Jordan Blake",

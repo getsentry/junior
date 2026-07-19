@@ -67,7 +67,7 @@ describe("dashboard token formatting", () => {
         outputTokens: 15,
         totalTokens: 999,
       }),
-    ).toBe("80 tokens");
+    ).toBe("10 input · 15 output · 25 cached");
   });
 
   it("formats cumulative estimated conversation cost", () => {

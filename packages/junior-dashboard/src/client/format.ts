@@ -470,11 +470,25 @@ export function summarizeUsage(
   return summary.totalTokens > 0 ? summary : undefined;
 }
 
-/** Format a summarized token counter for compact metadata. */
+/** Format the most useful token counters for compact metadata. */
 export function formatTokenSummary(
   summary: TokenUsageSummary | undefined,
 ): string {
-  return summary ? `${formatNumber(summary.totalTokens)} tokens` : "";
+  if (!summary) return "";
+  const parts = [
+    summary.inputTokens !== undefined
+      ? `${formatNumber(summary.inputTokens)} input`
+      : undefined,
+    summary.outputTokens !== undefined
+      ? `${formatNumber(summary.outputTokens)} output`
+      : undefined,
+    summary.cachedInputTokens !== undefined
+      ? `${formatNumber(summary.cachedInputTokens)} cached`
+      : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0
+    ? parts.join(" · ")
+    : `${formatNumber(summary.totalTokens)} tokens`;
 }
 
 /** Format the persisted cumulative token count for a conversation. */

@@ -783,7 +783,15 @@ function transcriptMeta(
       : undefined,
     tokenSummary
       ? {
-          content: <TokenMetric summary={tokenSummary} />,
+          content: (
+            <TokenMetric
+              compactionCount={conversation.contextEvents?.filter(
+                (event) => event.type === "context_compacted",
+              ).length}
+              modelUsage={conversation.modelUsage}
+              summary={tokenSummary}
+            />
+          ),
           key: "tokens",
         }
       : undefined,

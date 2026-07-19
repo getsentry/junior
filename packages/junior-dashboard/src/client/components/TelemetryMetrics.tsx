@@ -1,9 +1,11 @@
+import type { ConversationModelUsage } from "@sentry/junior/api/schema";
 import {
   formatCostSummary,
   formatCompactNumber,
   formatMs,
   formatTime,
   formatTokenSummary,
+  summarizeUsage,
   type CostUsageSummary,
   type MessageSummary,
   type TokenUsageSummary,
@@ -21,8 +23,10 @@ function isMetricTooltipLine(
   return Boolean(line);
 }
 
-function tokenTooltip(summary: TokenUsageSummary): MetricTooltipLine[] {
-  const lines: Array<MetricTooltipLine | undefined> = [
+function usageTooltipLines(
+  summary: TokenUsageSummary,
+): Array<MetricTooltipLine | undefined> {
+  return [
     summary.inputTokens !== undefined
       ? { label: "input", value: formatCompactNumber(summary.inputTokens) }
       : undefined,
@@ -54,6 +58,33 @@ function tokenTooltip(summary: TokenUsageSummary): MetricTooltipLine[] {
         }
       : undefined,
   ];
+}
+
+function modelLabel(modelId: string): string {
+  return modelId.split("/").at(-1) ?? modelId;
+}
+
+function tokenTooltip(
+  summary: TokenUsageSummary,
+  modelUsage: ConversationModelUsage[] | undefined,
+  compactionCount: number | undefined,
+): MetricTooltipLine[] {
+  const lines: Array<MetricTooltipLine | undefined> = [
+    ...usageTooltipLines(summary),
+    compactionCount
+      ? { label: "compactions", value: formatCompactNumber(compactionCount) }
+      : undefined,
+  ];
+  for (const item of modelUsage ?? []) {
+    const modelSummary = summarizeUsage(item.usage);
+    if (!modelSummary) continue;
+    lines.push(
+      { value: modelLabel(item.modelId), valueStyle: "heading" },
+      ...usageTooltipLines(modelSummary).map((line) =>
+        line?.label ? { ...line, label: `• ${line.label}` } : line,
+      ),
+    );
+  }
   return lines.filter(isMetricTooltipLine);
 }
 
@@ -100,11 +131,20 @@ export function CostMetric(props: {
 /** Render total token usage with a hoverable breakdown. */
 export function TokenMetric(props: {
   align?: "left" | "right";
+  compactionCount?: number;
+  modelUsage?: ConversationModelUsage[];
   summary: TokenUsageSummary | undefined;
 }) {
   if (!props.summary) return null;
   return (
-    <MetricValue align={props.align} tooltip={tokenTooltip(props.summary)}>
+    <MetricValue
+      align={props.align}
+      tooltip={tokenTooltip(
+        props.summary,
+        props.modelUsage,
+        props.compactionCount,
+      )}
+    >
       {formatTokenSummary(props.summary)}
     </MetricValue>
   );

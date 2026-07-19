@@ -167,10 +167,18 @@ export const conversationContextEventSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+export const conversationModelUsageSchema = z
+  .object({
+    modelId: z.string(),
+    usage: conversationUsageSchema,
+  })
+  .strict();
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     activity: z.array(conversationActivityReportSchema).optional(),
     modelId: z.string().optional(),
+    modelUsage: z.array(conversationModelUsageSchema).optional(),
     reasoningLevel: z.string().optional(),
     contextEvents: z.array(conversationContextEventSchema).optional(),
     transcriptAvailable: z.boolean(),
@@ -288,6 +296,9 @@ export type ConversationToolActivityReport = z.infer<
 >;
 export type ConversationActivityReport = z.infer<
   typeof conversationActivityReportSchema
+>;
+export type ConversationModelUsage = z.infer<
+  typeof conversationModelUsageSchema
 >;
 export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema

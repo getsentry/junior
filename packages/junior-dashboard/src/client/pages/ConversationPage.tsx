@@ -247,7 +247,15 @@ function ConversationStats(props: {
       : undefined,
     tokenSummary
       ? {
-          content: <TokenMetric summary={tokenSummary} />,
+          content: (
+            <TokenMetric
+              compactionCount={props.detail?.contextEvents?.filter(
+                (event) => event.type === "context_compacted",
+              ).length}
+              modelUsage={props.detail?.modelUsage}
+              summary={tokenSummary}
+            />
+          ),
           key: "tokens",
         }
       : undefined,

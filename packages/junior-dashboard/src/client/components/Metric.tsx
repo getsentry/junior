@@ -12,6 +12,7 @@ export type MetricTooltipLine = {
   label?: string;
   labelStyle?: "code";
   value: string;
+  valueStyle?: "heading";
 };
 
 export type MetricListItem = {
@@ -102,7 +103,12 @@ export function MetricValue(props: {
                 className={
                   line.label
                     ? "contents"
-                    : "col-span-2 block min-w-0 break-words text-[#d6d6d6]"
+                    : cn(
+                        "col-span-2 block min-w-0 break-words text-[#d6d6d6]",
+                        line.valueStyle === "heading" &&
+                          index > 0 &&
+                          "mt-1 border-t border-white/10 pt-2 font-mono font-semibold text-white",
+                      )
                 }
                 key={`${index}-${line.label ?? ""}-${line.value}`}
               >

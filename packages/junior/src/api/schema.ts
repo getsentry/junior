@@ -16,6 +16,7 @@ export type {
   ConversationFeed,
   ConversationReportStatus,
   ConversationMetricDay,
+  ConversationModelUsage,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSubagentActivityReport,

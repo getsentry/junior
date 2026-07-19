@@ -241,6 +241,9 @@ describe("dashboard reporting", () => {
         {
           role: "assistant",
           content: [{ type: "text", text: "previous answer" }],
+          provider: "xai",
+          model: "grok-4.5",
+          usage: { input: 65, output: 28, cacheRead: 40 },
           timestamp: 2,
         },
         {
@@ -284,6 +287,9 @@ describe("dashboard reporting", () => {
         {
           role: "assistant",
           content: [{ type: "text", text: "current answer" }],
+          provider: "openai",
+          model: "gpt-5.6-sol",
+          usage: { input: 2, output: 1 },
           timestamp: 6,
         },
       ] as PiMessage[],
@@ -300,6 +306,20 @@ describe("dashboard reporting", () => {
       cumulativeDurationMs: 1_200,
       cumulativeUsage: { totalTokens: 120 },
       modelId: "openai/gpt-5.5",
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5.6-sol",
+          usage: { inputTokens: 2, outputTokens: 1 },
+        },
+        {
+          modelId: "xai/grok-4.5",
+          usage: {
+            cachedInputTokens: 40,
+            inputTokens: 65,
+            outputTokens: 28,
+          },
+        },
+      ],
       reasoningLevel: "high",
       transcriptMessageCount: 4,
     });
