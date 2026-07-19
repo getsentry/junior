@@ -69,11 +69,12 @@ function tokenTooltip(
   modelUsage: ConversationModelUsage[] | undefined,
   compactionCount: number | undefined,
 ): MetricTooltipLine[] {
+  const hasModelUsage = Boolean(modelUsage?.length);
   const lines: Array<MetricTooltipLine | undefined> = [
-    ...usageTooltipLines(summary),
     compactionCount
       ? { label: "compactions", value: formatCompactNumber(compactionCount) }
       : undefined,
+    ...(!hasModelUsage ? usageTooltipLines(summary) : []),
   ];
   for (const item of modelUsage ?? []) {
     const modelSummary = summarizeUsage(item.usage);
