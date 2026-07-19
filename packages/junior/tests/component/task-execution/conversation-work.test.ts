@@ -25,7 +25,10 @@ import {
   startConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { recordConversationExecution } from "@/chat/task-execution/state";
+import {
+  deleteConversationState,
+  recordConversationExecution,
+} from "@/chat/task-execution/state";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
@@ -102,6 +105,25 @@ describe("conversation work execution", () => {
       process.env.JUNIOR_SECRET = originalJuniorSecret;
     }
     vi.useRealTimers();
+  });
+
+  it("deletes a conversation mailbox and all index entries", async () => {
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await deleteConversationState({ conversationId: CONVERSATION_ID });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toBeUndefined();
+    await expect(listActiveConversationIds()).resolves.not.toContain(
+      CONVERSATION_ID,
+    );
+    await expect(listConversationsByActivity()).resolves.not.toContainEqual(
+      expect.objectContaining({ conversationId: CONVERSATION_ID }),
+    );
+    await expect(
+      appendInboundMessage({ message: inboundMessage("m1"), nowMs: 2_000 }),
+    ).resolves.toEqual({ status: "appended" });
   });
 
   it("stores inbound mailbox messages idempotently without duplicate queue attempts", async () => {

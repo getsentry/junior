@@ -39,6 +39,7 @@ import {
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -743,6 +744,10 @@ async function cleanupHarnessThreadState(
   );
 
   for (const threadId of runtimeThreadIds) {
+    await deleteConversationState({
+      conversationId: threadId,
+      state: stateAdapter,
+    });
     await stateAdapter.delete(`thread-state:${threadId}`);
     await stateAdapter.unsubscribe(threadId);
   }

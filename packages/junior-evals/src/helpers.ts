@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   createJudge,
   createJudgeHarness,
@@ -802,21 +801,13 @@ export function authorizationCompletions(
 
 // ── Event builders ─────────────────────────────────────────
 
-// Vitest isolates modules per eval file, so a bare module-local sequence repeats
-// across files. Namespace generated Slack identities per module instance to keep
-// production conversation dedupe meaningful without leaking state between evals.
-const EVAL_SOURCE_NAMESPACE = randomUUID().replaceAll("-", "").slice(0, 12);
-const EVAL_TIMESTAMP_NAMESPACE = BigInt(
-  `0x${EVAL_SOURCE_NAMESPACE}`,
-).toString();
-
 let _seq = 0;
 function nextId() {
-  return `${EVAL_SOURCE_NAMESPACE}-${++_seq}`;
+  return String(++_seq);
 }
 
 function messageTs(seq: string) {
-  return `17000001.${EVAL_TIMESTAMP_NAMESPACE}${seq.split("-").at(-1)}`;
+  return `17000001.${seq}`;
 }
 
 const DEFAULT_AUTHOR: SlackEventUser = {
@@ -847,8 +838,8 @@ function evalThread(
 ): SlackEventThreadFixture & Pick<ThreadOverrides, "channel_type"> {
   const thread = slackEventThread({
     id: `thread-${seq}`,
-    channel_id: `C${seq.replace("-", "").toUpperCase()}`,
-    thread_ts: `17000000.${EVAL_TIMESTAMP_NAMESPACE}${seq.split("-").at(-1)}`,
+    channel_id: `C${seq}`,
+    thread_ts: `17000000.${seq}`,
     ...overrides,
   });
   if (!parseSlackChannelId(thread.channel_id)) {
