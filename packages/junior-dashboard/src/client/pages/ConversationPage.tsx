@@ -249,7 +249,7 @@ function ConversationStats(props: {
       ? {
           content: (
             <TokenMetric
-              compactionCount={props.detail?.contextEvents?.filter(
+              compactionCount={(props.detail?.contextEvents ?? []).filter(
                 (event) => event.type === "context_compacted",
               ).length}
               modelUsage={props.detail?.modelUsage}

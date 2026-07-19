@@ -785,7 +785,7 @@ function transcriptMeta(
       ? {
           content: (
             <TokenMetric
-              compactionCount={conversation.contextEvents?.filter(
+              compactionCount={(conversation.contextEvents ?? []).filter(
                 (event) => event.type === "context_compacted",
               ).length}
               modelUsage={conversation.modelUsage}
