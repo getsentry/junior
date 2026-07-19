@@ -238,6 +238,8 @@ export function useConversationData(conversationId: string | undefined) {
     queryKey: ["conversation", conversationId],
     queryFn: async (): Promise<ConversationDetailReport> =>
       readConversationData(conversationId!),
+    refetchInterval: (query) =>
+      query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
   });
 }

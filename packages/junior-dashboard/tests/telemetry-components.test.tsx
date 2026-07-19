@@ -25,6 +25,7 @@ import {
   type SubagentTranscriptTarget,
 } from "../src/client/components/SubagentTranscriptDrawer";
 import { ToolValueInspector } from "../src/client/components/ToolValueInspector";
+import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
@@ -579,6 +580,36 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain('aria-label="Loading sorted results"');
+  });
+
+  it("shows a typing indicator only while the transcript is live", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Active conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "active",
+      surface: "slack",
+      transcript: [],
+      transcriptAvailable: true,
+    } as ConversationTranscript;
+
+    const liveHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={turn} />
+      </QueryClientProvider>,
+    );
+    const completedHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript transcript={{ ...turn, status: "completed" }} />
+      </QueryClientProvider>,
+    );
+
+    expect(liveHtml).toContain('role="status"');
+    expect(liveHtml).toContain('aria-label="Junior is responding"');
+    expect(completedHtml).not.toContain('aria-label="Junior is responding"');
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {
