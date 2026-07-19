@@ -96,14 +96,15 @@ describe("updatePullRequest", () => {
     );
   });
 
-  it("rejects updates without a mutable field", async () => {
+  it.each([
+    { repo: "getsentry/junior", number: 691 },
+    { repo: "getsentry/junior", number: 691, title: "   " },
+    { repo: "getsentry/junior", number: 691, base: "" },
+  ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 
     await expect(
-      tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
-        { toolCallId: "update-pr" },
-      ),
+      tool.execute?.(input, { toolCallId: "update-pr" }),
     ).rejects.toThrow("Invalid GitHub updatePullRequest input.");
     expect(fetch).not.toHaveBeenCalled();
   });

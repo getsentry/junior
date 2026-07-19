@@ -16,14 +16,24 @@ const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
     number: z.number().int().positive().describe("Pull request number."),
-    title: z.string().optional().describe("Replacement pull request title."),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Replacement pull request title."),
     body: z
       .string()
       .optional()
       .describe(
         "Replacement pull request body. Junior appends requester attribution and the conversation footer.",
       ),
-    base: z.string().optional().describe("Replacement base branch."),
+    base: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Replacement base branch."),
     state: z
       .enum(["open", "closed"])
       .optional()
