@@ -106,8 +106,10 @@ export function MetricValue(props: {
                     : cn(
                         "col-span-2 block min-w-0 break-words text-[#d6d6d6]",
                         line.valueStyle === "heading" &&
+                          "font-mono font-semibold text-white",
+                        line.valueStyle === "heading" &&
                           index > 0 &&
-                          "mt-1 border-t border-white/10 pt-2 font-mono font-semibold text-white",
+                          "mt-1 border-t border-white/10 pt-2",
                       )
                 }
                 key={`${index}-${line.label ?? ""}-${line.value}`}

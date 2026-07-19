@@ -12,7 +12,10 @@ import type { Conversation } from "@/chat/conversations/store";
 import { loadProjection, projectSteps } from "@/chat/conversations/projection";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
+import {
+  isAssistantMessage,
+  stripRuntimeTurnContext,
+} from "@/chat/pi/transcript";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { addAgentTurnUsage, hasAgentTurnUsage } from "@/chat/usage";
 import {
@@ -250,16 +253,10 @@ function modelUsageFromMessages(
 ): ConversationModelUsage[] {
   const byModel = new Map<string, ConversationModelUsage["usage"]>();
   for (const message of messages) {
-    const record = message as unknown as Record<string, unknown>;
-    if (record.role !== "assistant" || typeof record.model !== "string") {
-      continue;
-    }
+    if (!isAssistantMessage(message)) continue;
     const usage = extractGenAiUsageSummary(message);
     if (!hasAgentTurnUsage(usage)) continue;
-    const provider =
-      typeof record.provider === "string" ? record.provider.trim() : "";
-    const model = record.model.trim();
-    const modelId = model.includes("/") || !provider ? model : `${provider}/${model}`;
+    const modelId = `${message.provider}/${message.model}`;
     const cumulativeUsage = addAgentTurnUsage(byModel.get(modelId), usage);
     if (cumulativeUsage) byModel.set(modelId, cumulativeUsage);
   }
