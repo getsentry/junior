@@ -608,8 +608,10 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain('aria-label="Junior is responding"');
-    expect(completedHtml).not.toContain('aria-label="Junior is responding"');
+    expect(liveHtml).toContain(
+      '<span class="sr-only">Junior is responding</span>',
+    );
+    expect(completedHtml).not.toContain("Junior is responding");
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {

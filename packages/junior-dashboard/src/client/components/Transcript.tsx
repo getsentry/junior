@@ -96,11 +96,11 @@ export function Transcript(props: {
 function TypingIndicator() {
   return (
     <div
-      aria-label="Junior is responding"
       aria-live="polite"
       className="mb-3 ml-[1.625rem] mr-6 flex items-center"
       role="status"
     >
+      <span className="sr-only">Junior is responding</span>
       <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
         {[0, 1, 2].map((dot) => (
           <span

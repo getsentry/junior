@@ -124,7 +124,7 @@ export function ConversationPage(props: {
           <Transcript
             actions={
               <CopyMarkdownButton
-                key={`${conversationDetail?.conversationId ?? "loading"}:${conversationDetail?.generatedAt ?? ""}`}
+                key={conversationDetail?.conversationId ?? "loading"}
                 getMarkdown={
                   conversationDetail
                     ? () =>
