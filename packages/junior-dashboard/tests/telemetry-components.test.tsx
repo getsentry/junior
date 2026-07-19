@@ -920,6 +920,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
+    expect(html).not.toContain("Junior is responding");
   });
 
   it("omits the conversation tool-call metric slot when the loaded detail has no tool calls", () => {

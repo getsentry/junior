@@ -91,6 +91,7 @@ export function ConversationTranscriptView(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
+  responding?: boolean;
   view: TranscriptViewMode;
 }) {
   const status = visualStatusForSummary(props.conversation);
@@ -108,8 +109,27 @@ export function ConversationTranscriptView(props: {
           conversation={props.conversation}
           view={props.view}
         />
+        {props.responding ? <TypingIndicator /> : null}
       </div>
     </section>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div aria-live="polite" className="mt-2 flex items-center" role="status">
+      <span className="sr-only">Junior is responding</span>
+      <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+        {[0, 1, 2].map((dot) => (
+          <span
+            aria-hidden="true"
+            className="size-1.5 animate-bounce rounded-full bg-cyan-100/70 motion-reduce:animate-none"
+            key={dot}
+            style={{ animationDelay: `${dot * 150}ms` }}
+          />
+        ))}
+      </span>
+    </div>
   );
 }
 

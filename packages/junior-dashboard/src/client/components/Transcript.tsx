@@ -75,9 +75,9 @@ export function Transcript(props: {
         <ConversationTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.transcript}
+          responding={props.live ?? false}
           view={view}
         />
-        {props.live ? <TypingIndicator /> : null}
         <div
           aria-hidden="true"
           className="h-px"
@@ -90,28 +90,6 @@ export function Transcript(props: {
         />
       </div>
     </TranscriptSearchProvider>
-  );
-}
-
-function TypingIndicator() {
-  return (
-    <div
-      aria-live="polite"
-      className="mb-3 ml-[1.625rem] mr-6 flex items-center"
-      role="status"
-    >
-      <span className="sr-only">Junior is responding</span>
-      <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
-        {[0, 1, 2].map((dot) => (
-          <span
-            aria-hidden="true"
-            className="size-1.5 animate-bounce rounded-full bg-cyan-100/70 motion-reduce:animate-none"
-            key={dot}
-            style={{ animationDelay: `${dot * 150}ms` }}
-          />
-        ))}
-      </span>
-    </div>
   );
 }
 
