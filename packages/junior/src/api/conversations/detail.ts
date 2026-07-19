@@ -7,6 +7,7 @@ import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/p
 import type { Conversation } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
+import { projectConversationModelUsage } from "@/chat/pi/conversation-events";
 import {
   conversationReportSourceEventTypes,
   projectConversationReportEvents,
@@ -44,6 +45,7 @@ function projectConversationDetail(args: {
     visibility: args.effectiveVisibility,
   });
   const events = transcriptPurgedAtMs === undefined ? args.events : [];
+  const modelUsage = projectConversationModelUsage(events);
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
   return {
@@ -54,6 +56,7 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     events: projectConversationReportEvents({ canExposePayload, events }),
+    ...(modelUsage.length > 0 ? { modelUsage } : {}),
     eventHistory:
       transcriptPurgedAtMs !== undefined
         ? {

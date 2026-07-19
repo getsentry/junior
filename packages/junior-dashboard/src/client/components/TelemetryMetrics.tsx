@@ -64,6 +64,7 @@ function modelLabel(modelId: string): string {
 }
 
 function tokenTooltip(
+  summary: TokenUsageSummary,
   modelUsage: ConversationModelUsage[] | undefined,
   compactionCount: number | undefined,
 ): MetricTooltipLine[] {
@@ -72,6 +73,9 @@ function tokenTooltip(
       ? { label: "compactions", value: formatCompactNumber(compactionCount) }
       : undefined,
   ];
+  if (!modelUsage?.length) {
+    lines.push(...usageTooltipLines(summary));
+  }
   for (const item of modelUsage ?? []) {
     const modelSummary = summarizeUsage(item.usage);
     if (!modelSummary) continue;
@@ -136,7 +140,11 @@ export function TokenMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltip={tokenTooltip(props.modelUsage, props.compactionCount)}
+      tooltip={tokenTooltip(
+        props.summary,
+        props.modelUsage,
+        props.compactionCount,
+      )}
     >
       {formatTokenSummary(props.summary)}
     </MetricValue>

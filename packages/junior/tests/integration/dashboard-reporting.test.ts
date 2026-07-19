@@ -46,6 +46,23 @@ async function appendVisibleHistory(
   text = "Visible answer",
 ): Promise<void> {
   const { getConversationEventStore } = await import("@/chat/db");
+  const modelMessage = {
+    role: "assistant",
+    content: [{ type: "text", text: "private model-only duplicate" }],
+    api: "responses",
+    provider: "openai",
+    model: "gpt-5",
+    stopReason: "stop",
+    timestamp: 11,
+    usage: {
+      input: 10,
+      output: 2,
+      cacheRead: 3,
+      cacheWrite: 0,
+      totalTokens: 15,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  } as PiMessage;
   await getConversationEventStore().append(conversationId, [
     {
       data: {
@@ -59,11 +76,7 @@ async function appendVisibleHistory(
     {
       data: {
         type: "message",
-        message: {
-          role: "assistant",
-          content: [{ type: "text", text: "private model-only duplicate" }],
-          timestamp: 11,
-        } as PiMessage,
+        message: modelMessage,
       },
       createdAtMs: 11,
     },
@@ -114,7 +127,7 @@ async function appendVisibleHistory(
     reason: "compaction",
     modelProfile: "standard",
     modelId: "private-model-id",
-    messages: [],
+    messages: [{ message: modelMessage, createdAtMs: 11 }],
   });
   await getConversationEventStore().startEpoch(conversationId, {
     reason: "handoff",
@@ -226,6 +239,16 @@ describe("dashboard canonical event reporting", () => {
 
     expect(detail.eventHistory).toEqual({ status: "available" });
     expect(detail.displayTitle).toBe("Canonical event report");
+    expect(detail.modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({
+          inputTokens: 10,
+          outputTokens: 2,
+          cachedInputTokens: 3,
+        }),
+      },
+    ]);
     expect(detail.events.map((event) => event.data)).toEqual([
       {
         type: "visible_message",
@@ -397,6 +420,7 @@ describe("dashboard canonical event reporting", () => {
         expiredAt: new Date(50).toISOString(),
       });
       expect(detail.events).toEqual([]);
+      expect(detail.modelUsage).toBeUndefined();
     }
   });
 

@@ -271,6 +271,26 @@ function longConversation(nowMs: number): ConversationDetailReport {
     actorIdentity: actor(undefined, "Jordan Blake", "jordan"),
     cumulativeDurationMs: 552_761,
     cumulativeUsage: usage(0.18),
+    modelUsage: [
+      {
+        modelId: "anthropic/claude-sonnet-4-5",
+        usage: {
+          inputTokens: 800,
+          outputTokens: 280,
+          cachedInputTokens: 200,
+          cost: { input: 0.048, output: 0.072, total: 0.12 },
+        },
+      },
+      {
+        modelId: "openai/gpt-5.2",
+        usage: {
+          inputTokens: 400,
+          outputTokens: 140,
+          cachedInputTokens: 100,
+          cost: { input: 0.024, output: 0.036, total: 0.06 },
+        },
+      },
+    ],
     events,
   });
 }
@@ -466,6 +486,7 @@ function summaryFromConversation(
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
+    modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
     sentryConversationUrl: _sentryConversationUrl,
     ...summary

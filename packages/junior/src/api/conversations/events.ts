@@ -7,6 +7,7 @@ import {
 
 /** Canonical event types that can contribute to the reporting projection. */
 export const conversationReportSourceEventTypes = [
+  "message",
   "visible_message_recorded",
   "visible_message_replied",
   "tool_execution_started",
