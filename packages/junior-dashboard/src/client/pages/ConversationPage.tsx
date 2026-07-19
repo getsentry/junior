@@ -116,33 +116,40 @@ export function ConversationPage(props: {
 
         {detail.isPending ? (
           <TranscriptLoading />
-        ) : detail.error ? (
+        ) : detail.error && !detail.data ? (
           <div className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-white/45">
             {detail.error.message}
           </div>
         ) : (
-          <Transcript
-            actions={
-              <CopyMarkdownButton
-                key={conversationDetail?.conversationId ?? "loading"}
-                getMarkdown={
-                  conversationDetail
-                    ? () =>
-                        buildConversationMarkdown(
-                          conversationDetail,
-                          conversation,
-                        )
-                    : undefined
-                }
-              />
-            }
-            live={conversationIsLive(visualStatus, detail.data)}
-            onOpenSubagentTranscript={({ part, conversation }) => {
-              if (!conversationId) return;
-              setSubagentTarget({ conversation, conversationId, part });
-            }}
-            transcript={detail.data}
-          />
+          <>
+            {detail.error ? (
+              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-[0.7rem] text-amber-100/65">
+                Transcript refresh failed. Showing the latest available data.
+              </div>
+            ) : null}
+            <Transcript
+              actions={
+                <CopyMarkdownButton
+                  key={conversationDetail?.conversationId ?? "loading"}
+                  getMarkdown={
+                    conversationDetail
+                      ? () =>
+                          buildConversationMarkdown(
+                            conversationDetail,
+                            conversation,
+                          )
+                      : undefined
+                  }
+                />
+              }
+              live={conversationIsLive(visualStatus, detail.data)}
+              onOpenSubagentTranscript={({ part, conversation }) => {
+                if (!conversationId) return;
+                setSubagentTarget({ conversation, conversationId, part });
+              }}
+              transcript={detail.data}
+            />
+          </>
         )}
       </section>
       <SubagentTranscriptDrawer

@@ -880,6 +880,48 @@ describe("dashboard telemetry components", () => {
     ).toBe("");
   });
 
+  it("keeps cached transcript data visible after a refresh failure", () => {
+    const session = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      displayTitle: "Active conversation",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "active",
+      surface: "slack",
+    } satisfies ConversationSummaryReport;
+    const detail = {
+      ...session,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      transcript: [
+        {
+          parts: [{ text: "Cached transcript message", type: "text" }],
+          role: "assistant",
+        },
+      ],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
+    const query = client.getQueryCache().build(client, {
+      queryKey: ["conversation", "conversation-1"],
+      queryFn: async () => detail,
+    });
+    query.setState({
+      ...query.state,
+      data: detail,
+      error: new Error("refresh failed"),
+      errorUpdatedAt: Date.now(),
+      status: "error",
+    });
+
+    const html = renderConversationPage(dashboardData([session]));
+
+    expect(html).toContain("Cached transcript message");
+    expect(html).toContain(
+      "Transcript refresh failed. Showing the latest available data.",
+    );
+  });
+
   it("omits the conversation tool-call metric slot when the loaded detail has no tool calls", () => {
     const session = {
       conversationId: "conversation-1",
