@@ -21,6 +21,7 @@ import { TranscriptSearchProvider } from "./transcriptSearch";
 export function Transcript(props: {
   actions?: ReactNode;
   live?: boolean;
+  responding?: boolean;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -75,7 +76,7 @@ export function Transcript(props: {
         <ConversationTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.transcript}
-          responding={props.live ?? false}
+          responding={props.responding ?? props.live ?? false}
           view={view}
         />
         <div

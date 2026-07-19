@@ -614,6 +614,23 @@ describe("dashboard telemetry components", () => {
     expect(completedHtml).not.toContain("Junior is responding");
   });
 
+  it("keeps live transcript following independent from responding status", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      status: "active",
+      transcript: [],
+      transcriptAvailable: true,
+    } as unknown as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live responding={false} transcript={turn} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).not.toContain("Junior is responding");
+  });
+
   it("keeps completed status badges quiet unless explicitly requested", () => {
     expect(renderToStaticMarkup(<StatusBadge status="idle" />)).toBe("");
     expect(

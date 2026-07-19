@@ -142,7 +142,8 @@ export function ConversationPage(props: {
                   }
                 />
               }
-              live={
+              live={conversationIsLive(visualStatus, detail.data)}
+              responding={
                 !detail.error && conversationIsLive(visualStatus, detail.data)
               }
               onOpenSubagentTranscript={({ part, conversation }) => {
