@@ -162,12 +162,6 @@ function userMessage(text: string): PiMessage {
   } as PiMessage;
 }
 
-/** Preserve the message's own timestamp on epoch rows so replay is byte-stable. */
-function piMessageTimestamp(message: PiMessage): number {
-  const timestamp = (message as { timestamp?: unknown }).timestamp;
-  return typeof timestamp === "number" ? timestamp : Date.now();
-}
-
 interface RetainedUserMessage {
   message: PiMessage;
   sourceIndex: number;
@@ -473,11 +467,17 @@ async function writeCompactedThreadContext(
     reason: "compaction",
     modelProfile: sourceProjection.modelProfile,
     modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
-    messages: replacement.map((message, index) => ({
-      message,
-      createdAtMs: piMessageTimestamp(message),
-      provenance: replacementProvenance[index]!,
-    })),
+    replacementHistory: replacement.map((message, index) => {
+      const sourceEventSeq =
+        index < retained.length
+          ? sourceProjection.seqs[retained[index]!.sourceIndex]
+          : undefined;
+      return {
+        message,
+        provenance: replacementProvenance[index]!,
+        ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
+      };
+    }),
   });
 
   updateConversationStats(args.conversation);
@@ -532,10 +532,9 @@ export async function compactContextForHandoff(
     modelProfile: args.target.modelProfile,
     modelId: args.target.modelId,
     triggeringToolCallId: args.triggeringToolCallId,
-    messages: [
+    replacementHistory: [
       {
         message,
-        createdAtMs: piMessageTimestamp(message),
         provenance: contextProvenance,
       },
     ],

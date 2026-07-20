@@ -1,0 +1,291 @@
+import { isDeepStrictEqual } from "node:util";
+import { getChatConfig, type BotConfig } from "@/chat/config";
+import { modelIdForProfile, modelProfileSchema } from "@/chat/model-profile";
+import type { JuniorSqlExecutor } from "@/db/db";
+import { createJuniorSqlExecutor } from "@/db/executor";
+import { sanitizePostgresJson } from "@/db/postgres-json";
+import type { MigrationContext, MigrationResult } from "../types";
+import {
+  isLegacyOrCurrentCheckpointText,
+  normalizeLegacyContextMessage,
+} from "./conversation-history/legacy-context-message";
+import type { PiMessage } from "@/chat/pi/messages";
+
+const PAGE_SIZE = 250;
+
+interface StoredEventRow {
+  contextEpoch: number;
+  payload: Record<string, unknown>;
+  seq: number;
+  type: string;
+}
+
+interface ReplacementEntry {
+  message: Record<string, unknown>;
+  provenance?: unknown;
+}
+
+function messageTextParts(message: Record<string, unknown>): string[] {
+  if (typeof message.content === "string") {
+    return [message.content];
+  }
+  if (!Array.isArray(message.content)) {
+    return [];
+  }
+  return message.content.flatMap((part) =>
+    part &&
+    typeof part === "object" &&
+    (part as { type?: unknown }).type === "text" &&
+    typeof (part as { text?: unknown }).text === "string"
+      ? [(part as { text: string }).text]
+      : [],
+  );
+}
+
+function checkpointEnd(messages: StoredEventRow[]): number {
+  return messages.findIndex((row) => {
+    const message = row.payload.message;
+    return (
+      message !== null &&
+      typeof message === "object" &&
+      !Array.isArray(message) &&
+      messageTextParts(message as Record<string, unknown>).some(
+        isLegacyOrCurrentCheckpointText,
+      )
+    );
+  });
+}
+
+function matchingMessagePrefix(
+  previous: StoredEventRow[],
+  current: StoredEventRow[],
+): number {
+  const limit = Math.min(previous.length, current.length);
+  let count = 0;
+  while (
+    count < limit &&
+    isDeepStrictEqual(
+      previous[count]!.payload.message,
+      current[count]!.payload.message,
+    )
+  ) {
+    count += 1;
+  }
+  return count;
+}
+
+function replacementEntry(row: StoredEventRow): ReplacementEntry {
+  const message = row.payload.message;
+  if (
+    message === null ||
+    typeof message !== "object" ||
+    Array.isArray(message)
+  ) {
+    throw new Error(
+      `Conversation message event ${row.seq} has no message object`,
+    );
+  }
+  return {
+    message: normalizeLegacyContextMessage(
+      message as unknown as PiMessage,
+    ) as unknown as Record<string, unknown>,
+    ...(row.payload.provenance === undefined
+      ? {}
+      : { provenance: row.payload.provenance }),
+  };
+}
+
+function resolvedBinding(
+  payload: Record<string, unknown>,
+  bot: BotConfig,
+): { modelId: string; modelProfile: string } {
+  const parsedProfile = modelProfileSchema.safeParse(payload.modelProfile);
+  const modelProfile = parsedProfile.success ? parsedProfile.data : "standard";
+  return {
+    modelProfile,
+    modelId:
+      typeof payload.modelId === "string" && payload.modelId.length > 0
+        ? payload.modelId
+        : modelIdForProfile(bot, modelProfile),
+  };
+}
+
+function handoffToolCallId(
+  rows: StoredEventRow[],
+  marker: StoredEventRow,
+): string {
+  if (
+    typeof marker.payload.triggeringToolCallId === "string" &&
+    marker.payload.triggeringToolCallId.length > 0
+  ) {
+    return marker.payload.triggeringToolCallId;
+  }
+  const tool = [...rows]
+    .reverse()
+    .find(
+      (row) =>
+        row.seq < marker.seq &&
+        row.type === "tool_execution_started" &&
+        row.payload.toolName === "handoff" &&
+        typeof row.payload.toolCallId === "string" &&
+        row.payload.toolCallId.length > 0,
+    );
+  if (typeof tool?.payload.toolCallId !== "string") {
+    throw new Error(
+      `Cannot correlate handoff checkpoint at event ${marker.seq} during upgrade`,
+    );
+  }
+  return tool.payload.toolCallId;
+}
+
+async function normalizeConversation(args: {
+  bot: BotConfig;
+  conversationId: string;
+  executor: JuniorSqlExecutor;
+}): Promise<number> {
+  return await args.executor.transaction(async () => {
+    const rows = await args.executor.query<StoredEventRow>(
+      `SELECT
+         seq,
+         context_epoch AS "contextEpoch",
+         type,
+         payload
+       FROM junior_conversation_events
+       WHERE conversation_id = $1
+         AND type IN ('context_epoch_started', 'message', 'tool_execution_started')
+       ORDER BY seq`,
+      [args.conversationId],
+    );
+    const messagesByEpoch = new Map<number, StoredEventRow[]>();
+    for (const row of rows) {
+      if (row.type !== "message") continue;
+      const messages = messagesByEpoch.get(row.contextEpoch) ?? [];
+      messages.push(row);
+      messagesByEpoch.set(row.contextEpoch, messages);
+    }
+
+    let migrated = 0;
+    for (const marker of rows) {
+      if (
+        marker.type !== "context_epoch_started" ||
+        marker.payload.reason === "initial" ||
+        Array.isArray(marker.payload.replacementHistory)
+      ) {
+        continue;
+      }
+      const reason = marker.payload.reason;
+      if (
+        reason !== "compaction" &&
+        reason !== "handoff" &&
+        reason !== "rollback"
+      ) {
+        throw new Error(
+          `Unknown context checkpoint reason at event ${marker.seq}`,
+        );
+      }
+      const current = messagesByEpoch.get(marker.contextEpoch) ?? [];
+      let replacementCount: number;
+      if (reason === "rollback") {
+        const previous = messagesByEpoch.get(marker.contextEpoch - 1) ?? [];
+        replacementCount = matchingMessagePrefix(previous, current);
+      } else {
+        const end = checkpointEnd(current);
+        if (end < 0) {
+          throw new Error(
+            `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
+          );
+        }
+        replacementCount = end + 1;
+      }
+      const replacementRows = current.slice(0, replacementCount);
+      const binding = resolvedBinding(marker.payload, args.bot);
+      const payload = {
+        reason,
+        ...binding,
+        ...(reason === "handoff"
+          ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
+          : {}),
+        replacementHistory: replacementRows.map(replacementEntry),
+      };
+      await args.executor.execute(
+        `UPDATE junior_conversation_events
+         SET payload = $3::jsonb
+         WHERE conversation_id = $1 AND seq = $2`,
+        [
+          args.conversationId,
+          marker.seq,
+          JSON.stringify(sanitizePostgresJson(payload)),
+        ],
+      );
+      if (replacementRows.length > 0) {
+        await args.executor.execute(
+          `DELETE FROM junior_conversation_events
+           WHERE conversation_id = $1 AND seq = ANY($2::integer[])`,
+          [args.conversationId, replacementRows.map((row) => row.seq)],
+        );
+      }
+      migrated += 1;
+    }
+    return migrated;
+  });
+}
+
+/**
+ * Rewrite old context resets into the one shape understood by live workers.
+ * Copied context moves onto the marker; messages created after the reset stay
+ * as ordinary events.
+ */
+export async function normalizeConversationContextCheckpoints(
+  _context: MigrationContext,
+  options: { bot?: BotConfig; executor?: JuniorSqlExecutor } = {},
+): Promise<MigrationResult> {
+  const config = options.executor && options.bot ? undefined : getChatConfig();
+  const bot = options.bot ?? config?.bot;
+  if (!bot) throw new Error("Context checkpoint upgrade requires bot config");
+  let executor = options.executor;
+  if (!executor) {
+    if (!config)
+      throw new Error("Context checkpoint upgrade requires SQL config");
+    executor = createJuniorSqlExecutor({
+      connectionString: config.sql.databaseUrl,
+      driver: config.sql.driver,
+    });
+  }
+  try {
+    const result: MigrationResult = {
+      existing: 0,
+      migrated: 0,
+      missing: 0,
+      scanned: 0,
+    };
+    while (true) {
+      const conversations = await executor.query<{ conversationId: string }>(
+        `SELECT DISTINCT conversation_id AS "conversationId"
+         FROM junior_conversation_events
+         WHERE type = 'context_epoch_started'
+           AND payload->>'reason' <> 'initial'
+           AND jsonb_typeof(payload->'replacementHistory') IS NULL
+         ORDER BY conversation_id
+         LIMIT $1`,
+        [PAGE_SIZE],
+      );
+      if (conversations.length === 0) break;
+      for (const { conversationId } of conversations) {
+        result.scanned += 1;
+        result.migrated += await normalizeConversation({
+          bot,
+          conversationId,
+          executor,
+        });
+      }
+    }
+    return result;
+  } finally {
+    if (!options.executor) await executor.close();
+  }
+}
+
+export const conversationContextCheckpointMigration = {
+  name: "normalize-conversation-context-checkpoints",
+  run: normalizeConversationContextCheckpoints,
+};

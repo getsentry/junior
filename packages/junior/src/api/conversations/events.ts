@@ -7,7 +7,6 @@ import {
 
 /** Canonical event types that can contribute to the reporting projection. */
 export const conversationReportSourceEventTypes = [
-  "message",
   "visible_message_recorded",
   "visible_message_replied",
   "tool_execution_started",
@@ -39,8 +38,6 @@ function reportEventData(args: {
         type: "visible_message_replied",
         messageId: data.messageId,
       };
-    case "message":
-      return undefined;
     case "turn_started":
       return {
         type: "turn_lifecycle",
@@ -112,9 +109,7 @@ export function projectConversationReportEvents(args: {
       event.data.type === "context_epoch_started" &&
       event.data.reason === "handoff"
     ) {
-      const toolStartedSeq = event.data.triggeringToolCallId
-        ? toolStarts.get(event.data.triggeringToolCallId)
-        : undefined;
+      const toolStartedSeq = toolStarts.get(event.data.triggeringToolCallId);
       data = {
         type: "model_handoff",
         ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),

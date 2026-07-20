@@ -3,8 +3,8 @@
  *
  * Translates the legacy `junior:agent-session-log:<id>` list shape into
  * `junior_conversation_events` rows: `sessionId` markers become context epochs,
- * `projection_reset` entries explode into a `context_epoch_started` marker plus
- * per-message rows, advisor `transcriptRef` links become `childConversationId`,
+ * `projection_reset` entries become a `context_epoch_started` checkpoint,
+ * advisor `transcriptRef` links become `childConversationId`,
  * and legacy v1 provenance normalizes exactly as the legacy reducer does. This
  * whole module is removed after the operator-migration horizon; its
  * self-contained child-id formula reproduces historical advisor ids during
@@ -31,6 +31,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { normalizeLegacyContextMessage } from "./legacy-context-message";
 
 const INITIAL_SESSION_ID = "session_0";
 const ADVISOR_TASK_OPEN = "<advisor-task>\n";
@@ -144,6 +145,7 @@ export function convertLegacySessionLog(args: {
   conversationId: string;
   entries: SessionLogEntry[];
   fallbackCreatedAtMs: number;
+  modelId: string;
 }): ConvertedLegacyLog {
   const events: ImportedEvent[] = [];
   const fallback = args.fallbackCreatedAtMs;
@@ -162,14 +164,15 @@ export function convertLegacySessionLog(args: {
     const epoch = epochFromSessionId(entry.sessionId ?? INITIAL_SESSION_ID);
     switch (entry.type) {
       case "pi_message": {
+        const message = normalizeLegacyContextMessage(entry.message);
         push(
           epoch,
           {
             type: "message",
-            message: entry.message,
+            message,
             provenance: piEntryProvenance(entry),
           },
-          messageTimestampMs(entry.message) ?? fallback,
+          messageTimestampMs(message) ?? fallback,
         );
         break;
       }
@@ -181,8 +184,8 @@ export function convertLegacySessionLog(args: {
             "projection_reset provenance must align one-to-one with messages",
           );
         }
-        // The reset opens a new epoch: a marker followed by its embedded
-        // messages as ordinary rows, matching the SQL compaction shape.
+        // The reset opens a new epoch whose marker owns the replacement model
+        // context. Later pi_message entries remain original append-only facts.
         const resetCreatedAtMs =
           entry.messages
             .map(messageTimestampMs)
@@ -191,20 +194,18 @@ export function convertLegacySessionLog(args: {
             ) ?? fallback;
         push(
           epoch,
-          { type: "context_epoch_started", reason: "compaction" },
+          {
+            type: "context_epoch_started",
+            reason: "compaction",
+            modelProfile: "standard",
+            modelId: args.modelId,
+            replacementHistory: entry.messages.map((message, index) => ({
+              message: normalizeLegacyContextMessage(message),
+              provenance: provenance[index]!,
+            })),
+          },
           resetCreatedAtMs,
         );
-        entry.messages.forEach((message, index) => {
-          push(
-            epoch,
-            {
-              type: "message",
-              message,
-              provenance: provenance[index]!,
-            },
-            messageTimestampMs(message) ?? fallback,
-          );
-        });
         break;
       }
       case "mcp_provider_connected": {

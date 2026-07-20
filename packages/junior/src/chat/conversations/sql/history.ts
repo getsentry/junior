@@ -84,6 +84,38 @@ function epochMessageEvent(message: ContextEpochMessage): NewConversationEvent {
   };
 }
 
+/** Store replayed context on the marker and new messages as separate events. */
+function epochEvents(parsed: ContextEpochStart): PersistedConversationEvent[] {
+  if (parsed.reason === "rollback") {
+    const { messages, ...binding } = parsed;
+    return [
+      {
+        data: { type: "context_epoch_started", ...binding },
+        createdAtMs: Date.now(),
+      },
+      ...messages.map(epochMessageEvent),
+    ];
+  }
+
+  if (parsed.reason !== "initial") {
+    return [
+      {
+        data: { type: "context_epoch_started", ...parsed },
+        createdAtMs: Date.now(),
+      },
+    ];
+  }
+
+  const { messages, ...binding } = parsed;
+  return [
+    {
+      data: { type: "context_epoch_started", ...binding },
+      createdAtMs: Date.now(),
+    },
+    ...messages.map(epochMessageEvent),
+  ];
+}
+
 class SqlConversationEventStore implements ConversationEventStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
@@ -192,12 +224,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           ? (cursor.maxEpoch ?? 0)
           : (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
-      const { messages, ...binding } = parsed;
-      const marker: PersistedConversationEvent = {
-        data: { type: "context_epoch_started", ...binding },
-        createdAtMs: Date.now(),
-      };
-      const rows = [marker, ...messages.map(epochMessageEvent)].map((event) =>
+      const rows = epochEvents(parsed).map((event) =>
         insertFromEvent(conversationId, seq++, contextEpoch, event),
       );
       await this.executor.db().insert(juniorConversationEvents).values(rows);

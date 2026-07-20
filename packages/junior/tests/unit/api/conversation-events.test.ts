@@ -266,6 +266,7 @@ describe("conversation report event projection", () => {
           reason: "compaction",
           modelProfile: "standard",
           modelId: "private-model-id",
+          replacementHistory: [],
         }),
         event(3, {
           type: "tool_execution_started",
@@ -278,18 +279,14 @@ describe("conversation report event projection", () => {
           modelProfile: "fast",
           modelId: "private-handoff-model-id",
           triggeringToolCallId: "private-handoff-tool-call-id",
-        }),
-        event(5, {
-          type: "context_epoch_started",
-          reason: "handoff",
-          modelProfile: "fast",
-          modelId: "private-legacy-handoff-model-id",
+          replacementHistory: [],
         }),
         event(6, {
           type: "context_epoch_started",
           reason: "rollback",
           modelProfile: "standard",
           modelId: "private-rollback-model-id",
+          replacementHistory: [],
         }),
         event(7, {
           type: "turn_failed",
@@ -337,14 +334,13 @@ describe("conversation report event projection", () => {
     });
 
     expect(projected.map(({ seq }) => seq)).toEqual([
-      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
+      1, 2, 3, 4, 7, 8, 9, 10, 11, 13,
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
       { type: "context_compacted" },
       { type: "tool_started", name: "handoff" },
       { type: "model_handoff", toolStartedSeq: 3 },
-      { type: "model_handoff" },
       {
         type: "turn_lifecycle",
         turnId: "turn-1",
@@ -376,7 +372,6 @@ describe("conversation report event projection", () => {
       "private-model-id",
       "private-handoff-model-id",
       "private-handoff-tool-call-id",
-      "private-legacy-handoff-model-id",
       "private-rollback-model-id",
       "subagent-invocation-1",
       "private-child-model-id",

@@ -218,18 +218,6 @@ function parseAgentTurnSessionRecord(
 }
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "requester" in value
-  ) {
-    const { requester, ...summary } = value as Record<string, unknown>;
-    return agentTurnSessionSummarySchema.parse({
-      ...summary,
-      ...(summary.actor === undefined ? { actor: requester } : {}),
-    });
-  }
   return agentTurnSessionSummarySchema.parse(value);
 }
 

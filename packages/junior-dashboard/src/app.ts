@@ -2,19 +2,6 @@ import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createJuniorApi } from "@sentry/junior/api";
-import {
-  conversationDetailReportSchema,
-  conversationFeedQuerySchema,
-  conversationFeedSchema,
-  conversationParamsSchema,
-  conversationStatsReportSchema,
-  locationDetailReportSchema,
-  locationDirectoryReportSchema,
-  locationParamsSchema,
-  personParamsSchema,
-  actorDirectoryReportSchema,
-  actorProfileReportSchema,
-} from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import type {
   PluginApiRouteRequestContext,
@@ -35,15 +22,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
-import {
-  readMockConversationDetail,
-  readMockConversationFeed,
-  readMockConversationStats,
-  readMockLocationDetail,
-  readMockLocationDirectory,
-  readMockPeopleDirectory,
-  readMockPeopleProfile,
-} from "./mock-conversations";
+import { createMockReportingApi } from "./mock-reporting/routes";
 import { resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
@@ -668,55 +647,7 @@ export function createDashboardApp(
     app.all(`${prefix}/*`, handler);
   }
   if (options.mockConversations) {
-    app.get("/api/people", () => {
-      return Response.json(
-        actorDirectoryReportSchema.parse(readMockPeopleDirectory()),
-      );
-    });
-    app.get("/api/people/:email", (c) => {
-      const { email } = personParamsSchema.parse(c.req.param());
-      const report = readMockPeopleProfile(email);
-      return report
-        ? Response.json(actorProfileReportSchema.parse(report))
-        : Response.json({ error: "Person not found." }, { status: 404 });
-    });
-    app.get("/api/locations", () => {
-      return Response.json(
-        locationDirectoryReportSchema.parse(readMockLocationDirectory()),
-      );
-    });
-    app.get("/api/locations/:locationId", (c) => {
-      const { locationId } = locationParamsSchema.parse(c.req.param());
-      const report = readMockLocationDetail(locationId);
-      return report
-        ? Response.json(locationDetailReportSchema.parse(report))
-        : Response.json({ error: "Location not found." }, { status: 404 });
-    });
-    app.get("/api/conversations", (c) => {
-      const query = conversationFeedQuerySchema.safeParse(c.req.query());
-      if (!query.success) {
-        return Response.json(
-          { error: "Invalid query parameters." },
-          { status: 400 },
-        );
-      }
-      const { actorEmail } = query.data;
-      return Response.json(
-        conversationFeedSchema.parse(readMockConversationFeed(actorEmail)),
-      );
-    });
-    app.get("/api/conversations/stats", () => {
-      return Response.json(
-        conversationStatsReportSchema.parse(readMockConversationStats()),
-      );
-    });
-    app.get("/api/conversations/:conversationId", (c) => {
-      const { conversationId } = conversationParamsSchema.parse(c.req.param());
-      const report = readMockConversationDetail(conversationId);
-      return report
-        ? Response.json(conversationDetailReportSchema.parse(report))
-        : Response.json({ error: "Conversation not found." }, { status: 404 });
-    });
+    app.route("/api", createMockReportingApi());
   }
   app.route("/", createJuniorApi());
   app.get("/api/config", () => {

@@ -162,32 +162,10 @@ export function coerceThreadConversationState(
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
   const base = defaultConversationState();
 
-  // Visible and model history live in the SQL ConversationEventStore. Legacy
-  // `messages` / `piMessages` mirrors left in old thread-state payloads are
-  // ignored on read; consumers hydrate from canonical events instead.
+  // Conversation history lives in SQL. The operator upgrade reads any old
+  // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
-
-  const rawCompactions = Array.isArray(rawConversation.compactions)
-    ? rawConversation.compactions
-    : [];
   const compactions: ConversationCompaction[] = [];
-  for (const item of rawCompactions) {
-    if (!isRecord(item)) continue;
-    const id = toOptionalString(item.id);
-    const summary = toOptionalString(item.summary);
-    const createdAtMs = toOptionalNumber(item.createdAtMs);
-    if (!id || !summary || !createdAtMs) continue;
-    const coveredMessageCount = toOptionalNumber(item.coveredMessageCount);
-    compactions.push({
-      id,
-      summary,
-      createdAtMs,
-      coveredMessageCount:
-        coveredMessageCount === undefined
-          ? 0
-          : Math.max(0, Math.floor(coveredMessageCount)),
-    });
-  }
 
   const rawBackfill = isRecord(rawConversation.backfill)
     ? rawConversation.backfill

@@ -1,3 +1,4 @@
+/** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
   ActorActivityDayReport,

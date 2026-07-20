@@ -7,7 +7,10 @@ import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/p
 import type { Conversation } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
-import { projectConversationModelUsage } from "@/chat/pi/conversation-events";
+import {
+  readConversationModelUsageFromSql,
+  type ConversationModelUsage,
+} from "@/chat/pi/sql-model-usage";
 import {
   conversationReportSourceEventTypes,
   projectConversationReportEvents,
@@ -27,6 +30,7 @@ function projectConversationDetail(args: {
   events: ConversationEvent[];
   privacyConversationId?: string;
   locationId?: string;
+  modelUsage: ConversationModelUsage[];
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
   const { conversation } = args;
@@ -45,7 +49,7 @@ function projectConversationDetail(args: {
     visibility: args.effectiveVisibility,
   });
   const events = transcriptPurgedAtMs === undefined ? args.events : [];
-  const modelUsage = projectConversationModelUsage(events);
+  const modelUsage = transcriptPurgedAtMs === undefined ? args.modelUsage : [];
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
   return {
@@ -80,13 +84,16 @@ async function readConversationDetailFromSql(
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
-  const snapshot = await readConversationEventPrivacySnapshot(
-    getSqlExecutor(),
-    {
+  const executor = getSqlExecutor();
+  const [snapshot, modelUsage] = await Promise.all([
+    readConversationEventPrivacySnapshot(executor, {
       conversationId,
       eventTypes: conversationReportSourceEventTypes,
-    },
-  );
+    }),
+    record.conversation.transcriptPurgedAtMs === undefined
+      ? readConversationModelUsageFromSql(executor, conversationId)
+      : Promise.resolve([]),
+  ]);
   if (!snapshot) return undefined;
   const events = snapshot.events.map((row) =>
     conversationEventSchema.parse({
@@ -106,6 +113,7 @@ async function readConversationDetailFromSql(
     ...record,
     effectiveVisibility,
     events,
+    modelUsage,
     privacyConversationId: snapshot.rootConversationId,
     usage: record.usage ?? undefined,
   });

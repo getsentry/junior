@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -8,6 +8,7 @@ import {
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 
 const MAX_LINEAGE_DEPTH = 32;
+const conversationEventColumns = getTableColumns(juniorConversationEvents);
 
 interface LineageRow {
   destinationId: string | null;
@@ -93,7 +94,21 @@ export async function readConversationEventPrivacySnapshot(
     .db()
     .select({
       privacy: rootVisibilitySnapshotSql(args.conversationId),
-      event: juniorConversationEvents,
+      event: {
+        ...conversationEventColumns,
+        // Replacement history is model context, never dashboard report data.
+        // Keep the required checkpoint field while replacing its contents.
+        payload: sql<Record<string, unknown>>`case
+          when ${juniorConversationEvents.type} = 'context_epoch_started'
+            and ${juniorConversationEvents.payload}->>'reason' <> 'initial'
+          then jsonb_set(
+            ${juniorConversationEvents.payload},
+            '{replacementHistory}',
+            '[]'::jsonb
+          )
+          else ${juniorConversationEvents.payload}
+        end`,
+      },
     })
     .from(juniorConversations)
     .leftJoin(

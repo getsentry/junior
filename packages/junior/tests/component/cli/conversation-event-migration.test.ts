@@ -8,6 +8,7 @@ import { migrateConversationVisibleMessageEvents } from "@/cli/upgrade/migration
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
+import { normalizeConversationContextCheckpoints } from "@/cli/upgrade/migrations/conversation-context-checkpoints";
 import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-history/session-log";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
@@ -258,6 +259,7 @@ describe("conversation event migration", () => {
       await expect(
         importConversationFromLegacy(conversationId, {
           executor: fixture.sql,
+          modelId: "test/standard",
           sessionLogStore: {
             read: async () => [
               retainedSessionEntry,
@@ -739,4 +741,212 @@ ORDER BY indexname
       await fixture.close();
     }
   }, 15_000);
+
+  it("moves deployed context copies onto canonical checkpoint markers", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const conversationId = "conversation-context-checkpoints";
+    const user = { role: "user", content: [{ type: "text", text: "keep" }] };
+    const firstAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "first" }],
+    };
+    const compactionSummary = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Context handoff summary for future Junior turns:\nsummary",
+        },
+      ],
+    };
+    const normalizedCompactionSummary = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Context compaction summary for future Junior turns:\nsummary",
+        },
+      ],
+    };
+    const handoffSummary = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\ncontinue",
+        },
+      ],
+    };
+    const handoffAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "implemented" }],
+    };
+    const bot = {
+      embeddingModelId: "test/embedding",
+      fastModelId: "test/fast",
+      loadingMessages: [],
+      modelId: "test/standard",
+      modelProfiles: { handoff: "test/handoff" },
+      maxSlicesPerTurn: 1,
+      turnTimeoutMs: 1,
+      userName: "Junior",
+    };
+
+    try {
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        historicalPreDrizzleEventDdl,
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0004_useful_magus.sql"),
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+          conversation_id, created_at, last_activity_at, updated_at,
+          execution_status
+        ) VALUES ($1, $2, $2, $2, 'idle')`,
+        [conversationId, new Date("2026-07-14T10:00:00.000Z")],
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0005_conversation_events.sql"),
+      );
+      const at = new Date("2026-07-14T10:01:00.000Z");
+      const rows: Array<[number, number, string, Record<string, unknown>]> = [
+        [0, 0, "message", { message: user }],
+        [1, 0, "message", { message: firstAssistant }],
+        [2, 1, "context_epoch_started", { reason: "compaction" }],
+        [3, 1, "message", { message: user }],
+        [4, 1, "message", { message: compactionSummary }],
+        [
+          5,
+          1,
+          "message",
+          {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "after compaction" }],
+            },
+          },
+        ],
+        [
+          6,
+          1,
+          "tool_execution_started",
+          { toolCallId: "handoff-call", toolName: "handoff" },
+        ],
+        [
+          7,
+          2,
+          "context_epoch_started",
+          {
+            reason: "handoff",
+            modelProfile: "handoff",
+            modelId: "test/handoff",
+          },
+        ],
+        [8, 2, "message", { message: handoffSummary }],
+        [9, 2, "message", { message: handoffAssistant }],
+        [
+          10,
+          3,
+          "context_epoch_started",
+          {
+            reason: "rollback",
+            modelProfile: "handoff",
+            modelId: "test/handoff",
+          },
+        ],
+        [11, 3, "message", { message: handoffSummary }],
+        [12, 3, "message", { message: handoffAssistant }],
+        [
+          13,
+          3,
+          "message",
+          {
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "changed suffix" }],
+            },
+          },
+        ],
+      ];
+      for (const [seq, contextEpoch, type, payload] of rows) {
+        await fixture.sql.execute(
+          `INSERT INTO junior_conversation_events (
+            conversation_id, seq, context_epoch, schema_version, type,
+            payload, created_at
+          ) VALUES ($1, $2, $3, 1, $4, $5::jsonb, $6)`,
+          [
+            conversationId,
+            seq,
+            contextEpoch,
+            type,
+            JSON.stringify(payload),
+            at,
+          ],
+        );
+      }
+
+      const context = {
+        io: { info: () => {} },
+        stateAdapter: getStateAdapter(),
+      };
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).resolves.toMatchObject({ migrated: 3, scanned: 1 });
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadHistory(conversationId);
+      expect(history.map((event) => event.seq)).toEqual([
+        0, 1, 2, 5, 6, 7, 9, 10, 13,
+      ]);
+      const markers = history.filter(
+        (event) => event.data.type === "context_epoch_started",
+      );
+      expect(markers.map((event) => event.data)).toEqual([
+        {
+          type: "context_epoch_started",
+          reason: "compaction",
+          modelProfile: "standard",
+          modelId: "test/standard",
+          replacementHistory: [
+            { message: user },
+            { message: normalizedCompactionSummary },
+          ],
+        },
+        {
+          type: "context_epoch_started",
+          reason: "handoff",
+          modelProfile: "handoff",
+          modelId: "test/handoff",
+          triggeringToolCallId: "handoff-call",
+          replacementHistory: [{ message: handoffSummary }],
+        },
+        {
+          type: "context_epoch_started",
+          reason: "rollback",
+          modelProfile: "handoff",
+          modelId: "test/handoff",
+          replacementHistory: [
+            { message: handoffSummary },
+            { message: handoffAssistant },
+          ],
+        },
+      ]);
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).resolves.toMatchObject({ migrated: 0, scanned: 0 });
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
 });

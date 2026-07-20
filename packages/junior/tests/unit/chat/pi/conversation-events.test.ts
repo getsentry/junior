@@ -4,11 +4,7 @@ import {
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
-import {
-  projectConversationEvents,
-  projectConversationModelUsage,
-} from "@/chat/pi/conversation-events";
-import type { PiMessage } from "@/chat/pi/messages";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 
 function event(
   seq: number,
@@ -22,38 +18,6 @@ function event(
     createdAtMs: 1_000 + seq,
     data,
   });
-}
-
-function assistantMessage(args: {
-  model: string;
-  provider: string;
-  text: string;
-  timestamp: number;
-  usage: { input?: number; output?: number };
-}): PiMessage {
-  return {
-    role: "assistant",
-    content: [{ type: "text", text: args.text }],
-    api: "responses",
-    provider: args.provider,
-    model: args.model,
-    stopReason: "stop",
-    timestamp: args.timestamp,
-    usage: {
-      input: args.usage.input ?? 0,
-      output: args.usage.output ?? 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: (args.usage.input ?? 0) + (args.usage.output ?? 0),
-      cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        total: 0,
-      },
-    },
-  } as PiMessage;
 }
 
 describe("projectConversationEvents", () => {
@@ -81,6 +45,8 @@ describe("projectConversationEvents", () => {
       reason: "handoff",
       modelProfile: "coding",
       modelId: "openai/gpt-5.4",
+      triggeringToolCallId: "handoff-call",
+      replacementHistory: [],
     }),
     event(1, { type: "mcp_provider_connected", provider: "github" }),
     event(2, {
@@ -168,6 +134,45 @@ describe("projectConversationEvents", () => {
     expect(projection.messages).toHaveLength(2);
   });
 
+  it("starts from replacement history and appends later messages", () => {
+    const retained = {
+      role: "user",
+      content: [{ type: "text", text: "Retained request" }],
+      timestamp: 2_000,
+    };
+    const summary = {
+      role: "user",
+      content: [{ type: "text", text: "Summary of earlier work" }],
+      timestamp: 2_001,
+    };
+    const later = {
+      role: "user",
+      content: [{ type: "text", text: "New request" }],
+      timestamp: 2_002,
+    };
+
+    const projection = projectConversationEvents([
+      event(10, {
+        type: "context_epoch_started",
+        reason: "compaction",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.4",
+        replacementHistory: [
+          {
+            message: retained,
+            provenance: instructionProvenance,
+            sourceEventSeq: 4,
+          },
+          { message: summary },
+        ],
+      }),
+      event(11, { type: "message", message: later }),
+    ]);
+
+    expect(projection.messages).toEqual([retained, summary, later]);
+    expect(projection.seqs).toEqual([4, 10, 11]);
+  });
+
   it("validates opaque durable messages only at the Pi boundary", () => {
     const invalid = {
       schemaVersion: 1,
@@ -178,66 +183,5 @@ describe("projectConversationEvents", () => {
     } as ConversationEvent;
 
     expect(() => projectConversationEvents([invalid])).toThrow(/role/);
-  });
-});
-
-describe("projectConversationModelUsage", () => {
-  it("counts repeated executions but not copies carried into a later epoch", () => {
-    const openAi = assistantMessage({
-      model: "gpt-5",
-      provider: "openai",
-      text: "same response",
-      timestamp: 1_000,
-      usage: { input: 10 },
-    });
-    const anthropic = assistantMessage({
-      model: "claude-sonnet",
-      provider: "anthropic",
-      text: "new response",
-      timestamp: 2_000,
-      usage: { output: 3 },
-    });
-    const events = [
-      event(0, { type: "message", message: openAi }, 0),
-      event(1, { type: "message", message: openAi }, 0),
-      event(2, { type: "message", message: openAi }, 1),
-      event(3, { type: "message", message: openAi }, 1),
-      event(4, { type: "message", message: anthropic }, 1),
-    ];
-
-    const usage = projectConversationModelUsage(events);
-    expect(usage.map((item) => item.modelId)).toEqual([
-      "anthropic/claude-sonnet",
-      "openai/gpt-5",
-    ]);
-    expect(usage[0]?.usage).toMatchObject({ outputTokens: 3 });
-    expect(usage[1]?.usage).toMatchObject({ inputTokens: 20 });
-  });
-
-  it("counts a regenerated rollback response after its copied prefix", () => {
-    const original = assistantMessage({
-      model: "gpt-5",
-      provider: "openai",
-      text: "original",
-      timestamp: 1_000,
-      usage: { input: 10 },
-    });
-    const regenerated = assistantMessage({
-      model: "gpt-5",
-      provider: "openai",
-      text: "regenerated",
-      timestamp: 2_000,
-      usage: { input: 4 },
-    });
-
-    const [usage] = projectConversationModelUsage([
-      event(0, { type: "message", message: original }, 0),
-      event(1, { type: "message", message: original }, 1),
-      event(2, { type: "message", message: regenerated }, 1),
-    ]);
-    expect(usage).toMatchObject({
-      modelId: "openai/gpt-5",
-      usage: { inputTokens: 14 },
-    });
   });
 });

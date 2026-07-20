@@ -9,7 +9,7 @@ import { createDashboardApp } from "../src/app";
 import {
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
-} from "../src/mock-conversations";
+} from "../src/mock-reporting/fixtures";
 
 const DASHBOARD_QA_CHILD_IDS = [
   "junior:internal:dashboard-qa:advisor-plan",

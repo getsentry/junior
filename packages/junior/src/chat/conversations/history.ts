@@ -4,8 +4,8 @@
  * Events append under the conversation lease in stable sequence order. Context
  * rebuilds (compaction, handoff, rollback) open a new context epoch instead of
  * rewriting history. Unknown event types or malformed shapes fail loudly;
- * nested model-message fields remain opaque continuity data and are interpreted
- * only by the Pi adapter.
+ * provider-specific message fields are validated by the Pi adapter when it
+ * restores model context.
  */
 import { z } from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
@@ -17,28 +17,46 @@ const handoffModelProfileSchema = modelProfileSchema.refine(
   "handoff profile must not be standard",
 );
 
-/** Junior-owned durable message shape; Pi-specific validation belongs to its adapter. */
+/** Store a model message while leaving provider-specific validation to Pi. */
 export const conversationModelMessageSchema = z
   .object({ role: z.string() })
   .passthrough()
   .transform((value) => value as { role: string });
 
-/** Opaque model-continuity message stored by a Junior conversation event. */
+/** A model message stored in the conversation event log. */
 export type ConversationModelMessage = z.output<
   typeof conversationModelMessageSchema
 >;
 
-const messageEventDataSchema = z
+const conversationMessageDataSchema = z
   .object({
-    type: z.literal("message"),
     message: conversationModelMessageSchema,
     provenance: conversationMessageProvenanceSchema.optional(),
   })
   .strict();
 
-// Replaces the legacy `projection_reset` payload at the SQL layer: a marker plus
-// ordinary message events in the new epoch, not an embedded transcript array.
-const contextEpochStartedEventDataSchema = z.union([
+const messageEventDataSchema = conversationMessageDataSchema.extend({
+  type: z.literal("message"),
+});
+
+const contextEpochMessageSchema = conversationMessageDataSchema.extend({
+  createdAtMs: z.number().finite(),
+});
+
+const replacementHistoryMessageSchema = conversationMessageDataSchema.extend({
+  // Preserve the copied message's position when a turn resumes. Synthetic
+  // summary and handoff messages have no source event.
+  sourceEventSeq: z.number().int().nonnegative().optional(),
+});
+
+/**
+ * The complete message list used immediately after a context reset. Later
+ * `message` events append to it. These entries are replayed model input, not
+ * new conversation activity.
+ */
+const replacementHistorySchema = z.array(replacementHistoryMessageSchema);
+
+const contextEpochStartedEventDataSchema = z.discriminatedUnion("reason", [
   z
     .object({
       type: z.literal("context_epoch_started"),
@@ -53,28 +71,8 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
-      // TODO(v0.104.0): Remove the uncorrelated deployed marker shape after
-      // those rows pass the retention horizon.
-      triggeringToolCallId: z.undefined().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("handoff"),
-      modelProfile: handoffModelProfileSchema,
-      modelId: z.string().min(1),
       triggeringToolCallId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("compaction"),
-      // TODO(v0.104.0): Remove support for deployed compaction/rollback markers
-      // without model bindings after those rows pass the retention horizon.
-      modelProfile: z.undefined().optional(),
-      modelId: z.undefined().optional(),
+      replacementHistory: replacementHistorySchema,
     })
     .strict(),
   z
@@ -83,14 +81,7 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("rollback"),
-      modelProfile: z.undefined().optional(),
-      modelId: z.undefined().optional(),
+      replacementHistory: replacementHistorySchema,
     })
     .strict(),
   z
@@ -99,19 +90,16 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("rollback"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
+      replacementHistory: replacementHistorySchema,
     })
     .strict(),
 ]);
 
-const contextEpochMessageSchema = z
-  .object({
-    message: conversationModelMessageSchema,
-    createdAtMs: z.number().finite(),
-    provenance: conversationMessageProvenanceSchema.optional(),
-  })
-  .strict();
-
-/** Validate one atomically persisted context epoch. */
+/**
+ * Validate a context reset. Initial `messages` are new events. On rollback,
+ * `replacementHistory` replays the unchanged prefix and `messages` contains
+ * only the newly generated suffix.
+ */
 export const contextEpochStartSchema = z.discriminatedUnion("reason", [
   z
     .object({
@@ -127,7 +115,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
       triggeringToolCallId: z.string().min(1),
-      messages: z.array(contextEpochMessageSchema),
+      replacementHistory: replacementHistorySchema,
     })
     .strict(),
   z
@@ -135,7 +123,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
-      messages: z.array(contextEpochMessageSchema),
+      replacementHistory: replacementHistorySchema,
     })
     .strict(),
   z
@@ -143,6 +131,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.literal("rollback"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
+      replacementHistory: replacementHistorySchema,
       messages: z.array(contextEpochMessageSchema),
     })
     .strict(),
@@ -388,7 +377,7 @@ export const newConversationEventSchema = z
 /** An event to append; the store assigns `seq` and the current context epoch. */
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
-/** A model message written into a freshly opened context epoch. */
+/** A new message written while opening a context epoch. */
 export type ContextEpochMessage = z.output<typeof contextEpochMessageSchema>;
 
 /** Persist and read the canonical per-conversation event log. */

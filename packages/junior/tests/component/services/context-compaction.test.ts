@@ -317,6 +317,12 @@ describe("context compaction projection reset", () => {
       modelProfile: "handoff",
       modelId: botConfig.modelProfiles.handoff,
       triggeringToolCallId: "handoff-call-1",
+      replacementHistory: [
+        {
+          message: handoffMessages[0],
+          provenance: { authority: "context" },
+        },
+      ],
     });
 
     const compactor = createContextCompactor({

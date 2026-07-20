@@ -19,8 +19,10 @@ conversation events, compaction boundaries, search, and retention.
   sequence cursors. Their summary indexes and the SQL execution/usage columns
   are operational projections; Pi state is materialized from conversation
   events rather than stored in either aggregate.
-- Context epochs identify replacement boundaries created by compaction or model
-  handoff.
+- Context epochs identify replacement boundaries created by compaction, model
+  handoff, or rollback. The epoch marker owns its `replacementHistory`, like a
+  compacted record; ordinary `message` events after it are new conversation
+  activity rather than copies of that checkpoint.
 - Historical advisor imports may create an isolated child conversation linked
   to its parent. Each conversation still owns a complete local event stream;
   parent history is never composed into a child's Pi projection.
@@ -35,11 +37,18 @@ persists its schema version, sequence, context epoch, type, payload, and
 timestamp. The `(conversation_id, seq)` key is both stable event identity and
 the lease-fencing tripwire.
 
-The Junior-owned `message` event retains an opaque model-continuity payload and
-canonical provenance. The Pi adapter is the only runtime module that
-interprets that payload as a Pi message. The legacy Redis `pi_message` shape
-exists only in the explicit operator backfill and is absent from the live
-conversation module graph.
+A `message` event stores one newly appended model message and its provenance.
+The Pi adapter validates it when restoring context. Replacement history belongs
+to `context_epoch_started`; it is replayed before later `message` events but is
+not recorded again as new activity. The legacy Redis `pi_message` shape exists
+only in the explicit operator backfill and is absent from the live conversation
+module graph.
+
+For example, if a compaction checkpoint contains user messages `B` and `C`
+followed by summary `S`, the next model request receives the normal system
+prompt plus `[B, C, S]`. A later user message `D` is stored once as a `message`
+event, and the following request receives `[B, C, S, D]`. Earlier messages stay
+in the SQL event log for audit but are no longer part of model input.
 
 Reporting APIs must project events into an authorized, redacted product
 contract. Raw `ConversationEventData` is an internal persistence boundary and
@@ -66,7 +75,8 @@ remain internal.
   raw exceptions, provider payloads, and URLs are not lifecycle data.
 - Restore state directly from durable SQL events rather than a duplicate
   transcript cache or lazy legacy import.
-- Compaction replaces prior model context without rewriting visible history.
+- Compaction replaces prior model context with the epoch marker's replacement
+  history without rewriting visible history or duplicating message events.
 - Imports and migrations are idempotent and preserve stable conversation IDs.
 - Historical advisor import writes the child parent link and the parent's
   `subagent_started` and `subagent_ended` references. There is currently no live

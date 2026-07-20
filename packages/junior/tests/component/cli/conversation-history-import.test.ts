@@ -35,6 +35,7 @@ const ORIGINAL_ENV = vi.hoisted(() => ({
   DATABASE_URL: process.env.DATABASE_URL,
   JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
 }));
+const MODEL_ID = "test/standard";
 
 async function processSqlStores() {
   const executor = getSqlExecutor();
@@ -198,6 +199,7 @@ describe("operator conversation history import", () => {
 
     const deps = {
       executor: fixture.sql,
+      modelId: MODEL_ID,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore(entries),
       advisorSessionStore: staticAdvisorStore([
@@ -224,16 +226,24 @@ describe("operator conversation history import", () => {
         { seq: 1, epoch: 0, type: "visible_message_recorded" },
         { seq: 2, epoch: 0, type: "visible_message_replied" },
         { seq: 3, epoch: 1, type: "context_epoch_started" },
-        { seq: 4, epoch: 1, type: "message" },
-        { seq: 5, epoch: 1, type: "visible_message_recorded" },
-        { seq: 6, epoch: 1, type: "subagent_started" },
+        { seq: 4, epoch: 1, type: "visible_message_recorded" },
+        { seq: 5, epoch: 1, type: "subagent_started" },
       ]);
 
-      // Current context is exactly the highest epoch's messages.
+      // Upgrade emits the same canonical checkpoint shape as live writes.
       const current = await eventStore.loadCurrentEpoch(CONVERSATION_ID);
-      expect(
-        current.filter((event) => event.data.type === "message"),
-      ).toHaveLength(1);
+      expect(current[0]?.data).toEqual({
+        type: "context_epoch_started",
+        reason: "compaction",
+        modelProfile: "standard",
+        modelId: MODEL_ID,
+        replacementHistory: [
+          {
+            message: userMessage("summary", 40),
+            provenance: { authority: "context" },
+          },
+        ],
+      });
 
       // Advisor child is its own conversation with epoch-0 message events.
       const childHistory = await eventStore.loadHistory(childId);
@@ -289,7 +299,7 @@ describe("operator conversation history import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
-      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(7);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(6);
     } finally {
       await fixture.close();
     }
@@ -317,6 +327,7 @@ describe("operator conversation history import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
+          modelId: MODEL_ID,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
           loadVisibleMessages: async () => invalidVisible,
@@ -338,6 +349,7 @@ describe("operator conversation history import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
+          modelId: MODEL_ID,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
           loadVisibleMessages: async () => visible,
@@ -372,6 +384,7 @@ describe("operator conversation history import", () => {
     ]);
     const deps = {
       executor: fixture.sql,
+      modelId: MODEL_ID,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore([]),
       loadVisibleMessages,
@@ -426,6 +439,7 @@ describe("operator conversation history import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
+        modelId: MODEL_ID,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -525,6 +539,7 @@ describe("operator conversation history import", () => {
     try {
       const result = await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
+        modelId: MODEL_ID,
         sessionLogStore: staticSessionLogStore([
           {
             schemaVersion: 2,
@@ -623,6 +638,7 @@ describe("operator conversation history import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
+        modelId: MODEL_ID,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -684,6 +700,7 @@ describe("operator conversation history import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
+        modelId: MODEL_ID,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -727,6 +744,7 @@ describe("operator conversation history import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
+          modelId: MODEL_ID,
           conversationRecord: conversationRecord(),
           sessionLogStore: staticSessionLogStore([]),
           advisorSessionStore: staticAdvisorStore([]),
@@ -760,6 +778,7 @@ describe("operator conversation history import", () => {
 
     await importConversationFromLegacy(CONVERSATION_ID, {
       executor,
+      modelId: MODEL_ID,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore([
         {

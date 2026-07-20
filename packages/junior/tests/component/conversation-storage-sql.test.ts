@@ -28,6 +28,7 @@ import {
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
+  commitMessages,
   loadConnectedMcpProviders,
   openConversationProjection,
   recordMcpProviderConnected,
@@ -57,7 +58,7 @@ async function listMessageRows(
     );
 }
 
-it("accepts legacy markers and validates current profile names", () => {
+it("requires one canonical shape for every context marker", () => {
   expect(
     conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
@@ -86,7 +87,7 @@ it("accepts legacy markers and validates current profile names", () => {
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
     }).success,
-  ).toBe(true);
+  ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
@@ -94,6 +95,7 @@ it("accepts legacy markers and validates current profile names", () => {
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
       triggeringToolCallId: "handoff-call-1",
+      replacementHistory: [],
     }).success,
   ).toBe(true);
   expect(
@@ -117,13 +119,14 @@ it("accepts legacy markers and validates current profile names", () => {
       type: "context_epoch_started",
       reason: "compaction",
     }).success,
-  ).toBe(true);
+  ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
       modelProfile: "coding",
       modelId: "openai/gpt-5.4",
+      replacementHistory: [],
     }).success,
   ).toBe(true);
   expect(
@@ -138,6 +141,12 @@ it("accepts legacy markers and validates current profile names", () => {
       type: "context_epoch_started",
       reason: "compaction",
       modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "context_epoch_started",
+      reason: "rollback",
     }).success,
   ).toBe(false);
 });
@@ -280,7 +289,7 @@ it("rejects incomplete markers through the epoch boundary", async () => {
       reason: "handoff",
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
-      messages: [],
+      replacementHistory: [],
     } as never),
   ).rejects.toThrow("Invalid input");
   await expect(
@@ -348,7 +357,7 @@ function userMessage(text: string) {
   };
 }
 
-describe("conversation transcript SQL stores", () => {
+describe("SQL conversation storage", () => {
   it("persists visible-context compaction snapshots in conversation history", async () => {
     const events = getConversationEventStore();
     const conversation = coerceThreadConversationState({});
@@ -618,21 +627,18 @@ describe("conversation transcript SQL stores", () => {
         modelId: "test/model",
         reason: "compaction",
         modelProfile: "standard",
-        messages: [
-          { message: userMessage("epoch1-summary"), createdAtMs: 3_000 },
-        ],
+        replacementHistory: [{ message: userMessage("epoch1-summary") }],
       });
 
       const current = await store.loadCurrentEpoch(CONVERSATION_ID);
-      expect(current.map((event) => event.contextEpoch)).toEqual([1, 1]);
+      expect(current.map((event) => event.contextEpoch)).toEqual([1]);
       expect(current.map((event) => event.data.type)).toEqual([
         "context_epoch_started",
-        "message",
       ]);
-      expect(current.map((event) => event.seq)).toEqual([2, 3]);
+      expect(current.map((event) => event.seq)).toEqual([2]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((event) => event.contextEpoch)).toEqual([0, 0, 1, 1]);
+      expect(history.map((event) => event.contextEpoch)).toEqual([0, 0, 1]);
     } finally {
       await fixture.close();
     }
@@ -660,9 +666,7 @@ describe("conversation transcript SQL stores", () => {
         modelId: "test/model",
         reason: "compaction",
         modelProfile: "standard",
-        messages: [
-          { message: userMessage("epoch1-summary"), createdAtMs: 3_000 },
-        ],
+        replacementHistory: [{ message: userMessage("epoch1-summary") }],
       });
       await store.append(CONVERSATION_ID, [
         {
@@ -674,6 +678,7 @@ describe("conversation transcript SQL stores", () => {
         modelId: "test/model",
         reason: "rollback",
         modelProfile: "standard",
+        replacementHistory: [],
         messages: [
           { message: userMessage("epoch2-message"), createdAtMs: 5_000 },
         ],
@@ -689,18 +694,58 @@ describe("conversation transcript SQL stores", () => {
         [1, 0],
       ]);
       expect(
-        (await store.loadEpochContaining(CONVERSATION_ID, 3))?.map(
+        (await store.loadEpochContaining(CONVERSATION_ID, 2))?.map(
           (event) => event.seq,
         ),
-      ).toEqual([2, 3, 4]);
+      ).toEqual([2, 3]);
       expect(
-        (await store.loadEpochContaining(CONVERSATION_ID, 5))?.map(
+        (await store.loadEpochContaining(CONVERSATION_ID, 4))?.map(
           (event) => event.seq,
         ),
-      ).toEqual([5, 6]);
+      ).toEqual([4, 5]);
       await expect(
         store.loadEpochContaining(CONVERSATION_ID, 99),
       ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps rollback cursor positions while storing only the new suffix as messages", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const first = userMessage("first");
+      const prompt = userMessage("prompt");
+      const discarded = userMessage("discarded");
+      const regenerated = userMessage("regenerated");
+
+      await commitMessages({
+        executor: fixture.sql,
+        conversationId: CONVERSATION_ID,
+        modelId: "test/model",
+        messages: [first, prompt, discarded],
+      });
+      const committed = await commitMessages({
+        executor: fixture.sql,
+        conversationId: CONVERSATION_ID,
+        modelId: "test/model",
+        messages: [first, prompt, regenerated],
+      });
+
+      expect(committed).toMatchObject({
+        committedSeq: 5,
+        messageSeqs: [1, 2, 5],
+      });
+      const current = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadCurrentEpoch(CONVERSATION_ID);
+      expect(current.map((event) => event.data.type)).toEqual([
+        "context_epoch_started",
+        "message",
+      ]);
     } finally {
       await fixture.close();
     }
@@ -923,6 +968,7 @@ WHERE conversation_id = $1 AND seq = 0
           modelId: "test/model",
           reason: "rollback",
           modelProfile: "standard",
+          replacementHistory: [],
           messages: [{ message: userMessage("never"), createdAtMs: 2_000 }],
         }),
       ).rejects.toThrow("epoch write failed");

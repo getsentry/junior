@@ -127,14 +127,14 @@ async function appendVisibleHistory(
     reason: "compaction",
     modelProfile: "standard",
     modelId: "private-model-id",
-    messages: [{ message: modelMessage, createdAtMs: 11 }],
+    replacementHistory: [{ message: modelMessage }],
   });
   await getConversationEventStore().startEpoch(conversationId, {
     reason: "handoff",
     modelProfile: "fast",
     modelId: "private-handoff-model-id",
     triggeringToolCallId: `${conversationId}:handoff-tool-call`,
-    messages: [],
+    replacementHistory: [],
   });
 }
 
@@ -298,6 +298,50 @@ describe("dashboard canonical event reporting", () => {
     ]) {
       expect(detail).not.toHaveProperty(removed);
     }
+  });
+
+  it("aggregates original model calls without counting replayed history", async () => {
+    const conversationId = "slack:C-reporting:model-usage";
+    await recordRoot(conversationId, "public");
+    const componentUsageMessage = {
+      role: "assistant",
+      provider: "openai",
+      model: "gpt-5",
+      usage: { input: 10 },
+    };
+    const totalOnlyUsageMessage = {
+      role: "assistant",
+      provider: "openai",
+      model: "gpt-5",
+      usage: { totalTokens: 7 },
+    };
+    const { getConversationEventStore } = await import("@/chat/db");
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: { type: "message", message: componentUsageMessage },
+        createdAtMs: 10,
+      },
+      {
+        data: { type: "message", message: totalOnlyUsageMessage },
+        createdAtMs: 11,
+      },
+    ]);
+    await getConversationEventStore().startEpoch(conversationId, {
+      reason: "compaction",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5",
+      replacementHistory: [
+        { message: componentUsageMessage },
+        { message: totalOnlyUsageMessage },
+      ],
+    });
+
+    expect((await requireDetail(conversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: { inputTokens: 10, totalTokens: 17 },
+      },
+    ]);
   });
 
   it("redacts visible content for a private root while retaining structure", async () => {

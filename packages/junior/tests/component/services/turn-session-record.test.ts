@@ -253,7 +253,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
-  it("reads legacy requester summaries and skips invalid index entries", async () => {
+  it("skips summaries that were not normalized by upgrade", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listBoundedAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
@@ -292,13 +292,7 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       listBoundedAgentTurnSessionSummariesForConversation(conversationId),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        actor: requester,
-        conversationId,
-        sessionId: "turn-legacy-summary",
-      }),
-    ]);
+    ).resolves.toEqual([]);
   });
 
   it("materializes auth completion events appended after the pause record", async () => {

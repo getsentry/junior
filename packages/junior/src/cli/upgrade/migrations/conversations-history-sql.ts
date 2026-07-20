@@ -29,10 +29,11 @@ export async function migrateConversationHistoryToSql(
   } = {},
 ): Promise<MigrationResult> {
   const source = createStateConversationStore(context.stateAdapter);
+  const chatConfig = getChatConfig();
   let executor = options.executor;
   let closeExecutor: (() => Promise<void>) | undefined;
   if (!executor) {
-    const { sql } = getChatConfig();
+    const { sql } = chatConfig;
     executor = createJuniorSqlExecutor({
       connectionString: sql.databaseUrl,
       driver: sql.driver,
@@ -61,6 +62,7 @@ export async function migrateConversationHistoryToSql(
           conversation.conversationId,
           {
             executor,
+            modelId: chatConfig.bot.modelId,
             conversationRecord: conversation,
             ...(options.sessionLogStore
               ? { sessionLogStore: options.sessionLogStore }

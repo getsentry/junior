@@ -8,6 +8,7 @@ import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-hist
 
 const CONVERSATION_ID = "slack:C1:1710000.0001";
 const FALLBACK_MS = 1_000;
+const MODEL_ID = "test/standard";
 
 function userMessage(text: string, timestamp?: number): PiMessage {
   return {
@@ -44,6 +45,7 @@ describe("operator legacy conversation history conversion", () => {
     const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         piEntry(userMessage("hello", 10), "session_0"),
         piEntry(assistantMessage("hi", 20), "session_0"),
@@ -85,6 +87,7 @@ describe("operator legacy conversation history conversion", () => {
     const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         {
           schemaVersion: 1,
@@ -117,10 +120,11 @@ describe("operator legacy conversation history conversion", () => {
     });
   });
 
-  it("explodes projection_reset into an epoch marker plus per-message rows and keeps stale sessions in their epoch", () => {
+  it("stores projection_reset as replacement history and keeps later messages in their source epoch", () => {
     const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         piEntry(userMessage("first", 10), "session_0"),
         {
@@ -144,14 +148,16 @@ describe("operator legacy conversation history conversion", () => {
     ).toEqual([
       { seq: 0, epoch: 0, type: "message" },
       { seq: 1, epoch: 1, type: "context_epoch_started" },
-      { seq: 2, epoch: 1, type: "message" },
+      { seq: 2, epoch: 0, type: "message" },
       { seq: 3, epoch: 1, type: "message" },
-      { seq: 4, epoch: 0, type: "message" },
-      { seq: 5, epoch: 1, type: "message" },
     ]);
-    expect(events[1]!.data).toEqual({
+    expect(events[1]!.data).toMatchObject({
       type: "context_epoch_started",
       reason: "compaction",
+      replacementHistory: [
+        { message: userMessage("summary", 40) },
+        { message: assistantMessage("ack", 41) },
+      ],
     });
     // Highest epoch (current context) is exactly the reset's session rows.
     const currentEpoch = Math.max(...events.map((event) => event.contextEpoch));
@@ -162,6 +168,7 @@ describe("operator legacy conversation history conversion", () => {
     const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         {
           schemaVersion: 2,
@@ -213,6 +220,7 @@ describe("operator legacy conversation history conversion", () => {
     const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         piEntry(userMessage("no timestamp"), "session_0"),
         {
@@ -238,6 +246,7 @@ describe("operator legacy conversation history conversion", () => {
     const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
       entries: [
         {
           schemaVersion: 2,

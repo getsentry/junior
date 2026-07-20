@@ -1374,10 +1374,9 @@ describe("agent continuation Slack integration", () => {
       reason: "handoff",
       modelProfile: "handoff",
       triggeringToolCallId: "recovered-handoff-call",
-      messages: [
+      replacementHistory: [
         {
           message: summaryMessage,
-          createdAtMs: 5,
         },
       ],
     });

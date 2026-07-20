@@ -126,10 +126,10 @@ export async function loadProjection(
   return projectConversationEvents(events).messages;
 }
 
-/** Load the current-epoch Pi projection with aligned per-message provenance. */
+/** Load current Pi context with aligned provenance and source event sequences. */
 export async function loadConversationProjection(
   args: ScopedConversation,
-): Promise<PiConversationProjection> {
+): Promise<PiConversationEventProjection> {
   const events = await getConversationEventStore().loadCurrentEpoch(
     args.conversationId,
   );
@@ -312,18 +312,28 @@ async function commitMessagesLocked(
       reason: "rollback",
       modelProfile: current.modelProfile,
       modelId: args.modelId,
-      messages: nextLocalMessages.map((message, index) => ({
-        message,
-        createdAtMs: messageTimestamp(message),
-        provenance: nextLocalProvenance[index]!,
-      })),
+      replacementHistory: nextLocalMessages
+        .slice(0, matchingPrefix)
+        .map((message, index) => ({
+          message,
+          provenance: nextLocalProvenance[index]!,
+          sourceEventSeq: current.seqs[index]!,
+        })),
+      messages: nextLocalMessages
+        .slice(matchingPrefix)
+        .map((message, index) => ({
+          message,
+          createdAtMs: messageTimestamp(message),
+          provenance: nextLocalProvenance[matchingPrefix + index]!,
+        })),
     });
   }
-  const committed = projectConversationEvents(
-    await eventStore.loadCurrentEpoch(args.conversationId),
+  const committedEvents = await eventStore.loadCurrentEpoch(
+    args.conversationId,
   );
+  const committed = projectConversationEvents(committedEvents);
   return {
-    committedSeq: committed.seqs.at(-1) ?? -1,
+    committedSeq: committedEvents.at(-1)?.seq ?? -1,
     messageSeqs: committed.seqs,
     provenance: nextLocalProvenance,
   };

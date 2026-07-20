@@ -1,22 +1,15 @@
 /**
  * Pi adapter for Junior conversation events.
  *
- * Conversation storage owns the canonical ordered event log. This module is
- * the sole boundary that interprets its opaque messages as Pi state.
+ * Conversation storage owns the ordered event log. This module turns its
+ * stored messages into the active Pi context.
  */
 import type { ModelProfile } from "@/chat/model-profile";
-import { extractGenAiUsageSummary } from "@/chat/logging";
 import type {
   ConversationEvent,
   ConversationEventData,
 } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
-import { isAssistantMessage } from "@/chat/pi/transcript";
-import {
-  addAgentTurnUsage,
-  hasAgentTurnUsage,
-  type AgentTurnUsage,
-} from "@/chat/usage";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
@@ -39,12 +32,6 @@ export interface PiConversationProjection {
 /** Pi context with the source event sequence for every projected message. */
 export interface PiConversationEventProjection extends PiConversationProjection {
   seqs: number[];
-}
-
-/** Usage attributed to one provider/model pair across canonical history. */
-export interface ConversationModelUsage {
-  modelId: string;
-  usage: AgentTurnUsage;
 }
 
 function authorizationObservationMessage(
@@ -73,6 +60,9 @@ function messageEventProvenance(
 /**
  * Project ordered Junior events into Pi context.
  *
+ * An epoch marker starts with its replacement history. Ordinary message events
+ * in that epoch append after it.
+ *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
  */
@@ -89,8 +79,15 @@ export function projectConversationEvents(
   for (const event of events) {
     if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
     if (event.data.type === "context_epoch_started") {
-      modelProfile = event.data.modelProfile ?? "standard";
+      modelProfile = event.data.modelProfile;
       modelId = event.data.modelId;
+      if (event.data.reason !== "initial") {
+        for (const replacement of event.data.replacementHistory) {
+          messages.push(piMessageSchema.parse(replacement.message));
+          provenance.push(replacement.provenance ?? contextProvenance);
+          seqs.push(replacement.sourceEventSeq ?? event.seq);
+        }
+      }
       continue;
     }
     if (event.data.type === "message") {
@@ -109,56 +106,4 @@ export function projectConversationEvents(
   }
 
   return { messages, provenance, seqs, modelProfile, modelId };
-}
-
-/**
- * Aggregate model usage without recounting messages copied into later epochs.
- *
- * Occurrence counts preserve legitimate identical messages within one epoch,
- * while exact copies introduced by compaction or rollback contribute once.
- */
-export function projectConversationModelUsage(
-  events: ConversationEvent[],
-): ConversationModelUsage[] {
-  const messagesByEpoch = new Map<number, PiMessage[]>();
-  for (const event of events) {
-    if (event.data.type !== "message") continue;
-    const messages = messagesByEpoch.get(event.contextEpoch) ?? [];
-    messages.push(piMessageSchema.parse(event.data.message));
-    messagesByEpoch.set(event.contextEpoch, messages);
-  }
-
-  const maxOccurrencesByMessage = new Map<string, number>();
-  const usageByModel = new Map<string, AgentTurnUsage>();
-  for (const messages of messagesByEpoch.values()) {
-    const epochOccurrences = new Map<string, number>();
-    for (const message of messages) {
-      // SQL jsonb normalizes persisted objects, so exact copied messages have
-      // one stable representation without a quadratic deep-equality scan.
-      const fingerprint = JSON.stringify(message);
-      const ordinal = (epochOccurrences.get(fingerprint) ?? 0) + 1;
-      epochOccurrences.set(fingerprint, ordinal);
-      if (
-        ordinal <= (maxOccurrencesByMessage.get(fingerprint) ?? 0) ||
-        !isAssistantMessage(message)
-      ) {
-        continue;
-      }
-      const usage = extractGenAiUsageSummary(message);
-      if (!hasAgentTurnUsage(usage)) continue;
-      const modelId = `${message.provider}/${message.model}`;
-      const cumulative = addAgentTurnUsage(usageByModel.get(modelId), usage);
-      if (cumulative) usageByModel.set(modelId, cumulative);
-    }
-    for (const [fingerprint, count] of epochOccurrences) {
-      maxOccurrencesByMessage.set(
-        fingerprint,
-        Math.max(maxOccurrencesByMessage.get(fingerprint) ?? 0, count),
-      );
-    }
-  }
-
-  return [...usageByModel.entries()]
-    .map(([modelId, usage]) => ({ modelId, usage }))
-    .sort((left, right) => left.modelId.localeCompare(right.modelId));
 }

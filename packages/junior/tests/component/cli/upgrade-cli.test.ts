@@ -629,7 +629,7 @@ WHERE conversation_id = $1
         reason: "compaction",
         modelProfile: "standard",
         modelId: "test-model",
-        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
+        replacementHistory: [{ message: firstAssistant }],
       });
       await eventStore.append(CONVERSATION_ID, [
         {

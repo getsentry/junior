@@ -73,6 +73,8 @@ const legacyThreadStateSnapshotSchema = z.object({
 /** Legacy source seams used by the one-time migration. */
 export interface LegacyImportDeps {
   executor: JuniorSqlDatabase;
+  /** Standard model binding written onto imported context checkpoints. */
+  modelId: string;
   sessionLogStore?: SessionLogStore;
   advisorSessionStore?: LegacyAdvisorSessionReader;
   loadVisibleMessages?: (
@@ -204,6 +206,7 @@ export async function importConversationFromLegacy(
     conversationId,
     entries,
     fallbackCreatedAtMs,
+    modelId: deps.modelId,
   });
   if (compactions.length > 0) {
     const storedCount = compactions.reduce(

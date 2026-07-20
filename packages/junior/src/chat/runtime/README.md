@@ -51,8 +51,9 @@ this directory owns product orchestration around it.
 
 ## Compaction And Handoff
 
-- Compaction creates a new context epoch with a bounded replacement summary;
-  visible conversation history remains unchanged.
+- Compaction creates a new context epoch. Its replacement history contains the
+  retained user messages followed by a summary; later messages append normally.
+  Visible conversation history remains unchanged.
 - The replacement must retain unresolved work, durable facts, active artifacts,
   tool outcomes needed for continuation, and relevant actor/destination context.
 - Model handoff is a permanent in-place transition recorded at a safe boundary.
