@@ -1851,6 +1851,26 @@ export async function clearExpiredConversationLease(args: {
   });
 }
 
+/** Delete one conversation mailbox and all of its index entries. */
+export async function deleteConversationState(args: {
+  conversationId: string;
+  state?: StateAdapter;
+}): Promise<void> {
+  await withConversationMutation(args, async (state) => {
+    await state.delete(conversationKey(args.conversationId));
+    await removeIndexEntry({
+      state,
+      indexKey: CONVERSATION_ACTIVE_INDEX_KEY,
+      conversationId: args.conversationId,
+    });
+    await removeIndexEntry({
+      state,
+      indexKey: CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+      conversationId: args.conversationId,
+    });
+  });
+}
+
 /** Remove one conversation from the active index after it is missing or idle. */
 export async function removeActiveConversation(args: {
   conversationId: string;

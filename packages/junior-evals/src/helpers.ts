@@ -1,4 +1,5 @@
 import {
+  assistantMessages,
   createJudge,
   createJudgeHarness,
   type DescribeEvalOptions,
@@ -15,9 +16,8 @@ import {
   type Harness,
   type HarnessRun,
   type JsonValue,
-  type NormalizedMessage,
   type NormalizedSession,
-  type ToolCallRecord,
+  type TranscriptEvent,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
@@ -39,6 +39,19 @@ import {
   type SteerEvent,
   runEvalScenario,
 } from "./behavior-harness";
+
+interface NormalizedMessage {
+  role: "system" | "user" | "assistant";
+  content?: JsonValue;
+  metadata?: Record<string, JsonValue>;
+}
+
+interface ToolCallRecord {
+  name: string;
+  arguments?: Record<string, JsonValue>;
+  result?: JsonValue;
+  error?: { message: string };
+}
 
 type HarnessEvalResult = EvalResult & {
   sessionMessages: NormalizedMessage[];
@@ -69,12 +82,53 @@ function isReactionAddedMessage(
 
 /** Returns typed reaction emoji side effects recorded in an eval session. */
 export function reactionEmojis(session: NormalizedSession): string[] {
-  return session.messages
-    .filter(isReactionAddedMessage)
+  return session.events
+    .filter(
+      (event): event is TranscriptEvent & ReactionAddedMessage =>
+        event.type === "message" && isReactionAddedMessage(event),
+    )
     .map((message) => message.content.emoji);
 }
 
 const CONVERSATION_IDS_METADATA_KEY = "conversation_ids";
+
+/** Return string content from a normalized assistant message value. */
+export function assistantTextContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** Return non-empty assistant replies posted visibly in the active thread. */
+export function visibleThreadReplies(session: NormalizedSession) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      assistantTextContent(message.content).trim().length > 0,
+  );
+}
+
+/** Join user-visible assistant text recorded in an eval session. */
+export function visibleAssistantText(session: NormalizedSession): string {
+  return assistantMessages(session)
+    .map((message) => assistantTextContent(message.content))
+    .join("\n");
+}
+
+/** Return whether the assistant attached an image in an eval session. */
+export function hasImageAttachment(session: NormalizedSession): boolean {
+  return assistantMessages(session).some((message) => {
+    const files = message.metadata?.files;
+    return (
+      Array.isArray(files) &&
+      files.some(
+        (file) =>
+          file !== null &&
+          typeof file === "object" &&
+          !Array.isArray(file) &&
+          file.isImage === true,
+      )
+    );
+  });
+}
 
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
@@ -180,21 +234,26 @@ function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
   });
 }
 
-function serializeVisibleTranscript(session: NormalizedSession): string {
+/** Serialize user-visible conversation text and Slack author attribution. */
+export function serializeVisibleTranscript(session: NormalizedSession): string {
   return JSON.stringify(
-    session.messages.flatMap((message) => {
+    session.events.flatMap((event) => {
       if (
-        (message.role !== "user" && message.role !== "assistant") ||
-        typeof message.content !== "string" ||
-        message.content.trim().length === 0 ||
-        message.metadata?.rubric_visible === false
+        event.type !== "message" ||
+        (event.role !== "user" && event.role !== "assistant") ||
+        typeof event.content !== "string" ||
+        event.content.trim().length === 0 ||
+        event.metadata?.rubric_visible === false
       ) {
         return [];
       }
       return [
         {
-          role: message.role,
-          content: message.content,
+          role: event.role,
+          ...(event.role === "user" && event.metadata?.author_name
+            ? { author: event.metadata.author_name }
+            : {}),
+          content: event.content,
         },
       ];
     }),
@@ -214,7 +273,6 @@ function toAssistantPostMessage(
       ...(post.channel ? { channel: post.channel } : {}),
       ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
       files: post.files,
-      rubric_visible: false,
     }),
   };
 }
@@ -227,10 +285,7 @@ function buildPostKey(post: {
   return `${post.channel ?? ""}\u0000${post.thread_ts ?? ""}\u0000${post.text}`;
 }
 
-function toSessionMessages(
-  result: HarnessEvalResult,
-  toolCalls: ToolCallRecord[],
-): NormalizedMessage[] {
+function toSessionMessages(result: HarnessEvalResult): NormalizedMessage[] {
   const observedPostKeys = new Set(
     result.sessionMessages.flatMap((message) => {
       if (message.role !== "assistant" || typeof message.content !== "string") {
@@ -263,7 +318,6 @@ function toSessionMessages(
             event_type: post.thread_ts ? "thread_post" : "channel_post",
             channel: post.channel,
             ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
-            rubric_visible: false,
           }),
         }),
       ),
@@ -294,14 +348,6 @@ function toSessionMessages(
         },
       }),
     ),
-    ...(toolCalls.length > 0
-      ? [
-          {
-            role: "assistant" as const,
-            toolCalls,
-          },
-        ]
-      : []),
   ];
 }
 
@@ -359,9 +405,52 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   };
 }
 
+function toTranscriptEvents(
+  messages: NormalizedMessage[],
+  toolCallRecords: ToolCallRecord[],
+): TranscriptEvent[] {
+  const messageEvents: TranscriptEvent[] = messages.map((message) => ({
+    type: "message",
+    ...message,
+  }));
+  const toolEvents: TranscriptEvent[] = toolCallRecords.flatMap(
+    (call, index) => {
+      const id = `eval-tool-${index}`;
+      return [
+        {
+          type: "tool_call" as const,
+          id,
+          name: call.name,
+          ...(call.arguments ? { arguments: call.arguments } : {}),
+        },
+        ...(call.error
+          ? [
+              {
+                type: "tool_result" as const,
+                toolCallId: id,
+                name: call.name,
+                error: call.error,
+              },
+            ]
+          : call.result !== undefined
+            ? [
+                {
+                  type: "tool_result" as const,
+                  toolCallId: id,
+                  name: call.name,
+                  content: call.result,
+                },
+              ]
+            : []),
+      ];
+    },
+  );
+  return [...messageEvents, ...toolEvents];
+}
+
 function toHarnessRun(result: HarnessEvalResult, totalMs: number): HarnessRun {
-  const toolCalls = result.toolInvocations.map(toToolCallRecord);
-  const messages = toSessionMessages(result, toolCalls);
+  const toolCallRecords = result.toolInvocations.map(toToolCallRecord);
+  const messages = toSessionMessages(result);
 
   return {
     artifacts: {
@@ -369,7 +458,7 @@ function toHarnessRun(result: HarnessEvalResult, totalMs: number): HarnessRun {
       slack_side_effects: slackSideEffectArtifacts(result),
     },
     session: {
-      messages,
+      events: toTranscriptEvents(messages, toolCallRecords),
       metadata: toJsonRecord({
         slack_metadata: slackMetadata(result),
         log_records: result.logRecords.map(toLogMetadata),
@@ -393,14 +482,14 @@ export interface SlackEvalInput {
   initialEvents: InitialEvents;
   events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
-  criteria: EvalRubric;
+  criteria?: EvalRubric;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
   requireSandboxReady?: boolean;
 }
 
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
-const MAX_EVAL_TIMEOUT_MS = 30_000;
+const MAX_EVAL_TIMEOUT_MS = 60_000;
 const GATEWAY_AUTH_FAILURE_PATTERNS = [
   "OIDC token has expired",
   "Missing AI gateway credentials",
@@ -648,6 +737,12 @@ export const RubricJudge = createJudge(
     JsonValue | undefined,
     typeof slackHarness
   >) => {
+    if (!input.criteria) {
+      return {
+        score: 1,
+        metadata: { skipped: "deterministic-only" },
+      };
+    }
     if (!runJudge) {
       throw new Error("RubricJudge requires a configured judgeHarness.");
     }

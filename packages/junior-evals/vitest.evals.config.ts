@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
@@ -9,7 +10,9 @@ const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
-const EVAL_TEST_TIMEOUT_MS = 60_000;
+// Leave room for harness cleanup and rubric judging after a reply reaches its
+// separate 60-second behavior budget.
+const EVAL_TEST_TIMEOUT_MS = 120_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
   process.env.VITEST_EVALS_OUTPUT_FILE ?? "vitest-results.json",
@@ -22,9 +25,18 @@ loadJuniorTestEnvFiles({
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
-process.env.JUNIOR_STATE_ADAPTER = "memory";
-process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${process.pid}`;
-process.env.AI_MODEL = "openai/gpt-5.4";
+process.env.JUNIOR_STATE_ADAPTER = "redis";
+process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${randomUUID()}`;
+process.env.REDIS_URL =
+  process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
+const evalRedisHostname = new URL(process.env.REDIS_URL).hostname;
+if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
+  throw new Error(
+    `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
+  );
+}
+process.env.AI_MODEL = "xai/grok-4.5";
+process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
 process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
 process.env.AI_MODEL_PROFILES = JSON.stringify({
   coding: "openai/gpt-5.6-sol",
@@ -53,13 +65,13 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
-    globalSetup: [path.resolve(__dirname, "postgres-global-setup.ts")],
+    globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     include: ["evals/**/*.eval.ts"],
     maxWorkers: 1,
     setupFiles: [
+      path.resolve(__dirname, "src/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-      path.resolve(__dirname, "src/setup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

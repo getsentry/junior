@@ -147,8 +147,9 @@ export interface AgentRunObservers {
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   onToolInvocation?: (invocation: {
-    toolName: string;
     params: Record<string, unknown>;
+    toolCallId: string;
+    toolName: string;
   }) => void | Promise<void>;
   onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;

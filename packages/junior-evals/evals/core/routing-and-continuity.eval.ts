@@ -2,6 +2,7 @@ import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
+  assistantTextContent,
   mention,
   reactionEmojis,
   resourceEventNotification,
@@ -9,27 +10,9 @@ import {
   slackEvals,
   steer,
   threadMessage,
+  visibleAssistantText,
+  visibleThreadReplies,
 } from "../../src/helpers";
-
-type EvalSession = Parameters<typeof assistantMessages>[0];
-
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function visibleThreadReplies(session: EvalSession) {
-  return assistantMessages(session).filter(
-    (message) =>
-      message.metadata?.event_type === "thread_post" &&
-      textContent(message.content).trim().length > 0,
-  );
-}
-
-function visibleText(session: EvalSession): string {
-  return assistantMessages(session)
-    .map((message) => textContent(message.content))
-    .join("\n");
-}
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
   const steeringThread = {
@@ -76,7 +59,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
 
     const replies = visibleThreadReplies(result.session);
     expect(replies).toHaveLength(1);
-    expect(textContent(replies[0]?.content)).toMatch(/Alice/i);
+    expect(assistantTextContent(replies[0]?.content)).toMatch(/Alice/i);
   });
 
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
@@ -221,7 +204,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
 
     const replies = visibleThreadReplies(result.session);
     expect(replies).toHaveLength(2);
-    const secondReply = textContent(replies[1]?.content).toLowerCase();
+    const secondReply = assistantTextContent(replies[1]?.content).toLowerCase();
     expect(secondReply).toMatch(/casual|direct/);
   });
 
@@ -230,16 +213,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [mention("give me a heart reaction")],
-      criteria: rubric({
-        pass: [
-          "The assistant does not add visible thread-reply clutter for this reaction-only request.",
-        ],
-        fail: [
-          "Do not rely only on a runtime processing reaction.",
-          "Do not add a redundant thread reply that echoes the emoji.",
-          "Do not add a short acknowledgement reply such as 'Done'.",
-        ],
-      }),
     });
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
@@ -251,11 +224,9 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     // removed, completed emoji added, plus the user-requested reaction.
     expect(emojis).not.toContain("eyes");
     expect(emojis).toEqual(expect.arrayContaining(["white_check_mark"]));
-    expect(
-      emojis.some((emoji) => emoji !== "white_check_mark" && emoji !== "eyes"),
-    ).toBe(true);
+    expect(emojis).toContain("heart");
     expect(visibleThreadReplies(result.session)).toEqual([]);
-    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
 
   const continuityThread = {

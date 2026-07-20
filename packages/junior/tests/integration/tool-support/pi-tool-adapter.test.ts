@@ -159,9 +159,13 @@ describe("Pi tool adapter integration", () => {
         status: "success",
         status_text: "healthy",
       });
-      expect(onToolCall).toHaveBeenCalledWith("agentDemo_lookupCustomer", {
-        customerId: "C123",
-      });
+      expect(onToolCall).toHaveBeenCalledWith(
+        "tool-execute",
+        "agentDemo_lookupCustomer",
+        {
+          customerId: "C123",
+        },
+      );
     } finally {
       setPlugins(previousPlugins);
     }

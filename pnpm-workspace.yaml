@@ -28,6 +28,9 @@ syncInjectedDepsAfterScripts:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"
+  - "@vitest-evals/core@0.15.0"
+  - "@vitest-evals/report-ui@0.15.0"
+  - "vitest-evals@0.15.0"
   - "@sentry/core@10.65.0"
   - "@sentry/node-core@10.65.0"
   - "@sentry/node@10.65.0"

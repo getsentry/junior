@@ -27,6 +27,7 @@ function scheduledTaskCreateCall(session: Parameters<typeof toolCalls>[0]) {
   const calls = toolCalls(session).filter(
     (call) =>
       call.name === "scheduler_slackScheduleCreateTask" &&
+      call.status === "ok" &&
       call.result !== undefined,
   );
   expect(calls).toHaveLength(1);

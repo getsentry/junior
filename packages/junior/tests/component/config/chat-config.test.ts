@@ -41,14 +41,14 @@ describe("chat config", () => {
     delete process.env.AI_FAST_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.fastModelId).toBe("openai/gpt-5.4-mini");
+    expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
   it("uses the default main model when AI_MODEL is unset", async () => {
     delete process.env.AI_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelId).toBe("openai/gpt-5.5");
+    expect(botConfig.modelId).toBe("xai/grok-4.5");
   });
 
   it("leaves reasoning unset by default", async () => {

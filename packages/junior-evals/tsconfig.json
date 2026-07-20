@@ -18,5 +18,5 @@
       "@sentry/junior-scheduler": ["../junior-scheduler/src/index.ts"]
     }
   },
-  "include": ["evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
+  "include": ["*.ts", "evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
 }

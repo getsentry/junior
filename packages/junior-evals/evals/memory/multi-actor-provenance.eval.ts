@@ -196,7 +196,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant drafts and revises the status update across the two actor turns.",
-          "If the assistant applies a stored preference for the actor, it is the risks-first preference.",
+          "The assistant keeps each stated preference attributed to its author. Acting on a participant's contribution to shared work does not transfer ownership of that participant's preference to someone else.",
         ],
         fail: [
           "Do not treat the customer-impact-first preference as the actor's own preference.",

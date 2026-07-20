@@ -1,7 +1,5 @@
 import path from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -12,16 +10,8 @@ import {
   type SerializedMessage,
 } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import {
-  interceptTestHttp,
-  resetTestGitHubHttpFixtures,
-} from "@sentry/junior-testing/http";
 import { executeWithReplay } from "vitest-evals/replay";
-import type { JsonValue, NormalizedMessage } from "vitest-evals/harness";
-import {
-  createPluginAppFixture,
-  type PluginAppFixture,
-} from "@junior-tests/fixtures/plugin-app";
+import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
@@ -49,6 +39,7 @@ import {
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -114,10 +105,16 @@ import {
 import { createSlackDestination } from "@/chat/destination";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { normalizeGitHubResourceEvents } from "@/handlers/github-webhook";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
+import { loadEvalPluginFixtures } from "./eval-plugin-fixtures";
+
+interface NormalizedMessage {
+  role: "system" | "user" | "assistant";
+  content?: JsonValue;
+  metadata?: Record<string, JsonValue>;
+}
 
 const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
 
@@ -292,31 +289,14 @@ interface SubscribedDecisionFixture {
   should_reply: boolean;
 }
 
-interface EvalReplyResultFixture {
-  assistant_message_count?: number;
-  error_message?: string;
-  outcome?: "success" | "execution_failure" | "provider_error";
-  stop_reason?: string;
-  stream_text?: string;
-  text: string;
-  tool_calls?: string[];
-  tool_invocations?: EvalToolInvocation[];
-  tool_error_count?: number;
-  tool_result_count?: number;
-  usage?: AgentTurnUsage;
-  used_primary_text?: boolean;
-}
-
 export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
-  fail_reply_call?: number;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
-  reply_results?: EvalReplyResultFixture[];
   reply_timeout_ms?: number;
   reply_texts?: string[];
   skill_dirs?: string[];
@@ -401,6 +381,7 @@ export interface EvalCanvasArtifact {
 export interface EvalToolInvocation {
   arguments?: Record<string, unknown>;
   tool: string;
+  toolCallId?: string;
   bash_command?: string;
   completed?: boolean;
   error?: string;
@@ -533,12 +514,14 @@ function createReplayWebSearchDeps(
 }
 
 function toEvalToolInvocation(input: {
-  toolName: string;
   params: Record<string, unknown>;
+  toolCallId?: string;
+  toolName: string;
 }): EvalToolInvocation {
   const invocation: EvalToolInvocation = {
     tool: input.toolName,
     arguments: input.params,
+    ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
   };
 
   if (input.toolName.startsWith("slackSchedule")) {
@@ -651,10 +634,13 @@ const HARNESS_ENV_KEYS = [
   "JUNIOR_BASE_URL",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "SENTRY_CLIENT_ID",
+  "SENTRY_CLIENT_SECRET",
   "SLACK_BOT_TOKEN",
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
-const SENTRY_EVAL_SCOPE = "event:read org:read project:read team:read";
+const SENTRY_EVAL_SCOPE =
+  "alerts:write event:read org:read project:read team:read";
 const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 })
@@ -683,216 +669,35 @@ function snapshotEnv(keys: readonly string[]): EnvSnapshot {
   };
 }
 
-function isSandboxReachableBaseUrl(value: string): boolean {
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Eval reply aborted");
+}
+
+async function raceWithAbort<T>(
+  signal: AbortSignal,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (signal.aborted) {
+    throw abortReason(signal);
+  }
+  let removeAbortListener = () => {};
+  const abortPromise = new Promise<never>((_, reject) => {
+    const handleAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", handleAbort, { once: true });
+    removeAbortListener = () =>
+      signal.removeEventListener("abort", handleAbort);
+  });
   try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    return (
-      url.protocol === "https:" &&
-      hostname !== "localhost" &&
-      hostname !== "127.0.0.1" &&
-      hostname !== "::1" &&
-      !hostname.endsWith(".example.com") &&
-      !hostname.endsWith(".example.test") &&
-      hostname !== "example.com"
-    );
-  } catch {
-    return false;
-  }
-}
-
-function scenarioNeedsEvalEgress(scenario: EvalScenario): boolean {
-  return Boolean(
-    scenario.overrides?.credential_providers?.length ||
-    scenario.overrides?.auto_complete_oauth?.length ||
-    scenario.overrides?.expired_oauth_tokens?.length,
-  );
-}
-
-function configureHarnessBaseUrl(scenario: EvalScenario): void {
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
-  if (scenarioNeedsEvalEgress(scenario)) {
-    if (!baseUrl || !isSandboxReachableBaseUrl(baseUrl)) {
-      throw new Error(
-        "Eval sandbox HTTP interception requires JUNIOR_BASE_URL to point at a public HTTPS Junior app URL reachable from Vercel Sandbox so sandbox egress can reach the test egress proxy.",
-      );
-    }
-    return;
-  }
-
-  process.env.JUNIOR_BASE_URL = DEFAULT_EVAL_BASE_URL;
-}
-
-function requestHeadersFromNode(
-  headers: Record<string, string | string[] | undefined>,
-): Headers {
-  const result = new Headers();
-  for (const [key, value] of Object.entries(headers)) {
-    if (value === undefined) continue;
-    if (Array.isArray(value)) {
-      for (const item of value) result.append(key, item);
-    } else {
-      result.set(key, value);
-    }
-  }
-  return result;
-}
-
-function listen(server: Server): Promise<number> {
-  return new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("Eval egress server did not bind to a TCP port"));
-        return;
-      }
-      resolve(address.port);
-    });
-  });
-}
-
-function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-}
-
-async function writeResponse(
-  target: import("node:http").ServerResponse,
-  response: Response,
-): Promise<void> {
-  target.statusCode = response.status;
-  target.statusMessage = response.statusText;
-  response.headers.forEach((value, key) => {
-    target.setHeader(key, value);
-  });
-
-  if (!response.body) {
-    target.end();
-    return;
-  }
-
-  const reader = response.body.getReader();
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      target.write(next.value);
-    }
-    target.end();
+    return await Promise.race([operation(), abortPromise]);
   } finally {
-    reader.releaseLock();
+    removeAbortListener();
   }
 }
 
-async function waitForPublicEgressUrl(baseUrl: string): Promise<void> {
-  const deadline = Date.now() + 20_000;
-  let lastError: unknown;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(new URL("/health", baseUrl));
-      if (response.ok) return;
-      lastError = new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(
-    `Eval egress server was not reachable at ${baseUrl}: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  );
-}
-
-async function startEvalEgressServer(): Promise<EvalEgressServer> {
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim() ?? "";
-  const token = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
-  if (!token) {
-    throw new Error(
-      "Eval sandbox HTTP interception requires CLOUDFLARE_TUNNEL_TOKEN so Vercel Sandbox can reach the eval egress proxy.",
-    );
-  }
-
-  const server = createServer((incoming, outgoing) => {
-    void (async () => {
-      try {
-        if (incoming.url === "/health") {
-          outgoing.setHeader("content-type", "application/json");
-          outgoing.end(JSON.stringify({ ok: true }));
-          return;
-        }
-
-        const request = new Request(
-          new URL(incoming.url ?? "/", `http://${incoming.headers.host}`).href,
-          {
-            method: incoming.method,
-            headers: requestHeadersFromNode(incoming.headers),
-            ...(incoming.method === "GET" || incoming.method === "HEAD"
-              ? {}
-              : {
-                  body: incoming as unknown as BodyInit,
-                  duplex: "half",
-                }),
-          } as RequestInit,
-        );
-        await writeResponse(
-          outgoing,
-          await sandboxEgressProxyALL(request, {
-            interceptHttp: interceptTestHttp,
-          }),
-        );
-      } catch (error) {
-        console.error(
-          "Eval egress server request failed",
-          error instanceof Error ? error.message : String(error),
-        );
-        outgoing.statusCode = 500;
-        outgoing.setHeader("content-type", "text/plain; charset=utf-8");
-        outgoing.end("Eval egress server error\n");
-      }
-    })();
-  });
-
-  const port = await listen(server);
-  let tunnel: ChildProcess | undefined;
-  tunnel = spawn(
-    "cloudflared",
-    [
-      "tunnel",
-      "--no-autoupdate",
-      "--loglevel",
-      "warn",
-      "--transport-loglevel",
-      "error",
-      "run",
-      "--token",
-      token,
-      "--url",
-      `http://127.0.0.1:${port}`,
-    ],
-    { stdio: "ignore" },
-  );
-
-  try {
-    await waitForPublicEgressUrl(baseUrl);
-  } catch (error) {
-    tunnel.kill("SIGTERM");
-    await closeServer(server);
-    throw error;
-  }
-
-  return {
-    async close() {
-      tunnel?.kill("SIGTERM");
-      await closeServer(server);
-    },
-  };
+function ensureHarnessBaseUrl(): void {
+  process.env.JUNIOR_BASE_URL ??= DEFAULT_EVAL_BASE_URL;
 }
 
 // ---------------------------------------------------------------------------
@@ -948,6 +753,10 @@ async function cleanupHarnessThreadState(
   );
 
   for (const threadId of runtimeThreadIds) {
+    await deleteConversationState({
+      conversationId: threadId,
+      state: stateAdapter,
+    });
     await stateAdapter.delete(`thread-state:${threadId}`);
     await stateAdapter.unsubscribe(threadId);
   }
@@ -1032,9 +841,16 @@ function recordAssistantPost(
   thread: TestThread,
   post: EvalAssistantPost,
 ): void {
+  const attachmentSummary = post.files
+    .map(
+      (file) =>
+        `[attached ${file.isImage ? "image" : "file"}: ${file.filename}]`,
+    )
+    .join("\n");
+  const content = [post.text, attachmentSummary].filter(Boolean).join("\n");
   observations.sessionMessages.push({
     role: "assistant",
-    content: post.text,
+    content,
     metadata: {
       event_type: post.eventType ?? "thread_post",
       channel: thread.channelId,
@@ -1395,6 +1211,10 @@ function configureCredentialProviderEnv(
     process.env.GITHUB_APP_BOT_NAME = "junior-eval";
     process.env.GITHUB_APP_BOT_EMAIL = "junior-eval@example.com";
   }
+  if (providers.has("sentry")) {
+    process.env.SENTRY_CLIENT_ID = "eval-sentry-client-id";
+    process.env.SENTRY_CLIENT_SECRET = "eval-sentry-client-secret";
+  }
 }
 
 async function seedCredentialProviderTokens(input: {
@@ -1682,30 +1502,26 @@ interface HarnessEnvironment {
   autoCompleteOauthProviders: Set<string>;
   credentialProviders: Set<"github" | "sentry">;
   expiredOauthProviders: Set<string>;
-  configuredPluginDirs: string[];
   configuredSkillDirs: string[];
   envSnapshot: EnvSnapshot;
-  egressServer?: EvalEgressServer;
-  pluginApp?: PluginAppFixture;
   stateAdapter: HarnessStateAdapter;
-}
-
-interface EvalEgressServer {
-  close(): Promise<void>;
 }
 
 async function setupHarnessEnvironment(
   scenario: EvalScenario,
 ): Promise<HarnessEnvironment> {
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
-  let egressServer: EvalEgressServer | undefined;
-  let pluginApp: PluginAppFixture | undefined;
 
   try {
-    const configuredSkillDirs =
+    const explicitSkillDirs =
       scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
     const configuredPluginDirs =
       scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
+    const pluginFixtures = loadEvalPluginFixtures(configuredPluginDirs);
+    const configuredSkillDirs = [
+      ...explicitSkillDirs,
+      ...pluginFixtures.skillDirs,
+    ];
     const autoCompleteMcpOauthProviders = new Set(
       scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
     );
@@ -1734,28 +1550,16 @@ async function setupHarnessEnvironment(
     }
 
     configureCredentialProviderEnv(credentialProviders);
-    configureHarnessBaseUrl(scenario);
+    ensureHarnessBaseUrl();
     process.env.JUNIOR_SECRET = "junior-test-secret";
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
-    pluginApp =
-      configuredPluginDirs.length > 0
-        ? await createPluginAppFixture(configuredPluginDirs, {
-            linkNodeModules: Boolean(
-              scenario.overrides?.plugin_packages?.length,
-            ),
-          })
-        : undefined;
     pluginCatalogRuntime.setConfig({
+      inlineManifests: pluginFixtures.inlineManifests,
       packages: scenario.overrides?.plugin_packages ?? [],
     });
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    egressServer = scenarioNeedsEvalEgress(scenario)
-      ? await startEvalEgressServer()
-      : undefined;
     resetSkillDiscoveryCache();
-    resetTestGitHubHttpFixtures();
     await cleanupHarnessThreadState(stateAdapter, scenario);
     await cleanupMcpAuthState(authActorUsers, autoCompleteMcpOauthProviders);
     await cleanupOAuthTokens(authActorUsers, autoCompleteOauthProviders);
@@ -1776,19 +1580,14 @@ async function setupHarnessEnvironment(
       autoCompleteOauthProviders,
       credentialProviders,
       expiredOauthProviders,
-      configuredPluginDirs,
       configuredSkillDirs,
       envSnapshot,
-      ...(egressServer ? { egressServer } : {}),
-      ...(pluginApp ? { pluginApp } : {}),
       stateAdapter,
     };
   } catch (error) {
     resetSkillDiscoveryCache();
     pluginCatalogRuntime.setConfig(undefined);
     envSnapshot.restore();
-    await egressServer?.close();
-    await pluginApp?.cleanup();
     throw error;
   }
 }
@@ -1807,9 +1606,7 @@ async function teardownHarnessEnvironment(
   await cleanupOAuthTokens(env.authActorUsers, env.autoCompleteOauthProviders);
   await cleanupOAuthTokens(env.authActorUsers, env.credentialProviders);
   await cleanupOAuthTokens(env.authActorUsers, env.expiredOauthProviders);
-  await env.egressServer?.close();
   env.envSnapshot.restore();
-  await env.pluginApp?.cleanup();
 }
 
 // ---------------------------------------------------------------------------
@@ -1826,19 +1623,22 @@ function buildRuntimeServices(
   turnLifecycle: ConversationTurnLifecycle,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
-  const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs =
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
-      : Number.parseInt(
-          process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ??
-            (scenarioNeedsEvalEgress(scenario) ? "60000" : "30000"),
-          10,
-        );
-  let replyCallCount = 0;
+      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "60000", 10);
+  if (
+    !Number.isInteger(replyTimeoutMs) ||
+    replyTimeoutMs <= 0 ||
+    replyTimeoutMs > 60_000
+  ) {
+    throw new Error(
+      `Eval reply timeout must be an integer from 1 to 60000 milliseconds, got ${replyTimeoutMs}`,
+    );
+  }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
 
@@ -1891,56 +1691,7 @@ function buildRuntimeServices(
                 },
               }
             : request;
-          replyCallCount += 1;
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
-          if (scenario.overrides?.fail_reply_call === replyCallCount) {
-            throw new Error(`forced reply failure on call ${replyCallCount}`);
-          }
-          const replyResult = replyResults[replyCallCount - 1];
-          if (replyResult) {
-            await runRequest.durability?.onInputCommitted?.();
-            if (replyResult.stream_text) {
-              await runRequest.observers?.onTextDelta?.(
-                replyResult.stream_text,
-              );
-            }
-            replyState.successfulCount += 1;
-            observations.toolInvocations.push(
-              ...(replyResult.tool_invocations ??
-                (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
-            );
-            observations.usage = addAgentTurnUsage(
-              observations.usage,
-              replyResult.usage,
-            );
-            if (replyResult.usage) {
-              observations.modelIds.add("eval-reply-result");
-            }
-            return completedAgentRun({
-              text: replyResult.text,
-              deliveryMode: "thread",
-              deliveryPlan: {
-                mode: "thread",
-                postThreadText: true,
-              },
-              diagnostics: {
-                assistantMessageCount: replyResult.assistant_message_count ?? 1,
-                ...(replyResult.error_message
-                  ? { errorMessage: replyResult.error_message }
-                  : {}),
-                modelId: "eval-reply-result",
-                outcome: replyResult.outcome ?? "success",
-                ...(replyResult.stop_reason
-                  ? { stopReason: replyResult.stop_reason }
-                  : {}),
-                toolCalls: replyResult.tool_calls ?? [],
-                toolErrorCount: replyResult.tool_error_count ?? 0,
-                toolResultCount: replyResult.tool_result_count ?? 0,
-                ...(replyResult.usage ? { usage: replyResult.usage } : {}),
-                usedPrimaryText: replyResult.used_primary_text ?? true,
-              },
-            });
-          }
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
             await runRequest.durability?.onInputCommitted?.();
@@ -1984,57 +1735,57 @@ function buildRuntimeServices(
             delete process.env.VERCEL_OIDC_TOKEN;
           }
           try {
-            const pendingToolInvocations: Array<{
-              invocation: EvalToolInvocation;
-              params: Record<string, unknown>;
-            }> = [];
-            const outcome = await executeAgentRun({
-              ...runRequest,
-              policy: {
-                ...runRequest.policy,
-                signal,
-                turnDeadlineAtMs: Math.min(
-                  runRequest.policy?.turnDeadlineAtMs ??
-                    Number.POSITIVE_INFINITY,
-                  Date.now() + replyTimeoutMs,
-                ),
-                ...(env.configuredSkillDirs.length > 0
-                  ? { skillDirs: env.configuredSkillDirs }
-                  : {}),
-                toolOverrides,
-              },
-              observers: {
-                ...runRequest.observers,
-                onToolInvocation: (invocation) => {
-                  const evalInvocation = toEvalToolInvocation(invocation);
-                  observations.toolInvocations.push(evalInvocation);
-                  pendingToolInvocations.push({
-                    invocation: evalInvocation,
-                    params: invocation.params,
-                  });
+            const pendingToolInvocations: EvalToolInvocation[] = [];
+            const replySignal = AbortSignal.any([
+              ...(signal ? [signal] : []),
+              AbortSignal.timeout(replyTimeoutMs),
+            ]);
+            const outcome = await raceWithAbort(replySignal, () =>
+              executeAgentRun({
+                ...runRequest,
+                policy: {
+                  ...runRequest.policy,
+                  signal: replySignal,
+                  turnDeadlineAtMs: Math.min(
+                    runRequest.policy?.turnDeadlineAtMs ??
+                      Number.POSITIVE_INFINITY,
+                    Date.now() + replyTimeoutMs,
+                  ),
+                  ...(env.configuredSkillDirs.length > 0
+                    ? { skillDirs: env.configuredSkillDirs }
+                    : {}),
+                  toolOverrides,
                 },
-                onToolResult: (result) => {
-                  const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.params === result.params,
-                  );
-                  if (pendingIndex === -1) {
-                    return;
-                  }
-                  const [{ invocation }] = pendingToolInvocations.splice(
-                    pendingIndex,
-                    1,
-                  );
-                  invocation.completed = true;
-                  invocation.ok = result.ok;
-                  if (result.error) {
-                    invocation.error = result.error;
-                  }
-                  if (result.result !== undefined) {
-                    invocation.result = result.result;
-                  }
+                observers: {
+                  ...runRequest.observers,
+                  onToolInvocation: (invocation) => {
+                    const evalInvocation = toEvalToolInvocation(invocation);
+                    observations.toolInvocations.push(evalInvocation);
+                    pendingToolInvocations.push(evalInvocation);
+                  },
+                  onToolResult: (result) => {
+                    const pendingIndex = pendingToolInvocations.findIndex(
+                      (candidate) => candidate.toolCallId === result.toolCallId,
+                    );
+                    if (pendingIndex === -1) {
+                      return;
+                    }
+                    const [invocation] = pendingToolInvocations.splice(
+                      pendingIndex,
+                      1,
+                    );
+                    invocation.completed = true;
+                    invocation.ok = result.ok;
+                    if (result.error) {
+                      invocation.error = result.error;
+                    }
+                    if (result.result !== undefined) {
+                      invocation.result = result.result;
+                    }
+                  },
                 },
-              },
-            });
+              }),
+            );
             const usage =
               outcome.status === "completed"
                 ? outcome.result.diagnostics.usage

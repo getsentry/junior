@@ -51,6 +51,7 @@ export function createPiAgentTools(
   sandboxExecutor?: SandboxExecutor,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (
+    toolCallId: string,
     toolName: string,
     params: Record<string, unknown>,
   ) => void | Promise<void>,
@@ -128,21 +129,15 @@ export function createPiAgentTools(
     return normalized.details;
   };
   const executeDefinition = async (args: {
-    normalizedToolCallId: string | undefined;
+    toolCallId: string;
     params: Record<string, unknown>;
     signal: AbortSignal | undefined;
     setSpanAttributes: SetSpanAttributes;
     toolDef: AnyToolDefinition;
     toolName: string;
   }) => {
-    const {
-      normalizedToolCallId,
-      params,
-      signal,
-      setSpanAttributes,
-      toolDef,
-      toolName,
-    } = args;
+    const { toolCallId, params, signal, setSpanAttributes, toolDef, toolName } =
+      args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
@@ -154,7 +149,7 @@ export function createPiAgentTools(
         })
       : { input: params, env: {} };
     const toolInput = beforeTool.input;
-    await onToolCall?.(toolName, toolInput);
+    await onToolCall?.(toolCallId, toolName, toolInput);
     const sandboxInput = buildSandboxInput(toolName, toolInput);
     const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
     const result = isSandbox
@@ -167,7 +162,7 @@ export function createPiAgentTools(
           experimental_context: sandbox,
           ...(signal ? { signal } : {}),
           conversationPrivacy: effectiveConversationPrivacy,
-          ...(normalizedToolCallId ? { toolCallId: normalizedToolCallId } : {}),
+          toolCallId,
         });
 
     const normalized = normalizeToolResult(result, isSandbox, {
@@ -232,6 +227,7 @@ export function createPiAgentTools(
       ok: toolResultOk(normalized.details),
       params: toolInput,
       result: resultAttributeValue,
+      toolCallId,
       toolName,
     });
     return normalized;
@@ -260,10 +256,9 @@ export function createPiAgentTools(
       params: unknown,
       signal?: AbortSignal,
     ) => {
-      const normalizedToolCallId =
-        typeof toolCallId === "string" && toolCallId.length > 0
-          ? toolCallId
-          : undefined;
+      if (typeof toolCallId !== "string" || toolCallId.length === 0) {
+        throw new Error("Pi tool execution requires a non-empty tool call id.");
+      }
       // Intentional OTel deviation: private traces put Junior's safe metadata
       // here, with flattened gen_ai.tool.call.arguments.* extension attributes.
       const toolArgumentsAttribute = serializeToolPayload(params, {
@@ -300,7 +295,7 @@ export function createPiAgentTools(
               executionParams = catalogCall.arguments;
               await reportStatus(executionToolName, executionParams);
               return await executeDefinition({
-                normalizedToolCallId,
+                toolCallId,
                 params: catalogCall.arguments,
                 signal,
                 setSpanAttributes,
@@ -311,7 +306,7 @@ export function createPiAgentTools(
 
             await reportStatus(executionToolName, executionParams);
             return await executeDefinition({
-              normalizedToolCallId,
+              toolCallId,
               params: parsed,
               signal,
               setSpanAttributes,
@@ -323,6 +318,7 @@ export function createPiAgentTools(
               error: error instanceof Error ? error.message : String(error),
               ok: false,
               params: executionParams,
+              toolCallId,
               toolName: executionToolName,
             });
             if (
@@ -334,7 +330,7 @@ export function createPiAgentTools(
             handleToolExecutionError(
               error,
               executionToolName,
-              normalizedToolCallId,
+              toolCallId,
               shouldTrace,
               spanContext,
               effectiveConversationPrivacy,
@@ -348,9 +344,7 @@ export function createPiAgentTools(
           "gen_ai.tool.description": toolDef.description,
           "gen_ai.tool.type": "function",
           ...toolArgumentsMetadata,
-          ...(normalizedToolCallId
-            ? { "gen_ai.tool.call.id": normalizedToolCallId }
-            : {}),
+          "gen_ai.tool.call.id": toolCallId,
           ...(toolArgumentsAttribute
             ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
             : {}),

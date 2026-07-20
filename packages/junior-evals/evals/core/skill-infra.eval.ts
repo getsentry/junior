@@ -1,20 +1,12 @@
 import { expect } from "vitest";
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
-
-type EvalSession = Parameters<typeof assistantMessages>[0];
-
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function visibleThreadReplies(session: EvalSession) {
-  return assistantMessages(session).filter(
-    (message) =>
-      message.metadata?.event_type === "thread_post" &&
-      textContent(message.content).trim().length > 0,
-  );
-}
+import { describeEval, toolCalls } from "vitest-evals";
+import {
+  mention,
+  rubric,
+  slackEvals,
+  threadMessage,
+  visibleThreadReplies,
+} from "../../src/helpers";
 
 describeEval("Skill Infrastructure", slackEvals, (it) => {
   it("when the candidate brief command runs, return one candidate brief reply", async ({

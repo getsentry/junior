@@ -23,7 +23,6 @@ jobs:
     outputs:
       evals_changed: ${{ steps.changes.outputs.evals_changed }}
       evals_requested: ${{ steps.request.outputs.evals_requested }}
-      egress_ready: ${{ steps.secrets.outputs.egress_ready }}
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
       should_run: ${{ steps.decision.outputs.should_run }}
@@ -55,14 +54,17 @@ jobs:
           filters: |
             evals_changed:
               - packages/junior-evals/evals/**
+              - packages/junior-evals/package.json
+              - packages/junior-evals/global-setup.ts
+              - packages/junior-evals/postgres-global-setup.ts
+              - packages/junior-evals/src/**
+              - packages/junior-evals/tests/**
               - packages/junior-evals/vitest.evals.config.ts
               - packages/junior/src/**
 
       - id: secrets
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
-          JUNIOR_BASE_URL: ${{ secrets.JUNIOR_BASE_URL }}
           VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
@@ -76,12 +78,6 @@ jobs:
             echo "gateway_ready=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" && -n "${JUNIOR_BASE_URL:-}" ]]; then
-            echo "egress_ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "egress_ready=false" >> "$GITHUB_OUTPUT"
-          fi
-
           if [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]]; then
             echo "sandbox_ready=true" >> "$GITHUB_OUTPUT"
           else
@@ -92,14 +88,13 @@ jobs:
         env:
           EVALS_CHANGED: ${{ steps.changes.outputs.evals_changed }}
           EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
-          EGRESS_READY: ${{ steps.secrets.outputs.egress_ready }}
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
         run: |
           set -euo pipefail
 
           should_run=false
-          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && "$EGRESS_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
             should_run=true
           fi
 
@@ -109,7 +104,6 @@ jobs:
             echo
             echo "- evals_changed: $EVALS_CHANGED"
             echo "- evals_requested: $EVALS_REQUESTED"
-            echo "- egress_ready: $EGRESS_READY"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
             echo "- will_run: $should_run"
@@ -144,11 +138,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      REDIS_URL: redis://localhost:6379
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-      CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
-      JUNIOR_BASE_URL: ${{ secrets.JUNIOR_BASE_URL }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -157,4 +149,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter @sentry/junior-evals evals
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      - name: Verify eval egress lifecycle
+        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
+      - name: Run evals
+        env:
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals
+      - name: Publish eval report
+        if: always()
+        uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
+        with:
+          results: packages/junior-evals/vitest-results.json
