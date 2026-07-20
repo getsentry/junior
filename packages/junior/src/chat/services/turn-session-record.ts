@@ -1,6 +1,6 @@
 import {
-  getAgentTurnResumeRecord,
   getAgentTurnSessionRecord,
+  getAgentTurnSessionRecordForResume,
   upsertAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
   type AgentTurnSurface,
@@ -112,7 +112,10 @@ export async function loadTurnSessionRecord(
   const canUseTurnSession = Boolean(ctx.conversationId && ctx.sessionId);
   const existingSessionRecord =
     canUseTurnSession && ctx.conversationId && ctx.sessionId
-      ? await getAgentTurnResumeRecord(ctx.conversationId, ctx.sessionId)
+      ? await getAgentTurnSessionRecordForResume(
+          ctx.conversationId,
+          ctx.sessionId,
+        )
       : undefined;
   const hasAwaitingResumeRecord = Boolean(
     existingSessionRecord && existingSessionRecord.state === "awaiting_resume",

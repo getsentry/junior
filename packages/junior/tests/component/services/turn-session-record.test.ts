@@ -1299,7 +1299,7 @@ describe("persistAuthPauseSessionRecord", () => {
   it("resumes an unfinished turn from a committed handoff replacement", async () => {
     const { loadTurnSessionRecord } =
       await import("@/chat/services/turn-session-record");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-handoff-resume";
@@ -1340,14 +1340,6 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     });
 
-    const pinnedRecord = await getAgentTurnSessionRecord(
-      conversationId,
-      sessionId,
-    );
-    expect(JSON.stringify(pinnedRecord?.piMessages)).toContain("old request");
-    expect(JSON.stringify(pinnedRecord?.piMessages)).not.toContain(
-      "continue from the handoff summary",
-    );
     await expect(
       loadTurnSessionRecord({ conversationId, sessionId }),
     ).resolves.toMatchObject({

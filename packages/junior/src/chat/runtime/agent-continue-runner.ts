@@ -23,8 +23,8 @@ import {
 } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
-  getAgentTurnResumeRecord,
   getAgentTurnSessionRecord,
+  getAgentTurnSessionRecordForResume,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
@@ -577,7 +577,7 @@ async function recoverStrandedRunningSession(args: {
   }
   await stateAdapter.releaseLock(probe);
 
-  const sessionRecord = await getAgentTurnResumeRecord(
+  const sessionRecord = await getAgentTurnSessionRecordForResume(
     args.conversationId,
     args.summary.sessionId,
   );

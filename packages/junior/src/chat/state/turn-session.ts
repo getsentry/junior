@@ -444,8 +444,8 @@ export async function getAgentTurnSessionRecord(
   );
 }
 
-/** Read an unfinished turn, following a newer committed history replacement. */
-export async function getAgentTurnResumeRecord(
+/** Read a turn session for resume, following a newer committed replacement while unfinished. */
+export async function getAgentTurnSessionRecordForResume(
   conversationId: string,
   sessionId: string,
 ): Promise<AgentTurnSessionRecord | undefined> {
