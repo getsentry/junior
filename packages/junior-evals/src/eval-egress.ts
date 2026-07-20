@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { resolve4 } from "node:dns/promises";
+import { Resolver, resolve4 } from "node:dns/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -74,6 +74,33 @@ function closeServer(server: Server): Promise<void> {
       else resolve();
     });
   });
+}
+
+/** Resolve a Quick Tunnel hostname through public DNS when system DNS is stale. */
+export async function resolveQuickTunnelIpv4(
+  hostname: string,
+): Promise<string> {
+  let addresses: string[];
+  try {
+    addresses = await resolve4(hostname);
+  } catch (systemError) {
+    const publicResolver = new Resolver();
+    publicResolver.setServers(["1.1.1.1", "8.8.8.8"]);
+    try {
+      addresses = await publicResolver.resolve4(hostname);
+    } catch (publicError) {
+      throw new AggregateError(
+        [systemError, publicError],
+        `Could not resolve ${hostname} through system or public DNS`,
+        { cause: systemError },
+      );
+    }
+  }
+  const [address] = addresses;
+  if (!address) {
+    throw new Error(`No IPv4 address resolved for ${hostname}`);
+  }
+  return address;
 }
 
 async function writeResponse(
@@ -279,10 +306,7 @@ function requestPublicProxy(baseUrl: string): Promise<number> {
   return new Promise((resolve, reject) => {
     void (async () => {
       const url = new URL("/api/internal/sandbox-egress", baseUrl);
-      const [address] = await resolve4(url.hostname);
-      if (!address) {
-        throw new Error(`No IPv4 address resolved for ${url.hostname}`);
-      }
+      const address = await resolveQuickTunnelIpv4(url.hostname);
       const request = httpsRequest(
         {
           headers: { host: url.hostname },
