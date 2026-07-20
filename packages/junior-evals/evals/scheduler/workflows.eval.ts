@@ -45,20 +45,6 @@ function expectNoToolCalls(
   ).toEqual([]);
 }
 
-function expectNoSuccessfulToolCalls(
-  session: Parameters<typeof toolCalls>[0],
-  names: readonly string[],
-) {
-  expect(
-    toolCalls(session).filter(
-      (call) =>
-        names.includes(call.name) &&
-        call.status === "ok" &&
-        call.result !== undefined,
-    ),
-  ).toEqual([]);
-}
-
 describeEval("Scheduler", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
@@ -202,9 +188,7 @@ describeEval("Scheduler", slackEvals, (it) => {
       }),
     });
 
-    expectNoSuccessfulToolCalls(result.session, [
-      "scheduler_slackScheduleCreateTask",
-    ]);
+    expectNoToolCalls(result.session, ["scheduler_slackScheduleCreateTask"]);
   });
 
   it("when the creator denies connected credential use, create in system mode", async ({

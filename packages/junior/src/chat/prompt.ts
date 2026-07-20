@@ -384,8 +384,7 @@ const EXECUTION_CONTRACT_RULES = [
 
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
-  "- A direct user mention or instruction takes precedence over resource-event and bot-notification context; answer the user instead of treating that context as a separate request.",
-  "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject. Do not attribute another participant's first-person statements or preferences to the actor.",
+  "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.",
   "- Runtime owns continuation and authorization notices; on resumed turns, answer with the final requested content only.",
 ];
 
@@ -394,7 +393,7 @@ const SLACK_ACTION_RULES = [
   "- Use sendMessage only when the user asks to send, share, or attach text, sandbox-path files, or both in the active Slack conversation.",
   "- sendMessage has no target argument; it always sends into the active Slack conversation/thread. For top-level channel posts, other channels, or named recipients, explain that this runtime can only send into the active conversation.",
   "- sendMessage is not final-reply delivery. After using sendMessage, provide a brief normal final answer unless the user requested no further text.",
-  "- Ambient reaction requests target the current inbound message; do not ask for a message reference. For a reaction-only request, add the reaction and return no visible acknowledgement.",
+  "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
   `- When no visible final thread reply is useful, make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 
