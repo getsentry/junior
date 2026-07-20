@@ -36,8 +36,12 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
+import {
+  AGENT_TURN_SESSION_PREFIX,
+  agentTurnSessionConversationIndexKey,
+  agentTurnSessionKey,
+} from "./turn-session-keys";
 
-const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
@@ -179,17 +183,6 @@ const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
     turnStartSeq: seqCursorSchema.optional(),
   })
   .strict() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
-
-function agentTurnSessionKey(
-  conversationId: string,
-  sessionId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
-}
-
-function agentTurnSessionConversationIndexKey(conversationId: string): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
-}
 
 function conversationExecutionFromSummary(
   summary: AgentTurnSessionSummary,

@@ -153,6 +153,30 @@ import { getConversationEventStore } from "@/chat/db";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
+function expectedHandoffReplacementHistory() {
+  return [
+    {
+      message: {
+        role: "user",
+        timestamp: expect.any(Number),
+        content: [
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("<runtime-turn-context>"),
+          }),
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining(
+              "<current-instruction>\nModel handoff checkpoint.",
+            ),
+          }),
+        ],
+      },
+      provenance: { authority: "context" },
+    },
+  ];
+}
+
 describe("executeAgentRun model handoff", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -247,6 +271,7 @@ describe("executeAgentRun model handoff", () => {
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
     const projection = await loadProjection({ conversationId });
@@ -382,6 +407,7 @@ describe("executeAgentRun model handoff", () => {
         modelProfile: "coding",
         modelId: "openai/gpt-5.4",
         triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
 
@@ -470,6 +496,7 @@ describe("executeAgentRun model handoff", () => {
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
   });

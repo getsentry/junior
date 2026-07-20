@@ -164,6 +164,48 @@ describe("operator legacy conversation history conversion", () => {
     expect(currentEpoch).toBe(1);
   });
 
+  it("only rewrites the generated legacy checkpoint message", () => {
+    const quotedPrefix = userMessage(
+      "I quoted Context handoff summary for future Junior turns: in a request",
+      10,
+    );
+    const legacyCheckpoint = userMessage(
+      "Context handoff summary for future Junior turns:\nsummary",
+      20,
+    );
+    const { events } = convertLegacySessionLog({
+      conversationId: CONVERSATION_ID,
+      fallbackCreatedAtMs: FALLBACK_MS,
+      modelId: MODEL_ID,
+      entries: [
+        piEntry(quotedPrefix, "session_0"),
+        {
+          schemaVersion: 2,
+          type: "projection_reset",
+          sessionId: "session_1",
+          messages: [quotedPrefix, legacyCheckpoint],
+        } as SessionLogEntry,
+      ],
+    });
+
+    expect(events[0]!.data).toMatchObject({
+      type: "message",
+      message: quotedPrefix,
+    });
+    expect(events[1]!.data).toMatchObject({
+      type: "context_epoch_started",
+      replacementHistory: [
+        { message: quotedPrefix },
+        {
+          message: userMessage(
+            "Context compaction summary for future Junior turns:\nsummary",
+            20,
+          ),
+        },
+      ],
+    });
+  });
+
   it("converts an advisor subagent transcriptRef to a child conversation link and drops transcript cursors", () => {
     const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,

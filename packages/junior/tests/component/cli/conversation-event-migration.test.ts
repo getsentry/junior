@@ -9,6 +9,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
 import { normalizeConversationContextCheckpoints } from "@/cli/upgrade/migrations/conversation-context-checkpoints";
+import { prepareConversationEventResequence } from "@/cli/upgrade/migrations/conversation-event-cursors";
 import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-history/session-log";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
@@ -57,6 +58,87 @@ async function executeStatements(
 }
 
 describe("conversation event migration", () => {
+  it("fails closed when a discovered turn cursor is malformed", async () => {
+    const conversationId = "conversation-malformed-cursor";
+    const statePrefix = getChatConfig().state.keyPrefix;
+    const rawKey = [
+      "chat-sdk:cache",
+      ...(statePrefix ? [statePrefix] : []),
+      `junior:agent_turn_session:${conversationId}:turn-1`,
+    ].join(":");
+    const context = {
+      io: { info: () => {} },
+      redisStateAdapter: {
+        getClient: () => ({
+          sendCommand: async (args: readonly string[]) =>
+            args[0] === "SCAN" ? ["0", [rawKey]] : "{malformed",
+        }),
+      } as unknown as RedisStateAdapter,
+      stateAdapter: getStateAdapter(),
+    };
+
+    await expect(
+      prepareConversationEventResequence(context, new Set([conversationId])),
+    ).rejects.toThrow(`Turn-session cursor ${rawKey} is invalid JSON`);
+  });
+
+  it("fails closed when a discovered turn cursor identity mismatches its key", async () => {
+    const conversationId = "conversation-mismatched-cursor";
+    const statePrefix = getChatConfig().state.keyPrefix;
+    const rawKey = [
+      "chat-sdk:cache",
+      ...(statePrefix ? [statePrefix] : []),
+      `junior:agent_turn_session:${conversationId}:turn-1`,
+    ].join(":");
+    const context = {
+      io: { info: () => {} },
+      redisStateAdapter: {
+        getClient: () => ({
+          sendCommand: async (args: readonly string[]) =>
+            args[0] === "SCAN"
+              ? ["0", [rawKey]]
+              : JSON.stringify({
+                  conversationId: "different-conversation",
+                  sessionId: "turn-1",
+                }),
+        }),
+      } as unknown as RedisStateAdapter,
+      stateAdapter: getStateAdapter(),
+    };
+
+    await expect(
+      prepareConversationEventResequence(context, new Set([conversationId])),
+    ).rejects.toThrow(
+      `Turn-session cursor ${rawKey} identity does not match its key`,
+    );
+  });
+
+  it("ignores malformed raw cursors for conversations outside the resequence", async () => {
+    const conversationId = "conversation-being-resequenced";
+    const statePrefix = getChatConfig().state.keyPrefix;
+    const unrelatedRawKey = [
+      "chat-sdk:cache",
+      ...(statePrefix ? [statePrefix] : []),
+      "junior:agent_turn_session:unrelated-conversation:turn-1",
+    ].join(":");
+    const context = {
+      io: { info: () => {} },
+      redisStateAdapter: {
+        getClient: () => ({
+          sendCommand: async (args: readonly string[]) => {
+            if (args[0] === "SCAN") return ["0", [unrelatedRawKey]];
+            throw new Error(`Unexpected Redis command ${args.join(" ")}`);
+          },
+        }),
+      } as unknown as RedisStateAdapter,
+      stateAdapter: getStateAdapter(),
+    };
+
+    await expect(
+      prepareConversationEventResequence(context, new Set([conversationId])),
+    ).resolves.toBeUndefined();
+  });
+
   it("preserves the live suffix and full count from deployed compaction rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const migrationsBeforeConversationEvents = [
@@ -745,7 +827,15 @@ ORDER BY indexname
   it("moves deployed context copies onto canonical checkpoint markers", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const conversationId = "conversation-context-checkpoints";
-    const user = { role: "user", content: [{ type: "text", text: "keep" }] };
+    const user = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "keep this quote: Context handoff summary for future Junior turns:",
+        },
+      ],
+    };
     const firstAssistant = {
       role: "assistant",
       content: [{ type: "text", text: "first" }],
@@ -936,6 +1026,33 @@ ORDER BY indexname
         committedSeq: 13,
         turnStartSeq: 10,
       });
+      await fixture.sql.execute(
+        `UPDATE junior_conversation_events
+         SET payload = jsonb_set(payload, '{modelProfile}', $3::jsonb)
+         WHERE conversation_id = $1 AND seq = $2`,
+        [conversationId, 7, JSON.stringify("standard")],
+      );
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).rejects.toThrow("handoff profile must not be standard");
+      await expect(
+        fixture.sql.query<{ seq: number }>(
+          `SELECT seq
+           FROM junior_conversation_events
+           WHERE conversation_id = $1
+           ORDER BY seq`,
+          [conversationId],
+        ),
+      ).resolves.toEqual(Array.from({ length: 15 }, (_, seq) => ({ seq })));
+      await fixture.sql.execute(
+        `UPDATE junior_conversation_events
+         SET payload = jsonb_set(payload, '{modelProfile}', $3::jsonb)
+         WHERE conversation_id = $1 AND seq = $2`,
+        [conversationId, 7, JSON.stringify("handoff")],
+      );
       await expect(
         normalizeConversationContextCheckpoints(context, {
           executor: fixture.sql,

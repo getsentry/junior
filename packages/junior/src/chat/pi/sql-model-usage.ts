@@ -9,12 +9,6 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 
-/** Usage attributed to one provider/model pair across canonical history. */
-export interface ConversationModelUsage {
-  modelId: string;
-  usage: AgentTurnUsage;
-}
-
 const message = sql`${juniorConversationEvents.payload}->'message'`;
 const usage = sql`${message}->'usage'`;
 const cost = sql`${usage}->'cost'`;
@@ -127,7 +121,7 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
 export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
   conversationId: string,
-): Promise<ConversationModelUsage[]> {
+): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
   const modelId = sql<string>`concat(${message}->>'provider', '/', ${message}->>'model')`;
   const inputTokens = token("input", "inputTokens");
   const outputTokens = token("output", "outputTokens");

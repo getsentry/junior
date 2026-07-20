@@ -31,7 +31,10 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
-import { normalizeLegacyContextMessage } from "./legacy-context-message";
+import {
+  isLegacyOrCurrentCheckpointMessage,
+  normalizeLegacyContextMessage,
+} from "./legacy-context-message";
 
 const INITIAL_SESSION_ID = "session_0";
 const ADVISOR_TASK_OPEN = "<advisor-task>\n";
@@ -164,7 +167,7 @@ export function convertLegacySessionLog(args: {
     const epoch = epochFromSessionId(entry.sessionId ?? INITIAL_SESSION_ID);
     switch (entry.type) {
       case "pi_message": {
-        const message = normalizeLegacyContextMessage(entry.message);
+        const message = entry.message;
         push(
           epoch,
           {
@@ -192,6 +195,9 @@ export function convertLegacySessionLog(args: {
             .find(
               (timestamp): timestamp is number => timestamp !== undefined,
             ) ?? fallback;
+        const checkpointIndex = entry.messages.findIndex(
+          isLegacyOrCurrentCheckpointMessage,
+        );
         push(
           epoch,
           {
@@ -200,7 +206,10 @@ export function convertLegacySessionLog(args: {
             modelProfile: "standard",
             modelId: args.modelId,
             replacementHistory: entry.messages.map((message, index) => ({
-              message: normalizeLegacyContextMessage(message),
+              message:
+                index === checkpointIndex
+                  ? normalizeLegacyContextMessage(message)
+                  : message,
               provenance: provenance[index]!,
             })),
           },

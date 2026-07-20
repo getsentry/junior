@@ -2,38 +2,42 @@ import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { getChatConfig } from "@/chat/config";
 import { isRecord, toOptionalString } from "@/chat/coerce";
 import type { MigrationContext } from "../types";
+import {
+  AGENT_TURN_SESSION_PREFIX,
+  agentTurnSessionConversationIndexKey,
+  agentTurnSessionKey,
+} from "@/chat/state/turn-session-keys";
 
-const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const REDIS_SCAN_COUNT = 500;
 
 type RedisCommandClient = {
   sendCommand<T = unknown>(args: readonly string[]): Promise<T>;
 };
 
-function turnSessionConversationIndexKey(conversationId: string): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
-}
-
-function turnSessionRecordKey(
-  conversationId: string,
-  sessionId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
-}
-
 function rawTurnSessionKeyPattern(): string {
   const statePrefix = getChatConfig().state.keyPrefix;
   return `*:cache:${statePrefix ? `${statePrefix}:` : ""}${AGENT_TURN_SESSION_PREFIX}:*`;
 }
 
+function logicalStateKey(rawKey: string): string | undefined {
+  const statePrefix = getChatConfig().state.keyPrefix;
+  const cachePrefix = `:cache:${statePrefix ? `${statePrefix}:` : ""}`;
+  const cacheAt = rawKey.indexOf(cachePrefix);
+  return cacheAt < 0 ? undefined : rawKey.slice(cacheAt + cachePrefix.length);
+}
+
 async function discoverRawTurnSessionKeys(
   redisStateAdapter: RedisStateAdapter | undefined,
+  conversationIds: ReadonlySet<string>,
 ): Promise<Map<string, string>> {
   const client = redisStateAdapter?.getClient() as
     | RedisCommandClient
     | undefined;
   const discovered = new Map<string, string>();
   if (!client) return discovered;
+  const targetKeyPrefixes = [...conversationIds].map(
+    (conversationId) => `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:`,
+  );
 
   let cursor = "0";
   do {
@@ -58,22 +62,42 @@ async function discoverRawTurnSessionKeys(
     cursor = String(reply[0]);
     for (const rawKey of reply[1]) {
       if (typeof rawKey !== "string") continue;
+      const logicalKey = logicalStateKey(rawKey);
+      if (
+        !logicalKey ||
+        !targetKeyPrefixes.some((prefix) => logicalKey.startsWith(prefix))
+      ) {
+        continue;
+      }
       const encoded = await client.sendCommand<unknown>(["GET", rawKey]);
-      if (typeof encoded !== "string") continue;
+      if (encoded === null) continue;
+      if (typeof encoded !== "string") {
+        throw new Error(`Turn-session cursor ${rawKey} is not JSON text`);
+      }
       let value: unknown;
       try {
         value = JSON.parse(encoded);
-      } catch {
-        continue;
+      } catch (error) {
+        throw new Error(`Turn-session cursor ${rawKey} is invalid JSON`, {
+          cause: error,
+        });
       }
-      if (!isRecord(value)) continue;
+      if (!isRecord(value)) {
+        throw new Error(`Turn-session cursor ${rawKey} is not an object`);
+      }
       const conversationId = toOptionalString(value.conversationId);
       const sessionId = toOptionalString(value.sessionId);
-      if (!conversationId || !sessionId) continue;
-      discovered.set(
-        turnSessionRecordKey(conversationId, sessionId),
-        conversationId,
-      );
+      if (!conversationId || !sessionId) {
+        throw new Error(`Turn-session cursor ${rawKey} has no identity`);
+      }
+      const recordKey = agentTurnSessionKey(conversationId, sessionId);
+      if (logicalKey !== recordKey) {
+        throw new Error(
+          `Turn-session cursor ${rawKey} identity does not match its key`,
+        );
+      }
+      if (!conversationIds.has(conversationId)) continue;
+      discovered.set(recordKey, conversationId);
     }
   } while (cursor !== "0");
 
@@ -85,7 +109,7 @@ async function indexedTurnSessionIds(
   conversationId: string,
 ): Promise<string[]> {
   const summaries = await context.stateAdapter.getList(
-    turnSessionConversationIndexKey(conversationId),
+    agentTurnSessionConversationIndexKey(conversationId),
   );
   return [
     ...new Set(
@@ -123,13 +147,14 @@ export async function prepareConversationEventResequence(
       context,
       conversationId,
     )) {
-      keys.add(turnSessionRecordKey(conversationId, sessionId));
+      keys.add(agentTurnSessionKey(conversationId, sessionId));
     }
   }
-  for (const [key, conversationId] of await discoverRawTurnSessionKeys(
+  for (const [key] of await discoverRawTurnSessionKeys(
     context.redisStateAdapter,
+    conversationIds,
   )) {
-    if (conversationIds.has(conversationId)) keys.add(key);
+    keys.add(key);
   }
 
   const terminalKeys: string[] = [];

@@ -7,10 +7,7 @@ import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/p
 import type { Conversation } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
-import {
-  readConversationModelUsageFromSql,
-  type ConversationModelUsage,
-} from "@/chat/pi/sql-model-usage";
+import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import {
   conversationReportSourceEventTypes,
   projectConversationReportEvents,
@@ -30,7 +27,7 @@ function projectConversationDetail(args: {
   events: ConversationEvent[];
   privacyConversationId?: string;
   locationId?: string;
-  modelUsage: ConversationModelUsage[];
+  modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
   const { conversation } = args;

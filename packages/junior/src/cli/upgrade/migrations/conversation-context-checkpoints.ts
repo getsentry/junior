@@ -11,6 +11,7 @@ import {
 } from "./conversation-history/legacy-context-message";
 import { prepareConversationEventResequence } from "./conversation-event-cursors";
 import type { PiMessage } from "@/chat/pi/messages";
+import { conversationEventDataSchema } from "@/chat/conversations/history";
 
 const PAGE_SIZE = 250;
 
@@ -75,7 +76,10 @@ function matchingMessagePrefix(
   return count;
 }
 
-function replacementEntry(row: StoredEventRow): ReplacementEntry {
+function replacementEntry(
+  row: StoredEventRow,
+  normalizeCheckpoint: boolean,
+): ReplacementEntry {
   const message = row.payload.message;
   if (
     message === null ||
@@ -87,9 +91,9 @@ function replacementEntry(row: StoredEventRow): ReplacementEntry {
     );
   }
   return {
-    message: normalizeLegacyContextMessage(
-      message as unknown as PiMessage,
-    ) as unknown as Record<string, unknown>,
+    message: (normalizeCheckpoint
+      ? normalizeLegacyContextMessage(message as unknown as PiMessage)
+      : message) as Record<string, unknown>,
     ...(row.payload.provenance === undefined
       ? {}
       : { provenance: row.payload.provenance }),
@@ -100,14 +104,17 @@ function resolvedBinding(
   payload: Record<string, unknown>,
   bot: BotConfig,
 ): { modelId: string; modelProfile: string } {
-  const parsedProfile = modelProfileSchema.safeParse(payload.modelProfile);
-  const modelProfile = parsedProfile.success ? parsedProfile.data : "standard";
+  const modelProfile =
+    payload.modelProfile === undefined
+      ? "standard"
+      : modelProfileSchema.parse(payload.modelProfile);
+  const modelId = payload.modelId;
+  if (modelId !== undefined && (typeof modelId !== "string" || !modelId)) {
+    throw new Error("Context checkpoint modelId must be a non-empty string");
+  }
   return {
     modelProfile,
-    modelId:
-      typeof payload.modelId === "string" && payload.modelId.length > 0
-        ? payload.modelId
-        : modelIdForProfile(bot, modelProfile),
+    modelId: modelId ?? modelIdForProfile(bot, modelProfile),
   };
 }
 
@@ -139,6 +146,7 @@ function handoffToolCallId(
   return tool.payload.toolCallId;
 }
 
+/** Normalize one event stream atomically while closing copied-message gaps. */
 async function normalizeConversation(args: {
   bot: BotConfig;
   conversationId: string;
@@ -204,14 +212,21 @@ async function normalizeConversation(args: {
           }
           const replacementRows = current.slice(0, replacementCount);
           const binding = resolvedBinding(marker.payload, args.bot);
-          const payload = {
+          const parsed = conversationEventDataSchema.parse({
+            type: "context_epoch_started",
             reason,
             ...binding,
             ...(reason === "handoff"
               ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
               : {}),
-            replacementHistory: replacementRows.map(replacementEntry),
-          };
+            replacementHistory: replacementRows.map((row, index) =>
+              replacementEntry(
+                row,
+                reason !== "rollback" && index === replacementRows.length - 1,
+              ),
+            ),
+          });
+          const { type: _type, ...payload } = parsed;
           await args.executor.execute(
             `UPDATE junior_conversation_events
          SET payload = $3::jsonb

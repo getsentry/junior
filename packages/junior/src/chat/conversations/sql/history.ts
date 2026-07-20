@@ -190,16 +190,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       const rows = pending.map((event) =>
         insertFromEvent(conversationId, seq++, contextEpoch, event),
       );
-      await this.executor
-        .db()
-        .insert(juniorConversationEvents)
-        .values(rows)
-        .onConflictDoNothing({
-          target: [
-            juniorConversationEvents.conversationId,
-            juniorConversationEvents.idempotencyKey,
-          ],
-        });
+      await this.executor.db().insert(juniorConversationEvents).values(rows);
     });
   }
 
