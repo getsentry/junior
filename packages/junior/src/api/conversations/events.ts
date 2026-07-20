@@ -62,6 +62,7 @@ function reportEventData(args: {
     case "compaction":
       return { type: "compaction" };
     default:
+      // Unsupported and host-only facts do not affect this observational view.
       return undefined;
   }
 }

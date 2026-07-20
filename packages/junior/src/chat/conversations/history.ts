@@ -74,6 +74,8 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
 
 // Read-only compatibility for histories written before automatic rollback was
 // removed. Live writers cannot create this event through replaceHistory().
+// TODO(v0.107.0): Remove legacy rollback decoding after retained checkpoint
+// histories have been normalized by the upgrade migration.
 const legacyRollbackEventDataSchema = z
   .object({
     type: z.literal("rollback"),
@@ -298,6 +300,8 @@ export type ConversationEventData = z.output<
   typeof conversationEventDataSchema
 >;
 
+// This list distinguishes unsupported rows from corrupt known rows. Add every
+// canonical event type here with its data schema.
 const knownConversationEventTypeSchema = z.enum([
   "message",
   "message_updated",
@@ -365,8 +369,9 @@ const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
 
 /**
  * Decode a physical event row without making old or future event types
- * unreadable. Known version-one events remain strict so corrupt canonical data
- * cannot be mistaken for harmless compatibility data.
+ * unreadable. Unsupported rows stay opaque until an upgrade migration defines
+ * their semantics; known version-one events remain strict so corrupt canonical
+ * data cannot be mistaken for compatibility data.
  */
 export function decodeStoredConversationEvent(
   value: z.input<typeof storedConversationEventSchema>,
