@@ -6,7 +6,7 @@
  * the Pi adapter owns event reduction and opaque-message validation.
  */
 import { isDeepStrictEqual } from "node:util";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
@@ -25,6 +25,7 @@ import {
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
+import { sanitizePostgresJson } from "@/db/postgres-json";
 
 /** Distinct MCP providers durably connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
@@ -51,6 +52,13 @@ function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
     }
   }
   return limit;
+}
+
+/** Match the exact JSONB shape used for prefix comparison and replay. */
+function normalizeDurableMessage(message: PiMessage): PiMessage {
+  return piMessageSchema.parse(
+    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
+  );
 }
 
 /**
@@ -245,7 +253,9 @@ async function commitMessagesLocked(
   // Runtime bootstrap is per-run input, not durable agent history. Session
   // records may retain it while a turn is live, but event replay must not need
   // a compensating history rewrite when that bootstrap changes.
-  const nextLocalMessages = stripRuntimeTurnContext(args.messages);
+  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
+    normalizeDurableMessage,
+  );
   const matchingPrefix = countMatchingPrefix(
     current.messages,
     nextLocalMessages,

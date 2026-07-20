@@ -168,6 +168,37 @@ describe("context compaction projection reset", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("compares repeated commits in their durable JSON form", async () => {
+    const { commitMessages, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const conversationId = "conversation-json-normalization";
+    const priorMessages = [
+      user("Run the lookup.", 1),
+      {
+        ...assistant("Lookup complete.", 2),
+        provider: undefined,
+        usage: { input: 5, cached: undefined },
+      } as unknown as PiMessage,
+    ];
+
+    const firstCommit = await commitMessages({
+      conversationId,
+      messages: priorMessages,
+    });
+    await expect(
+      commitMessages({
+        conversationId,
+        messages: [...priorMessages, user("What did it find?", 3)],
+      }),
+    ).resolves.toMatchObject({ committedSeq: 2 });
+
+    expect(firstCommit.messages[1]).toEqual({
+      ...assistant("Lookup complete.", 2),
+      usage: { input: 5 },
+    });
+    await expect(loadProjection({ conversationId })).resolves.toHaveLength(3);
+  });
+
   it("automatic compaction replaces the conversation projection without a synthetic session", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");

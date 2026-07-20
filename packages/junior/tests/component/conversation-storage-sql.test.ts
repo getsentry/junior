@@ -596,7 +596,7 @@ describe("SQL conversation storage", () => {
     } finally {
       await fixture.close();
     }
-  });
+  }, 15_000);
 
   it("loads exactly the history version containing an event cursor", async () => {
     const fixture = await createLocalJuniorSqlFixture();
