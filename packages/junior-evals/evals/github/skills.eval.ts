@@ -88,6 +88,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     const reconciledResult = toolCalls(result.session).find(
       (call) =>
         call.name === "bash" &&
+        call.status === "ok" &&
         JSON.stringify(call.result)?.includes(
           "reconciled_remote_status=present push_attempts=2",
         ) === true,
@@ -124,6 +125,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     const reconciledResult = toolCalls(result.session).find(
       (call) =>
         call.name === "bash" &&
+        call.status === "ok" &&
         JSON.stringify(call.result)?.includes(
           "reconciled_remote_status=present push_attempts=1",
         ) === true,
