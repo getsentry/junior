@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ConversationMessageRole } from "@/chat/conversations/messages";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -14,7 +14,7 @@ describe("conversation search", () => {
     try {
       await migrateSchema(fixture.sql);
       const conversations = createSqlStore(fixture.sql);
-      const messages = createSqlConversationMessageStore(fixture.sql);
+      const events = createSqlConversationEventStore(fixture.sql);
       const search = createSqlConversationSearchStore(fixture.sql);
 
       const seed = async (args: {
@@ -36,11 +36,14 @@ describe("conversation search", () => {
           source: "slack",
           visibility: args.visibility,
         });
-        await messages.record(args.conversationId, [
+        await events.append(args.conversationId, [
           {
-            messageId: `${args.conversationId}:message`,
-            role: args.role ?? "user",
-            text: args.message,
+            data: {
+              type: "message",
+              messageId: `${args.conversationId}:message`,
+              role: args.role ?? "user",
+              text: args.message,
+            },
             createdAtMs: 1_750_000_000_000,
           },
         ]);

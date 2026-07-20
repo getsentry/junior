@@ -9,7 +9,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 

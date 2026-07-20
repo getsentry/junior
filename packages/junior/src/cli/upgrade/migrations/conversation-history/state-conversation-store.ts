@@ -1,0 +1,26 @@
+import {
+  getConversation as getTaskConversation,
+  listConversationsByActivity as listTaskConversationsByActivity,
+  recordConversationActivity as recordTaskConversationActivity,
+  recordConversationExecution as recordTaskConversationExecution,
+} from "@/chat/task-execution/state";
+import type { StateAdapter } from "chat";
+import type { ConversationStore } from "@/chat/conversations/store";
+
+/** Create the legacy-import conversation record store backed by task-execution state. */
+export function createStateConversationStore(
+  state?: StateAdapter,
+): ConversationStore {
+  return {
+    get: (args) => getTaskConversation({ ...args, state }),
+    // Task-execution state has no destination records, so visibility is never
+    // source-confirmed here and cross-context reads fail closed to private.
+    getDestinationVisibility: async () => undefined,
+    recordActivity: (args) =>
+      recordTaskConversationActivity({ ...args, state }),
+    recordExecution: (args) =>
+      recordTaskConversationExecution({ ...args, state }),
+    listByActivity: (args) =>
+      listTaskConversationsByActivity({ ...args, state }),
+  };
+}

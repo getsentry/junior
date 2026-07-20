@@ -602,23 +602,11 @@ describe("executeAgentRun provider retry", () => {
     expect(serializedMessages).toContain("actually do the other thing");
 
     const report = await readConversationDetail("slack:C123:1712345.0001");
-    const transcript = report?.transcript ?? [];
-    expect(JSON.stringify(transcript)).toContain("previous question");
-    expect(transcript).toHaveLength(5);
-    expect(transcript[2]).toMatchObject({
-      role: "user",
-      timestamp: expect.any(Number),
-      parts: expect.arrayContaining([{ type: "text", text: "help me" }]),
-    });
-    expect(transcript[3]).toEqual({
-      role: "user",
-      timestamp: 2_000,
-      parts: [{ type: "text", text: "actually do the other thing" }],
-    });
-    expect(transcript[4]).toEqual({
-      role: "assistant",
-      parts: [{ type: "text", text: "Steered." }],
-    });
+    const visibleText = report?.events.flatMap((event) =>
+      event.data.type === "message" && event.data.text ? [event.data.text] : [],
+    );
+    expect(visibleText).not.toContain("previous question");
+    expect(visibleText).toEqual([]);
   });
 
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {

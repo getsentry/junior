@@ -1,7 +1,7 @@
 /**
  * MCP OAuth callback handler.
  *
- * This handler finalizes provider OAuth, updates pending-auth/session-log state,
+ * This handler finalizes provider OAuth, updates pending-auth/event-log state,
  * and resumes the exact Slack turn that parked on MCP auth. Stale callbacks
  * must not resume newer thread work after another user message has superseded
  * the paused request.
@@ -9,7 +9,7 @@
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
@@ -258,6 +258,10 @@ async function resumeAuthorizedMcpTurn(args: {
     threadTs: authSession.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
+    lifecycleCorrelation: {
+      conversationId: authSession.conversationId,
+      turnId: resolvedSessionId,
+    },
     connectedText: "",
     agentRunner,
     beforeStart: async () => {
@@ -366,6 +370,7 @@ async function resumeAuthorizedMcpTurn(args: {
       return {
         messageText: lockedUserMessage.text,
         messageTs: lockedMessageTs,
+        inputMessageIds: [lockedUserMessage.id],
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,

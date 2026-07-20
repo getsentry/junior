@@ -32,10 +32,10 @@ import {
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
-import type { PiMessageProvenance } from "@/chat/state/session-log";
+import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
   getAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
@@ -139,7 +139,7 @@ function sameActorIdentity(
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
 function messageProvenance(
-  provenance: PiMessageProvenance,
+  provenance: ConversationMessageProvenance,
 ): PluginRunTranscriptProvenance {
   return {
     authority: provenance.authority,
@@ -149,7 +149,7 @@ function messageProvenance(
 
 function runTranscriptEntry(
   message: PiMessage,
-  provenance: PiMessageProvenance,
+  provenance: ConversationMessageProvenance,
   runActor: Actor | undefined,
 ): PluginRunTranscriptEntry | undefined {
   const role = getPiMessageRole(message);
@@ -200,12 +200,14 @@ function runTranscriptEntry(
  */
 function turnMessagesWithProvenance(
   record: AgentTurnSessionRecord,
-): Array<{ message: PiMessage; provenance: PiMessageProvenance }> {
+): Array<{ message: PiMessage; provenance: ConversationMessageProvenance }> {
   const startIndex = record.turnStartMessageIndex ?? 0;
   const messages = record.piMessages.slice(startIndex);
   const provenance = record.piMessageProvenance.slice(startIndex);
-  const paired: Array<{ message: PiMessage; provenance: PiMessageProvenance }> =
-    [];
+  const paired: Array<{
+    message: PiMessage;
+    provenance: ConversationMessageProvenance;
+  }> = [];
   for (const [index, message] of messages.entries()) {
     for (const stripped of stripRuntimeTurnContext([message])) {
       paired.push({

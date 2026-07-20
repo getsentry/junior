@@ -14,7 +14,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 vi.mock("@/chat/services/turn-reasoning-level", async () => {

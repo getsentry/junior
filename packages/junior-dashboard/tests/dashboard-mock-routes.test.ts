@@ -1,20 +1,66 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
-  conversationSubagentTranscriptReportSchema,
-  type ConversationSubagentTranscriptReport,
+  conversationDetailReportSchema,
+  type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
-import { createDashboardApp } from "../src/app";
-import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-conversations";
 
-describe("dashboard mock conversation routes", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+import { createDashboardApp } from "../src/app";
+import {
+  conversationTimeBounds,
+  DASHBOARD_QA_CONVERSATION_ID,
+} from "../src/mock-reporting/fixtures";
+
+const DASHBOARD_QA_CHILD_IDS = [
+  "junior:internal:dashboard-qa:advisor-plan",
+  "junior:internal:dashboard-qa:advisor-review",
+];
+
+describe("dashboard canonical-event mock routes", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("derives public location bounds independently of summary order", () => {
+    const summary = (
+      conversationId: string,
+      startedAt: string,
+      lastSeenAt: string,
+    ): ConversationSummaryReport => ({
+      channel: "CQA123",
+      channelName: "proj-checkout",
+      conversationId,
+      cumulativeDurationMs: 1_000,
+      displayTitle: conversationId,
+      lastProgressAt: lastSeenAt,
+      lastSeenAt,
+      startedAt,
+      status: "completed",
+      surface: "slack",
+    });
+    const summaries = [
+      summary("middle", "2026-01-02T00:00:00.000Z", "2026-01-10T00:00:00.000Z"),
+      summary(
+        "earliest",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-05T00:00:00.000Z",
+      ),
+      summary("latest", "2026-01-03T00:00:00.000Z", "2026-01-20T00:00:00.000Z"),
+    ];
+
+    const ordered = conversationTimeBounds([
+      summaries[0]!,
+      ...summaries.slice(1),
+    ]);
+    const reversedSummaries = [...summaries].reverse();
+    const reversed = conversationTimeBounds([
+      reversedSummaries[0]!,
+      ...reversedSummaries.slice(1),
+    ]);
+    expect(reversed).toEqual(ordered);
+    expect(ordered.firstSeenAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(ordered.lastSeenAt).toBe("2026-01-20T00:00:00.000Z");
   });
 
-  it("overlays mock conversations for local dashboard visual QA", async () => {
-    // Pin time to match the hardcoded conversation dates in the mock reporting fixture.
-    // Without this, recentConversationGroups filters out conversations older than 90 days.
+  it("serves canonical detail, directory, and aggregate reports", async () => {
     vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
@@ -26,422 +72,211 @@ describe("dashboard mock conversation routes", () => {
       new Request("http://localhost/api/conversations"),
     );
     expect(conversations.status).toBe(200);
-    const conversationBody = (await conversations.json()) as {
+    const body = (await conversations.json()) as {
       conversations: Array<{
-        activity?: unknown;
+        actorIdentity?: { email?: string };
+        channel?: string;
         conversationId: string;
         cumulativeDurationMs: number;
+        locationId?: string;
       }>;
+      source: string;
     };
-    expect(conversationBody.conversations[0]?.conversationId).toBe(
+    expect(body.source).toBe("conversation_index");
+    expect(body.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
-    const personalConversations = await app.fetch(
+    expect(body.conversations.map((item) => item.conversationId)).toContain(
+      DASHBOARD_QA_CONVERSATION_ID,
+    );
+    expect(body.conversations.map((item) => item.conversationId)).not.toEqual(
+      expect.arrayContaining(DASHBOARD_QA_CHILD_IDS),
+    );
+    expect(
+      body.conversations
+        .filter((item) => item.channel?.startsWith("C"))
+        .every((item) => item.locationId === `mock:${item.channel}`),
+    ).toBe(true);
+    expect(body.conversations[0]).not.toHaveProperty("events");
+
+    const personal = await app.fetch(
       new Request(
         "http://localhost/api/conversations?actorEmail=morgan%40sentry.io",
       ),
     );
-    expect(personalConversations.status).toBe(200);
-    const personalBody = (await personalConversations.json()) as {
-      conversations: Array<{
-        actorIdentity?: { email?: string };
-        conversationId: string;
-      }>;
-    };
-    expect(personalBody.conversations.length).toBeGreaterThan(0);
+    const personalBody = (await personal.json()) as typeof body;
     expect(
       personalBody.conversations.every(
-        (conversation) =>
-          conversation.actorIdentity?.email === "morgan@sentry.io",
+        (item) => item.actorIdentity?.email === "morgan@sentry.io",
       ),
     ).toBe(true);
-    expect(
-      conversationBody.conversations.map(
-        (conversation) => conversation.conversationId,
-      ),
-    ).toContain("slack:CQA456:1770021600.000600");
-    expect(
-      conversationBody.conversations.map(
-        (conversation) => conversation.conversationId,
-      ),
-    ).toContain(DASHBOARD_QA_CONVERSATION_ID);
-    const qaConversationSummary = conversationBody.conversations.find(
-      (conversation) =>
-        conversation.conversationId === DASHBOARD_QA_CONVERSATION_ID,
-    );
-    expect(qaConversationSummary).toBeDefined();
-    expect(qaConversationSummary).not.toHaveProperty("activity");
-    const conversationStats = await app.fetch(
+
+    const stats = await app.fetch(
       new Request("http://localhost/api/conversations/stats"),
     );
-    expect(conversationStats.status).toBe(200);
-    const statsBody = (await conversationStats.json()) as {
+    const statsBody = (await stats.json()) as {
       conversations: number;
       costUsd?: number;
       durationMs: number;
       windowEnd: string;
       windowStart: string;
     };
-    expect(statsBody).toMatchObject({
-      conversations: new Set(
-        conversationBody.conversations.map(
-          (conversation) => conversation.conversationId,
-        ),
-      ).size,
-    });
-    const rawDurationMs = conversationBody.conversations.reduce(
-      (sum, conversation) => sum + conversation.cumulativeDurationMs,
-      0,
+    expect(statsBody.conversations).toBe(body.conversations.length);
+    expect(statsBody.durationMs).toBe(
+      body.conversations.reduce(
+        (sum, conversation) => sum + conversation.cumulativeDurationMs,
+        0,
+      ),
     );
-    expect(statsBody.durationMs).toBe(rawDurationMs);
     expect(statsBody.costUsd).toBeGreaterThan(0);
     expect(
       Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
     ).toBe(89 * 24 * 60 * 60 * 1000);
 
+    const people = await app.fetch(new Request("http://localhost/api/people"));
+    const peopleBody = actorDirectoryReportSchema.parse(await people.json());
+    expect(peopleBody.people.length).toBeGreaterThan(0);
+    expect(peopleBody.activityDays).toHaveLength(90);
+    const profileResponse = await app.fetch(
+      new Request(
+        `http://localhost/api/people/${encodeURIComponent(
+          peopleBody.people[0]!.actor.email,
+        )}`,
+      ),
+    );
+    const profile = (await profileResponse.json()) as {
+      activityDays: unknown[];
+      locations: unknown[];
+      surfaces: unknown[];
+    };
+    expect(profile.activityDays).toHaveLength(365);
+    expect(profile.locations.length).toBeGreaterThan(0);
+    expect(profile.surfaces.length).toBeGreaterThan(0);
+
     const locations = await app.fetch(
       new Request("http://localhost/api/locations"),
     );
-    expect(locations.status).toBe(200);
     const locationBody = (await locations.json()) as {
-      locations: Array<{ id: string; label: string }>;
+      locations: Array<{
+        conversations: number;
+        id: string;
+        label: string;
+      }>;
       privateActivity: { conversations: number };
     };
-    expect(locationBody.locations.length).toBeGreaterThan(0);
-    expect(locationBody.locations.map((location) => location.label)).toContain(
+    expect(locationBody.locations.map((item) => item.label)).toContain(
       "#proj-checkout",
     );
     expect(locationBody.privateActivity.conversations).toBeGreaterThan(0);
-    const locationDetail = await app.fetch(
-      new Request(
-        `http://localhost/api/locations/${encodeURIComponent(locationBody.locations[0]!.id)}`,
-      ),
-    );
-    expect(locationDetail.status).toBe(200);
-    await expect(locationDetail.json()).resolves.toMatchObject({
-      visibility: "public",
-      activityDays: expect.any(Array),
-      recentConversations: expect.any(Array),
-    });
-
-    const people = await app.fetch(new Request("http://localhost/api/people"));
-    expect(people.status).toBe(200);
-    const peopleBody = actorDirectoryReportSchema.parse(await people.json());
-    const actorEmail = peopleBody.people[0]!.actor.email;
-    const personProfile = await app.fetch(
-      new Request(
-        `http://localhost/api/people/${encodeURIComponent(actorEmail)}`,
-      ),
-    );
-    expect(personProfile.status).toBe(200);
-    await expect(personProfile.json()).resolves.toMatchObject({
-      activityDays: expect.any(Array),
-      actor: { email: actorEmail },
-      recentConversations: expect.any(Array),
-    });
-
-    const activeConversation = await app.fetch(
-      new Request(
-        "http://localhost/api/conversations/slack%3ACQA123%3A1770003600.000200",
-      ),
-    );
-    expect(activeConversation.status).toBe(200);
-    const activeConversationBody = (await activeConversation.json()) as {
-      transcript: Array<{
-        parts: Array<{ name?: string }>;
-      }>;
-    };
     expect(
-      activeConversationBody.transcript
-        .flatMap((message) => message.parts)
-        .map((part) => part.name)
-        .filter(Boolean),
+      locationBody.locations.reduce(
+        (sum, item) => sum + item.conversations,
+        locationBody.privateActivity.conversations,
+      ),
+    ).toBe(body.conversations.length);
+    const locationResponse = await app.fetch(
+      new Request(
+        `http://localhost/api/locations/${encodeURIComponent(
+          locationBody.locations[0]!.id,
+        )}`,
+      ),
+    );
+    const location = (await locationResponse.json()) as {
+      activityDays: unknown[];
+      actors: unknown[];
+      recentConversations: Array<{ locationId?: string }>;
+    };
+    expect(location.activityDays).toHaveLength(90);
+    expect(location.actors.length).toBeGreaterThan(0);
+    expect(
+      location.recentConversations.every(
+        (conversation) =>
+          conversation.locationId === locationBody.locations[0]!.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("serves direct canonical event fixtures for every dashboard state", async () => {
+    const app = createDashboardApp({
+      authRequired: false,
+      allowedGoogleDomains: [],
+      mockConversations: true,
+    });
+
+    const readDetail = async (conversationId: string) => {
+      const response = await app.fetch(
+        new Request(
+          `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+        ),
+      );
+      expect(response.status).toBe(200);
+      return conversationDetailReportSchema.parse(await response.json());
+    };
+
+    const active = await readDetail("slack:CQA123:1770003600.000200");
+    expect(
+      active.events.flatMap((event) =>
+        event.data.type === "tool_started" ? [event.data.name] : [],
+      ),
     ).toContain("datacat.search_logs");
 
-    const failedConversation = await app.fetch(
-      new Request(
-        "http://localhost/api/conversations/slack%3ACQA777%3A1770014400.000500",
-      ),
-    );
-    expect(failedConversation.status).toBe(200);
-    const failedConversationBody = (await failedConversation.json()) as {
-      transcript: Array<{
-        outcome?: string;
-        parts: unknown[];
-        role: string;
-      }>;
-      transcriptMessageCount?: number;
-    };
-    expect(failedConversationBody.transcript.at(-1)).toEqual(
-      expect.objectContaining({
-        role: "assistant",
-        outcome: "error",
-        parts: [],
-      }),
-    );
-    expect(failedConversationBody.transcriptMessageCount).toBe(3);
+    const failed = await readDetail("slack:CQA777:1770014400.000500");
+    expect(failed.events.at(-1)?.data).toMatchObject({
+      type: "turn_lifecycle",
+      state: "failed",
+    });
 
-    const qaConversation = await app.fetch(
+    const privateConversation = await readDetail(
+      "slack:DQA123:1770007200.000300",
+    );
+    expect(privateConversation.eventHistory).toEqual({
+      status: "redacted",
+      reason: "non_public_conversation",
+    });
+    expect(privateConversation.events[0]?.data).toMatchObject({
+      type: "message",
+      redacted: true,
+    });
+
+    const long = await readDetail("slack:CQA456:1770021600.000600");
+    expect(long.events.map((event) => event.data.type)).toEqual(
+      expect.arrayContaining(["compaction", "handoff"]),
+    );
+  });
+
+  it("loads canonical child conversations through the ordinary detail route", async () => {
+    const app = createDashboardApp({
+      authRequired: false,
+      allowedGoogleDomains: [],
+      mockConversations: true,
+    });
+    const parentResponse = await app.fetch(
       new Request(
         `http://localhost/api/conversations/${encodeURIComponent(
           DASHBOARD_QA_CONVERSATION_ID,
         )}`,
       ),
     );
-    expect(qaConversation.status).toBe(200);
-    const qaConversationBody = (await qaConversation.json()) as {
-      activity?: Array<{
-        status?: string;
-        subagents?: Array<{
-          parentToolCallId?: string;
-          status?: string;
-          subagentKind?: string;
-          type: string;
-        }>;
-        toolCallId?: string;
-        toolName?: string;
-        type: string;
-      }>;
-      conversationId: string;
-      transcript: Array<{
-        parts: Array<{ id?: string; name?: string; type: string }>;
-        timestamp?: number;
-      }>;
-      transcriptMessageCount?: number;
-    };
-    expect(qaConversationBody.activity?.[0]).toMatchObject({
-      type: "tool_execution",
-      status: "running",
-      toolName: "mock.dashboard_running_tool",
-    });
-    const invertedMessages = qaConversationBody.transcript.filter((message) =>
-      message.parts.some(
-        (part) => part.name === "mock.inverted_timestamp_tool",
-      ),
+    const parent = conversationDetailReportSchema.parse(
+      await parentResponse.json(),
     );
-    expect(invertedMessages[0]?.parts[0]).toMatchObject({
-      type: "tool_call",
-      name: "mock.inverted_timestamp_tool",
-    });
-    expect(invertedMessages[1]?.parts[0]).toMatchObject({
-      type: "tool_result",
-      name: "mock.inverted_timestamp_tool",
-    });
-    expect(invertedMessages[1]?.timestamp).toBeLessThan(
-      invertedMessages[0]?.timestamp ?? 0,
+    const childIds = parent.events.flatMap((event) =>
+      event.data.type === "subagent_started"
+        ? [event.data.childConversationId]
+        : [],
     );
-    expect(qaConversationBody.conversationId).toBe("internal:dashboard-qa");
-    expect(
-      qaConversationBody.transcript
-        .flatMap((message) => message.parts)
-        .filter((part) => part.name === "advisor")
-        .map((part) => part.type),
-    ).toEqual(["tool_call", "tool_result", "tool_call", "tool_result"]);
-    expect(
-      qaConversationBody.activity?.find(
-        (activity) =>
-          activity.toolCallId === "toolu_mock_dashboard_advisor_plan",
-      ),
-    ).toMatchObject({
-      type: "tool_execution",
-      status: "completed",
-      toolCallId: "toolu_mock_dashboard_advisor_plan",
-      toolName: "advisor",
-      subagents: [
-        {
-          type: "subagent",
-          status: "completed",
-          subagentKind: "advisor",
-          parentToolCallId: "toolu_mock_dashboard_advisor_plan",
-          transcriptAvailable: true,
-        },
-      ],
-    });
-    expect(
-      qaConversationBody.activity?.find(
-        (activity) =>
-          activity.toolCallId === "toolu_mock_dashboard_advisor_review",
-      ),
-    ).toMatchObject({
-      type: "tool_execution",
-      status: "completed",
-      toolCallId: "toolu_mock_dashboard_advisor_review",
-      toolName: "advisor",
-      subagents: [
-        {
-          type: "subagent",
-          status: "completed",
-          subagentKind: "advisor",
-          parentToolCallId: "toolu_mock_dashboard_advisor_review",
-          transcriptAvailable: true,
-        },
-      ],
-    });
+    expect(childIds.length).toBeGreaterThan(0);
 
-    const firstAdvisorTranscript = await app.fetch(
-      new Request(
-        `http://localhost/api/conversations/${encodeURIComponent(
-          DASHBOARD_QA_CONVERSATION_ID,
-        )}/subagents/toolu_mock_dashboard_advisor_plan`,
-      ),
-    );
-    expect(firstAdvisorTranscript.status).toBe(200);
-    const firstAdvisorBody =
-      (await firstAdvisorTranscript.json()) as ConversationSubagentTranscriptReport;
-    expect(firstAdvisorBody.subagentConversationId).toBe(
-      "junior:internal:dashboard-qa:advisor_session",
-    );
-    expect(firstAdvisorBody.subagentSentryConversationUrl).toContain(
-      encodeURIComponent("junior:internal:dashboard-qa:advisor_session"),
-    );
-    expect(firstAdvisorBody.transcriptAvailable).toBe(true);
-    expect(JSON.stringify(firstAdvisorBody.transcript)).toContain(
-      "Review the dashboard plan before editing",
-    );
-    expect(JSON.stringify(firstAdvisorBody.transcript)).not.toContain(
-      "Review the implementation after the first advisor pass",
-    );
-
-    const secondAdvisorTranscript = await app.fetch(
-      new Request(
-        `http://localhost/api/conversations/${encodeURIComponent(
-          DASHBOARD_QA_CONVERSATION_ID,
-        )}/subagents/toolu_mock_dashboard_advisor_review`,
-      ),
-    );
-    expect(secondAdvisorTranscript.status).toBe(200);
-    const secondAdvisorBody =
-      (await secondAdvisorTranscript.json()) as ConversationSubagentTranscriptReport;
-    expect(JSON.stringify(secondAdvisorBody.transcript)).toContain(
-      "Review the dashboard plan before editing",
-    );
-    expect(JSON.stringify(secondAdvisorBody.transcript)).toContain(
-      "Review the implementation after the first advisor pass",
-    );
-
-    const longConversation = await app.fetch(
-      new Request(
-        "http://localhost/api/conversations/slack%3ACQA456%3A1770021600.000600",
-      ),
-    );
-    expect(longConversation.status).toBe(200);
-    const longConversationBody = (await longConversation.json()) as {
-      contextEvents?: Array<{ summary?: string; type: string }>;
-      transcript: Array<{
-        role: string;
-        parts: Array<{ id?: string; name?: string; type: string }>;
-        timestamp?: number;
-      }>;
-      transcriptMessageCount?: number;
-    };
-    const longConversationParts = longConversationBody.transcript.flatMap(
-      (message) => message.parts,
-    );
-    const systemMessages = longConversationBody.transcript.filter(
-      (message) => message.role === "system",
-    );
-    const bashCallTimes = new Map<string, number>();
-    const bashDurations = longConversationBody.transcript.flatMap((message) =>
-      message.parts.flatMap((part) => {
-        if (part.name !== "bash" || !part.id || !message.timestamp) {
-          return [];
-        }
-        if (part.type === "tool_call") {
-          bashCallTimes.set(part.id, message.timestamp);
-          return [];
-        }
-        const startedAt = bashCallTimes.get(part.id);
-        return startedAt === undefined ? [] : [message.timestamp - startedAt];
-      }),
-    );
-    expect(systemMessages).toHaveLength(1);
-    expect(longConversationBody.contextEvents).toEqual([
-      expect.objectContaining({ type: "context_compacted" }),
-      expect.objectContaining({ type: "model_handoff" }),
-    ]);
-    expect(longConversationBody.transcriptMessageCount).toBe(
-      longConversationBody.transcript.length,
-    );
-    expect(
-      longConversationParts.filter((part) => part.name === "bash").length,
-    ).toBeGreaterThan(20);
-    expect(new Set(bashDurations).size).toBeGreaterThan(8);
-    expect(Math.max(...bashDurations)).toBeGreaterThan(10_000);
-    expect(longConversationParts.some((part) => part.type === "thinking")).toBe(
-      true,
-    );
-
-    const conversation = await app.fetch(
-      new Request(
-        "http://localhost/api/conversations/slack%3ADQA123%3A1770007200.000300",
-      ),
-    );
-    expect(conversation.status).toBe(200);
-    const redactedConversationBody = (await conversation.json()) as {
-      transcriptAvailable: boolean;
-      transcriptMetadata?: Array<{ role: string }>;
-      transcriptRedacted?: boolean;
-    };
-    expect(redactedConversationBody).toMatchObject({
-      conversationId: "slack:DQA123:1770007200.000300",
-      transcriptAvailable: false,
-      transcriptRedacted: true,
-      transcript: [],
-    });
-    expect(redactedConversationBody.transcriptMetadata?.[0]?.role).toBe("user");
-  });
-
-  it("serves explicit mock conversation data", async () => {
-    const app = createDashboardApp({
-      authRequired: false,
-      allowedGoogleDomains: [],
-      mockConversations: true,
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/conversations"),
-    );
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      conversations: Array<{ conversationId: string; status: string }>;
-      source: string;
-    };
-    expect(body.source).toBe("conversation_index");
-    expect(body.conversations[0]).toMatchObject({
-      conversationId: "slack:CQA123:1770003600.000200",
-      status: "active",
-    });
-    const stats = await app.fetch(
-      new Request("http://localhost/api/conversations/stats"),
-    );
-    expect(stats.status).toBe(200);
-    expect(await stats.json()).toMatchObject({
-      conversations: expect.any(Number),
-    });
-  });
-
-  it("returns the canonical subagent not-found response", async () => {
-    const app = createDashboardApp({
-      authRequired: false,
-      allowedGoogleDomains: [],
-      mockConversations: true,
-    });
-
-    const response = await app.fetch(
-      new Request(
-        "http://localhost/api/conversations/missing/subagents/missing-child",
-      ),
-    );
-
-    expect(response.status).toBe(404);
-    expect(
-      conversationSubagentTranscriptReportSchema.parse(await response.json()),
-    ).toMatchObject({
-      id: "missing-child",
-      transcript: [],
-      transcriptAvailable: false,
-      unavailableReason: "not_found",
-    });
+    for (const childId of childIds) {
+      const response = await app.fetch(
+        new Request(
+          `http://localhost/api/conversations/${encodeURIComponent(childId)}`,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const child = conversationDetailReportSchema.parse(await response.json());
+      expect(child.conversationId).toBe(childId);
+      expect(child.events.length).toBeGreaterThan(0);
+    }
   });
 });

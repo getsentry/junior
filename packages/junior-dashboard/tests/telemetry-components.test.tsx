@@ -1,60 +1,78 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type {
-  ConversationFeed,
-  ConversationSummaryReport,
-} from "@sentry/junior/api/schema";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type {
-  ActorDirectoryReport,
   ActorProfileReport,
+  ConversationReportEvent,
+  ConversationReportEventData,
+  ConversationSummaryReport,
+  LocationDetailReport,
+  LocationDirectoryReport,
 } from "@sentry/junior/api/schema";
-import type { LocationDirectoryReport } from "@sentry/junior/api/schema";
-import type { LocationDetailReport } from "@sentry/junior/api/schema";
 
+import { client } from "../src/client/api";
 import { HighlightedCode } from "../src/client/code";
-import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { Button } from "../src/client/components/Button";
+import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
+import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { PluginReports } from "../src/client/components/PluginReports";
-import { StatusBadge } from "../src/client/components/StatusBadge";
-import { CardHeader } from "../src/client/components/layout/CardHeader";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "../src/client/components/SubagentTranscriptDrawer";
-import { ToolValueInspector } from "../src/client/components/ToolValueInspector";
 import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
-import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
-import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
-import { client } from "../src/client/api";
-import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
-import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
-import { PeoplePageContent } from "../src/client/pages/people/PeoplePage";
-import { PeopleDirectory } from "../src/client/pages/people/PeopleDirectory";
-import { Profile } from "../src/client/pages/people/PersonProfilePage";
-import {
-  LocationDetailPage,
-  LocationDetailPageContent,
-} from "../src/client/pages/locations/LocationDetailPage";
+import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
-afterEach(() => {
-  client.clear();
-  vi.useRealTimers();
-});
+afterEach(() => client.clear());
 
-function dashboardData(
-  conversationSummaries: ConversationSummaryReport[],
-): SystemData & { conversations: ConversationFeed } {
+function event(
+  seq: number,
+  data: ConversationReportEventData,
+  createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+): ConversationReportEvent {
+  return { seq, createdAt, data };
+}
+
+function conversation(
+  events: ConversationReportEvent[],
+  overrides: Partial<ConversationTranscript> = {},
+): ConversationTranscript {
+  return {
+    conversationId: "conversation-1",
+    cumulativeDurationMs: 3_000,
+    displayTitle: "Conversation",
+    eventHistory: { status: "available" },
+    events,
+    generatedAt: "2026-01-01T00:01:00.000Z",
+    lastProgressAt: "2026-01-01T00:00:10.000Z",
+    lastSeenAt: "2026-01-01T00:00:10.000Z",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    status: "completed",
+    surface: "internal",
+    ...overrides,
+  };
+}
+
+function renderTranscript(detail: ConversationTranscript): string {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <TranscriptSearchProvider query="">
+        <ConversationTranscriptView conversation={detail} view="rich" />
+      </TranscriptSearchProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function systemData(): SystemData {
   return {
     config: {
       allowedEmailCount: 0,
@@ -69,14 +87,10 @@ function dashboardData(
     conversationStats: {
       active: 0,
       actors: [],
-      conversations: conversationSummaries.length,
-      durationMs: conversationSummaries.reduce(
-        (sum, conversation) => sum + conversation.cumulativeDurationMs,
-        0,
-      ),
-      failed: conversationSummaries.filter(
-        (conversation) => conversation.status === "failed",
-      ).length,
+      conversations: 2,
+      costUsd: 1.25,
+      durationMs: 2_000,
+      failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
       metricDays: [
         {
@@ -88,10 +102,9 @@ function dashboardData(
       ],
       locations: [],
       source: "conversation_index",
-      tokens: 12_345,
-      costUsd: 4.56,
+      tokens: 1_200,
       windowEnd: "2026-01-01T00:00:00.000Z",
-      windowStart: "2025-12-25T00:00:00.000Z",
+      windowStart: "2025-10-03T00:00:00.000Z",
     },
     conversationStatsError: false,
     conversationStatsLoading: false,
@@ -103,300 +116,374 @@ function dashboardData(
     pluginReportsError: false,
     pluginReportsLoading: false,
     plugins: [],
-    conversations: {
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      conversations: conversationSummaries,
-      source: "conversation_index",
-    },
     skills: [],
   };
 }
 
-function renderConversationPage(data: {
-  conversations: ConversationFeed;
-}): string {
-  return renderToStaticMarkup(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
-        <Routes>
-          <Route
-            element={
-              <ConversationPage conversationId="conversation-1" data={data} />
-            }
-            path="/conversations/:conversationId"
-          />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-}
+describe("dashboard canonical-event components", () => {
+  it("keeps shared buttons out of form-submit mode", () => {
+    expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
+      'type="button"',
+    );
+  });
 
-function toolRunTurn(
-  toolCount: number,
-  finalMessage = false,
-): ConversationTranscript {
-  return {
-    conversationId: "conversation-1",
-    lastProgressAt: "2026-01-01T00:00:10.000Z",
-    lastSeenAt: "2026-01-01T00:00:10.000Z",
-    startedAt: "2026-01-01T00:00:00.000Z",
-    status: "completed",
-    surface: "slack",
-    displayTitle: "Conversation",
-    transcript: [
-      ...Array.from({ length: toolCount }, (_, index) => ({
-        role: "assistant",
-        timestamp: Date.parse("2026-01-01T00:00:10.000Z") + index,
-        parts: [
-          {
-            id: `call-${index}`,
-            name: `tool-${index}`,
-            type: "tool_call" as const,
-          },
+  it("exposes pressed state for transcript view controls", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptHeader redacted={false} value="raw" onChange={() => {}} />,
+    );
+    expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
+    expect(html.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
+  });
+
+  it("shows responding state independently from live transcript following", () => {
+    const active = conversation([], { status: "active" });
+    const liveHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={active} />
+      </QueryClientProvider>,
+    );
+    const quietHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live responding={false} transcript={active} />
+      </QueryClientProvider>,
+    );
+    const completedHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript transcript={{ ...active, status: "completed" }} />
+      </QueryClientProvider>,
+    );
+
+    expect(liveHtml).toContain('role="status"');
+    expect(liveHtml).toContain("Junior is responding");
+    expect(quietHtml).not.toContain("Junior is responding");
+    expect(completedHtml).not.toContain("Junior is responding");
+  });
+
+  it("distinguishes initial detail failures from stale refresh failures", () => {
+    const initialClient = conversationQueryClient();
+    const initialError = new Error("initial detail failed");
+    const initialQuery = initialClient.getQueryCache().build(initialClient, {
+      queryKey: ["conversation", "conversation-1"],
+    });
+    initialQuery.setState({
+      ...initialQuery.state,
+      error: initialError,
+      errorUpdatedAt: Date.now(),
+      fetchStatus: "idle",
+      status: "error",
+    });
+
+    const initialHtml = renderConversationPageWithClient(initialClient);
+    expect(initialHtml).toContain("initial detail failed");
+    expect(initialHtml).not.toContain(
+      "Transcript refresh failed. Showing the latest available data.",
+    );
+
+    const staleClient = conversationQueryClient();
+    const staleDetail = conversation(
+      [
+        event(0, {
+          type: "message",
+          messageId: "cached-answer",
+          role: "assistant",
+          text: "cached canonical answer",
+        }),
+      ],
+      { status: "active" },
+    );
+    staleClient.setQueryData(["conversation", "conversation-1"], staleDetail);
+    const staleQuery = staleClient.getQueryCache().find({
+      queryKey: ["conversation", "conversation-1"],
+    });
+    staleQuery?.setState({
+      ...staleQuery.state,
+      error: new Error("refresh failed"),
+      errorUpdatedAt: Date.now(),
+      fetchStatus: "idle",
+      status: "error",
+    });
+
+    const staleHtml = renderConversationPageWithClient(staleClient);
+    expect(staleHtml).toContain("cached canonical answer");
+    expect(staleHtml).toContain(
+      "Transcript refresh failed. Showing the latest available data.",
+    );
+    expect(staleHtml).not.toContain("Junior is responding");
+  });
+
+  it("renders redacted visible events without exposing text", () => {
+    const html = renderTranscript(
+      conversation(
+        [
+          event(0, {
+            type: "message",
+            messageId: "private",
+            role: "user",
+            redacted: true,
+          }),
         ],
-      })),
-      ...(finalMessage
-        ? [
-            {
-              role: "assistant" as const,
-              timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
-              parts: [{ type: "text" as const, text: "done" }],
-            },
-          ]
-        : []),
-    ],
-    transcriptAvailable: true,
-  } as ConversationTranscript;
-}
+        {
+          eventHistory: {
+            status: "redacted",
+            reason: "non_public_conversation",
+          },
+        },
+      ),
+    );
+    expect(html).toContain("&lt;redacted&gt;");
+  });
 
-describe("dashboard telemetry components", () => {
-  it("keeps card supporting text on the shared readable contrast tier", () => {
+  it("renders failure and context lifecycle rows", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, { type: "compaction" }),
+        event(1, { type: "handoff" }),
+        event(2, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "failed",
+          failureKind: "agent",
+        }),
+      ]),
+    );
+    expect(html).toContain("Context compacted");
+    expect(html).toContain("Model handoff");
+    expect(html).toContain("Agent response failed");
+  });
+
+  it("renders a delivery terminal failure without treating it as an agent failure", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "failed",
+          failureKind: "delivery",
+        }),
+      ]),
+    );
+    expect(html).toContain("Message delivery failed");
+    expect(html).toContain(
+      "Junior could not deliver this message to its destination.",
+    );
+    expect(html).not.toContain("Agent response failed");
+  });
+
+  it("renders redacted tool starts as started rather than missing", () => {
+    const html = renderTranscript(
+      conversation([event(0, { type: "tool_started", name: "search" })], {
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+      }),
+    );
+    expect(html).toContain("search");
+    expect(html).toContain("started");
+    expect(html).not.toContain("running");
+    expect(html).not.toContain("missing result");
+  });
+
+  it.each([
+    ["running", undefined],
+    ["aborted", "aborted"],
+  ] as const)("renders the %s child lifecycle status", (status, outcome) => {
+    const events: ConversationReportEvent[] = [
+      event(0, {
+        type: "subagent_started",
+        childConversationId: "child-1",
+        subagentKind: "advisor",
+      }),
+    ];
+    if (outcome) {
+      events.push(
+        event(1, {
+          type: "subagent_ended",
+          startedSeq: 0,
+          outcome,
+        }),
+      );
+    }
+
     const html = renderToStaticMarkup(
-      <CardHeader
-        description="Supporting copy"
-        title="Activity"
-        trailing="90 days"
-      />,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView
+            conversation={conversation(events)}
+            onOpenSubagentTranscript={() => {}}
+            view="rich"
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
-
-    expect(html).toContain("text-white/50");
-    expect(html).toContain("text-white/55");
-    expect(html).not.toContain("text-white/30");
-    expect(html).not.toContain("text-white/35");
-  });
-
-  it("keeps shared command buttons out of form-submit mode", () => {
-    const html = renderToStaticMarkup(<Button>Copy as Markdown</Button>);
-    const iconHtml = renderToStaticMarkup(
-      <Button aria-label="Log out" disabled size="icon" />,
-    );
-
-    expect(html).toContain('type="button"');
-    expect(iconHtml).toContain('disabled=""');
-    expect(iconHtml).toContain("size-9");
-  });
-
-  it("exposes pressed state for dashboard toggle controls", () => {
-    const transcript = renderToStaticMarkup(
-      <TranscriptHeader
-        actions={
-          <Button aria-label="Copy conversation as Markdown" size="icon" />
-        }
-        onChange={() => {}}
-        redacted={false}
-        value="raw"
-      />,
-    );
-
-    expect(transcript).toContain('aria-label="Transcript view"');
-    expect(transcript).toContain('aria-label="Copy conversation as Markdown"');
-    expect(transcript).not.toContain(">Transcript<");
-    expect(transcript.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
-    expect(transcript.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
-  });
-
-  it("renders transcript-backed subagent rows as inspectable events", () => {
-    const html = renderToStaticMarkup(
-      <TranscriptSubagentView
-        onOpenTranscript={() => {}}
-        part={{
-          id: "advisor-call",
-          outcome: "success",
-          parentToolCallId: "advisor-call",
-          status: "success",
-          subagentKind: "advisor",
-          transcriptAvailable: true,
-          type: "subagent",
-        }}
-        timestamp={Date.parse("2026-01-01T00:00:00.000Z")}
-      />,
-    );
-
     expect(html).toContain("advisor");
-    expect(html).not.toContain("advisor subagent");
+    expect(html).toContain(status);
     expect(html).toContain('aria-label="Open advisor transcript"');
   });
 
-  it("places subagent and context-change icons on the transcript rail", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 3_000,
-      displayTitle: "Conversation",
-      lastProgressAt: "2026-01-01T00:00:03.000Z",
-      lastSeenAt: "2026-01-01T00:00:03.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      transcript: [
-        {
+  it("loads child drawers from the ordinary conversation query", () => {
+    const child = conversation(
+      [
+        event(0, {
+          type: "message",
+          messageId: "child-answer",
           role: "assistant",
-          parts: [
-            {
-              id: "advisor-call",
-              status: "success",
-              subagentKind: "advisor",
-              type: "subagent",
-            },
-            {
-              type: "context_event",
-              event: {
-                createdAt: "2026-01-01T00:00:02.000Z",
-                transcriptIndex: 0,
-                type: "context_compacted",
-              },
-            },
-            {
-              type: "context_event",
-              event: {
-                createdAt: "2026-01-01T00:00:03.000Z",
-                fromModelId: "openai/gpt-5.4",
-                toModelId: "openai/gpt-5.6-sol",
-                transcriptIndex: 0,
-                type: "model_handoff",
-              },
-            },
-          ],
-        },
+          text: "child detail answer",
+        }),
       ],
-      transcriptAvailable: true,
-    } as unknown as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
+      { conversationId: "child-1", displayTitle: "Advisor review" },
     );
-
-    expect(html).toContain('data-transcript-rail-event="subagent"');
-    expect(html).toContain('data-transcript-rail-event="compaction"');
-    expect(html).toContain('data-transcript-rail-event="handoff"');
-    expect(html.match(/-left-\[1\.95rem\]/g) ?? []).toHaveLength(3);
-  });
-
-  it("renders advisor drawer headers with conversation identity", () => {
-    const target = {
-      conversationId: "parent-conversation",
+    client.setQueryData(["conversation", "child-1"], child);
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-1",
       part: {
-        id: "advisor-call",
-        modelId: "openai/gpt-5.6-sol",
-        outcome: "success",
-        parentToolCallId: "advisor-call",
-        reasoningLevel: "high",
-        status: "success",
-        subagentKind: "advisor",
-        transcriptAvailable: true,
         type: "subagent",
-      },
-      conversation: {
-        conversationId: "parent-conversation",
-        cumulativeDurationMs: 1000,
-        displayTitle: "Parent conversation",
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:01.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
+        id: "child-1",
+        childConversationId: "child-1",
         status: "completed",
-        surface: "internal",
-        transcript: [],
-        transcriptAvailable: true,
-      },
-    } satisfies SubagentTranscriptTarget;
-    client.setQueryData(
-      ["conversation-subagent", "parent-conversation", "advisor-call"],
-      {
-        type: "subagent",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        endedAt: "2026-01-01T00:00:01.000Z",
-        id: "advisor-call",
-        modelId: "openai/gpt-5.6-sol",
-        outcome: "success",
-        parentToolCallId: "advisor-call",
-        reasoningLevel: "high",
-        status: "success",
-        subagentConversationId: "junior:parent-conversation:advisor_session",
         subagentKind: "advisor",
-        subagentSentryConversationUrl:
-          "https://sentry.example/explore/conversations/advisor",
-        transcript: [],
-        transcriptAvailable: false,
       },
-    );
+    };
 
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <SubagentTranscriptDrawer target={target} onClose={() => {}} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
-
-    expect(html).toContain(">advisor<");
-    expect(html).not.toContain("advisor subagent");
-    expect(html).toContain("Conversation ID");
-    expect(html).toContain("junior:");
-    expect(html).toContain("parent-conversation:");
-    expect(html).toContain("advisor_session");
-    expect(html).toContain("gpt-5.6-sol");
-    expect(html).toContain("(high)");
-    expect(html).toContain("high");
-    expect(html).toContain("View in Sentry");
-    expect(html).toContain('aria-label="Copy as Markdown"');
-    expect(html).toContain("disabled");
-    expect(html).toContain(
-      "https://sentry.example/explore/conversations/advisor",
-    );
+    expect(html).toContain("Advisor review");
+    expect(html).toContain("child detail answer");
+    expect(html).toContain("/conversations/child-1");
+    expect(html).toContain("Open conversation");
   });
 
-  it("shows subagent execution settings while the drawer is loading", () => {
-    const target = {
-      conversationId: "parent-conversation",
+  it("keeps the terminal parent error when child detail says completed", () => {
+    const child = conversation([], {
+      conversationId: "child-1",
+      displayTitle: "Advisor review",
+      status: "completed",
+    });
+    client.setQueryData(["conversation", "child-1"], child);
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-1",
       part: {
-        id: "advisor-loading",
-        modelId: "openai/gpt-5.6-sol",
-        reasoningLevel: "high",
-        status: "running",
-        subagentKind: "advisor",
         type: "subagent",
+        id: "child-1",
+        childConversationId: "child-1",
+        status: "error",
+        subagentKind: "advisor",
       },
-      conversation: {
-        conversationId: "parent-conversation",
-        cumulativeDurationMs: 0,
-        displayTitle: "Parent conversation",
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:01.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "active",
-        surface: "internal",
-        transcript: [],
-        transcriptAvailable: true,
-      },
-    } satisfies SubagentTranscriptTarget;
+    };
 
     const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain("error ·");
+    expect(html).not.toContain("completed ·");
+  });
+
+  it("keeps a child transcript openable when its end event is missing", () => {
+    const parentHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView
+            conversation={conversation([
+              event(0, {
+                type: "subagent_started",
+                childConversationId: "child-1",
+                subagentKind: "advisor",
+              }),
+            ])}
+            onOpenSubagentTranscript={() => {}}
+            view="rich"
+          />
+        </TranscriptSearchProvider>
       </QueryClientProvider>,
     );
 
-    expect(html).toContain("gpt-5.6-sol");
-    expect(html).toContain("(high)");
+    expect(parentHtml).toContain('aria-label="Open advisor transcript"');
+
+    const child = conversation([], {
+      conversationId: "child-1",
+      displayTitle: "Advisor review",
+      status: "completed",
+    });
+    client.setQueryData(["conversation", "child-1"], child);
+    const drawerHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <SubagentTranscriptDrawer
+            target={{
+              conversationId: "child-1",
+              part: {
+                type: "subagent",
+                id: "invocation-1",
+                childConversationId: "child-1",
+                status: "running",
+                subagentKind: "advisor",
+              },
+            }}
+            onClose={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(drawerHtml).toContain("completed ·");
+    expect(drawerHtml).not.toContain("running ·");
+    expect(drawerHtml).toContain("Open conversation");
+  });
+
+  it("announces child conversation load failures with an error tone", () => {
+    const errorClient = new QueryClient({
+      defaultOptions: {
+        queries: { refetchOnMount: false, retry: false, retryOnMount: false },
+      },
+    });
+    const error = new Error("unavailable");
+    errorClient.getQueryCache().build(
+      errorClient,
+      { queryKey: ["conversation", "child-error"] },
+      {
+        data: undefined,
+        dataUpdateCount: 0,
+        dataUpdatedAt: 0,
+        error,
+        errorUpdateCount: 1,
+        errorUpdatedAt: Date.now(),
+        fetchFailureCount: 1,
+        fetchFailureReason: error,
+        fetchMeta: null,
+        fetchStatus: "idle",
+        isInvalidated: false,
+        status: "error",
+      },
+    );
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-error",
+      part: {
+        type: "subagent",
+        id: "child-error",
+        childConversationId: "child-error",
+        status: "error",
+        subagentKind: "advisor",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={errorClient}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain("Conversation failed to load.");
+    expect(html).toContain('data-tone="error"');
+    expect(html).toContain('role="alert"');
   });
 
   it("renders actor profiles with activity without recent conversations", () => {
@@ -468,13 +555,11 @@ describe("dashboard telemetry components", () => {
       windowEnd: "2026-01-02T00:00:00.000Z",
       windowStart: "2025-01-02T00:00:00.000Z",
     };
-
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <Profile profile={profile} />
       </MemoryRouter>,
     );
-
     expect(html).toContain("Avery Example");
     expect(html).toContain("avery@example.com");
     expect(html).toContain("Activity");
@@ -504,830 +589,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain(">People</a>");
   });
 
-  it("renders people load failures separately from empty telemetry", () => {
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <PeoplePageContent
-          data={undefined}
-          error={new Error("people failed")}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("People failed to load");
-    expect(html).toContain("People telemetry is unavailable");
-    expect(html).not.toContain("No actor telemetry with trusted email");
-  });
-
-  it("renders people analytics with range controls and daily activity", () => {
-    const data: ActorDirectoryReport = {
-      activityDays: [
-        { activePeople: 1, conversations: 2, date: "2026-01-01" },
-        { activePeople: 2, conversations: 3, date: "2026-01-02" },
-      ],
-      generatedAt: "2026-01-02T12:00:00.000Z",
-      people: [
-        {
-          active: 0,
-          activeDays: 2,
-          conversations: 3,
-          durationMs: 1_200,
-          failed: 0,
-          firstSeenAt: "2026-01-01T00:00:00.000Z",
-          lastSeenAt: "2026-01-02T00:00:00.000Z",
-          actor: {
-            email: "avery@example.com",
-            fullName: "Avery Example",
-            slackUserName: "avery",
-          },
-        },
-      ],
-      source: "conversation_index",
-      windowEnd: "2026-01-02T00:00:00.000Z",
-      windowStart: "2025-10-05T00:00:00.000Z",
-    };
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <PeoplePageContent data={data} error={undefined} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Who&#x27;s been around");
-    expect(html).toContain("Active people per day");
-    expect(html).toContain('aria-label="Reporting period"');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain(">90d</button>");
-    expect(html).toContain("Peak daily active");
-    expect(html).toContain("Avery Example");
-    expect(html).not.toContain("@avery");
-    expect(html).not.toContain("last 1 day ago");
-  });
-
-  it("renders a stable skeleton while directory sorting catches up", () => {
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <PeopleDirectory
-          loading
-          onQueryChange={() => {}}
-          onSortChange={() => {}}
-          people={[]}
-          query=""
-          sort="runtime"
-          totalPeople={2}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain('aria-label="Loading sorted results"');
-  });
-
-  it("shows a typing indicator only while the transcript is live", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 1_000,
-      displayTitle: "Active conversation",
-      lastProgressAt: "2026-01-01T00:00:01.000Z",
-      lastSeenAt: "2026-01-01T00:00:01.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "active",
-      surface: "slack",
-      transcript: [],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const liveHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live transcript={turn} />
-      </QueryClientProvider>,
-    );
-    const completedHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript transcript={{ ...turn, status: "completed" }} />
-      </QueryClientProvider>,
-    );
-
-    expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain(
-      '<span class="sr-only">Junior is responding</span>',
-    );
-    expect(completedHtml).not.toContain("Junior is responding");
-  });
-
-  it("keeps live transcript following independent from responding status", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      status: "active",
-      transcript: [],
-      transcriptAvailable: true,
-    } as unknown as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live responding={false} transcript={turn} />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("Junior is responding");
-  });
-
-  it("keeps completed status badges quiet unless explicitly requested", () => {
-    expect(renderToStaticMarkup(<StatusBadge status="idle" />)).toBe("");
-    expect(
-      renderToStaticMarkup(<StatusBadge showCompleted status="idle" />),
-    ).toContain("completed");
-    expect(
-      renderToStaticMarkup(<StatusBadge label="checking" status="idle" />),
-    ).toContain("checking");
-    expect(renderToStaticMarkup(<StatusBadge status="failed" />)).toContain(
-      "error",
-    );
-  });
-
-  it("keeps the Sentry trace link in transcript headers", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      sentryTraceUrl: "https://sentry.example/trace/abc",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <ConversationTranscriptView conversation={turn} view="rich" />,
-    );
-
-    expect(html).toContain("View in Sentry");
-    expect(html).toContain("https://sentry.example/trace/abc");
-  });
-
-  it("renders terminal assistant outcomes as distinct safe callouts", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:02.000Z",
-      lastSeenAt: "2026-01-01T00:00:02.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          outcome: "error",
-          timestamp: 1_000,
-          parts: [],
-        },
-        {
-          role: "assistant",
-          outcome: "aborted",
-          timestamp: 2_000,
-          parts: [],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <ConversationTranscriptView conversation={turn} view="rich" />,
-    );
-
-    expect(html).toContain('data-transcript-failure="error"');
-    expect(html).toContain('data-transcript-failure="aborted"');
-    expect(html).toContain("Agent response failed");
-    expect(html).toContain("Agent response stopped");
-  });
-
-  it("renders terminal assistant outcomes from redacted transcript metadata", () => {
-    const turn = {
-      conversationId: "conversation-private",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:01.000Z",
-      lastSeenAt: "2026-01-01T00:00:01.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Private conversation",
-      transcript: [],
-      transcriptAvailable: false,
-      transcriptMetadata: [
-        {
-          role: "assistant",
-          outcome: "error",
-          timestamp: 1_000,
-          parts: [],
-        },
-      ],
-      transcriptRedacted: true,
-      transcriptRedactionReason: "non_public_conversation",
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <ConversationTranscriptView conversation={turn} view="rich" />,
-    );
-
-    expect(html).toContain('data-transcript-failure="error"');
-    expect(html).toContain("Agent response failed");
-  });
-
-  it("removes residual grid row gap from collapsed system prompts", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "system",
-          parts: [{ type: "text", text: "System prompt" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("gap-y-0");
-    expect(html).toContain("flex min-w-0 items-center justify-between gap-3");
-    expect(html).toContain(
-      'font-mono leading-none text-[0.78rem] text-[#888]">13b',
-    );
-  });
-
-  it("keeps message timestamps in a shared heading row without elapsed offsets", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "user",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [{ type: "text", text: "Can you check this?" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("flex min-w-0 items-center justify-between gap-3");
-    expect(html).toContain("font-mono leading-none text-[0.78rem] text-[#888]");
-    expect(html).toContain("flex flex-col items-center pt-1.5");
-    expect(html).not.toContain("+10s");
-    expect(html).not.toContain("· +");
-    expect(html).not.toContain("items-baseline gap-2 text-[0.88rem]");
-  });
-
-  it("renders safe markdown links as transcript anchors", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            {
-              type: "text",
-              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [broken [real](https://nested.example/ok), [local](/api/me), and [bad](javascript:alert).",
-            },
-          ],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain('href="https://sentry.example/trace/abc"');
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noreferrer"');
-    expect(html).toContain(">the trace</a>");
-    expect(html).toContain('href="https://en.wikipedia.org/wiki/Foo_(bar)"');
-    expect(html).toContain(">wiki</a>");
-    expect(html).toContain('href="https://docs.example/Foo_(bar)"');
-    expect(html).toContain(">https://docs.example/Foo_(bar)</a>.");
-    expect(html).toContain("https://.");
-    expect(html).toContain('href="https://after-invalid.example/ok"');
-    expect(html).toContain(">https://after-invalid.example/ok</a>");
-    expect(html).toContain("[broken ");
-    expect(html).toContain('href="https://nested.example/ok"');
-    expect(html).toContain(">real</a>");
-    expect(html).not.toContain(">broken [real</a>");
-    expect(html).toContain("[local](/api/me)");
-    expect(html).toContain("[bad](javascript:alert)");
-    expect(html).not.toContain('href="/api/me"');
-    expect(html).not.toContain('href="javascript:alert"');
-  });
-
-  it("renders cached highlighted markdown links", () => {
-    const text =
-      "## Trace summary\n- [cached trace](https://cached.example/trace).";
-    client.setQueryData(
-      ["highlight", "markdown", text, "transcript-markdown"],
-      '<pre><code><span class="line"><span style="color:#79B8FF;font-weight:bold">## Trace summary</span></span>\n<span class="line">- <a data-cached="yes" href="https://cached.example/trace" rel="noreferrer" target="_blank">cached trace</a>.</span></code></pre>',
-    );
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [{ type: "text", text }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain('data-cached="yes"');
-    expect(html).toContain('href="https://cached.example/trace"');
-    expect(html).toContain(">cached trace</a>");
-    expect(html).not.toContain("[cached trace]");
-  });
-
-  it("omits empty tool-call summaries", () => {
-    expect(
-      renderToStaticMarkup(
-        <ToolCallsMetric summary={{ items: [], total: 0 }} />,
-      ),
-    ).toBe("");
-  });
-
-  it("keeps cached transcript data visible after a refresh failure", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      displayTitle: "Active conversation",
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "active",
-      surface: "slack",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      transcript: [
-        {
-          parts: [{ text: "Cached transcript message", type: "text" }],
-          role: "assistant",
-        },
-      ],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    const query = client.getQueryCache().build(client, {
-      queryKey: ["conversation", "conversation-1"],
-      queryFn: async () => detail,
-    });
-    query.setState({
-      ...query.state,
-      data: detail,
-      error: new Error("refresh failed"),
-      errorUpdatedAt: Date.now(),
-      status: "error",
-    });
-
-    const html = renderConversationPage(dashboardData([session]));
-
-    expect(html).toContain("Cached transcript message");
-    expect(html).toContain(
-      "Transcript refresh failed. Showing the latest available data.",
-    );
-    expect(html).not.toContain("Junior is responding");
-  });
-
-  it("omits the conversation tool-call metric slot when the loaded detail has no tool calls", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "not-a-date",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-
-    expect(html).not.toContain("turn");
-    expect(html).not.toContain("tool call");
-  });
-
-  it("counts actor turns and omits the redundant started header item", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 60_000,
-      lastProgressAt: "2026-01-01T00:01:00.000Z",
-      lastSeenAt: "2026-01-01T00:01:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:01:00.000Z",
-      transcript: [
-        { role: "user", parts: [{ type: "text", text: "first" }] },
-        { role: "assistant", parts: [{ type: "text", text: "done" }] },
-        { role: "user", parts: [{ type: "text", text: "second" }] },
-        { role: "assistant", parts: [{ type: "text", text: "done" }] },
-      ],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-    const header = html.slice(0, html.indexOf('aria-label="Transcript view"'));
-    const transcript = html.slice(html.indexOf('aria-label="Transcript view"'));
-
-    expect(header).toContain("2 turns");
-    expect(header).not.toContain("4 messages");
-    expect(header).not.toContain("started Jan");
-    expect(transcript).toContain("2 turns");
-    expect(transcript).not.toContain("4 messages");
-  });
-
-  it("shows the conversation model and thinking level in the transcript header", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      modelId: "openai/gpt-5.6-sol",
-      reasoningLevel: "high",
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-    const transcriptStart = html.indexOf('aria-label="Transcript view"');
-    const detailHeader = html.slice(0, transcriptStart);
-    const transcript = html.slice(transcriptStart);
-
-    expect(detailHeader).not.toContain("gpt-5.6-sol");
-    expect(transcript).toContain(
-      'aria-label="Execution settings: openai/gpt-5.6-sol, high"',
-    );
-    expect(transcript).toContain("break-all font-mono");
-    expect(transcript).toContain("gpt-5.6-sol");
-    expect(transcript).toContain("(high)");
-  });
-
-  it("renders execution activity inside the transcript", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      activity: [
-        {
-          type: "tool_execution",
-          id: "advisor-call-1",
-          toolCallId: "advisor-call-1",
-          toolName: "advisor",
-          createdAt: "2026-01-01T00:00:01.000Z",
-          status: "running",
-          subagents: [
-            {
-              type: "subagent",
-              id: "advisor-call-1",
-              subagentKind: "advisor",
-              parentToolCallId: "advisor-call-1",
-              createdAt: "2026-01-01T00:00:01.000Z",
-              status: "running",
-            },
-          ],
-        },
-      ],
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-
-    expect(html).not.toContain('aria-label="Execution activity"');
-    expect(html).not.toContain("Execution Activity");
-    expect(html).toContain("advisor");
-    expect(html).not.toContain("advisor subagent");
-    expect(html).toContain("running");
-    expect(html.indexOf("advisor")).toBeGreaterThan(
-      html.indexOf('aria-label="Transcript view"'),
-    );
-  });
-
-  it("uses the detail report for the View in Sentry conversation link", () => {
-    const summary = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      actorIdentity: {
-        email: "avery@example.com",
-        fullName: "Avery Example",
-      },
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...summary,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      sentryConversationUrl:
-        "https://sentry.example/explore/conversations/conversation-1/?project=1",
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([summary]));
-
-    expect(html).toContain('href="/people/avery%40example.com"');
-    expect(html).toContain("View in Sentry");
-    expect(html).toContain(
-      "https://sentry.example/explore/conversations/conversation-1/?project=1",
-    );
-  });
-
-  it("renders the selected personal conversation in the home workspace", () => {
-    const summary = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 1_000,
-      displayTitle: "Personal conversation",
-      lastProgressAt: "2026-01-01T00:00:01.000Z",
-      lastSeenAt: "2026-01-01T00:00:02.000Z",
-      actorIdentity: { email: "morgan@example.com", fullName: "Morgan" },
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-    } satisfies ConversationSummaryReport;
-    const data = dashboardData([summary]);
-    data.config.authRequired = true;
-    data.me = { user: { email: "morgan@example.com" } };
-    client.setQueryData(
-      ["dashboard", "conversations", "morgan@example.com"],
-      data.conversations,
-    );
-    client.setQueryData(["conversation", "conversation-1"], {
-      ...summary,
-      generatedAt: "2026-01-01T00:00:02.000Z",
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport);
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
-          <Routes>
-            <Route
-              element={<ConversationWorkspace data={data} />}
-              path="/conversations/:conversationId"
-            />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("Your conversations");
-    expect(html).toContain('aria-label="Search your conversations"');
-    expect(html).toContain('href="/conversations/conversation-1"');
-    expect(html).toContain('aria-current="page"');
-    expect(html).toContain("Personal conversation");
-  });
-
-  it("uses React Router's decoded conversation id without decoding it again", () => {
-    const summary = {
-      conversationId: "conversation%one",
-      cumulativeDurationMs: 1_000,
-      displayTitle: "Percent conversation",
-      lastProgressAt: "2026-01-01T00:00:01.000Z",
-      lastSeenAt: "2026-01-01T00:00:01.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-    } satisfies ConversationSummaryReport;
-    const data = dashboardData([summary]);
-    data.config.authRequired = true;
-    client.setQueryData(
-      ["dashboard", "conversations", "viewer@example.com"],
-      data.conversations,
-    );
-    client.setQueryData(["conversation", "conversation%one"], {
-      ...summary,
-      generatedAt: "2026-01-01T00:00:01.000Z",
-      transcript: [],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport);
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/conversations/conversation%25one"]}>
-          <Routes>
-            <Route
-              element={<ConversationWorkspace data={data} />}
-              path="/conversations/:conversationId"
-            />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("Percent conversation");
-  });
-
-  it("shows the global feed when dashboard auth is disabled", () => {
-    const summary = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 1_000,
-      displayTitle: "Local conversation",
-      lastProgressAt: "2026-01-01T00:00:01.000Z",
-      lastSeenAt: "2026-01-01T00:00:01.000Z",
-      actorIdentity: { email: "actor@example.com" },
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-    } satisfies ConversationSummaryReport;
-    const data = dashboardData([summary]);
-    client.setQueryData(
-      ["dashboard", "conversations", "all"],
-      data.conversations,
-    );
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter>
-          <ConversationWorkspace data={data} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("Local conversation");
-  });
-
-  it("renders system conversation metrics and plugin reports", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
-
-    const conversationSummaries: ConversationSummaryReport[] = [
-      {
-        channel: "C1",
-        channelName: "proj-alpha",
-        conversationId: "slack:C1:100",
-        cumulativeDurationMs: 1_000,
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:02.000Z",
-        actorIdentity: { fullName: "Avery" },
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        displayTitle: "Conversation",
-      },
-      {
-        channel: "D1",
-        conversationId: "slack:D1:200",
-        cumulativeDurationMs: 2_000,
-        lastProgressAt: "2026-01-01T00:02:01.000Z",
-        lastSeenAt: "2026-01-01T00:02:02.000Z",
-        actorIdentity: { fullName: "Avery" },
-        startedAt: "2026-01-01T00:02:00.000Z",
-        status: "failed",
-        surface: "slack",
-        displayTitle: "Conversation",
-      },
-      {
-        channel: "C2",
-        channelName: "old-project",
-        conversationId: "slack:C2:300",
-        cumulativeDurationMs: 5_000,
-        lastProgressAt: "2025-12-20T00:00:01.000Z",
-        lastSeenAt: "2025-12-20T00:00:02.000Z",
-        actorIdentity: { fullName: "Casey" },
-        startedAt: "2025-12-20T00:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        displayTitle: "Old thread",
-      },
-    ];
-    const data = dashboardData(conversationSummaries);
-    data.plugins = [{ name: "github" }];
-    data.pluginReports!.reports = [
-      {
-        pluginName: "scheduler",
-        title: "Scheduler",
-        metrics: [{ label: "active", value: "2" }],
-        recordSets: [
-          {
-            title: "Upcoming",
-            fields: [{ key: "task", label: "Task" }],
-            records: [{ id: "sched_1", values: { task: "sched_1" } }],
-          },
-        ],
-      },
-    ];
-    data.skills = [{ name: "triage", pluginProvider: "github" }];
-
-    const systemHtml = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(systemHtml).toContain(">System<");
-    expect(systemHtml).toContain("Token usage");
-    expect(systemHtml).toContain("Model spend");
-    expect(systemHtml).toContain("Runtime");
-    expect(systemHtml).toContain(">12k<");
-    expect(systemHtml).toContain(">$4.56<");
-    expect(systemHtml).toContain('role="tablist"');
-    expect(systemHtml).toContain('aria-selected="true"');
-    expect(systemHtml).toContain(">Plugins<");
-    expect(systemHtml).toContain(">Skills<");
-    expect(systemHtml).toContain(">Scheduler<");
-    expect(systemHtml).toContain("github");
-    expect(systemHtml).not.toContain(">triage<");
-    expect(systemHtml).toContain("scheduler");
-    expect(systemHtml).toContain("sched_1");
-
-    const skillsHtml = renderToStaticMarkup(
-      <SkillInventory skills={data.skills} />,
-    );
-    expect(skillsHtml).toContain(">Skills<");
-    expect(skillsHtml).toContain(">github<");
-    expect(skillsHtml).toContain(">triage<");
-  });
-
-  it("renders public locations as primary rows and collapses private activity", () => {
+  it("renders Location directory and preserves stale rows on refresh failure", () => {
     const data: LocationDirectoryReport = {
       activityDays: [
         {
@@ -1350,21 +612,6 @@ describe("dashboard telemetry components", () => {
           lastSeenAt: "2026-01-05T00:00:00.000Z",
           provider: "slack",
           providerDestinationId: "C1",
-          tokens: 12_500,
-          visibility: "public",
-        },
-        {
-          active: 0,
-          conversations: 2,
-          durationMs: 4_000,
-          failed: 0,
-          firstSeenAt: "2026-01-02T00:00:00.000Z",
-          id: "destination-2",
-          kind: "channel",
-          label: "#other",
-          lastSeenAt: "2026-01-04T00:00:00.000Z",
-          provider: "slack",
-          providerDestinationId: "C2",
           visibility: "public",
         },
       ],
@@ -1380,65 +627,17 @@ describe("dashboard telemetry components", () => {
       windowStart: "2025-10-08T00:00:00.000Z",
     };
     const html = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/locations?q=proj-alpha"]}>
-        <LocationsPageContent data={data} error={null} />
-      </MemoryRouter>,
-    );
-    expect(html).toContain("1 of 2 public locations");
-    expect(html).toContain("#proj-alpha");
-    expect(html).not.toContain("#other");
-    expect(html).not.toContain("C1");
-    expect(html).toContain(">13k<");
-    expect(html).not.toContain(">Errors<");
-    expect(html).not.toContain(">Active<");
-    expect(html).toContain("Private activity");
-    expect(html).toContain("DMs, private channels, and unknown visibility");
-    expect(html).toContain("Public and private conversations per day");
-  });
-
-  it("keeps cached location rows visible after a refresh failure", () => {
-    const data: LocationDirectoryReport = {
-      activityDays: [],
-      generatedAt: "2026-01-05T00:00:00.000Z",
-      locations: [
-        {
-          active: 0,
-          conversations: 1,
-          durationMs: 1_000,
-          failed: 0,
-          firstSeenAt: "2026-01-01T00:00:00.000Z",
-          id: "destination-1",
-          kind: "channel",
-          label: "#proj-alpha",
-          lastSeenAt: "2026-01-05T00:00:00.000Z",
-          provider: "slack",
-          providerDestinationId: "C1",
-          visibility: "public",
-        },
-      ],
-      privateActivity: {
-        active: 0,
-        conversations: 0,
-        durationMs: 0,
-        failed: 0,
-        label: "Private activity",
-      },
-      source: "conversation_index",
-      windowEnd: "2026-01-05T00:00:00.000Z",
-      windowStart: "2025-10-08T00:00:00.000Z",
-    };
-
-    const html = renderToStaticMarkup(
       <MemoryRouter>
         <LocationsPageContent data={data} error={new Error("refresh failed")} />
       </MemoryRouter>,
     );
-
     expect(html).toContain("Location telemetry refresh failed");
     expect(html).toContain("#proj-alpha");
+    expect(html).toContain("Private activity");
+    expect(html).toContain("Public and private conversations per day");
   });
 
-  it("renders public location detail with people and recent conversations", () => {
+  it("renders Location detail actors and recent conversations through stale data", () => {
     const detail: LocationDetailReport = {
       active: 0,
       activityDays: [],
@@ -1465,14 +664,11 @@ describe("dashboard telemetry components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
-          channel: "C1",
-          channelName: "proj-alpha",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
           lastProgressAt: "2026-01-05T00:00:00.000Z",
           lastSeenAt: "2026-01-05T00:00:00.000Z",
-          locationId: "destination-1",
           startedAt: "2026-01-05T00:00:00.000Z",
           status: "completed",
           surface: "slack",
@@ -1483,25 +679,7 @@ describe("dashboard telemetry components", () => {
       windowEnd: "2026-01-05T00:00:00.000Z",
       windowStart: "2025-12-07T00:00:00.000Z",
     };
-    client.setQueryData(["dashboard", "locations", "destination-1"], detail);
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/locations/destination-1"]}>
-          <Routes>
-            <Route
-              element={<LocationDetailPage />}
-              path="/locations/:locationId"
-            />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(html).toContain("#proj-alpha");
-    expect(html).toContain("Investigate checkout");
-    expect(html).toContain('href="/people/avery%40example.com"');
-    expect(html).toContain("Recent conversations");
-
-    const staleHtml = renderToStaticMarkup(
       <MemoryRouter>
         <LocationDetailPageContent
           data={detail}
@@ -1509,11 +687,69 @@ describe("dashboard telemetry components", () => {
         />
       </MemoryRouter>,
     );
-    expect(staleHtml).toContain("Location telemetry refresh failed");
-    expect(staleHtml).toContain("#proj-alpha");
+    expect(html).toContain("Location telemetry refresh failed");
+    expect(html).toContain("Investigate checkout");
+    expect(html).toContain("avery@example.com");
   });
 
-  it("renders a clear fallback for plugin records without fields", () => {
+  it("keeps plugin loading, failure, and stale data states distinct", () => {
+    const loading = systemData();
+    loading.pluginReportsLoading = true;
+    loading.plugins = [{ name: "github" }];
+    const loadingHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={loading} />
+      </MemoryRouter>,
+    );
+    expect(loadingHtml).toContain("Loading plugin stats.");
+
+    const stale = systemData();
+    stale.pluginReportsError = true;
+    stale.pluginReports!.reports = [
+      {
+        metrics: [{ label: "active", value: "1" }],
+        pluginName: "scheduler",
+        title: "Scheduler",
+      },
+    ];
+    const staleHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={stale} />
+      </MemoryRouter>,
+    );
+    expect(staleHtml).toContain("Plugin stats failed to load.");
+    expect(staleHtml).toContain("Scheduler");
+  });
+
+  it("renders system metrics and capability inventories", () => {
+    const data = systemData();
+    data.plugins = [{ name: "github" }];
+    data.skills = [{ name: "triage", pluginProvider: "github" }];
+
+    const systemHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+    expect(systemHtml).toContain("Usage over time");
+    expect(systemHtml).toContain("Token usage");
+    expect(systemHtml).toContain("Model spend");
+    expect(systemHtml).toContain("Runtime");
+    expect(systemHtml).toContain('role="tablist"');
+    expect(systemHtml).toContain('aria-selected="true"');
+    expect(systemHtml).toContain(">Plugins<");
+    expect(systemHtml).toContain(">Skills<");
+    expect(systemHtml).toContain(">github<");
+    expect(systemHtml).not.toContain(">triage<");
+
+    const skillsHtml = renderToStaticMarkup(
+      <SkillInventory skills={data.skills} />,
+    );
+    expect(skillsHtml).toContain(">github<");
+    expect(skillsHtml).toContain(">triage<");
+  });
+
+  it("renders plugin records without declared fields safely", () => {
     const html = renderToStaticMarkup(
       <PluginReports
         reports={[
@@ -1529,110 +765,9 @@ describe("dashboard telemetry components", () => {
         ]}
       />,
     );
-
     expect(html).toContain(
       "Report records are unavailable because no fields were declared.",
     );
-  });
-
-  it("keeps plugin inventory available when conversation metrics fail", () => {
-    const data = dashboardData([]);
-    data.conversationStats = undefined;
-    data.conversationStatsError = true;
-    data.plugins = [{ name: "github" }];
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Conversation metrics failed to load.");
-    expect(html).toContain(">Plugins<");
-    expect(html).toContain(">github<");
-  });
-
-  it("keeps cached conversation metrics visible after a refresh failure", () => {
-    const data = dashboardData([]);
-    data.conversationStatsError = true;
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Metrics refresh failed. Showing cached data.");
-    expect(html).toContain("Usage over time");
-  });
-
-  it("renders system page when plugin reports are absent", () => {
-    const data = dashboardData([]);
-    data.plugins = [{ name: "github" }];
-    delete data.pluginReports;
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain(">Plugins<");
-    expect(html).toContain("github");
-    expect(html).toContain("No plugins have been reported yet.");
-  });
-
-  it("shows plugin reports as loading before the report query returns", () => {
-    const data = dashboardData([]);
-    data.pluginReportsLoading = true;
-    data.plugins = [{ name: "github" }];
-    data.skills = [{ name: "triage", pluginProvider: "github" }];
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Loading plugin stats.");
-    expect(html).toContain(">…<");
-    expect(html).not.toContain(">none<");
-    expect(html).not.toContain("No plugins have been reported yet.");
-  });
-
-  it("shows plugin report failures without looking empty", () => {
-    const data = dashboardData([]);
-    data.pluginReportsError = true;
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Plugin stats failed to load.");
-    expect(html).not.toContain("No plugins have been reported yet.");
-  });
-
-  it("shows plugin report failures while keeping stale reports visible", () => {
-    const data = dashboardData([]);
-    data.pluginReportsError = true;
-    data.pluginReports!.reports = [
-      {
-        metrics: [{ label: "active", value: "1" }],
-        pluginName: "scheduler",
-        title: "Scheduler",
-      },
-    ];
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("Plugin stats failed to load.");
-    expect(html).toContain(">Scheduler<");
   });
 
   it("preserves unknown runtime in shared activity tooltips", () => {
@@ -1650,665 +785,90 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain('aria-label="2026-01-01: 1 conversations, unknown"');
   });
-  it("renders transcript copy as an icon-only control", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Readable transcript",
-    } satisfies ConversationSummaryReport;
-    const detail = {
-      ...session,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      transcript: [
-        {
-          parts: [{ text: "hello", type: "text" }],
-          role: "user",
-        },
-      ],
-      transcriptAvailable: true,
-    } satisfies ConversationDetailReport;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-    const controls = html.slice(
-      html.indexOf('aria-label="Transcript view"'),
-      html.indexOf("hello"),
-    );
-    const pageHeader = html.slice(
-      0,
-      html.indexOf('aria-label="Transcript view"'),
-    );
-
-    expect(pageHeader).not.toContain('aria-label="Copy as Markdown"');
-    expect(controls).toContain('aria-label="Copy as Markdown"');
-    expect(controls).toContain("size-9");
-    expect(controls).not.toContain(">Copy as Markdown<");
-  });
-
-  it("keeps zero timestamps in tool metadata", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{ type: "tool_call", name: "search" }}
-          result={{ type: "tool_result", name: "search", output: "ok" }}
-          resultTimestamp={5}
-          timestamp={0}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html.match(/·/g) ?? []).toHaveLength(5);
-    expect(html).toContain("5ms · 2b ·");
-    expect(html).toContain("hidden text-[#777] max-md:inline");
-    expect(html).toContain(
-      'hidden min-w-0 break-words text-[#888] max-md:inline">5ms',
-    );
-    expect(html).toContain("max-md:block");
-  });
-
-  it("highlights expandable tool summaries on hover", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{
-            input: { query: "checkout" },
-            name: "search",
-            type: "tool_call",
-          }}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("hover:text-white");
-    expect(html).toContain("hover:[&amp;_*]:text-white");
-    expect(html).toContain(
-      'hidden min-w-0 break-words text-[#888] max-md:inline">missing result',
-    );
-    expect(html).toContain("<details");
-  });
-
-  it("renders expanded tool payloads as structured key/value rows", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{
-            input: {
-              filters: { environment: "production", release: "2026.1.0" },
-              query: "checkout latency",
-              teams: ["growth", "payments"],
-            },
-            name: "sentry.search_traces",
-            type: "tool_call",
-          }}
-          result={{
-            name: "sentry.search_traces",
-            output: {
-              rows: [
-                { count: 12, endpoint: "/checkout", p95: 842 },
-                { count: 5, endpoint: "/cart", p95: 310 },
-              ],
-              summary: "Checkout p95 regressed after deploy.",
-            },
-            type: "tool_result",
-          }}
-          resultTimestamp={10}
-          timestamp={0}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain(">arguments<");
-    expect(html).toContain(">result<");
-    expect(html).toContain("checkout latency");
-    expect(html).toContain("environment");
-    expect(html).toContain("production");
-    expect(html).toContain("<table");
-    expect(html).toContain("/checkout");
-    expect(html).not.toContain("language-json");
-  });
-
-  it("renders generic tool values without dumping one JSON blob", () => {
-    const html = renderToStaticMarkup(
-      <ToolValueInspector
-        value={{
-          command: "pnpm test",
-          files: [
-            { added: 12, path: "src/a.ts" },
-            { added: 4, path: "src/b.ts" },
-          ],
-          stdout: "line one\nline two",
-        }}
-      />,
-    );
-
-    expect(html).toContain("command");
-    expect(html).toContain("pnpm test");
-    expect(html).toContain("<table");
-    expect(html).toContain("src/a.ts");
-    expect(html).toContain("line one");
-    expect(html).not.toContain("{&quot;command&quot;");
-  });
-
-  it("renders serialized JSON tool results as structured values", () => {
-    const html = renderToStaticMarkup(
-      <ToolValueInspector
-        value={JSON.stringify({
-          data: { count: 2, status: "success" },
-          ok: true,
-        })}
-      />,
-    );
-
-    expect(html).toContain("data");
-    expect(html).toContain("count");
-    expect(html).toContain("success");
-    expect(html).toContain("ok");
-    expect(html).not.toContain("{&quot;data&quot;");
-  });
-
-  it("leaves JSON-looking prose as a string", () => {
-    const html = renderToStaticMarkup(
-      <ToolValueInspector value={'{"status": nope}'} />,
-    );
-
-    expect(html).toContain("{&quot;status&quot;: nope}");
-  });
-
-  it("does not highlight static tool summaries as expandable", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("hover:text-white");
-    expect(html).not.toContain("<details");
-  });
-
   it("contains highlighted code so long mobile lines cannot widen transcripts", () => {
-    const code =
-      '{ "message": "junior command failed: CACHE_URL is required" }';
+    const code = '{ "message": "CACHE_URL is required" }';
     client.setQueryData(
       ["highlight", "json", code],
-      '<pre><code><span class="line"><span>junior command failed: CACHE_URL is required</span></span></code></pre>',
+      '<pre><code><span class="line">CACHE_URL is required</span></code></pre>',
     );
-
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <HighlightedCode code={code} language="json" />
       </QueryClientProvider>,
     );
-
     expect(html).toContain("overflow-hidden");
     expect(html).toContain("overflow-wrap:anywhere");
-    expect(html).toContain("[&amp;_.line]:block");
     expect(html).toContain("[&amp;_.line]:whitespace-pre-wrap");
-    expect(html).toContain("[&amp;_code]:whitespace-normal");
-    expect(html).toContain("[&amp;_pre]:whitespace-normal");
-    expect(html).not.toContain("[&amp;_code]:whitespace-pre-wrap");
   });
 
-  it("uses compact highlighted code spacing for raw XML transcripts", () => {
-    const rawText = "<root>\n  <message>Checking MCP output</message>\n</root>";
-    client.setQueryData(
-      ["highlight", "xml", rawText],
-      '<pre><code><span class="line"><span>&lt;root&gt;</span></span>\n<span class="line"><span>  &lt;message&gt;Checking MCP output&lt;/message&gt;</span></span>\n<span class="line"><span>&lt;/root&gt;</span></span></code></pre>',
-    );
-
-    const turn = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Raw XML",
-      transcript: [
-        {
-          parts: [{ text: rawText, type: "text" }],
-          role: "assistant",
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="raw" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("[&amp;_code]:whitespace-normal");
-    expect(html).toContain("[&amp;_pre]:whitespace-normal");
-    expect(html).toContain("Checking MCP output");
-  });
-
-  it("renders four consecutive tool calls behind a reveal disclosure", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView
-          conversation={toolRunTurn(4, true)}
-          view="rich"
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain('<details class="min-w-0"><summary');
-    expect(html).toContain("show 4 tool calls");
-    expect(html).not.toContain("collapse");
-    expect(html).not.toContain('aria-expanded="false"');
-    expect(html).toContain("cursor-pointer");
-    expect(html).toContain("py-1.5 text-left font-mono");
-    expect(html).not.toContain("pl-3 text-left font-mono");
-    expect(html).toContain("tool-0");
-    expect(html).toContain("tool-1");
-    expect(html).toContain("tool-2");
-    expect(html).toContain("tool-3");
-  });
-
-  it("keeps three consecutive tool calls expanded", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={toolRunTurn(3)} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("show");
-    expect(html).toContain("tool-0");
-    expect(html).toContain("tool-1");
-    expect(html).toContain("tool-2");
-  });
-
-  it("renders thinking rows as collapsed disclosures", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
+  it("renders cached canonical conversation detail through decoded routing", () => {
+    const summary: ConversationSummaryReport = {
+      conversationId: "slack:C1:123",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Cached conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
+    };
+    const detail = conversation(
+      [
+        event(0, {
+          type: "message",
+          messageId: "cached-answer",
           role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            {
-              type: "thinking",
-              output: "checking the rollout\nlisting deploy windows",
-            },
-          ],
-        },
+          text: "cached canonical answer",
+        }),
       ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
+      {
+        conversationId: summary.conversationId,
+        displayTitle: summary.displayTitle,
+      },
+    );
+    client.setQueryData(["conversation", summary.conversationId], detail);
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
+        <MemoryRouter initialEntries={["/conversations/slack%3AC1%3A123"]}>
+          <Routes>
+            <Route
+              path="/conversations/:conversationId"
+              element={
+                <ConversationPage
+                  conversationId={summary.conversationId}
+                  data={{
+                    conversations: {
+                      conversations: [summary],
+                      generatedAt: "2026-01-01T00:00:01.000Z",
+                      source: "conversation_index",
+                    },
+                  }}
+                />
+              }
+            />
+          </Routes>
+        </MemoryRouter>
       </QueryClientProvider>,
     );
-
-    expect(html).toContain('aria-label="Thinking"');
-    expect(html).toContain("<details");
-    expect(html).toContain("py-1.5 text-[0.84rem] leading-relaxed");
-    expect(html).toContain("grid-cols-[1rem_minmax(0,1fr)]");
-    expect(html).toContain("inline-flex size-4 shrink-0 items-center");
-    expect(html).toContain("not-italic text-[#777] max-md:hidden");
-    expect(html).toContain("hidden min-w-0 grid-cols-[1rem_minmax(0,1fr)]");
-    expect(html).toContain("not-italic leading-snug text-[#777]");
-    expect(html).not.toContain("<details open");
-
-    const summary = html.slice(
-      html.indexOf("<summary"),
-      html.indexOf("</summary>"),
-    );
-    // Summary shows truncated thinking text preview (not just a static label).
-    expect(summary).toContain("checking the rollout");
-    expect(summary).toContain("listing deploy windows");
-  });
-
-  it("collapses short thinking rows by default", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [{ type: "thinking", output: "checking the rollout" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("<details");
-    expect(html).toContain("checking the rollout");
-
-    const summary = html.slice(
-      html.indexOf("<summary"),
-      html.indexOf("</summary>"),
-    );
-    // Summary shows the truncated thinking text so users can scan before expanding.
-    expect(summary).toContain("checking the rollout");
-  });
-
-  it("does not render empty thinking as JSON", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          parts: [{ type: "thinking" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("{}");
-    expect(html).toContain("thinking");
-  });
-
-  it("expands thinking rows during transcript search", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            {
-              type: "thinking",
-              output: "checking the rollout\nlisting deploy windows",
-            },
-          ],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="deploy">
-          <ConversationTranscriptView conversation={turn} view="rich" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("checking the rollout");
-    expect(html).toContain("listing <mark");
-    expect(html).toContain(">deploy<");
-  });
-
-  it("keeps execution settings visible when transcript search has no matches", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      modelId: "openai/gpt-5.6-sol",
-      reasoningLevel: "high",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          parts: [{ type: "text", text: "A visible response" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="not-present">
-          <ConversationTranscriptView conversation={turn} view="rich" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("gpt-5.6-sol");
-    expect(html).toContain("(high)");
-    expect(html).toContain("No events match your search.");
-    expect(html).not.toContain("A visible response");
-  });
-
-  it("consolidates mixed tool-and-thinking run at threshold behind a reveal", () => {
-    // 2 tool calls + 2 thinking entries = 4 total = at threshold
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            { id: "call-0", name: "tool-0", type: "tool_call" },
-            { type: "thinking", output: "first thought" },
-            { id: "call-1", name: "tool-1", type: "tool_call" },
-            { type: "thinking", output: "second thought" },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
-          parts: [{ type: "text", text: "done" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    // All four entries collapse into one reveal group.
-    expect(html).toContain('<details class="min-w-0"><summary');
-    expect(html).toContain("show 2 tool calls and 2 thinking entries");
-    expect(html).toContain("tool-0");
-    expect(html).toContain("tool-1");
-    expect(html).toContain("first thought");
-    expect(html).toContain("second thought");
-  });
-
-  it("keeps mixed tool-and-thinking run below threshold expanded flat", () => {
-    // 1 tool + 2 thinking = 3 total, below threshold
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            { id: "call-0", name: "tool-0", type: "tool_call" },
-            { type: "thinking", output: "first thought" },
-            { type: "thinking", output: "second thought" },
-          ],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("show");
-    expect(html).toContain("tool-0");
-    expect(html).toContain("first thought");
-    expect(html).toContain("second thought");
-  });
-
-  it("keeps a trailing tool-and-thinking run expanded without a final message", () => {
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "failed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            { id: "call-0", name: "tool-0", type: "tool_call" },
-            { type: "thinking", output: "first thought" },
-            { id: "call-1", name: "tool-1", type: "tool_call" },
-            { type: "thinking", output: "second thought" },
-          ],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).not.toContain("show 2 tool calls and 2 thinking entries");
-    expect(html).toContain("tool-0");
-    expect(html).toContain("tool-1");
-    expect(html).toContain("first thought");
-    expect(html).toContain("second thought");
-  });
-
-  it("shows correct counts in mixed-run reveal label", () => {
-    // 5 tool calls + 2 thinking entries
-    const toolParts = Array.from({ length: 5 }, (_, i) => ({
-      id: `call-${i}`,
-      name: `tool-${i}`,
-      type: "tool_call",
-    }));
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            ...toolParts,
-            { type: "thinking", output: "thought a" },
-            { type: "thinking", output: "thought b" },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
-          parts: [{ type: "text", text: "done" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("show 5 tool calls and 2 thinking entries");
-  });
-
-  it("collapses four consecutive pure-thinking entries behind a reveal", () => {
-    // 4 consecutive thinking entries collapse the same as tool runs
-    const turn = {
-      conversationId: "conversation-1",
-      lastProgressAt: "2026-01-01T00:00:10.000Z",
-      lastSeenAt: "2026-01-01T00:00:10.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-      transcript: [
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
-          parts: [
-            { type: "thinking", output: "thought 1" },
-            { type: "thinking", output: "thought 2" },
-            { type: "thinking", output: "thought 3" },
-            { type: "thinking", output: "thought 4" },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
-          parts: [{ type: "text", text: "done" }],
-        },
-      ],
-      transcriptAvailable: true,
-    } as ConversationTranscript;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={turn} view="rich" />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain('<details class="min-w-0"><summary');
-    expect(html).toContain("show 4 thinking entries");
-    expect(html).toContain("thought 1");
-    expect(html).toContain("thought 4");
+    expect(html).toContain("Cached conversation");
+    expect(html).toContain("cached canonical answer");
   });
 });
+
+function conversationQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { refetchOnMount: false, retry: false, retryOnMount: false },
+    },
+  });
+}
+
+function renderConversationPageWithClient(queryClient: QueryClient): string {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
+        <ConversationPage conversationId="conversation-1" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}

@@ -4,7 +4,7 @@ import { createChannelConfigurationService } from "@/chat/configuration/service"
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 import {
   buildArtifactStatePatch,
   type ThreadArtifactsState,

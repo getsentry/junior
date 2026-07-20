@@ -3,7 +3,7 @@
  *
  * This module bounds visible Pi history for long conversations. It strips
  * runtime-only turn context before summarizing and opens replacement epochs in
- * the durable step store. Capacity compaction retains recent user intent;
+ * the durable event store. Capacity compaction retains recent user intent;
  * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
  * may later append the current bootstrap; future replacement strips it again.
  */
@@ -24,10 +24,10 @@ import {
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
-import { getAgentStepStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
@@ -85,6 +85,7 @@ interface HandoffContextArgs {
   piMessages: PiMessage[];
   runtimeContext: PiMessage[];
   signal?: AbortSignal;
+  triggeringToolCallId: string;
   target: {
     modelId: string;
     modelProfile: ModelProfile;
@@ -159,12 +160,6 @@ function userMessage(text: string): PiMessage {
     content: [{ type: "text", text }],
     timestamp: Date.now(),
   } as PiMessage;
-}
-
-/** Preserve the message's own timestamp on epoch rows so replay is byte-stable. */
-function piMessageTimestamp(message: PiMessage): number {
-  const timestamp = (message as { timestamp?: unknown }).timestamp;
-  return typeof timestamp === "number" ? timestamp : Date.now();
 }
 
 interface RetainedUserMessage {
@@ -354,8 +349,8 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
  */
 function buildReplacementProvenance(args: {
   retained: RetainedUserMessage[];
-  sourceProvenance: PiMessageProvenance[];
-}): PiMessageProvenance[] {
+  sourceProvenance: ConversationMessageProvenance[];
+}): ConversationMessageProvenance[] {
   return [
     ...args.retained.map(
       (entry) => args.sourceProvenance[entry.sourceIndex] ?? contextProvenance,
@@ -439,8 +434,8 @@ async function maybeCompactWithDeps(
 }
 
 /**
- * Open the compaction context epoch so later turns read only the replacement
- * history, not the pre-compaction runtime transcript.
+ * Replace active agent history so later turns read the compacted history, not
+ * the pre-compaction runtime transcript.
  */
 async function writeCompactedThreadContext(
   args: CompactContextArgs,
@@ -451,7 +446,7 @@ async function writeCompactedThreadContext(
     triggerTokens?: number;
   },
 ): Promise<CompactContextResult> {
-  const stepStore = getAgentStepStore();
+  const eventStore = getConversationEventStore();
   const sourceProjection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
@@ -468,15 +463,24 @@ async function writeCompactedThreadContext(
     retained,
     sourceProvenance: sourceProjection.provenance,
   });
-  await stepStore.startEpoch(args.conversationId, {
-    reason: "compaction",
-    modelProfile: sourceProjection.modelProfile,
-    modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
-    messages: replacement.map((message, index) => ({
-      message,
-      createdAtMs: piMessageTimestamp(message),
-      provenance: replacementProvenance[index]!,
-    })),
+  await eventStore.replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "compaction",
+      modelProfile: sourceProjection.modelProfile,
+      modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
+      replacementHistory: replacement.map((message, index) => {
+        const sourceEventSeq =
+          index < retained.length
+            ? sourceProjection.seqs[retained[index]!.sourceIndex]
+            : undefined;
+        return {
+          message,
+          provenance: replacementProvenance[index]!,
+          ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
+        };
+      }),
+    },
   });
 
   updateConversationStats(args.conversation);
@@ -525,18 +529,20 @@ export async function compactContextForHandoff(
     ],
   } as PiMessage;
   const messages = [message];
+  const replacementMessages = stripRuntimeTurnContext(messages);
   args.signal?.throwIfAborted();
-  await getAgentStepStore().startEpoch(args.conversationId, {
-    reason: "handoff",
-    modelProfile: args.target.modelProfile,
-    modelId: args.target.modelId,
-    messages: [
-      {
-        message,
-        createdAtMs: piMessageTimestamp(message),
+  await getConversationEventStore().replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "handoff",
+      modelProfile: args.target.modelProfile,
+      modelId: args.target.modelId,
+      triggeringToolCallId: args.triggeringToolCallId,
+      replacementHistory: replacementMessages.map((replacementMessage) => ({
+        message: replacementMessage,
         provenance: contextProvenance,
-      },
-    ],
+      })),
+    },
   });
   return messages;
 }

@@ -310,6 +310,13 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     lastActivityAtMs: requiredMsFromDate(row.lastActivityAt),
     updatedAtMs: requiredMsFromDate(row.updatedAt),
     execution,
+    ...(row.parentConversationId
+      ? {
+          lineage: {
+            parentConversationId: row.parentConversationId,
+          },
+        }
+      : {}),
     ...(destination ? { destination } : {}),
     ...(actor ? { actor } : {}),
     ...(msFromDate(row.archivedAt) !== undefined
@@ -607,46 +614,6 @@ export class SqlStore implements ConversationStore {
     });
   }
 
-  async ensureChildConversation(args: {
-    conversationId: string;
-    parentConversationId: string;
-    nowMs?: number;
-  }): Promise<void> {
-    const at = dateFromMs(args.nowMs ?? now());
-    // The child FKs to its parent, so establish a bare parent row first for the
-    // rare case a step append has not created it yet (a no-op once it exists).
-    await this.executor
-      .db()
-      .insert(juniorConversations)
-      .values({
-        conversationId: args.parentConversationId,
-        schemaVersion: 1,
-        createdAt: at,
-        lastActivityAt: at,
-        updatedAt: at,
-        executionStatus: "idle",
-      })
-      .onConflictDoNothing({ target: juniorConversations.conversationId });
-    await this.executor
-      .db()
-      .insert(juniorConversations)
-      .values({
-        conversationId: args.conversationId,
-        schemaVersion: 1,
-        parentConversationId: args.parentConversationId,
-        createdAt: at,
-        lastActivityAt: at,
-        updatedAt: at,
-        executionStatus: "idle",
-      })
-      .onConflictDoUpdate({
-        target: juniorConversations.conversationId,
-        set: {
-          parentConversationId: sql`coalesce(${juniorConversations.parentConversationId}, excluded.parent_conversation_id)`,
-        },
-      });
-  }
-
   /** Copy one conversation record and retained metrics into SQL during backfill. */
   async backfillConversation(
     sourceConversation: Conversation,
@@ -896,6 +863,8 @@ export class SqlStore implements ConversationStore {
           conversation.execution.lastEnqueuedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
+        parentConversationId:
+          conversation.lineage?.parentConversationId ?? null,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,

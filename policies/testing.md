@@ -11,7 +11,9 @@ routine refactors do not churn brittle unit tests.
 - Prefer integration tests for product/runtime behavior when the contract can be
   proven through real wiring with only the allowed fake boundary.
 - Prefer evals for agent-facing behavior that depends on model interpretation,
-  continuity, routing, or reply quality.
+  continuity, routing, or reply quality. Assert through normalized session,
+  tool, and artifact surfaces; deterministic persistence belongs in integration
+  tests.
 - Test tool implementations outside the agent flow when their contract is
   deterministic. For Slack tools, use integration tests with outbound mocks for
   API payloads, target coordinates, and attachment serialization; use evals only
@@ -19,13 +21,16 @@ routine refactors do not churn brittle unit tests.
 - Use unit tests only for tightly local deterministic logic where integration or
   eval coverage would be materially slower, less deterministic, or less
   diagnostic.
-- Do not add unit tests as duplicate confidence for behavior already covered by
-  integration or eval tests.
-- Delete or avoid unit tests that mainly mirror helper branches behind a
-  user-visible behavior contract.
-- Keep coverage proportional: one representative happy path, one realistic
-  failure or policy guardrail, and edge cases only when they have production
-  history or meaningfully different safety/routing semantics.
+- Give each behavior contract one primary owning layer. Add cross-layer
+  coverage only for a distinct contract or materially different failure
+  boundary, not as duplicate confidence.
+- Keep coverage proportional: one representative happy path and one realistic
+  failure per distinct product outcome, safety invariant, or irreversible
+  delivery, persistence, migration, or recovery boundary. Consolidate examples
+  of the same invariant and interchangeable mock failure sources.
+- Test defensive branches only when the state is reachable through untrusted
+  input or migration, protects a schema-enforced or documented persisted
+  invariant, or has production history.
 - Mock one boundary per test, and only the boundary allowed for that test layer.
   Do not stack mocks across persistence, runtime, delivery, and reply execution
   to simulate a product workflow.
@@ -37,6 +42,10 @@ routine refactors do not churn brittle unit tests.
 - Do not assert CSS utility strings, raw DOM tag counts, or generated markup to
   prove visual styling. Test semantic state and interaction behavior with
   component or browser coverage, and validate styling-only changes visually.
+- Before completing a non-trivial change, prune touched tests that are
+  superseded by equal- or higher-fidelity coverage, merely mirror implementation
+  branches without a distinct contract, or exercise equivalent or unreachable
+  cases.
 
 ## Exceptions
 

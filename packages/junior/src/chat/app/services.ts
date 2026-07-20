@@ -31,6 +31,8 @@ import {
   type VisionContextService,
 } from "@/chat/slack/vision-context";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore } from "@/chat/db";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
@@ -93,6 +95,9 @@ export function createJuniorRuntimeServices(
         (async (params) => {
           await scheduleSessionCompletedPluginTasks(params);
         }),
+      turnLifecycle:
+        overrides.replyExecutor?.turnLifecycle ??
+        new ConversationTurnLifecycleService(getConversationEventStore()),
       generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({

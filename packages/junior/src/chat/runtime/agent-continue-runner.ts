@@ -16,7 +16,7 @@ import {
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   loadProjection,
   loadConversationProjection,
@@ -24,6 +24,7 @@ import {
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
+  getAgentTurnSessionRecordForResume,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
@@ -72,14 +73,7 @@ import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
-import {
-  modelIdForProfile,
-  STANDARD_MODEL_PROFILE,
-} from "@/chat/model-profile";
-import {
-  retainRuntimeTurnContext,
-  stripRuntimeTurnContext,
-} from "@/chat/pi/transcript";
+import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
@@ -302,6 +296,10 @@ export async function continueSlackAgentRun(
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
+    lifecycleCorrelation: {
+      conversationId: payload.conversationId,
+      turnId: payload.sessionId,
+    },
     agentRunner: options.agentRunner,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
@@ -403,6 +401,7 @@ export async function continueSlackAgentRun(
         return {
           messageText: userMessage.text,
           messageTs: getTurnUserSlackMessageTs(userMessage),
+          inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             input: {
@@ -578,7 +577,7 @@ async function recoverStrandedRunningSession(args: {
   }
   await stateAdapter.releaseLock(probe);
 
-  const sessionRecord = await getAgentTurnSessionRecord(
+  const sessionRecord = await getAgentTurnSessionRecordForResume(
     args.conversationId,
     args.summary.sessionId,
   );
@@ -591,13 +590,6 @@ async function recoverStrandedRunningSession(args: {
   });
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
-  const recoveryMessages =
-    modelProfile !== STANDARD_MODEL_PROFILE
-      ? [
-          ...stripRuntimeTurnContext(recoveryProjection.messages),
-          ...retainRuntimeTurnContext(sessionRecord.piMessages),
-        ]
-      : sessionRecord.piMessages;
 
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,
@@ -606,7 +598,7 @@ async function recoverStrandedRunningSession(args: {
     currentSliceId: sessionRecord.sliceId,
     destination: sessionRecord.destination,
     source: sessionRecord.source,
-    messages: recoveryMessages,
+    messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     logContext: {},
     modelId,

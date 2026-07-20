@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Brain } from "lucide-react";
 
 import { cn } from "../styles";
 
@@ -46,19 +45,6 @@ export function TranscriptHeadingMeta(props: {
   return (
     <span className={cn("font-mono leading-none", props.className)}>
       {props.children}
-    </span>
-  );
-}
-
-/** Render the thinking-row label with stable optical vertical centering. */
-export function TranscriptThoughtLabel() {
-  return (
-    <span
-      aria-label="Thinking"
-      className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-[#777]"
-      title="Thinking"
-    >
-      <Brain aria-hidden="true" size={14} strokeWidth={1.8} />
     </span>
   );
 }

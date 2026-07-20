@@ -62,7 +62,6 @@ import {
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
-  generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import type { ContextCompactor } from "@/chat/services/context-compaction";
@@ -92,14 +91,17 @@ import {
 } from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
+  ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
+  getConversationTurnBoundaryError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import {
-  finalizeFailedTurnReply,
+  finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
@@ -116,8 +118,8 @@ import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import {
   commitMessages,
   loadProjection,
@@ -132,8 +134,8 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
-import { modelIdForProfile } from "@/chat/model-profile";
+import { persistConversationMessages } from "@/chat/conversations/messages";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -250,7 +252,7 @@ function queuedInstructionActor(
 function queuedInstructionProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
-): PiMessageProvenance {
+): ConversationMessageProvenance {
   if (isResourceEventMessage(queued.message)) {
     return contextProvenance;
   }
@@ -381,6 +383,7 @@ export interface ReplyExecutorServices {
     sessionId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
+  turnLifecycle: ConversationTurnLifecycle;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks: (params: {
     conversationId: string;
@@ -641,7 +644,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         /**
          * Commit drained parked/batched input pairs to the conversation
-         * session log, deduping by `parkedInputKey` so a redelivery never
+         * event log, deduping by `parkedInputKey` so a redelivery never
          * double-appends. This is the Membership-Rule commit point
          * Membership rule: each drained message is written with its
          * own author's instruction provenance while that author is still known,
@@ -650,11 +653,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
          * The read-compute-append races a concurrently-resumed slice, which
          * runs under the thread resume lock; take the same lock so the two
          * writers never interleave. Returns false when the lock is busy (a live
-         * resume owns the session log): the caller must leave the mailbox
+         * resume owns the event log): the caller must leave the mailbox
          * message pending for the next drain instead of consuming it.
          */
-        const drainParkedInputToSessionLog = async (
-          pairs: Array<{ message: PiMessage; provenance: PiMessageProvenance }>,
+        const drainParkedInputToEventLog = async (
+          pairs: Array<{
+            message: PiMessage;
+            provenance: ConversationMessageProvenance;
+          }>,
         ): Promise<boolean> => {
           if (!conversationId || pairs.length === 0) {
             return true;
@@ -687,7 +693,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             await commitMessages({
               conversationId,
-              modelId: modelIdForProfile(botConfig, projection.modelProfile),
               messages: [
                 ...projection.messages,
                 ...missing.map((pair) => pair.message),
@@ -703,7 +708,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         /**
-         * Durably append this turn's parked user input to the session log at
+         * Durably append this turn's parked user input to the event log at
          * the parked safe boundary so the resumed `continue()` sees it. The
          * awaiting record pins the log session and materializes the projection
          * tail, so the append needs no record mutation. Must complete before
@@ -740,7 +745,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          return drainParkedInputToSessionLog(parkedPairs);
+          return drainParkedInputToEventLog(parkedPairs);
         };
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
@@ -758,7 +763,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sessionId: activeTurnId,
             });
           if (resumeRequest) {
-            // Durable session-log append first: rescheduling a continuation
+            // Durable event-log append first: rescheduling a continuation
             // does not consume the message, and `ack` may only
             // fire after the input is model-visible.
             if (!(await appendParkedTurnInput(resumeRequest.sessionId))) {
@@ -802,7 +807,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // A user follow-up supersedes the auth-parked run: answer it
               // now as a fresh turn instead of consuming it into a pause that
               // may never resume. The parked prompt stays model-visible via
-              // the session-log projection, pendingAuth state keeps the
+              // the event-log projection, pendingAuth state keeps the
               // authorization link reusable, and the abandoned record turns a
               // late OAuth callback into a stale no-op instead of a competing
               // run.
@@ -855,7 +860,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
           );
           upsertConversationMessage(preparedState.conversation, {
-            id: generateConversationId("assistant"),
+            id: buildDeterministicAssistantMessageId(turnId),
             role: "assistant",
             text: normalizeConversationText(configReply.text),
             createdAtMs: Date.now(),
@@ -879,6 +884,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           nextTurnId: turnId,
           updateConversationStats,
         });
+        if (conversationId && preparedState.userMessageId) {
+          await deps.services.turnLifecycle.start({
+            conversationId,
+            createdAtMs: Date.now(),
+            inputMessageIds: [
+              ...new Set([
+                ...(options.queuedMessages ?? []).map(
+                  (queued) => queued.message.id,
+                ),
+                preparedState.userMessageId,
+              ]),
+            ],
+            surface: "slack",
+            turnId,
+          });
+        }
         if (conversationId) {
           const turnStartedAtMs = message.metadata.dateSent.getTime();
           // Fire-and-forget: both calls are best-effort and must not delay
@@ -971,7 +992,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           try {
             return await thread.post(payload);
           } catch (error) {
-            logException(
+            const eventId = logException(
               error,
               "slack_thread_post_failed",
               turnTraceContext,
@@ -982,7 +1003,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               "Failed to post Slack thread reply",
             );
-            throw error;
+            throw new ConversationTurnBoundaryError({
+              cause: error,
+              ...(eventId ? { eventId } : {}),
+              failureCode: "delivery_failed",
+            });
           }
         };
         let persistedAtLeastOnce = false;
@@ -991,10 +1016,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         // destination accepted the final posts, later errors in the same turn
         // must not mark it failed or trigger the fallback failure reply.
         let finalReplyDelivered = false;
+        let lifecycleTerminalized = false;
         let turnCompletionNotified = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let agentContinueScheduleError: unknown;
+        let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
+          "agent_run_failed";
+        let boundaryFailureEventId: string | undefined;
+        let finalizedFailureEventId: string | undefined;
         const hasVisibleSlackDelivery = (post: { text: string }) =>
           post.text.trim().length > 0;
         const notifyTurnCompleted = async (): Promise<void> => {
@@ -1051,14 +1081,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          // Commit the batch to the session log before the run starts — the
+          // Commit the batch to the event log before the run starts — the
           // Membership-rule commit point — so its
           // authors' instruction provenance is durable while they are known.
           // The fresh prompt checkpoint then matches these merged messages as
           // an already-committed prefix and reuses that provenance instead of
           // collapsing them to the live actor.
-          if (!(await drainParkedInputToSessionLog(batchedInstructions))) {
-            // A live resume owns the session-log read-modify-write. Defer the
+          if (!(await drainParkedInputToEventLog(batchedInstructions))) {
+            // A live resume owns the event-log read-modify-write. Defer the
             // turn (as appendParkedTurnInput does) so the worker releases the
             // lease and the next drain commits provenance before running;
             // never run with the batch uncommitted.
@@ -1278,6 +1308,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           if (outcome.status === "awaiting_auth") {
             if (!actor) {
+              const authFailureEventId = logException(
+                new Error(
+                  `Subscribed Slack turn requires ${outcome.providerDisplayName} authorization`,
+                ),
+                "slack_subscribed_turn_authorization_required",
+                turnTraceContext,
+                { "app.ai.failure_code": "agent_run_failed" },
+                "Subscribed Slack turn could not continue without user authorization",
+              );
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
               await postThreadReply(
                 buildSlackOutputMessage(text),
@@ -1292,7 +1331,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 },
               );
               upsertConversationMessage(preparedState.conversation, {
-                id: generateConversationId("assistant"),
+                id: buildDeterministicAssistantMessageId(turnId),
                 role: "assistant",
                 text: normalizeConversationText(text),
                 createdAtMs: Date.now(),
@@ -1313,6 +1352,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await persistThreadState(thread, {
                 conversation: preparedState.conversation,
               });
+              if (conversationId) {
+                await deps.services.turnLifecycle.fail({
+                  conversationId,
+                  createdAtMs: Date.now(),
+                  ...(authFailureEventId
+                    ? { eventId: authFailureEventId }
+                    : {}),
+                  failureCode: "agent_run_failed",
+                  turnId,
+                });
+                lifecycleTerminalized = true;
+              }
               persistedAtLeastOnce = true;
               shouldPersistFailureState = false;
               return;
@@ -1382,11 +1433,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             getAgentTurnDiagnosticsAttributes(reply);
           setSpanAttributes(diagnosticsAttributes);
           if (reply.diagnostics.outcome !== "success") {
-            reply = finalizeFailedTurnReply({
+            const finalized = finalizeFailedTurnReplyWithEvent({
               reply,
               logException,
               context: diagnosticsContext,
             });
+            reply = finalized.reply;
+            finalizedFailureEventId = finalized.eventId;
           }
 
           const artifactStatePatch: Partial<ThreadArtifactsState> =
@@ -1400,6 +1453,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             Boolean(replyFooter) &&
             Boolean(channelId && threadTs) &&
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
+
+          boundaryFailureCode = "delivery_failed";
 
           // Text replies must be accepted by Slack before completion;
           // no-reply turns intentionally complete without thread text.
@@ -1428,7 +1483,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 posts: plannedPosts,
                 footer: replyFooter,
                 onPostError: ({ error, messageTs, stage }) => {
-                  logException(
+                  boundaryFailureEventId = logException(
                     error,
                     "slack_thread_post_failed",
                     turnTraceContext,
@@ -1464,6 +1519,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             finalReplyDelivered = true;
             shouldPersistFailureState = false;
           }
+          boundaryFailureCode = "agent_run_failed";
 
           const completedState = buildDeliveredTurnStatePatch({
             artifactStatePatch: {
@@ -1481,8 +1537,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             // Commit the durable delivery record first so recovery cannot
-            // regenerate an accepted reply. Persist the SQL-visible transcript
-            // next, then update Redis runtime scratch independently.
+            // regenerate an accepted reply. Persist canonical message
+            // facts next, then update Redis runtime scratch independently.
             if (conversationId && reply.piMessages?.length) {
               await completeDeliveredTurn({
                 channelName,
@@ -1548,16 +1604,47 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           } catch (commitError) {
             // The user already saw the reply; keep the turn successful and
             // record the persistence failure for operators.
-            logException(
+            const persistenceEventId = logException(
               commitError,
               "slack_reply_post_delivery_commit_failed",
               turnTraceContext,
               messageTs ? { "messaging.message.id": messageTs } : {},
               "Post-delivery turn state persistence failed after Slack accepted the reply",
             );
+            if (conversationId && !lifecycleTerminalized) {
+              await deps.services.turnLifecycle.fail({
+                conversationId,
+                createdAtMs: Date.now(),
+                ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+                failureCode: "persistence_failed",
+                turnId,
+              });
+              lifecycleTerminalized = true;
+            }
           }
           preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
+          if (!lifecycleTerminalized && conversationId) {
+            if (reply.diagnostics.outcome === "success") {
+              await deps.services.turnLifecycle.complete({
+                conversationId,
+                createdAtMs: Date.now(),
+                outcome: plannedPosts.length === 0 ? "no_reply" : "success",
+                turnId,
+              });
+            } else {
+              await deps.services.turnLifecycle.fail({
+                conversationId,
+                createdAtMs: Date.now(),
+                ...(finalizedFailureEventId
+                  ? { eventId: finalizedFailureEventId }
+                  : {}),
+                failureCode: "model_execution_failed",
+                turnId,
+              });
+            }
+            lifecycleTerminalized = true;
+          }
           if (shouldEmitDevAgentTrace()) {
             logInfo(
               "agent_turn_completed",
@@ -1626,24 +1713,27 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           if (error === agentContinueScheduleError) {
             shouldPersistFailureState = true;
-            throw error;
           }
           shouldPersistFailureState = true;
+          const classifiedFailure = getConversationTurnBoundaryError(error);
+          const failureCause = classifiedFailure?.cause ?? error;
+          const failureCode =
+            classifiedFailure?.failureCode ?? boundaryFailureCode;
+          const failureEventId =
+            classifiedFailure?.eventId ??
+            boundaryFailureEventId ??
+            logException(
+              failureCause,
+              "slack_turn_execution_failed",
+              turnTraceContext,
+              { "app.ai.failure_code": failureCode },
+              "Slack turn failed at its reply execution boundary",
+            );
           const createdCanvasUrl = getCurrentTurnCanvasUrl({
             before: preparedState.artifacts,
             after: latestArtifacts,
           });
           if (createdCanvasUrl) {
-            logException(
-              error,
-              "agent_turn_failed_after_canvas_created",
-              turnTraceContext,
-              {
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                "app.slack.canvas.has_url": true,
-              },
-              "Agent turn failed after creating a Slack canvas",
-            );
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
             await postThreadReply(
               buildSlackOutputMessage(recoveryText),
@@ -1658,7 +1748,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
             );
             upsertConversationMessage(preparedState.conversation, {
-              id: generateConversationId("assistant"),
+              id: buildDeterministicAssistantMessageId(turnId),
               role: "assistant",
               text: normalizeConversationText(recoveryText),
               createdAtMs: Date.now(),
@@ -1680,11 +1770,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               artifacts: latestArtifacts,
               conversation: preparedState.conversation,
             });
+            if (conversationId && !lifecycleTerminalized) {
+              await deps.services.turnLifecycle.fail({
+                conversationId,
+                createdAtMs: Date.now(),
+                ...(failureEventId ? { eventId: failureEventId } : {}),
+                failureCode,
+                turnId,
+              });
+              lifecycleTerminalized = true;
+            }
             persistedAtLeastOnce = true;
             shouldPersistFailureState = false;
             return;
           }
-          throw error;
+          throw new ConversationTurnBoundaryError({
+            cause: failureCause,
+            ...(failureEventId ? { eventId: failureEventId } : {}),
+            failureCode,
+          });
         } finally {
           if (!persistedAtLeastOnce && shouldPersistFailureState) {
             markTurnFailed({

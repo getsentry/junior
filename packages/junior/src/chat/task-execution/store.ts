@@ -126,7 +126,7 @@ export async function getConversationWorkState(args: {
   return await workState.getConversationWorkState(args);
 }
 
-/** Count mailbox messages that have not yet reached the session log. */
+/** Count mailbox messages that have not yet reached the conversation event log. */
 export function countPendingConversationMessages(
   conversation: Conversation,
 ): number {

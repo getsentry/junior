@@ -22,17 +22,20 @@ Canonical words used across Junior's code and documentation.
 - **Run**: one bounded attempt to advance a turn. A later run may resume the
   same turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a run.
-- **Agent step**: one durable event in execution history, such as a Pi message
-  or host runtime fact. Tool calls belong to the assistant step that requested
+- **Agent step**: one replayable entry in agent history, stored as an
+  `agent_step` event. Tool calls belong to the assistant step that requested
   them; each tool result is a separate step.
-- **Context epoch**: one generation of model-visible context. Compaction,
-  handoff, or rollback opens a new epoch; older epochs remain audit history.
+- **History replacement**: an explicit compaction or handoff that supplies the
+  agent history used by later turns. It is stored as the corresponding event,
+  not as a generic context-start marker.
+- **History version**: an internal sequence partition used to load agent
+  history after a replacement. It is not a product event or lifecycle state.
 - **Model profile**: a stable host-owned model name, such as `standard` or
-  `handoff`, bound to a context epoch.
-- **Epoch model id**: the exact provider model recorded when an epoch opens. It
-  is audit evidence, not a model pin.
-- **Message**: a normalized inbound source event or a stored visible user,
-  assistant, or system message.
+  `handoff`, recorded on a history replacement.
+- **Message**: exact normalized source or destination chat content stored for
+  transcript display, privacy, delivery handling, and search.
+- **Message update**: later delivery or hydration state for an existing
+  message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent
   steps. It is not the stored data itself.
 - **Session record**: the persisted read model for one resumable turn.
@@ -46,6 +49,8 @@ Canonical words used across Junior's code and documentation.
 ## Naming Guidance
 
 - Use `turn`, `run`, `slice`, and `step` only with the meanings above.
+- Use `message` for chat content and `agent_step` for replayable agent history;
+  do not use `model_item` or `model_message` as Junior-owned terms.
 - Use `turnId` for new identifiers representing a turn.
 - Use `reply` only for destination-visible messages; execution code should use
   `turn`, `run`, `result`, `outcome`, or `delivery` as appropriate.

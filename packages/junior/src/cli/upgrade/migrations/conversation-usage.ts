@@ -1,5 +1,5 @@
 /**
- * Repair legacy usage from durable SQL steps in bounded, retry-safe batches.
+ * Repair legacy usage from durable SQL events in bounded, retry-safe batches.
  * Ephemeral run summaries are not an authority because TTL can erase evidence.
  */
 import { getChatConfig } from "@/chat/config";
@@ -32,25 +32,25 @@ WITH candidates AS MATERIALIZED (
   ORDER BY conversation_id
   LIMIT $2
 ),
--- Occurrence numbers preserve intentional duplicates within one epoch while
--- collapsing context copies of the same message across rebuilt epochs.
+-- Occurrence numbers preserve intentional duplicates within one history version
+-- while collapsing context copies of the same message across replacements.
 message_occurrences AS (
   SELECT
-    step.conversation_id,
-    step.payload -> 'message' AS message,
+    event.conversation_id,
+    event.payload -> 'message' AS message,
     row_number() OVER (
       PARTITION BY
-        step.conversation_id,
-        step.context_epoch,
-        step.payload -> 'message'
-      ORDER BY step.seq
+        event.conversation_id,
+        event.history_version,
+        event.payload -> 'message'
+      ORDER BY event.seq
     ) AS occurrence
-  FROM junior_agent_steps AS step
+  FROM junior_conversation_events AS event
   INNER JOIN candidates AS candidate
-    ON candidate.conversation_id = step.conversation_id
-  WHERE step.type = 'pi_message'
-    AND step.role = 'assistant'
-    AND jsonb_typeof(step.payload -> 'message' -> 'usage') = 'object'
+    ON candidate.conversation_id = event.conversation_id
+  WHERE event.type = 'agent_step'
+    AND event.payload -> 'message' ->> 'role' = 'assistant'
+    AND jsonb_typeof(event.payload -> 'message' -> 'usage') = 'object'
 ),
 canonical_messages AS (
   SELECT DISTINCT conversation_id, message, occurrence

@@ -146,6 +146,72 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
+  it("posts the safe fallback when failure-state persistence fails", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "slack:T123:C123:1700000000.009";
+    const turnId = "turn_1700000000_009";
+
+    await expect(
+      resumeSlackTurn({
+        messageText: "Resume the failed turn",
+        channelId: "C123",
+        threadTs: "1700000000.009",
+        inputMessageIds: ["msg.9"],
+        lifecycleCorrelation: { conversationId, turnId },
+        replyContext: {
+          routing: {
+            credentialContext: {
+              actor: { type: "user", userId: "U123" },
+            },
+            correlation: { conversationId, turnId },
+            destination: TEST_SLACK_DESTINATION,
+            source: testSlackSource("1700000000.009"),
+            actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          },
+        },
+        agentRunner: {
+          run: async () => {
+            throw new Error("resume failed");
+          },
+        },
+        onFailure: async () => {
+          throw new Error("failure state unavailable");
+        },
+      }),
+    ).rejects.toThrow("failure state unavailable");
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.009",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that. Reference: `event_id=",
+          ),
+        }),
+      }),
+    ]);
+
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId,
+        inputMessageIds: ["msg.9"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId,
+        failureCode: "persistence_failed",
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+      }),
+    ]);
+  });
+
   it("uses correlation IDs for resumed reply footers", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");

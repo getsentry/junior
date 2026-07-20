@@ -20,16 +20,22 @@ function activeTurn(
     status: "active",
     surface: "slack",
     displayTitle: "Conversation",
-    transcript: [
+    generatedAt: "2026-01-01T00:00:10.000Z",
+    eventHistory: { status: "available" },
+    events: [
       {
-        role: "assistant",
-        timestamp: 1_000,
-        parts: [{ type: "text", text: "checking" }],
+        seq: 0,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        data: {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "checking",
+        },
       },
     ],
-    transcriptAvailable: true,
     ...overrides,
-  } as ConversationTranscript;
+  };
 }
 
 describe("transcript bottom pinning", () => {
@@ -55,11 +61,16 @@ describe("transcript bottom pinning", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
       activeTurn({
-        transcript: [
+        events: [
           {
-            role: "assistant",
-            timestamp: 1_000,
-            parts: [{ type: "text", text: "checking the deployment" }],
+            seq: 0,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            data: {
+              type: "message",
+              messageId: "assistant-1",
+              role: "assistant",
+              text: "checking the deployment",
+            },
           },
         ],
       }),
@@ -92,17 +103,21 @@ describe("transcript bottom pinning", () => {
   });
 
   it("changes the tail version when an empty response gains a terminal outcome", () => {
-    const emptyResponse = {
-      role: "assistant" as const,
-      timestamp: 1_000,
-      parts: [],
-    };
-    const before = transcriptBottomVersion(
-      activeTurn({ transcript: [emptyResponse] }),
-    );
+    const before = transcriptBottomVersion(activeTurn({ events: [] }));
     const after = transcriptBottomVersion(
       activeTurn({
-        transcript: [{ ...emptyResponse, outcome: "error" }],
+        events: [
+          {
+            seq: 0,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            data: {
+              type: "turn_lifecycle",
+              turnId: "turn-1",
+              state: "failed",
+              failureKind: "agent",
+            },
+          },
+        ],
       }),
     );
 

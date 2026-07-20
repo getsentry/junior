@@ -2,10 +2,10 @@
  * Turn session records.
  *
  * These records track one user request across auth pauses, timeout slices, and
- * completion. Full Pi messages live in the durable agent step store; this
+ * completion. Full Pi messages live in the durable conversation event store; this
  * record stores resumability metadata and a committed `seq` cursor into
- * `junior_agent_steps` so resumes can materialize the exact continuable
- * boundary without duplicating the step history.
+ * `junior_conversation_events` so resumes can materialize the exact continuable
+ * boundary without duplicating the event history.
  */
 import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
 import {
@@ -16,29 +16,37 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
   instructionActors,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-  type SessionProjection,
-} from "./session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import {
   commitMessages,
   loadTurnProjection,
 } from "@/chat/conversations/projection";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
-import { getConversationStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import {
+  retainRuntimeTurnContext,
+  stripRuntimeTurnContext,
+} from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
+import {
+  AGENT_TURN_SESSION_PREFIX,
+  agentTurnSessionConversationIndexKey,
+  agentTurnSessionKey,
+} from "./turn-session-keys";
 
-const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
@@ -55,6 +63,11 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
+interface ConversationMessageProjection {
+  messages: PiMessage[];
+  provenance: ConversationMessageProvenance[];
+}
+
 export interface AgentTurnSessionRecord {
   channelName?: string;
   version: number;
@@ -70,7 +83,7 @@ export interface AgentTurnSessionRecord {
   reasoningLevel?: string;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
-  piMessageProvenance: PiMessageProvenance[];
+  piMessageProvenance: ConversationMessageProvenance[];
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Persisted as an attribution handle so a
@@ -107,15 +120,19 @@ interface StoredAgentTurnSessionRecord extends Omit<
 > {
   actors?: Actor[];
   /**
-   * `seq` of the last step in `junior_agent_steps` whose projection reproduces
+   * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
    */
   committedSeq: number;
+  /** History version that owns `committedSeq` and any volatile bootstrap. */
+  historyVersion?: number;
   /**
    * `seq` boundary where this turn's fresh prompt starts: the seq of the last
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
   turnStartSeq?: number;
+  /** Volatile bootstrap retained only in resumable session state, never SQL. */
+  runtimeContext?: PiMessage[];
 }
 
 const agentTurnSessionStatusSchema = z.enum([
@@ -171,21 +188,12 @@ const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
   .extend({
     actors: z.array(actorSchema).optional(),
     committedSeq: seqCursorSchema,
+    historyVersion: z.number().int().nonnegative().optional(),
     errorMessage: z.string().optional(),
     turnStartSeq: seqCursorSchema.optional(),
+    runtimeContext: z.array(piMessageSchema).optional(),
   })
   .strict() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
-
-function agentTurnSessionKey(
-  conversationId: string,
-  sessionId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
-}
-
-function agentTurnSessionConversationIndexKey(conversationId: string): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
-}
 
 function conversationExecutionFromSummary(
   summary: AgentTurnSessionSummary,
@@ -214,18 +222,6 @@ function parseAgentTurnSessionRecord(
 }
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "requester" in value
-  ) {
-    const { requester, ...summary } = value as Record<string, unknown>;
-    return agentTurnSessionSummarySchema.parse({
-      ...summary,
-      ...(summary.actor === undefined ? { actor: requester } : {}),
-    });
-  }
   return agentTurnSessionSummarySchema.parse(value);
 }
 
@@ -292,9 +288,15 @@ async function recordConversationActivityMetadata(args: {
 
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
-  piProjection: SessionProjection,
+  piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
+  restoreVolatileContext = true,
 ): AgentTurnSessionRecord {
+  const piMessages =
+    restoreVolatileContext &&
+    (stored.state === "running" || stored.state === "awaiting_resume")
+      ? restoreRuntimeContext(piProjection.messages, stored.runtimeContext)
+      : piProjection.messages;
   return {
     version: stored.version,
     ...(stored.channelName ? { channelName: stored.channelName } : {}),
@@ -305,7 +307,7 @@ function materializeAgentTurnSessionRecord(
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
-    piMessages: piProjection.messages,
+    piMessages,
     piMessageProvenance: piProjection.provenance,
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
@@ -331,6 +333,39 @@ function materializeAgentTurnSessionRecord(
   };
 }
 
+function restoreRuntimeContext(
+  messages: PiMessage[],
+  runtimeContext: PiMessage[] | undefined,
+): PiMessage[] {
+  if (!runtimeContext || runtimeContext.length === 0) return messages;
+  const restored = [...messages];
+  for (const runtimeMessage of runtimeContext) {
+    const runtime = runtimeMessage as {
+      timestamp?: unknown;
+      content?: unknown;
+    };
+    const targetIndex = restored.findIndex((message) => {
+      const candidate = message as { role?: unknown; timestamp?: unknown };
+      return (
+        candidate.role === "user" && candidate.timestamp === runtime.timestamp
+      );
+    });
+    if (targetIndex < 0) {
+      restored.push(runtimeMessage);
+      continue;
+    }
+    const target = restored[targetIndex] as { content?: unknown };
+    restored[targetIndex] = {
+      ...restored[targetIndex],
+      content: [
+        ...(Array.isArray(runtime.content) ? runtime.content : []),
+        ...(Array.isArray(target.content) ? target.content : []),
+      ],
+    } as PiMessage;
+  }
+  return restored;
+}
+
 /** Read only the stored metadata record without materializing transcript logs. */
 async function getStoredAgentTurnSessionRecord(
   conversationId: string,
@@ -345,9 +380,10 @@ async function getStoredAgentTurnSessionRecord(
 }
 
 /** Read a materialized turn session record for resume and history loading. */
-export async function getAgentTurnSessionRecord(
+async function materializeStoredAgentTurnSessionRecord(
   conversationId: string,
   sessionId: string,
+  followCurrentReplacement: boolean,
 ): Promise<AgentTurnSessionRecord | undefined> {
   const parsed = await getStoredAgentTurnSessionRecord(
     conversationId,
@@ -357,7 +393,7 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  const piProjection = await loadTurnProjection({
+  const pinnedProjection = await loadTurnProjection({
     conversationId,
     committedSeq: parsed.committedSeq,
     // Unfinished records include the current-epoch tail so parked input
@@ -365,11 +401,24 @@ export async function getAgentTurnSessionRecord(
     includeTail:
       parsed.state === "running" || parsed.state === "awaiting_resume",
   });
-  if (!piProjection) {
+  if (!pinnedProjection) {
     return undefined;
   }
-  const turnStartMessageIndex =
-    parsed.turnStartSeq === undefined
+  const currentHistory =
+    await getConversationEventStore().loadCurrentHistory(conversationId);
+  const currentHistoryVersion =
+    currentHistory.at(-1)?.historyVersion ?? parsed.historyVersion ?? 0;
+  const followsReplacement =
+    followCurrentReplacement &&
+    (parsed.state === "running" || parsed.state === "awaiting_resume") &&
+    parsed.historyVersion !== undefined &&
+    parsed.historyVersion !== currentHistoryVersion;
+  const piProjection = followsReplacement
+    ? projectConversationEvents(currentHistory)
+    : pinnedProjection;
+  const turnStartMessageIndex = followsReplacement
+    ? 0
+    : parsed.turnStartSeq === undefined
       ? undefined
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
@@ -377,6 +426,33 @@ export async function getAgentTurnSessionRecord(
     parsed,
     piProjection,
     turnStartMessageIndex,
+    !followsReplacement &&
+      (parsed.historyVersion === undefined ||
+        parsed.historyVersion === currentHistoryVersion),
+  );
+}
+
+/** Read a turn record pinned to the history version containing its checkpoint. */
+export async function getAgentTurnSessionRecord(
+  conversationId: string,
+  sessionId: string,
+): Promise<AgentTurnSessionRecord | undefined> {
+  return await materializeStoredAgentTurnSessionRecord(
+    conversationId,
+    sessionId,
+    false,
+  );
+}
+
+/** Read a turn session for resume, following a newer committed replacement while unfinished. */
+export async function getAgentTurnSessionRecordForResume(
+  conversationId: string,
+  sessionId: string,
+): Promise<AgentTurnSessionRecord | undefined> {
+  return await materializeStoredAgentTurnSessionRecord(
+    conversationId,
+    sessionId,
+    true,
   );
 }
 
@@ -389,6 +465,7 @@ function buildStoredRecord(args: {
   destination?: Destination;
   source?: Source;
   committedSeq: number;
+  historyVersion?: number;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   modelId?: string;
@@ -406,6 +483,7 @@ function buildStoredRecord(args: {
   resumedFromSliceId?: number;
   traceId?: string;
   turnStartSeq?: number;
+  runtimeContext?: PiMessage[];
 }): StoredAgentTurnSessionRecord {
   const nowMs = Date.now();
   return {
@@ -419,8 +497,14 @@ function buildStoredRecord(args: {
     lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
     updatedAtMs: nowMs,
     committedSeq: args.committedSeq,
+    ...(args.historyVersion !== undefined
+      ? { historyVersion: args.historyVersion }
+      : {}),
     ...(args.turnStartSeq !== undefined
       ? { turnStartSeq: args.turnStartSeq }
+      : {}),
+    ...(args.runtimeContext && args.runtimeContext.length > 0
+      ? { runtimeContext: args.runtimeContext }
       : {}),
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
@@ -448,7 +532,7 @@ async function setStoredRecord(args: {
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
-  piMessageProvenance: PiMessageProvenance[];
+  piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
   turnStartMessageIndex?: number;
@@ -470,8 +554,10 @@ async function setStoredRecord(args: {
   const {
     actors: _actors,
     committedSeq: _committedSeq,
+    historyVersion: _historyVersion,
     errorMessage: _errorMessage,
     turnStartSeq: _turnStartSeq,
+    runtimeContext: _runtimeContext,
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
@@ -515,8 +601,14 @@ async function updateAgentTurnSessionState(args: {
       sliceId: args.existing.sliceId,
       state: args.state,
       committedSeq: parsed.committedSeq,
+      ...(parsed.historyVersion !== undefined
+        ? { historyVersion: parsed.historyVersion }
+        : {}),
       ...(parsed.turnStartSeq !== undefined
         ? { turnStartSeq: parsed.turnStartSeq }
+        : {}),
+      ...(parsed.runtimeContext
+        ? { runtimeContext: parsed.runtimeContext }
         : {}),
       ...(parsed.channelName ? { channelName: parsed.channelName } : {}),
       startedAtMs: parsed.startedAtMs,
@@ -574,7 +666,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
-  trailingMessageProvenance?: PiMessageProvenance[];
+  trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   actors?: Actor[];
   resumeReason?: AgentTurnResumeReason;
@@ -590,13 +682,12 @@ export async function upsertAgentTurnSessionRecord(args: {
     args.sessionId,
   );
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  // Attribute new user input to the turn's actor as an instruction; the step
+  // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
   const instructionActor = args.actor ?? existingRecord?.actor;
   const commit = await commitMessages({
     conversationId: args.conversationId,
-    modelId: args.modelId,
     messages: args.piMessages,
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
@@ -605,17 +696,30 @@ export async function upsertAgentTurnSessionRecord(args: {
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
       : {}),
   });
+  const durableTurnStartMessageIndex =
+    args.turnStartMessageIndex === undefined
+      ? undefined
+      : stripRuntimeTurnContext(
+          args.piMessages.slice(0, args.turnStartMessageIndex),
+        ).length;
+  const runtimeContext = retainRuntimeTurnContext(args.piMessages);
+  const retainedRuntimeContext =
+    runtimeContext.length > 0
+      ? runtimeContext
+      : existingRecord?.historyVersion === commit.historyVersion
+        ? existingRecord.runtimeContext
+        : undefined;
   // Flip the caller's message-index cursor into a durable seq reference: the
   // seq of the last committed message before the turn's fresh prompt.
   const turnStartSeq =
-    args.turnStartMessageIndex === undefined
+    durableTurnStartMessageIndex === undefined
       ? existingRecord?.turnStartSeq
-      : args.turnStartMessageIndex <= 0
+      : durableTurnStartMessageIndex <= 0
         ? -1
-        : (commit.messageSeqs[args.turnStartMessageIndex - 1] ??
+        : (commit.messageSeqs[durableTurnStartMessageIndex - 1] ??
           commit.committedSeq);
   const turnStartMessageIndex =
-    args.turnStartMessageIndex ??
+    durableTurnStartMessageIndex ??
     (turnStartSeq === undefined
       ? undefined
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
@@ -623,7 +727,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   return await setStoredRecord({
     conversationStore: args.conversationStore,
     destinationVisibility: args.destinationVisibility,
-    piMessages: args.piMessages,
+    piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
     ...(turnStartMessageIndex !== undefined ? { turnStartMessageIndex } : {}),
@@ -642,7 +746,11 @@ export async function upsertAgentTurnSessionRecord(args: {
         ? { lastProgressAtMs: args.lastProgressAtMs }
         : {}),
       committedSeq: commit.committedSeq,
+      historyVersion: commit.historyVersion,
       ...(turnStartSeq !== undefined ? { turnStartSeq } : {}),
+      ...(retainedRuntimeContext
+        ? { runtimeContext: retainedRuntimeContext }
+        : {}),
       previousVersion: existingRecord?.version,
       cumulativeDurationMs:
         args.cumulativeDurationMs ?? existingRecord?.cumulativeDurationMs ?? 0,

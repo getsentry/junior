@@ -8,15 +8,13 @@ import {
 } from "@/chat/runtime/thread-state";
 import { markTurnCompleted } from "@/chat/runtime/turn";
 import {
-  generateConversationId,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
-
-const NO_VISIBLE_REPLY_CONVERSATION_TEXT = "[no visible reply]";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
 /** Build the canonical thread-state patch after final Slack delivery succeeds. */
 export function buildDeliveredTurnStatePatch(args: {
@@ -39,27 +37,27 @@ export function buildDeliveredTurnStatePatch(args: {
 
   clearPendingAuth(conversation, args.sessionId);
   const assistantText =
-    normalizeConversationText(args.reply.text) ||
-    (args.reply.deliveryPlan?.postThreadText === false
-      ? NO_VISIBLE_REPLY_CONVERSATION_TEXT
-      : "[empty response]");
+    normalizeConversationText(args.reply.text) || "[empty response]";
   markConversationMessage(conversation, args.userMessageId, {
     replied: true,
     skippedReason: undefined,
   });
-  upsertConversationMessage(conversation, {
-    id: generateConversationId("assistant"),
-    role: "assistant",
-    text: assistantText,
-    createdAtMs: Date.now(),
-    author: {
-      userName: botConfig.userName,
-      isBot: true,
-    },
-    meta: {
-      replied: true,
-    },
-  });
+  const intentionalSilence = args.reply.deliveryPlan?.postThreadText === false;
+  if (!intentionalSilence) {
+    upsertConversationMessage(conversation, {
+      id: buildDeterministicAssistantMessageId(args.sessionId),
+      role: "assistant",
+      text: assistantText,
+      createdAtMs: Date.now(),
+      author: {
+        userName: botConfig.userName,
+        isBot: true,
+      },
+      meta: {
+        replied: true,
+      },
+    });
+  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),

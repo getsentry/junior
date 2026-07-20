@@ -1,5 +1,6 @@
 import {
   getAgentTurnSessionRecord,
+  getAgentTurnSessionRecordForResume,
   upsertAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
   type AgentTurnSurface,
@@ -8,7 +9,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PiMessageProvenance } from "@/chat/state/session-log";
+import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
@@ -111,7 +112,10 @@ export async function loadTurnSessionRecord(
   const canUseTurnSession = Boolean(ctx.conversationId && ctx.sessionId);
   const existingSessionRecord =
     canUseTurnSession && ctx.conversationId && ctx.sessionId
-      ? await getAgentTurnSessionRecord(ctx.conversationId, ctx.sessionId)
+      ? await getAgentTurnSessionRecordForResume(
+          ctx.conversationId,
+          ctx.sessionId,
+        )
       : undefined;
   const hasAwaitingResumeRecord = Boolean(
     existingSessionRecord && existingSessionRecord.state === "awaiting_resume",
@@ -136,7 +140,7 @@ export async function persistRunningSessionRecord(args: {
   sliceId: number;
   messages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
-  trailingMessageProvenance?: PiMessageProvenance[];
+  trailingMessageProvenance?: ConversationMessageProvenance[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   modelId: string;

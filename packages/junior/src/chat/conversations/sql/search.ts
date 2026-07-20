@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
-  juniorConversationMessages,
+  juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -22,29 +22,31 @@ class SqlConversationSearchStore implements ConversationSearchStore {
   }): Promise<ConversationSearchResult[]> {
     const db = this.executor.db();
     const tsquery = sql`websearch_to_tsquery('english', ${args.query})`;
-    const rank = sql<number>`ts_rank_cd(to_tsvector('english', ${juniorConversationMessages.text}), ${tsquery})`;
-    const excerpt = sql<string>`ts_headline('english', ${juniorConversationMessages.text}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`;
+    const text = sql<string>`${juniorConversationEvents.payload}->>'text'`;
+    const rank = sql<number>`ts_rank_cd(to_tsvector('english', ${text}), ${tsquery})`;
+    const excerpt = sql<string>`ts_headline('english', ${text}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`;
     const role = sql<
       ConversationSearchResult["role"]
-    >`${juniorConversationMessages.role}`;
+    >`${juniorConversationEvents.payload}->>'role'`;
+    const messageId = sql<string>`${juniorConversationEvents.payload}->>'messageId'`;
 
     const bestPerConversation = db
       .selectDistinctOn([juniorConversations.conversationId], {
         conversationId: juniorConversations.conversationId,
         excerpt: excerpt.as("excerpt"),
         lastActivityAt: juniorConversations.lastActivityAt,
-        messageCreatedAt: juniorConversationMessages.createdAt,
-        messageId: juniorConversationMessages.messageId,
+        messageCreatedAt: juniorConversationEvents.createdAt,
+        messageId: messageId.as("message_id"),
         providerDestinationId: juniorDestinations.providerDestinationId,
         rank: rank.as("rank"),
         role: role.as("role"),
       })
-      .from(juniorConversationMessages)
+      .from(juniorConversationEvents)
       .innerJoin(
         juniorConversations,
         eq(
           juniorConversations.conversationId,
-          juniorConversationMessages.conversationId,
+          juniorConversationEvents.conversationId,
         ),
       )
       .innerJoin(
@@ -60,14 +62,15 @@ class SqlConversationSearchStore implements ConversationSearchStore {
           eq(juniorDestinations.provider, args.scope.provider),
           eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
           eq(juniorDestinations.visibility, "public"),
-          inArray(juniorConversationMessages.role, ["user", "assistant"]),
-          sql`to_tsvector('english', ${juniorConversationMessages.text}) @@ ${tsquery}`,
+          eq(juniorConversationEvents.type, "message"),
+          sql`${role} in ('user', 'assistant')`,
+          sql`to_tsvector('english', ${text}) @@ ${tsquery}`,
         ),
       )
       .orderBy(
         juniorConversations.conversationId,
         desc(rank),
-        desc(juniorConversationMessages.createdAt),
+        desc(juniorConversationEvents.createdAt),
       )
       .as("best_conversation_matches");
 

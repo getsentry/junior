@@ -2,7 +2,6 @@ import type { ConversationModelUsage } from "@sentry/junior/api/schema";
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatMs,
   formatTime,
   formatTokenSummary,
   summarizeUsage,
@@ -65,6 +64,7 @@ function modelLabel(modelId: string): string {
 }
 
 function tokenTooltip(
+  summary: TokenUsageSummary,
   modelUsage: ConversationModelUsage[] | undefined,
   compactionCount: number | undefined,
 ): MetricTooltipLine[] {
@@ -73,6 +73,9 @@ function tokenTooltip(
       ? { label: "compactions", value: formatCompactNumber(compactionCount) }
       : undefined,
   ];
+  if (!modelUsage?.length) {
+    lines.push(...usageTooltipLines(summary));
+  }
   for (const item of modelUsage ?? []) {
     const modelSummary = summarizeUsage(item.usage);
     if (!modelSummary) continue;
@@ -137,7 +140,11 @@ export function TokenMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltip={tokenTooltip(props.modelUsage, props.compactionCount)}
+      tooltip={tokenTooltip(
+        props.summary,
+        props.modelUsage,
+        props.compactionCount,
+      )}
     >
       {formatTokenSummary(props.summary)}
     </MetricValue>
@@ -168,7 +175,7 @@ export function DurationMetric(props: {
   );
 }
 
-/** Render a tool-call count with top tool names, counts, and matched duration. */
+/** Render a tool-call count with top tool names and counts. */
 export function ToolCallsMetric(props: {
   align?: "left" | "right";
   loading?: boolean;
@@ -179,14 +186,7 @@ export function ToolCallsMetric(props: {
   const tooltip = props.summary.items.map((item) => ({
     label: item.name,
     labelStyle: "code" as const,
-    value: [
-      plural("call", item.count),
-      item.totalDurationMs !== undefined
-        ? formatMs(item.totalDurationMs)
-        : undefined,
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    value: plural("call", item.count),
   }));
   return (
     <MetricValue align={props.align} tooltip={tooltip}>

@@ -129,6 +129,8 @@ export function createSlackRuntime(
     withSpan,
     logWarn,
     logException,
+    failConversationTurn: (input) =>
+      services.replyExecutor.turnLifecycle.fail(input),
     prepareTurnState,
     persistPreparedState: async ({ thread, preparedState }) => {
       await persistThreadState(thread, {

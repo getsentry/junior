@@ -18,14 +18,24 @@ this directory owns product orchestration around it.
 
 ## Durable Continuation
 
-- Agent steps are appended at safe boundaries with monotonic sequence numbers.
-- Restoration reduces the current context epoch into Pi messages and derived
+- Conversation events append at safe boundaries with monotonic sequence numbers.
+- Restoration reduces the current history version into Pi messages and derived
   runtime state.
 - A timeout or soft execution limit yields only at a boundary where tool results
   and state updates are durable.
 - Auth pauses persist the pending authorization state and end the live run;
   callbacks append new work and start a later run.
 - Completion and delivery markers make retries idempotent.
+- Canonical turn lifecycle uses stable correlation IDs: input is durable before
+  `turn_started`, and completion/failure is appended only at the owning
+  delivery-and-persistence boundary. Competing terminal writes share one
+  idempotency key, so the first committed outcome wins.
+- Intentional silence is a `turn_completed` `no_reply` outcome and does not
+  create a synthetic visible assistant message.
+- Stable lifecycle keys make explicit retries idempotent; they do not cover
+  process death between external delivery and persistence. Slack needs a
+  durable delivery outbox/receipt reconciler before terminal events are
+  crash-safe across that boundary.
 
 ## Prompt Ownership
 
@@ -41,14 +51,18 @@ this directory owns product orchestration around it.
 
 ## Compaction And Handoff
 
-- Compaction creates a new context epoch with a bounded replacement summary;
-  visible conversation history remains unchanged.
+- Compaction replaces agent history. Its replacement history contains the
+  retained user messages followed by a summary; later messages append normally.
+  Visible conversation history remains unchanged.
 - The replacement must retain unresolved work, durable facts, active artifacts,
   tool outcomes needed for continuation, and relevant actor/destination context.
 - Model handoff is a permanent in-place transition recorded at a safe boundary.
   It does not fork the conversation or replay completed side effects.
-- Restoration uses the model and context epoch recorded by durable history, not
+- Restoration uses the model profile recorded by durable history, not
   process-local assumptions.
+- Normal turn-record reads stay pinned to their checkpoint. Agent execution
+  follows a newer committed compaction or handoff replacement and discards
+  volatile context from the superseded history.
 
 Representative integration coverage lives under
 `packages/junior/tests/integration/runtime/`.

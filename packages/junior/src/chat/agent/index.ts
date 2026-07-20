@@ -44,8 +44,8 @@ import {
 import {
   instructionActors,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -277,7 +277,6 @@ async function executeAgentRunInPrivacyContext(
     if (sessionConversationId) {
       const projection = await openConversationProjection({
         conversationId: sessionConversationId,
-        modelId: activeModelId,
       });
       activeModelProfile = projection.modelProfile;
       activeModelId = modelIdForProfile(botConfig, activeModelProfile);
@@ -341,7 +340,7 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    const committedInstructionProvenance: PiMessageProvenance[] = [
+    const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
       ...(existingSessionRecord?.actors ?? []).map(instructionProvenanceFor),
       ...(resumedFromSessionRecord ? [] : [instructionProvenanceFor(actor)]),
@@ -388,7 +387,6 @@ async function executeAgentRunInPrivacyContext(
           conversationId: sessionConversationId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          args: event.args,
         });
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
@@ -480,7 +478,10 @@ async function executeAgentRunInPrivacyContext(
       activeModelProfile === STANDARD_MODEL_PROFILE && sessionConversationId
         ? {
             profiles: handoffProfiles,
-            execute: async (profile: ModelProfile, signal?: AbortSignal) => {
+            execute: async (
+              profile: ModelProfile,
+              options: { signal?: AbortSignal; toolCallId: string },
+            ) => {
               const sourceMessages = [...agent!.state.messages];
               const runtimeContext = retainRuntimeTurnContext(sourceMessages);
               const standardPhaseUsage = extractGenAiUsageSummary(
@@ -518,7 +519,8 @@ async function executeAgentRunInPrivacyContext(
                   conversationId: sessionConversationId,
                   piMessages: sourceMessages,
                   runtimeContext,
-                  signal,
+                  signal: options.signal,
+                  triggeringToolCallId: options.toolCallId,
                   target,
                   metadata: {
                     threadId: routing.correlation?.threadId,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -293,9 +293,15 @@ describe("Slack behavior: processing reaction", () => {
   });
 
   it("clears eyes and marks complete for reaction-only no-reply turns", async () => {
+    const turnLifecycle = {
+      complete: vi.fn(),
+      fail: vi.fn(),
+      start: vi.fn(),
+    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async (request) => {
               const context = {
@@ -348,5 +354,11 @@ describe("Slack behavior: processing reaction", () => {
       reactionCall("eyes", "1700007301.000000"),
     ]);
     expect(thread.posts).toHaveLength(0);
+    expect(turnLifecycle.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: thread.id,
+        outcome: "no_reply",
+      }),
+    );
   });
 });

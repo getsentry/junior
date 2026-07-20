@@ -1,4 +1,4 @@
-import { formatMessageTimestamp, formatMs } from "../format";
+import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewSubagentPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
 import { HighlightText } from "./transcriptSearch";
@@ -10,20 +10,9 @@ export function TranscriptSubagentView(props: {
   timestamp?: number;
 }) {
   const label = props.part.subagentKind;
-  const endedAt = props.part.endedAt
-    ? Date.parse(props.part.endedAt)
-    : undefined;
-  const duration =
-    typeof props.timestamp === "number" &&
-    typeof endedAt === "number" &&
-    Number.isFinite(endedAt) &&
-    endedAt >= props.timestamp
-      ? formatMs(endedAt - props.timestamp)
-      : undefined;
-  const status = statusLabel(props.part);
+  const status = props.part.status;
   const meta = [
     status,
-    duration,
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
@@ -50,7 +39,7 @@ export function TranscriptSubagentView(props: {
     />
   );
 
-  if (!props.onOpenTranscript || props.part.status === "running") {
+  if (!props.onOpenTranscript) {
     return frame;
   }
 
@@ -64,15 +53,6 @@ export function TranscriptSubagentView(props: {
       {frame}
     </button>
   );
-}
-
-function statusLabel(part: TranscriptViewSubagentPart): string | undefined {
-  if (part.outcome === "error") return "error";
-  if (part.outcome === "aborted") return "aborted";
-  if (part.status === "error" || part.status === "aborted") {
-    return part.status;
-  }
-  return undefined;
 }
 
 function isString(value: string | undefined): value is string {

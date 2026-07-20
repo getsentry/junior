@@ -67,7 +67,6 @@ function failingMetadataStore(): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
     getDestinationVisibility: vi.fn(async () => undefined),
-    ensureChildConversation: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       throw new Error("metadata unavailable");
@@ -80,7 +79,6 @@ function metadataEventsStore(events: string[]): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
     getDestinationVisibility: vi.fn(async () => undefined),
-    ensureChildConversation: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       events.push("metadata");

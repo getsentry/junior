@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
 import { getTableColumns, getTableName } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { juniorSqlSchema as schema } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -14,6 +17,87 @@ import {
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
 } from "../fixtures/postgres/fixture";
+
+const coreMigrations = readMigrationFiles({
+  migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
+});
+const legacyCoreMigrationChecksums = {
+  "0001_conversation_core":
+    "78fe050d8bec8ba18e2e3192497b3d8ad6b45fbb66ad4859377fb2202ed57651",
+  "0002_slack_destination_visibility_backfill":
+    "fb590a09fa51db471a748e3d7abb4137f521ee8df97f6e9ef5563121be98c394",
+  "0003_user_identities":
+    "67d9c9c26cbd76213614eb6d7a7cc7e2501fc20e92321eb5176a08ce39cd2efb",
+  "0004_actor_cutover":
+    "d41b8bfa66b8a88d69e84af38950025ba4c9be56341565cbe1411f0ca50c1dc2",
+  "0005_conversation_transcripts":
+    "add299d1b254e023f89b5993c417dd2248dc009e874efdeaf31ec0732e0d4fb4",
+  "0006_conversation_metrics":
+    "7c7ca5c9e11ed4b0e14737fd90d3348ea46e306c88fdf31199b7afb2a11c6a41",
+} as const;
+
+async function applyCoreMigration(
+  executor: JuniorSqlMigrationExecutor,
+  index: number,
+  options: { statementLimit?: number } = {},
+): Promise<void> {
+  const migration = coreMigrations[index];
+  if (!migration) {
+    throw new Error(`Missing core migration at index ${index}`);
+  }
+  await executor.transaction(async () => {
+    const statements =
+      options.statementLimit === undefined
+        ? migration.sql
+        : migration.sql.slice(0, options.statementLimit);
+    for (const statement of statements) {
+      if (statement.trim()) await executor.execute(statement);
+    }
+  });
+}
+
+async function seedLegacyCoreSchema(
+  executor: JuniorSqlMigrationExecutor,
+  options: { metrics?: boolean } = {},
+): Promise<void> {
+  await applyCoreMigration(executor, 0);
+  if (options.metrics) await applyCoreMigration(executor, 1);
+}
+
+async function recordLegacyCoreMigrations(
+  executor: JuniorSqlMigrationExecutor,
+  options: { metrics?: boolean } = {},
+): Promise<void> {
+  await executor.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+  const records = Object.entries(legacyCoreMigrationChecksums).filter(
+    ([id]) => options.metrics || id !== "0006_conversation_metrics",
+  );
+  for (const [id, checksum] of records) {
+    await executor.execute(
+      "INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)",
+      [id, checksum],
+    );
+  }
+}
+
+async function expectNoDrizzleMigrationState(
+  executor: JuniorSqlMigrationExecutor,
+): Promise<void> {
+  const [state] = await executor.query<{ schemaExists: boolean }>(`
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_namespace
+  WHERE nspname = 'drizzle'
+) AS "schemaExists"
+`);
+  expect(state?.schemaExists).toBe(false);
+}
 
 describe("conversation SQL local mode", () => {
   it("creates migrated tables matching the Drizzle schema", async () => {
@@ -44,10 +128,19 @@ ORDER BY table_name ASC, ordinal_position ASC
       const expected = new Map(
         Object.values(schema).map((table) => [
           getTableName(table),
-          Object.values(getTableColumns(table)).map((column) => column.name),
+          Object.values(getTableColumns(table))
+            .map((column) => column.name)
+            .sort(),
         ]),
       );
 
+      for (const columns of actual.values()) columns.sort();
+
+      // The core schema cut leaves this source table available for the
+      // operator backfill; `junior upgrade` drops it after message events are
+      // verified. It is intentionally absent from the target Drizzle schema.
+      expect(actual.has("junior_conversation_messages")).toBe(true);
+      actual.delete("junior_conversation_messages");
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
@@ -71,6 +164,7 @@ ORDER BY indexname ASC
           "junior_conversations_pkey",
           "junior_conversations_actor_activity_idx",
           "junior_conversation_messages_search_idx",
+          "junior_conversation_events_message_search_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
           "junior_identities_kind_provider_idx",
@@ -141,7 +235,7 @@ VALUES ('host-migration', 9999999999999)
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
       expect(host?.count).toBe(1);
-      expect(core?.count).toBe(5);
+      expect(core?.count).toBe(coreMigrations.length);
     } finally {
       await fixture.close();
     }
@@ -156,36 +250,8 @@ VALUES ('host-migration', 9999999999999)
       });
 
       try {
-        await migrateSchema(fixture.sql);
-        await fixture.sql.execute(`
-CREATE TABLE junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`);
-        await fixture.sql.execute(`
-INSERT INTO junior_schema_migrations (id, checksum)
-VALUES
-  ('0001_conversation_core', 'legacy-checksum-1'),
-  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
-  ('0003_user_identities', 'legacy-checksum-3'),
-  ('0004_actor_cutover', 'legacy-checksum-4'),
-  ('0005_conversation_transcripts', 'legacy-checksum-5')
-`);
-        await fixture.sql.execute("DROP TABLE drizzle.__drizzle_junior_core");
-        await fixture.sql.execute(
-          "DROP INDEX junior_conversation_messages_search_idx",
-        );
-        await fixture.sql.execute(`
-ALTER TABLE junior_conversations
-  DROP COLUMN archived_at,
-  DROP COLUMN duration_ms,
-  DROP COLUMN usage_json,
-  DROP COLUMN execution_duration_ms,
-  DROP COLUMN execution_usage_json,
-  DROP COLUMN metric_run_id
-`);
+        await seedLegacyCoreSchema(fixture.sql);
+        await recordLegacyCoreMigrations(fixture.sql);
         await Promise.all([
           fixture.sql.query("SELECT 1"),
           second.query("SELECT 1"),
@@ -195,7 +261,7 @@ ALTER TABLE junior_conversations
         const [journal] = await fixture.sql.query<{ count: number }>(
           "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
         );
-        expect(journal?.count).toBe(5);
+        expect(journal?.count).toBe(coreMigrations.length);
       } finally {
         await second.close();
         await fixture.close();
@@ -263,7 +329,7 @@ WHERE conversation_id = $1
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
 
-      expect(migrationRows?.count).toBe(5);
+      expect(migrationRows?.count).toBe(coreMigrations.length);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",
@@ -291,36 +357,8 @@ WHERE conversation_id = $1
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
-      await fixture.sql.execute(`
-CREATE TABLE junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`);
-      await fixture.sql.execute(`
-INSERT INTO junior_schema_migrations (id, checksum)
-VALUES
-  ('0001_conversation_core', 'legacy-checksum-1'),
-  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
-  ('0003_user_identities', 'legacy-checksum-3'),
-  ('0004_actor_cutover', 'legacy-checksum-4'),
-  ('0005_conversation_transcripts', 'legacy-checksum-5')
-`);
-      await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
-      await fixture.sql.execute(
-        "DROP INDEX junior_conversation_messages_search_idx",
-      );
-      await fixture.sql.execute(`
-ALTER TABLE junior_conversations
-  DROP COLUMN archived_at,
-  DROP COLUMN duration_ms,
-  DROP COLUMN usage_json,
-  DROP COLUMN execution_duration_ms,
-  DROP COLUMN execution_usage_json,
-  DROP COLUMN metric_run_id
-`);
+      await seedLegacyCoreSchema(fixture.sql);
+      await recordLegacyCoreMigrations(fixture.sql);
 
       await migrateSchema(fixture.sql);
 
@@ -347,7 +385,28 @@ ORDER BY column_name
         "execution_usage_json",
         "usage_json",
       ]);
-      expect(migrationRows?.count).toBe(5);
+      expect(migrationRows?.count).toBe(coreMigrations.length);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("ignores unrelated records in the shared legacy migration journal", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql);
+      await recordLegacyCoreMigrations(fixture.sql);
+      await fixture.sql.execute(
+        "INSERT INTO junior_schema_migrations (id, checksum) VALUES ('plugin:example:0001', 'plugin-checksum')",
+      );
+
+      await migrateSchema(fixture.sql);
+
+      const [migrationRows] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
+      );
+      expect(migrationRows?.count).toBe(coreMigrations.length);
     } finally {
       await fixture.close();
     }
@@ -357,31 +416,8 @@ ORDER BY column_name
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
-      await fixture.sql.execute(`
-CREATE TABLE junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`);
-      await fixture.sql.execute(`
-INSERT INTO junior_schema_migrations (id, checksum)
-VALUES
-  ('0001_conversation_core', 'legacy-checksum-1'),
-  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
-  ('0003_user_identities', 'legacy-checksum-3'),
-  ('0004_actor_cutover', 'legacy-checksum-4'),
-  ('0005_conversation_transcripts', 'legacy-checksum-5'),
-  ('0006_conversation_metrics', 'legacy-checksum-6')
-`);
-      await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
-      await fixture.sql.execute(
-        "DROP INDEX junior_conversation_messages_search_idx",
-      );
-      await fixture.sql.execute(
-        "ALTER TABLE junior_conversations DROP COLUMN archived_at",
-      );
+      await seedLegacyCoreSchema(fixture.sql, { metrics: true });
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
 
       await migrateSchema(fixture.sql);
 
@@ -404,7 +440,7 @@ WHERE table_schema = 'public'
   )
 ORDER BY column_name
 `);
-      expect(migrationRows?.count).toBe(4);
+      expect(migrationRows?.count).toBe(coreMigrations.length - 1);
       expect(searchIndex?.exists).toBe(true);
       expect(metricColumns.map((row) => row.column_name)).toEqual([
         "duration_ms",
@@ -412,6 +448,145 @@ ORDER BY column_name
         "execution_usage_json",
         "usage_json",
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects legacy adoption after the event-table cutover", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
+      await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: expected the pre-Drizzle junior_agent_steps table and no junior_conversation_events table",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects partially applied legacy metric columns without mutation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql);
+      await applyCoreMigration(fixture.sql, 1, { statementLimit: 1 });
+      await recordLegacyCoreMigrations(fixture.sql);
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt partial legacy metrics state: found 1 of 4 required columns",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects a legacy metrics record without metric columns", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql);
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: legacy metrics migration record does not match physical metric columns",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects complete metric columns without a legacy metrics record", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql, { metrics: true });
+      await recordLegacyCoreMigrations(fixture.sql);
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: legacy metrics migration record does not match physical metric columns",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects a changed legacy core checksum without mutation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql);
+      await recordLegacyCoreMigrations(fixture.sql);
+      await fixture.sql.execute(
+        "UPDATE junior_schema_migrations SET checksum = 'changed' WHERE id = '0003_user_identities'",
+      );
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: checksum mismatch: 0003_user_identities",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects a changed legacy metrics checksum without mutation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql, { metrics: true });
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
+      await fixture.sql.execute(
+        "UPDATE junior_schema_migrations SET checksum = 'changed' WHERE id = '0006_conversation_metrics'",
+      );
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: checksum mismatch: 0006_conversation_metrics",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects legacy adoption after immutable migration 0002 ran", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql, { metrics: true });
+      await applyCoreMigration(fixture.sql, 2);
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: post-baseline schema markers are already present: junior_conversation_messages_search_idx",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects legacy adoption after immutable migration 0003 ran", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await seedLegacyCoreSchema(fixture.sql, { metrics: true });
+      await applyCoreMigration(fixture.sql, 2);
+      await applyCoreMigration(fixture.sql, 3);
+      await recordLegacyCoreMigrations(fixture.sql, { metrics: true });
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt legacy core migration state: post-baseline schema markers are already present: junior_conversation_messages_search_idx, junior_conversations.metric_run_id",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
     } finally {
       await fixture.close();
     }
@@ -430,12 +605,16 @@ CREATE TABLE junior_schema_migrations (
 `);
       await fixture.sql.execute(`
 INSERT INTO junior_schema_migrations (id, checksum)
-VALUES ('0001_conversation_core', 'legacy-checksum-1')
+VALUES (
+  '0001_conversation_core',
+  '78fe050d8bec8ba18e2e3192497b3d8ad6b45fbb66ad4859377fb2202ed57651'
+)
 `);
 
       await expect(migrateSchema(fixture.sql)).rejects.toThrow(
         "Cannot adopt partial legacy core migration state",
       );
+      await expectNoDrizzleMigrationState(fixture.sql);
     } finally {
       await fixture.close();
     }

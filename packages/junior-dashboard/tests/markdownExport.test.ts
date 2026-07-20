@@ -1,382 +1,170 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationReportEvent,
+  ConversationReportEventData,
+} from "@sentry/junior/api/schema";
 
-import {
-  buildConversationMarkdown,
-  buildSubagentMarkdown,
-} from "../src/client/markdownExport";
-import { subagentConversationTranscript } from "../src/client/subagentTranscript";
-import type { Conversation } from "../src/client/types";
+import { buildConversationMarkdown } from "../src/client/markdownExport";
+import type { ConversationTranscript } from "../src/client/types";
 
-describe("dashboard markdown export", () => {
-  it("serializes child-agent transcripts with shared formatting", () => {
-    const report = {
-      type: "subagent",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      endedAt: "2026-01-01T00:00:02.000Z",
-      id: "advisor-call",
-      outcome: "success",
-      status: "success",
-      subagentConversationId: "junior:conversation-1:advisor_session",
-      subagentKind: "advisor",
-      subagentSentryConversationUrl:
-        "https://sentry.example/explore/conversations/advisor",
-      transcript: [
-        {
+function event(
+  seq: number,
+  data: ConversationReportEventData,
+): ConversationReportEvent {
+  return {
+    seq,
+    createdAt: `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+    data,
+  };
+}
+
+function conversation(
+  events: ConversationReportEvent[],
+  overrides: Partial<ConversationTranscript> = {},
+): ConversationTranscript {
+  return {
+    actorIdentity: { email: "alice@example.com" },
+    channel: "C1",
+    channelName: "proj-alpha",
+    conversationId: "conversation-1",
+    cumulativeDurationMs: 3_000,
+    displayTitle: "Canonical conversation",
+    eventHistory: { status: "available" },
+    events,
+    generatedAt: "2026-01-01T00:01:00.000Z",
+    lastProgressAt: "2026-01-01T00:00:10.000Z",
+    lastSeenAt: "2026-01-01T00:00:10.000Z",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    status: "completed",
+    surface: "slack",
+    ...overrides,
+  };
+}
+
+describe("dashboard canonical-event Markdown export", () => {
+  it("exports visible user and assistant messages", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "user-1",
           role: "user",
-          timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
-          parts: [{ type: "text", text: "Review the implementation." }],
-        },
-        {
+          text: "please investigate",
+        }),
+        event(2, {
+          type: "message",
+          messageId: "assistant-1",
           role: "assistant",
-          timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
-          parts: [{ type: "text", text: "The implementation is sound." }],
-        },
-      ],
-      transcriptAvailable: true,
-    } satisfies ConversationSubagentTranscriptReport;
-    const turn = subagentConversationTranscript("conversation-1", report);
-
-    const markdown = buildSubagentMarkdown(report, turn);
-
-    expect(markdown).toContain("# advisor");
-    expect(markdown).toContain("- Subagent ID: `advisor-call`");
-    expect(markdown).toContain(
-      "- Conversation ID: junior:conversation-1:advisor_session",
+          text: "investigation complete",
+        }),
+      ]),
     );
-    expect(markdown).toContain("- Duration: 2.0s");
-    expect(markdown).toContain("### User");
-    expect(markdown).toContain("Review the implementation.");
-    expect(markdown).toContain("### advisor");
-    expect(markdown).toContain("The implementation is sound.");
+
+    expect(markdown).toContain("# Canonical conversation");
+    expect(markdown).toContain("### alice@example.com");
+    expect(markdown).toContain("please investigate");
+    expect(markdown).toContain("### Junior");
+    expect(markdown.match(/investigation complete/g)).toHaveLength(1);
   });
 
-  it("serializes visible conversation transcripts as Markdown", () => {
-    const startedAt = "2026-01-01T00:00:00.000Z";
-    const detail = {
-      conversationId: "slack:C1:222",
-      cumulativeDurationMs: 0,
-      displayTitle: "Copy button discussion",
-      generatedAt: "2026-01-01T00:00:08.000Z",
-      channel: "C1",
-      channelName: "eng",
-      lastProgressAt: "2026-01-01T00:00:07.000Z",
-      lastSeenAt: "2026-01-01T00:00:07.000Z",
-      actorIdentity: { fullName: "Alice" },
-      startedAt,
-      status: "completed",
-      surface: "slack",
-      contextEvents: [
-        {
-          type: "context_compacted",
-          createdAt: "2026-01-01T00:00:01.500Z",
-          modelId: "openai/gpt-5.4",
-          summary: "Earlier investigation was summarized.",
-          transcriptIndex: 1,
-        },
-        {
-          type: "model_handoff",
-          createdAt: "2026-01-01T00:00:04.000Z",
-          fromModelId: "openai/gpt-5.4",
-          toModelId: "openai/gpt-5.6-sol",
-          message: "Continue with the implementation evidence.",
-          transcriptIndex: 3,
-        },
-      ],
-      transcriptAvailable: true,
-      transcript: [
-        {
-          role: "user",
-          timestamp: Date.parse(startedAt) + 1_000,
-          parts: [
-            {
-              type: "text",
-              text: "  copy this conversation  \n",
-            },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: Date.parse(startedAt) + 2_000,
-          parts: [
-            {
-              type: "thinking",
-              output: "Need a deterministic export.  \n",
-            },
-            {
-              type: "tool_call",
-              id: "call-1",
-              name: "search",
-              input: { query: "copy markdown" },
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          timestamp: Date.parse(startedAt) + 3_500,
-          parts: [
-            {
-              type: "tool_result",
-              id: "call-1",
-              name: "search",
-              output: { ok: true },
-            },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: Date.parse(startedAt) + 5_000,
-          parts: [
-            {
-              type: "text",
-              text: "## Done\n\n\n\nCopied as Markdown.",
-            },
-          ],
-        },
-      ],
-    } satisfies ConversationDetailReport;
-
-    const markdown = buildConversationMarkdown(detail);
-
-    expect(markdown).toContain("# Copy button discussion");
-    expect(markdown).toContain("- Conversation ID: `slack:C1:222`");
-    expect(markdown).toContain("- Actor: Alice");
-    expect(markdown).toContain("- Location: #eng (C1)");
-    expect(markdown).toContain("## Transcript");
-    expect(markdown).toContain("### Context compacted");
-    expect(markdown).toContain("- Model: openai/gpt-5.4");
-    expect(markdown).toContain("Earlier investigation was summarized.");
-    expect(markdown).toContain("### Model handoff");
-    expect(markdown).toContain("- From model: openai/gpt-5.4");
-    expect(markdown).toContain("- To model: openai/gpt-5.6-sol");
-    expect(markdown).toContain("Continue with the implementation evidence.");
-    expect(markdown.indexOf("### Context compacted")).toBeLessThan(
-      markdown.indexOf("### Model handoff"),
+  it("exports structural tool, context, subagent, and failure rows", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, { type: "tool_started", name: "search" }),
+        event(1, {
+          type: "subagent_started",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+        }),
+        event(2, { type: "compaction" }),
+        event(3, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "failed",
+          failureKind: "agent",
+        }),
+      ]),
     );
-    expect(markdown).not.toContain("## Turn");
-    expect(markdown).not.toContain("- Turns:");
-    expect(markdown).not.toContain("- Turn ID:");
-    expect(markdown).toContain("### Alice");
-    expect(markdown).toContain("  copy this conversation  \n");
-    expect(markdown).toContain("### Thinking");
-    expect(markdown).toContain("Need a deterministic export.  \n");
+
     expect(markdown).toContain("### Tool: search");
-    expect(markdown).toContain('"query": "copy markdown"');
-    expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
-  });
-
-  it("exports terminal assistant outcomes with safe copy", () => {
-    const startedAt = "2026-01-01T00:00:00.000Z";
-    const detail = {
-      conversationId: "slack:C1:failed",
-      cumulativeDurationMs: 0,
-      displayTitle: "Failed responses",
-      generatedAt: "2026-01-01T00:00:03.000Z",
-      lastProgressAt: "2026-01-01T00:00:02.000Z",
-      lastSeenAt: "2026-01-01T00:00:02.000Z",
-      startedAt,
-      status: "completed",
-      surface: "slack",
-      transcriptAvailable: true,
-      transcript: [
-        {
-          role: "assistant",
-          outcome: "error",
-          timestamp: Date.parse(startedAt) + 1_000,
-          parts: [],
-        },
-        {
-          role: "assistant",
-          outcome: "aborted",
-          timestamp: Date.parse(startedAt) + 2_000,
-          parts: [],
-        },
-      ],
-    } satisfies ConversationDetailReport;
-
-    const markdown = buildConversationMarkdown(detail);
-
-    expect(markdown).toContain("### Agent response failed");
-    expect(markdown).toContain(
-      "The model response ended before Junior could complete this turn.",
-    );
-    expect(markdown).toContain("### Agent response stopped");
-    expect(markdown).toContain(
-      "The model response was stopped before Junior could complete this turn.",
-    );
-  });
-
-  it("prefers the freshly loaded detail title over a stale list row title", () => {
-    const generatedAt = "2026-01-01T00:00:08.000Z";
-    const detail = {
-      conversationId: "slack:C1:222",
-      cumulativeDurationMs: 0,
-      displayTitle: "Fresh async title",
-      generatedAt,
-      lastProgressAt: generatedAt,
-      lastSeenAt: generatedAt,
-      startedAt: generatedAt,
-      status: "completed",
-      surface: "slack",
-      transcript: [],
-      transcriptAvailable: false,
-    } satisfies ConversationDetailReport;
-    const conversation = {
-      channel: "C1",
-      channelName: "eng",
-      cumulativeDurationMs: 0,
-      displayTitle: "Public Channel",
-      id: "slack:C1:222",
-      lastProgressAt: generatedAt,
-      lastSeenAt: generatedAt,
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-    } satisfies Conversation;
-
-    const markdown = buildConversationMarkdown(detail, conversation);
-
-    expect(markdown).toContain("# Fresh async title");
-    expect(markdown).not.toContain("# Public Channel");
-  });
-
-  it("exports running tool and subagent activity from derived transcript rows", () => {
-    const detail = {
-      conversationId: "conversation-activity",
-      displayTitle: "Activity transcript",
-      generatedAt: "2026-01-01T00:00:08.000Z",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:02.000Z",
-      lastSeenAt: "2026-01-01T00:00:02.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "active",
-      surface: "internal",
-      transcriptAvailable: true,
-      transcript: [],
-      activity: [
-        {
-          type: "tool_execution",
-          id: "advisor-call",
-          toolCallId: "advisor-call",
-          toolName: "advisor",
-          createdAt: "2026-01-01T00:00:01.000Z",
-          status: "running",
-          subagents: [
-            {
-              type: "subagent",
-              id: "advisor-call",
-              subagentKind: "advisor",
-              parentToolCallId: "advisor-call",
-              createdAt: "2026-01-01T00:00:02.000Z",
-              status: "running",
-            },
-          ],
-        },
-      ],
-    } satisfies ConversationDetailReport;
-
-    const markdown = buildConversationMarkdown(detail);
-
-    expect(markdown).toContain("### Tool: advisor");
-    expect(markdown).toContain("- Result: running");
+    expect(markdown).toContain("- Status: started");
     expect(markdown).toContain("### Subagent: advisor");
-    expect(markdown).toContain("- Status: running");
-    expect(markdown).toContain("- Parent tool call: advisor-call");
+    expect(markdown).toContain("### Context compacted");
+    expect(markdown).toContain("### Agent response failed");
+    expect(markdown).not.toContain("missing");
+    expect(markdown).not.toContain("Result: running");
   });
 
-  it("exports only safe redaction metadata for private transcripts", () => {
-    const detail = {
-      conversationId: "slack:D1:222",
-      displayTitle: "Direct Message",
-      generatedAt: "2026-01-01T00:00:08.000Z",
-      channel: "D1",
-      channelName: "Direct Message",
-      cumulativeDurationMs: 7_000,
-      lastProgressAt: "2026-01-01T00:00:07.000Z",
-      lastSeenAt: "2026-01-01T00:00:07.000Z",
-      actorIdentity: { email: "alice@example.com" },
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      transcriptAvailable: false,
-      transcriptRedacted: true,
-      transcriptRedactionReason: "non_public_conversation",
-      transcript: [],
-      transcriptMetadata: [
-        {
-          role: "user",
-          timestamp: 1_767_225_601_000,
-          parts: [
-            {
-              bytes: 24,
-              chars: 24,
-              redacted: true,
-              text: "private question",
-              type: "text",
-            },
-          ],
-        },
-        {
-          role: "assistant",
-          timestamp: 1_767_225_602_000,
-          parts: [
-            {
-              bytes: 22,
-              chars: 22,
-              redacted: true,
-              text: "private answer",
-              type: "text",
-            },
-            {
-              id: "call-1",
-              input: { query: "private search value" },
-              inputKeys: ["query"],
-              inputSizeBytes: 42,
-              inputType: "object",
-              name: "search",
-              redacted: true,
-              type: "tool_call",
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          timestamp: 1_767_225_603_000,
-          parts: [
-            {
-              id: "call-1",
-              name: "search",
-              output: "private tool result",
-              outputSizeBytes: 19,
-              outputType: "string",
-              redacted: true,
-              type: "tool_result",
-            },
-          ],
-        },
-      ],
-    } satisfies ConversationDetailReport;
+  it("exports a delivery terminal failure without mislabeling it as an agent failure", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "failed",
+          failureKind: "delivery",
+        }),
+      ]),
+    );
 
-    const markdown = buildConversationMarkdown(detail);
+    expect(markdown).toContain("### Message delivery failed");
+    expect(markdown).toContain(
+      "Junior could not deliver this message to its destination.",
+    );
+    expect(markdown).not.toContain("turn-1");
+    expect(markdown).not.toContain("Agent response failed");
+  });
 
-    expect(markdown).toContain("# Direct Message");
-    expect(markdown).not.toContain("## Turn");
-    expect(markdown).not.toContain("- Turn ID:");
+  it("labels redacted structural tool starts neutrally", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([event(0, { type: "tool_started", name: "search" })], {
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+      }),
+    );
+
+    expect(markdown).toContain("### Tool: search");
+    expect(markdown).toContain("- Status: started");
+    expect(markdown).not.toContain("missing result");
+  });
+
+  it("exports only safe placeholders for redacted event history", () => {
+    const markdown = buildConversationMarkdown(
+      conversation(
+        [
+          event(0, {
+            type: "message",
+            messageId: "private-user",
+            role: "user",
+            redacted: true,
+          }),
+        ],
+        {
+          eventHistory: {
+            status: "redacted",
+            reason: "non_public_conversation",
+          },
+        },
+      ),
+    );
+
     expect(markdown).toContain(
       "Transcript hidden because this conversation is not public.",
     );
-    expect(markdown).toContain("<redacted> - 24 chars - 24 bytes");
-    expect(markdown).toContain("<redacted> - 22 chars - 22 bytes");
-    expect(markdown).toContain(
-      "<redacted> - tool_call - name: `search` - input: object - input keys: query",
+    expect(markdown).toContain("<redacted>");
+  });
+
+  it("explains expired event history", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([], {
+        eventHistory: {
+          status: "expired",
+          expiredAt: "2026-01-01T00:00:00.000Z",
+        },
+      }),
     );
-    expect(markdown).toContain(
-      "<redacted> - tool_result - name: `search` - output: string",
-    );
-    expect(markdown).not.toContain("private question");
-    expect(markdown).not.toContain("private answer");
-    expect(markdown).not.toContain("private search value");
-    expect(markdown).not.toContain("private tool result");
+    expect(markdown).toContain("Transcript expired for this conversation.");
   });
 });

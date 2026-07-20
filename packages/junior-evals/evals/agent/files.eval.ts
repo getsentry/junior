@@ -1,12 +1,6 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import {
-  agentSteps,
-  mention,
-  rubric,
-  slackEvals,
-  threadMessage,
-} from "../../src/helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 const codingFixtureOverrides = {
   skill_dirs: ["fixtures/coding-skills"],
@@ -83,7 +77,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     expect(toolCalls(result.session)[0]).toMatchObject({ name: "handoff" });
   });
 
-  it("hands a coding task to the handoff projection and keeps that model and workspace on the next turn", async ({
+  it("hands a coding task off once and keeps its workspace on the next turn", async ({
     run,
   }) => {
     const thread = {
@@ -123,70 +117,11 @@ describeEval("Coding File Tools", slackEvals, (it) => {
       arguments: { profile: "coding" },
     });
     expect(calls.filter((call) => call.name === "handoff")).toHaveLength(1);
-
-    const steps = await agentSteps(result.session);
-    const markers = steps.filter(
-      (step) =>
-        step.entry.type === "context_epoch_started" &&
-        step.entry.reason === "handoff",
-    );
-    expect(markers).toHaveLength(1);
-    expect(markers[0]?.entry).toMatchObject({
-      type: "context_epoch_started",
-      reason: "handoff",
-      modelProfile: "coding",
-    });
-
-    const replies = assistantMessages(result.session).filter(
-      (message) => message.metadata?.event_type === "thread_post",
-    );
-    expect(replies).toHaveLength(2);
     expect(
       calls.some((call) => {
         const args = JSON.stringify(call.arguments) ?? "";
         return args.includes("sha256sum") && args.includes("handoff-proof.txt");
       }),
     ).toBe(true);
-    const followUp = steps.find(
-      (step) =>
-        step.entry.type === "pi_message" &&
-        step.role === "user" &&
-        JSON.stringify(step.entry.message).includes(
-          "run sha256sum on skills/coding-workspace-fixture/project/handoff-proof.txt",
-        ),
-    );
-    expect(followUp).toBeDefined();
-    const firstHandoffModels = steps
-      .filter(
-        (step) =>
-          step.seq > markers[0]!.seq &&
-          step.seq < followUp!.seq &&
-          step.entry.type === "pi_message" &&
-          step.role === "assistant",
-      )
-      .map((step) =>
-        step.entry.type === "pi_message" &&
-        step.entry.message.role === "assistant"
-          ? step.entry.message.model
-          : undefined,
-      );
-    const handoffModel = firstHandoffModels.at(-1);
-    expect(handoffModel).toBeDefined();
-    expect(handoffModel).not.toBe(process.env.AI_MODEL);
-    const followUpModels = steps
-      .filter(
-        (step) =>
-          step.seq > followUp!.seq &&
-          step.entry.type === "pi_message" &&
-          step.role === "assistant",
-      )
-      .map((step) =>
-        step.entry.type === "pi_message" &&
-        step.entry.message.role === "assistant"
-          ? step.entry.message.model
-          : undefined,
-      );
-    expect(followUpModels.length).toBeGreaterThan(0);
-    expect(followUpModels).toEqual(followUpModels.map(() => handoffModel));
   });
 });

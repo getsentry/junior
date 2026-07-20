@@ -1,7 +1,6 @@
 import { type ReactNode, createContext, useContext } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
-import { stringifyPartValue } from "../format";
 import {
   messageRawText,
   type RenderedTranscriptEntry,
@@ -128,51 +127,29 @@ export function entryMatchesSearch(
 
   if (entry.kind === "failure") {
     return textContains(
-      entry.outcome === "error"
-        ? "agent response failed error"
-        : "agent response stopped aborted",
+      entry.outcome === "delivery_failed"
+        ? "message delivery failed"
+        : "agent response failed error",
       normalizedQuery,
     );
   }
 
   if (entry.kind === "tool") {
-    const visibleCallStatus =
-      entry.call?.status === "running" && !entry.result
-        ? entry.call.status
-        : undefined;
-    return (
-      textContains(entry.call?.name, normalizedQuery) ||
-      textContains(visibleCallStatus, normalizedQuery) ||
-      textContains(entry.result?.name, normalizedQuery) ||
-      textContains(stringifyPartValue(entry.call?.input), normalizedQuery) ||
-      textContains(stringifyPartValue(entry.result?.output), normalizedQuery)
-    );
+    return textContains(entry.part.name, normalizedQuery);
   }
 
   if (entry.kind === "subagent") {
     return (
       textContains(entry.part.subagentKind, normalizedQuery) ||
-      textContains(entry.part.id, normalizedQuery) ||
-      textContains(entry.part.status, normalizedQuery) ||
-      textContains(entry.part.outcome, normalizedQuery) ||
-      textContains(entry.part.parentToolCallId, normalizedQuery)
+      textContains(entry.part.status, normalizedQuery)
     );
-  }
-
-  if (entry.kind === "thinking") {
-    return textContains(stringifyPartValue(entry.part.output), normalizedQuery);
   }
 
   if (entry.kind === "context") {
     const event = entry.part.event;
-    return event.type === "model_handoff"
-      ? textContains("model handoff", normalizedQuery) ||
-          textContains(event.fromModelId, normalizedQuery) ||
-          textContains(event.toModelId, normalizedQuery) ||
-          textContains(event.message, normalizedQuery)
-      : textContains("context compacted", normalizedQuery) ||
-          textContains(event.modelId, normalizedQuery) ||
-          textContains(event.summary, normalizedQuery);
+    return event.type === "handoff"
+      ? textContains("model handoff", normalizedQuery)
+      : textContains("context compacted", normalizedQuery);
   }
 
   return false;

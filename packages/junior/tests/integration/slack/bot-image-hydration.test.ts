@@ -9,7 +9,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+} from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 

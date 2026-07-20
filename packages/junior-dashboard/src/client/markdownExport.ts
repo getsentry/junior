@@ -5,7 +5,6 @@ import {
   formatUsageTotal,
   actorLabel,
   slackLocationLabel,
-  stringifyPartValue,
   transcriptRoleKind,
   unavailableTranscriptLabel,
 } from "./format";
@@ -13,21 +12,19 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
-import { conversationTranscriptMessages } from "./transcriptActivity";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   Conversation,
   ConversationTranscript,
   TranscriptViewMessage,
-  TranscriptViewPart,
   TranscriptViewContextEventPart,
   TranscriptViewSubagentPart,
+  TranscriptViewToolCallPart,
 } from "./types";
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
 export function buildConversationMarkdown(
-  detail: ConversationDetailReport,
+  detail: ConversationTranscript,
   conversation?: Conversation,
 ): string {
   const lines: string[] = [];
@@ -55,43 +52,21 @@ export function buildConversationMarkdown(
   return finishMarkdown(lines);
 }
 
-/** Build Markdown for one child-agent transcript using the shared formatter. */
-export function buildSubagentMarkdown(
-  report: ConversationSubagentTranscriptReport,
-  conversationTranscript: ConversationTranscript,
-): string {
-  const lines: string[] = [`# ${headingText(report.subagentKind)}`, ""];
-  addMetaLine(lines, "Subagent ID", inlineCode(report.id));
-  addMetaLine(lines, "Conversation ID", report.subagentConversationId);
-  addMetaLine(lines, "Created", report.createdAt);
-  addMetaLine(lines, "Status", report.outcome ?? report.status);
-  addMetaLine(
-    lines,
-    "Duration",
-    formatMs(conversationTranscript.cumulativeDurationMs),
-  );
-  addMetaLine(
-    lines,
-    "Sentry conversation",
-    report.subagentSentryConversationUrl,
-  );
-  lines.push("", "## Transcript");
-  appendConversationTranscript(lines, conversationTranscript);
-  return finishMarkdown(lines);
-}
-
 function appendConversationTranscript(
   lines: string[],
   conversationTranscript: ConversationTranscript,
 ): void {
   const transcript = conversationTranscriptMessages(conversationTranscript);
 
-  if (conversationTranscript.transcriptAvailable) {
+  if (conversationTranscript.eventHistory.status === "available") {
     appendTranscriptMessages(lines, conversationTranscript, transcript, false);
     return;
   }
 
-  if (conversationTranscript.transcriptRedacted && transcript.length) {
+  if (
+    conversationTranscript.eventHistory.status === "redacted" &&
+    transcript.length
+  ) {
     lines.push(
       "",
       "Transcript hidden because this conversation is not public.",
@@ -130,17 +105,6 @@ function appendTranscriptMessages(
       continue;
     }
 
-    if (entry.kind === "thinking") {
-      appendThinking(
-        lines,
-        conversationTranscript,
-        entry.part,
-        entry.timestamp,
-        redacted,
-      );
-      continue;
-    }
-
     if (entry.kind === "subagent") {
       appendSubagent(
         lines,
@@ -161,47 +125,28 @@ function appendTranscriptMessages(
       continue;
     }
 
-    if (redacted) {
-      appendRedactedTool(
-        lines,
-        conversationTranscript,
-        entry.call,
-        entry.result,
-        entry.timestamp,
-        entry.resultTimestamp,
-      );
-      continue;
-    }
-
-    appendTool(
-      lines,
-      conversationTranscript,
-      entry.call,
-      entry.result,
-      entry.timestamp,
-      entry.resultTimestamp,
-    );
+    appendTool(lines, conversationTranscript, entry.part, entry.timestamp);
   }
 }
 
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  outcome: "error" | "aborted",
+  outcome: "error" | "delivery_failed",
   timestamp: number | undefined,
 ): void {
   lines.push(
     "",
-    outcome === "error"
-      ? "### Agent response failed"
-      : "### Agent response stopped",
+    outcome === "delivery_failed"
+      ? "### Message delivery failed"
+      : "### Agent response failed",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   lines.push(
     "",
-    outcome === "error"
-      ? "The model response ended before Junior could complete this turn."
-      : "The model response was stopped before Junior could complete this turn.",
+    outcome === "delivery_failed"
+      ? "Junior could not deliver this message to its destination."
+      : "The model response ended before Junior could complete this turn.",
   );
 }
 
@@ -214,19 +159,9 @@ function appendContextEvent(
   const event = part.event;
   lines.push(
     "",
-    event.type === "model_handoff"
-      ? "### Model handoff"
-      : "### Context compacted",
+    event.type === "handoff" ? "### Model handoff" : "### Context compacted",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
-  if (event.type === "model_handoff") {
-    addMetaLine(lines, "From model", event.fromModelId);
-    addMetaLine(lines, "To model", event.toModelId);
-  } else {
-    addMetaLine(lines, "Model", event.modelId);
-  }
-  const body = event.type === "model_handoff" ? event.message : event.summary;
-  if (body) lines.push("", body);
 }
 
 function appendMessage(
@@ -239,31 +174,12 @@ function appendMessage(
   addEventMeta(lines, conversationTranscript, message.timestamp);
 
   if (redacted) {
-    const redactedLines = message.parts.map(redactedPartLabel);
-    lines.push("", ...redactedLines.map((line) => `- ${line}`));
+    lines.push("", ...message.parts.map(() => "- <redacted>"));
     return;
   }
 
   const rawText = messageRawText(message);
   lines.push("", rawText.trim().length ? rawText : "_No content._");
-}
-
-function appendThinking(
-  lines: string[],
-  conversationTranscript: ConversationTranscript,
-  part: TranscriptViewPart,
-  timestamp: number | undefined,
-  redacted: boolean,
-): void {
-  lines.push("", "### Thinking");
-  addEventMeta(lines, conversationTranscript, timestamp);
-
-  if (redacted) {
-    lines.push("", `- ${redactedPartLabel(part)}`);
-    return;
-  }
-
-  lines.push("", fencedBlock(stringifyPartValue(part.output), "text"));
 }
 
 function appendSubagent(
@@ -274,71 +190,18 @@ function appendSubagent(
 ): void {
   lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  addMetaLine(lines, "Status", part.outcome ?? part.status);
-  addMetaLine(lines, "Parent tool call", part.parentToolCallId);
+  addMetaLine(lines, "Status", part.status);
 }
 
 function appendTool(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  call: TranscriptViewPart | undefined,
-  result: TranscriptViewPart | undefined,
+  part: TranscriptViewToolCallPart,
   timestamp: number | undefined,
-  resultTimestamp: number | undefined,
 ): void {
-  appendToolHeader(
-    lines,
-    conversationTranscript,
-    call,
-    result,
-    timestamp,
-    resultTimestamp,
-  );
-  lines.push("", fencedBlock(stringifyPartValue({ call, result }), "json"));
-}
-
-function appendRedactedTool(
-  lines: string[],
-  conversationTranscript: ConversationTranscript,
-  call: TranscriptViewPart | undefined,
-  result: TranscriptViewPart | undefined,
-  timestamp: number | undefined,
-  resultTimestamp: number | undefined,
-): void {
-  appendToolHeader(
-    lines,
-    conversationTranscript,
-    call,
-    result,
-    timestamp,
-    resultTimestamp,
-  );
-
-  const redactedLines = [call, result]
-    .filter((part): part is TranscriptViewPart => part !== undefined)
-    .map(redactedPartLabel);
-  lines.push("", ...redactedLines.map((line) => `- ${line}`));
-}
-
-function appendToolHeader(
-  lines: string[],
-  conversationTranscript: ConversationTranscript,
-  call: TranscriptViewPart | undefined,
-  result: TranscriptViewPart | undefined,
-  timestamp: number | undefined,
-  resultTimestamp: number | undefined,
-): void {
-  lines.push("", `### Tool: ${headingText(toolName(call, result))}`);
+  lines.push("", `### Tool: ${headingText(part.name)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  addMetaLine(lines, "Result timestamp", eventTimestamp(resultTimestamp));
-  addMetaLine(lines, "Duration", toolDuration(timestamp, resultTimestamp));
-  if (!result) {
-    addMetaLine(
-      lines,
-      "Result",
-      call?.status === "running" ? "running" : "missing",
-    );
-  }
+  addMetaLine(lines, "Status", "started");
 }
 
 function addEventMeta(
@@ -356,7 +219,7 @@ function addEventMeta(
 }
 
 function conversationTitle(
-  detail: ConversationDetailReport,
+  detail: ConversationTranscript,
   conversation: Conversation | undefined,
 ): string {
   const title = detail.displayTitle.trim();
@@ -399,43 +262,6 @@ function messageRoleLabel(
   return headingText(message.role || "Unknown");
 }
 
-function redactedPartLabel(part: TranscriptViewPart): string {
-  const meta = [
-    part.type !== "text" ? part.type : "",
-    part.name ? `name: ${inlineCode(part.name)}` : "",
-    part.chars !== undefined ? `${part.chars} chars` : "",
-    part.bytes !== undefined ? `${part.bytes} bytes` : "",
-    part.inputType ? `input: ${part.inputType}` : "",
-    part.outputType ? `output: ${part.outputType}` : "",
-    part.inputKeys?.length ? `input keys: ${part.inputKeys.join(", ")}` : "",
-    part.outputKeys?.length ? `output keys: ${part.outputKeys.join(", ")}` : "",
-  ].filter(isNonEmptyString);
-  return ["<redacted>", ...meta].join(" - ");
-}
-
-function toolName(
-  call: TranscriptViewPart | undefined,
-  result: TranscriptViewPart | undefined,
-): string {
-  return call?.name ?? result?.name ?? call?.id ?? result?.id ?? "unknown";
-}
-
-function toolDuration(
-  timestamp: number | undefined,
-  resultTimestamp: number | undefined,
-): string {
-  if (
-    typeof timestamp !== "number" ||
-    typeof resultTimestamp !== "number" ||
-    !Number.isFinite(timestamp) ||
-    !Number.isFinite(resultTimestamp) ||
-    resultTimestamp < timestamp
-  ) {
-    return "";
-  }
-  return formatMs(resultTimestamp - timestamp);
-}
-
 function eventTimestamp(timestamp: number | undefined): string {
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
   return new Date(timestamp).toISOString();
@@ -467,15 +293,6 @@ function headingText(value: string): string {
 function inlineCode(value: string): string {
   const fence = value.includes("`") ? "``" : "`";
   return `${fence}${value}${fence}`;
-}
-
-function fencedBlock(value: string, language: string): string {
-  const longestBacktickRun = [...value.matchAll(/`+/g)].reduce(
-    (longest, match) => Math.max(longest, match[0].length),
-    0,
-  );
-  const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
-  return `${fence}${language}\n${value}\n${fence}`;
 }
 
 function finishMarkdown(lines: string[]): string {

@@ -6,7 +6,7 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { instructionActors } from "@/chat/state/session-log";
+import { instructionActors } from "@/chat/conversations/provenance";
 import {
   loadProjection,
   loadConversationProjection,
@@ -14,7 +14,7 @@ import {
 import {
   hydrateConversationMessages,
   persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+} from "@/chat/conversations/messages";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -52,6 +52,14 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
     }
     return false;
   });
+}
+
+function createTurnLifecycleMock() {
+  return {
+    complete: vi.fn(),
+    fail: vi.fn(),
+    start: vi.fn(),
+  };
 }
 
 /**
@@ -495,9 +503,11 @@ describe("bot handlers (integration)", () => {
   });
 
   it("error recovery: posts safe error message when executeAgentRun throws", async () => {
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               throw new Error("LLM unavailable");
@@ -530,6 +540,12 @@ describe("bot handlers (integration)", () => {
     );
     expect(errorPost).toBeDefined();
     expect(String(errorPost)).not.toContain("LLM unavailable");
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "agent_run_failed",
+      }),
+    );
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
@@ -537,9 +553,11 @@ describe("bot handlers (integration)", () => {
     const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
     const promptMessages = turnPiMessages("please answer");
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               // Simulate agent-run durable input checkpoint: the session record
@@ -648,6 +666,12 @@ describe("bot handlers (integration)", () => {
     expect(sessionRecord?.state).toBe("failed");
     const projection = await loadProjection({ conversationId });
     expect(JSON.stringify(projection)).not.toContain(finalText);
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "delivery_failed",
+      }),
+    );
   });
 
   it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
@@ -655,9 +679,11 @@ describe("bot handlers (integration)", () => {
     const sessionId = "turn_msg-post-delivery";
     const finalText = "Delivered before the state store failed.";
     const promptMessages = turnPiMessages("please answer");
+    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () => {
               await upsertAgentTurnSessionRecord({
@@ -780,6 +806,13 @@ describe("bot handlers (integration)", () => {
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
     );
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "persistence_failed",
+      }),
+    );
+    expect(turnLifecycle.complete).not.toHaveBeenCalled();
   });
 
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {
@@ -1278,7 +1311,7 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
   });
 
-  it("appends a parked-conversation follow-up to the session log before consuming it", async () => {
+  it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
     const conversationId = "slack:C9PARKEDLOG:1700000000.000";
     const destination = slackDestination("C9PARKEDLOG");
     const activeSessionId = "turn_msg-original";
@@ -1558,7 +1591,7 @@ describe("bot handlers (integration)", () => {
     });
 
     expect(capturedActorUserId).toBe("U-alice");
-    // The drain commits Bob's batched mention to the session log before the run
+    // The drain commits Bob's batched mention to the event log before the run
     // with his own instruction provenance, so he joins the run's actors instead
     // of being dropped as anonymous context under Alice's turn.
     const projection = await loadConversationProjection({ conversationId });

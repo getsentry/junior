@@ -49,120 +49,121 @@ export const conversationSummaryReportSchema = z
   })
   .strict();
 
-export const transcriptPartTypeSchema = z.enum([
-  "text",
-  "thinking",
-  "tool_call",
-  "tool_result",
-  "unknown",
-]);
-
-export const transcriptPartSchema = z
+const conversationReportMessageEventDataSchema = z
   .object({
-    bytes: z.number().optional(),
-    chars: z.number().optional(),
-    id: z.string().optional(),
-    input: z.unknown().optional(),
-    inputKeys: z.array(z.string()).optional(),
-    inputSizeBytes: z.number().optional(),
-    inputSizeChars: z.number().optional(),
-    inputType: z.string().optional(),
-    name: z.string().optional(),
-    output: z.unknown().optional(),
-    outputKeys: z.array(z.string()).optional(),
-    outputSizeBytes: z.number().optional(),
-    outputSizeChars: z.number().optional(),
-    outputType: z.string().optional(),
-    redacted: z.boolean().optional(),
-    sourceType: z.string().optional(),
+    type: z.literal("message"),
+    messageId: z.string().min(1),
+    role: z.enum(["assistant", "system", "user"]),
     text: z.string().optional(),
-    type: transcriptPartTypeSchema,
+    redacted: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.text === undefined) === (data.redacted !== true)) {
+      context.addIssue({
+        code: "custom",
+        message: "message content must be text or explicitly redacted",
+      });
+    }
+  });
+
+const conversationReportMessageHandledEventDataSchema = z
+  .object({
+    type: z.literal("message_handled"),
+    messageId: z.string().min(1),
   })
   .strict();
 
-export const transcriptRoleSchema = z.enum([
-  "assistant",
-  "system",
-  "tool",
-  "toolResult",
-  "unknown",
-  "user",
+const conversationReportToolStartedEventDataSchema = z
+  .object({
+    type: z.literal("tool_started"),
+    name: z.string().min(1),
+  })
+  .strict();
+
+const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
+  "state",
+  [
+    z
+      .object({
+        type: z.literal("turn_lifecycle"),
+        turnId: z.string().min(1),
+        state: z.enum(["started", "succeeded", "no_reply"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("turn_lifecycle"),
+        turnId: z.string().min(1),
+        state: z.literal("failed"),
+        failureKind: z.enum(["agent", "delivery"]),
+      })
+      .strict(),
+  ],
+);
+
+const conversationReportCompactionEventDataSchema = z
+  .object({ type: z.literal("compaction") })
+  .strict();
+
+const conversationReportHandoffEventDataSchema = z
+  .object({
+    type: z.literal("handoff"),
+    toolStartedSeq: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const conversationReportSubagentStartedEventDataSchema = z
+  .object({
+    type: z.literal("subagent_started"),
+    childConversationId: z.string().min(1),
+    subagentKind: z.string().min(1),
+    toolStartedSeq: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const conversationReportSubagentEndedEventDataSchema = z
+  .object({
+    type: z.literal("subagent_ended"),
+    startedSeq: z.number().int().nonnegative(),
+    outcome: z.enum(["success", "error", "aborted"]),
+  })
+  .strict();
+
+/** Privacy-safe event variants owned by the conversation reporting API. */
+export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
+  conversationReportMessageEventDataSchema,
+  conversationReportMessageHandledEventDataSchema,
+  conversationReportToolStartedEventDataSchema,
+  conversationReportTurnLifecycleEventDataSchema,
+  conversationReportCompactionEventDataSchema,
+  conversationReportHandoffEventDataSchema,
+  conversationReportSubagentStartedEventDataSchema,
+  conversationReportSubagentEndedEventDataSchema,
 ]);
 
-export const transcriptMessageSchema = z
+/** One ordered, privacy-safe canonical event projected for API consumers. */
+export const conversationReportEventSchema = z
   .object({
-    outcome: z.enum(["error", "aborted"]).optional(),
-    parts: z.array(transcriptPartSchema),
-    role: transcriptRoleSchema,
-    timestamp: z.number().optional(),
+    seq: z.number().int().nonnegative(),
+    createdAt: z.string().datetime(),
+    data: conversationReportEventDataSchema,
   })
   .strict();
 
-export const conversationActivityStatusSchema = z.enum([
-  "aborted",
-  "completed",
-  "error",
-  "running",
-  "success",
-]);
-
-export const conversationSubagentActivityReportSchema = z
-  .object({
-    type: z.literal("subagent"),
-    createdAt: z.string(),
-    endedAt: z.string().optional(),
-    id: z.string(),
-    modelId: z.string().optional(),
-    outcome: z.enum(["success", "error", "aborted"]).optional(),
-    parentToolCallId: z.string().optional(),
-    reasoningLevel: z.string().optional(),
-    status: conversationActivityStatusSchema,
-    subagentKind: z.string(),
-    transcriptAvailable: z.boolean().optional(),
-  })
-  .strict();
-
-export const conversationToolActivityReportSchema = z
-  .object({
-    type: z.literal("tool_execution"),
-    args: z.unknown().optional(),
-    createdAt: z.string(),
-    id: z.string(),
-    inputKeys: z.array(z.string()).optional(),
-    inputSizeBytes: z.number().optional(),
-    inputSizeChars: z.number().optional(),
-    inputType: z.string().optional(),
-    redacted: z.boolean().optional(),
-    status: conversationActivityStatusSchema,
-    subagents: z.array(conversationSubagentActivityReportSchema),
-    toolCallId: z.string(),
-    toolName: z.string(),
-  })
-  .strict();
-
-export const conversationActivityReportSchema = z.discriminatedUnion("type", [
-  conversationToolActivityReportSchema,
-  conversationSubagentActivityReportSchema,
-]);
-
-export const conversationContextEventSchema = z.discriminatedUnion("type", [
+/** Availability of the canonical event history attached to a detail report. */
+export const conversationEventHistorySchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("available") }).strict(),
   z
     .object({
-      type: z.literal("context_compacted"),
-      createdAt: z.string(),
-      modelId: z.string().optional(),
-      summary: z.string().optional(),
-      transcriptIndex: z.number().int().nonnegative(),
+      status: z.literal("redacted"),
+      reason: z.literal("non_public_conversation"),
     })
     .strict(),
   z
     .object({
-      type: z.literal("model_handoff"),
-      createdAt: z.string(),
-      fromModelId: z.string().optional(),
-      message: z.string().optional(),
-      toModelId: z.string(),
-      transcriptIndex: z.number().int().nonnegative(),
+      status: z.literal("expired"),
+      expiredAt: z.string().datetime(),
     })
     .strict(),
 ]);
@@ -176,50 +177,54 @@ export const conversationModelUsageSchema = z
 
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
-    activity: z.array(conversationActivityReportSchema).optional(),
-    modelId: z.string().optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
-    reasoningLevel: z.string().optional(),
-    contextEvents: z.array(conversationContextEventSchema).optional(),
-    transcriptAvailable: z.boolean(),
-    transcriptMetadata: z.array(transcriptMessageSchema).optional(),
-    transcriptMessageCount: z.number().optional(),
-    transcriptRedacted: z.boolean().optional(),
-    transcriptRedactionReason: z.literal("non_public_conversation").optional(),
-    transcriptExpired: z.boolean().optional(),
-    transcriptExpiredAt: z.string().optional(),
-    transcript: z.array(transcriptMessageSchema),
+    events: z.array(conversationReportEventSchema),
+    eventHistory: conversationEventHistorySchema,
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
   })
-  .strict();
-
-export const conversationSubagentTranscriptReportSchema = z
-  .object({
-    type: z.literal("subagent"),
-    createdAt: z.string(),
-    endedAt: z.string().optional(),
-    id: z.string(),
-    modelId: z.string().optional(),
-    outcome: z.enum(["success", "error", "aborted"]).optional(),
-    parentToolCallId: z.string().optional(),
-    reasoningLevel: z.string().optional(),
-    status: conversationActivityStatusSchema,
-    subagentConversationId: z.string().optional(),
-    subagentKind: z.string(),
-    subagentSentryConversationUrl: z.string().optional(),
-    transcript: z.array(transcriptMessageSchema),
-    transcriptAvailable: z.boolean(),
-    transcriptMessageCount: z.number().optional(),
-    transcriptRedacted: z.boolean().optional(),
-    transcriptRedactionReason: z.literal("non_public_conversation").optional(),
-    transcriptExpired: z.boolean().optional(),
-    transcriptExpiredAt: z.string().optional(),
-    unavailableReason: z
-      .enum(["missing_transcript_range", "missing_transcript_ref", "not_found"])
-      .optional(),
-  })
-  .strict();
+  .strict()
+  .superRefine((report, context) => {
+    if (report.eventHistory.status === "expired" && report.events.length > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["events"],
+        message: "expired event history must not contain events",
+      });
+    }
+    for (let index = 1; index < report.events.length; index += 1) {
+      if (report.events[index]!.seq <= report.events[index - 1]!.seq) {
+        context.addIssue({
+          code: "custom",
+          path: ["events", index, "seq"],
+          message: "report event sequences must be strictly increasing",
+        });
+      }
+    }
+    for (const [index, event] of report.events.entries()) {
+      if (event.data.type !== "message") continue;
+      if (
+        report.eventHistory.status === "redacted" &&
+        event.data.redacted !== true
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["events", index, "data"],
+          message: "redacted event history must redact messages",
+        });
+      }
+      if (
+        report.eventHistory.status === "available" &&
+        event.data.redacted === true
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["events", index, "data"],
+          message: "available event history must expose messages",
+        });
+      }
+    }
+  });
 
 export const conversationFeedSchema = z
   .object({
@@ -278,33 +283,20 @@ export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema
 >;
-export type TranscriptPartType = z.infer<typeof transcriptPartTypeSchema>;
-export type TranscriptPart = z.infer<typeof transcriptPartSchema>;
-export type TranscriptRole = z.infer<typeof transcriptRoleSchema>;
-export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;
-export type ConversationContextEvent = z.infer<
-  typeof conversationContextEventSchema
->;
-export type ConversationActivityStatus = z.infer<
-  typeof conversationActivityStatusSchema
->;
-export type ConversationSubagentActivityReport = z.infer<
-  typeof conversationSubagentActivityReportSchema
->;
-export type ConversationToolActivityReport = z.infer<
-  typeof conversationToolActivityReportSchema
->;
-export type ConversationActivityReport = z.infer<
-  typeof conversationActivityReportSchema
->;
 export type ConversationModelUsage = z.infer<
   typeof conversationModelUsageSchema
 >;
+export type ConversationReportEventData = z.infer<
+  typeof conversationReportEventDataSchema
+>;
+export type ConversationReportEvent = z.infer<
+  typeof conversationReportEventSchema
+>;
+export type ConversationEventHistory = z.infer<
+  typeof conversationEventHistorySchema
+>;
 export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
->;
-export type ConversationSubagentTranscriptReport = z.infer<
-  typeof conversationSubagentTranscriptReportSchema
 >;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;

@@ -1,0 +1,151 @@
+import { describe, expect, it } from "vitest";
+import type {
+  ConversationEvent,
+  ConversationEventStore,
+  HistoryReplacement,
+  NewConversationEvent,
+} from "@/chat/conversations/history";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+
+class MemoryConversationEventStore implements ConversationEventStore {
+  readonly history: ConversationEvent[] = [];
+  private readonly idempotencyKeys = new Set<string>();
+
+  async append(
+    _conversationId: string,
+    events: NewConversationEvent[],
+  ): Promise<void> {
+    for (const event of events) {
+      if (
+        event.idempotencyKey &&
+        this.idempotencyKeys.has(event.idempotencyKey)
+      ) {
+        continue;
+      }
+      if (event.idempotencyKey) {
+        this.idempotencyKeys.add(event.idempotencyKey);
+      }
+      this.history.push({
+        schemaVersion: 1,
+        seq: this.history.length,
+        historyVersion: 0,
+        ...(event.idempotencyKey
+          ? { idempotencyKey: event.idempotencyKey }
+          : {}),
+        createdAtMs: event.createdAtMs,
+        data: event.data,
+      });
+    }
+  }
+
+  async replaceHistory(
+    _conversationId: string,
+    _replacement: HistoryReplacement,
+  ): Promise<void> {
+    throw new Error("not implemented");
+  }
+
+  async loadCurrentHistory(): Promise<ConversationEvent[]> {
+    return this.history;
+  }
+
+  async loadHistoryContaining(): Promise<ConversationEvent[]> {
+    return this.history;
+  }
+
+  async loadMessageHistory(): Promise<{
+    events: ConversationEvent[];
+    compaction: ConversationEvent | undefined;
+  }> {
+    return { events: this.history, compaction: undefined };
+  }
+
+  async loadHistory(): Promise<ConversationEvent[]> {
+    return this.history;
+  }
+}
+
+describe("conversation turn lifecycle", () => {
+  it("records start retries once with stable correlation", async () => {
+    const store = new MemoryConversationEventStore();
+    const lifecycle = new ConversationTurnLifecycleService(store);
+    const input = {
+      conversationId: "local:test:turn",
+      createdAtMs: 100,
+      inputMessageIds: ["message-1"],
+      surface: "internal" as const,
+      turnId: "turn-1",
+    };
+
+    await lifecycle.start(input);
+    await lifecycle.start(input);
+
+    expect(store.history).toEqual([
+      expect.objectContaining({
+        idempotencyKey: "turn:turn-1:started",
+        data: {
+          type: "turn_started",
+          turnId: "turn-1",
+          inputMessageIds: ["message-1"],
+          surface: "internal",
+        },
+      }),
+    ]);
+  });
+
+  it("keeps the first terminal fact across retries and conflicts", async () => {
+    const store = new MemoryConversationEventStore();
+    const lifecycle = new ConversationTurnLifecycleService(store);
+
+    await lifecycle.complete({
+      conversationId: "local:test:turn",
+      createdAtMs: 200,
+      outcome: "success",
+      turnId: "turn-1",
+    });
+    await lifecycle.complete({
+      conversationId: "local:test:turn",
+      createdAtMs: 200,
+      outcome: "success",
+      turnId: "turn-1",
+    });
+    await lifecycle.fail({
+      conversationId: "local:test:turn",
+      createdAtMs: 300,
+      failureCode: "delivery_failed",
+      turnId: "turn-1",
+    });
+
+    expect(store.history).toHaveLength(1);
+    expect(store.history[0]).toMatchObject({
+      idempotencyKey: "turn:turn-1:terminal",
+      data: {
+        type: "turn_completed",
+        turnId: "turn-1",
+        outcome: "success",
+      },
+    });
+  });
+
+  it("surfaces append failures to the owning runtime boundary", async () => {
+    const appendError = new Error("event store unavailable");
+    const store = new MemoryConversationEventStore();
+    let attempts = 0;
+    store.append = async () => {
+      attempts += 1;
+      throw appendError;
+    };
+    const lifecycle = new ConversationTurnLifecycleService(store);
+
+    await expect(
+      lifecycle.start({
+        conversationId: "local:test:turn",
+        createdAtMs: 100,
+        inputMessageIds: ["message-1"],
+        surface: "internal",
+        turnId: "turn-1",
+      }),
+    ).rejects.toBe(appendError);
+    expect(attempts).toBe(1);
+  });
+});

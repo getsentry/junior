@@ -25,7 +25,7 @@ describeEval("Output Contract", slackEvals, (it) => {
     });
   });
 
-  it("when the reply contains multiple URLs, use plain URLs instead of markdown link syntax", async ({
+  it("when the reply contains multiple URLs, keep the full URLs visible instead of replacing them with labels", async ({
     run,
   }) => {
     await run({
@@ -38,11 +38,10 @@ describeEval("Output Contract", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant posts one reply that names the three documentation starting points.",
-          "Each URL appears as a bare URL in the reply text, not wrapped in markdown link syntax.",
+          "Each documentation link displays its full URL as the link text. Bare `https://...` and Slack `<https://...>` forms are both acceptable.",
         ],
         fail: [
-          "Do not render any URL using `[label](url)` markdown link syntax.",
-          "Do not wrap URLs in Slack `<url|label>` link syntax unless the user explicitly asked for that form.",
+          "Do not replace a full URL with a custom label using `[label](url)` or Slack `<url|label>` syntax.",
         ],
       }),
     });

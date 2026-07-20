@@ -8,7 +8,7 @@ import {
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -354,6 +354,23 @@ describe("agent continuation Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
+    const { getConversationEventStore } = await import("@/chat/db");
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: sessionId,
+        inputMessageIds: ["msg.1"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: sessionId,
+        outcome: "success",
+      }),
+    ]);
   });
 
   it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
@@ -797,6 +814,15 @@ describe("agent continuation Slack integration", () => {
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Paused agent run failed while continuing",
+    });
+    const { getConversationEventStore } = await import("@/chat/db");
+    const lifecycle =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_failed",
+      turnId: sessionId,
+      failureCode: "agent_run_failed",
+      eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
     });
   });
 
@@ -1342,24 +1368,23 @@ describe("agent continuation Slack integration", () => {
         email: "testuser@example.com",
       },
     });
-    const { getAgentStepStore } = await import("@/chat/db");
-    await getAgentStepStore().startEpoch(conversationId, {
-      modelId: "test/model",
-      reason: "handoff",
-      modelProfile: "handoff",
-      messages: [
-        {
-          message: summaryMessage,
-          createdAtMs: 5,
-        },
-      ],
+    const { getConversationEventStore } = await import("@/chat/db");
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 1_000,
+      data: {
+        type: "handoff",
+        modelId: "test/model",
+        modelProfile: "handoff",
+        triggeringToolCallId: "recovered-handoff-call",
+        replacementHistory: [{ message: summaryMessage }],
+      },
     });
     // A prior recovery can park runtime context in the handoff epoch before
     // another worker dies; the next recovery must replace rather than copy it.
-    await getAgentStepStore().append(conversationId, [
+    await getConversationEventStore().append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "agent_step",
           message: {
             role: "user",
             content: [{ type: "text", text: previousRuntimeContext }],
@@ -1439,14 +1464,10 @@ describe("agent continuation Slack integration", () => {
         expect.objectContaining({ role: "user" }),
       ]),
     });
-    expect(recoveredRecord?.piMessages).toHaveLength(2);
+    expect(recoveredRecord?.piMessages).toHaveLength(1);
     expect(JSON.stringify(recoveredRecord?.piMessages)).toContain(summaryText);
-    expect(recoveredRecord?.piMessages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          content: [expect.objectContaining({ text: runtimeContext })],
-        }),
-      ]),
+    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
+      runtimeContext,
     );
     expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
       staleText,
@@ -1464,18 +1485,9 @@ describe("agent continuation Slack integration", () => {
     expect(JSON.stringify(projection)).toContain("Handoff recovery completed.");
     expect(JSON.stringify(projection)).not.toContain(staleText);
     expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
-    const history = await getAgentStepStore().loadHistory(conversationId);
-    const rollbacks = history.filter(
-      (step) =>
-        step.entry.type === "context_epoch_started" &&
-        step.entry.reason === "rollback",
-    );
-    expect(rollbacks).toHaveLength(2);
-    for (const rollback of rollbacks) {
-      expect(rollback.entry).toEqual(
-        expect.objectContaining({ modelProfile: "handoff" }),
-      );
-    }
+    const history =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(history.some((event) => event.data.type === "rollback")).toBe(false);
   });
 
   it("terminally fails a stranded running session with no resumable boundary", async () => {

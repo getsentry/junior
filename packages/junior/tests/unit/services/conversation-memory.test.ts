@@ -115,7 +115,7 @@ describe("buildConversationContext", () => {
       {
         id: "compaction-1",
         summary: "Earlier thread summary.",
-        coveredMessageIds: ["msg-0"],
+        coveredMessageCount: 1,
         createdAtMs: 500,
       },
     ];

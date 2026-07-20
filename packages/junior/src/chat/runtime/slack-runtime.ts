@@ -13,6 +13,8 @@ import { isProviderRetryError } from "@/chat/services/provider-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SlackActionError } from "@/chat/slack/client";
 import {
+  buildDeterministicTurnId,
+  getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
@@ -42,6 +44,7 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import type { FailConversationTurnInput } from "@/chat/conversations/turn-lifecycle";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -138,6 +141,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
+  failConversationTurn: (input: FailConversationTurnInput) => Promise<void>;
   refreshAssistantThreadContext: (event: {
     channelId: string;
     sourceChannelId?: string;
@@ -395,6 +399,27 @@ export function createSlackTurnRuntime<
     threadId?: string;
     runId?: string;
   }): RuntimeLogContext => buildLogContext(deps, args);
+
+  const failConversationTurn = async (args: {
+    eventId: string;
+    failureCode: FailConversationTurnInput["failureCode"];
+    message: Message;
+    thread: Thread;
+  }): Promise<void> => {
+    const conversationId =
+      deps.getThreadId(args.thread, args.message) ??
+      deps.getRunId(args.thread, args.message);
+    if (!conversationId) {
+      return;
+    }
+    await deps.failConversationTurn({
+      conversationId,
+      createdAtMs: deps.now(),
+      eventId: args.eventId,
+      failureCode: args.failureCode,
+      turnId: buildDeterministicTurnId(args.message.id),
+    });
+  };
 
   const createToolInvocationHook = (
     processingReaction: ProcessingReactionSession,
@@ -791,8 +816,10 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (shouldRethrowTurnControlError(error)) {
-          throw error;
+        const classifiedFailure = getConversationTurnBoundaryError(error);
+        const failureCause = classifiedFailure?.cause ?? error;
+        if (shouldRethrowTurnControlError(failureCause)) {
+          throw failureCause;
         }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
@@ -801,12 +828,14 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (error instanceof AuthorizationFlowDisabledError) {
+        if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
+        const failureCode =
+          classifiedFailure?.failureCode ?? "agent_run_failed";
         if (
-          error instanceof SlackActionError &&
-          error.code === "read_only_channel"
+          failureCause instanceof SlackActionError &&
+          failureCause.code === "read_only_channel"
         ) {
           deps.logWarn(
             "mention_handler_read_only_channel",
@@ -822,13 +851,15 @@ export function createSlackTurnRuntime<
           );
           return;
         }
-        const eventId = deps.logException(
-          error,
-          "mention_handler_failed",
-          errorContext,
-          {},
-          "onNewMention failed",
-        );
+        const eventId =
+          classifiedFailure?.eventId ??
+          deps.logException(
+            failureCause,
+            "mention_handler_failed",
+            errorContext,
+            {},
+            "onNewMention failed",
+          );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
@@ -839,6 +870,17 @@ export function createSlackTurnRuntime<
             "Sentry did not return an event ID for mention_handler_failed",
           );
         }
+        let lifecycleError: unknown;
+        try {
+          await failConversationTurn({
+            eventId,
+            failureCode,
+            message,
+            thread,
+          });
+        } catch (error) {
+          lifecycleError = error;
+        }
         await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
           thread,
@@ -848,6 +890,7 @@ export function createSlackTurnRuntime<
           postFailureBody:
             "Failed to post fallback error reply for mention handler",
         });
+        if (lifecycleError) throw lifecycleError;
       } finally {
         if (completed) {
           await processingReactions.completeAll();
@@ -1093,8 +1136,10 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (shouldRethrowTurnControlError(error)) {
-          throw error;
+        const classifiedFailure = getConversationTurnBoundaryError(error);
+        const failureCause = classifiedFailure?.cause ?? error;
+        if (shouldRethrowTurnControlError(failureCause)) {
+          throw failureCause;
         }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
@@ -1103,12 +1148,14 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (error instanceof AuthorizationFlowDisabledError) {
+        if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
+        const failureCode =
+          classifiedFailure?.failureCode ?? "agent_run_failed";
         if (
-          error instanceof SlackActionError &&
-          error.code === "read_only_channel"
+          failureCause instanceof SlackActionError &&
+          failureCause.code === "read_only_channel"
         ) {
           deps.logWarn(
             "subscribed_message_handler_read_only_channel",
@@ -1124,13 +1171,15 @@ export function createSlackTurnRuntime<
           );
           return;
         }
-        const eventId = deps.logException(
-          error,
-          "subscribed_message_handler_failed",
-          errorContext,
-          {},
-          "onSubscribedMessage failed",
-        );
+        const eventId =
+          classifiedFailure?.eventId ??
+          deps.logException(
+            failureCause,
+            "subscribed_message_handler_failed",
+            errorContext,
+            {},
+            "onSubscribedMessage failed",
+          );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
@@ -1140,6 +1189,17 @@ export function createSlackTurnRuntime<
           throw new Error(
             "Sentry did not return an event ID for subscribed_message_handler_failed",
           );
+        }
+        let lifecycleError: unknown;
+        try {
+          await failConversationTurn({
+            eventId,
+            failureCode,
+            message,
+            thread,
+          });
+        } catch (error) {
+          lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
@@ -1151,6 +1211,7 @@ export function createSlackTurnRuntime<
           postFailureBody:
             "Failed to post fallback error reply for subscribed message handler",
         });
+        if (lifecycleError) throw lifecycleError;
       } finally {
         if (completed) {
           await processingReactions.completeAll();

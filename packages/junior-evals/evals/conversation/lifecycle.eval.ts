@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import {
   slackEvals,
   slackSideEffects,
+  threadMessage,
   threadStart,
   visibleThreadReplies,
 } from "../../src/helpers";

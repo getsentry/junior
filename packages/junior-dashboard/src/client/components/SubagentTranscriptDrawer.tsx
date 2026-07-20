@@ -1,53 +1,34 @@
 import { useEffect } from "react";
 import { Bot, ExternalLink, X } from "lucide-react";
-import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import { Link } from "react-router";
 
-import { useConversationSubagentTranscriptData } from "../api";
-import { formatMessageTimestamp, formatMs } from "../format";
-import { buildSubagentMarkdown } from "../markdownExport";
-import { cn } from "../styles";
-import {
-  subagentDurationMs,
-  subagentConversationTranscript,
-} from "../subagentTranscript";
-import type {
-  ConversationTranscript,
-  TranscriptViewSubagentPart,
-} from "../types";
+import { useConversationData } from "../api";
+import { conversationPath, formatMessageTimestamp } from "../format";
+import { buildConversationMarkdown } from "../markdownExport";
+import type { TranscriptViewSubagentPart } from "../types";
 import { Button } from "./Button";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
-import { ExecutionSignature } from "./ExecutionSignature";
 import { Transcript } from "./Transcript";
 import { TranscriptLoading } from "./TranscriptLoading";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
 export interface SubagentTranscriptTarget {
   conversationId: string;
-  conversation: ConversationTranscript;
   part: TranscriptViewSubagentPart;
 }
 
-/** Show a lazily loaded child-agent transcript without leaving the parent conversation. */
+/** Show a child conversation through the ordinary authorized detail API. */
 export function SubagentTranscriptDrawer(props: {
   onClose: () => void;
   target: SubagentTranscriptTarget | undefined;
 }) {
-  const query = useConversationSubagentTranscriptData(
-    props.target
-      ? {
-          conversationId: props.target.conversationId,
-          subagentId: props.target.part.id,
-        }
-      : undefined,
-  );
+  const query = useConversationData(props.target?.conversationId);
 
   useEffect(() => {
     if (!props.target) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        props.onClose();
-      }
+      if (event.key === "Escape") props.onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -55,17 +36,11 @@ export function SubagentTranscriptDrawer(props: {
 
   if (!props.target) return null;
 
-  const report = query.data;
-  const visible = report ?? subagentFallback(props.target);
-  const label = visible.subagentKind;
-  const duration = subagentDuration(visible);
-  const transcriptTurn = report
-    ? subagentConversationTranscript(props.target.conversationId, report)
-    : undefined;
+  const detail = query.data;
+  const label = detail?.displayTitle || props.target.part.subagentKind;
   const meta = [
-    statusLabel(visible),
-    duration,
-    formatMessageTimestamp(Date.parse(visible.createdAt)),
+    statusLabel(props.target.part, detail?.status),
+    detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,
   ].filter(isString);
 
   return (
@@ -90,24 +65,27 @@ export function SubagentTranscriptDrawer(props: {
                 {label}
               </h2>
             </div>
-            <DrawerConversationIdentity report={visible} />
-            <ExecutionSignature
-              className="mt-1 block"
-              modelId={visible.modelId}
-              reasoningLevel={visible.reasoningLevel}
-            />
-            {meta.length > 0 ? (
-              <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-[#888]">
-                {meta.join(" · ")}
-              </div>
-            ) : null}
+            <div className="mt-2 grid min-w-0 gap-1.5 text-[0.78rem] leading-snug">
+              <code className="min-w-0 break-all font-mono text-[0.72rem] text-[#d6d6d6] sm:text-[0.78rem]">
+                {props.target.conversationId}
+              </code>
+              <Link
+                className="inline-flex w-fit items-center gap-1 font-semibold text-white no-underline hover:underline"
+                to={conversationPath(props.target.conversationId)}
+                onClick={props.onClose}
+              >
+                Open conversation
+                <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
+              </Link>
+            </div>
+            <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-[#888]">
+              {meta.join(" · ")}
+            </div>
             <div className="absolute right-4 top-3 flex items-center gap-1.5 md:right-5">
               <CopyMarkdownButton
-                key={`${props.target.part.id}:${report?.endedAt ?? "loading"}`}
+                key={`${props.target.conversationId}:${detail?.generatedAt ?? "loading"}`}
                 getMarkdown={
-                  report?.transcriptAvailable && transcriptTurn
-                    ? () => buildSubagentMarkdown(report, transcriptTurn)
-                    : undefined
+                  detail ? () => buildConversationMarkdown(detail) : undefined
                 }
               />
               <Button
@@ -126,14 +104,12 @@ export function SubagentTranscriptDrawer(props: {
             <TranscriptLoading />
           ) : query.error ? (
             <DrawerEmptyState tone="error">
-              Transcript failed to load.
+              Conversation failed to load.
             </DrawerEmptyState>
-          ) : report?.transcriptAvailable && transcriptTurn ? (
-            <Transcript transcript={transcriptTurn} />
+          ) : detail ? (
+            <Transcript transcript={detail} />
           ) : (
-            <DrawerEmptyState>
-              {subagentUnavailableLabel(report)}
-            </DrawerEmptyState>
+            <DrawerEmptyState>Conversation unavailable.</DrawerEmptyState>
           )}
         </div>
       </aside>
@@ -141,123 +117,26 @@ export function SubagentTranscriptDrawer(props: {
   );
 }
 
-function DrawerConversationIdentity(props: {
-  report: ConversationSubagentTranscriptReport;
-}) {
-  if (
-    !props.report.subagentConversationId &&
-    !props.report.subagentSentryConversationUrl
-  ) {
-    return null;
-  }
-
-  return (
-    <div className="mt-2 grid min-w-0 gap-1.5 text-[0.78rem] leading-snug">
-      {props.report.subagentConversationId ? (
-        <span className="grid min-w-0 grid-cols-1 items-baseline gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
-          <span className="hidden shrink-0 text-[#777] sm:inline">
-            Conversation ID
-          </span>
-          <code className="min-w-0 font-mono text-[0.72rem] text-[#d6d6d6] sm:text-[0.78rem]">
-            {props.report.subagentConversationId
-              .split(":")
-              .map((segment, index, segments) => (
-                <span key={`${index}-${segment}`}>
-                  {segment}
-                  {index < segments.length - 1 ? (
-                    <>
-                      :<wbr />
-                    </>
-                  ) : null}
-                </span>
-              ))}
-          </code>
-        </span>
-      ) : null}
-      {props.report.subagentSentryConversationUrl ? (
-        <a
-          className="inline-flex w-fit items-center gap-1 font-semibold text-white no-underline hover:underline"
-          href={props.report.subagentSentryConversationUrl}
-          rel="noreferrer"
-          target="_blank"
-        >
-          View in Sentry
-          <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
-        </a>
-      ) : null}
-    </div>
-  );
-}
-
-function subagentFallback(
-  target: SubagentTranscriptTarget,
-): ConversationSubagentTranscriptReport {
-  return {
-    type: "subagent",
-    createdAt: new Date(target.conversation.startedAt).toISOString(),
-    id: target.part.id,
-    status: target.part.status,
-    subagentKind: target.part.subagentKind,
-    transcript: [],
-    transcriptAvailable: false,
-    ...(target.part.endedAt ? { endedAt: target.part.endedAt } : {}),
-    ...(target.part.modelId ? { modelId: target.part.modelId } : {}),
-    ...(target.part.outcome ? { outcome: target.part.outcome } : {}),
-    ...(target.part.parentToolCallId
-      ? { parentToolCallId: target.part.parentToolCallId }
-      : {}),
-    ...(target.part.reasoningLevel
-      ? { reasoningLevel: target.part.reasoningLevel }
-      : {}),
-  };
-}
-
-function subagentDuration(
-  report: Pick<ConversationSubagentTranscriptReport, "createdAt" | "endedAt">,
-): string | undefined {
-  const durationMs = subagentDurationMs(report);
-  return durationMs === undefined ? undefined : formatMs(durationMs);
-}
-
 function statusLabel(
-  report: ConversationSubagentTranscriptReport,
-): string | undefined {
-  if (report.outcome === "error") return "error";
-  if (report.outcome === "aborted") return "aborted";
-  if (report.status === "error" || report.status === "aborted") {
-    return report.status;
-  }
-  return undefined;
-}
-
-function subagentUnavailableLabel(
-  report: ConversationSubagentTranscriptReport | undefined,
+  part: TranscriptViewSubagentPart,
+  detailStatus?: string,
 ): string {
-  if (report?.transcriptRedacted) {
-    return "Transcript hidden because this conversation is not public.";
+  if (part.status === "error" || part.status === "aborted") {
+    return part.status;
   }
-
-  if (report?.unavailableReason === "missing_transcript_range") {
-    return "This subagent was recorded before per-invocation transcripts were available.";
-  }
-
-  if (report?.unavailableReason === "missing_transcript_ref") {
-    return "The referenced subagent transcript is no longer available.";
-  }
-
-  return "No subagent transcript is available.";
+  return detailStatus ?? part.status;
 }
 
 function DrawerEmptyState(props: {
   children: string;
-  tone?: "error" | "muted";
+  tone?: "default" | "error";
 }) {
+  const isError = props.tone === "error";
   return (
     <div
-      className={cn(
-        transcriptEmptyClass(),
-        props.tone === "error" && "border-rose-300/25 text-rose-100",
-      )}
+      className={transcriptEmptyClass(isError ? "error" : "default")}
+      data-tone={props.tone ?? "default"}
+      role={isError ? "alert" : undefined}
     >
       {props.children}
     </div>

@@ -12,7 +12,7 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -49,7 +49,6 @@ const stateOnlyConversationStore: ConversationStore = {
   get: async () => undefined,
   getDestinationVisibility: async () => undefined,
   recordActivity: async () => {},
-  ensureChildConversation: async () => {},
   recordExecution: async () => {},
   listByActivity: async () => [],
 };
@@ -551,7 +550,7 @@ WHERE conversation_id = $1
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
     const sqlStore = createSqlStore(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const mixedConversationId = `${CONVERSATION_ID}:mixed`;
     const unsafeConversationId = `${CONVERSATION_ID}:unsafe`;
     const firstAssistant = {
@@ -620,21 +619,24 @@ WHERE conversation_id = $1
         },
         updatedAtMs: 4_000,
       });
-      await stepStore.startEpoch(CONVERSATION_ID, {
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: "test-model",
-        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
-      });
-      await stepStore.startEpoch(CONVERSATION_ID, {
-        reason: "compaction",
-        modelProfile: "standard",
-        modelId: "test-model",
-        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
-      });
-      await stepStore.append(CONVERSATION_ID, [
+      await eventStore.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: secondAssistant },
+          data: { type: "agent_step", message: firstAssistant },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await eventStore.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 2_500,
+        data: {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "test-model",
+          replacementHistory: [{ message: firstAssistant }],
+        },
+      });
+      await eventStore.append(CONVERSATION_ID, [
+        {
+          data: { type: "agent_step", message: secondAssistant },
           createdAtMs: 3_000,
         },
       ]);
@@ -646,10 +648,10 @@ WHERE conversation_id = $1
         metrics: { durationMs: 1_000, usage: { totalTokens: 777 } },
         updatedAtMs: 4_000,
       });
-      await stepStore.append(mixedConversationId, [
+      await eventStore.append(mixedConversationId, [
         {
-          entry: {
-            type: "pi_message",
+          data: {
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 3, totalTokens: 999 },
@@ -658,14 +660,24 @@ WHERE conversation_id = $1
           createdAtMs: 2_000,
         },
         {
-          entry: {
-            type: "pi_message",
+          data: {
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { totalTokens: 5 },
             } as PiMessage,
           },
           createdAtMs: 3_000,
+        },
+        {
+          data: {
+            type: "agent_step",
+            message: {
+              role: "user",
+              usage: { input: 1_000, output: 1_000 },
+            } as unknown as PiMessage,
+          },
+          createdAtMs: 3_500,
         },
       ]);
       await sqlStore.recordExecution({
@@ -676,10 +688,10 @@ WHERE conversation_id = $1
         metrics: { durationMs: 1_000, usage: { totalTokens: 777 } },
         updatedAtMs: 4_000,
       });
-      await stepStore.append(unsafeConversationId, [
+      await eventStore.append(unsafeConversationId, [
         {
-          entry: {
-            type: "pi_message",
+          data: {
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 9_007_199_254_740_992 },
@@ -765,7 +777,7 @@ WHERE conversation_id = $1
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
     const sqlStore = createSqlStore(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const conversationIds = ["local:usage-batch-a", "local:usage-batch-b"];
 
     try {
@@ -779,10 +791,10 @@ WHERE conversation_id = $1
           metrics: { durationMs: 1_000, usage: { totalTokens: 999 } },
           updatedAtMs: 2_000,
         });
-        await stepStore.append(conversationId, [
+        await eventStore.append(conversationId, [
           {
-            entry: {
-              type: "pi_message",
+            data: {
+              type: "agent_step",
               message: {
                 role: "assistant",
                 usage: { input: index + 1, totalTokens: index + 1 },
@@ -901,7 +913,7 @@ WHERE conversation_id = $1
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
     const sqlStore = createSqlStore(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
 
     try {
       await migrateSchema(fixture.sql);
@@ -920,10 +932,10 @@ WHERE conversation_id = $1
         },
         updatedAtMs: 2_000,
       });
-      await stepStore.append(CONVERSATION_ID, [
+      await eventStore.append(CONVERSATION_ID, [
         {
-          entry: {
-            type: "pi_message",
+          data: {
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 4, output: 2, totalTokens: 6 },

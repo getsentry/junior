@@ -146,9 +146,11 @@ export function ConversationPage(props: {
               responding={
                 !detail.error && conversationIsLive(visualStatus, detail.data)
               }
-              onOpenSubagentTranscript={({ part, conversation }) => {
-                if (!conversationId) return;
-                setSubagentTarget({ conversation, conversationId, part });
+              onOpenSubagentTranscript={({ part }) => {
+                setSubagentTarget({
+                  conversationId: part.childConversationId,
+                  part,
+                });
               }}
               transcript={detail.data}
             />
@@ -259,9 +261,11 @@ function ConversationStats(props: {
       ? {
           content: (
             <TokenMetric
-              compactionCount={(props.detail?.contextEvents ?? []).filter(
-                (event) => event.type === "context_compacted",
-              ).length}
+              compactionCount={
+                (props.detail?.events ?? []).filter(
+                  (event) => event.data.type === "compaction",
+                ).length
+              }
               modelUsage={props.detail?.modelUsage}
               summary={tokenSummary}
             />

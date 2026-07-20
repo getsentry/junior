@@ -7,6 +7,7 @@
  * accepts the final output.
  */
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -31,7 +32,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
-import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import {
   buildConversationContext,
@@ -42,14 +43,24 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
+import { loadProjection } from "@/chat/conversations/projection";
+import { getConversationEventStore } from "@/chat/db";
 import {
-  commitMessages,
-  loadProjection,
-} from "@/chat/conversations/projection";
-import { sleep } from "@/chat/sleep";
+  ConversationTurnLifecycleService,
+  type ConversationTurnLifecycle,
+} from "@/chat/conversations/turn-lifecycle";
+import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 
-const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
+const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
+
+const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
+  agent_run_failed: "local_agent_run_failed",
+  delivery_failed: "local_reply_delivery_failed",
+  model_execution_failed: "local_model_execution_failed",
+  persistence_failed: "local_turn_persistence_failed",
+};
 
 export interface LocalAgentTurnInput {
   conversationId: string;
@@ -69,7 +80,15 @@ export type LocalToolResult = ToolExecutionReport;
 
 export interface LocalAgentTurnDeps {
   agentRunner: AgentRunner;
+  /** Post-delivery Pi/session persistence boundary. */
+  completeDeliveredTurn?: typeof completeDeliveredTurn;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
+  /** Pre-agent durable Pi projection boundary. */
+  loadPiMessages?: typeof loadLocalPiMessages;
+  /** Injectable failure capture boundary for deterministic runtime integration tests. */
+  logException?: typeof logException;
+  /** Canonical lifecycle writer; defaults to the production SQL service. */
+  turnLifecycle?: ConversationTurnLifecycle;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -93,8 +112,8 @@ function localDestination(conversationId: string): LocalDestination {
   return parsed.data;
 }
 
-function localTurnId(sequence: number): string {
-  return `local-turn-${sequence}`;
+function localTurnId(): string {
+  return `local-turn-${randomUUID()}`;
 }
 
 function localReply(reply: AgentRunResult): LocalAgentReply {
@@ -103,16 +122,24 @@ function localReply(reply: AgentRunResult): LocalAgentReply {
   };
 }
 
-function nextUserMessageSequence(
-  conversation: ReturnType<typeof coerceThreadConversationState>,
-): number {
-  return (
-    conversation.messages.filter((message) => message.role === "user").length +
-    1
+function captureLocalBoundaryFailure(args: {
+  capture: typeof logException;
+  conversationId: string;
+  error: unknown;
+  failureCode: ConversationTurnFailureCode;
+  turnId: string;
+}): string | undefined {
+  const eventId = args.capture(
+    args.error,
+    LOCAL_FAILURE_EVENT_NAMES[args.failureCode],
+    { conversationId: args.conversationId, runId: args.turnId },
+    { "app.ai.failure_code": args.failureCode },
+    "Local agent turn failed at its owning runtime boundary",
   );
+  return eventId && SENTRY_EVENT_ID_PATTERN.test(eventId) ? eventId : undefined;
 }
 
-/** Load the durable local Pi history from the SQL step-store projection. */
+/** Load durable local Pi history from the conversation-event projection. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
 }): Promise<PiMessage[] | undefined> {
@@ -123,30 +150,6 @@ async function loadLocalPiMessages(args: {
     return undefined;
   }
   return stripRuntimeTurnContext(trimTrailingAssistantMessages(projection));
-}
-
-/** Persist the post-delivery completion state, retrying transient state writes. */
-async function persistDeliveredLocalTurnState(
-  conversationId: string,
-  patch: Parameters<typeof persistThreadStateById>[1],
-): Promise<void> {
-  let lastError: unknown;
-  for (
-    let attempt = 1;
-    attempt <= DELIVERED_STATE_PERSIST_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      await persistThreadStateById(conversationId, patch);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < DELIVERED_STATE_PERSIST_ATTEMPTS) {
-        await sleep(attempt * 100);
-      }
-    }
-  }
-  throw lastError;
 }
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
@@ -163,6 +166,9 @@ export async function runLocalAgentTurn(
   }
   const destination = localDestination(input.conversationId);
   const source = createLocalSource(destination.conversationId);
+  const lifecycle =
+    deps.turnLifecycle ??
+    new ConversationTurnLifecycleService(getConversationEventStore());
 
   const now = deps.now ?? (() => Date.now());
   const persisted = await getPersistedThreadState(input.conversationId);
@@ -178,8 +184,7 @@ export async function runLocalAgentTurn(
   const initialSandboxId = sandboxId;
   const initialSandboxDependencyProfileHash = sandboxDependencyProfileHash;
 
-  const sequence = nextUserMessageSequence(conversation);
-  const turnId = localTurnId(sequence);
+  const turnId = localTurnId();
   const userMessageId = `${turnId}:user`;
   const startedAtMs = now();
   upsertConversationMessage(conversation, {
@@ -197,18 +202,30 @@ export async function runLocalAgentTurn(
       replied: false,
     },
   });
+  // The source message is durable before execution begins or an active turn is
+  // advertised. A caller may safely retry lifecycle start by its stable key.
+  await persistConversationMessages({
+    conversation,
+    conversationId: input.conversationId,
+  });
+  await lifecycle.start({
+    conversationId: input.conversationId,
+    createdAtMs: now(),
+    inputMessageIds: [userMessageId],
+    surface: "internal",
+    turnId,
+  });
   startActiveTurn({
     conversation,
     nextTurnId: turnId,
     updateConversationStats,
   });
-  await persistThreadStateById(input.conversationId, { conversation });
 
   let reply: AgentRunResult | undefined;
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
-  let piMessagesBeforeRun:
-    | Awaited<ReturnType<typeof loadLocalPiMessages>>
-    | undefined;
+  let failureCode: ConversationTurnFailureCode = "persistence_failed";
+  let modelFailureEventId: string | undefined;
+  let modelFailureCaptureAttempted = false;
   const localActor = {
     fullName: "Local CLI",
     platform: "local" as const,
@@ -216,10 +233,11 @@ export async function runLocalAgentTurn(
     userName: "local",
   };
   try {
-    const piMessages = await loadLocalPiMessages({
+    await persistThreadStateById(input.conversationId, { conversation });
+    const piMessages = await (deps.loadPiMessages ?? loadLocalPiMessages)({
       conversationId: input.conversationId,
     });
-    piMessagesBeforeRun = piMessages;
+    failureCode = "agent_run_failed";
     const outcome = await deps.agentRunner.run({
       input: {
         messageText: text,
@@ -293,11 +311,14 @@ export async function runLocalAgentTurn(
 
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.
-    reply = finalizeFailedTurnReply({
+    modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
+    const finalized = finalizeFailedTurnReplyWithEvent({
       reply,
-      logException,
+      logException: deps.logException ?? logException,
       context: { conversationId: input.conversationId },
     });
+    reply = finalized.reply;
+    modelFailureEventId = finalized.eventId;
 
     completedState = buildDeliveredTurnStatePatch({
       artifacts,
@@ -306,57 +327,127 @@ export async function runLocalAgentTurn(
       sessionId: turnId,
       userMessageId,
     });
-    await deps.deliverReply(localReply(reply));
-  } catch (error) {
-    if (reply) {
-      await commitMessages({
-        conversationId: input.conversationId,
-        modelId: reply.diagnostics.modelId,
-        messages: piMessagesBeforeRun ?? [],
-      });
+    if (reply.deliveryPlan?.postThreadText !== false) {
+      failureCode = "delivery_failed";
+      await deps.deliverReply(localReply(reply));
     }
-    markTurnFailed({
-      conversation,
-      nowMs: now(),
-      sessionId: turnId,
-      userMessageId,
-      markConversationMessage,
-      updateConversationStats,
-    });
-    await persistThreadStateById(input.conversationId, {
-      artifacts: initialArtifacts,
-      conversation,
-      sandboxId: initialSandboxId ?? "",
-      sandboxDependencyProfileHash: initialSandboxDependencyProfileHash ?? "",
+  } catch (error) {
+    const failureEventId =
+      modelFailureCaptureAttempted && failureCode === "agent_run_failed"
+        ? modelFailureEventId
+        : captureLocalBoundaryFailure({
+            capture: deps.logException ?? logException,
+            conversationId: input.conversationId,
+            error,
+            failureCode,
+            turnId,
+          });
+    try {
+      markTurnFailed({
+        conversation,
+        nowMs: now(),
+        sessionId: turnId,
+        userMessageId,
+        markConversationMessage,
+        updateConversationStats,
+      });
+      await persistThreadStateById(input.conversationId, {
+        artifacts: initialArtifacts,
+        conversation,
+        sandboxId: initialSandboxId ?? "",
+        sandboxDependencyProfileHash: initialSandboxDependencyProfileHash ?? "",
+      });
+    } catch (persistenceError) {
+      const persistenceEventId = captureLocalBoundaryFailure({
+        capture: deps.logException ?? logException,
+        conversationId: input.conversationId,
+        error: persistenceError,
+        failureCode: "persistence_failed",
+        turnId,
+      });
+      await lifecycle.fail({
+        conversationId: input.conversationId,
+        createdAtMs: now(),
+        ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+        failureCode: "persistence_failed",
+        turnId,
+      });
+      throw new AggregateError(
+        [error, persistenceError],
+        "Local turn failure state could not be persisted",
+      );
+    }
+    await lifecycle.fail({
+      conversationId: input.conversationId,
+      createdAtMs: now(),
+      ...(failureEventId ? { eventId: failureEventId } : {}),
+      failureCode,
+      turnId,
     });
     throw error;
   }
 
-  await persistDeliveredLocalTurnState(input.conversationId, {
-    artifacts: completedState.artifacts ?? artifacts,
-    conversation: completedState.conversation,
-    sandboxId: reply.sandboxId ?? sandboxId,
-    sandboxDependencyProfileHash:
-      reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
-  });
-  if (reply.piMessages?.length) {
-    // Destination acceptance is the completion boundary: this first commits
-    // the final assistant messages to the session log and marks the session
-    // record completed only after the CLI sink accepted the reply.
-    await completeDeliveredTurn({
+  try {
+    await persistThreadStateById(input.conversationId, {
+      artifacts: completedState.artifacts ?? artifacts,
+      conversation: completedState.conversation,
+      sandboxId: reply.sandboxId ?? sandboxId,
+      sandboxDependencyProfileHash:
+        reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+    });
+    if (reply.piMessages?.length) {
+      // Destination acceptance is the completion boundary: this first commits
+      // the final assistant messages to the event log and marks the session
+      // record completed only after the CLI sink accepted the reply.
+      await (deps.completeDeliveredTurn ?? completeDeliveredTurn)({
+        conversationId: input.conversationId,
+        sessionId: turnId,
+        sliceId: 1,
+        messages: reply.piMessages,
+        modelId: reply.diagnostics.modelId,
+        durationMs: reply.diagnostics.durationMs,
+        usage: reply.diagnostics.usage,
+        reasoningLevel: reply.diagnostics.reasoningLevel,
+        destination,
+        source,
+        actor: localActor,
+        surface: "internal",
+        logContext: {},
+      });
+    }
+  } catch (error) {
+    const persistenceEventId = captureLocalBoundaryFailure({
+      capture: deps.logException ?? logException,
       conversationId: input.conversationId,
-      sessionId: turnId,
-      sliceId: 1,
-      messages: reply.piMessages,
-      modelId: reply.diagnostics.modelId,
-      durationMs: reply.diagnostics.durationMs,
-      usage: reply.diagnostics.usage,
-      reasoningLevel: reply.diagnostics.reasoningLevel,
-      destination,
-      source,
-      actor: localActor,
-      surface: "internal",
-      logContext: {},
+      error,
+      failureCode: "persistence_failed",
+      turnId,
+    });
+    await lifecycle.fail({
+      conversationId: input.conversationId,
+      createdAtMs: now(),
+      ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+      failureCode: "persistence_failed",
+      turnId,
+    });
+    throw error;
+  }
+
+  if (reply.diagnostics.outcome === "success") {
+    await lifecycle.complete({
+      conversationId: input.conversationId,
+      createdAtMs: now(),
+      outcome:
+        reply.deliveryPlan?.postThreadText === false ? "no_reply" : "success",
+      turnId,
+    });
+  } else {
+    await lifecycle.fail({
+      conversationId: input.conversationId,
+      createdAtMs: now(),
+      ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
+      failureCode: "model_execution_failed",
+      turnId,
     });
   }
   if (reply.diagnostics.outcome === "success") {

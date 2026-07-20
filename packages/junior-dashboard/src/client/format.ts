@@ -15,9 +15,8 @@ import type {
   TranscriptViewPart,
   VisualStatus,
 } from "./types";
-import { sameToolInvocation } from "./toolInvocations";
 import { formatDuration } from "./components/Duration";
-import { conversationTranscriptMessages } from "./transcriptActivity";
+import { conversationTranscriptMessages } from "./eventTranscript";
 
 let dashboardTimeZone = "America/Los_Angeles";
 
@@ -162,31 +161,8 @@ function getUsageComponentTotal(usage: ConversationUsage): number | undefined {
   }, undefined);
 }
 
-/** Format byte counts in lowercase compact units for transcript metadata. */
-export function formatBytes(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "0b";
-  const bytes = Math.max(0, Math.floor(value));
-  if (bytes < 1024) return `${bytes}b`;
-
-  const units: Array<[string, number]> = [
-    ["mb", 1024 * 1024],
-    ["kb", 1024],
-  ];
-  const [suffix, divisor] =
-    units.find(([, threshold]) => bytes >= threshold) ?? units[1]!;
-  const scaled = bytes / divisor;
-  const precision = scaled >= 10 || Number.isInteger(scaled) ? 0 : 1;
-  return `${scaled.toFixed(precision).replace(/\.0$/, "")}${suffix}`;
-}
-
 function transcriptSource(conversation: ConversationTranscript) {
   return conversationTranscriptMessages(conversation);
-}
-
-function rawTranscriptSource(conversation: ConversationTranscript) {
-  return conversation.transcriptAvailable
-    ? conversation.transcript
-    : (conversation.transcriptMetadata ?? []);
 }
 
 /** Normalized role category for transcript messages. */
@@ -230,17 +206,12 @@ function isConversationMessage(
 export function conversationMessageCount(
   conversation: ConversationTranscript,
 ): number {
-  const source = rawTranscriptSource(conversation);
-  if (source.length > 0) {
-    return source.filter(isConversationMessage).length;
-  }
-  return conversation.transcriptMessageCount ?? 0;
+  return transcriptSource(conversation).filter(isConversationMessage).length;
 }
 
 export type ToolCallSummaryItem = {
   count: number;
   name: string;
-  totalDurationMs?: number;
 };
 
 export type ToolCallSummary = {
@@ -248,29 +219,7 @@ export type ToolCallSummary = {
   total: number;
 };
 
-type PendingToolCall = {
-  id?: string;
-  name: string;
-  timestamp?: number;
-};
-
-function toolCallName(part: TranscriptViewPart): string {
-  return part.name ?? part.id ?? "unknown";
-}
-
-function findPendingToolCallIndex(
-  calls: PendingToolCall[],
-  result: TranscriptViewPart,
-): number {
-  for (let index = calls.length - 1; index >= 0; index -= 1) {
-    if (sameToolInvocation(calls[index]!, result)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/** Summarize tool calls and matched result durations from transcript metadata. */
+/** Summarize structural tool starts by name. */
 export function summarizeToolCalls(
   conversation: ConversationTranscript,
   limit = 5,
@@ -278,50 +227,21 @@ export function summarizeToolCalls(
   const byName = new Map<string, ToolCallSummaryItem>();
   let total = 0;
 
-  const pending: PendingToolCall[] = [];
-  for (const message of transcriptSource(conversation)) {
-    for (const part of message.parts) {
-      if (part.type === "tool_call") {
-        const name = toolCallName(part);
-        const item = byName.get(name) ?? { count: 0, name };
-        item.count += 1;
-        byName.set(name, item);
-        pending.push({
-          ...(part.id ? { id: part.id } : {}),
-          name,
-          ...(typeof message.timestamp === "number"
-            ? { timestamp: message.timestamp }
-            : {}),
-        });
-        total += 1;
-        continue;
-      }
-
-      if (part.type !== "tool_result") continue;
-      const pendingIndex = findPendingToolCallIndex(pending, part);
-      if (pendingIndex < 0) continue;
-      const [call] = pending.splice(pendingIndex, 1);
-      if (
-        !call ||
-        typeof call.timestamp !== "number" ||
-        typeof message.timestamp !== "number" ||
-        message.timestamp < call.timestamp
-      ) {
-        continue;
-      }
-      const item = byName.get(call.name);
-      if (!item) continue;
-      item.totalDurationMs =
-        (item.totalDurationMs ?? 0) + (message.timestamp - call.timestamp);
-    }
+  for (const event of conversation.events) {
+    if (event.data.type !== "tool_started") continue;
+    const item = byName.get(event.data.name) ?? {
+      count: 0,
+      name: event.data.name,
+    };
+    item.count += 1;
+    byName.set(event.data.name, item);
+    total += 1;
   }
 
   const items = [...byName.values()]
     .sort(
       (left, right) =>
-        right.count - left.count ||
-        (right.totalDurationMs ?? 0) - (left.totalDurationMs ?? 0) ||
-        left.name.localeCompare(right.name),
+        right.count - left.count || left.name.localeCompare(right.name),
     )
     .slice(0, limit);
 
@@ -353,24 +273,9 @@ function transcriptMessageAuthor(
 }
 
 function transcriptPartBytes(part: TranscriptViewPart): number {
-  if (typeof part.bytes === "number" && Number.isFinite(part.bytes)) {
-    return Math.max(0, Math.floor(part.bytes));
-  }
-  if (
-    typeof part.inputSizeBytes === "number" &&
-    Number.isFinite(part.inputSizeBytes)
-  ) {
-    return Math.max(0, Math.floor(part.inputSizeBytes));
-  }
-  if (
-    typeof part.outputSizeBytes === "number" &&
-    Number.isFinite(part.outputSizeBytes)
-  ) {
-    return Math.max(0, Math.floor(part.outputSizeBytes));
-  }
-  return new TextEncoder().encode(
-    stringifyPartValue(part.text ?? part.input ?? part.output ?? part),
-  ).byteLength;
+  return part.type === "text" && part.text
+    ? new TextEncoder().encode(part.text).byteLength
+    : 0;
 }
 
 /** Summarize conversational messages by author and serialized size. */
@@ -675,8 +580,11 @@ export function visualStatusForConversation(
 export function unavailableTranscriptLabel(
   conversation: ConversationTranscript,
 ): string {
-  if (conversation.transcriptRedacted) {
+  if (conversation.eventHistory.status === "redacted") {
     return "Transcript hidden because this conversation is not public.";
+  }
+  if (conversation.eventHistory.status === "expired") {
+    return "Transcript expired for this conversation.";
   }
   const status = visualStatusForSummary(conversation);
   if (status === "active") {

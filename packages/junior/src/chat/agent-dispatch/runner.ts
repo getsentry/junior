@@ -24,7 +24,7 @@ import {
 import {
   hydrateConversationMessages,
   persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+} from "@/chat/conversations/messages";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
   coerceThreadArtifactsState,
@@ -42,8 +42,14 @@ import {
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
-import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import {
+  ConversationTurnLifecycleService,
+  type ConversationTurnLifecycle,
+} from "@/chat/conversations/turn-lifecycle";
+import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import { getConversationEventStore } from "@/chat/db";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -65,6 +71,7 @@ const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 
 export interface AgentDispatchRunnerDeps {
   agentRunner: AgentRunner;
+  turnLifecycle?: ConversationTurnLifecycle;
   scheduleCallback?: typeof scheduleDispatchCallback;
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
 }
@@ -189,6 +196,9 @@ export async function runAgentDispatchSlice(
   const scheduleCompletedTasks =
     deps.scheduleSessionCompletedPluginTasks ??
     scheduleSessionCompletedPluginTasks;
+  const turnLifecycle =
+    deps.turnLifecycle ??
+    new ConversationTurnLifecycleService(getConversationEventStore());
   const nowMs = Date.now();
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(
@@ -226,6 +236,9 @@ export async function runAgentDispatchSlice(
   };
   const destinationLockId = getDispatchDestinationLockId(dispatch.destination);
   const stateAdapter = getStateAdapter();
+  let lifecycleStarted = false;
+  let lifecycleTerminalized = false;
+  let failureCode: ConversationTurnFailureCode = "persistence_failed";
   await stateAdapter.connect();
   const destinationLock = await stateAdapter.acquireLock(
     destinationLockId,
@@ -303,6 +316,15 @@ export async function runAgentDispatchSlice(
       nowMs,
     });
     await persistConversationMessages({ conversation, conversationId });
+    await turnLifecycle.start({
+      conversationId,
+      turnId,
+      createdAtMs: nowMs,
+      inputMessageIds: [userMessageId],
+      surface: "api",
+    });
+    lifecycleStarted = true;
+    failureCode = "agent_run_failed";
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
@@ -311,7 +333,7 @@ export async function runAgentDispatchSlice(
         messageText: dispatch.input,
         conversationContext,
         // Pi history for redelivered dispatch slices comes from the SQL
-        // step-store projection, not a thread-state mirror.
+        // event-store projection, not a thread-state mirror.
         piMessages: await loadProjection({ conversationId }),
       },
       routing: {
@@ -377,6 +399,13 @@ export async function runAgentDispatchSlice(
       },
     });
     if (outcome.status === "awaiting_auth") {
+      await turnLifecycle.fail({
+        conversationId,
+        turnId,
+        createdAtMs: Date.now(),
+        failureCode: "agent_run_failed",
+      });
+      lifecycleTerminalized = true;
       await markDispatch({
         dispatch,
         status: "blocked",
@@ -404,8 +433,9 @@ export async function runAgentDispatchSlice(
         ? undefined
         : (reply.diagnostics.errorMessage ??
           `Agent turn ended with ${reply.diagnostics.outcome}.`);
+    let modelFailureEventId: string | undefined;
     if (failure) {
-      reply = finalizeFailedTurnReply({
+      const finalized = finalizeFailedTurnReplyWithEvent({
         reply,
         logException,
         context: {
@@ -413,9 +443,12 @@ export async function runAgentDispatchSlice(
           modelId: reply.diagnostics.modelId,
         },
       });
+      reply = finalized.reply;
+      modelFailureEventId = finalized.eventId;
     }
 
     const deliveryReply = ensureVisibleDeliveryText(reply);
+    failureCode = "delivery_failed";
     const resultMessageTs = await postSlackApiReplyPosts({
       channelId: dispatch.destination.channelId,
       posts: planSlackReplyPosts({ reply: deliveryReply }),
@@ -423,6 +456,7 @@ export async function runAgentDispatchSlice(
         conversationId,
       }),
     });
+    failureCode = "persistence_failed";
 
     // Slack accepted the reply: everything after this point serves duplicate
     // suppression and bookkeeping, and must not turn into a failed dispatch
@@ -430,30 +464,34 @@ export async function runAgentDispatchSlice(
     // (`meta.slackTs`, checked by the redelivery guard above) immediately and
     // durably before the dispatch is marked terminal so the crash window
     // between post and marker stays as small as possible. The retry-and-swallow
-    // `persistRuntimePatch` below write-throughs the SQL transcript, so no
-    // separate transcript persist runs outside that guarded block.
+    // `persistRuntimePatch` below appends canonical message facts, so
+    // no separate transcript persist runs outside that guarded block.
     markConversationMessage(conversation, userMessageId, {
       replied: true,
       skippedReason: undefined,
     });
-    upsertConversationMessage(conversation, {
-      id: getAssistantMessageId(dispatch),
-      role: "assistant",
-      text: normalizeConversationText(deliveryReply.text) || "[empty response]",
-      createdAtMs: nowMs,
-      author: {
-        userName: botConfig.userName,
-        isBot: true,
-      },
-      meta: {
-        replied: true,
-        slackTs: resultMessageTs,
-      },
-    });
+    if (reply.deliveryPlan?.postThreadText !== false) {
+      upsertConversationMessage(conversation, {
+        id: getAssistantMessageId(dispatch),
+        role: "assistant",
+        text:
+          normalizeConversationText(deliveryReply.text) || "[empty response]",
+        createdAtMs: nowMs,
+        author: {
+          userName: botConfig.userName,
+          isBot: true,
+        },
+        meta: {
+          replied: true,
+          slackTs: resultMessageTs,
+        },
+      });
+    }
     updateConversationStats(conversation);
     const nextArtifacts = reply.artifactStatePatch
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
       : artifacts;
+    let statePersisted = false;
     try {
       await persistWithRetry(() =>
         persistRuntimePatch({
@@ -465,14 +503,23 @@ export async function runAgentDispatchSlice(
             reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
         }),
       );
+      statePersisted = true;
     } catch (persistError) {
-      logException(
+      const eventId = logException(
         persistError,
         "agent_dispatch_post_delivery_persist_failed",
         logContext,
         {},
         "Failed to persist delivered dispatch state after Slack accepted the reply",
       );
+      await turnLifecycle.fail({
+        conversationId,
+        turnId,
+        createdAtMs: Date.now(),
+        failureCode: "persistence_failed",
+        ...(eventId ? { eventId } : {}),
+      });
+      lifecycleTerminalized = true;
     }
     if (reply.piMessages?.length) {
       // Destination acceptance is the completion boundary for the session
@@ -499,6 +546,25 @@ export async function runAgentDispatchSlice(
         },
       });
     }
+    if (statePersisted) {
+      if (failure) {
+        await turnLifecycle.fail({
+          conversationId,
+          turnId,
+          createdAtMs: Date.now(),
+          failureCode: "model_execution_failed",
+          ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
+        });
+      } else {
+        await turnLifecycle.complete({
+          conversationId,
+          turnId,
+          createdAtMs: Date.now(),
+          outcome: "success",
+        });
+      }
+      lifecycleTerminalized = true;
+    }
     dispatch = await markDispatch({
       dispatch,
       status: failure ? "failed" : "completed",
@@ -523,6 +589,15 @@ export async function runAgentDispatchSlice(
     }
   } catch (error) {
     if (error instanceof AuthorizationFlowDisabledError) {
+      if (lifecycleStarted && !lifecycleTerminalized) {
+        await turnLifecycle.fail({
+          conversationId,
+          turnId,
+          createdAtMs: Date.now(),
+          failureCode: "agent_run_failed",
+        });
+        lifecycleTerminalized = true;
+      }
       await markDispatch({
         dispatch,
         status: "blocked",
@@ -531,6 +606,15 @@ export async function runAgentDispatchSlice(
       return;
     }
     if (error instanceof PluginCredentialFailureError) {
+      if (lifecycleStarted && !lifecycleTerminalized) {
+        await turnLifecycle.fail({
+          conversationId,
+          turnId,
+          createdAtMs: Date.now(),
+          failureCode: "agent_run_failed",
+        });
+        lifecycleTerminalized = true;
+      }
       await markDispatch({
         dispatch,
         status: "blocked",
@@ -538,7 +622,7 @@ export async function runAgentDispatchSlice(
       });
       return;
     }
-    logException(
+    const eventId = logException(
       error,
       "agent_dispatch_run_failed",
       {
@@ -548,6 +632,16 @@ export async function runAgentDispatchSlice(
       {},
       "Agent dispatch failed",
     );
+    if (lifecycleStarted && !lifecycleTerminalized) {
+      await turnLifecycle.fail({
+        conversationId,
+        turnId,
+        createdAtMs: Date.now(),
+        failureCode,
+        ...(eventId ? { eventId } : {}),
+      });
+      lifecycleTerminalized = true;
+    }
     await markDispatch({
       dispatch,
       status: "failed",

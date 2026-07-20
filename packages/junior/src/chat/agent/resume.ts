@@ -10,7 +10,7 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PiMessageProvenance } from "@/chat/state/session-log";
+import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
   CooperativeTurnYieldError,
   TurnInputCommitLostError,
@@ -148,7 +148,7 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     async persistSafeBoundary(
       messages: PiMessage[],
-      trailingMessageProvenance?: PiMessageProvenance[],
+      trailingMessageProvenance?: ConversationMessageProvenance[],
     ): Promise<boolean> {
       if (!canPersistSession) {
         return false;
@@ -172,7 +172,7 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     async requireDurableInputCheckpoint(
       messages: PiMessage[],
-      trailingMessageProvenance?: PiMessageProvenance[],
+      trailingMessageProvenance?: ConversationMessageProvenance[],
     ): Promise<boolean> {
       const persisted = await this.persistSafeBoundary(
         messages,

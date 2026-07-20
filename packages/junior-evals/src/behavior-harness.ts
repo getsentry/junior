@@ -13,7 +13,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
-import { getDb } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -55,6 +55,10 @@ import {
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
+import {
+  ConversationTurnLifecycleService,
+  type ConversationTurnLifecycle,
+} from "@/chat/conversations/turn-lifecycle";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import type { DispatchCallback } from "@/chat/agent-dispatch/types";
@@ -1616,6 +1620,7 @@ function buildRuntimeServices(
   observations: RuntimeObservations,
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
   steeringDelivery: SteeringDelivery,
+  turnLifecycle: ConversationTurnLifecycle,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -1666,6 +1671,7 @@ function buildRuntimeServices(
         }
       : {}),
     replyExecutor: {
+      turnLifecycle,
       agentRunner: {
         run: async (request) => {
           const pendingSteeringDelivery = steeringDelivery.deliver;
@@ -1842,6 +1848,7 @@ async function processEvents(args: {
   scenario: EvalScenario;
   env: HarnessEnvironment;
   agentRunner: AgentRunner;
+  turnLifecycle: ConversationTurnLifecycle;
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
@@ -1855,6 +1862,7 @@ async function processEvents(args: {
     scenario,
     env,
     agentRunner,
+    turnLifecycle,
     getSlackAdapter,
     conversationWorkQueue,
     slackRuntime,
@@ -2141,7 +2149,7 @@ async function processEvents(args: {
       if (!callback) {
         throw new Error("Scheduled eval dispatch callback was not captured.");
       }
-      await runAgentDispatchSlice(callback, { agentRunner });
+      await runAgentDispatchSlice(callback, { agentRunner, turnLifecycle });
     }
   };
 
@@ -2414,6 +2422,9 @@ export async function runEvalScenario(
 
     const conversationWorkQueue = createConversationWorkQueueTestAdapter();
     const steeringDelivery: SteeringDelivery = {};
+    const turnLifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
     const services = buildRuntimeServices(
       scenario,
       env,
@@ -2421,6 +2432,7 @@ export async function runEvalScenario(
       observations,
       conversationWorkQueue,
       steeringDelivery,
+      turnLifecycle,
       options.signal,
     );
     const evalAgentRunner = services.replyExecutor?.agentRunner;
@@ -2437,6 +2449,7 @@ export async function runEvalScenario(
       scenario,
       env,
       agentRunner: evalAgentRunner,
+      turnLifecycle,
       getSlackAdapter: () => slackAdapter,
       conversationWorkQueue,
       slackRuntime,

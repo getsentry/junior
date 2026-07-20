@@ -44,8 +44,8 @@ describe("conversation state", () => {
       },
     });
 
-    // The visible transcript lives in SQL now; a legacy transcript mirror in a
-    // persisted payload is dropped on read.
+    // The visible transcript lives in SQL events now; a legacy transcript
+    // mirror in a persisted payload is dropped on read.
     expect(conversation.messages).toEqual([]);
     expect(conversation.vision.byFileId).toEqual({
       F123: {
@@ -100,8 +100,8 @@ describe("conversation state", () => {
       },
     });
 
-    // The visible transcript lives in SQL now; a legacy transcript mirror in a
-    // persisted payload is dropped on read.
+    // The visible transcript lives in SQL events now; a legacy transcript
+    // mirror in a persisted payload is dropped on read.
     expect(conversation.messages).toEqual([]);
     expect(conversation.vision.byFileId).toEqual({
       F123: {
@@ -152,13 +152,13 @@ describe("conversation state", () => {
     conversation.compactions.push({
       id: "compaction-1",
       summary: "older context",
-      coveredMessageIds: ["m1"],
+      coveredMessageCount: 1,
       createdAtMs: 2,
     });
     const patch = buildConversationStatePatch(conversation);
     expect(patch.conversation).not.toHaveProperty("messages");
     expect(patch.conversation).not.toHaveProperty("compactions");
-    // Pi history lives in the SQL AgentStepStore; thread-state carries no mirror.
+    // Model history lives in the SQL ConversationEventStore; thread-state carries no mirror.
     expect(patch.conversation).not.toHaveProperty("piMessages");
     // The count stat is still derived from the working set for reporting.
     expect(patch.conversation.stats.totalMessageCount).toBe(1);

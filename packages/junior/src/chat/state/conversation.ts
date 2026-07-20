@@ -30,7 +30,7 @@ export interface ConversationMessage {
 }
 
 export interface ConversationCompaction {
-  coveredMessageIds: string[];
+  coveredMessageCount: number;
   createdAtMs: number;
   id: string;
   summary: string;
@@ -162,35 +162,10 @@ export function coerceThreadConversationState(
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
   const base = defaultConversationState();
 
-  // The visible transcript lives in the ConversationMessageStore and Pi
-  // history lives in the AgentStepStore (both SQL). Legacy `messages` /
-  // `piMessages` mirrors left in old thread-state payloads are ignored on
-  // read; consumers hydrate from SQL instead.
+  // Conversation history lives in SQL. The operator upgrade reads any old
+  // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
-
-  const rawCompactions = Array.isArray(rawConversation.compactions)
-    ? rawConversation.compactions
-    : [];
   const compactions: ConversationCompaction[] = [];
-  for (const item of rawCompactions) {
-    if (!isRecord(item)) continue;
-    const id = toOptionalString(item.id);
-    const summary = toOptionalString(item.summary);
-    const createdAtMs = toOptionalNumber(item.createdAtMs);
-    if (!id || !summary || !createdAtMs) continue;
-    const coveredMessageIds = Array.isArray(item.coveredMessageIds)
-      ? item.coveredMessageIds.filter(
-          (entry): entry is string =>
-            typeof entry === "string" && entry.length > 0,
-        )
-      : [];
-    compactions.push({
-      id,
-      summary,
-      createdAtMs,
-      coveredMessageIds,
-    });
-  }
 
   const rawBackfill = isRecord(rawConversation.backfill)
     ? rawConversation.backfill
@@ -260,9 +235,9 @@ export function coerceThreadConversationState(
 
 /**
  * Wrap a conversation state into the storage envelope for persistence. The
- * visible transcript (`messages`) is not written to `thread-state`; it lives
- * in SQL (`ConversationMessageStore`), and Pi history lives in the SQL
- * `AgentStepStore`. Only runtime scratch is persisted here.
+ * visible transcript (`messages`) is not written to `thread-state`; visible and
+ * model history live in the SQL `ConversationEventStore`. Only runtime scratch
+ * is persisted here.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,

@@ -1,12 +1,13 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
-  juniorAgentSteps,
-  juniorConversationMessages,
+  juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import { withConversationEventLock } from "./event-lock";
+import { resolveRootVisibility } from "./privacy";
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
@@ -22,28 +23,39 @@ export interface PurgeTreeResult {
   conversations: number;
 }
 
-/** Collect a conversation and every descendant via `parent_conversation_id`. */
-async function conversationTreeIds(
+interface ConversationTreeRow {
+  conversationId: string;
+  parentConversationId: string | null;
+}
+
+/** Discover a root and its current descendants via `parent_conversation_id`. */
+async function discoverConversationTree(
   executor: JuniorSqlDatabase,
-  rootConversationId: string,
-): Promise<string[]> {
-  const all = new Set<string>([rootConversationId]);
-  let frontier = [rootConversationId];
+  root: ConversationTreeRow,
+): Promise<ConversationTreeRow[]> {
+  const all = new Map<string, ConversationTreeRow>([
+    [root.conversationId, root],
+  ]);
+  let frontier = [root.conversationId];
   while (frontier.length > 0) {
     const children = await executor
       .db()
-      .select({ id: juniorConversations.conversationId })
+      .select({
+        conversationId: juniorConversations.conversationId,
+        parentConversationId: juniorConversations.parentConversationId,
+      })
       .from(juniorConversations)
-      .where(inArray(juniorConversations.parentConversationId, frontier));
+      .where(inArray(juniorConversations.parentConversationId, frontier))
+      .orderBy(asc(juniorConversations.conversationId));
     frontier = [];
     for (const child of children) {
-      if (!all.has(child.id)) {
-        all.add(child.id);
-        frontier.push(child.id);
+      if (!all.has(child.conversationId)) {
+        all.set(child.conversationId, child);
+        frontier.push(child.conversationId);
       }
     }
   }
-  return [...all];
+  return [...all.values()];
 }
 
 /**
@@ -68,6 +80,16 @@ export async function selectExpiredRoots(
     args.nowMs - args.privateWindowMs,
   ).toISOString();
   const cutoff = sql`case when ${juniorDestinations.visibility} = 'public' then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
+  const effectiveLastActivityAt = sql<Date>`(
+    with recursive conversation_tree(conversation_id, last_activity_at) as (
+      select ${juniorConversations.conversationId}, ${juniorConversations.lastActivityAt}
+      union all
+      select child.conversation_id, child.last_activity_at
+      from junior_conversations child
+      join conversation_tree parent on child.parent_conversation_id = parent.conversation_id
+    )
+    select max(tree.last_activity_at) from conversation_tree tree
+  )`;
   const hasTreeWork = sql`exists (
     with recursive conversation_tree(conversation_id) as (
       select ${juniorConversations.conversationId}
@@ -79,13 +101,9 @@ export async function selectExpiredRoots(
     select 1
     from conversation_tree tree
     where exists (
-      select 1 from junior_agent_steps steps
-      where steps.conversation_id = tree.conversation_id
+      select 1 from junior_conversation_events events
+      where events.conversation_id = tree.conversation_id
     )
-      or exists (
-        select 1 from junior_conversation_messages messages
-        where messages.conversation_id = tree.conversation_id
-      )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
         and exists (
@@ -113,12 +131,12 @@ export async function selectExpiredRoots(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        sql`${juniorConversations.lastActivityAt} < ${cutoff}`,
+        sql`${effectiveLastActivityAt} < ${cutoff}`,
         hasTreeWork,
       ),
     )
     .orderBy(
-      asc(juniorConversations.lastActivityAt),
+      asc(effectiveLastActivityAt),
       asc(juniorConversations.conversationId),
     )
     .limit(Math.max(0, args.limit));
@@ -130,7 +148,7 @@ export async function selectExpiredRoots(
 
 /**
  * Purge one conversation tree in a single transaction: delete all message and
- * step rows for the given conversation and every descendant, stamp
+ * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. The metadata rows themselves survive.
@@ -140,100 +158,115 @@ export async function purgeConversationTree(
   args: {
     rootConversationId: string;
     scrubMetadata?: boolean;
+    scrubMetadataFromRootVisibility?: boolean;
     nowMs: number;
     retention?: { privateWindowMs: number; publicWindowMs: number };
   },
 ): Promise<PurgeTreeResult> {
   return await executor.transaction(async () => {
-    const roots = await executor
+    const initialRoots = await executor
       .db()
       .select({
-        destinationId: juniorConversations.destinationId,
-        lastActivityAt: juniorConversations.lastActivityAt,
+        conversationId: juniorConversations.conversationId,
         parentConversationId: juniorConversations.parentConversationId,
       })
       .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, args.rootConversationId))
-      .for("update");
-    const root = roots[0];
-    if (!root || (args.retention && root.parentConversationId !== null)) {
+      .where(eq(juniorConversations.conversationId, args.rootConversationId));
+    const initialRoot = initialRoots[0];
+    if (
+      !initialRoot ||
+      (args.retention && initialRoot.parentConversationId !== null)
+    ) {
       return { purged: false, conversations: 0 };
     }
-    const destinations = root.destinationId
-      ? await executor
-          .db()
-          .select({ visibility: juniorDestinations.visibility })
-          .from(juniorDestinations)
-          .where(eq(juniorDestinations.id, root.destinationId))
-      : [];
-    const isPublic = destinations[0]?.visibility === "public";
-    if (args.retention) {
-      const windowMs = isPublic
-        ? args.retention.publicWindowMs
-        : args.retention.privateWindowMs;
-      if (root.lastActivityAt.getTime() >= args.nowMs - windowMs) {
-        return { purged: false, conversations: 0 };
-      }
-    }
-    const ids = await conversationTreeIds(executor, args.rootConversationId);
-    await executor
-      .db()
-      .delete(juniorAgentSteps)
-      .where(inArray(juniorAgentSteps.conversationId, ids));
-    await executor
-      .db()
-      .delete(juniorConversationMessages)
-      .where(inArray(juniorConversationMessages.conversationId, ids));
-    await executor
-      .db()
-      .update(juniorConversations)
-      .set({
-        transcriptPurgedAt: new Date(args.nowMs),
-        ...((args.retention ? !isPublic : args.scrubMetadata)
-          ? { title: null, channelName: null, actor: null }
-          : {}),
-      })
-      .where(inArray(juniorConversations.conversationId, ids));
-    return { purged: true, conversations: ids.length };
-  });
-}
+    const tree = await discoverConversationTree(executor, initialRoot);
 
-/**
- * Walk `parent_conversation_id` to the root and return the root's destination
- * visibility. Retention resolves visibility at purge time rather than storing an
- * expiry, so a public↔private flip takes effect on the next pass.
- */
-export async function resolveRootVisibility(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<{
-  rootConversationId: string;
-  visibility: JuniorDestinationVisibility | null;
-}> {
-  let currentId = conversationId;
-  const seen = new Set<string>();
-  while (!seen.has(currentId)) {
-    seen.add(currentId);
-    const rows = await executor
-      .db()
-      .select({
-        parentId: juniorConversations.parentConversationId,
-        visibility: juniorDestinations.visibility,
-      })
-      .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(eq(juniorConversations.conversationId, currentId));
-    const row = rows[0];
-    if (!row) {
-      return { rootConversationId: currentId, visibility: null };
-    }
-    if (!row.parentId) {
-      return { rootConversationId: currentId, visibility: row.visibility };
-    }
-    currentId = row.parentId;
-  }
-  return { rootConversationId: currentId, visibility: null };
+    return await withConversationEventLock(
+      executor,
+      args.rootConversationId,
+      async () => {
+        // Parent links are immutable and child creation is migration-only, so
+        // one unlocked traversal is authoritative. Acquire every event lock
+        // before row locks so a child writer can finish without deadlocking on
+        // its parent relationship.
+        for (const conversation of tree.slice(1)) {
+          await withConversationEventLock(
+            executor,
+            conversation.conversationId,
+            async () => undefined,
+          );
+        }
+
+        const roots = await executor
+          .db()
+          .select({
+            conversationId: juniorConversations.conversationId,
+            destinationId: juniorConversations.destinationId,
+            parentConversationId: juniorConversations.parentConversationId,
+          })
+          .from(juniorConversations)
+          .where(
+            eq(juniorConversations.conversationId, args.rootConversationId),
+          )
+          .for("update");
+        const root = roots[0];
+        if (!root || (args.retention && root.parentConversationId !== null)) {
+          return { purged: false, conversations: 0 };
+        }
+        const resolvedScrubMetadata = args.scrubMetadataFromRootVisibility
+          ? (await resolveRootVisibility(executor, args.rootConversationId))
+              .visibility !== "public"
+          : args.scrubMetadata;
+        const destinations = root.destinationId
+          ? await executor
+              .db()
+              .select({ visibility: juniorDestinations.visibility })
+              .from(juniorDestinations)
+              .where(eq(juniorDestinations.id, root.destinationId))
+              .for("share")
+          : [];
+        const isPublic = destinations[0]?.visibility === "public";
+        const ids = tree.map((conversation) => conversation.conversationId);
+        if (args.retention) {
+          const currentActivity = await executor
+            .db()
+            .select({
+              conversationId: juniorConversations.conversationId,
+              lastActivityAt: juniorConversations.lastActivityAt,
+            })
+            .from(juniorConversations)
+            .where(inArray(juniorConversations.conversationId, ids));
+          if (currentActivity.length !== ids.length) {
+            return { purged: false, conversations: 0 };
+          }
+          const windowMs = isPublic
+            ? args.retention.publicWindowMs
+            : args.retention.privateWindowMs;
+          const effectiveLastActivityAt = Math.max(
+            ...currentActivity.map((conversation) =>
+              conversation.lastActivityAt.getTime(),
+            ),
+          );
+          if (effectiveLastActivityAt >= args.nowMs - windowMs) {
+            return { purged: false, conversations: 0 };
+          }
+        }
+        await executor
+          .db()
+          .delete(juniorConversationEvents)
+          .where(inArray(juniorConversationEvents.conversationId, ids));
+        await executor
+          .db()
+          .update(juniorConversations)
+          .set({
+            transcriptPurgedAt: new Date(args.nowMs),
+            ...((args.retention ? !isPublic : resolvedScrubMetadata)
+              ? { title: null, channelName: null, actor: null }
+              : {}),
+          })
+          .where(inArray(juniorConversations.conversationId, ids));
+        return { purged: true, conversations: ids.length };
+      },
+    );
+  });
 }

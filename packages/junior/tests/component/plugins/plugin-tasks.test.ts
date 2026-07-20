@@ -79,7 +79,7 @@ async function seedVisibleMessages(
   const { coerceThreadConversationState } =
     await import("@/chat/state/conversation");
   const { persistConversationMessages } =
-    await import("@/chat/conversations/visible-messages");
+    await import("@/chat/conversations/messages");
   const conversation = coerceThreadConversationState({});
   conversation.messages.push(...messages);
   await persistConversationMessages({ conversation, conversationId });

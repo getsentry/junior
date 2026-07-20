@@ -1,124 +1,40 @@
 /**
- * Agent-step projection.
+ * Conversation projection orchestration.
  *
- * Materializes the model-visible Pi context and derived run facts (connected
- * MCP providers, latest instruction actor) from the durable `AgentStepStore`.
- * The current model context is exactly the highest context epoch's `pi_message`
- * steps in `seq` order; host-only step types (activity, provider connection,
- * authorization requests, epoch markers) never reach `agent.state.messages`.
- * Compaction, handoff, and rollback open a new epoch instead of rewriting
- * history, so the context reducer only walks one epoch. The epoch marker binds
- * the projection's model profile, which later replacements inherit, and the
- * exact resolved model id used when the epoch was opened for audit.
+ * Materializes Pi agent history and derived run facts such as connected
+ * providers. Storage and commit lifecycle stay in the conversations domain;
+ * the Pi adapter owns event reduction and opaque-message validation.
  */
 import { isDeepStrictEqual } from "node:util";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
-  type AuthorizationKind,
-  type PiMessageProvenance,
-  type SessionProjection,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import type {
-  AgentStepEntry,
-  StoredAgentStep,
+  AuthorizationKind,
+  ConversationEvent,
 } from "@/chat/conversations/history";
-import { getAgentStepStore } from "@/chat/db";
-import { ensureLegacyConversationImport } from "@/chat/conversations/legacy-import";
-import type { ModelProfile } from "@/chat/model-profile";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import {
+  projectConversationEvents,
+  type PiConversationEventProjection,
+  type PiConversationProjection,
+} from "@/chat/pi/conversation-events";
+import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
+import { sanitizePostgresJson } from "@/db/postgres-json";
 
-type PiMessageStepEntry = Extract<AgentStepEntry, { type: "pi_message" }>;
-type AuthorizationCompletedEntry = Extract<
-  AgentStepEntry,
-  { type: "authorization_completed" }
->;
-
-/** Current conversation context with its authoritative model binding. */
-export interface ConversationProjection extends SessionProjection {
-  /** Model profile bound to this projection. */
-  modelProfile: ModelProfile;
-  /** Audit snapshot; runtime model selection remains profile-driven. */
-  modelId: string | undefined;
-}
-
-/** Aligned step projection: `provenance[i]` and `seqs[i]` describe `messages[i]`. */
-export interface StepProjection extends ConversationProjection {
-  /** The `seq` of the step each projected message came from. */
-  seqs: number[];
-}
-
-/**
- * Synthesize the host observation a completed authorization contributes to Pi.
- * Mirrors the legacy session-log projection so a resumed run still learns the
- * provider unblocked and should retry the blocked operation.
- */
-function authorizationObservationMessage(
-  entry: AuthorizationCompletedEntry,
-  createdAtMs: number,
-): PiMessage {
-  const label = entry.kind === "mcp" ? "MCP authorization" : "Authorization";
-  return {
-    role: "user",
-    content: [
-      {
-        type: "text",
-        text: `${label} completed for provider "${entry.provider}". Continue the blocked request and retry the provider operation if needed.`,
-      },
-    ],
-    timestamp: createdAtMs,
-  } as PiMessage;
-}
-
-function piEntryProvenance(entry: PiMessageStepEntry): PiMessageProvenance {
-  return entry.provenance ?? contextProvenance;
-}
-
-/**
- * Materialize Pi messages with aligned provenance and source seqs from one
- * epoch's steps. Steps above `maxSeq` (when given) are excluded so a terminal
- * turn record reproduces exactly the boundary it committed.
- */
-export function projectSteps(
-  steps: StoredAgentStep[],
-  opts?: { maxSeq?: number },
-): StepProjection {
-  const messages: PiMessage[] = [];
-  const provenance: PiMessageProvenance[] = [];
-  const seqs: number[] = [];
-  let modelProfile: ModelProfile = "standard";
-  let modelId: string | undefined;
-  for (const step of steps) {
-    if (opts?.maxSeq !== undefined && step.seq > opts.maxSeq) {
-      break;
-    }
-    if (step.entry.type === "context_epoch_started") {
-      modelProfile = step.entry.modelProfile ?? "standard";
-      modelId = step.entry.modelId;
-      continue;
-    }
-    if (step.entry.type === "pi_message") {
-      messages.push(step.entry.message);
-      provenance.push(piEntryProvenance(step.entry));
-      seqs.push(step.seq);
-      continue;
-    }
-    if (step.entry.type === "authorization_completed") {
-      messages.push(
-        authorizationObservationMessage(step.entry, step.createdAtMs),
-      );
-      provenance.push(contextProvenance);
-      seqs.push(step.seq);
-    }
-  }
-  return { messages, provenance, seqs, modelProfile, modelId };
-}
-
-/** Distinct MCP providers durably connected in the given steps, sorted. */
-function connectedMcpProvidersFromSteps(steps: StoredAgentStep[]): string[] {
+/** Distinct MCP providers durably connected in the given events, sorted. */
+function connectedMcpProvidersFromEvents(
+  events: ConversationEvent[],
+): string[] {
   const providers = new Set<string>();
-  for (const step of steps) {
-    if (step.entry.type === "mcp_provider_connected") {
-      providers.add(step.entry.provider);
+  for (const event of events) {
+    if (event.data.type === "mcp_provider_connected") {
+      providers.add(event.data.provider);
     }
   }
   return [...providers].sort((left, right) => left.localeCompare(right));
@@ -138,6 +54,13 @@ function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
   return limit;
 }
 
+/** Match the exact JSONB shape used for prefix comparison and replay. */
+function normalizeDurableMessage(message: PiMessage): PiMessage {
+  return piMessageSchema.parse(
+    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
+  );
+}
+
 /**
  * Resolve the aligned provenance to persist for `nextMessages`.
  *
@@ -147,13 +70,13 @@ function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
  * the last new user message — the current turn's input.
  */
 function resolveCommitProvenance(args: {
-  existing: SessionProjection;
+  existing: Pick<PiConversationProjection, "messages" | "provenance">;
   nextMessages: PiMessage[];
   matchingPrefix: number;
-  explicitProvenance?: PiMessageProvenance[];
-  trailingMessageProvenance?: PiMessageProvenance[];
-  newMessageProvenance?: PiMessageProvenance;
-}): PiMessageProvenance[] {
+  explicitProvenance?: ConversationMessageProvenance[];
+  trailingMessageProvenance?: ConversationMessageProvenance[];
+  newMessageProvenance?: ConversationMessageProvenance;
+}): ConversationMessageProvenance[] {
   if (args.explicitProvenance) {
     if (args.explicitProvenance.length !== args.nextMessages.length) {
       throw new Error("commit provenance must align one-to-one with messages");
@@ -202,77 +125,43 @@ interface ScopedConversation {
   conversationId: string;
 }
 
-/**
- * Bridge a straggler's legacy Redis history into SQL before an execution read.
- *
- * Runtime reads run under the conversation lease the worker already holds, so
- * this is the once-only lazy-import seam. Removed with the rest of the one-time
- * import after the Redis TTL horizon.
- */
-async function importLegacyIfNeeded(args: ScopedConversation): Promise<void> {
-  await ensureLegacyConversationImport({ conversationId: args.conversationId });
-}
-
-/** Load the current-epoch Pi projection for a conversation. */
+/** Load the current Pi agent history for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
 ): Promise<PiMessage[]> {
-  await importLegacyIfNeeded(args);
-  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
-  return projectSteps(steps).messages;
+  const events = await getConversationEventStore().loadCurrentHistory(
+    args.conversationId,
+  );
+  return projectConversationEvents(events).messages;
 }
 
-/** Load the current-epoch Pi projection with aligned per-message provenance. */
+/** Load current Pi context with aligned provenance and source event sequences. */
 export async function loadConversationProjection(
   args: ScopedConversation,
-): Promise<ConversationProjection> {
-  await importLegacyIfNeeded(args);
-  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
-  const { messages, provenance, modelProfile, modelId } = projectSteps(steps);
-  return { messages, provenance, modelProfile, modelId };
+): Promise<PiConversationEventProjection> {
+  const events = await getConversationEventStore().loadCurrentHistory(
+    args.conversationId,
+  );
+  return projectConversationEvents(events);
 }
 
-/** Open a standard initial epoch before a conversation's first model request. */
+/** Load the active Pi projection before a conversation's next request. */
 export async function openConversationProjection(
-  args: ScopedConversation & { modelId: string },
-): Promise<ConversationProjection> {
-  await importLegacyIfNeeded(args);
-  const stepStore = getAgentStepStore();
-  const steps = await stepStore.loadCurrentEpoch(args.conversationId);
-  const projection = projectSteps(steps);
-  if (
-    steps.some(
-      (step) =>
-        step.entry.type === "context_epoch_started" ||
-        step.entry.type === "pi_message",
-    )
-  ) {
-    return projection;
-  }
-  // Host facts may predate the first model request. Keep them in epoch 0 and
-  // make that formerly implicit epoch explicit before model execution.
-  await stepStore.startEpoch(args.conversationId, {
-    reason: "initial",
-    modelProfile: "standard",
-    modelId: args.modelId,
-    messages: [],
-  });
-  return {
-    messages: projection.messages,
-    provenance: projection.provenance,
-    modelProfile: "standard",
-    modelId: args.modelId,
-  };
+  args: ScopedConversation,
+): Promise<PiConversationProjection> {
+  const events = await getConversationEventStore().loadCurrentHistory(
+    args.conversationId,
+  );
+  return projectConversationEvents(events);
 }
 
 /**
- * Load a turn's committed Pi projection from the durable step store.
+ * Load a turn's committed Pi projection from the durable event store.
  *
- * The record stays pinned to the epoch containing its committed boundary, so a
- * later rollback or compaction cannot silently rewrite what a stale record
- * resumes from. Unfinished records (`includeTail`) also see that epoch's tail
- * so parked input appended after the last safe boundary is model-visible; for
- * a live run the committed epoch is the current epoch. Terminal records
+ * The record stays pinned to the history version containing its committed
+ * boundary, so later compaction cannot rewrite what a stale record resumes
+ * from. Unfinished records (`includeTail`) also see that version's tail so
+ * parked input appended after the last safe boundary is model-visible. Terminal records
  * reproduce exactly the boundary they committed by cutting at `committedSeq`.
  * Returns undefined when the committed boundary no longer exists (purged
  * history) so callers fail closed.
@@ -281,34 +170,34 @@ export async function loadTurnProjection(args: {
   conversationId: string;
   committedSeq: number;
   includeTail: boolean;
-}): Promise<StepProjection | undefined> {
-  await importLegacyIfNeeded(args);
-  const stepStore = getAgentStepStore();
+}): Promise<PiConversationEventProjection | undefined> {
+  const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
-    return projectSteps(await stepStore.loadCurrentEpoch(args.conversationId));
+    return projectConversationEvents(
+      await eventStore.loadCurrentHistory(args.conversationId),
+    );
   }
-  const history = await stepStore.loadHistory(args.conversationId);
-  const committedStep = history.find((step) => step.seq === args.committedSeq);
-  if (!committedStep) {
+  const historyEvents = await eventStore.loadHistoryContaining(
+    args.conversationId,
+    args.committedSeq,
+    args.includeTail ? undefined : args.committedSeq,
+  );
+  if (!historyEvents) {
     return undefined;
   }
-  const epochSteps = history.filter(
-    (step) => step.contextEpoch === committedStep.contextEpoch,
-  );
-  return args.includeTail
-    ? projectSteps(epochSteps)
-    : projectSteps(epochSteps, { maxSeq: args.committedSeq });
+  return projectConversationEvents(historyEvents);
 }
 
-/** Load MCP providers durably connected in this conversation's current epoch. */
+/** Load MCP providers connected in the current agent-history version. */
 export async function loadConnectedMcpProviders(
   args: ScopedConversation,
 ): Promise<string[]> {
-  await importLegacyIfNeeded(args);
-  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
-  return connectedMcpProvidersFromSteps(steps);
+  const events = await getConversationEventStore().loadCurrentHistory(
+    args.conversationId,
+  );
+  return connectedMcpProvidersFromEvents(events);
 }
 
 function messageTimestamp(message: PiMessage): number {
@@ -317,37 +206,63 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Commit the turn's Pi history: append when it advanced the committed
- * projection normally, or open a `rollback` epoch when it diverged (a
- * provider-retry trim regenerated trailing assistant output). Returns the
- * resolved provenance, the per-message step seqs, and the `seq` boundary that
- * reproduces exactly the committed messages. A first commit atomically opens
- * the standard initial epoch; the run boundary opens it earlier when a model
- * may act before any session checkpoint, such as recordless handoff.
+ * Append newly stable agent steps. A shorter or changed prefix indicates
+ * that a caller persisted volatile Pi state; only compaction and handoff may
+ * intentionally replace active model history.
  */
 export async function commitMessages(args: {
   conversationId: string;
-  /** Exact model selected for this write; persisted for epoch audit only. */
-  modelId: string;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
-  provenance?: PiMessageProvenance[];
+  provenance?: ConversationMessageProvenance[];
   /** Explicit provenance for the trailing newly committed messages. */
-  trailingMessageProvenance?: PiMessageProvenance[];
+  trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */
-  newMessageProvenance?: PiMessageProvenance;
+  newMessageProvenance?: ConversationMessageProvenance;
+  /** SQL authority for the atomic commit; defaults to the process executor. */
+  executor?: JuniorSqlDatabase;
 }): Promise<{
   committedSeq: number;
+  historyVersion: number;
+  /** Event sequence for every projected agent step. */
   messageSeqs: number[];
-  provenance: PiMessageProvenance[];
+  /** Normalized durable messages after volatile runtime context is removed. */
+  messages: PiMessage[];
+  provenance: ConversationMessageProvenance[];
 }> {
-  const stepStore = getAgentStepStore();
-  const currentSteps = await stepStore.loadCurrentEpoch(args.conversationId);
-  const existing = projectSteps(currentSteps);
-  const matchingPrefix = countMatchingPrefix(existing.messages, args.messages);
-  const nextProvenance = resolveCommitProvenance({
-    existing,
-    nextMessages: args.messages,
+  const executor = args.executor ?? getSqlExecutor();
+  return await withConversationEventLock(
+    executor,
+    args.conversationId,
+    async () =>
+      executor.transaction(
+        async () => await commitMessagesLocked(args, executor),
+      ),
+  );
+}
+
+async function commitMessagesLocked(
+  args: Parameters<typeof commitMessages>[0],
+  executor: JuniorSqlDatabase,
+): ReturnType<typeof commitMessages> {
+  const eventStore = createSqlConversationEventStore(executor);
+  const currentEvents = await eventStore.loadCurrentHistory(
+    args.conversationId,
+  );
+  const current = projectConversationEvents(currentEvents);
+  // Runtime bootstrap is per-run input, not durable agent history. Session
+  // records may retain it while a turn is live, but event replay must not need
+  // a compensating history rewrite when that bootstrap changes.
+  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
+    normalizeDurableMessage,
+  );
+  const matchingPrefix = countMatchingPrefix(
+    current.messages,
+    nextLocalMessages,
+  );
+  const nextLocalProvenance = resolveCommitProvenance({
+    existing: current,
+    nextMessages: nextLocalMessages,
     matchingPrefix,
     ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
     ...(args.trailingMessageProvenance
@@ -357,49 +272,34 @@ export async function commitMessages(args: {
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  if (currentSteps.length === 0) {
-    await stepStore.startEpoch(args.conversationId, {
-      reason: "initial",
-      modelProfile: "standard",
-      modelId: args.modelId,
-      messages: args.messages.map((message, index) => ({
-        message,
-        createdAtMs: messageTimestamp(message),
-        provenance: nextProvenance[index]!,
-      })),
-    });
-  } else if (matchingPrefix === existing.messages.length) {
-    const newMessages = args.messages.slice(matchingPrefix);
-    await stepStore.append(
+  if (matchingPrefix === current.messages.length) {
+    const newMessages = nextLocalMessages.slice(matchingPrefix);
+    await eventStore.append(
       args.conversationId,
       newMessages.map((message, index) => ({
-        entry: {
-          type: "pi_message" as const,
+        data: {
+          type: "agent_step" as const,
           message,
-          provenance: nextProvenance[matchingPrefix + index]!,
+          provenance: nextLocalProvenance[matchingPrefix + index]!,
         },
         createdAtMs: messageTimestamp(message),
       })),
     );
   } else {
-    await stepStore.startEpoch(args.conversationId, {
-      reason: "rollback",
-      modelProfile: existing.modelProfile,
-      modelId: args.modelId,
-      messages: args.messages.map((message, index) => ({
-        message,
-        createdAtMs: messageTimestamp(message),
-        provenance: nextProvenance[index]!,
-      })),
-    });
+    throw new Error(
+      `Agent history for ${args.conversationId} changed before its committed boundary`,
+    );
   }
-  const committed = projectSteps(
-    await stepStore.loadCurrentEpoch(args.conversationId),
+  const committedEvents = await eventStore.loadCurrentHistory(
+    args.conversationId,
   );
+  const committed = projectConversationEvents(committedEvents);
   return {
-    committedSeq: committed.seqs.at(-1) ?? -1,
+    committedSeq: committedEvents.at(-1)?.seq ?? -1,
+    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
     messageSeqs: committed.seqs,
-    provenance: nextProvenance,
+    messages: nextLocalMessages,
+    provenance: nextLocalProvenance,
   };
 }
 
@@ -408,14 +308,14 @@ export async function recordMcpProviderConnected(args: {
   conversationId: string;
   provider: string;
 }): Promise<void> {
-  const stepStore = getAgentStepStore();
-  const steps = await stepStore.loadCurrentEpoch(args.conversationId);
-  if (connectedMcpProvidersFromSteps(steps).includes(args.provider)) {
+  const eventStore = getConversationEventStore();
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
+  if (connectedMcpProvidersFromEvents(events).includes(args.provider)) {
     return;
   }
-  await stepStore.append(args.conversationId, [
+  await eventStore.append(args.conversationId, [
     {
-      entry: { type: "mcp_provider_connected", provider: args.provider },
+      data: { type: "mcp_provider_connected", provider: args.provider },
       createdAtMs: Date.now(),
     },
   ]);
@@ -430,20 +330,20 @@ export async function recordAuthorizationRequested(args: {
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
-  const stepStore = getAgentStepStore();
-  const steps = await stepStore.loadCurrentEpoch(args.conversationId);
+  const eventStore = getConversationEventStore();
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (
-    steps.some(
-      (step) =>
-        step.entry.type === "authorization_requested" &&
-        step.entry.authorizationId === args.authorizationId,
+    events.some(
+      (event) =>
+        event.data.type === "authorization_requested" &&
+        event.data.authorizationId === args.authorizationId,
     )
   ) {
     return;
   }
-  await stepStore.append(args.conversationId, [
+  await eventStore.append(args.conversationId, [
     {
-      entry: {
+      data: {
         type: "authorization_requested",
         kind: args.kind,
         provider: args.provider,
@@ -464,20 +364,20 @@ export async function recordAuthorizationCompleted(args: {
   actorId: string;
   authorizationId: string;
 }): Promise<void> {
-  const stepStore = getAgentStepStore();
-  const steps = await stepStore.loadCurrentEpoch(args.conversationId);
+  const eventStore = getConversationEventStore();
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (
-    steps.some(
-      (step) =>
-        step.entry.type === "authorization_completed" &&
-        step.entry.authorizationId === args.authorizationId,
+    events.some(
+      (event) =>
+        event.data.type === "authorization_completed" &&
+        event.data.authorizationId === args.authorizationId,
     )
   ) {
     return;
   }
-  await stepStore.append(args.conversationId, [
+  await eventStore.append(args.conversationId, [
     {
-      entry: {
+      data: {
         type: "authorization_completed",
         kind: args.kind,
         provider: args.provider,
@@ -492,18 +392,16 @@ export async function recordAuthorizationCompleted(args: {
 /** Record a host-observed parent tool start without adding it to Pi replay. */
 export async function recordToolExecutionStarted(args: {
   conversationId: string;
-  args?: unknown;
   createdAtMs?: number;
   toolCallId: string;
   toolName: string;
 }): Promise<void> {
-  await getAgentStepStore().append(args.conversationId, [
+  await getConversationEventStore().append(args.conversationId, [
     {
-      entry: {
+      data: {
         type: "tool_execution_started",
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        ...(args.args !== undefined ? { args: args.args } : {}),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },

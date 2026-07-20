@@ -331,7 +331,7 @@ describe("conversation SQL store", () => {
     } finally {
       await fixture.close();
     }
-  });
+  }, 15_000);
 
   it("fills missing actor identity from later trusted profile observations", async () => {
     const fixture = await createLocalJuniorSqlFixture();

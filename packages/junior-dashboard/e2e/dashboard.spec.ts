@@ -163,6 +163,7 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
+  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
   await expect(page).toHaveURL(
     `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -315,17 +316,19 @@ test("scrolls long conversation and transcript panes independently", async ({
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
-        transcript: Array.from({ length: 60 }, (_, index) => ({
-          parts: [
-            {
-              text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,
-              type: "text",
-            },
-          ],
-          role: index % 2 === 0 ? "user" : "assistant",
-          timestamp: Date.parse(generatedAt) + index * 1_000,
+        eventHistory: { status: "available" },
+        events: Array.from({ length: 60 }, (_, index) => ({
+          createdAt: new Date(
+            Date.parse(generatedAt) + index * 1_000,
+          ).toISOString(),
+          data: {
+            type: "message",
+            messageId: `message-${index + 1}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,
+          },
+          seq: index,
         })),
-        transcriptAvailable: true,
       },
     });
   });
@@ -412,6 +415,7 @@ test("groups the signed-in profile and session actions in the header", async ({
 });
 
 test("inspects and copies an advisor transcript", async ({ context, page }) => {
+  const childConversationId = "junior:internal:dashboard-qa:advisor-plan";
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: baseURL,
   });
@@ -425,24 +429,30 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   const subagentRow = page
     .getByRole("button", { name: "Open advisor transcript" })
     .first();
-  await expect(subagentRow).toHaveCSS("cursor", "pointer");
   await subagentRow.click();
 
   const drawer = page.getByRole("dialog");
-  await expect(drawer.getByRole("heading", { name: "advisor" })).toBeVisible();
-  await expect(drawer.getByText("Conversation ID")).toBeVisible();
+  await expect(
+    drawer.getByRole("heading", { name: "Advisor review" }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByText(childConversationId, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent(childConversationId)}`,
+  );
   const copy = drawer.getByRole("button", { name: "Copy as Markdown" });
   await expect(copy).toBeEnabled();
   await copy.click();
   await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
   const markdown = await page.evaluate(() => navigator.clipboard.readText());
-  expect(markdown).toContain("# advisor");
+  expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
-  expect(markdown).toContain(
-    "Actor identity email is a reasonable profile key",
-  );
+  expect(markdown).toContain("Review complete; no blocking issues found.");
 
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
 });

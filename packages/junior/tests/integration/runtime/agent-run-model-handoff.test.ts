@@ -149,9 +149,29 @@ import {
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { getAgentStepStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+
+function expectedHandoffReplacementHistory() {
+  return [
+    {
+      message: {
+        role: "user",
+        timestamp: expect.any(Number),
+        content: [
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining(
+              "<current-instruction>\nModel handoff checkpoint.",
+            ),
+          }),
+        ],
+      },
+      provenance: { authority: "context" },
+    },
+  ];
+}
 
 describe("executeAgentRun model handoff", () => {
   beforeEach(async () => {
@@ -229,21 +249,18 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const epochMarkers = (await getAgentStepStore().loadHistory(conversationId))
-      .map((step) => step.entry)
-      .filter((entry) => entry.type === "context_epoch_started");
-    expect(epochMarkers).toEqual([
+    const handoffs = (
+      await getConversationEventStore().loadHistory(conversationId)
+    )
+      .map((event) => event.data)
+      .filter((entry) => entry.type === "handoff");
+    expect(handoffs).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
+        triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
     const projection = await loadProjection({ conversationId });
@@ -363,21 +380,16 @@ describe("executeAgentRun model handoff", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("coding");
     expect(
-      (await getAgentStepStore().loadHistory(conversationId))
-        .map((step) => step.entry)
-        .filter((entry) => entry.type === "context_epoch_started"),
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
+        .filter((entry) => entry.type === "handoff"),
     ).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "coding",
         modelId: "openai/gpt-5.4",
+        triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
 
@@ -450,21 +462,16 @@ describe("executeAgentRun model handoff", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
     expect(
-      (await getAgentStepStore().loadHistory(conversationId))
-        .map((step) => step.entry)
-        .filter((entry) => entry.type === "context_epoch_started"),
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
+        .filter((entry) => entry.type === "handoff"),
     ).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
+        triggeringToolCallId: "handoff-call-1",
+        replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
   });

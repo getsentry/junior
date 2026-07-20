@@ -2,33 +2,28 @@ export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
   conversationDetailReportSchema,
+  conversationEventHistorySchema,
   conversationFeedSchema,
+  conversationReportEventDataSchema,
+  conversationReportEventSchema,
   conversationStatsReportSchema,
-  conversationSubagentTranscriptReportSchema,
 } from "./conversations/schema";
 export type {
   ActorIdentity,
-  ConversationActivityReport,
-  ConversationActivityStatus,
-  ConversationContextEvent,
   ConversationCost,
   ConversationDetailReport,
+  ConversationEventHistory,
   ConversationFeed,
+  ConversationReportEvent,
+  ConversationReportEventData,
   ConversationReportStatus,
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationStatsItem,
   ConversationStatsReport,
-  ConversationSubagentActivityReport,
-  ConversationSubagentTranscriptReport,
   ConversationSummaryReport,
   ConversationSurface,
-  ConversationToolActivityReport,
   ConversationUsage,
-  TranscriptMessage,
-  TranscriptPart,
-  TranscriptPartType,
-  TranscriptRole,
 } from "./conversations/schema";
 export {
   actorDirectoryReportSchema,
@@ -93,9 +88,6 @@ export const conversationFeedQuerySchema = z
       .optional(),
   })
   .strict();
-export const subagentParamsSchema = conversationParamsSchema
-  .extend({ subagentId: z.string().min(1) })
-  .strict();
 export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
   .strict();
@@ -104,6 +96,5 @@ export const locationParamsSchema = z
   .strict();
 
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type SubagentParams = z.infer<typeof subagentParamsSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
 export type LocationParams = z.infer<typeof locationParamsSchema>;

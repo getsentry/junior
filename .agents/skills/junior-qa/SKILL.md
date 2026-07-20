@@ -123,18 +123,19 @@ pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callbac
 For SQL conversation storage changes, verify the resumed turn rebuilds context
 from SQL, not `thread-state` mirrors: conversation context must hydrate from
 `junior_conversation_messages` (`hydrateConversationMessages`) and pi history
-from `junior_agent_steps` (`loadProjection`). In those tests, transcripts
-seeded only into `thread-state` must also be persisted to SQL
-(`persistConversationMessages`) before the callback runs, and the resumed
-agent-run input `conversationContext` must contain the SQL-seeded messages.
+from `junior_conversation_events` through the Pi adapter (`loadProjection`). In
+those tests, transcripts seeded only into `thread-state` must also be persisted
+to SQL (`persistConversationMessages`) before the callback runs, and the
+resumed agent-run input `conversationContext` must contain the SQL-seeded
+messages.
 
 ## Failure Handling
 
 If local chat fails because credentials are missing or expired, refresh the
 environment when appropriate with `pnpm dev:env`, then rerun the same command.
 If local chat fails with a `junior_conversation_messages` or
-`junior_agent_steps` query error, the local Postgres schema predates the SQL
-conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
+`junior_conversation_events` query error, the local Postgres schema predates the
+SQL conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.

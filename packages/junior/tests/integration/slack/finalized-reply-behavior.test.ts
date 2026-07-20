@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
@@ -54,9 +54,15 @@ function makeDiagnostics(
 
 describe("Slack behavior: finalized thread replies", () => {
   it("posts only the finalized assistant reply even when deltas were emitted", async () => {
+    const turnLifecycle = {
+      complete: vi.fn(),
+      fail: vi.fn(),
+      start: vi.fn(),
+    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async (request) => {
               const _prompt = request.input.messageText;
@@ -90,6 +96,20 @@ describe("Slack behavior: finalized thread replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(thread.posts.map(toPostedText)).toEqual(["Hello world"]);
+    expect(turnLifecycle.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: thread.id,
+        inputMessageIds: ["m-final-1"],
+        surface: "slack",
+      }),
+    );
+    expect(turnLifecycle.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: thread.id,
+        outcome: "success",
+      }),
+    );
+    expect(turnLifecycle.fail).not.toHaveBeenCalled();
   });
 
   it("drops provisional pre-tool deltas and posts the post-tool answer once", async () => {
@@ -255,9 +275,15 @@ describe("Slack behavior: finalized thread replies", () => {
     const partialStart = "The budget review is complete.";
     const partialEnd = "This should continue into a second post.";
     const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
+    const turnLifecycle = {
+      complete: vi.fn(),
+      fail: vi.fn(),
+      start: vi.fn(),
+    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
+          turnLifecycle,
           agentRunner: {
             run: async () =>
               completedAgentRun({
@@ -288,5 +314,13 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(postedText).toContain(partialEnd);
     expect(postedText).toContain(getSlackInterruptionMarker().trim());
     expect(postedText).not.toContain("event_id=");
+    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: thread.id,
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "model_execution_failed",
+      }),
+    );
+    expect(turnLifecycle.complete).not.toHaveBeenCalled();
   });
 });

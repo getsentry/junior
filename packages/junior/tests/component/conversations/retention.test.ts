@@ -11,8 +11,7 @@ import {
   selectExpiredRoots,
 } from "@/chat/conversations/sql/purge";
 import {
-  juniorAgentSteps,
-  juniorConversationMessages,
+  juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -79,47 +78,28 @@ async function seedConversation(
   if (args.withContent !== false) {
     await executor
       .db()
-      .insert(juniorAgentSteps)
+      .insert(juniorConversationEvents)
       .values({
         conversationId: args.conversationId,
         seq: 0,
-        contextEpoch: 0,
-        type: "pi_message",
-        role: "user",
-        payload: { message: { role: "user", content: [] } },
+        historyVersion: 0,
+        schemaVersion: 1,
+        type: "message",
+        payload: { messageId: "m1", role: "user", text: "hi" },
         createdAt: at,
       });
-    await executor.db().insert(juniorConversationMessages).values({
-      conversationId: args.conversationId,
-      messageId: "m1",
-      role: "user",
-      text: "hi",
-      createdAt: at,
-    });
   }
 }
 
-async function stepCount(
+async function eventCount(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<number> {
   const rows = await executor
     .db()
     .select()
-    .from(juniorAgentSteps)
-    .where(eq(juniorAgentSteps.conversationId, conversationId));
-  return rows.length;
-}
-
-async function messageCount(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<number> {
-  const rows = await executor
-    .db()
-    .select()
-    .from(juniorConversationMessages)
-    .where(eq(juniorConversationMessages.conversationId, conversationId));
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId));
   return rows.length;
 }
 
@@ -178,8 +158,8 @@ describe("retention purge job", () => {
       nowMs: BASE_MS + 15 * DAY_MS,
     });
     expect(first.purged).toBe(1);
-    expect(await stepCount(fixture.sql, "priv")).toBe(0);
-    expect(await stepCount(fixture.sql, "pub")).toBe(1);
+    expect(await eventCount(fixture.sql, "priv")).toBe(0);
+    expect(await eventCount(fixture.sql, "pub")).toBe(1);
     expect(
       (await readConversation(fixture.sql, "pub")).transcriptPurgedAt,
     ).toBe(null);
@@ -189,7 +169,7 @@ describe("retention purge job", () => {
       nowMs: BASE_MS + 91 * DAY_MS,
     });
     expect(second.purged).toBe(1);
-    expect(await stepCount(fixture.sql, "pub")).toBe(0);
+    expect(await eventCount(fixture.sql, "pub")).toBe(0);
   });
 
   it("shortens the window when visibility flips public to private", async () => {
@@ -202,7 +182,7 @@ describe("retention purge job", () => {
 
     // Still public at 15 days: retained.
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 15 * DAY_MS });
-    expect(await stepCount(fixture.sql, "flip")).toBe(1);
+    expect(await eventCount(fixture.sql, "flip")).toBe(1);
 
     // Flip to private, then the next pass at 15 days applies the 14-day window.
     await setVisibility(fixture.sql, dest, "private");
@@ -210,7 +190,7 @@ describe("retention purge job", () => {
       nowMs: BASE_MS + 15 * DAY_MS,
     });
     expect(result.purged).toBe(1);
-    expect(await stepCount(fixture.sql, "flip")).toBe(0);
+    expect(await eventCount(fixture.sql, "flip")).toBe(0);
   });
 
   it("rechecks activity and visibility inside the destructive transaction", async () => {
@@ -247,10 +227,10 @@ describe("retention purge job", () => {
         },
       }),
     ).resolves.toEqual({ purged: false, conversations: 0 });
-    expect(await stepCount(fixture.sql, "raced")).toBe(1);
+    expect(await eventCount(fixture.sql, "raced")).toBe(1);
   });
 
-  it("rides children on the root window and purges them with the root", async () => {
+  it("rides descendants on the root window and purges the whole subtree", async () => {
     const dest = await seedDestination(fixture.sql, "public");
     // Fresh public root, but its advisor child has old activity and content.
     await seedConversation(fixture.sql, {
@@ -263,20 +243,115 @@ describe("retention purge job", () => {
       parentConversationId: "root",
       lastActivityAtMs: BASE_MS,
     });
+    await seedConversation(fixture.sql, {
+      conversationId: "grandchild",
+      parentConversationId: "child",
+      lastActivityAtMs: BASE_MS,
+    });
 
     // The child is never a purge candidate on its own: it rides the root.
     const result = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 30 * DAY_MS,
     });
     expect(result.purged).toBe(0);
-    expect(await stepCount(fixture.sql, "child")).toBe(1);
+    expect(await eventCount(fixture.sql, "child")).toBe(1);
+    expect(await eventCount(fixture.sql, "grandchild")).toBe(1);
 
     // Erasing the root purges the child's content too.
     await purgeConversation(fixture.sql, "root", {
       nowMs: BASE_MS + 30 * DAY_MS,
     });
-    expect(await stepCount(fixture.sql, "root")).toBe(0);
-    expect(await stepCount(fixture.sql, "child")).toBe(0);
+    expect(await eventCount(fixture.sql, "root")).toBe(0);
+    expect(await eventCount(fixture.sql, "child")).toBe(0);
+    expect(await eventCount(fixture.sql, "grandchild")).toBe(0);
+  });
+
+  it("uses the freshest activity in the tree for selection and destructive recheck", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    const nowMs = BASE_MS + 100 * DAY_MS;
+    await seedConversation(fixture.sql, {
+      conversationId: "old-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "fresh-child",
+      parentConversationId: "old-root",
+      lastActivityAtMs: nowMs - DAY_MS,
+    });
+
+    await expect(
+      selectExpiredRoots(fixture.sql, {
+        nowMs,
+        publicWindowMs: 90 * DAY_MS,
+        privateWindowMs: 14 * DAY_MS,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      purgeConversationTree(fixture.sql, {
+        rootConversationId: "old-root",
+        nowMs,
+        retention: {
+          publicWindowMs: 90 * DAY_MS,
+          privateWindowMs: 14 * DAY_MS,
+        },
+      }),
+    ).resolves.toEqual({ purged: false, conversations: 0 });
+    expect(await eventCount(fixture.sql, "old-root")).toBe(1);
+    expect(await eventCount(fixture.sql, "fresh-child")).toBe(1);
+  });
+
+  it("keeps a tree when a child write finishes before purge locks the child", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    const nowMs = BASE_MS + 100 * DAY_MS;
+    await seedConversation(fixture.sql, {
+      conversationId: "racing-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "racing-child",
+      parentConversationId: "racing-root",
+      lastActivityAtMs: BASE_MS,
+    });
+
+    let childWriteCompleted = false;
+    const racingExecutor: JuniorSqlDatabase = {
+      db: () => fixture.sql.db(),
+      transaction: (callback) => fixture.sql.transaction(callback),
+      withLock: async (name, callback) => {
+        if (
+          !childWriteCompleted &&
+          name === "junior_conversation:event:racing-child"
+        ) {
+          await fixture.sql
+            .db()
+            .update(juniorConversations)
+            .set({
+              lastActivityAt: new Date(nowMs),
+              updatedAt: new Date(nowMs),
+            })
+            .where(eq(juniorConversations.conversationId, "racing-child"));
+          childWriteCompleted = true;
+        }
+        return await fixture.sql.withLock(name, callback);
+      },
+    };
+
+    await expect(
+      purgeConversationTree(racingExecutor, {
+        rootConversationId: "racing-root",
+        nowMs,
+        retention: {
+          publicWindowMs: 90 * DAY_MS,
+          privateWindowMs: 14 * DAY_MS,
+        },
+      }),
+    ).resolves.toEqual({ purged: false, conversations: 0 });
+    expect(childWriteCompleted).toBe(true);
+    expect(await eventCount(fixture.sql, "racing-root")).toBe(1);
+    expect(await eventCount(fixture.sql, "racing-child")).toBe(1);
   });
 
   it("purges an expired root whose remaining content exists only on a child", async () => {
@@ -305,8 +380,7 @@ describe("retention purge job", () => {
     });
 
     expect(result.purged).toBe(1);
-    expect(await stepCount(fixture.sql, "remaining-child")).toBe(0);
-    expect(await messageCount(fixture.sql, "remaining-child")).toBe(0);
+    expect(await eventCount(fixture.sql, "remaining-child")).toBe(0);
   });
 
   it("purges up to the batch limit and leaves the remainder for the next run", async () => {
@@ -332,12 +406,12 @@ describe("retention purge job", () => {
     expect(first.scanned).toBe(2);
     expect(first.purged).toBe(2);
     // Oldest-activity-first: "a" and "b" go, "c" remains.
-    expect(await stepCount(fixture.sql, "a")).toBe(0);
-    expect(await stepCount(fixture.sql, "c")).toBe(1);
+    expect(await eventCount(fixture.sql, "a")).toBe(0);
+    expect(await eventCount(fixture.sql, "c")).toBe(1);
 
     const second = await runRetentionPurge(fixture.sql, { nowMs, limit: 2 });
     expect(second.purged).toBe(1);
-    expect(await stepCount(fixture.sql, "c")).toBe(0);
+    expect(await eventCount(fixture.sql, "c")).toBe(0);
 
     // Nothing left to do once everything is purged.
     const third = await runRetentionPurge(fixture.sql, { nowMs, limit: 2 });
@@ -389,11 +463,10 @@ describe("retention purge job", () => {
     // A daily pass at the same instant would keep it (well inside 14 days).
     const pass = await runRetentionPurge(fixture.sql, { nowMs: BASE_MS });
     expect(pass.purged).toBe(0);
-    expect(await stepCount(fixture.sql, "fresh")).toBe(1);
+    expect(await eventCount(fixture.sql, "fresh")).toBe(1);
 
     await purgeConversation(fixture.sql, "fresh", { nowMs: BASE_MS });
-    expect(await stepCount(fixture.sql, "fresh")).toBe(0);
-    expect(await messageCount(fixture.sql, "fresh")).toBe(0);
+    expect(await eventCount(fixture.sql, "fresh")).toBe(0);
     const row = await readConversation(fixture.sql, "fresh");
     expect(row.transcriptPurgedAt).not.toBe(null);
     expect(row.title).toBe(null);

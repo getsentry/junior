@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorIdentities } from "@/db/schema";
+import { juniorConversations, juniorIdentities } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API", () => {
@@ -67,6 +67,36 @@ describe("conversation list API", () => {
       await expect(
         readConversationFeedFromSql({ actorEmail: "other@example.com" }),
       ).resolves.toMatchObject({ conversations: [] });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("excludes child conversations from the top-level feed", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "slack:C1:root",
+        nowMs: 1_000,
+        source: "slack",
+      });
+      const childAt = new Date(2_000);
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "advisor:child",
+        parentConversationId: "slack:C1:root",
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
+      });
+
+      const feed = await readConversationFeedFromSql();
+
+      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
+        "slack:C1:root",
+      ]);
     } finally {
       await fixture.close();
     }

@@ -1,7 +1,6 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
-  conversationMessages,
   githubWebhook,
   mention,
   resourceEventNotification,
@@ -128,17 +127,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         }),
       ],
     });
-    const messages = await conversationMessages(result.session);
-    expect(messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "user",
-          text: expect.stringContaining(
-            "GitHub PR getsentry/junior#702 checks recovered",
-          ),
-        }),
-      ]),
-    );
     expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 

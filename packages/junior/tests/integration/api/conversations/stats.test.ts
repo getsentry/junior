@@ -120,10 +120,14 @@ describe("conversation stats API", () => {
         visibility: "public",
         nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
-      await store.ensureChildConversation({
+      const childAt = new Date("2026-06-15T11:55:00.000Z");
+      await fixture.sql.db().insert(juniorConversations).values({
         conversationId: "advisor:child",
         parentConversationId: "slack:C1:recent",
-        nowMs: Date.parse("2026-06-15T11:55:00.000Z"),
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
       });
 
       const report = await readConversationStatsFromSql();

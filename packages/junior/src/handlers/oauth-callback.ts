@@ -1,7 +1,7 @@
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   formatProviderLabel,
   parseOAuthStatePayload,
@@ -275,6 +275,10 @@ async function resumeOAuthSessionRecordTurn(
     threadTs: stored.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
+    lifecycleCorrelation: {
+      conversationId: stored.resumeConversationId,
+      turnId: resolvedSessionId,
+    },
     initialText: "",
     agentRunner: options.agentRunner,
     beforeStart: async () => {
@@ -394,6 +398,7 @@ async function resumeOAuthSessionRecordTurn(
           ? lockedUserMessage.text
           : (stored.pendingMessage ?? lockedUserMessage.text),
         messageTs: lockedMessageTs,
+        inputMessageIds: [lockedUserMessage.id],
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,
@@ -537,7 +542,7 @@ async function resumePendingOAuthMessage(
     replyContext: {
       input: {
         conversationContext,
-        // Pi history is SQL-authoritative via the step-store projection.
+        // Pi history is SQL-authoritative via the event-store projection.
         piMessages: await loadProjection({ conversationId: threadId }),
       },
       routing: {
