@@ -127,7 +127,7 @@ describeEval("Conversation Storage", slackEvals, (it) => {
   };
 
   // Skipped pending a pre-existing MCP auth-link delivery failure that also
-  // breaks the reference MCP-pause case in oauth-workflows.eval.ts on main
+  // breaks the reference MCP-pause case in agent/oauth.eval.ts on main
   // (verified 2026-07-09 on origin/main: deliverPrivateMessage never posts the
   // ephemeral link and falls through to conversations.open, which the Slack
   // MSW harness rejects). Unskip together with that case once delivery works.

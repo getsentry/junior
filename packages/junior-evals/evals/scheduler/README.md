@@ -10,8 +10,8 @@ Scheduler evals cover agent-facing scheduled task behavior:
 - keeping explicit denial and non-creator requests in system mode
 - delivering due one-off and recurring scheduled task occurrences
 
-Run this module with:
+Run this feature area with:
 
 ```bash
-pnpm --filter @sentry/junior-evals evals evals/scheduler/workflows.eval.ts
+pnpm --filter @sentry/junior-evals evals evals/scheduler
 ```

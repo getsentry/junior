@@ -37,20 +37,15 @@ Not in scope:
 
 ## Sources Of Truth
 
-- Core eval cases:
-  - `evals/core/passive-behavior.eval.ts`
-  - `evals/core/routing-and-continuity.eval.ts`
-  - `evals/core/lifecycle-and-resilience.eval.ts`
-  - `evals/core/media-and-attachments.eval.ts`
-  - `evals/core/slack-message-delivery.eval.ts`
-  - `evals/core/oauth-workflows.eval.ts`
-  - `evals/core/skill-infra.eval.ts`
-- Scheduler eval cases:
-  - `evals/scheduler/workflows.eval.ts`
-- Plugin eval cases:
-  - `evals/github/skill-workflows.eval.ts`
-  - `evals/memory/workflows.eval.ts`
-  - `evals/sentry/skill-workflows.eval.ts`
+- Conversation behavior: `evals/conversation/`
+  - routing, participation, actor attribution, continuity, delivery, lifecycle, storage, attachments, and output
+- Agent behavior: `evals/agent/`
+  - skills, providers, research, files, OAuth, subscriptions, and skill routing
+- Feature behavior:
+  - `evals/memory/`
+  - `evals/scheduler/`
+  - `evals/github/`
+  - `evals/sentry/`
 - Helpers and event builders: `src/helpers.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts`
 
@@ -96,8 +91,8 @@ Tool replay:
 
 - `pnpm evals`: Run all eval cases (from workspace root)
 - `pnpm --filter @sentry/junior-evals evals`: Run from any directory
-- `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts`: Run one eval file
-- `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts -t "subscribed"`: Run one eval case by name
+- `pnpm --filter @sentry/junior-evals evals evals/sentry/skills.eval.ts`: Run one eval file
+- `pnpm --filter @sentry/junior-evals evals evals/agent/subscriptions.eval.ts -t "subscribed"`: Run one eval case by name
 - `pnpm --filter @sentry/junior-evals evals --shard=1/4`: Run one of the four CI shards
 
 Pass eval file paths, `-t` filters, and shard options directly after the `evals` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
@@ -125,7 +120,7 @@ Evals require real Vercel Sandbox access and public Quick Tunnel connectivity. I
 
 ## Authoring Rules
 
-- Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `describeEval()` with `slackEvals`.
+- Add Slack conversation cases under `evals/conversation/`, agent/tool cases under `evals/agent/`, and feature-specific cases under `evals/<feature>/` using `describeEval()` with `slackEvals`.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
 - Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
@@ -176,21 +171,17 @@ Do not do these in eval files:
 - Do not invent parallel transcript, event-log, or tool-call schemas for assertions. If the existing `vitest-evals` primitives are insufficient, improve the harness boundary first.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.
 
-## File Naming Strategy
+## File Organization
 
-- Core evals: `evals/core/`
-- Scheduler evals: `evals/scheduler/`
-- Plugin evals: `evals/<plugin-name>/` (e.g. `evals/github/`, `evals/sentry/`)
-- File naming: `<journey>-and-<constraint>.eval.ts` or `<feature>-workflows.eval.ts`
-  - Examples:
-    - `routing-and-continuity.eval.ts`
-    - `lifecycle-and-resilience.eval.ts`
-    - `oauth-workflows.eval.ts`
-    - `skill-workflows.eval.ts`
-- Test naming inside a describe block: `when <trigger>, <user-observable outcome>`
-  - Examples:
-    - `when a thread message explicitly mentions Junior, post a direct reply`
-    - `when a default repo is set in one turn, reuse it in the next turn without asking again`
+Treat these as end-to-end behavior tests. Organize files by the user-visible area they exercise:
+
+- `evals/conversation/`: Slack conversation behavior.
+- `evals/agent/`: agent execution, skills, tools, providers, and auth.
+- `evals/<feature>/`: feature journeys such as memory, scheduler, GitHub, and Sentry.
+- Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
+- Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
+- Keep shared setup in a nearby `helpers.ts`; helpers are not eval files and do not define suites.
+- Test names inside a describe block use `when <trigger>, <user-observable outcome>`.
 
 ## Eval Quality Rubric
 
