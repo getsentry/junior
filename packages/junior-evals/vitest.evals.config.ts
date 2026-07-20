@@ -10,7 +10,9 @@ const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
-const EVAL_TEST_TIMEOUT_MS = 60_000;
+// Leave room for harness cleanup and rubric judging after a reply reaches its
+// separate 60-second behavior budget.
+const EVAL_TEST_TIMEOUT_MS = 120_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
   process.env.VITEST_EVALS_OUTPUT_FILE ?? "vitest-results.json",
