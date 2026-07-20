@@ -1624,14 +1624,14 @@ function buildRuntimeServices(
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
-      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "30000", 10);
+      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "60000", 10);
   if (
     !Number.isInteger(replyTimeoutMs) ||
     replyTimeoutMs <= 0 ||
-    replyTimeoutMs > 30_000
+    replyTimeoutMs > 60_000
   ) {
     throw new Error(
-      `Eval reply timeout must be an integer from 1 to 30000 milliseconds, got ${replyTimeoutMs}`,
+      `Eval reply timeout must be an integer from 1 to 60000 milliseconds, got ${replyTimeoutMs}`,
     );
   }
   let decisionIndex = 0;

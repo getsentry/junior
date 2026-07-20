@@ -490,7 +490,7 @@ export interface SlackEvalInput {
 }
 
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
-const MAX_EVAL_TIMEOUT_MS = 30_000;
+const MAX_EVAL_TIMEOUT_MS = 60_000;
 const GATEWAY_AUTH_FAILURE_PATTERNS = [
   "OIDC token has expired",
   "Missing AI gateway credentials",

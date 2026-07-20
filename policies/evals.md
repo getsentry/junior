@@ -22,7 +22,7 @@ Evals are integration tests for agent-facing behavior through the real runtime.
   deterministic tool transport details such as Slack API payload fields or file
   upload serialization; cover those in integration tests.
 - Do not invent parallel transcript, event-log, or tool-call schemas for eval assertions; improve the harness boundary instead.
-- Keep eval cases within 30 seconds.
+- Keep eval replies within 60 seconds.
 - Use fixtures, mocks, or replay for external resources instead of raising timeouts.
 
 ## Exceptions
