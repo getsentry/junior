@@ -8,7 +8,6 @@ import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
 } from "../../../junior-memory/src/db/schema";
-import { createMemoryAgent } from "../../../junior-memory/src/agent";
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 
 export const memoryPluginOverrides = {
