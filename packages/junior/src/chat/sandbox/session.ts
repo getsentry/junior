@@ -116,6 +116,7 @@ interface SandboxSessionManager {
   getDependencyProfileHash(): string | undefined;
   createSandbox(): Promise<SandboxInstance>;
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
+  recoverUnavailableSandbox(error: unknown): Promise<boolean>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -887,6 +888,13 @@ export function createSandboxSessionManager(options?: {
     },
     async ensureToolExecutors() {
       return await loadToolExecutors(await ensureReadySandbox());
+    },
+    async recoverUnavailableSandbox(error) {
+      if (!isSandboxUnavailableError(error)) {
+        return false;
+      }
+      await recreateUnavailableSandbox("memory");
+      return true;
     },
     async refreshNetworkPolicy(traceHeaders) {
       const activeSandbox = sandbox;

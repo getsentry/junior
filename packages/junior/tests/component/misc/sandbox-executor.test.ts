@@ -214,6 +214,13 @@ function createStreamInterruptedError(): Error {
   });
 }
 
+function createClosedStreamError(): Error {
+  return Object.assign(
+    new Error("Sandbox stream was closed and is not accepting commands."),
+    { name: "StreamError" },
+  );
+}
+
 async function expectWorkspaceToDelegate(
   workspace: SandboxInstance,
   sandbox: MockSandbox,
@@ -1379,6 +1386,38 @@ describe("createSandboxExecutor", () => {
       stderr:
         "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
     });
+  });
+
+  it("recreates and retries read-only file tools when the sandbox stream closes", async () => {
+    const closedSandbox = makeSandbox("sbx_closed_file_tools");
+    const freshSandbox = makeSandbox("sbx_recovered_file_tools");
+    closedSandbox.fs.stat.mockRejectedValueOnce(createClosedStreamError());
+    freshSandbox.fs.stat.mockResolvedValue({ isDirectory: () => true });
+    freshSandbox.fs.readdir.mockResolvedValue([]);
+    sandboxGetMock.mockResolvedValueOnce(closedSandbox);
+    sandboxCreateMock.mockResolvedValueOnce(freshSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: closedSandbox.name });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<StructuredSandboxResult>({
+      toolName: "grep",
+      input: { pattern: "needle" },
+    });
+
+    expect(response.result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      data: { match_count: 0 },
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(executor.getSandboxId()).toBe(freshSandbox.name);
   });
 
   it("returns structured file-tool results when sandbox command streams end", async () => {

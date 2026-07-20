@@ -643,6 +643,19 @@ export function createSandboxExecutor(options?: {
     return { result: result as T };
   };
 
+  const executeFileTool = async <T>(
+    toolName: string,
+    rawInput: Record<string, unknown>,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
+    if (toolName === "readFile") return await executeReadFileTool(rawInput);
+    if (toolName === "editFile") return await executeEditFileTool(rawInput);
+    if (toolName === "grep") return await executeGrepTool(rawInput);
+    if (toolName === "findFiles") return await executeFindFilesTool(rawInput);
+    if (toolName === "listDir") return await executeListDirTool(rawInput);
+    if (toolName === "writeFile") return await executeWriteFileTool(rawInput);
+    throw new Error(`unsupported sandbox tool: ${toolName}`);
+  };
+
   const execute = async <T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>> => {
@@ -669,37 +682,25 @@ export function createSandboxExecutor(options?: {
     }
 
     try {
-      if (params.toolName === "readFile") {
-        return await executeReadFileTool(rawInput);
-      }
-
-      if (params.toolName === "editFile") {
-        return await executeEditFileTool(rawInput);
-      }
-
-      if (params.toolName === "grep") {
-        return await executeGrepTool(rawInput);
-      }
-
-      if (params.toolName === "findFiles") {
-        return await executeFindFilesTool(rawInput);
-      }
-
-      if (params.toolName === "listDir") {
-        return await executeListDirTool(rawInput);
-      }
-
-      if (params.toolName === "writeFile") {
-        return await executeWriteFileTool(rawInput);
-      }
+      return await executeFileTool<T>(params.toolName, rawInput);
     } catch (error) {
-      if (!isSandboxCommandStreamInterruptedError(error)) {
-        throw error;
+      const canRetrySafely = [
+        "readFile",
+        "grep",
+        "findFiles",
+        "listDir",
+      ].includes(params.toolName);
+      if (
+        canRetrySafely &&
+        (await sessionManager.recoverUnavailableSandbox(error))
+      ) {
+        return await executeFileTool<T>(params.toolName, rawInput);
       }
-      return { result: sandboxStreamInterruptedResult(params.toolName) as T };
+      if (isSandboxCommandStreamInterruptedError(error)) {
+        return { result: sandboxStreamInterruptedResult(params.toolName) as T };
+      }
+      throw error;
     }
-
-    throw new Error(`unsupported sandbox tool: ${params.toolName}`);
   };
 
   return {
