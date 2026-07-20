@@ -60,6 +60,9 @@ this directory owns product orchestration around it.
   It does not fork the conversation or replay completed side effects.
 - Restoration uses the model profile recorded by durable history, not
   process-local assumptions.
+- Normal turn-record reads stay pinned to their checkpoint. Agent execution
+  follows a newer committed compaction or handoff replacement and discards
+  volatile context from the superseded history.
 
 Representative integration coverage lives under
 `packages/junior/tests/integration/runtime/`.

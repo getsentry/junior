@@ -23,6 +23,7 @@ import {
 } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
+  getAgentTurnResumeRecord,
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionRecord,
@@ -72,14 +73,7 @@ import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
-import {
-  modelIdForProfile,
-  STANDARD_MODEL_PROFILE,
-} from "@/chat/model-profile";
-import {
-  retainRuntimeTurnContext,
-  stripRuntimeTurnContext,
-} from "@/chat/pi/transcript";
+import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
@@ -583,7 +577,7 @@ async function recoverStrandedRunningSession(args: {
   }
   await stateAdapter.releaseLock(probe);
 
-  const sessionRecord = await getAgentTurnSessionRecord(
+  const sessionRecord = await getAgentTurnResumeRecord(
     args.conversationId,
     args.summary.sessionId,
   );
@@ -596,13 +590,6 @@ async function recoverStrandedRunningSession(args: {
   });
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
-  const recoveryMessages =
-    modelProfile !== STANDARD_MODEL_PROFILE
-      ? [
-          ...stripRuntimeTurnContext(recoveryProjection.messages),
-          ...retainRuntimeTurnContext(sessionRecord.piMessages),
-        ]
-      : sessionRecord.piMessages;
 
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,
@@ -611,7 +598,7 @@ async function recoverStrandedRunningSession(args: {
     currentSliceId: sessionRecord.sliceId,
     destination: sessionRecord.destination,
     source: sessionRecord.source,
-    messages: recoveryMessages,
+    messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     logContext: {},
     modelId,

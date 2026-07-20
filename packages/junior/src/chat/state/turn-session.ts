@@ -27,6 +27,7 @@ import {
   commitMessages,
   loadTurnProjection,
 } from "@/chat/conversations/projection";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -379,9 +380,10 @@ async function getStoredAgentTurnSessionRecord(
 }
 
 /** Read a materialized turn session record for resume and history loading. */
-export async function getAgentTurnSessionRecord(
+async function materializeStoredAgentTurnSessionRecord(
   conversationId: string,
   sessionId: string,
+  followCurrentReplacement: boolean,
 ): Promise<AgentTurnSessionRecord | undefined> {
   const parsed = await getStoredAgentTurnSessionRecord(
     conversationId,
@@ -391,7 +393,7 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  const piProjection = await loadTurnProjection({
+  const pinnedProjection = await loadTurnProjection({
     conversationId,
     committedSeq: parsed.committedSeq,
     // Unfinished records include the current-epoch tail so parked input
@@ -399,15 +401,24 @@ export async function getAgentTurnSessionRecord(
     includeTail:
       parsed.state === "running" || parsed.state === "awaiting_resume",
   });
-  if (!piProjection) {
+  if (!pinnedProjection) {
     return undefined;
   }
   const currentHistory =
     await getConversationEventStore().loadCurrentHistory(conversationId);
   const currentHistoryVersion =
     currentHistory.at(-1)?.historyVersion ?? parsed.historyVersion ?? 0;
-  const turnStartMessageIndex =
-    parsed.turnStartSeq === undefined
+  const followsReplacement =
+    followCurrentReplacement &&
+    (parsed.state === "running" || parsed.state === "awaiting_resume") &&
+    parsed.historyVersion !== undefined &&
+    parsed.historyVersion !== currentHistoryVersion;
+  const piProjection = followsReplacement
+    ? projectConversationEvents(currentHistory)
+    : pinnedProjection;
+  const turnStartMessageIndex = followsReplacement
+    ? 0
+    : parsed.turnStartSeq === undefined
       ? undefined
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
@@ -415,8 +426,33 @@ export async function getAgentTurnSessionRecord(
     parsed,
     piProjection,
     turnStartMessageIndex,
-    parsed.historyVersion === undefined ||
-      parsed.historyVersion === currentHistoryVersion,
+    !followsReplacement &&
+      (parsed.historyVersion === undefined ||
+        parsed.historyVersion === currentHistoryVersion),
+  );
+}
+
+/** Read a turn record pinned to the history version containing its checkpoint. */
+export async function getAgentTurnSessionRecord(
+  conversationId: string,
+  sessionId: string,
+): Promise<AgentTurnSessionRecord | undefined> {
+  return await materializeStoredAgentTurnSessionRecord(
+    conversationId,
+    sessionId,
+    false,
+  );
+}
+
+/** Read an unfinished turn, following a newer committed history replacement. */
+export async function getAgentTurnResumeRecord(
+  conversationId: string,
+  sessionId: string,
+): Promise<AgentTurnSessionRecord | undefined> {
+  return await materializeStoredAgentTurnSessionRecord(
+    conversationId,
+    sessionId,
+    true,
   );
 }
 

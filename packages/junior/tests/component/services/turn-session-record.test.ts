@@ -1295,4 +1295,67 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
     ).resolves.toEqual([newRequest, newFollowup]);
   });
+
+  it("resumes an unfinished turn from a committed handoff replacement", async () => {
+    const { loadTurnSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "conversation-handoff-resume";
+    const sessionId = "turn-handoff-resume";
+    const staleRuntimeContext =
+      "<runtime-turn-context>stale runtime context</runtime-turn-context>";
+    const oldRequest: PiMessage = {
+      role: "user",
+      content: [
+        { type: "text", text: staleRuntimeContext },
+        { type: "text", text: "old request" },
+      ],
+      timestamp: 1,
+    };
+    const handoffSummary: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "continue from the handoff summary" }],
+      timestamp: 2,
+    };
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "openai/gpt-5.5",
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      piMessages: [oldRequest],
+    });
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 2,
+      data: {
+        type: "handoff",
+        modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
+        triggeringToolCallId: "handoff-call",
+        replacementHistory: [{ message: handoffSummary }],
+      },
+    });
+
+    const pinnedRecord = await getAgentTurnSessionRecord(
+      conversationId,
+      sessionId,
+    );
+    expect(JSON.stringify(pinnedRecord?.piMessages)).toContain("old request");
+    expect(JSON.stringify(pinnedRecord?.piMessages)).not.toContain(
+      "continue from the handoff summary",
+    );
+    await expect(
+      loadTurnSessionRecord({ conversationId, sessionId }),
+    ).resolves.toMatchObject({
+      resumedFromSessionRecord: true,
+      existingSessionRecord: {
+        piMessages: [handoffSummary],
+        turnStartMessageIndex: 0,
+      },
+    });
+  });
 });
