@@ -665,6 +665,33 @@ function snapshotEnv(keys: readonly string[]): EnvSnapshot {
   };
 }
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Eval reply aborted");
+}
+
+async function raceWithAbort<T>(
+  signal: AbortSignal,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (signal.aborted) {
+    throw abortReason(signal);
+  }
+  let removeAbortListener = () => {};
+  const abortPromise = new Promise<never>((_, reject) => {
+    const handleAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", handleAbort, { once: true });
+    removeAbortListener = () =>
+      signal.removeEventListener("abort", handleAbort);
+  });
+  try {
+    return await Promise.race([operation(), abortPromise]);
+  } finally {
+    removeAbortListener();
+  }
+}
+
 function ensureHarnessBaseUrl(): void {
   process.env.JUNIOR_BASE_URL ??= DEFAULT_EVAL_BASE_URL;
 }
@@ -1707,55 +1734,52 @@ function buildRuntimeServices(
               ...(signal ? [signal] : []),
               AbortSignal.timeout(replyTimeoutMs),
             ]);
-            const outcome = await executeAgentRun({
-              ...runRequest,
-              policy: {
-                ...runRequest.policy,
-                signal: replySignal,
-                turnDeadlineAtMs: Math.min(
-                  runRequest.policy?.turnDeadlineAtMs ??
-                    Number.POSITIVE_INFINITY,
-                  Date.now() + replyTimeoutMs,
-                ),
-                ...(env.configuredSkillDirs.length > 0
-                  ? { skillDirs: env.configuredSkillDirs }
-                  : {}),
-                toolOverrides,
-              },
-              observers: {
-                ...runRequest.observers,
-                onToolInvocation: (invocation) => {
-                  const evalInvocation = toEvalToolInvocation(invocation);
-                  observations.toolInvocations.push(evalInvocation);
-                  pendingToolInvocations.push(evalInvocation);
+            const outcome = await raceWithAbort(replySignal, () =>
+              executeAgentRun({
+                ...runRequest,
+                policy: {
+                  ...runRequest.policy,
+                  signal: replySignal,
+                  turnDeadlineAtMs: Math.min(
+                    runRequest.policy?.turnDeadlineAtMs ??
+                      Number.POSITIVE_INFINITY,
+                    Date.now() + replyTimeoutMs,
+                  ),
+                  ...(env.configuredSkillDirs.length > 0
+                    ? { skillDirs: env.configuredSkillDirs }
+                    : {}),
+                  toolOverrides,
                 },
-                onToolResult: (result) => {
-                  const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.toolCallId === result.toolCallId,
-                  );
-                  if (pendingIndex === -1) {
-                    return;
-                  }
-                  const [invocation] = pendingToolInvocations.splice(
-                    pendingIndex,
-                    1,
-                  );
-                  invocation.completed = true;
-                  invocation.ok = result.ok;
-                  if (result.error) {
-                    invocation.error = result.error;
-                  }
-                  if (result.result !== undefined) {
-                    invocation.result = result.result;
-                  }
+                observers: {
+                  ...runRequest.observers,
+                  onToolInvocation: (invocation) => {
+                    const evalInvocation = toEvalToolInvocation(invocation);
+                    observations.toolInvocations.push(evalInvocation);
+                    pendingToolInvocations.push(evalInvocation);
+                  },
+                  onToolResult: (result) => {
+                    const pendingIndex = pendingToolInvocations.findIndex(
+                      (candidate) => candidate.toolCallId === result.toolCallId,
+                    );
+                    if (pendingIndex === -1) {
+                      return;
+                    }
+                    const [invocation] = pendingToolInvocations.splice(
+                      pendingIndex,
+                      1,
+                    );
+                    invocation.completed = true;
+                    invocation.ok = result.ok;
+                    if (result.error) {
+                      invocation.error = result.error;
+                    }
+                    if (result.result !== undefined) {
+                      invocation.result = result.result;
+                    }
+                  },
                 },
-              },
-            });
-            if (replySignal.aborted) {
-              throw replySignal.reason instanceof Error
-                ? replySignal.reason
-                : new Error("Eval reply timed out");
-            }
+              }),
+            );
             const usage =
               outcome.status === "completed"
                 ? outcome.result.diagnostics.usage
