@@ -6,6 +6,7 @@ import {
 } from "@/api/conversations/schema";
 import {
   conversationEventSchema,
+  decodeStoredConversationEvent,
   type ConversationEvent,
   type ConversationEventData,
   type ConversationAgentStepPayload,
@@ -27,6 +28,24 @@ function event(
 }
 
 describe("conversation report event projection", () => {
+  it("ignores unsupported stored events", () => {
+    const unsupported = decodeStoredConversationEvent({
+      schemaVersion: 3,
+      seq: 1,
+      historyVersion: 0,
+      createdAtMs: 1_000,
+      type: "future_runtime_fact",
+      payload: { privateValue: "must-not-be-reported" },
+    });
+
+    expect(
+      projectConversationReportEvents({
+        canExposePayload: true,
+        events: [unsupported],
+      }),
+    ).toEqual([]);
+  });
+
   it("keeps canonical sequence order and sources display text only from visible messages", () => {
     const events = [
       event(

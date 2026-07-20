@@ -65,6 +65,19 @@ Reporting APIs project an authorized, redacted contract from the event stream.
 Raw event payloads are internal and must not become dashboard or external API
 payloads.
 
+## Stored Event Compatibility
+
+Live writers accept only the canonical event types and current schema version.
+Readers preserve an unsupported type or schema version as an opaque `unknown`
+event so one old row cannot make the conversation log unreadable. Reporting,
+search, and other observational projections ignore those events.
+
+Active agent-history replay is stricter: it rejects an `unknown` event rather
+than risk silently changing model context. Upgrade scripts normalize historical
+formats as they become known. A malformed event whose type and schema version
+are already supported is treated as corrupt data and rejected, not downgraded
+to `unknown`.
+
 ## Visibility And Retention
 
 Destination visibility is the privacy authority. Messages, agent steps, child

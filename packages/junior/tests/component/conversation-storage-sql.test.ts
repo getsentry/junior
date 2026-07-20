@@ -902,11 +902,15 @@ WHERE conversation_id = $1 AND seq = 0
   });
 
   it.each([
-    { schemaVersion: 1, type: "bogus_type" },
-    { schemaVersion: 2, type: "mcp_provider_connected" },
+    { schemaVersion: 1, type: "bogus_type", payload: {} },
+    {
+      schemaVersion: 2,
+      type: "mcp_provider_connected",
+      payload: { provider: "github" },
+    },
   ])(
-    "fails loudly for unsupported stored event envelopes %#",
-    async ({ schemaVersion, type }) => {
+    "preserves unsupported stored events as opaque facts %#",
+    async ({ schemaVersion, type, payload }) => {
       const fixture = await createLocalJuniorSqlFixture();
 
       try {
@@ -926,21 +930,62 @@ INSERT INTO junior_conversation_events (
             0,
             schemaVersion,
             type,
-            JSON.stringify(
-              type === "mcp_provider_connected" ? { provider: "github" } : {},
-            ),
+            JSON.stringify(payload),
             new Date(1_000).toISOString(),
           ],
         );
 
-        await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
-          /Invalid input/,
-        );
+        await expect(store.loadHistory(CONVERSATION_ID)).resolves.toEqual([
+          {
+            schemaVersion,
+            seq: 0,
+            historyVersion: 0,
+            createdAtMs: 1_000,
+            data: {
+              type: "unknown",
+              originalType: type,
+              payload,
+            },
+          },
+        ]);
       } finally {
         await fixture.close();
       }
     },
   );
+
+  it("rejects malformed payloads for supported stored events", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_conversation_events (
+  conversation_id, seq, history_version, schema_version, type, payload, created_at
+) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+`,
+        [
+          CONVERSATION_ID,
+          0,
+          0,
+          1,
+          "mcp_provider_connected",
+          JSON.stringify({}),
+          new Date(1_000).toISOString(),
+        ],
+      );
+
+      await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
+        /Invalid input/,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("uses physical event columns as authoritative when decoding rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();

@@ -1,6 +1,6 @@
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import {
-  conversationEventSchema,
+  decodeStoredConversationEvent,
   type ConversationEvent,
 } from "@/chat/conversations/history";
 import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
@@ -93,13 +93,14 @@ async function readConversationDetailFromSql(
   ]);
   if (!snapshot) return undefined;
   const events = snapshot.events.map((row) =>
-    conversationEventSchema.parse({
+    decodeStoredConversationEvent({
       schemaVersion: row.schemaVersion,
       seq: row.seq,
       historyVersion: row.historyVersion,
       ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
       createdAtMs: row.createdAt.getTime(),
-      data: { ...row.payload, type: row.type },
+      type: row.type,
+      payload: row.payload,
     }),
   );
   const effectiveVisibility =

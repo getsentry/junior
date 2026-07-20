@@ -12,7 +12,7 @@ import {
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
-  conversationEventSchema,
+  decodeStoredConversationEvent,
   historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
@@ -62,13 +62,14 @@ function insertFromEvent(
 
 /** Parse one physical event row into the canonical domain envelope. */
 function eventFromRow(row: ConversationEventRow): ConversationEvent {
-  return conversationEventSchema.parse({
+  return decodeStoredConversationEvent({
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
     ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
     createdAtMs: row.createdAt.getTime(),
-    data: { ...row.payload, type: row.type },
+    type: row.type,
+    payload: row.payload,
   });
 }
 

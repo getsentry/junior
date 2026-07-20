@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   conversationEventSchema,
+  decodeStoredConversationEvent,
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
@@ -182,6 +183,21 @@ describe("projectConversationEvents", () => {
     } as ConversationEvent;
 
     expect(() => projectConversationEvents([invalid])).toThrow(/role/);
+  });
+
+  it("rejects unsupported stored events at the model-history boundary", () => {
+    const unsupported = decodeStoredConversationEvent({
+      schemaVersion: 1,
+      seq: 12,
+      historyVersion: 2,
+      createdAtMs: 1_012,
+      type: "old_context_marker",
+      payload: { reason: "old-runtime-behavior" },
+    });
+
+    expect(() => projectConversationEvents([unsupported])).toThrow(
+      'Unsupported conversation event "old_context_marker" at seq 12 (schema version 1)',
+    );
   });
 
   it("omits volatile runtime bootstrap from durable agent history", () => {

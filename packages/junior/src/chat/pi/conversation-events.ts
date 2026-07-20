@@ -86,6 +86,11 @@ export function projectConversationEvents(
 
   for (const event of events) {
     if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
+    if (event.data.type === "unknown") {
+      throw new Error(
+        `Unsupported conversation event "${event.data.originalType}" at seq ${event.seq} (schema version ${event.schemaVersion})`,
+      );
+    }
     if (
       event.data.type === "compaction" ||
       event.data.type === "handoff" ||

@@ -3,9 +3,9 @@
  *
  * Events append under the conversation lease in stable sequence order.
  * Compaction and handoff replace the active model history without rewriting
- * prior events. Unknown event types or malformed shapes fail loudly;
- * provider-specific message fields are validated by the Pi adapter when it
- * restores model context.
+ * prior events. Unsupported stored events remain readable as opaque facts,
+ * while malformed known events fail loudly. Provider-specific message fields
+ * are validated by the Pi adapter when it restores model context.
  */
 import { z } from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
@@ -298,23 +298,94 @@ export type ConversationEventData = z.output<
   typeof conversationEventDataSchema
 >;
 
-/**
- * Canonical ordered envelope for the durable conversation log.
- * `schemaVersion` is persisted with every physical event row.
- */
-export const conversationEventSchema = z
+const knownConversationEventTypeSchema = z.enum([
+  "message",
+  "message_updated",
+  "agent_step",
+  "mcp_provider_connected",
+  "authorization_requested",
+  "authorization_completed",
+  "tool_execution_started",
+  "message_handled",
+  "messages_summarized",
+  "turn_started",
+  "turn_completed",
+  "turn_failed",
+  "subagent_started",
+  "subagent_ended",
+  "handoff",
+  "compaction",
+  "rollback",
+]);
+
+const unknownConversationEventDataSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    type: z.literal("unknown"),
+    originalType: z.string().min(1),
+    payload: z.unknown(),
+  })
+  .strict();
+
+/** Opaque data from a stored event this Junior version cannot interpret. */
+export type UnknownConversationEventData = z.output<
+  typeof unknownConversationEventDataSchema
+>;
+
+const conversationEventEnvelopeSchema = z
+  .object({
+    schemaVersion: z.number().int().nonnegative(),
     seq: z.number().int().nonnegative(),
     historyVersion: z.number().int().nonnegative(),
     idempotencyKey: z.string().min(1).optional(),
     createdAtMs: z.number().finite(),
-    data: conversationEventDataSchema,
   })
   .strict();
 
+/**
+ * Canonical ordered envelope for the durable conversation log.
+ * `schemaVersion` is persisted with every physical event row.
+ */
+export const conversationEventSchema = z.union([
+  conversationEventEnvelopeSchema.extend({
+    schemaVersion: z.literal(1),
+    data: conversationEventDataSchema,
+  }),
+  conversationEventEnvelopeSchema.extend({
+    data: unknownConversationEventDataSchema,
+  }),
+]);
+
 /** One versioned event read from the durable conversation log. */
 export type ConversationEvent = z.output<typeof conversationEventSchema>;
+
+const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
+  type: z.string().min(1),
+  payload: z.unknown(),
+});
+
+/**
+ * Decode a physical event row without making old or future event types
+ * unreadable. Known version-one events remain strict so corrupt canonical data
+ * cannot be mistaken for harmless compatibility data.
+ */
+export function decodeStoredConversationEvent(
+  value: z.input<typeof storedConversationEventSchema>,
+): ConversationEvent {
+  const stored = storedConversationEventSchema.parse(value);
+  const { type, payload, ...envelope } = stored;
+  const knownType = knownConversationEventTypeSchema.safeParse(type).success;
+  if (stored.schemaVersion === 1 && knownType) {
+    const data =
+      typeof payload === "object" && payload !== null && !Array.isArray(payload)
+        ? { ...payload, type }
+        : { type };
+    return conversationEventSchema.parse({ ...envelope, data });
+  }
+  return conversationEventSchema.parse({
+    ...envelope,
+    data: { type: "unknown", originalType: type, payload },
+  });
+}
 
 /** Validate an append without permitting model-history replacement events. */
 export const newConversationEventSchema = z
