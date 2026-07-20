@@ -162,10 +162,10 @@ function parseSlashCommand(rawValue: string | undefined): string {
 
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
-const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "openai/gpt-5.5").id;
+const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
 const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
-  "openai/gpt-5.4-mini",
+  "anthropic/claude-haiku-4.5",
 ).id;
 const DEFAULT_HANDOFF_MODEL_ID = getModel(
   "vercel-ai-gateway",

@@ -11,7 +11,39 @@ vi.mock("../../../src/behavior-harness", () => ({
   runEvalScenario: runEvalScenarioMock,
 }));
 
-import { serializeVisibleTranscript, slackHarness } from "../../../src/helpers";
+import {
+  hasImageAttachment,
+  serializeVisibleTranscript,
+  slackHarness,
+  visibleAssistantText,
+  visibleThreadReplies,
+} from "../../../src/helpers";
+
+it("selects visible assistant text and image attachments without assertions", () => {
+  const session = {
+    events: [
+      {
+        type: "message",
+        role: "assistant",
+        content: "Shared it.",
+        metadata: {
+          event_type: "thread_post",
+          files: [{ filename: "result.png", isImage: true }],
+        },
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: { type: "reaction_added", emoji: "heart" },
+        metadata: { event_type: "reaction_added" },
+      },
+    ],
+  } as never;
+
+  expect(visibleThreadReplies(session)).toHaveLength(1);
+  expect(visibleAssistantText(session)).toBe("Shared it.\n");
+  expect(hasImageAttachment(session)).toBe(true);
+});
 
 it("includes visible Slack author names in rubric transcripts", () => {
   expect(

@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, inject } from "vitest";
-import { closeDb } from "@/chat/db";
-import { drainPendingEvalPluginTasks } from "./behavior-harness";
 import "./eval-context";
 
-const egress = inject("juniorEvalEgress");
-if (!egress) {
-  throw new Error("Eval global setup did not provide public egress");
+const context = inject("juniorEvalContext");
+if (!context) {
+  throw new Error("Eval global setup did not provide invocation context");
 }
-const evalEgress = egress;
-process.env.JUNIOR_BASE_URL = evalEgress.baseUrl;
+const evalContext = context;
+process.env.JUNIOR_BASE_URL = evalContext.baseUrl;
+process.env.JUNIOR_STATE_ADAPTER = "redis";
+process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
+process.env.REDIS_URL = evalContext.redisUrl;
 
 /** Read fixture observations owned by the invocation-wide egress process. */
 export async function readEvalEgressFixtureState<T>(): Promise<T> {
-  const response = await fetch(evalEgress.stateUrl, {
-    headers: { authorization: `Bearer ${evalEgress.controlToken}` },
+  const response = await fetch(evalContext.stateUrl, {
+    headers: { authorization: `Bearer ${evalContext.controlToken}` },
   });
   if (!response.ok) {
     throw new Error(
@@ -24,9 +25,9 @@ export async function readEvalEgressFixtureState<T>(): Promise<T> {
 }
 
 beforeEach(async () => {
-  const response = await fetch(evalEgress.controlUrl, {
+  const response = await fetch(evalContext.controlUrl, {
     method: "POST",
-    headers: { authorization: `Bearer ${evalEgress.controlToken}` },
+    headers: { authorization: `Bearer ${evalContext.controlToken}` },
   });
   if (!response.ok) {
     throw new Error(
@@ -36,6 +37,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // Keep stateful runtime modules behind the invocation-provided Redis env.
+  const { drainPendingEvalPluginTasks } = await import("./behavior-harness");
   await drainPendingEvalPluginTasks();
+  const { closeDb } = await import("@/chat/db");
   await closeDb();
 });

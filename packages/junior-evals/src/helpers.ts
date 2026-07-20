@@ -1,4 +1,5 @@
 import {
+  assistantMessages,
   createJudge,
   createJudgeHarness,
   type DescribeEvalOptions,
@@ -90,6 +91,44 @@ export function reactionEmojis(session: NormalizedSession): string[] {
         event.type === "message" && isReactionAddedMessage(event),
     )
     .map((message) => message.content.emoji);
+}
+
+/** Return string content from a normalized assistant message value. */
+export function assistantTextContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** Return non-empty assistant replies posted visibly in the active thread. */
+export function visibleThreadReplies(session: NormalizedSession) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      assistantTextContent(message.content).trim().length > 0,
+  );
+}
+
+/** Join user-visible assistant text recorded in an eval session. */
+export function visibleAssistantText(session: NormalizedSession): string {
+  return assistantMessages(session)
+    .map((message) => assistantTextContent(message.content))
+    .join("\n");
+}
+
+/** Return whether the assistant attached an image in an eval session. */
+export function hasImageAttachment(session: NormalizedSession): boolean {
+  return assistantMessages(session).some((message) => {
+    const files = message.metadata?.files;
+    return (
+      Array.isArray(files) &&
+      files.some(
+        (file) =>
+          file !== null &&
+          typeof file === "object" &&
+          !Array.isArray(file) &&
+          file.isImage === true,
+      )
+    );
+  });
 }
 
 function hasAssistantStatusPending(result: EvalResult): boolean {
@@ -444,7 +483,7 @@ export interface SlackEvalInput {
   initialEvents: InitialEvents;
   events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
-  criteria: EvalRubric;
+  criteria?: EvalRubric;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
   requireSandboxReady?: boolean;
@@ -699,6 +738,12 @@ export const RubricJudge = createJudge(
     JsonValue | undefined,
     typeof slackHarness
   >) => {
+    if (!input.criteria) {
+      return {
+        score: 1,
+        metadata: { skipped: "deterministic-only" },
+      };
+    }
     if (!runJudge) {
       throw new Error("RubricJudge requires a configured judgeHarness.");
     }

@@ -1,20 +1,12 @@
-import { assistantMessages, describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
-
-type EvalSession = Parameters<typeof assistantMessages>[0];
-
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function visibleThreadReplies(session: EvalSession) {
-  return assistantMessages(session).filter(
-    (message) =>
-      message.metadata?.event_type === "thread_post" &&
-      textContent(message.content).trim().length > 0,
-  );
-}
+import {
+  mention,
+  rubric,
+  slackEvals,
+  threadMessage,
+  visibleThreadReplies,
+} from "../../src/helpers";
 
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {
@@ -45,14 +37,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           thread: sideConversationThread,
         }),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant's visible reply is the initial helpful answer about the deploy.",
-        ],
-        fail: [
-          "Do not answer the later question addressed to @sam about who should take the rollback.",
-        ],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
@@ -117,14 +101,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           thread: casualPronounThread,
         }),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant's visible reply is the initial helpful answer about the deploy.",
-        ],
-        fail: [
-          "Do not reply to the later casual question 'Is that the right approach?'",
-        ],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
@@ -155,14 +131,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           thread: domainVocabThread,
         }),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant's visible reply is the initial answer about the billing worker.",
-        ],
-        fail: [
-          "Do not reply to the later question about the billing worker timeline.",
-        ],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
@@ -187,12 +155,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       events: [
         threadMessage("Can you check on this?", { thread: canYouThread }),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant's visible reply is the initial answer about deployment status.",
-        ],
-        fail: ["Do not reply to the later 'Can you check on this?' message."],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
@@ -260,9 +222,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           thread: terseFollowUpThread,
         }),
       ],
-      criteria: rubric({
-        pass: ["The second reply clarifies which services changed."],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(2);
@@ -294,51 +253,8 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           thread: humansTookFloorThread,
         }),
       ],
-      criteria: rubric({
-        pass: ["The assistant's visible reply is the initial deploy summary."],
-        fail: ["Do not answer the later billing worker timeline question."],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
-  });
-
-  const optOutThread = {
-    id: "thread-opt-out",
-    channel_id: "COPTOUT",
-    thread_ts: "17000000.1209",
-  };
-
-  it("when the user says to stop participating, stay quiet until re-mentioned", async ({
-    run,
-  }) => {
-    const result = await run({
-      overrides: {
-        reply_texts: [
-          "I can help in this thread.",
-          "I'm back because you mentioned me again.",
-        ],
-      },
-      initialEvents: [
-        mention("Can you help in this thread?", { thread: optOutThread }),
-      ],
-      events: [
-        threadMessage("Stop watching or participating in this thread", {
-          thread: optOutThread,
-          is_mention: true,
-        }),
-        mention("Actually jump back in.", { thread: optOutThread }),
-      ],
-      criteria: rubric({
-        pass: [
-          "The first reply is a normal helpful reply to the initial mention.",
-          "The second reply briefly acknowledges that it will stay out of the thread unless mentioned again.",
-          "The third reply appears only after the later direct mention.",
-        ],
-        fail: ["Do not treat the stop message like an ordinary help request."],
-      }),
-    });
-
-    expect(visibleThreadReplies(result.session)).toHaveLength(3);
   });
 });

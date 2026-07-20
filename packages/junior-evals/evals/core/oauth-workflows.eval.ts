@@ -1,41 +1,26 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import type { HarnessRun } from "vitest-evals/harness";
-import { expect } from "vitest";
+import { beforeAll, expect } from "vitest";
 import {
+  assistantTextContent,
   authorizationCompletions,
   rubric,
   slackEvals,
   threadMessage,
+  visibleAssistantText,
 } from "../../src/helpers";
 import { readEvalEgressFixtureState } from "../../src/setup";
+import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
 
 type EvalRun = HarnessRun;
+const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function expectNoPublicOAuthUrl(result: EvalRun): void {
-  const visibleText = assistantMessages(result.session)
-    .map((message) => textContent(message.content))
-    .join("\n");
-  expect(visibleText).not.toMatch(
-    /https?:\/\/[^\s|>]*(oauth|authorize|callback)[^\s|>]*/i,
+function publicOAuthUrls(result: EvalRun): string[] {
+  return (
+    visibleAssistantText(result.session).match(
+      /https?:\/\/[^\s|>]*(?:oauth|authorize|callback)[^\s|>]*/gi,
+    ) ?? []
   );
-}
-
-function expectEvalOauthIdentityCheck(result: EvalRun): void {
-  expect(toolCalls(result.session)).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        name: "loadSkill",
-        arguments: expect.objectContaining({
-          skill_name: "eval-oauth",
-        }),
-      }),
-    ]),
-  );
-  expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
 }
 
 function evalOauthIdentityCalls(result: EvalRun) {
@@ -65,21 +50,24 @@ function matchingToolCalls(
   );
 }
 
-function expectFinalThreadReply(
+function matchingThreadReplies(
   result: EvalRun,
   thread: { channel_id: string; thread_ts: string },
   pattern: RegExp,
-): void {
-  const matchingPosts = assistantMessages(result.session).filter(
+) {
+  return assistantMessages(result.session).filter(
     (message) =>
       message.metadata?.channel === thread.channel_id &&
       message.metadata?.thread_ts === thread.thread_ts &&
-      pattern.test(textContent(message.content)),
+      pattern.test(assistantTextContent(message.content)),
   );
-  expect(matchingPosts.length).toBeGreaterThan(0);
 }
 
 describeEval("OAuth Workflows", slackEvals, (it) => {
+  beforeAll(async () => {
+    await warmSandboxSnapshot();
+  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
+
   const mcpAuthResumeThread = {
     id: "thread-auth-resume",
     channel_id: "CAUTHRESUME",
@@ -136,8 +124,10 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         tool_name: "mcp__eval-auth__budget-echo",
       }),
     ).toHaveLength(2);
-    expectNoPublicOAuthUrl(result);
-    expectFinalThreadReply(result, mcpAuthResumeThread, /\bFriday\b/i);
+    expect(publicOAuthUrls(result)).toEqual([]);
+    expect(
+      matchingThreadReplies(result, mcpAuthResumeThread, /\bFriday\b/i),
+    ).not.toHaveLength(0);
   });
 
   const oauthResumeThread = {
@@ -182,7 +172,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         ],
       }),
     });
-    expectNoPublicOAuthUrl(result);
+    expect(publicOAuthUrls(result)).toEqual([]);
     expect(authorizationCompletions(result)).toEqual([
       {
         credentialStored: true,
@@ -192,10 +182,17 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         userId: "U0TEST",
       },
     ]);
-    expectEvalOauthIdentityCheck(result);
+    expect(
+      matchingToolCalls(result, "loadSkill", { skill_name: "eval-oauth" }),
+    ).not.toHaveLength(0);
+    expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
     expect(evalOauthIdentityCalls(result).length).toBeGreaterThanOrEqual(3);
-    expectFinalThreadReply(result, oauthResumeThread, /\bFriday\b/i);
-    expectFinalThreadReply(result, oauthResumeThread, /eval-oauth-user/i);
+    expect(
+      matchingThreadReplies(result, oauthResumeThread, /\bFriday\b/i),
+    ).not.toHaveLength(0);
+    expect(
+      matchingThreadReplies(result, oauthResumeThread, /eval-oauth-user/i),
+    ).not.toHaveLength(0);
   });
 
   const oauthRefreshThread = {
@@ -230,14 +227,19 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       }),
     });
 
-    expectEvalOauthIdentityCheck(result);
+    expect(
+      matchingToolCalls(result, "loadSkill", { skill_name: "eval-oauth" }),
+    ).not.toHaveLength(0);
+    expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
     expect(authorizationCompletions(result)).toEqual([]);
     expect(
       await readEvalEgressFixtureState<{
         evalOAuthRefreshTokens: string[];
       }>(),
     ).toEqual({ evalOAuthRefreshTokens: ["eval-oauth-refresh-token"] });
-    expectFinalThreadReply(result, oauthRefreshThread, /eval-oauth-user/i);
+    expect(
+      matchingThreadReplies(result, oauthRefreshThread, /eval-oauth-user/i),
+    ).not.toHaveLength(0);
   });
 
   const oauthReconnectThread = {
@@ -271,7 +273,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         ],
       }),
     });
-    expectNoPublicOAuthUrl(result);
+    expect(publicOAuthUrls(result)).toEqual([]);
     expect(authorizationCompletions(result)).toEqual([
       {
         credentialStored: true,
@@ -281,11 +283,16 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         userId: "U0TEST",
       },
     ]);
-    expectEvalOauthIdentityCheck(result);
-    expectFinalThreadReply(
-      result,
-      oauthReconnectThread,
-      /connected|reconnected/i,
-    );
+    expect(
+      matchingToolCalls(result, "loadSkill", { skill_name: "eval-oauth" }),
+    ).not.toHaveLength(0);
+    expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
+    expect(
+      matchingThreadReplies(
+        result,
+        oauthReconnectThread,
+        /connected|reconnected/i,
+      ),
+    ).not.toHaveLength(0);
   });
 });

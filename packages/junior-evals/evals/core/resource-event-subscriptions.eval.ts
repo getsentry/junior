@@ -1,4 +1,4 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
   conversationMessages,
@@ -7,21 +7,8 @@ import {
   resourceEventNotification,
   rubric,
   slackEvals,
+  visibleThreadReplies,
 } from "../../src/helpers";
-
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function visibleThreadReplies(
-  session: Parameters<typeof assistantMessages>[0],
-) {
-  return assistantMessages(session).filter(
-    (message) =>
-      message.metadata?.event_type === "thread_post" &&
-      textContent(message.content).trim().length > 0,
-  );
-}
 
 describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   it("when a created PR can emit requested events, subscribe instead of polling", async ({
@@ -140,15 +127,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           },
         }),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant treats recovered checks as outside the subscription intent, which only asks for the merge outcome.",
-        ],
-        fail: [
-          "Do not narrate or explain the recovered CI status.",
-          "Do not post a visible message for an event that does not serve the subscription intent.",
-        ],
-      }),
     });
     const messages = await conversationMessages(result.session);
     expect(messages).toEqual(

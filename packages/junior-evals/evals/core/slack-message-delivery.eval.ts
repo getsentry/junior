@@ -1,29 +1,23 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
+import { describeEval, toolCalls } from "vitest-evals";
+import { beforeAll, expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import {
+  hasImageAttachment,
+  mention,
+  rubric,
+  slackEvals,
+  visibleAssistantText,
+  visibleThreadReplies,
+} from "../../src/helpers";
+import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
 
-type EvalSession = Parameters<typeof assistantMessages>[0];
-
-function textContent(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function visibleThreadReplies(session: EvalSession) {
-  return assistantMessages(session).filter(
-    (message) =>
-      message.metadata?.event_type === "thread_post" &&
-      textContent(message.content).trim().length > 0,
-  );
-}
-
-function visibleText(session: EvalSession): string {
-  return assistantMessages(session)
-    .map((message) => textContent(message.content))
-    .join("\n");
-}
+const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("Slack Message Delivery", slackEvals, (it) => {
+  beforeAll(async () => {
+    await warmSandboxSnapshot();
+  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
+
   it("when asked for no visible reply, complete silently", async ({ run }) => {
     const result = await run({
       initialEvents: [
@@ -31,16 +25,10 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
           "please record that this has been seen, but do not post a visible reply",
         ),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant does not post visible acknowledgement text such as 'Done', 'Seen', or 'Got it'.",
-        ],
-        fail: ["Do not post a visible acknowledgement."],
-      }),
     });
 
     expect(visibleThreadReplies(result.session)).toEqual([]);
-    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
 
   it("when asked for a top-level channel post, explain the limitation instead", async ({
@@ -65,7 +53,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
       "sendMessage",
     );
-    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
@@ -77,17 +65,6 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       initialEvents: [
         mention("make a small image of a launch checklist and share it here"),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant generates an image and sends or attaches it in the current Slack thread.",
-          "The assistant may include a brief normal thread reply, but it does not post the image as a top-level channel message.",
-        ],
-        fail: [
-          "Do not only describe the image in text.",
-          "Do not post the image to the channel when the user asked to share it here.",
-          "Do not include sandbox setup failure text.",
-        ],
-      }),
     });
 
     expect(toolCalls(result.session)).toEqual(
@@ -102,7 +79,8 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       (call) => call.name === "sendMessage",
     );
     expect(sendMessageCall?.arguments).not.toHaveProperty("target");
-    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(hasImageAttachment(result.session)).toBe(true);
+    expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
   });
 });

@@ -1,16 +1,18 @@
 import type { PostgresHarnessConfig } from "@sentry/junior-testing/postgres";
 
-/** Public and local control coordinates provided to eval test workers. */
-export interface EvalEgressContext {
+/** Invocation-wide egress and state coordinates provided to eval workers. */
+export interface EvalInvocationContext {
   baseUrl: string;
   controlToken: string;
   controlUrl: string;
+  redisUrl: string;
+  stateKeyPrefix: string;
   stateUrl: string;
 }
 
 declare module "vitest" {
   export interface ProvidedContext {
-    juniorEvalEgress?: EvalEgressContext;
+    juniorEvalContext?: EvalInvocationContext;
     juniorPostgresHarness?: PostgresHarnessConfig;
   }
 }

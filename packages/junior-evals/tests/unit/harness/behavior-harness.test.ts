@@ -20,7 +20,11 @@ const {
   };
 
   return {
-    executeAgentRunMock: vi.fn(async () => ({})),
+    executeAgentRunMock: vi.fn<
+      (request: {
+        policy?: { signal?: AbortSignal };
+      }) => Promise<Record<string, never>>
+    >(async () => ({})),
     observedRuntimeIds,
     originalStateAdapterEnv,
     noopAsync: vi.fn(async () => {}),
@@ -132,11 +136,36 @@ describe("behavior harness", () => {
     );
     await runtimeState.agentRunner?.run({ policy: {} });
 
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        policy: expect.objectContaining({ signal: controller.signal }),
-      }),
-    );
+    const forwardedSignal = executeAgentRunMock.mock.calls[0]?.[0]?.policy
+      ?.signal as AbortSignal | undefined;
+    expect(forwardedSignal).toBeDefined();
+    expect(forwardedSignal).not.toBe(controller.signal);
+    controller.abort();
+    expect(forwardedSignal?.aborted).toBe(true);
+  });
+
+  it("aborts eval replies at the configured timeout", async () => {
+    executeAgentRunMock.mockImplementationOnce(async (request) => {
+      const signal = request.policy?.signal;
+      if (!signal) {
+        throw new Error("missing eval agent signal");
+      }
+      await new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), {
+          once: true,
+        });
+      });
+      return {};
+    });
+
+    await runEvalScenario({
+      initialEvents: [],
+      overrides: { reply_timeout_ms: 10 },
+    });
+
+    await expect(
+      runtimeState.agentRunner?.run({ policy: {} }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {

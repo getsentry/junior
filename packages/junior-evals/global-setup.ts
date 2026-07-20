@@ -13,11 +13,11 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import type { EvalEgressContext } from "./src/eval-context";
+import type { EvalInvocationContext } from "./src/eval-context";
 import { loadEvalPluginFixtures } from "./src/eval-plugin-fixtures";
 
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
-  provide(key: "juniorEvalEgress", value: EvalEgressContext): void;
+  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
 };
 
 const workspaceRoot = path.resolve(
@@ -60,6 +60,13 @@ export default async function setup(
   };
 
   try {
+    const redisUrl = process.env.REDIS_URL?.trim();
+    const stateKeyPrefix = process.env.JUNIOR_STATE_KEY_PREFIX?.trim();
+    if (!redisUrl || !stateKeyPrefix) {
+      throw new Error(
+        "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
+      );
+    }
     const pluginFixtures = loadEvalPluginFixtures([
       path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins"),
     ]);
@@ -81,10 +88,12 @@ export default async function setup(
         resetTestGitHubHttpFixtures();
       },
     });
-    project.provide("juniorEvalEgress", {
+    project.provide("juniorEvalContext", {
       baseUrl: egress.baseUrl,
       controlToken: egress.controlToken,
       controlUrl: egress.controlUrl,
+      redisUrl,
+      stateKeyPrefix,
       stateUrl: egress.stateUrl,
     });
     process.stdout.write(`[evals] Public egress ready at ${egress.baseUrl}\n`);

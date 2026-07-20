@@ -285,31 +285,14 @@ interface SubscribedDecisionFixture {
   should_reply: boolean;
 }
 
-interface EvalReplyResultFixture {
-  assistant_message_count?: number;
-  error_message?: string;
-  outcome?: "success" | "execution_failure" | "provider_error";
-  stop_reason?: string;
-  stream_text?: string;
-  text: string;
-  tool_calls?: string[];
-  tool_invocations?: EvalToolInvocation[];
-  tool_error_count?: number;
-  tool_result_count?: number;
-  usage?: AgentTurnUsage;
-  used_primary_text?: boolean;
-}
-
 export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
-  fail_reply_call?: number;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
-  reply_results?: EvalReplyResultFixture[];
   reply_timeout_ms?: number;
   reply_texts?: string[];
   skill_dirs?: string[];
@@ -652,7 +635,8 @@ const HARNESS_ENV_KEYS = [
   "SLACK_BOT_TOKEN",
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
-const SENTRY_EVAL_SCOPE = "event:read org:read project:read team:read";
+const SENTRY_EVAL_SCOPE =
+  "alerts:write event:read org:read project:read team:read";
 const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 })
@@ -679,14 +663,6 @@ function snapshotEnv(keys: readonly string[]): EnvSnapshot {
       }
     },
   };
-}
-
-function scenarioUsesCredentialEgress(scenario: EvalScenario): boolean {
-  return Boolean(
-    scenario.overrides?.credential_providers?.length ||
-    scenario.overrides?.auto_complete_oauth?.length ||
-    scenario.overrides?.expired_oauth_tokens?.length,
-  );
 }
 
 function ensureHarnessBaseUrl(): void {
@@ -1615,19 +1591,22 @@ function buildRuntimeServices(
   steeringDelivery: SteeringDelivery,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
-  const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs =
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
-      : Number.parseInt(
-          process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ??
-            (scenarioUsesCredentialEgress(scenario) ? "60000" : "30000"),
-          10,
-        );
-  let replyCallCount = 0;
+      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "30000", 10);
+  if (
+    !Number.isInteger(replyTimeoutMs) ||
+    replyTimeoutMs <= 0 ||
+    replyTimeoutMs > 30_000
+  ) {
+    throw new Error(
+      `Eval reply timeout must be an integer from 1 to 30000 milliseconds, got ${replyTimeoutMs}`,
+    );
+  }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
 
@@ -1679,56 +1658,7 @@ function buildRuntimeServices(
                 },
               }
             : request;
-          replyCallCount += 1;
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
-          if (scenario.overrides?.fail_reply_call === replyCallCount) {
-            throw new Error(`forced reply failure on call ${replyCallCount}`);
-          }
-          const replyResult = replyResults[replyCallCount - 1];
-          if (replyResult) {
-            await runRequest.durability?.onInputCommitted?.();
-            if (replyResult.stream_text) {
-              await runRequest.observers?.onTextDelta?.(
-                replyResult.stream_text,
-              );
-            }
-            replyState.successfulCount += 1;
-            observations.toolInvocations.push(
-              ...(replyResult.tool_invocations ??
-                (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
-            );
-            observations.usage = addAgentTurnUsage(
-              observations.usage,
-              replyResult.usage,
-            );
-            if (replyResult.usage) {
-              observations.modelIds.add("eval-reply-result");
-            }
-            return completedAgentRun({
-              text: replyResult.text,
-              deliveryMode: "thread",
-              deliveryPlan: {
-                mode: "thread",
-                postThreadText: true,
-              },
-              diagnostics: {
-                assistantMessageCount: replyResult.assistant_message_count ?? 1,
-                ...(replyResult.error_message
-                  ? { errorMessage: replyResult.error_message }
-                  : {}),
-                modelId: "eval-reply-result",
-                outcome: replyResult.outcome ?? "success",
-                ...(replyResult.stop_reason
-                  ? { stopReason: replyResult.stop_reason }
-                  : {}),
-                toolCalls: replyResult.tool_calls ?? [],
-                toolErrorCount: replyResult.tool_error_count ?? 0,
-                toolResultCount: replyResult.tool_result_count ?? 0,
-                ...(replyResult.usage ? { usage: replyResult.usage } : {}),
-                usedPrimaryText: replyResult.used_primary_text ?? true,
-              },
-            });
-          }
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
             await runRequest.durability?.onInputCommitted?.();
@@ -1773,11 +1703,15 @@ function buildRuntimeServices(
           }
           try {
             const pendingToolInvocations: EvalToolInvocation[] = [];
+            const replySignal = AbortSignal.any([
+              ...(signal ? [signal] : []),
+              AbortSignal.timeout(replyTimeoutMs),
+            ]);
             const outcome = await executeAgentRun({
               ...runRequest,
               policy: {
                 ...runRequest.policy,
-                signal,
+                signal: replySignal,
                 turnDeadlineAtMs: Math.min(
                   runRequest.policy?.turnDeadlineAtMs ??
                     Number.POSITIVE_INFINITY,
@@ -1817,6 +1751,11 @@ function buildRuntimeServices(
                 },
               },
             });
+            if (replySignal.aborted) {
+              throw replySignal.reason instanceof Error
+                ? replySignal.reason
+                : new Error("Eval reply timed out");
+            }
             const usage =
               outcome.status === "completed"
                 ? outcome.result.diagnostics.usage

@@ -14,7 +14,7 @@ related:
 
 - Unit: isolated logic and invariants.
 - Integration: Slack/runtime HTTP contracts and integration behavior.
-- Evals: end-to-end conversational behavior with judge scoring.
+- Evals: end-to-end conversational behavior, with judge scoring only for nondeterministic visible output.
 
 ## Commands
 

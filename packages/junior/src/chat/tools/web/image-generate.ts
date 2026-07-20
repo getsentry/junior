@@ -24,7 +24,11 @@ const imageGenerateOutputSchema = juniorToolResultSchema
         .object({
           filename: z.string(),
           path: z.string(),
-          attachment_path: z.string(),
+          attachment_path: z
+            .string()
+            .describe(
+              "Exact sandbox path to pass unchanged as sendMessage files[].path.",
+            ),
           media_type: z.string().optional(),
           bytes: z.number().int().nonnegative(),
         })
@@ -206,7 +210,7 @@ export function createImageGenerateTool(
             bytes: artifact.bytes,
           })),
           delivery: options.canSendFilesToActiveConversation
-            ? "Generated images were written to sandbox paths. Use sendMessage to share or attach the image in the active conversation."
+            ? "Generated images were written to sandbox paths. To share one, pass its exact attachment_path unchanged as sendMessage files[].path."
             : "Generated images were written to sandbox paths, but this runtime has no file-send tool for the active conversation.",
         };
       }

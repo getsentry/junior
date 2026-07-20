@@ -6,7 +6,7 @@ Evals are end-to-end Slack conversation evaluations. They are the integration-st
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client. The eval runtime pins standard to `openai/gpt-5.4` and handoff continuation to `openai/gpt-5.6-sol`, so handoff cases exercise a real model transition.
+- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client. The eval runtime pins standard to `xai/grok-4.5`, auxiliary work to `anthropic/claude-haiku-4.5`, and handoff continuation to `openai/gpt-5.6-sol`, so handoff cases exercise a real model transition.
 
 ## Layer Boundaries
 
@@ -63,13 +63,14 @@ For each `it()` case inside a `describeEval()` suite:
 3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
 4. Return a standard `vitest-evals` `HarnessRun`; `result.session.messages` is the canonical normalized transcript, while tool calls and artifacts remain available for deterministic assertions.
 5. Do not create a second repo-local transcript, event-log, or assertion schema when `vitest-evals` already has `session`, `toolCalls(result.session)`, `artifacts`, or `traces`.
-6. `vitest-evals` scores the normalized session against `criteria` (A–E -> 1.0-0.0).
+6. When a case supplies `criteria`, `vitest-evals` scores its normalized visible transcript (A–E -> 1.0-0.0). Deterministic-only cases omit `criteria` and use direct assertions without a model judge.
 
 ## Harness Boundaries
 
 - Use the Slack eval harness for Slack/runtime behavior: mentions, thread/channel delivery, OAuth privacy, lifecycle/resume behavior, reactions, and Slack-visible side effects.
 - Use an agent-level harness for prompt, skill routing, tool choice, provider/tool calls, and reply quality when Slack transport is not the behavior under test.
 - The Slack eval harness preserves inbound messages and direct thread replies in observed order. Slack API-captured side effects may be collected afterward. The rubric judge receives only non-empty user-visible text plus visible Slack author names from normalized user and assistant messages; tool calls, artifacts, logs, other metadata, and other runtime observations stay outside its prompt.
+- Omit `criteria` for deterministic-only cases. Use shared typed selectors plus explicit assertions for tool calls, reactions, attachments, persistence, and delivery side effects; the rubric judge is reserved for nondeterministic visible reply quality.
 - When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
 - Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
 
@@ -78,7 +79,6 @@ Harness override knobs (in `EvalOverrides`):
 - `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
-- `fail_reply_call`: force a non-retryable reply failure on a specific call.
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: override returned reply text per call.
@@ -134,7 +134,7 @@ Evals require real Vercel Sandbox access and public Quick Tunnel connectivity. I
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in `criteria`.
 - Put deterministic boundary expectations in normal Vitest assertions against `result.session`, `toolCalls(result.session)`, or `result.artifacts`. Prefer `vitest-evals` primitives over local helper-specific output shapes.
-- New and edited evals must express `criteria` with `rubric({ pass, fail })`.
+- When an eval judges nondeterministic visible output, express `criteria` with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.
 - `fail` should list forbidden outputs or failure conditions.
