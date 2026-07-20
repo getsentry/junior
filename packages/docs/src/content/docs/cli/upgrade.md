@@ -87,7 +87,7 @@ After running the command:
 
 1. Confirm the final log line includes `Junior upgrade complete`.
 2. Confirm `backfill-conversation-events-sql` scanned the complete retained activity index and did not stop at one page.
-3. Confirm `move-conversation-messages-to-events` reports `missing=0`; this is the canonical-history seal and removes the legacy message table.
+3. Confirm `move-conversation-messages-to-events` reports `missing=0`. The runtime now uses the copied events. The legacy message table remains available so a later upgrade can recover messages written by old workers during deployment.
 4. Run `pnpm exec junior check` before building or deploying the app.
 
 A nonzero `missing` count for `repair-conversation-usage` means retained SQL assistant messages did not contain usable, schema-safe usage values. Junior leaves those totals unchanged.

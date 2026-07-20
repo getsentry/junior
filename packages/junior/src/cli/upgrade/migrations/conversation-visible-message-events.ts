@@ -622,7 +622,7 @@ async function mergeVisibleEvents(
 }
 
 /**
- * Move canonical messages into the event log, then remove the legacy table.
+ * Copy canonical messages into the event log while retaining a recovery source.
  *
  * This must run after the external legacy-history import. A message event is
  * a completed-import seal, so running this from the schema migration
@@ -730,7 +730,9 @@ export async function migrateConversationVisibleMessageEvents(
       async (conversationId) =>
         await finalizeVisibleCompactions(context, executor, conversationId),
     );
-    await executor.execute(`DROP TABLE junior_conversation_messages`);
+    // TODO(v0.108.0): Drop the legacy message table after event-only writers
+    // have been deployed for one release. Until then, rerunning this migration
+    // recovers messages written by old workers during deployment.
     return {
       existing: 0,
       migrated,

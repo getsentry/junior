@@ -456,6 +456,27 @@ describe("conversation event migration", () => {
         context.stateAdapter.get(rerunSessionKey),
       ).resolves.toMatchObject({ state: "running", committedSeq: 3 });
       expect(redisCommands).toHaveLength(redisCommandCountBeforeRerun);
+      await context.stateAdapter.set(rerunSessionKey, {
+        conversationId,
+        sessionId: "rerun-active",
+        state: "completed",
+        committedSeq: 3,
+      });
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversation_messages (
+          conversation_id, message_id, role, text, created_at
+        ) VALUES ($1, 'deployment-tail', 'assistant', 'recover me', $2)`,
+        [conversationId, new Date("2026-07-14T10:00:04.000Z")],
+      );
+      await expect(
+        migrateConversationVisibleMessageEvents(context, {
+          batchSize: 1,
+          executor: fixture.sql,
+        }),
+      ).resolves.toMatchObject({ migrated: 1, missing: 0 });
+      await expect(
+        context.stateAdapter.get(rerunSessionKey),
+      ).resolves.toBeNull();
       const events = await eventStore.loadHistory(conversationId);
       expect(
         events.map((event) => ({
@@ -494,6 +515,13 @@ describe("conversation event migration", () => {
           messageId: undefined,
           seq: 3,
           type: "agent_step",
+        },
+        {
+          historyVersion: 0,
+          idempotencyKey: "message:deployment-tail",
+          messageId: "deployment-tail",
+          seq: 4,
+          type: "message",
         },
       ]);
     } finally {
