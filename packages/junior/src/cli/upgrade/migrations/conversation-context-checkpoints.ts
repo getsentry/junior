@@ -16,7 +16,7 @@ import { conversationEventDataSchema } from "@/chat/conversations/history";
 const PAGE_SIZE = 250;
 
 interface StoredEventRow {
-  contextEpoch: number;
+  historyVersion: number;
   payload: Record<string, unknown>;
   seq: number;
   type: string;
@@ -159,34 +159,35 @@ async function normalizeConversation(args: {
         const rows = await args.executor.query<StoredEventRow>(
           `SELECT
          seq,
-         context_epoch AS "contextEpoch",
+         history_version AS "historyVersion",
          type,
          payload
        FROM junior_conversation_events
        WHERE conversation_id = $1
-         AND type IN ('context_epoch_started', 'message', 'tool_execution_started')
+         AND type IN ('context_epoch_started', 'agent_step', 'tool_execution_started')
        ORDER BY seq`,
           [args.conversationId],
         );
         const messagesByEpoch = new Map<number, StoredEventRow[]>();
         for (const row of rows) {
-          if (row.type !== "message") continue;
-          const messages = messagesByEpoch.get(row.contextEpoch) ?? [];
+          if (row.type !== "agent_step") continue;
+          const messages = messagesByEpoch.get(row.historyVersion) ?? [];
           messages.push(row);
-          messagesByEpoch.set(row.contextEpoch, messages);
+          messagesByEpoch.set(row.historyVersion, messages);
         }
 
         let migrated = 0;
         const removedSeqs: number[] = [];
         for (const marker of rows) {
-          if (
-            marker.type !== "context_epoch_started" ||
-            marker.payload.reason === "initial" ||
-            Array.isArray(marker.payload.replacementHistory)
-          ) {
+          if (marker.type !== "context_epoch_started") {
             continue;
           }
           const reason = marker.payload.reason;
+          if (reason === "initial") {
+            removedSeqs.push(marker.seq);
+            migrated += 1;
+            continue;
+          }
           if (
             reason !== "compaction" &&
             reason !== "handoff" &&
@@ -196,48 +197,53 @@ async function normalizeConversation(args: {
               `Unknown context checkpoint reason at event ${marker.seq}`,
             );
           }
-          const current = messagesByEpoch.get(marker.contextEpoch) ?? [];
-          let replacementCount: number;
-          if (reason === "rollback") {
-            const previous = messagesByEpoch.get(marker.contextEpoch - 1) ?? [];
-            replacementCount = matchingMessagePrefix(previous, current);
-          } else {
-            const end = checkpointEnd(current);
-            if (end < 0) {
-              throw new Error(
-                `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
-              );
+          let replacementHistory = marker.payload.replacementHistory;
+          if (!Array.isArray(replacementHistory)) {
+            const current = messagesByEpoch.get(marker.historyVersion) ?? [];
+            let replacementCount: number;
+            if (reason === "rollback") {
+              const previous =
+                messagesByEpoch.get(marker.historyVersion - 1) ?? [];
+              replacementCount = matchingMessagePrefix(previous, current);
+            } else {
+              const end = checkpointEnd(current);
+              if (end < 0) {
+                throw new Error(
+                  `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
+                );
+              }
+              replacementCount = end + 1;
             }
-            replacementCount = end + 1;
-          }
-          const replacementRows = current.slice(0, replacementCount);
-          const binding = resolvedBinding(marker.payload, args.bot);
-          const parsed = conversationEventDataSchema.parse({
-            type: "context_epoch_started",
-            reason,
-            ...binding,
-            ...(reason === "handoff"
-              ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
-              : {}),
-            replacementHistory: replacementRows.map((row, index) =>
+            const replacementRows = current.slice(0, replacementCount);
+            replacementHistory = replacementRows.map((row, index) =>
               replacementEntry(
                 row,
                 reason !== "rollback" && index === replacementRows.length - 1,
               ),
-            ),
+            );
+            removedSeqs.push(...replacementRows.map((row) => row.seq));
+          }
+          const binding = resolvedBinding(marker.payload, args.bot);
+          const parsed = conversationEventDataSchema.parse({
+            type: reason,
+            ...binding,
+            ...(reason === "handoff"
+              ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
+              : {}),
+            replacementHistory,
           });
-          const { type: _type, ...payload } = parsed;
+          const { type, ...payload } = parsed;
           await args.executor.execute(
             `UPDATE junior_conversation_events
-         SET payload = $3::jsonb
+         SET type = $3, payload = $4::jsonb
          WHERE conversation_id = $1 AND seq = $2`,
             [
               args.conversationId,
               marker.seq,
+              type,
               JSON.stringify(sanitizePostgresJson(payload)),
             ],
           );
-          removedSeqs.push(...replacementRows.map((row) => row.seq));
           migrated += 1;
         }
         if (removedSeqs.length > 0) {
@@ -255,7 +261,7 @@ async function normalizeConversation(args: {
            )
          )
          WHERE conversation_id = $1
-           AND type = 'visible_context_compacted'
+           AND type = 'messages_summarized'
            AND jsonb_typeof(payload->'historyFromSeq') = 'number'`,
             [args.conversationId, removedSeqs],
           );
@@ -323,8 +329,6 @@ export async function normalizeConversationContextCheckpoints(
         `SELECT DISTINCT conversation_id AS "conversationId"
          FROM junior_conversation_events
          WHERE type = 'context_epoch_started'
-           AND payload->>'reason' <> 'initial'
-           AND jsonb_typeof(payload->'replacementHistory') IS NULL
          ORDER BY conversation_id
          LIMIT $1`,
         [PAGE_SIZE],

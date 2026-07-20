@@ -1,4 +1,4 @@
-/** One relevant visible-message match from a prior conversation. */
+/** One relevant chat-message match from a prior conversation. */
 export interface ConversationSearchResult {
   conversationId: string;
   excerpt: string;
@@ -15,7 +15,7 @@ export interface ConversationSearchScope {
   providerTenantId: string;
 }
 
-/** Search retained public visible messages within an authorized workspace. */
+/** Search retained public messages within an authorized workspace. */
 export interface ConversationSearchStore {
   search(args: {
     currentConversationId: string;

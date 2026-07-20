@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationSearchScope } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
@@ -27,7 +27,7 @@ describe("searchConversationHistory", () => {
     try {
       await migrateSchema(fixture.sql);
       const conversations = createSqlStore(fixture.sql);
-      const messages = createSqlConversationMessageStore(fixture.sql);
+      const events = createSqlConversationEventStore(fixture.sql);
       const search = createSqlConversationSearchStore(fixture.sql);
       await conversations.recordActivity({
         conversationId: "slack:CARCHIVE:1700000000.100000",
@@ -40,11 +40,14 @@ describe("searchConversationHistory", () => {
         source: "slack",
         visibility: "public",
       });
-      await messages.record("slack:CARCHIVE:1700000000.100000", [
+      await events.append("slack:CARCHIVE:1700000000.100000", [
         {
-          messageId: "1700000000.100001",
-          role: "user",
-          text: "We decided the launch checklist needs a rollback owner.",
+          data: {
+            type: "message",
+            messageId: "1700000000.100001",
+            role: "user",
+            text: "We decided the launch checklist needs a rollback owner.",
+          },
           createdAtMs: Date.parse("2026-07-01T12:00:00.000Z"),
         },
       ]);

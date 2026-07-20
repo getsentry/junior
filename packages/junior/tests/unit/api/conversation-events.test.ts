@@ -8,7 +8,7 @@ import {
   conversationEventSchema,
   type ConversationEvent,
   type ConversationEventData,
-  type ConversationModelMessage,
+  type ConversationAgentStepPayload,
 } from "@/chat/conversations/history";
 
 function event(
@@ -19,7 +19,7 @@ function event(
   return conversationEventSchema.parse({
     schemaVersion: 1,
     seq,
-    contextEpoch: 0,
+    historyVersion: 0,
     idempotencyKey: `private-idempotency-${seq}`,
     createdAtMs,
     data,
@@ -32,7 +32,7 @@ describe("conversation report event projection", () => {
       event(
         10,
         {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "visible-1",
           role: "assistant",
           text: "one user-facing answer",
@@ -42,7 +42,7 @@ describe("conversation report event projection", () => {
       event(
         11,
         {
-          type: "message",
+          type: "agent_step",
           message: {
             role: "assistant",
             content: [
@@ -54,7 +54,7 @@ describe("conversation report event projection", () => {
                 arguments: { query: "private query" },
               },
             ],
-          } as ConversationModelMessage,
+          } as ConversationAgentStepPayload,
         },
         10_000,
       ),
@@ -67,11 +67,7 @@ describe("conversation report event projection", () => {
         },
         5_000,
       ),
-      event(
-        13,
-        { type: "visible_message_replied", messageId: "visible-1" },
-        1_000,
-      ),
+      event(13, { type: "message_handled", messageId: "visible-1" }, 1_000),
     ];
     const projected = projectConversationReportEvents({
       canExposePayload: true,
@@ -83,7 +79,7 @@ describe("conversation report event projection", () => {
         seq: 10,
         createdAt: "1970-01-01T00:00:30.000Z",
         data: {
-          type: "visible_message",
+          type: "message",
           messageId: "visible-1",
           role: "assistant",
           text: "one user-facing answer",
@@ -98,7 +94,7 @@ describe("conversation report event projection", () => {
         seq: 13,
         createdAt: "1970-01-01T00:00:01.000Z",
         data: {
-          type: "visible_message_replied",
+          type: "message_handled",
           messageId: "visible-1",
         },
       },
@@ -112,13 +108,13 @@ describe("conversation report event projection", () => {
   it("keeps projected prefixes byte-equivalent when later facts arrive", () => {
     const events = [
       event(1, {
-        type: "visible_message_recorded",
+        type: "message",
         messageId: "visible-1",
         role: "user",
         text: "question",
       }),
       event(2, {
-        type: "visible_message_replied",
+        type: "message_handled",
         messageId: "visible-1",
       }),
     ];
@@ -140,7 +136,7 @@ describe("conversation report event projection", () => {
       canExposePayload: false,
       events: [
         event(1, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "visible-private",
           role: "user",
           text: "private visible text",
@@ -151,7 +147,7 @@ describe("conversation report event projection", () => {
           },
         }),
         event(2, {
-          type: "message",
+          type: "agent_step",
           message: {
             role: "toolResult",
             name: "private-tool-name",
@@ -159,7 +155,7 @@ describe("conversation report event projection", () => {
             isError: true,
             content: [{ type: "text", text: "private tool result" }],
             errorMessage: "private provider error",
-          } as ConversationModelMessage,
+          } as ConversationAgentStepPayload,
         }),
         event(3, {
           type: "tool_execution_started",
@@ -192,16 +188,11 @@ describe("conversation report event projection", () => {
           actorId: "private-actor-id",
           authorizationId: "private-authorization-id",
         }),
-        event(8, {
-          type: "visible_message_metadata_updated",
-          messageId: "visible-private",
-          meta: { privateUpdate: "private metadata update" },
-        }),
       ],
     });
 
     expect(projected[0]?.data).toEqual({
-      type: "visible_message",
+      type: "message",
       messageId: "visible-private",
       role: "user",
       redacted: true,
@@ -238,7 +229,6 @@ describe("conversation report event projection", () => {
       "model_execution_failed",
       eventId,
       "private-provider",
-      "private metadata update",
       "actorId",
       "authorizationId",
       "eventId",
@@ -262,8 +252,7 @@ describe("conversation report event projection", () => {
           surface: "slack",
         }),
         event(2, {
-          type: "context_epoch_started",
-          reason: "compaction",
+          type: "compaction",
           modelProfile: "standard",
           modelId: "private-model-id",
           replacementHistory: [],
@@ -274,16 +263,14 @@ describe("conversation report event projection", () => {
           toolName: "handoff",
         }),
         event(4, {
-          type: "context_epoch_started",
-          reason: "handoff",
+          type: "handoff",
           modelProfile: "fast",
           modelId: "private-handoff-model-id",
           triggeringToolCallId: "private-handoff-tool-call-id",
           replacementHistory: [],
         }),
         event(6, {
-          type: "context_epoch_started",
-          reason: "rollback",
+          type: "rollback",
           modelProfile: "standard",
           modelId: "private-rollback-model-id",
           replacementHistory: [],
@@ -338,9 +325,9 @@ describe("conversation report event projection", () => {
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
-      { type: "context_compacted" },
+      { type: "compaction" },
       { type: "tool_started", name: "handoff" },
-      { type: "model_handoff", toolStartedSeq: 3 },
+      { type: "handoff", toolStartedSeq: 3 },
       {
         type: "turn_lifecycle",
         turnId: "turn-1",
@@ -425,7 +412,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,
-        contextEpoch: 0,
+        historyVersion: 0,
       }).success,
     ).toBe(false);
     expect(
@@ -437,7 +424,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,
-        data: { type: "visible_message", messageId: "m1", role: "user" },
+        data: { type: "message", messageId: "m1", role: "user" },
       }).success,
     ).toBe(false);
     expect(
@@ -546,7 +533,7 @@ describe("conversation report event projection", () => {
       seq: 1,
       createdAt: "2026-07-15T12:00:00.000Z",
       data: {
-        type: "visible_message" as const,
+        type: "message" as const,
         messageId: "message-1",
         role: "assistant" as const,
         ...data,

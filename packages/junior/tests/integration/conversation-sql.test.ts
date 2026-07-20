@@ -136,6 +136,11 @@ ORDER BY table_name ASC, ordinal_position ASC
 
       for (const columns of actual.values()) columns.sort();
 
+      // The core schema cut leaves this source table available for the
+      // operator backfill; `junior upgrade` drops it after message events are
+      // verified. It is intentionally absent from the target Drizzle schema.
+      expect(actual.has("junior_conversation_messages")).toBe(true);
+      actual.delete("junior_conversation_messages");
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
@@ -159,6 +164,7 @@ ORDER BY indexname ASC
           "junior_conversations_pkey",
           "junior_conversations_actor_activity_idx",
           "junior_conversation_messages_search_idx",
+          "junior_conversation_events_message_search_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
           "junior_identities_kind_provider_idx",

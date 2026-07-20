@@ -8,12 +8,13 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
 /**
- * Append-only canonical conversation history. `context_epoch` partitions the
- * log into rebuild generations, while `(conversation_id, seq)` is the stable
+ * Append-only canonical conversation history. `history_version` partitions
+ * model-history replacements, while `(conversation_id, seq)` is the stable
  * event identity and lease-fencing tripwire.
  */
 export const juniorConversationEvents = pgTable(
@@ -21,7 +22,7 @@ export const juniorConversationEvents = pgTable(
   {
     conversationId: text("conversation_id").notNull(),
     seq: integer("seq").notNull(),
-    contextEpoch: integer("context_epoch").notNull(),
+    historyVersion: integer("history_version").notNull(),
     schemaVersion: integer("schema_version").default(1).notNull(),
     idempotencyKey: text("idempotency_key"),
     type: text("type").notNull(),
@@ -38,9 +39,9 @@ export const juniorConversationEvents = pgTable(
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }),
-    index("junior_conversation_events_epoch_idx").on(
+    index("junior_conversation_events_history_version_idx").on(
       table.conversationId,
-      table.contextEpoch,
+      table.historyVersion,
       table.seq,
     ),
     index("junior_conversation_events_type_idx").on(
@@ -48,6 +49,9 @@ export const juniorConversationEvents = pgTable(
       table.type,
       table.seq,
     ),
+    index("junior_conversation_events_message_search_idx")
+      .using("gin", sql`to_tsvector('english', ${table.payload}->>'text')`)
+      .where(sql`${table.type} = 'message'`),
     uniqueIndex("junior_conversation_events_idempotency_idx").on(
       table.conversationId,
       table.idempotencyKey,

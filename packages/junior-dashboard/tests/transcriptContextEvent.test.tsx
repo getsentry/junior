@@ -21,7 +21,7 @@ describe("transcript context events", () => {
           part={{
             type: "context_event",
             event: {
-              type: "context_compacted",
+              type: "compaction",
               createdAt: "2026-01-01T00:00:02.000Z",
             },
           }}
@@ -41,7 +41,7 @@ describe("transcript context events", () => {
           part={{
             type: "context_event",
             event: {
-              type: "model_handoff",
+              type: "handoff",
               createdAt: "2026-01-01T00:00:04.000Z",
             },
           }}

@@ -181,7 +181,6 @@ describe("context compaction projection reset", () => {
       assistant("The blocker is missing migration approval.", 2),
     ];
     await commitMessages({
-      modelId: "test/model",
       conversationId: "conversation-1",
       messages: priorMessages,
       newMessageProvenance: {
@@ -256,7 +255,6 @@ describe("context compaction projection reset", () => {
       assistant("I found the affected modules.", 2),
     ];
     await commitMessages({
-      modelId: "test/model",
       conversationId,
       messages: priorMessages,
     });
@@ -297,8 +295,14 @@ describe("context compaction projection reset", () => {
     expect(textOf(handoffMessages[0]!)).toContain(
       "Continue the multi-file implementation.",
     );
+    const durableHandoffMessages = [
+      user(
+        "<current-instruction>\nModel handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nContinue the multi-file implementation.\n</current-instruction>",
+        3,
+      ),
+    ];
     await expect(loadProjection({ conversationId })).resolves.toEqual(
-      handoffMessages,
+      durableHandoffMessages,
     );
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
@@ -307,19 +311,15 @@ describe("context compaction projection reset", () => {
       await getConversationEventStore().loadHistory(conversationId)
     )
       .map((event) => event.data)
-      .find(
-        (entry) =>
-          entry.type === "context_epoch_started" && entry.reason === "handoff",
-      );
+      .find((entry) => entry.type === "handoff");
     expect(marker).toEqual({
-      type: "context_epoch_started",
-      reason: "handoff",
+      type: "handoff",
       modelProfile: "handoff",
       modelId: botConfig.modelProfiles.handoff,
       triggeringToolCallId: "handoff-call-1",
       replacementHistory: [
         {
-          message: handoffMessages[0],
+          message: durableHandoffMessages[0],
           provenance: { authority: "context" },
         },
       ],
@@ -340,45 +340,38 @@ describe("context compaction projection reset", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
 
-    await commitMessages({
-      modelId: "test/handoff",
-      conversationId,
-      messages: [user("Replacement safe boundary.", 3)],
-    });
+    await expect(
+      commitMessages({
+        conversationId,
+        messages: [user("Replacement safe boundary.", 3)],
+      }),
+    ).rejects.toThrow("changed before its committed boundary");
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const projectionMarkers = (
+    const replacements = (
       await getConversationEventStore().loadHistory(conversationId)
     )
       .map((event) => event.data)
-      .filter((entry) => entry.type === "context_epoch_started");
+      .filter(
+        (entry) => entry.type === "handoff" || entry.type === "compaction",
+      );
     expect(
-      projectionMarkers.map(({ reason, modelProfile, modelId }) => ({
-        reason,
+      replacements.map(({ type, modelProfile, modelId }) => ({
+        type,
         modelProfile,
         modelId,
       })),
     ).toEqual([
       {
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: "test/model",
-      },
-      {
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "handoff",
         modelId: botConfig.modelProfiles.handoff,
       },
       {
-        reason: "compaction",
+        type: "compaction",
         modelProfile: "handoff",
         modelId: botConfig.modelProfiles.handoff,
-      },
-      {
-        reason: "rollback",
-        modelProfile: "handoff",
-        modelId: "test/handoff",
       },
     ]);
   });
@@ -391,7 +384,6 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-failed-handoff";
     const priorMessages = [user("Implement the change.", 1)];
     await commitMessages({
-      modelId: "test/model",
       conversationId,
       messages: priorMessages,
     });
@@ -479,7 +471,6 @@ describe("context compaction projection reset", () => {
     const priorMessages = [user("Implement the change.", 1)];
     const controller = new AbortController();
     await commitMessages({
-      modelId: "test/model",
       conversationId,
       messages: priorMessages,
     });
@@ -541,7 +532,6 @@ describe("context compaction projection reset", () => {
     const priorMessages = [user("same request", 1), user("same request", 2)];
 
     await commitMessages({
-      modelId: "test/model",
       conversationId: "conversation-identical-retained-text",
       messages: priorMessages,
       provenance: [
@@ -601,7 +591,6 @@ describe("context compaction projection reset", () => {
       user("recent-critical-marker keep the rollback plan"),
     ];
     await commitMessages({
-      modelId: "test/model",
       conversationId: "conversation-large",
       messages: priorMessages,
     });
@@ -671,7 +660,6 @@ describe("context compaction projection reset", () => {
       },
     ] as PiMessage[];
     await commitMessages({
-      modelId: "test/model",
       conversationId: "conversation-tool-context",
       messages: priorMessages,
     });

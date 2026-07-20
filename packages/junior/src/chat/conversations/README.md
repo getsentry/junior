@@ -1,150 +1,87 @@
 # Conversation Storage
 
-This module owns the durable product record for conversations, visible messages,
-conversation events, compaction boundaries, search, and retention.
+This module owns Junior's durable conversation record, search, and retention.
 
-## Records
+## Storage Model
 
-- Conversation rows own canonical source, destination, participant, visibility,
-  retention metadata, and an optional parent conversation link. Their execution cursor, status, duration,
-  and usage columns are materialized reporting/control aggregates, not
-  transcript or event-history authority.
-- Visible-message events are the destination-facing user and assistant history.
-  `junior_conversation_messages` is their rebuildable search read model, never
-  a hydration source or second history authority.
-- Conversation events are the versioned, append-only execution history used to
-  restore Pi state. Pi messages and context are projections of this log, not a
-  second authority.
-- Redis turn-session records retain bounded resumability metadata and event
-  sequence cursors. Their summary indexes and the SQL execution/usage columns
-  are operational projections; Pi state is materialized from conversation
-  events rather than stored in either aggregate.
-- Context epochs identify replacement boundaries created by compaction, model
-  handoff, or rollback. The epoch marker owns its `replacementHistory`, like a
-  compacted record; ordinary `message` events after it are new conversation
-  activity rather than copies of that checkpoint.
-- Historical advisor imports may create an isolated child conversation linked
-  to its parent. Each conversation still owns a complete local event stream;
-  parent history is never composed into a child's Pi projection.
-- Provider payloads and old state-store mirrors are inputs only to the explicit
-  operator migration under `cli/upgrade`; they are not runtime dependencies or
-  canonical product records.
+`junior_conversation_events` is the only transcript/history table. Every row
+has a stable `(conversation_id, seq)` identity, an event type, a versioned JSON
+payload, and a timestamp.
 
-The schemas and migrations under `sql/` are authoritative.
+Two primary event types intentionally describe different facts:
 
-`junior_conversation_events` is the single physical event table. Every row
-persists its schema version, sequence, context epoch, type, payload, and
-timestamp. The `(conversation_id, seq)` key is both stable event identity and
-the lease-fencing tripwire.
+- `message` records exact source or destination chat content. It is the
+  authority for transcript display, delivery handling, privacy, and search.
+- `agent_step` records one replayable Pi history entry. It is the authority for
+  the next agent request and may contain transformed input, assistant tool
+  calls, or tool results that were never chat messages.
 
-A `message` event stores one newly appended model message and its provenance.
-The Pi adapter validates it when restoring context. Replacement history belongs
-to `context_epoch_started`; it is replayed before later `message` events but is
-not recorded again as new activity. The legacy Redis `pi_message` shape exists
-only in the explicit operator backfill and is absent from the live conversation
-module graph.
+`message_updated` records later delivery or hydration state for an existing
+message. It updates that message's projection without pretending the same chat
+message arrived twice. `message_handled` remains the compact lifecycle fact
+used to prevent redelivery.
 
-For example, if a compaction checkpoint contains user messages `B` and `C`
-followed by summary `S`, the next model request receives the normal system
-prompt plus `[B, C, S]`. A later user message `D` is stored once as a `message`
-event, and the following request receives `[B, C, S, D]`. Earlier messages stay
-in the SQL event log for audit but are no longer part of model input.
+A chat message and an agent step can correspond to the same turn, but they are
+not interchangeable. For example, delivered fallback text is a `message` even
+when it is not part of Pi history, while a tool result is an `agent_step` even
+though it is never delivered as a chat message. Keeping both facts in the same
+ordered event stream avoids a second transcript authority without conflating
+product history with agent history.
 
-Reporting APIs must project events into an authorized, redacted product
-contract. Raw `ConversationEventData` is an internal persistence boundary and
-must not become a dashboard or external API payload.
+Search queries `message` payloads directly through the partial GIN index on the
+event table. There is no message projection table.
 
-The reporting API owns a strict ordered event projection with only safe product
-fields. Conversation detail exposes that projection as its sole history, and
-the dashboard derives its view directly from canonical sequence order. Display
-text comes only from visible-message events; provider/model-only messages are
-not exposed, while provider receipts, delivery commands, failure codes,
-authorization identifiers, arbitrary metadata, and persistence-envelope fields
-remain internal.
+## Agent History Replacement
+
+Normal execution appends `agent_step` events. `compaction` and `handoff` are
+the only live events that replace active agent history. Each stores the exact
+replacement history; later `agent_step` events append to it. The internal
+`history_version` column makes loading that active history efficient. There is
+no initial-history event.
+
+`rollback` is not a live operation. The reader recognizes the legacy event
+only so conversations written by older deployed code remain recoverable during
+the migration window.
+
+Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
+session record. It is removed before SQL history is written and restored for an
+auth or timeout resume, so agent replay does not need an automatic rollback.
+
+Message summarization is separate from agent-history compaction. A
+`messages_summarized` event stores the latest bounded summaries used to render
+older source-thread context; it does not replace Pi history.
 
 ## Write Rules
 
-- Persist user input before agent execution.
-- Persist assistant text only after successful destination delivery.
-- Append each visible-message fact and update its SQL read model in one
-  transaction under the conversation event lock.
-- Append conversation events in monotonic sequence order.
-- Correlate each turn with one `turn_started` event after its input messages and
-  one first-writer-wins `turn_completed` or `turn_failed` terminal event.
-- Persist only allowlisted failure classifications and opaque Sentry event IDs;
-  raw exceptions, provider payloads, and URLs are not lifecycle data.
-- Restore state directly from durable SQL events rather than a duplicate
-  transcript cache or lazy legacy import.
-- Compaction replaces prior model context with the epoch marker's replacement
-  history without rewriting visible history or duplicating message events.
-- Imports and migrations are idempotent and preserve stable conversation IDs.
-- Historical advisor import writes the child parent link and the parent's
-  `subagent_started` and `subagent_ended` references. There is currently no live
-  runtime producer for child conversations.
-- Project Pi state from only the conversation's local current epoch. Do not
-  duplicate parent messages into child streams or recursively compose history.
+- Persist inbound `message` events before agent execution.
+- Persist assistant `message` events only after destination acceptance.
+- Append stable `agent_step` events in sequence order.
+- Reject attempts to mutate an already committed agent-history prefix.
+- Replace agent history only through explicit compaction or handoff.
+- Restore transcripts and agent history directly from conversation events.
+- Keep imports and migrations idempotent and preserve conversation IDs.
+
+Reporting APIs project an authorized, redacted contract from the event stream.
+Raw event payloads are internal and must not become dashboard or external API
+payloads.
 
 ## Visibility And Retention
 
-Destination visibility is the privacy authority. Messages, conversation events, child
-conversations, and plugin projections inherit it. Retention is enforced by the
-conversation purge paths and must distinguish expired content from redacted
-content.
+Destination visibility is the privacy authority. Messages, agent steps, child
+conversations, and plugin projections inherit it. Retention distinguishes
+expired content from redacted content and purges the complete child tree.
 
 Follow `../../../../../policies/data-redaction.md` and
 `../../../../../policies/runtime-boundary-schemas.md`.
 
 ## Deployment Safety
 
-- Schema changes are expand-first and compatible with the currently deployed
-  reader and writer during normal rollouts. Explicit hard cutovers document
-  their worker-stop gate here.
-- Data rewrites use explicit migrations or resumable import code.
-- Live workers never read Redis session logs, advisor blobs, or legacy
-  thread-state to restore history. Operators must run `junior upgrade` before
-  serving retained pre-cutover conversations.
-- The Redis decoder and backfill writer remain under `cli/upgrade` only for the
-  bounded operator-migration horizon; they can be deleted independently once
-  every supported deployment has completed that upgrade.
-- Stop every pre-event-log worker before running the event-table schema cut.
-  The migration renames `junior_agent_steps` directly and intentionally
-  provides no rolling compatibility view.
-- Drain running and awaiting-resume turns before the checkpoint and
-  visible-message rewrites. Both fail closed while an unfinished Redis
-  turn-session record retains a physical `committedSeq` or `turnStartSeq`
-  cursor.
-- While workers remain stopped, each rewrite invalidates terminal
-  cursor-bearing records at
-  `junior:agent_turn_session:<conversationId>:<sessionId>` before changing
-  physical event positions. Checkpoint normalization closes deletion gaps;
-  visible-message backfill chronologically resequences each stream it changes
-  and verifies that no message facts remain missing. Summary indexes remain
-  intact because they do not store event cursors.
-- Purge and migration jobs operate in bounded batches and are safe to retry.
+- Stop old workers before the event-table hard cutover.
+- Run `junior upgrade` before serving retained pre-cutover conversations.
+- Drain running or resumable turns before resequencing migrated events.
+- Legacy Redis and pre-cutover SQL records are migration inputs only; live
+  workers restore history exclusively from conversation events.
+- Purge and migration jobs operate in bounded, retry-safe batches.
 
-Representative coverage lives in
-`packages/junior/tests/integration/conversation-sql.test.ts` and the
-conversation storage component tests.
-
-Local, ordinary and resumed Slack, and dispatch runtimes write lifecycle
-events, and detail reporting reduces `turn_failed` to one privacy-safe error
-marker. Crash-safe Slack delivery and continuation recovery remain follow-up
-work.
-
-The structural failure marker never exposes failure code or event ID. An
-independently delivered fallback remains ordinary visible content, so a public
-conversation preserves its approved `event_id` reference while private detail
-redaction removes the fallback text and retains only structural metadata.
-
-Lifecycle appends have stable idempotency keys so explicitly retried calls are
-safe, but they are not an outbox transaction with an external destination. A
-process death after destination acceptance and before the
-visible/session/terminal writes can still leave a started turn without a
-terminal event. The next delivery slice must add durable intent/receipt
-reconciliation for Slack before claiming crash-safe terminality.
-
-Imported historical advisor executions own separate child event streams. The
-parent records start/end references and the child stores only its local events.
-Dashboard detail authorizes a child through its parent chain and excludes child
-rows from top-level conversation aggregates. Purging a root purges the complete
-descendant subtree.
+Representative coverage lives in the conversation storage component tests and
+`packages/junior/tests/integration/conversation-sql.test.ts`.

@@ -19,7 +19,7 @@ this directory owns product orchestration around it.
 ## Durable Continuation
 
 - Conversation events append at safe boundaries with monotonic sequence numbers.
-- Restoration reduces the current context epoch into Pi messages and derived
+- Restoration reduces the current history version into Pi messages and derived
   runtime state.
 - A timeout or soft execution limit yields only at a boundary where tool results
   and state updates are durable.
@@ -51,14 +51,14 @@ this directory owns product orchestration around it.
 
 ## Compaction And Handoff
 
-- Compaction creates a new context epoch. Its replacement history contains the
+- Compaction replaces agent history. Its replacement history contains the
   retained user messages followed by a summary; later messages append normally.
   Visible conversation history remains unchanged.
 - The replacement must retain unresolved work, durable facts, active artifacts,
   tool outcomes needed for continuation, and relevant actor/destination context.
 - Model handoff is a permanent in-place transition recorded at a safe boundary.
   It does not fork the conversation or replay completed side effects.
-- Restoration uses the model and context epoch recorded by durable history, not
+- Restoration uses the model profile recorded by durable history, not
   process-local assumptions.
 
 Representative integration coverage lives under

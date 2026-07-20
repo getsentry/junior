@@ -4,8 +4,8 @@
  * A single per-conversation import unit used by `junior upgrade` (bulk,
  * bounded newest-first). It converts the
  * legacy session log into `junior_conversation_events`, imports the advisor
- * session blob as a child conversation, and converts `thread-state` visible
- * messages into canonical events plus their rebuildable SQL search projection.
+ * session blob as a child conversation, and converts `thread-state` messages
+ * into canonical events.
  * Import is idempotent per conversation: canonical event rows seal completed
  * imports. It never fabricates import-time timestamps.
  *
@@ -15,7 +15,6 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { type ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
-import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -53,6 +52,26 @@ const legacyCompactionSchema = z.object({
 });
 
 type LegacyConversationCompaction = z.output<typeof legacyCompactionSchema>;
+
+function toImportedMessage(message: ThreadConversationMessage): {
+  messageId: string;
+  role: "user" | "assistant" | "system";
+  text: string;
+  meta?: Record<string, unknown>;
+  createdAtMs: number;
+} {
+  const meta: Record<string, unknown> = {};
+  if (message.author) meta.author = message.author;
+  const { replied: _replied, ...restMeta } = message.meta ?? {};
+  Object.assign(meta, restMeta);
+  return {
+    messageId: message.id,
+    role: message.role,
+    text: message.text,
+    ...(Object.keys(meta).length > 0 ? { meta } : {}),
+    createdAtMs: message.createdAtMs,
+  };
+}
 
 const legacyThreadStateSnapshotSchema = z.object({
   conversation: z
@@ -235,9 +254,9 @@ export async function importConversationFromLegacy(
     }));
     converted.events.push({
       seq: converted.events.length,
-      contextEpoch: converted.events.at(-1)?.contextEpoch ?? 0,
+      historyVersion: converted.events.at(-1)?.historyVersion ?? 0,
       data: {
-        type: "visible_context_compacted",
+        type: "messages_summarized",
         historyFromSeq: 0,
         compactions: compacted,
       },
@@ -259,12 +278,12 @@ export async function importConversationFromLegacy(
   }
 
   const messages = visible.map((message) => ({
-    ...toStoredConversationMessage(message),
+    ...toImportedMessage(message),
     ...(message.meta?.replied ? { repliedAtMs: message.createdAtMs } : {}),
   }));
 
-  // Messages and events share one locked SQL transaction so retention can never
-  // purge between the legacy-source check and the import commit.
+  // The import uses one locked SQL transaction so retention cannot purge
+  // between the legacy-source check and the canonical event write.
   const imported = await writeLegacyImport(deps.executor, {
     conversationId,
     fallbackCreatedAtMs,

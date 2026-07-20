@@ -21,7 +21,7 @@ import {
 import {
   hydrateConversationMessages,
   persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+} from "@/chat/conversations/messages";
 import {
   coerceThreadConversationState,
   type ConversationMessage,

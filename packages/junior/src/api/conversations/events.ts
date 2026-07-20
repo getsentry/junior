@@ -7,13 +7,14 @@ import {
 
 /** Canonical event types that can contribute to the reporting projection. */
 export const conversationReportSourceEventTypes = [
-  "visible_message_recorded",
-  "visible_message_replied",
+  "message",
+  "message_handled",
   "tool_execution_started",
   "turn_started",
   "turn_completed",
   "turn_failed",
-  "context_epoch_started",
+  "compaction",
+  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -24,18 +25,18 @@ function reportEventData(args: {
 }): ConversationReportEventData | undefined {
   const { data } = args;
   switch (data.type) {
-    case "visible_message_recorded":
+    case "message":
       return {
-        type: "visible_message",
+        type: "message",
         messageId: data.messageId,
         role: data.role,
         ...(args.canExposePayload
           ? { text: data.text }
           : { redacted: true as const }),
       };
-    case "visible_message_replied":
+    case "message_handled":
       return {
-        type: "visible_message_replied",
+        type: "message_handled",
         messageId: data.messageId,
       };
     case "turn_started":
@@ -58,9 +59,8 @@ function reportEventData(args: {
         failureKind:
           data.failureCode === "delivery_failed" ? "delivery" : "agent",
       };
-    case "context_epoch_started":
-      if (data.reason === "compaction") return { type: "context_compacted" };
-      return undefined;
+    case "compaction":
+      return { type: "compaction" };
     default:
       return undefined;
   }
@@ -105,13 +105,10 @@ export function projectConversationReportEvents(args: {
           outcome: event.data.outcome,
         };
       }
-    } else if (
-      event.data.type === "context_epoch_started" &&
-      event.data.reason === "handoff"
-    ) {
+    } else if (event.data.type === "handoff") {
       const toolStartedSeq = toolStarts.get(event.data.triggeringToolCallId);
       data = {
-        type: "model_handoff",
+        type: "handoff",
         ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),
       };
     } else {

@@ -162,10 +162,6 @@ function expectedHandoffReplacementHistory() {
         content: [
           expect.objectContaining({
             type: "text",
-            text: expect.stringContaining("<runtime-turn-context>"),
-          }),
-          expect.objectContaining({
-            type: "text",
             text: expect.stringContaining(
               "<current-instruction>\nModel handoff checkpoint.",
             ),
@@ -253,21 +249,14 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const epochMarkers = (
+    const handoffs = (
       await getConversationEventStore().loadHistory(conversationId)
     )
       .map((event) => event.data)
-      .filter((entry) => entry.type === "context_epoch_started");
-    expect(epochMarkers).toEqual([
+      .filter((entry) => entry.type === "handoff");
+    expect(handoffs).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "handoff-call-1",
@@ -393,17 +382,10 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await getConversationEventStore().loadHistory(conversationId))
         .map((event) => event.data)
-        .filter((entry) => entry.type === "context_epoch_started"),
+        .filter((entry) => entry.type === "handoff"),
     ).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "coding",
         modelId: "openai/gpt-5.4",
         triggeringToolCallId: "handoff-call-1",
@@ -482,17 +464,10 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await getConversationEventStore().loadHistory(conversationId))
         .map((event) => event.data)
-        .filter((entry) => entry.type === "context_epoch_started"),
+        .filter((entry) => entry.type === "handoff"),
     ).toEqual([
       {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: observations.initialModelId,
-      },
-      {
-        type: "context_epoch_started",
-        reason: "handoff",
+        type: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "handoff-call-1",

@@ -3,8 +3,6 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import type { ConversationEventStore } from "@/chat/conversations/history";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
-import type { ConversationMessageStore } from "@/chat/conversations/messages";
 import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
 import type { ConversationSearchStore } from "@/chat/conversations/search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
@@ -17,7 +15,6 @@ let current:
       driver: SqlDriver;
       store: ConversationStore;
       eventStore: ConversationEventStore;
-      messageStore: ConversationMessageStore;
       searchStore: ConversationSearchStore;
     }
   | undefined;
@@ -54,7 +51,6 @@ export function getSqlExecutor(): JuniorSqlExecutor {
       db,
       store: createSqlStore(db),
       eventStore: createSqlConversationEventStore(db),
-      messageStore: createSqlConversationMessageStore(db),
       searchStore: createSqlConversationSearchStore(db),
     };
   }
@@ -76,12 +72,6 @@ export function getConversationStore(): ConversationStore {
 export function getConversationEventStore(): ConversationEventStore {
   getSqlExecutor();
   return current!.eventStore;
-}
-
-/** Return the SQL-backed visible conversation message store. */
-export function getConversationMessageStore(): ConversationMessageStore {
-  getSqlExecutor();
-  return current!.messageStore;
 }
 
 /** Return the SQL-backed public provider-tenant conversation search store. */

@@ -1,14 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationDetail } from "@/api/conversations/detail";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
   juniorConversationEvents,
-  juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -66,7 +65,7 @@ async function appendVisibleHistory(
   await getConversationEventStore().append(conversationId, [
     {
       data: {
-        type: "visible_message_recorded",
+        type: "message",
         messageId: `${conversationId}:visible`,
         role: "assistant",
         text,
@@ -75,7 +74,7 @@ async function appendVisibleHistory(
     },
     {
       data: {
-        type: "message",
+        type: "agent_step",
         message: modelMessage,
       },
       createdAtMs: 11,
@@ -123,18 +122,24 @@ async function appendVisibleHistory(
       createdAtMs: 18,
     },
   ]);
-  await getConversationEventStore().startEpoch(conversationId, {
-    reason: "compaction",
-    modelProfile: "standard",
-    modelId: "private-model-id",
-    replacementHistory: [{ message: modelMessage }],
+  await getConversationEventStore().replaceHistory(conversationId, {
+    createdAtMs: 15,
+    data: {
+      type: "compaction",
+      modelProfile: "standard",
+      modelId: "private-model-id",
+      replacementHistory: [{ message: modelMessage }],
+    },
   });
-  await getConversationEventStore().startEpoch(conversationId, {
-    reason: "handoff",
-    modelProfile: "fast",
-    modelId: "private-handoff-model-id",
-    triggeringToolCallId: `${conversationId}:handoff-tool-call`,
-    replacementHistory: [],
+  await getConversationEventStore().replaceHistory(conversationId, {
+    createdAtMs: 16,
+    data: {
+      type: "handoff",
+      modelProfile: "fast",
+      modelId: "private-handoff-model-id",
+      triggeringToolCallId: `${conversationId}:handoff-tool-call`,
+      replacementHistory: [],
+    },
   });
 }
 
@@ -251,7 +256,7 @@ describe("dashboard canonical event reporting", () => {
     ]);
     expect(detail.events.map((event) => event.data)).toEqual([
       {
-        type: "visible_message",
+        type: "message",
         messageId: `${conversationId}:visible`,
         role: "assistant",
         text: "Visible answer",
@@ -277,8 +282,8 @@ describe("dashboard canonical event reporting", () => {
         startedSeq: 5,
         outcome: "success",
       },
-      { type: "context_compacted" },
-      { type: "model_handoff" },
+      { type: "compaction" },
+      { type: "handoff" },
     ]);
     const eventSeqs = detail.events.map((event) => event.seq);
     expect(eventSeqs).toEqual(eventSeqs.slice().sort((a, b) => a - b));
@@ -318,22 +323,25 @@ describe("dashboard canonical event reporting", () => {
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
-        data: { type: "message", message: componentUsageMessage },
+        data: { type: "agent_step", message: componentUsageMessage },
         createdAtMs: 10,
       },
       {
-        data: { type: "message", message: totalOnlyUsageMessage },
+        data: { type: "agent_step", message: totalOnlyUsageMessage },
         createdAtMs: 11,
       },
     ]);
-    await getConversationEventStore().startEpoch(conversationId, {
-      reason: "compaction",
-      modelProfile: "standard",
-      modelId: "openai/gpt-5",
-      replacementHistory: [
-        { message: componentUsageMessage },
-        { message: totalOnlyUsageMessage },
-      ],
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 1_000,
+      data: {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5",
+        replacementHistory: [
+          { message: componentUsageMessage },
+          { message: totalOnlyUsageMessage },
+        ],
+      },
     });
 
     expect((await requireDetail(conversationId)).modelUsage).toEqual([
@@ -356,7 +364,7 @@ describe("dashboard canonical event reporting", () => {
       reason: "non_public_conversation",
     });
     expect(detail.events[0]?.data).toEqual({
-      type: "visible_message",
+      type: "message",
       messageId: `${conversationId}:visible`,
       role: "assistant",
       redacted: true,
@@ -394,7 +402,7 @@ describe("dashboard canonical event reporting", () => {
       getSqlExecutor(),
       {
         conversationId: publicChild,
-        eventTypes: ["visible_message_recorded"],
+        eventTypes: ["message"],
       },
     );
     expect(privateSnapshot).toMatchObject({
@@ -402,7 +410,7 @@ describe("dashboard canonical event reporting", () => {
       visibility: "private",
     });
     expect(privateSnapshot?.events.map((event) => event.type)).toEqual([
-      "visible_message_recorded",
+      "message",
     ]);
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
@@ -468,7 +476,7 @@ describe("dashboard canonical event reporting", () => {
     }
   });
 
-  it("deletes physical child event and message rows when an append wins before tree purge", async () => {
+  it("deletes child events when an append wins before tree purge", async () => {
     const rootConversationId = "slack:C-reporting:append-purge-root";
     const childConversationId = "child:reporting-append-purge";
     await recordRoot(rootConversationId, "public");
@@ -497,7 +505,7 @@ describe("dashboard canonical event reporting", () => {
     const releaseTables = deferred();
     const blockerDone = blocker.transaction(async () => {
       await blocker.execute(
-        "LOCK TABLE junior_conversation_events, junior_conversation_messages IN ACCESS EXCLUSIVE MODE",
+        "LOCK TABLE junior_conversation_events IN ACCESS EXCLUSIVE MODE",
       );
       tablesLocked.resolve();
       await releaseTables.promise;
@@ -506,12 +514,15 @@ describe("dashboard canonical event reporting", () => {
     try {
       await tablesLocked.promise;
       const completionOrder: string[] = [];
-      const writerPromise = createSqlConversationMessageStore(writer)
-        .record(childConversationId, [
+      const writerPromise = createSqlConversationEventStore(writer)
+        .append(childConversationId, [
           {
-            messageId: "concurrent-child-message",
-            role: "assistant",
-            text: "concurrent physical child payload",
+            data: {
+              type: "message",
+              messageId: "concurrent-child-message",
+              role: "assistant",
+              text: "concurrent physical child payload",
+            },
             createdAtMs: Date.now(),
           },
         ])
@@ -519,7 +530,7 @@ describe("dashboard canonical event reporting", () => {
       await waitUntilApplicationWaitsOnLock(
         observer,
         "junior-append-purge-writer",
-        "junior_conversation_messages",
+        "junior_conversation_events",
       );
 
       const purgePromise = purgeConversation(purger, rootConversationId, {
@@ -543,13 +554,7 @@ describe("dashboard canonical event reporting", () => {
           .select()
           .from(juniorConversationEvents)
           .where(eq(juniorConversationEvents.conversationId, conversationId));
-        const messages = await observer
-          .db()
-          .select()
-          .from(juniorConversationMessages)
-          .where(eq(juniorConversationMessages.conversationId, conversationId));
         expect(events).toEqual([]);
-        expect(messages).toEqual([]);
       }
     } finally {
       releaseTables.resolve();

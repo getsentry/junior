@@ -26,7 +26,7 @@ LIMIT $1
 const LOAD_COMPACTED_CONVERSATION_IDS_SQL = `
 SELECT DISTINCT conversation_id
 FROM junior_conversation_events
-WHERE type = 'visible_context_compacted'
+WHERE type = 'messages_summarized'
   AND payload @? '$.compactions[*].coveredMessageIds'
   AND ($2::text IS NULL OR conversation_id > $2::text)
 ORDER BY conversation_id
@@ -50,7 +50,7 @@ WHERE (
     FROM junior_conversation_events event
     WHERE event.conversation_id = message.conversation_id
       AND event.idempotency_key =
-        'visible-message:' || message.message_id || ':recorded'
+        'message:' || message.message_id
   )
   OR (
     message.replied_at IS NOT NULL
@@ -59,7 +59,7 @@ WHERE (
       FROM junior_conversation_events event
       WHERE event.conversation_id = message.conversation_id
         AND event.idempotency_key =
-          'visible-message:' || message.message_id || ':replied'
+          'message:' || message.message_id || ':handled'
     )
   )
 )
@@ -80,7 +80,7 @@ WHERE NOT EXISTS (
   FROM junior_conversation_events event
   WHERE event.conversation_id = message.conversation_id
     AND event.idempotency_key =
-      'visible-message:' || message.message_id || ':recorded'
+      'message:' || message.message_id
 )
 OR (
   message.replied_at IS NOT NULL
@@ -89,7 +89,7 @@ OR (
     FROM junior_conversation_events event
     WHERE event.conversation_id = message.conversation_id
       AND event.idempotency_key =
-        'visible-message:' || message.message_id || ':replied'
+        'message:' || message.message_id || ':handled'
   )
 )
 `;
@@ -142,9 +142,9 @@ function timestampMs(value: Date | string): number {
 function eventsForRow(row: VisibleMessageRow): NewConversationEvent[] {
   const events: NewConversationEvent[] = [
     {
-      idempotencyKey: `visible-message:${row.message_id}:recorded`,
+      idempotencyKey: `message:${row.message_id}`,
       data: {
-        type: "visible_message_recorded",
+        type: "message",
         messageId: row.message_id,
         role: row.role,
         text: row.text,
@@ -158,8 +158,8 @@ function eventsForRow(row: VisibleMessageRow): NewConversationEvent[] {
   ];
   if (row.replied_at) {
     events.push({
-      idempotencyKey: `visible-message:${row.message_id}:replied`,
-      data: { type: "visible_message_replied", messageId: row.message_id },
+      idempotencyKey: `message:${row.message_id}:handled`,
+      data: { type: "message_handled", messageId: row.message_id },
       createdAtMs: timestampMs(row.replied_at),
     });
   }
@@ -259,7 +259,7 @@ async function loadVisibleCompactionAnchor(
        SELECT payload
        FROM junior_conversation_events
        WHERE conversation_id = $1
-         AND type = 'visible_context_compacted'
+         AND type = 'messages_summarized'
        ORDER BY seq DESC
        LIMIT 1
      )
@@ -267,7 +267,7 @@ async function loadVisibleCompactionAnchor(
        SELECT event.payload->>'messageId'
        FROM junior_conversation_events event
        WHERE event.conversation_id = $1
-         AND event.type = 'visible_message_recorded'
+         AND event.type = 'message'
          AND event.seq >= (snapshot.payload->>'historyFromSeq')::integer
        ORDER BY event.seq
        LIMIT 1
@@ -290,7 +290,7 @@ async function normalizeVisibleCompactionBoundary(
       `SELECT seq
        FROM junior_conversation_events
        WHERE conversation_id = $1
-         AND type = 'visible_message_recorded'
+         AND type = 'message'
          AND payload->>'messageId' = $2
        ORDER BY seq
        LIMIT 1`,
@@ -316,7 +316,7 @@ async function normalizeVisibleCompactionBoundary(
        SELECT ctid
        FROM junior_conversation_events
        WHERE conversation_id = $1
-         AND type = 'visible_context_compacted'
+         AND type = 'messages_summarized'
        ORDER BY seq DESC
        LIMIT 1
      )
@@ -407,7 +407,7 @@ async function finalizeVisibleCompactions(
         `SELECT seq, payload
          FROM junior_conversation_events
          WHERE conversation_id = $1
-           AND type = 'visible_context_compacted'
+           AND type = 'messages_summarized'
          ORDER BY seq DESC
          LIMIT 1`,
         [conversationId],
@@ -417,7 +417,7 @@ async function finalizeVisibleCompactions(
         `SELECT seq, payload->>'messageId' AS "messageId"
          FROM junior_conversation_events
          WHERE conversation_id = $1
-           AND type = 'visible_message_recorded'
+           AND type = 'message'
          ORDER BY seq`,
         [conversationId],
       );
@@ -466,7 +466,7 @@ async function finalizeVisibleCompactions(
              event.payload->'compactions'
            ) WITH ORDINALITY AS compaction(value, position)
            WHERE event.conversation_id = $1
-             AND event.type = 'visible_context_compacted'
+             AND event.type = 'messages_summarized'
            GROUP BY event.ctid
          )
          UPDATE junior_conversation_events event
@@ -530,7 +530,7 @@ async function mergeVisibleEvents(
            INSERT INTO junior_conversation_events (
              conversation_id,
              seq,
-             context_epoch,
+             history_version,
              schema_version,
              idempotency_key,
              type,
@@ -541,7 +541,7 @@ async function mergeVisibleEvents(
              $1,
              base.max_seq + pending.offset,
              coalesce((
-               SELECT prior.context_epoch
+               SELECT prior.history_version
                FROM junior_conversation_events prior
                WHERE prior.conversation_id = $1
                  AND prior.created_at < to_timestamp(pending."createdAtMs" / 1000.0)
@@ -572,15 +572,15 @@ async function mergeVisibleEvents(
                  ORDER BY
                    CASE
                      WHEN event.type IN (
-                       'visible_message_recorded',
-                       'visible_message_replied'
+                       'message',
+                       'message_handled'
                      ) THEN coalesce((
                        SELECT max(-execution.seq - 1)
                        FROM junior_conversation_events execution
                        WHERE execution.conversation_id = event.conversation_id
                          AND execution.type NOT IN (
-                           'visible_message_recorded',
-                           'visible_message_replied'
+                           'message',
+                           'message_handled'
                          )
                          AND execution.created_at < event.created_at
                      ), -1)
@@ -588,15 +588,15 @@ async function mergeVisibleEvents(
                    END,
                    CASE
                      WHEN event.type IN (
-                       'visible_message_recorded',
-                       'visible_message_replied'
+                       'message',
+                       'message_handled'
                      ) THEN 1
                      ELSE 0
                    END,
                    event.created_at,
                    CASE event.type
-                     WHEN 'visible_message_recorded' THEN 0
-                     WHEN 'visible_message_replied' THEN 1
+                     WHEN 'message' THEN 0
+                     WHEN 'message_handled' THEN 1
                      ELSE 0
                    END,
                    event.idempotency_key NULLS FIRST,
@@ -622,10 +622,10 @@ async function mergeVisibleEvents(
 }
 
 /**
- * Backfill canonical visible-message events from the SQL read model.
+ * Move canonical messages into the event log, then remove the legacy table.
  *
- * This must run after the external legacy-history import. A visible-message
- * event is a completed-import seal, so running this from the schema migration
+ * This must run after the external legacy-history import. A message event is
+ * a completed-import seal, so running this from the schema migration
  * would hide richer retained Redis session and advisor history from import.
  */
 export async function migrateConversationVisibleMessageEvents(
@@ -654,6 +654,12 @@ export async function migrateConversationVisibleMessageEvents(
     | { conversationId: string; createdAt: Date | string; messageId: string }
     | undefined;
   try {
+    const [legacyTable] = await executor.query<{ exists: boolean }>(
+      `SELECT to_regclass('public.junior_conversation_messages') IS NOT NULL AS exists`,
+    );
+    if (!legacyTable?.exists) {
+      return { existing: 0, migrated: 0, missing: 0, scanned: 0 };
+    }
     const [before] = await executor.query<{ count: number }>(
       COUNT_MISSING_VISIBLE_EVENTS_SQL,
     );
@@ -724,6 +730,7 @@ export async function migrateConversationVisibleMessageEvents(
       async (conversationId) =>
         await finalizeVisibleCompactions(context, executor, conversationId),
     );
+    await executor.execute(`DROP TABLE junior_conversation_messages`);
     return {
       existing: 0,
       migrated,
@@ -736,6 +743,6 @@ export async function migrateConversationVisibleMessageEvents(
 }
 
 export const conversationVisibleMessageEventsMigration = {
-  name: "backfill-conversation-visible-message-events",
+  name: "move-conversation-messages-to-events",
   run: migrateConversationVisibleMessageEvents,
 };

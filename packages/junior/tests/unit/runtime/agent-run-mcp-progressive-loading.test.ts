@@ -1324,7 +1324,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       sessionId: "turn-5",
       sliceId: 1,
       state: "awaiting_resume",
-      piMessages: priorMessages,
+      piMessages: expectedResumeMessages,
       resumeReason: "auth",
     });
 

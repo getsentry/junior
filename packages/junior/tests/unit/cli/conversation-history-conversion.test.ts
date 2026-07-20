@@ -56,20 +56,20 @@ describe("operator legacy conversation history conversion", () => {
     expect(events).toEqual([
       {
         seq: 0,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: 10,
         data: {
-          type: "message",
+          type: "agent_step",
           message: userMessage("hello", 10),
           provenance: { authority: "context" },
         },
       },
       {
         seq: 1,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: 20,
         data: {
-          type: "message",
+          type: "agent_step",
           message: assistantMessage("hi", 20),
           provenance: { authority: "context" },
         },
@@ -106,7 +106,7 @@ describe("operator legacy conversation history conversion", () => {
     // instruction from the stored Slack actor.
     expect(events).toHaveLength(1);
     expect(events[0]!.data).toEqual({
-      type: "message",
+      type: "agent_step",
       message: userMessage("do the thing", 30),
       provenance: {
         authority: "instruction",
@@ -142,25 +142,26 @@ describe("operator legacy conversation history conversion", () => {
     expect(
       events.map((event) => ({
         seq: event.seq,
-        epoch: event.contextEpoch,
+        epoch: event.historyVersion,
         type: event.data.type,
       })),
     ).toEqual([
-      { seq: 0, epoch: 0, type: "message" },
-      { seq: 1, epoch: 1, type: "context_epoch_started" },
-      { seq: 2, epoch: 0, type: "message" },
-      { seq: 3, epoch: 1, type: "message" },
+      { seq: 0, epoch: 0, type: "agent_step" },
+      { seq: 1, epoch: 1, type: "compaction" },
+      { seq: 2, epoch: 0, type: "agent_step" },
+      { seq: 3, epoch: 1, type: "agent_step" },
     ]);
     expect(events[1]!.data).toMatchObject({
-      type: "context_epoch_started",
-      reason: "compaction",
+      type: "compaction",
       replacementHistory: [
         { message: userMessage("summary", 40) },
         { message: assistantMessage("ack", 41) },
       ],
     });
     // Highest epoch (current context) is exactly the reset's session rows.
-    const currentEpoch = Math.max(...events.map((event) => event.contextEpoch));
+    const currentEpoch = Math.max(
+      ...events.map((event) => event.historyVersion),
+    );
     expect(currentEpoch).toBe(1);
   });
 
@@ -189,11 +190,11 @@ describe("operator legacy conversation history conversion", () => {
     });
 
     expect(events[0]!.data).toMatchObject({
-      type: "message",
+      type: "agent_step",
       message: quotedPrefix,
     });
     expect(events[1]!.data).toMatchObject({
-      type: "context_epoch_started",
+      type: "compaction",
       replacementHistory: [
         { message: quotedPrefix },
         {
@@ -305,7 +306,7 @@ describe("operator legacy conversation history conversion", () => {
     expect(events).toEqual([
       {
         seq: 0,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: 20,
         data: {
           type: "tool_execution_started",
@@ -336,10 +337,10 @@ describe("convertAdvisorMessages", () => {
     expect(rows).toEqual([
       {
         seq: 0,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: 5,
         data: {
-          type: "message",
+          type: "agent_step",
           message: userMessage(
             `Review <change> & "risk".\n\nExecutor context:\nUse owner='dashboard' & preserve <context>.`,
             5,
@@ -349,20 +350,20 @@ describe("convertAdvisorMessages", () => {
       },
       {
         seq: 1,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: 6,
         data: {
-          type: "message",
+          type: "agent_step",
           message: assistantMessage("a", 6),
           provenance: { authority: "context" },
         },
       },
       {
         seq: 2,
-        contextEpoch: 0,
+        historyVersion: 0,
         createdAtMs: FALLBACK_MS,
         data: {
-          type: "message",
+          type: "agent_step",
           message: assistantMessage("no ts"),
           provenance: { authority: "context" },
         },

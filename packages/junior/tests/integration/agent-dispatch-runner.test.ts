@@ -17,7 +17,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+} from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { PiMessage } from "@/chat/pi/messages";

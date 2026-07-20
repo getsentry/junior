@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -9,33 +9,27 @@ import {
 } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import {
-  persistConversationCompactions,
-  projectVisibleConversationCompactions,
-} from "@/chat/conversations/visible-compactions";
+  persistConversationMessageSummaries,
+  projectConversationMessageSummaries,
+} from "@/chat/conversations/message-summaries";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
-import {
-  juniorConversationEvents,
-  juniorConversationMessages,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
-  commitMessages,
   loadConnectedMcpProviders,
   openConversationProjection,
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { createConversationMemoryService } from "@/chat/services/conversation-memory";
-import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
@@ -43,118 +37,42 @@ const coreMigrationCount = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
 }).length;
 
-async function listMessageRows(
-  fixture: LocalJuniorSqlFixture,
-  conversationId: string,
-) {
-  return fixture.sql
-    .db()
-    .select()
-    .from(juniorConversationMessages)
-    .where(eq(juniorConversationMessages.conversationId, conversationId))
-    .orderBy(
-      asc(juniorConversationMessages.createdAt),
-      asc(juniorConversationMessages.messageId),
-    );
-}
-
-it("requires one canonical shape for every context marker", () => {
+it("accepts compaction and handoff as the only live history replacements", () => {
   expect(
     conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "initial",
-      modelProfile: "standard",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "initial",
-      modelProfile: "standard",
+      type: "compaction",
+      modelProfile: "coding",
       modelId: "openai/gpt-5.4",
+      replacementHistory: [],
     }).success,
   ).toBe(true);
   expect(
     conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "handoff",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "handoff",
-      modelProfile: "handoff",
-      modelId: "openai/gpt-5.6-sol",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "handoff",
+      type: "handoff",
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
       triggeringToolCallId: "handoff-call-1",
       replacementHistory: [],
     }).success,
   ).toBe(true);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "handoff",
-      modelProfile: "standard",
-      modelId: "openai/gpt-5.4",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "compaction",
-      modelProfile: "Fast!",
-      modelId: "openai/gpt-5.4",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "compaction",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "compaction",
-      modelProfile: "coding",
-      modelId: "openai/gpt-5.4",
+  for (const invalid of [
+    { type: "context_epoch_started", reason: "initial" },
+    { type: "compaction", modelProfile: "standard" },
+    {
+      type: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
       replacementHistory: [],
-    }).success,
-  ).toBe(true);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "compaction",
-      modelProfile: "coding",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "compaction",
-      modelId: "openai/gpt-5.4",
-    }).success,
-  ).toBe(false);
-  expect(
-    conversationEventDataSchema.safeParse({
-      type: "context_epoch_started",
-      reason: "rollback",
-    }).success,
-  ).toBe(false);
+    },
+  ]) {
+    expect(conversationEventDataSchema.safeParse(invalid).success).toBe(false);
+  }
 });
 
 it("rejects unknown Junior event fields while retaining opaque message fields", () => {
   expect(
     conversationEventDataSchema.safeParse({
-      type: "visible_message_recorded",
+      type: "message",
       messageId: "m1",
       role: "user",
       text: "hello",
@@ -163,11 +81,11 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
   ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
-      type: "visible_message_metadata_updated",
+      type: "message_metadata_updated",
       messageId: "m1",
       meta: { imagesHydrated: true },
     }).success,
-  ).toBe(true);
+  ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
       type: "mcp_provider_connected",
@@ -185,7 +103,7 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
   ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
-      type: "visible_context_compacted",
+      type: "messages_summarized",
       historyFromSeq: 0,
       compactions: [
         {
@@ -200,7 +118,7 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
   ).toBe(false);
   expect(
     conversationEventDataSchema.safeParse({
-      type: "message",
+      type: "agent_step",
       message: { role: "", providerOwnedField: true },
     }).success,
   ).toBe(true);
@@ -261,14 +179,14 @@ it("rejects unsupported conversation event schema versions", () => {
     conversationEventSchema.safeParse({
       schemaVersion: 2,
       seq: 0,
-      contextEpoch: 0,
+      historyVersion: 0,
       createdAtMs: 1_000,
       data: { type: "mcp_provider_connected", provider: "github" },
     }).success,
   ).toBe(false);
 });
 
-it("rejects epoch markers through the ordinary append boundary", async () => {
+it("rejects history replacements through the ordinary append boundary", async () => {
   await expect(
     getConversationEventStore().append("local:test:invalid-marker-append", [
       {
@@ -282,14 +200,17 @@ it("rejects epoch markers through the ordinary append boundary", async () => {
   ).rejects.toThrow("Invalid input");
 });
 
-it("rejects incomplete markers through the epoch boundary", async () => {
+it("rejects incomplete handoffs through the replacement boundary", async () => {
   const conversationId = "local:test:invalid-marker-start";
   await expect(
-    getConversationEventStore().startEpoch(conversationId, {
-      reason: "handoff",
-      modelProfile: "handoff",
-      modelId: "openai/gpt-5.6-sol",
-      replacementHistory: [],
+    getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 1,
+      data: {
+        type: "handoff",
+        modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
+        replacementHistory: [],
+      },
     } as never),
   ).rejects.toThrow("Invalid input");
   await expect(
@@ -297,19 +218,18 @@ it("rejects incomplete markers through the epoch boundary", async () => {
   ).resolves.toEqual([]);
 });
 
-it("opens an explicit initial epoch without dropping earlier host facts", async () => {
+it("does not require an initial-history event", async () => {
   const conversationId = "local:test:host-fact-before-model";
   await recordMcpProviderConnected({ conversationId, provider: "linear" });
 
   await expect(
     openConversationProjection({
       conversationId,
-      modelId: "openai/gpt-5.4",
     }),
   ).resolves.toMatchObject({
     messages: [],
     modelProfile: "standard",
-    modelId: "openai/gpt-5.4",
+    modelId: undefined,
   });
   await expect(loadConnectedMcpProviders({ conversationId })).resolves.toEqual([
     "linear",
@@ -317,17 +237,8 @@ it("opens an explicit initial epoch without dropping earlier host facts", async 
   expect(await getConversationEventStore().loadHistory(conversationId)).toEqual(
     [
       expect.objectContaining({
-        contextEpoch: 0,
+        historyVersion: 0,
         data: expect.objectContaining({ type: "mcp_provider_connected" }),
-      }),
-      expect.objectContaining({
-        contextEpoch: 0,
-        data: {
-          type: "context_epoch_started",
-          reason: "initial",
-          modelProfile: "standard",
-          modelId: "openai/gpt-5.4",
-        },
       }),
     ],
   );
@@ -370,17 +281,17 @@ describe("SQL conversation storage", () => {
       },
     ];
 
-    await persistConversationCompactions({
+    await persistConversationMessageSummaries({
       conversation,
       conversationId: CONVERSATION_ID,
     });
-    await persistConversationCompactions({
+    await persistConversationMessageSummaries({
       conversation,
       conversationId: CONVERSATION_ID,
     });
 
     const history = await events.loadHistory(CONVERSATION_ID);
-    expect(projectVisibleConversationCompactions(history)).toEqual(
+    expect(projectConversationMessageSummaries(history)).toEqual(
       conversation.compactions,
     );
     expect(history).toHaveLength(1);
@@ -412,11 +323,11 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("one") },
+          data: { type: "agent_step", message: userMessage("one") },
           createdAtMs: 1_000,
         },
         {
-          data: { type: "message", message: userMessage("two") },
+          data: { type: "agent_step", message: userMessage("two") },
           createdAtMs: 2_000,
         },
       ]);
@@ -431,8 +342,8 @@ describe("SQL conversation storage", () => {
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
       expect(history.map((event) => event.schemaVersion)).toEqual([1, 1, 1]);
       expect(history.map((event) => event.data.type)).toEqual([
-        "message",
-        "message",
+        "agent_step",
+        "agent_step",
         "mcp_provider_connected",
       ]);
 
@@ -444,9 +355,9 @@ describe("SQL conversation storage", () => {
           .values({
             conversationId: CONVERSATION_ID,
             seq: 0,
-            contextEpoch: 0,
+            historyVersion: 0,
             schemaVersion: 1,
-            type: "message",
+            type: "agent_step",
             payload: { message: userMessage("clobber") },
             createdAt: new Date(4_000),
           }),
@@ -463,7 +374,7 @@ describe("SQL conversation storage", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlConversationEventStore(fixture.sql);
       const firstEvent = {
-        data: { type: "message" as const, message: userMessage("first") },
+        data: { type: "agent_step" as const, message: userMessage("first") },
         idempotencyKey: "event:first",
         createdAtMs: 1_000,
       };
@@ -502,7 +413,7 @@ describe("SQL conversation storage", () => {
       await store.append(CONVERSATION_ID, [
         { ...firstEvent, createdAtMs: 10_000 },
         {
-          data: { type: "message", message: userMessage("second") },
+          data: { type: "agent_step", message: userMessage("second") },
           idempotencyKey: "event:second",
           createdAtMs: 8_000,
         },
@@ -625,7 +536,7 @@ describe("SQL conversation storage", () => {
       await store.append(CONVERSATION_ID, [
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: userMessage("before\u0000after and literal \\u0000"),
           },
           createdAtMs: 1_000,
@@ -634,7 +545,7 @@ describe("SQL conversation storage", () => {
 
       expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
         {
-          type: "message",
+          type: "agent_step",
           message: {
             content: [
               { text: "before after and literal \\u0000", type: "text" },
@@ -647,7 +558,7 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("returns only the highest epoch from loadCurrentEpoch", async () => {
+  it("returns only the active history version", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -657,36 +568,37 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("epoch0-a") },
+          data: { type: "agent_step", message: userMessage("epoch0-a") },
           createdAtMs: 1_000,
         },
         {
-          data: { type: "message", message: userMessage("epoch0-b") },
+          data: { type: "agent_step", message: userMessage("epoch0-b") },
           createdAtMs: 2_000,
         },
       ]);
-      await store.startEpoch(CONVERSATION_ID, {
-        modelId: "test/model",
-        reason: "compaction",
-        modelProfile: "standard",
-        replacementHistory: [{ message: userMessage("epoch1-summary") }],
+      await store.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 3_000,
+        data: {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "test/model",
+          replacementHistory: [{ message: userMessage("epoch1-summary") }],
+        },
       });
 
-      const current = await store.loadCurrentEpoch(CONVERSATION_ID);
-      expect(current.map((event) => event.contextEpoch)).toEqual([1]);
-      expect(current.map((event) => event.data.type)).toEqual([
-        "context_epoch_started",
-      ]);
+      const current = await store.loadCurrentHistory(CONVERSATION_ID);
+      expect(current.map((event) => event.historyVersion)).toEqual([1]);
+      expect(current.map((event) => event.data.type)).toEqual(["compaction"]);
       expect(current.map((event) => event.seq)).toEqual([2]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((event) => event.contextEpoch)).toEqual([0, 0, 1]);
+      expect(history.map((event) => event.historyVersion)).toEqual([0, 0, 1]);
     } finally {
       await fixture.close();
     }
   });
 
-  it("loads exactly the epoch containing an event cursor", async () => {
+  it("loads exactly the history version containing an event cursor", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -696,19 +608,22 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("epoch0-a") },
+          data: { type: "agent_step", message: userMessage("epoch0-a") },
           createdAtMs: 1_000,
         },
         {
-          data: { type: "message", message: userMessage("epoch0-b") },
+          data: { type: "agent_step", message: userMessage("epoch0-b") },
           createdAtMs: 2_000,
         },
       ]);
-      await store.startEpoch(CONVERSATION_ID, {
-        modelId: "test/model",
-        reason: "compaction",
-        modelProfile: "standard",
-        replacementHistory: [{ message: userMessage("epoch1-summary") }],
+      await store.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 3_000,
+        data: {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "test/model",
+          replacementHistory: [{ message: userMessage("epoch1-summary") }],
+        },
       });
       await store.append(CONVERSATION_ID, [
         {
@@ -716,78 +631,37 @@ describe("SQL conversation storage", () => {
           createdAtMs: 4_000,
         },
       ]);
-      await store.startEpoch(CONVERSATION_ID, {
-        modelId: "test/model",
-        reason: "rollback",
-        modelProfile: "standard",
-        replacementHistory: [],
-        messages: [
-          { message: userMessage("epoch2-message"), createdAtMs: 5_000 },
-        ],
+      await store.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 5_000,
+        data: {
+          type: "compaction",
+          modelId: "test/model",
+          modelProfile: "standard",
+          replacementHistory: [{ message: userMessage("epoch2-message") }],
+        },
       });
 
       expect(
-        (await store.loadEpochContaining(CONVERSATION_ID, 0))?.map((event) => [
-          event.seq,
-          event.contextEpoch,
-        ]),
+        (await store.loadHistoryContaining(CONVERSATION_ID, 0))?.map(
+          (event) => [event.seq, event.historyVersion],
+        ),
       ).toEqual([
         [0, 0],
         [1, 0],
       ]);
       expect(
-        (await store.loadEpochContaining(CONVERSATION_ID, 2))?.map(
+        (await store.loadHistoryContaining(CONVERSATION_ID, 2))?.map(
           (event) => event.seq,
         ),
       ).toEqual([2, 3]);
       expect(
-        (await store.loadEpochContaining(CONVERSATION_ID, 4))?.map(
+        (await store.loadHistoryContaining(CONVERSATION_ID, 4))?.map(
           (event) => event.seq,
         ),
-      ).toEqual([4, 5]);
+      ).toEqual([4]);
       await expect(
-        store.loadEpochContaining(CONVERSATION_ID, 99),
+        store.loadHistoryContaining(CONVERSATION_ID, 99),
       ).resolves.toBeUndefined();
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("keeps rollback cursor positions while storing only the new suffix as messages", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const first = userMessage("first");
-      const prompt = userMessage("prompt");
-      const discarded = userMessage("discarded");
-      const regenerated = userMessage("regenerated");
-
-      await commitMessages({
-        executor: fixture.sql,
-        conversationId: CONVERSATION_ID,
-        modelId: "test/model",
-        messages: [first, prompt, discarded],
-      });
-      const committed = await commitMessages({
-        executor: fixture.sql,
-        conversationId: CONVERSATION_ID,
-        modelId: "test/model",
-        messages: [first, prompt, regenerated],
-      });
-
-      expect(committed).toMatchObject({
-        committedSeq: 5,
-        messageSeqs: [1, 2, 5],
-      });
-      const current = await createSqlConversationEventStore(
-        fixture.sql,
-      ).loadCurrentEpoch(CONVERSATION_ID);
-      expect(current.map((event) => event.data.type)).toEqual([
-        "context_epoch_started",
-        "message",
-      ]);
     } finally {
       await fixture.close();
     }
@@ -802,7 +676,7 @@ describe("SQL conversation storage", () => {
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("committed") },
+          data: { type: "agent_step", message: userMessage("committed") },
           createdAtMs: 1_000,
         },
         {
@@ -813,20 +687,20 @@ describe("SQL conversation storage", () => {
       await fixture.sql.execute(
         `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+  conversation_id, seq, history_version, schema_version, type, payload, created_at
 ) VALUES ($1, 2, 0, 1, 'message', '{}'::jsonb, $2)
 `,
         [CONVERSATION_ID, new Date(3_000).toISOString()],
       );
 
       await expect(
-        store.loadEpochContaining(CONVERSATION_ID, 1, 1),
+        store.loadHistoryContaining(CONVERSATION_ID, 1, 1),
       ).resolves.toEqual([
         expect.objectContaining({ seq: 0 }),
         expect.objectContaining({ seq: 1 }),
       ]);
       await expect(
-        store.loadEpochContaining(CONVERSATION_ID, 1),
+        store.loadHistoryContaining(CONVERSATION_ID, 1),
       ).rejects.toThrow(/Invalid input/);
     } finally {
       await fixture.close();
@@ -844,12 +718,12 @@ INSERT INTO junior_conversation_events (
       await fixture.sql.execute(
         `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+  conversation_id, seq, history_version, schema_version, type, payload, created_at
 ) VALUES
   ($1, 0, 0, 1, 'message', '{}'::jsonb, $2),
-  ($1, 1, 0, 1, 'visible_context_compacted', '{}'::jsonb, $2),
-  ($1, 2, 0, 1, 'visible_message_recorded', $3::jsonb, $2),
-  ($1, 3, 0, 1, 'visible_context_compacted', $4::jsonb, $2)
+  ($1, 1, 0, 1, 'messages_summarized', '{}'::jsonb, $2),
+  ($1, 2, 0, 1, 'message', $3::jsonb, $2),
+  ($1, 3, 0, 1, 'messages_summarized', $4::jsonb, $2)
 `,
         [
           CONVERSATION_ID,
@@ -859,12 +733,12 @@ INSERT INTO junior_conversation_events (
         ],
       );
 
-      await expect(store.loadVisibleHistory(CONVERSATION_ID)).resolves.toEqual({
+      await expect(store.loadMessageHistory(CONVERSATION_ID)).resolves.toEqual({
         events: [
           expect.objectContaining({
             seq: 2,
             data: expect.objectContaining({
-              type: "visible_message_recorded",
+              type: "message",
               messageId: "m1",
             }),
           }),
@@ -872,7 +746,7 @@ INSERT INTO junior_conversation_events (
         compaction: expect.objectContaining({
           seq: 3,
           data: {
-            type: "visible_context_compacted",
+            type: "messages_summarized",
             historyFromSeq: 2,
             compactions: [],
           },
@@ -901,7 +775,7 @@ INSERT INTO junior_conversation_events (
         CONVERSATION_ID,
         conversation.messages.map((message) => ({
           data: {
-            type: "visible_message_recorded" as const,
+            type: "message" as const,
             messageId: message.id,
             role: message.role,
             text: message.text,
@@ -928,7 +802,7 @@ INSERT INTO junior_conversation_events (
       await store.append(CONVERSATION_ID, [
         {
           data: {
-            type: "visible_context_compacted",
+            type: "messages_summarized",
             historyFromSeq,
             compactions: conversation.compactions,
           },
@@ -944,11 +818,11 @@ WHERE conversation_id = $1 AND seq = 0
         [CONVERSATION_ID],
       );
 
-      const visible = await store.loadVisibleHistory(CONVERSATION_ID);
+      const visible = await store.loadMessageHistory(CONVERSATION_ID);
       expect(visible.events[0]?.seq).toBe(historyFromSeq);
       expect(visible.events).toHaveLength(conversation.messages.length);
       expect(
-        projectVisibleConversationMessages(visible.events).map(
+        projectConversationMessages(visible.events).map(
           (message) => message.id,
         ),
       ).toEqual(conversation.messages.map((message) => message.id));
@@ -979,7 +853,7 @@ WHERE conversation_id = $1 AND seq = 0
     }
   });
 
-  it("rolls back a failed startEpoch without leaving a partial epoch", async () => {
+  it("rolls back a failed history replacement transaction", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -988,12 +862,12 @@ WHERE conversation_id = $1 AND seq = 0
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("epoch0") },
+          data: { type: "agent_step", message: userMessage("epoch0") },
           createdAtMs: 1_000,
         },
       ]);
 
-      // Force a failure inside the startEpoch transaction after its writes.
+      // Force a failure inside the replacement transaction after its writes.
       const failing: JuniorSqlDatabase = {
         db: () => fixture.sql.db(),
         withLock: (name, callback) =>
@@ -1006,20 +880,22 @@ WHERE conversation_id = $1 AND seq = 0
       const failingStore = createSqlConversationEventStore(failing);
 
       await expect(
-        failingStore.startEpoch(CONVERSATION_ID, {
-          modelId: "test/model",
-          reason: "rollback",
-          modelProfile: "standard",
-          replacementHistory: [],
-          messages: [{ message: userMessage("never"), createdAtMs: 2_000 }],
+        failingStore.replaceHistory(CONVERSATION_ID, {
+          createdAtMs: 2_000,
+          data: {
+            type: "compaction",
+            modelId: "test/model",
+            modelProfile: "standard",
+            replacementHistory: [{ message: userMessage("never") }],
+          },
         }),
       ).rejects.toThrow("epoch write failed");
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((event) => event.contextEpoch)).toEqual([0]);
-      expect(
-        history.some((event) => event.data.type === "context_epoch_started"),
-      ).toBe(false);
+      expect(history.map((event) => event.historyVersion)).toEqual([0]);
+      expect(history.some((event) => event.data.type === "compaction")).toBe(
+        false,
+      );
     } finally {
       await fixture.close();
     }
@@ -1041,7 +917,7 @@ WHERE conversation_id = $1 AND seq = 0
         await fixture.sql.execute(
           `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+  conversation_id, seq, history_version, schema_version, type, payload, created_at
 ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
 `,
           [
@@ -1077,7 +953,7 @@ INSERT INTO junior_conversation_events (
       await fixture.sql.execute(
         `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+  conversation_id, seq, history_version, schema_version, type, payload, created_at
 ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
 `,
         [
@@ -1095,7 +971,7 @@ INSERT INTO junior_conversation_events (
         {
           schemaVersion: 1,
           seq: 0,
-          contextEpoch: 0,
+          historyVersion: 0,
           createdAtMs: 1_000,
           data: { type: "mcp_provider_connected", provider: "github" },
         },
@@ -1105,177 +981,74 @@ INSERT INTO junior_conversation_events (
     }
   });
 
-  it("records messages idempotently and updates only replied_at", async () => {
+  it("records message and handled facts idempotently", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlConversationMessageStore(fixture.sql);
-
-      await store.record(CONVERSATION_ID, [
-        { messageId: "m1", role: "user", text: "first", createdAtMs: 1_000 },
+      const store = createSqlConversationEventStore(fixture.sql);
+      await store.append(CONVERSATION_ID, [
         {
-          messageId: "m2",
+          idempotencyKey: "message:m1",
+          data: {
+            type: "message",
+            messageId: "m1",
+            role: "user",
+            text: "first",
+          },
+          createdAtMs: 1_000,
+        },
+        {
+          idempotencyKey: "message:m2",
+          data: {
+            type: "message",
+            messageId: "m2",
+            role: "assistant",
+            text: "reply",
+          },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await store.append(CONVERSATION_ID, [
+        {
+          idempotencyKey: "message:m1",
+          data: {
+            type: "message",
+            messageId: "m1",
+            role: "user",
+            text: "changed",
+          },
+          createdAtMs: 9_000,
+        },
+        {
+          idempotencyKey: "message:m1:handled",
+          data: { type: "message_handled", messageId: "m1" },
+          createdAtMs: 5_000,
+        },
+        {
+          idempotencyKey: "message:m1:handled",
+          data: { type: "message_handled", messageId: "m1" },
+          createdAtMs: 9_000,
+        },
+      ]);
+      const history = await store.loadMessageHistory(CONVERSATION_ID);
+      expect(projectConversationMessages(history.events)).toEqual([
+        {
+          id: "m1",
+          role: "user",
+          text: "first",
+          createdAtMs: 1_000,
+          meta: { replied: true },
+        },
+        {
+          id: "m2",
           role: "assistant",
           text: "reply",
           createdAtMs: 2_000,
         },
       ]);
-      // Source redelivery must not duplicate or mutate the stored fact.
-      await store.record(CONVERSATION_ID, [
-        { messageId: "m1", role: "user", text: "changed", createdAtMs: 9_000 },
-      ]);
-
-      await store.markReplied(CONVERSATION_ID, "m1", 5_000);
-      await store.markReplied(CONVERSATION_ID, "m1", 9_000);
-
-      const listed = await listMessageRows(fixture, CONVERSATION_ID);
-      expect(listed).toMatchObject([
-        {
-          conversationId: CONVERSATION_ID,
-          messageId: "m1",
-          role: "user",
-          text: "first",
-          createdAt: new Date(1_000),
-          repliedAt: new Date(5_000),
-        },
-        {
-          conversationId: CONVERSATION_ID,
-          messageId: "m2",
-          role: "assistant",
-          text: "reply",
-          createdAt: new Date(2_000),
-          repliedAt: null,
-        },
-      ]);
-      const visibleEvents = (
-        await createSqlConversationEventStore(fixture.sql).loadHistory(
-          CONVERSATION_ID,
-        )
-      ).filter((event) => event.data.type.startsWith("visible_message_"));
-      expect(visibleEvents).toEqual([
-        expect.objectContaining({
-          idempotencyKey: "visible-message:m1:recorded",
-          data: expect.objectContaining({
-            type: "visible_message_recorded",
-            messageId: "m1",
-            text: "first",
-          }),
-        }),
-        expect.objectContaining({
-          idempotencyKey: "visible-message:m2:recorded",
-          data: expect.objectContaining({
-            type: "visible_message_recorded",
-            messageId: "m2",
-          }),
-        }),
-        expect.objectContaining({
-          idempotencyKey: "visible-message:m1:replied",
-          data: { type: "visible_message_replied", messageId: "m1" },
-          createdAtMs: 5_000,
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("rolls back a recorded event when its message projection fails", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      await fixture.sql.execute(`
-        CREATE FUNCTION fail_visible_message_insert()
-        RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN
-          RAISE EXCEPTION 'projection insert failed';
-        END;
-        $$
-      `);
-      await fixture.sql.execute(`
-        CREATE TRIGGER fail_visible_message_insert_trigger
-        BEFORE INSERT ON junior_conversation_messages
-        FOR EACH ROW EXECUTE FUNCTION fail_visible_message_insert()
-      `);
-      const messages = createSqlConversationMessageStore(fixture.sql);
-
-      await expect(
-        messages.record(CONVERSATION_ID, [
-          {
-            messageId: "projection-failure",
-            role: "user",
-            text: "must roll back",
-            createdAtMs: 1_000,
-          },
-        ]),
-      ).rejects.toThrow(
-        'Failed query: insert into "junior_conversation_messages"',
-      );
-
-      expect(await listMessageRows(fixture, CONVERSATION_ID)).toEqual([]);
-      expect(
-        await createSqlConversationEventStore(fixture.sql).loadHistory(
-          CONVERSATION_ID,
-        ),
-      ).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("rolls back a replied event when its message projection fails", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const messages = createSqlConversationMessageStore(fixture.sql);
-      await messages.record(CONVERSATION_ID, [
-        {
-          messageId: "reply-projection-failure",
-          role: "user",
-          text: "must stay unreplied",
-          createdAtMs: 1_000,
-        },
-      ]);
-      await fixture.sql.execute(`
-        CREATE FUNCTION fail_visible_message_reply_update()
-        RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN
-          RAISE EXCEPTION 'projection reply update failed';
-        END;
-        $$
-      `);
-      await fixture.sql.execute(`
-        CREATE TRIGGER fail_visible_message_reply_update_trigger
-        BEFORE UPDATE OF replied_at ON junior_conversation_messages
-        FOR EACH ROW EXECUTE FUNCTION fail_visible_message_reply_update()
-      `);
-
-      await expect(
-        messages.markReplied(
-          CONVERSATION_ID,
-          "reply-projection-failure",
-          2_000,
-        ),
-      ).rejects.toThrow('Failed query: update "junior_conversation_messages"');
-
-      const projected = await listMessageRows(fixture, CONVERSATION_ID);
-      expect(projected).toEqual([
-        expect.objectContaining({ messageId: "reply-projection-failure" }),
-      ]);
-      expect(projected[0]?.repliedAt).toBe(null);
-      const visibleEvents = (
-        await createSqlConversationEventStore(fixture.sql).loadHistory(
-          CONVERSATION_ID,
-        )
-      ).filter((event) => event.data.type.startsWith("visible_message_"));
-      expect(visibleEvents.map((event) => event.data.type)).toEqual([
-        "visible_message_recorded",
-      ]);
+      expect(await store.loadHistory(CONVERSATION_ID)).toHaveLength(3);
     } finally {
       await fixture.close();
     }
@@ -1302,31 +1075,38 @@ INSERT INTO junior_conversation_events (
         .update(juniorConversations)
         .set({ lastActivityAt: new Date(1_000) })
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-      const messages = createSqlConversationMessageStore(fixture.sql);
       const events = createSqlConversationEventStore(fixture.sql);
 
-      // A newer message advances the clock (append-refresh semantics).
-      await messages.record(CONVERSATION_ID, [
-        { messageId: "m1", role: "user", text: "newer", createdAtMs: 5_000 },
-      ]);
-      expect(await lastActivityMs()).toBe(5_000);
-
-      // A backdated message must not regress the clock.
-      await messages.record(CONVERSATION_ID, [
-        { messageId: "m0", role: "user", text: "older", createdAtMs: 2_000 },
-      ]);
-      expect(await lastActivityMs()).toBe(5_000);
-
-      // A full working-set persist (oldest-first, as hydrate/persist cycles
-      // write) advances the clock to the NEWEST message in the batch, not the
-      // first.
-      await messages.record(CONVERSATION_ID, [
-        { messageId: "m0", role: "user", text: "older", createdAtMs: 2_000 },
-        { messageId: "m1", role: "user", text: "newer", createdAtMs: 5_000 },
+      await events.append(CONVERSATION_ID, [
         {
-          messageId: "m2",
-          role: "assistant",
-          text: "newest",
+          data: {
+            type: "message",
+            messageId: "m1",
+            role: "user",
+            text: "newer",
+          },
+          createdAtMs: 5_000,
+        },
+      ]);
+      expect(await lastActivityMs()).toBe(5_000);
+
+      await events.append(CONVERSATION_ID, [
+        {
+          data: {
+            type: "message",
+            messageId: "m0",
+            role: "user",
+            text: "older",
+          },
+          createdAtMs: 2_000,
+        },
+        {
+          data: {
+            type: "message",
+            messageId: "m2",
+            role: "assistant",
+            text: "newest",
+          },
           createdAtMs: 6_500,
         },
       ]);
@@ -1335,14 +1115,14 @@ INSERT INTO junior_conversation_events (
       // Event appends advance the clock too, and also never regress it.
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("newest") },
+          data: { type: "agent_step", message: userMessage("newest") },
           createdAtMs: 8_000,
         },
       ]);
       expect(await lastActivityMs()).toBe(8_000);
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("backdated") },
+          data: { type: "agent_step", message: userMessage("backdated") },
           createdAtMs: 3_000,
         },
       ]);
@@ -1352,7 +1132,7 @@ INSERT INTO junior_conversation_events (
     }
   });
 
-  it("purges events and messages for a conversation and its descendants", async () => {
+  it("purges conversation events for a conversation and its descendants", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -1360,17 +1140,22 @@ INSERT INTO junior_conversation_events (
       await seedConversation(fixture, CONVERSATION_ID);
       await seedConversation(fixture, CHILD_CONVERSATION_ID, CONVERSATION_ID);
       const events = createSqlConversationEventStore(fixture.sql);
-      const messages = createSqlConversationMessageStore(fixture.sql);
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
         await events.append(conversationId, [
           {
-            data: { type: "message", message: userMessage("hi") },
+            data: { type: "agent_step", message: userMessage("hi") },
             createdAtMs: 1_000,
           },
-        ]);
-        await messages.record(conversationId, [
-          { messageId: "m1", role: "user", text: "hi", createdAtMs: 1_000 },
+          {
+            data: {
+              type: "message",
+              messageId: "m1",
+              role: "user",
+              text: "hi",
+            },
+            createdAtMs: 1_000,
+          },
         ]);
       }
 
@@ -1380,7 +1165,6 @@ INSERT INTO junior_conversation_events (
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
         expect(await events.loadHistory(conversationId)).toEqual([]);
-        expect(await listMessageRows(fixture, conversationId)).toEqual([]);
       }
 
       const rows = await fixture.sql
@@ -1396,21 +1180,21 @@ INSERT INTO junior_conversation_events (
 
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: userMessage("new history") },
+          data: { type: "agent_step", message: userMessage("new history") },
           createdAtMs: 6_000,
         },
-      ]);
-      await messages.record(CONVERSATION_ID, [
         {
-          messageId: "m2",
-          role: "user",
-          text: "new history",
+          data: {
+            type: "message",
+            messageId: "m2",
+            role: "user",
+            text: "new history",
+          },
           createdAtMs: 6_000,
         },
       ]);
 
       expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(2);
-      expect(await listMessageRows(fixture, CONVERSATION_ID)).toHaveLength(1);
       const reopened = await fixture.sql
         .db()
         .select({

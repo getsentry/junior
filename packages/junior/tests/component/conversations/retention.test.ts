@@ -12,7 +12,6 @@ import {
 } from "@/chat/conversations/sql/purge";
 import {
   juniorConversationEvents,
-  juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -83,19 +82,12 @@ async function seedConversation(
       .values({
         conversationId: args.conversationId,
         seq: 0,
-        contextEpoch: 0,
+        historyVersion: 0,
         schemaVersion: 1,
         type: "message",
-        payload: { message: { role: "user", content: [] } },
+        payload: { messageId: "m1", role: "user", text: "hi" },
         createdAt: at,
       });
-    await executor.db().insert(juniorConversationMessages).values({
-      conversationId: args.conversationId,
-      messageId: "m1",
-      role: "user",
-      text: "hi",
-      createdAt: at,
-    });
   }
 }
 
@@ -108,18 +100,6 @@ async function eventCount(
     .select()
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
-  return rows.length;
-}
-
-async function messageCount(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<number> {
-  const rows = await executor
-    .db()
-    .select()
-    .from(juniorConversationMessages)
-    .where(eq(juniorConversationMessages.conversationId, conversationId));
   return rows.length;
 }
 
@@ -401,7 +381,6 @@ describe("retention purge job", () => {
 
     expect(result.purged).toBe(1);
     expect(await eventCount(fixture.sql, "remaining-child")).toBe(0);
-    expect(await messageCount(fixture.sql, "remaining-child")).toBe(0);
   });
 
   it("purges up to the batch limit and leaves the remainder for the next run", async () => {
@@ -488,7 +467,6 @@ describe("retention purge job", () => {
 
     await purgeConversation(fixture.sql, "fresh", { nowMs: BASE_MS });
     expect(await eventCount(fixture.sql, "fresh")).toBe(0);
-    expect(await messageCount(fixture.sql, "fresh")).toBe(0);
     const row = await readConversation(fixture.sql, "fresh");
     expect(row.transcriptPurgedAt).not.toBe(null);
     expect(row.title).toBe(null);

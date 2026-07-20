@@ -6,7 +6,7 @@ export function TranscriptContextEventView(props: {
   part: TranscriptViewContextEventPart;
   timestamp?: number;
 }) {
-  const handoff = props.part.event.type === "model_handoff";
+  const handoff = props.part.event.type === "handoff";
   return (
     <article
       className={`min-w-0 rounded-lg border px-3 py-3 first:mt-1 ${

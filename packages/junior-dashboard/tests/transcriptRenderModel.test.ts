@@ -43,13 +43,13 @@ describe("canonical event transcript reduction", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(3, "2026-01-01T00:00:03.000Z", {
-          type: "visible_message",
+          type: "message",
           messageId: "first",
           role: "user",
           text: "first by sequence",
         }),
         event(4, "2026-01-01T00:00:01.000Z", {
-          type: "visible_message",
+          type: "message",
           messageId: "second",
           role: "assistant",
           text: "second by sequence",
@@ -69,13 +69,13 @@ describe("canonical event transcript reduction", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
-          type: "visible_message",
+          type: "message",
           messageId: "visible",
           role: "assistant",
           text: "safe answer",
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
-          type: "visible_message",
+          type: "message",
           messageId: "private",
           role: "user",
           redacted: true,
@@ -130,7 +130,7 @@ describe("canonical event transcript reduction", () => {
             name: "handoff",
           }),
           event(5, "2026-01-01T00:00:05.000Z", {
-            type: "model_handoff",
+            type: "handoff",
             toolStartedSeq: 4,
           }),
           event(6, "2026-01-01T00:00:06.000Z", {
@@ -139,7 +139,7 @@ describe("canonical event transcript reduction", () => {
             subagentKind: "advisor",
           }),
           event(7, "2026-01-01T00:00:07.000Z", {
-            type: "model_handoff",
+            type: "handoff",
           }),
         ]),
       ),
@@ -164,10 +164,10 @@ describe("canonical event transcript reduction", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
-          type: "context_compacted",
+          type: "compaction",
         }),
         event(1, "2026-01-01T00:00:01.000Z", {
-          type: "model_handoff",
+          type: "handoff",
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "subagent_started",
@@ -249,7 +249,7 @@ describe("canonical event transcript reduction", () => {
             subagentKind: "advisor",
           }),
           event(2, "2026-01-01T00:00:02.000Z", {
-            type: "context_compacted",
+            type: "compaction",
           }),
           event(3, "2026-01-01T00:00:03.000Z", {
             type: "turn_lifecycle",

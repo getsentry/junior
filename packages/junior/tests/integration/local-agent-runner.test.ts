@@ -24,7 +24,7 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -202,17 +202,14 @@ describe("local agent runner", () => {
       conversationId!,
     );
     const userRecorded = history.findIndex(
-      (event) =>
-        event.data.type === "visible_message_recorded" &&
-        event.data.role === "user",
+      (event) => event.data.type === "message" && event.data.role === "user",
     );
     const started = history.findIndex(
       (event) => event.data.type === "turn_started",
     );
     const assistantRecorded = history.findIndex(
       (event) =>
-        event.data.type === "visible_message_recorded" &&
-        event.data.role === "assistant",
+        event.data.type === "message" && event.data.role === "assistant",
     );
     const completed = history.findIndex(
       (event) => event.data.type === "turn_completed",
@@ -816,7 +813,6 @@ describe("local agent runner", () => {
       content: [{ type: "text", text: "projected history" }],
     } as PiMessage;
     await commitMessages({
-      modelId: "test/model",
       conversationId: conversationId!,
       messages: [projectedMessage],
     });
@@ -1004,7 +1000,6 @@ describe("local agent runner", () => {
       },
     ] as PiMessage[];
     await commitMessages({
-      modelId: "test/model",
       conversationId: conversationId!,
       messages: projectedMessages,
     });
@@ -1031,7 +1026,7 @@ describe("local agent runner", () => {
     expect(contexts[0]?.piMessages).toEqual(projectedMessages);
   });
 
-  it("rolls back generated Pi output when local delivery fails", async () => {
+  it("does not commit generated Pi output when local delivery fails", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "delivery-pi-rollback",
       cwd: "/tmp/local-agent-runner-five",
@@ -1041,10 +1036,6 @@ describe("local agent runner", () => {
     const eventId = "33333333333333333333333333333333";
     const capture = vi.fn().mockReturnValue(eventId);
 
-    const assistantMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "undelivered pi output" }],
-    } as PiMessage;
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
       const context = flattenAgentRunRequestForTest(request);
 
@@ -1055,11 +1046,6 @@ describe("local agent runner", () => {
       await context.onSandboxAcquired?.({
         sandboxDependencyProfileHash: "profile-undelivered",
         sandboxId: "sandbox-undelivered",
-      });
-      await commitMessages({
-        modelId: "test/model",
-        conversationId: conversationId!,
-        messages: [assistantMessage],
       });
       return completedAgentRun(successReply("not delivered"));
     });

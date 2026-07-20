@@ -31,7 +31,7 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   event: {
     createdAt: string;
-    type: "context_compacted" | "model_handoff";
+    type: "compaction" | "handoff";
   };
   type: "context_event";
 };

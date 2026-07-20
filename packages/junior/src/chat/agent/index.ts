@@ -277,7 +277,6 @@ async function executeAgentRunInPrivacyContext(
     if (sessionConversationId) {
       const projection = await openConversationProjection({
         conversationId: sessionConversationId,
-        modelId: activeModelId,
       });
       activeModelProfile = projection.modelProfile;
       activeModelId = modelIdForProfile(botConfig, activeModelProfile);

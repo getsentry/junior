@@ -70,29 +70,6 @@ describe("persistAuthPauseSessionRecord", () => {
         content: [{ type: "text", text: "help me" }],
         timestamp: 1,
       },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "working on it" }],
-        api: "responses",
-        provider: "openai",
-        model: "gpt-5.3",
-        usage: {
-          input: 1,
-          output: 1,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 2,
-          cost: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0,
-          },
-        },
-        timestamp: 2,
-        stopReason: "toolUse",
-      },
     ];
 
     await upsertAgentTurnSessionRecord({
@@ -957,7 +934,7 @@ describe("persistAuthPauseSessionRecord", () => {
     }
   });
 
-  it("keeps completed session bootstrap context for later turns in the same session", async () => {
+  it("keeps runtime bootstrap out of durable completed history", async () => {
     const { persistCompletedSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
@@ -999,13 +976,7 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: [
         {
           role: "user",
-          content: [
-            {
-              type: "text",
-              text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
-            },
-            { type: "text", text: "actual request" },
-          ],
+          content: [{ type: "text", text: "actual request" }],
         },
         {
           role: "assistant",
@@ -1171,8 +1142,8 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("branches Pi session state from the recoverable cursor after trimming an unsafe assistant tail", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+  it("rejects an implicit branch from committed agent history", async () => {
+    const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const user: PiMessage = {
       role: "user",
@@ -1184,14 +1155,6 @@ describe("persistAuthPauseSessionRecord", () => {
       content: [{ type: "text", text: "not committed" }],
       timestamp: 2,
     } as PiMessage;
-    const replacementToolResult = {
-      role: "toolResult",
-      toolCallId: "call-1",
-      toolName: "bash",
-      content: [{ type: "text", text: "safe result" }],
-      timestamp: 3,
-    } as PiMessage;
-
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId: "conversation-branch",
@@ -1200,30 +1163,17 @@ describe("persistAuthPauseSessionRecord", () => {
       state: "running",
       piMessages: [user, unsafeAssistant],
     });
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId: "conversation-branch",
-      sessionId: "turn-branch",
-      sliceId: 2,
-      state: "awaiting_resume",
-      piMessages: [user],
-      resumeReason: "timeout",
-    });
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId: "conversation-branch",
-      sessionId: "turn-branch",
-      sliceId: 2,
-      state: "running",
-      piMessages: [user, replacementToolResult],
-    });
-
     await expect(
-      getAgentTurnSessionRecord("conversation-branch", "turn-branch"),
-    ).resolves.toMatchObject({
-      state: "running",
-      piMessages: [user, replacementToolResult],
-    });
+      upsertAgentTurnSessionRecord({
+        modelId: "test/model",
+        conversationId: "conversation-branch",
+        sessionId: "turn-branch",
+        sliceId: 2,
+        state: "awaiting_resume",
+        piMessages: [user],
+        resumeReason: "timeout",
+      }),
+    ).rejects.toThrow("changed before its committed boundary");
   });
 
   it("updates the active model and reasoning across slices", async () => {
@@ -1234,6 +1184,7 @@ describe("persistAuthPauseSessionRecord", () => {
     } = await import("@/chat/state/turn-session");
     const conversationId = "conversation-execution-profile";
     const sessionId = "turn-execution-profile";
+    const messages = [userMessage("continue")];
 
     await upsertAgentTurnSessionRecord({
       conversationId,
@@ -1243,7 +1194,7 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "openai/gpt-5.6",
       reasoningLevel: "high",
       resumeReason: "timeout",
-      piMessages: [userMessage("continue")],
+      piMessages: messages,
     });
     await upsertAgentTurnSessionRecord({
       conversationId,
@@ -1252,7 +1203,7 @@ describe("persistAuthPauseSessionRecord", () => {
       state: "running",
       modelId: "openai/gpt-5.6",
       reasoningLevel: "low",
-      piMessages: [userMessage("continue")],
+      piMessages: messages,
     });
 
     await expect(
@@ -1278,6 +1229,7 @@ describe("persistAuthPauseSessionRecord", () => {
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
     const { loadProjection } = await import("@/chat/conversations/projection");
+    const { getConversationEventStore } = await import("@/chat/db");
     const oldRequest: PiMessage = {
       role: "user",
       content: [{ type: "text", text: "old request" }],
@@ -1303,6 +1255,18 @@ describe("persistAuthPauseSessionRecord", () => {
       resumeReason: "timeout",
       piMessages: [oldRequest],
     });
+    await getConversationEventStore().replaceHistory(
+      "conversation-projection-pin",
+      {
+        createdAtMs: 2,
+        data: {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "test/model",
+          replacementHistory: [{ message: newRequest }],
+        },
+      },
+    );
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId: "conversation-projection-pin",

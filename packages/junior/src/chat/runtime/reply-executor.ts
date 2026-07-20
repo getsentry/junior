@@ -134,8 +134,7 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
-import { modelIdForProfile } from "@/chat/model-profile";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 /**
@@ -694,7 +693,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             await commitMessages({
               conversationId,
-              modelId: modelIdForProfile(botConfig, projection.modelProfile),
               messages: [
                 ...projection.messages,
                 ...missing.map((pair) => pair.message),
@@ -1539,7 +1537,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             // Commit the durable delivery record first so recovery cannot
-            // regenerate an accepted reply. Persist canonical visible-message
+            // regenerate an accepted reply. Persist canonical message
             // facts next, then update Redis runtime scratch independently.
             if (conversationId && reply.piMessages?.length) {
               await completeDeliveredTurn({

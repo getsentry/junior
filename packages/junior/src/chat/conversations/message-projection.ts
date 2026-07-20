@@ -5,14 +5,11 @@ import type {
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
 
-type VisibleMessageEvent = ConversationEvent & {
+type MessageEvent = ConversationEvent & {
   data: Extract<
     ConversationEvent["data"],
     {
-      type:
-        | "visible_message_recorded"
-        | "visible_message_metadata_updated"
-        | "visible_message_replied";
+      type: "message" | "message_updated" | "message_handled";
     }
   >;
 };
@@ -22,13 +19,11 @@ interface ProjectedMessage {
   repliedAtMs?: number;
 }
 
-function isVisibleMessageEvent(
-  event: ConversationEvent,
-): event is VisibleMessageEvent {
+function isMessageEvent(event: ConversationEvent): event is MessageEvent {
   return (
-    event.data.type === "visible_message_recorded" ||
-    event.data.type === "visible_message_metadata_updated" ||
-    event.data.type === "visible_message_replied"
+    event.data.type === "message" ||
+    event.data.type === "message_updated" ||
+    event.data.type === "message_handled"
   );
 }
 
@@ -47,32 +42,25 @@ function splitMeta(meta: Record<string, unknown> | undefined): {
   };
 }
 
-function storedMeta(message: ConversationMessage): Record<string, unknown> {
-  return {
-    ...(message.author ? { author: message.author } : {}),
-    ...(message.meta ?? {}),
-  };
-}
-
-function missingBaselineError(event: VisibleMessageEvent): Error {
+function missingBaselineError(event: MessageEvent): Error {
   return new Error(
-    `Visible message event ${event.data.type} at seq ${event.seq} references ${event.data.messageId} before visible_message_recorded`,
+    `Message event ${event.data.type} at seq ${event.seq} references ${event.data.messageId} before message`,
   );
 }
 
-/** Reduce canonical visible-message facts into the destination-facing transcript. */
-export function projectVisibleConversationMessages(
+/** Reduce canonical message facts into destination-facing history. */
+export function projectConversationMessages(
   events: ConversationEvent[],
   options: { historyFromSeq?: number } = {},
 ): ConversationMessage[] {
   const byId = new Map<string, ProjectedMessage>();
 
   for (const event of events) {
-    if (!isVisibleMessageEvent(event)) continue;
+    if (!isMessageEvent(event)) continue;
     const data = event.data;
     const current = byId.get(data.messageId);
 
-    if (data.type === "visible_message_recorded") {
+    if (data.type === "message" || data.type === "message_updated") {
       const message: ConversationMessage = {
         id: data.messageId,
         role: data.role,
@@ -80,11 +68,23 @@ export function projectVisibleConversationMessages(
         createdAtMs: event.createdAtMs,
         ...splitMeta(data.meta),
       };
-      if (current)
+      if (data.type === "message" && current)
         throw new Error(
-          `Duplicate visible_message_recorded event for ${data.messageId} at seq ${event.seq}`,
+          `Duplicate message event for ${data.messageId} at seq ${event.seq}`,
         );
-      byId.set(data.messageId, { message });
+      if (data.type === "message_updated" && !current) {
+        if ((options.historyFromSeq ?? 0) > 0) continue;
+        throw missingBaselineError(event);
+      }
+      byId.set(data.messageId, {
+        message: {
+          ...message,
+          createdAtMs: current?.message.createdAtMs ?? message.createdAtMs,
+        },
+        ...(current?.repliedAtMs === undefined
+          ? {}
+          : { repliedAtMs: current.repliedAtMs }),
+      });
       continue;
     }
 
@@ -92,16 +92,6 @@ export function projectVisibleConversationMessages(
       if ((options.historyFromSeq ?? 0) > 0) continue;
       throw missingBaselineError(event);
     }
-    if (data.type === "visible_message_metadata_updated") {
-      const merged = { ...storedMeta(current.message), ...data.meta };
-      const { author: _author, meta: _meta, ...baseline } = current.message;
-      current.message = {
-        ...baseline,
-        ...splitMeta(merged),
-      };
-      continue;
-    }
-
     current.repliedAtMs ??= event.createdAtMs;
   }
 

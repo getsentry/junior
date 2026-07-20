@@ -434,8 +434,8 @@ async function maybeCompactWithDeps(
 }
 
 /**
- * Open the compaction context epoch so later turns read only the replacement
- * history, not the pre-compaction runtime transcript.
+ * Replace active agent history so later turns read the compacted history, not
+ * the pre-compaction runtime transcript.
  */
 async function writeCompactedThreadContext(
   args: CompactContextArgs,
@@ -463,21 +463,24 @@ async function writeCompactedThreadContext(
     retained,
     sourceProvenance: sourceProjection.provenance,
   });
-  await eventStore.startEpoch(args.conversationId, {
-    reason: "compaction",
-    modelProfile: sourceProjection.modelProfile,
-    modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
-    replacementHistory: replacement.map((message, index) => {
-      const sourceEventSeq =
-        index < retained.length
-          ? sourceProjection.seqs[retained[index]!.sourceIndex]
-          : undefined;
-      return {
-        message,
-        provenance: replacementProvenance[index]!,
-        ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
-      };
-    }),
+  await eventStore.replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "compaction",
+      modelProfile: sourceProjection.modelProfile,
+      modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
+      replacementHistory: replacement.map((message, index) => {
+        const sourceEventSeq =
+          index < retained.length
+            ? sourceProjection.seqs[retained[index]!.sourceIndex]
+            : undefined;
+        return {
+          message,
+          provenance: replacementProvenance[index]!,
+          ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
+        };
+      }),
+    },
   });
 
   updateConversationStats(args.conversation);
@@ -526,18 +529,20 @@ export async function compactContextForHandoff(
     ],
   } as PiMessage;
   const messages = [message];
+  const replacementMessages = stripRuntimeTurnContext(messages);
   args.signal?.throwIfAborted();
-  await getConversationEventStore().startEpoch(args.conversationId, {
-    reason: "handoff",
-    modelProfile: args.target.modelProfile,
-    modelId: args.target.modelId,
-    triggeringToolCallId: args.triggeringToolCallId,
-    replacementHistory: [
-      {
-        message,
+  await getConversationEventStore().replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "handoff",
+      modelProfile: args.target.modelProfile,
+      modelId: args.target.modelId,
+      triggeringToolCallId: args.triggeringToolCallId,
+      replacementHistory: replacementMessages.map((replacementMessage) => ({
+        message: replacementMessage,
         provenance: contextProvenance,
-      },
-    ],
+      })),
+    },
   });
   return messages;
 }

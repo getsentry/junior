@@ -2,8 +2,8 @@
  * One-time Redis→SQL legacy history importer used only by `junior upgrade`.
  *
  * Translates the legacy `junior:agent-session-log:<id>` list shape into
- * `junior_conversation_events` rows: `sessionId` markers become context epochs,
- * `projection_reset` entries become a `context_epoch_started` checkpoint,
+ * `junior_conversation_events` rows: `sessionId` markers become history versions,
+ * `projection_reset` entries become compaction events,
  * advisor `transcriptRef` links become `childConversationId`,
  * and legacy v1 provenance normalizes exactly as the legacy reducer does. This
  * whole module is removed after the operator-migration horizon; its
@@ -25,11 +25,7 @@ import {
   conversationEventDataSchema,
   type ConversationEventData,
 } from "@/chat/conversations/history";
-import {
-  juniorConversationEvents,
-  juniorConversationMessages,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   isLegacyOrCurrentCheckpointMessage,
@@ -45,7 +41,7 @@ const ADVISOR_CONTEXT_CLOSE = "\n</executor-context>";
 /** A converted legacy event with its explicit order and epoch pinned. */
 export interface ImportedEvent {
   seq: number;
-  contextEpoch: number;
+  historyVersion: number;
   idempotencyKey?: string;
   data: ConversationEventData;
   createdAtMs: number;
@@ -155,11 +151,11 @@ export function convertLegacySessionLog(args: {
   let advisorChildConversationId: string | undefined;
   let seq = 0;
   const push = (
-    contextEpoch: number,
+    historyVersion: number,
     data: ConversationEventData,
     createdAtMs: number,
   ): void => {
-    events.push({ seq, contextEpoch, data, createdAtMs });
+    events.push({ seq, historyVersion, data, createdAtMs });
     seq += 1;
   };
 
@@ -171,7 +167,7 @@ export function convertLegacySessionLog(args: {
         push(
           epoch,
           {
-            type: "message",
+            type: "agent_step",
             message,
             provenance: piEntryProvenance(entry),
           },
@@ -201,8 +197,7 @@ export function convertLegacySessionLog(args: {
         push(
           epoch,
           {
-            type: "context_epoch_started",
-            reason: "compaction",
+            type: "compaction",
             modelProfile: "standard",
             modelId: args.modelId,
             replacementHistory: entry.messages.map((message, index) => ({
@@ -324,8 +319,8 @@ export function convertAdvisorMessages(
     const message = normalizeAdvisorMessage(sourceMessage);
     return {
       seq,
-      contextEpoch: 0,
-      data: { type: "message", message, provenance: contextProvenance },
+      historyVersion: 0,
+      data: { type: "agent_step", message, provenance: contextProvenance },
       createdAtMs: messageTimestampMs(message) ?? fallbackCreatedAtMs,
     };
   });
@@ -342,7 +337,7 @@ function insertRow(
   return {
     conversationId,
     seq: event.seq,
-    contextEpoch: event.contextEpoch,
+    historyVersion: event.historyVersion,
     schemaVersion: 1,
     idempotencyKey: event.idempotencyKey ?? null,
     type,
@@ -370,10 +365,10 @@ function mergeImportedChronology(
     .flatMap((message): ImportedEvent[] => {
       const recorded: ImportedEvent = {
         seq: 0,
-        contextEpoch: 0,
-        idempotencyKey: `visible-message:${message.messageId}:recorded`,
+        historyVersion: 0,
+        idempotencyKey: `message:${message.messageId}`,
         data: {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: message.messageId,
           role: message.role,
           text: message.text,
@@ -390,10 +385,10 @@ function mergeImportedChronology(
             recorded,
             {
               seq: 0,
-              contextEpoch: 0,
-              idempotencyKey: `visible-message:${message.messageId}:replied`,
+              historyVersion: 0,
+              idempotencyKey: `message:${message.messageId}:handled`,
               data: {
-                type: "visible_message_replied",
+                type: "message_handled",
                 messageId: message.messageId,
               },
               createdAtMs: message.repliedAtMs,
@@ -410,8 +405,8 @@ function mergeImportedChronology(
   const merged: ImportedEvent[] = [];
   let visibleIndex = 0;
   let currentEpoch = 0;
-  const push = (event: ImportedEvent, contextEpoch: number): void => {
-    merged.push({ ...event, seq: merged.length, contextEpoch });
+  const push = (event: ImportedEvent, historyVersion: number): void => {
+    merged.push({ ...event, seq: merged.length, historyVersion });
   };
   for (const executionEvent of [...executionEvents].sort(
     (left, right) => left.seq - right.seq,
@@ -424,18 +419,18 @@ function mergeImportedChronology(
       push(visibleEvents[visibleIndex]!.event, currentEpoch);
       visibleIndex += 1;
     }
-    push(executionEvent, executionEvent.contextEpoch);
-    currentEpoch = Math.max(currentEpoch, executionEvent.contextEpoch);
+    push(executionEvent, executionEvent.historyVersion);
+    currentEpoch = Math.max(currentEpoch, executionEvent.historyVersion);
   }
   while (visibleIndex < visibleEvents.length) {
     push(visibleEvents[visibleIndex]!.event, currentEpoch);
     visibleIndex += 1;
   }
   const firstVisibleSeq = merged.find(
-    (event) => event.data.type === "visible_message_recorded",
+    (event) => event.data.type === "message",
   )?.seq;
   return merged.map((event) =>
-    event.data.type === "visible_context_compacted"
+    event.data.type === "messages_summarized"
       ? {
           ...event,
           data: {
@@ -452,7 +447,7 @@ function mergeImportedChronology(
  *
  * Serialized by a per-conversation advisory lock and skipped when event rows
  * already exist, so a repeated operator run never double-imports. Parent and
- * advisor-child rows land in one transaction; explicit `seq`/`context_epoch`
+ * advisor-child rows land in one transaction; explicit `seq`/`history_version`
  * are what make this need a dedicated writer rather than the narrow port.
  */
 export async function writeLegacyImport(
@@ -496,35 +491,6 @@ export async function writeLegacyImport(
         .values(
           mergedEvents.map((event) => insertRow(args.conversationId, event)),
         );
-    }
-    if (args.messages && args.messages.length > 0) {
-      await db
-        .insert(juniorConversationMessages)
-        .values(
-          args.messages.map((message) => ({
-            conversationId: args.conversationId,
-            messageId: message.messageId,
-            role: message.role,
-            authorIdentityId: message.authorIdentityId ?? null,
-            text: message.text,
-            meta: message.meta ?? null,
-            repliedAt:
-              message.repliedAtMs === undefined
-                ? null
-                : new Date(message.repliedAtMs),
-            createdAt: new Date(message.createdAtMs),
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [
-            juniorConversationMessages.conversationId,
-            juniorConversationMessages.messageId,
-          ],
-          set: {
-            meta: sql`nullif(coalesce(${juniorConversationMessages.meta}, '{}'::jsonb) || coalesce(excluded.meta, '{}'::jsonb), '{}'::jsonb)`,
-            repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, excluded.replied_at)`,
-          },
-        });
     }
     if (args.child) {
       const childCreatedAtMs =

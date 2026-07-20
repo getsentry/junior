@@ -1,7 +1,7 @@
 /**
  * Conversation projection orchestration.
  *
- * Materializes model-visible Pi context and derived run facts such as connected
+ * Materializes Pi agent history and derived run facts such as connected
  * providers. Storage and commit lifecycle stay in the conversations domain;
  * the Pi adapter owns event reduction and opaque-message validation.
  */
@@ -24,6 +24,7 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
+import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 
 /** Distinct MCP providers durably connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
@@ -116,11 +117,11 @@ interface ScopedConversation {
   conversationId: string;
 }
 
-/** Load the current-epoch Pi projection for a conversation. */
+/** Load the current Pi agent history for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
 ): Promise<PiMessage[]> {
-  const events = await getConversationEventStore().loadCurrentEpoch(
+  const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
   return projectConversationEvents(events).messages;
@@ -130,46 +131,29 @@ export async function loadProjection(
 export async function loadConversationProjection(
   args: ScopedConversation,
 ): Promise<PiConversationEventProjection> {
-  const events = await getConversationEventStore().loadCurrentEpoch(
+  const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
   return projectConversationEvents(events);
 }
 
-/** Open a standard initial epoch before a conversation's first model request. */
+/** Load the active Pi projection before a conversation's next request. */
 export async function openConversationProjection(
-  args: ScopedConversation & { modelId: string },
+  args: ScopedConversation,
 ): Promise<PiConversationProjection> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentEpoch(args.conversationId);
-  const projection = projectConversationEvents(events);
-  if (events.some((event) => event.data.type === "context_epoch_started")) {
-    return projection;
-  }
-  // Host facts may predate the first model request. Keep them in epoch 0 and
-  // make that formerly implicit epoch explicit before model execution.
-  await eventStore.startEpoch(args.conversationId, {
-    reason: "initial",
-    modelProfile: "standard",
-    modelId: args.modelId,
-    messages: [],
-  });
-  return {
-    messages: projection.messages,
-    provenance: projection.provenance,
-    modelProfile: "standard",
-    modelId: args.modelId,
-  };
+  const events = await getConversationEventStore().loadCurrentHistory(
+    args.conversationId,
+  );
+  return projectConversationEvents(events);
 }
 
 /**
  * Load a turn's committed Pi projection from the durable event store.
  *
- * The record stays pinned to the epoch containing its committed boundary, so a
- * later rollback or compaction cannot silently rewrite what a stale record
- * resumes from. Unfinished records (`includeTail`) also see that epoch's tail
- * so parked input appended after the last safe boundary is model-visible; for
- * a live run the committed epoch is the current epoch. Terminal records
+ * The record stays pinned to the history version containing its committed
+ * boundary, so later compaction cannot rewrite what a stale record resumes
+ * from. Unfinished records (`includeTail`) also see that version's tail so
+ * parked input appended after the last safe boundary is model-visible. Terminal records
  * reproduce exactly the boundary they committed by cutting at `committedSeq`.
  * Returns undefined when the committed boundary no longer exists (purged
  * history) so callers fail closed.
@@ -184,25 +168,25 @@ export async function loadTurnProjection(args: {
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
     return projectConversationEvents(
-      await eventStore.loadCurrentEpoch(args.conversationId),
+      await eventStore.loadCurrentHistory(args.conversationId),
     );
   }
-  const epochEvents = await eventStore.loadEpochContaining(
+  const historyEvents = await eventStore.loadHistoryContaining(
     args.conversationId,
     args.committedSeq,
     args.includeTail ? undefined : args.committedSeq,
   );
-  if (!epochEvents) {
+  if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(epochEvents);
+  return projectConversationEvents(historyEvents);
 }
 
-/** Load MCP providers durably connected in this conversation's current epoch. */
+/** Load MCP providers connected in the current agent-history version. */
 export async function loadConnectedMcpProviders(
   args: ScopedConversation,
 ): Promise<string[]> {
-  const events = await getConversationEventStore().loadCurrentEpoch(
+  const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
   return connectedMcpProvidersFromEvents(events);
@@ -214,18 +198,12 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Commit the turn's Pi history: append when it advanced the committed
- * projection normally, or open a `rollback` epoch when it diverged (a
- * provider-retry trim regenerated trailing assistant output). Returns the
- * resolved provenance, the per-message event seqs, and the `seq` boundary that
- * reproduces exactly the committed messages. A first commit atomically opens
- * the standard initial epoch; the run boundary opens it earlier when a model
- * may act before any session checkpoint, such as recordless handoff.
+ * Append newly stable agent steps. A shorter or changed prefix indicates
+ * that a caller persisted volatile Pi state; only compaction and handoff may
+ * intentionally replace active model history.
  */
 export async function commitMessages(args: {
   conversationId: string;
-  /** Exact model selected for this write; persisted for epoch audit only. */
-  modelId: string;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
@@ -237,8 +215,11 @@ export async function commitMessages(args: {
   executor?: JuniorSqlDatabase;
 }): Promise<{
   committedSeq: number;
-  /** Event sequence for every projected model message. */
+  historyVersion: number;
+  /** Event sequence for every projected agent step. */
   messageSeqs: number[];
+  /** Normalized durable messages after volatile runtime context is removed. */
+  messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
 }> {
   const executor = args.executor ?? getSqlExecutor();
@@ -257,9 +238,14 @@ async function commitMessagesLocked(
   executor: JuniorSqlDatabase,
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
-  const currentEvents = await eventStore.loadCurrentEpoch(args.conversationId);
+  const currentEvents = await eventStore.loadCurrentHistory(
+    args.conversationId,
+  );
   const current = projectConversationEvents(currentEvents);
-  const nextLocalMessages = args.messages;
+  // Runtime bootstrap is per-run input, not durable agent history. Session
+  // records may retain it while a turn is live, but event replay must not need
+  // a compensating history rewrite when that bootstrap changes.
+  const nextLocalMessages = stripRuntimeTurnContext(args.messages);
   const matchingPrefix = countMatchingPrefix(
     current.messages,
     nextLocalMessages,
@@ -276,31 +262,13 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  const hasContextEpochMarker = currentEvents.some(
-    (event) => event.data.type === "context_epoch_started",
-  );
-  if (
-    currentEvents.length === 0 ||
-    (!hasContextEpochMarker && matchingPrefix === current.messages.length)
-  ) {
-    const initialMessages = nextLocalMessages.slice(matchingPrefix);
-    await eventStore.startEpoch(args.conversationId, {
-      reason: "initial",
-      modelProfile: "standard",
-      modelId: args.modelId,
-      messages: initialMessages.map((message, index) => ({
-        message,
-        createdAtMs: messageTimestamp(message),
-        provenance: nextLocalProvenance[matchingPrefix + index]!,
-      })),
-    });
-  } else if (matchingPrefix === current.messages.length) {
+  if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
     await eventStore.append(
       args.conversationId,
       newMessages.map((message, index) => ({
         data: {
-          type: "message" as const,
+          type: "agent_step" as const,
           message,
           provenance: nextLocalProvenance[matchingPrefix + index]!,
         },
@@ -308,33 +276,19 @@ async function commitMessagesLocked(
       })),
     );
   } else {
-    await eventStore.startEpoch(args.conversationId, {
-      reason: "rollback",
-      modelProfile: current.modelProfile,
-      modelId: args.modelId,
-      replacementHistory: nextLocalMessages
-        .slice(0, matchingPrefix)
-        .map((message, index) => ({
-          message,
-          provenance: nextLocalProvenance[index]!,
-          sourceEventSeq: current.seqs[index]!,
-        })),
-      messages: nextLocalMessages
-        .slice(matchingPrefix)
-        .map((message, index) => ({
-          message,
-          createdAtMs: messageTimestamp(message),
-          provenance: nextLocalProvenance[matchingPrefix + index]!,
-        })),
-    });
+    throw new Error(
+      `Agent history for ${args.conversationId} changed before its committed boundary`,
+    );
   }
-  const committedEvents = await eventStore.loadCurrentEpoch(
+  const committedEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
   const committed = projectConversationEvents(committedEvents);
   return {
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
+    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
     messageSeqs: committed.seqs,
+    messages: nextLocalMessages,
     provenance: nextLocalProvenance,
   };
 }
@@ -345,7 +299,7 @@ export async function recordMcpProviderConnected(args: {
   provider: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentEpoch(args.conversationId);
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (connectedMcpProvidersFromEvents(events).includes(args.provider)) {
     return;
   }
@@ -367,7 +321,7 @@ export async function recordAuthorizationRequested(args: {
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentEpoch(args.conversationId);
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (
     events.some(
       (event) =>
@@ -401,7 +355,7 @@ export async function recordAuthorizationCompleted(args: {
   authorizationId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentEpoch(args.conversationId);
+  const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (
     events.some(
       (event) =>

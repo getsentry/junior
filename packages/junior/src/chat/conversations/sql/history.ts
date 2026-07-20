@@ -13,13 +13,12 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
   conversationEventSchema,
-  contextEpochStartSchema,
+  historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
   type ConversationEventStore,
   type ConversationEventData,
-  type ContextEpochStart,
-  type ContextEpochMessage,
+  type HistoryReplacement,
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
@@ -35,24 +34,24 @@ type PersistedConversationEvent = {
   createdAtMs: number;
 };
 
-const visibleHistoryEventTypes = [
-  "visible_message_recorded",
-  "visible_message_metadata_updated",
-  "visible_message_replied",
+const messageHistoryEventTypes = [
+  "message",
+  "message_updated",
+  "message_handled",
 ] as const;
 
 /** Split validated event data into column-lifted and JSON payload fields. */
 function insertFromEvent(
   conversationId: string,
   seq: number,
-  contextEpoch: number,
+  historyVersion: number,
   event: PersistedConversationEvent,
 ): ConversationEventInsert {
   const { type, ...payload } = conversationEventDataSchema.parse(event.data);
   return {
     conversationId,
     seq,
-    contextEpoch,
+    historyVersion,
     schemaVersion: 1,
     idempotencyKey: event.idempotencyKey ?? null,
     type,
@@ -66,54 +65,11 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
   return conversationEventSchema.parse({
     schemaVersion: row.schemaVersion,
     seq: row.seq,
-    contextEpoch: row.contextEpoch,
+    historyVersion: row.historyVersion,
     ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
     createdAtMs: row.createdAt.getTime(),
     data: { ...row.payload, type: row.type },
   });
-}
-
-function epochMessageEvent(message: ContextEpochMessage): NewConversationEvent {
-  return {
-    data: {
-      type: "message",
-      message: message.message,
-      ...(message.provenance ? { provenance: message.provenance } : {}),
-    },
-    createdAtMs: message.createdAtMs,
-  };
-}
-
-/** Store replayed context on the marker and new messages as separate events. */
-function epochEvents(parsed: ContextEpochStart): PersistedConversationEvent[] {
-  if (parsed.reason === "rollback") {
-    const { messages, ...binding } = parsed;
-    return [
-      {
-        data: { type: "context_epoch_started", ...binding },
-        createdAtMs: Date.now(),
-      },
-      ...messages.map(epochMessageEvent),
-    ];
-  }
-
-  if (parsed.reason !== "initial") {
-    return [
-      {
-        data: { type: "context_epoch_started", ...parsed },
-        createdAtMs: Date.now(),
-      },
-    ];
-  }
-
-  const { messages, ...binding } = parsed;
-  return [
-    {
-      data: { type: "context_epoch_started", ...binding },
-      createdAtMs: Date.now(),
-    },
-    ...messages.map(epochMessageEvent),
-  ];
 }
 
 class SqlConversationEventStore implements ConversationEventStore {
@@ -185,20 +141,20 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         );
       const cursor = await this.readCursor(conversationId);
-      const contextEpoch = cursor.maxEpoch ?? 0;
+      const historyVersion = cursor.maxHistoryVersion ?? 0;
       let seq = cursor.nextSeq;
       const rows = pending.map((event) =>
-        insertFromEvent(conversationId, seq++, contextEpoch, event),
+        insertFromEvent(conversationId, seq++, historyVersion, event),
       );
       await this.executor.db().insert(juniorConversationEvents).values(rows);
     });
   }
 
-  async startEpoch(
+  async replaceHistory(
     conversationId: string,
-    opts: ContextEpochStart,
+    replacement: HistoryReplacement,
   ): Promise<void> {
-    const parsed = contextEpochStartSchema.parse(opts);
+    const parsed = historyReplacementSchema.parse(replacement);
     await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
       await this.executor
@@ -212,21 +168,26 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         );
       const cursor = await this.readCursor(conversationId);
-      const contextEpoch =
-        parsed.reason === "initial"
-          ? (cursor.maxEpoch ?? 0)
-          : (cursor.maxEpoch ?? -1) + 1;
-      let seq = cursor.nextSeq;
-      const rows = epochEvents(parsed).map((event) =>
-        insertFromEvent(conversationId, seq++, contextEpoch, event),
-      );
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
+      const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
+      await this.executor
+        .db()
+        .insert(juniorConversationEvents)
+        .values(
+          insertFromEvent(
+            conversationId,
+            cursor.nextSeq,
+            historyVersion,
+            parsed,
+          ),
+        );
     });
   }
 
-  async loadCurrentEpoch(conversationId: string): Promise<ConversationEvent[]> {
+  async loadCurrentHistory(
+    conversationId: string,
+  ): Promise<ConversationEvent[]> {
     const cursor = await this.readCursor(conversationId);
-    if (cursor.maxEpoch === null) {
+    if (cursor.maxHistoryVersion === null) {
       return [];
     }
     const rows = await this.executor
@@ -236,21 +197,21 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.contextEpoch, cursor.maxEpoch),
+          eq(juniorConversationEvents.historyVersion, cursor.maxHistoryVersion),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
   }
 
-  async loadEpochContaining(
+  async loadHistoryContaining(
     conversationId: string,
     seq: number,
     throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined> {
     const [boundary] = await this.executor
       .db()
-      .select({ contextEpoch: juniorConversationEvents.contextEpoch })
+      .select({ historyVersion: juniorConversationEvents.historyVersion })
       .from(juniorConversationEvents)
       .where(
         and(
@@ -268,7 +229,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.contextEpoch, boundary.contextEpoch),
+          eq(juniorConversationEvents.historyVersion, boundary.historyVersion),
           throughSeq === undefined
             ? undefined
             : lte(juniorConversationEvents.seq, throughSeq),
@@ -278,7 +239,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
-  async loadVisibleHistory(conversationId: string): Promise<{
+  async loadMessageHistory(conversationId: string): Promise<{
     events: ConversationEvent[];
     compaction: ConversationEvent | undefined;
   }> {
@@ -289,14 +250,14 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.type, "visible_context_compacted"),
+          eq(juniorConversationEvents.type, "messages_summarized"),
         ),
       )
       .orderBy(desc(juniorConversationEvents.seq))
       .limit(1);
     const compaction = compactionRow ? eventFromRow(compactionRow) : undefined;
     const historyFromSeq =
-      compaction?.data.type === "visible_context_compacted"
+      compaction?.data.type === "messages_summarized"
         ? compaction.data.historyFromSeq
         : 0;
     const rows = await this.executor
@@ -306,7 +267,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          inArray(juniorConversationEvents.type, visibleHistoryEventTypes),
+          inArray(juniorConversationEvents.type, messageHistoryEventTypes),
           gte(juniorConversationEvents.seq, historyFromSeq),
         ),
       )
@@ -324,25 +285,27 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
-  /** Read the next `seq` and current highest epoch for one conversation. */
+  /** Read the next sequence and active model-history version. */
   private async readCursor(
     conversationId: string,
-  ): Promise<{ maxEpoch: number | null; nextSeq: number }> {
+  ): Promise<{ maxHistoryVersion: number | null; nextSeq: number }> {
     const rows = await this.executor
       .db()
       .select({
         maxSeq: sql<number | null>`max(${juniorConversationEvents.seq})`,
-        maxEpoch: sql<
+        maxHistoryVersion: sql<
           number | null
-        >`max(${juniorConversationEvents.contextEpoch})`,
+        >`max(${juniorConversationEvents.historyVersion})`,
       })
       .from(juniorConversationEvents)
       .where(eq(juniorConversationEvents.conversationId, conversationId));
     const maxSeq = rows[0]?.maxSeq;
-    const maxEpoch = rows[0]?.maxEpoch;
+    const maxHistoryVersion = rows[0]?.maxHistoryVersion;
     return {
-      maxEpoch:
-        maxEpoch === null || maxEpoch === undefined ? null : Number(maxEpoch),
+      maxHistoryVersion:
+        maxHistoryVersion === null || maxHistoryVersion === undefined
+          ? null
+          : Number(maxHistoryVersion),
       nextSeq: maxSeq === null || maxSeq === undefined ? 0 : Number(maxSeq) + 1,
     };
   }

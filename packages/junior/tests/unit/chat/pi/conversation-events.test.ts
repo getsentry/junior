@@ -5,16 +5,17 @@ import {
   type ConversationEventData,
 } from "@/chat/conversations/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import type { PiMessage } from "@/chat/pi/messages";
 
 function event(
   seq: number,
   data: ConversationEventData,
-  contextEpoch = 2,
+  historyVersion = 2,
 ): ConversationEvent {
   return conversationEventSchema.parse({
     schemaVersion: 1,
     seq,
-    contextEpoch,
+    historyVersion,
     createdAtMs: 1_000 + seq,
     data,
   });
@@ -41,8 +42,7 @@ describe("projectConversationEvents", () => {
   };
   const events = [
     event(0, {
-      type: "context_epoch_started",
-      reason: "handoff",
+      type: "handoff",
       modelProfile: "coding",
       modelId: "openai/gpt-5.4",
       triggeringToolCallId: "handoff-call",
@@ -50,7 +50,7 @@ describe("projectConversationEvents", () => {
     }),
     event(1, { type: "mcp_provider_connected", provider: "github" }),
     event(2, {
-      type: "message",
+      type: "agent_step",
       message: firstMessage,
       provenance: instructionProvenance,
     }),
@@ -74,7 +74,7 @@ describe("projectConversationEvents", () => {
       authorizationId: "auth-2",
       delivery: "private_link_sent",
     }),
-    event(6, { type: "message", message: lastMessage }),
+    event(6, { type: "agent_step", message: lastMessage }),
     event(7, {
       type: "turn_started",
       turnId: "turn-1",
@@ -153,8 +153,7 @@ describe("projectConversationEvents", () => {
 
     const projection = projectConversationEvents([
       event(10, {
-        type: "context_epoch_started",
-        reason: "compaction",
+        type: "compaction",
         modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         replacementHistory: [
@@ -166,7 +165,7 @@ describe("projectConversationEvents", () => {
           { message: summary },
         ],
       }),
-      event(11, { type: "message", message: later }),
+      event(11, { type: "agent_step", message: later }),
     ]);
 
     expect(projection.messages).toEqual([retained, summary, later]);
@@ -177,11 +176,37 @@ describe("projectConversationEvents", () => {
     const invalid = {
       schemaVersion: 1,
       seq: 1,
-      contextEpoch: 2,
+      historyVersion: 2,
       createdAtMs: 1_001,
-      data: { type: "message", message: {} },
+      data: { type: "agent_step", message: {} },
     } as ConversationEvent;
 
     expect(() => projectConversationEvents([invalid])).toThrow(/role/);
+  });
+
+  it("omits volatile runtime bootstrap from durable agent history", () => {
+    const projection = projectConversationEvents([
+      event(20, {
+        type: "agent_step",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
+            },
+            { type: "text", text: "Keep this instruction." },
+          ],
+        } as PiMessage,
+      }),
+    ]);
+
+    expect(projection.messages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "Keep this instruction." }],
+      },
+    ]);
+    expect(projection.seqs).toEqual([20]);
   });
 });

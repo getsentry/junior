@@ -32,7 +32,7 @@ import {
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";

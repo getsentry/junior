@@ -1,24 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { asc, eq, inArray } from "drizzle-orm";
-import {
-  juniorConversationEvents,
-  juniorConversationMessages,
-  juniorConversations,
-} from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import type { JuniorSqlDatabase } from "@/db/db";
-import {
-  closeDb,
-  getConversationEventStore,
-  getConversationMessageStore,
-  getSqlExecutor,
-} from "@/chat/db";
+import { closeDb, getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { requestConversationWork } from "@/chat/task-execution/store";
 import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateConversationHistoryToSql } from "@/cli/upgrade/migrations/conversations-history-sql";
 import type { LegacyAdvisorSessionReader } from "@/cli/upgrade/migrations/conversation-history/advisor-session";
@@ -47,7 +37,6 @@ async function processSqlStores() {
   return {
     executor,
     eventStore: getConversationEventStore(),
-    messageStore: getConversationMessageStore(),
   };
 }
 
@@ -55,20 +44,26 @@ async function listMessageRows(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ) {
-  const rows = await executor
-    .db()
-    .select()
-    .from(juniorConversationMessages)
-    .where(eq(juniorConversationMessages.conversationId, conversationId))
-    .orderBy(
-      asc(juniorConversationMessages.createdAt),
-      asc(juniorConversationMessages.messageId),
-    );
-  return rows.map((row) => ({
-    messageId: row.messageId,
-    text: row.text,
-    repliedAtMs: row.repliedAt?.getTime(),
-  }));
+  const events =
+    await createSqlConversationEventStore(executor).loadHistory(conversationId);
+  const handledAt = new Map(
+    events.flatMap((event) =>
+      event.data.type === "message_handled"
+        ? [[event.data.messageId, event.createdAtMs] as const]
+        : [],
+    ),
+  );
+  return events.flatMap((event) =>
+    event.data.type === "message"
+      ? [
+          {
+            messageId: event.data.messageId,
+            text: event.data.text,
+            repliedAtMs: handledAt.get(event.data.messageId),
+          },
+        ]
+      : [],
+  );
 }
 
 function restoreEnv(name: string, value: string | undefined): void {
@@ -222,23 +217,22 @@ describe("operator conversation history import", () => {
       expect(
         history.map((event) => ({
           seq: event.seq,
-          epoch: event.contextEpoch,
+          epoch: event.historyVersion,
           type: event.data.type,
         })),
       ).toEqual([
-        { seq: 0, epoch: 0, type: "message" },
-        { seq: 1, epoch: 0, type: "visible_message_recorded" },
-        { seq: 2, epoch: 0, type: "visible_message_replied" },
-        { seq: 3, epoch: 1, type: "context_epoch_started" },
-        { seq: 4, epoch: 1, type: "visible_message_recorded" },
+        { seq: 0, epoch: 0, type: "agent_step" },
+        { seq: 1, epoch: 0, type: "message" },
+        { seq: 2, epoch: 0, type: "message_handled" },
+        { seq: 3, epoch: 1, type: "compaction" },
+        { seq: 4, epoch: 1, type: "message" },
         { seq: 5, epoch: 1, type: "subagent_started" },
       ]);
 
       // Upgrade emits the same canonical checkpoint shape as live writes.
-      const current = await eventStore.loadCurrentEpoch(CONVERSATION_ID);
+      const current = await eventStore.loadCurrentHistory(CONVERSATION_ID);
       expect(current[0]?.data).toEqual({
-        type: "context_epoch_started",
-        reason: "compaction",
+        type: "compaction",
         modelProfile: "standard",
         modelId: MODEL_ID,
         replacementHistory: [
@@ -252,8 +246,8 @@ describe("operator conversation history import", () => {
       // Advisor child is its own conversation with epoch-0 message events.
       const childHistory = await eventStore.loadHistory(childId);
       expect(childHistory.map((event) => event.data.type)).toEqual([
-        "message",
-        "message",
+        "agent_step",
+        "agent_step",
       ]);
       expect(childHistory[0]!.createdAtMs).toBe(960);
 
@@ -375,7 +369,6 @@ describe("operator conversation history import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
     const loadVisibleMessages = vi.fn(async () => [
       {
         id: "message-only",
@@ -395,15 +388,23 @@ describe("operator conversation history import", () => {
     };
 
     try {
-      await messageStore.record(CONVERSATION_ID, [
+      await eventStore.append(CONVERSATION_ID, [
         {
-          messageId: "message-only",
-          role: "user",
-          text: "legacy visible message",
+          idempotencyKey: "message:message-only",
+          data: {
+            type: "message",
+            messageId: "message-only",
+            role: "user",
+            text: "legacy visible message",
+          },
+          createdAtMs: 100,
+        },
+        {
+          idempotencyKey: "message:message-only:handled",
+          data: { type: "message_handled", messageId: "message-only" },
           createdAtMs: 100,
         },
       ]);
-      await messageStore.markReplied(CONVERSATION_ID, "message-only", 100);
 
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
@@ -456,9 +457,9 @@ describe("operator conversation history import", () => {
         .values({
           conversationId: CONVERSATION_ID,
           seq: 0,
-          contextEpoch: 0,
+          historyVersion: 0,
           schemaVersion: 1,
-          type: "visible_context_compacted",
+          type: "messages_summarized",
           payload: {
             compactions: [
               {
@@ -522,7 +523,7 @@ describe("operator conversation history import", () => {
     await eventStore.append(CONVERSATION_ID, [
       {
         data: {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "event-only",
           role: "user",
           text: "canonical event text",
@@ -665,7 +666,7 @@ describe("operator conversation history import", () => {
       const eventStore = createSqlConversationEventStore(fixture.sql);
       for (const conversationId of conversationIds) {
         const history = await eventStore.loadHistory(conversationId);
-        expect(history.map((event) => event.data.type)).toEqual(["message"]);
+        expect(history.map((event) => event.data.type)).toEqual(["agent_step"]);
       }
 
       // Re-running every page imports nothing twice.
@@ -712,7 +713,7 @@ describe("operator conversation history import", () => {
       expect(
         (await eventStore.loadHistory(CONVERSATION_ID))[0]?.data,
       ).toMatchObject({
-        type: "message",
+        type: "agent_step",
         message: {
           content: [{ text: "before after and literal \\u0000", type: "text" }],
         },

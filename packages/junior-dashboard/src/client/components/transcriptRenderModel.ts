@@ -101,7 +101,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
-      return part.event.type === "model_handoff"
+      return part.event.type === "handoff"
         ? "model handoff"
         : "context compacted";
     })

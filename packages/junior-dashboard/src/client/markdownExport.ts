@@ -159,9 +159,7 @@ function appendContextEvent(
   const event = part.event;
   lines.push(
     "",
-    event.type === "model_handoff"
-      ? "### Model handoff"
-      : "### Context compacted",
+    event.type === "handoff" ? "### Model handoff" : "### Context compacted",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
 }

@@ -20,8 +20,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "context_epoch": {
-          "name": "context_epoch",
+        "history_version": {
+          "name": "history_version",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
@@ -59,8 +59,8 @@
         }
       },
       "indexes": {
-        "junior_conversation_events_epoch_idx": {
-          "name": "junior_conversation_events_epoch_idx",
+        "junior_conversation_events_history_version_idx": {
+          "name": "junior_conversation_events_history_version_idx",
           "columns": [
             {
               "expression": "conversation_id",
@@ -69,7 +69,7 @@
               "nulls": "last"
             },
             {
-              "expression": "context_epoch",
+              "expression": "history_version",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -113,6 +113,22 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_events_message_search_idx": {
+          "name": "junior_conversation_events_message_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('english', \"payload\"->>'text')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_events\".\"type\" = 'message'",
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
         "junior_conversation_events_idempotency_idx": {
           "name": "junior_conversation_events_idempotency_idx",
           "columns": [
@@ -150,128 +166,6 @@
         "junior_conversation_events_conversation_id_seq_pk": {
           "name": "junior_conversation_events_conversation_id_seq_pk",
           "columns": ["conversation_id", "seq"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_conversation_messages": {
-      "name": "junior_conversation_messages",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "message_id": {
-          "name": "message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "author_identity_id": {
-          "name": "author_identity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "text": {
-          "name": "text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "meta": {
-          "name": "meta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "replied_at": {
-          "name": "replied_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "junior_conversation_messages_activity_idx": {
-          "name": "junior_conversation_messages_activity_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_messages_search_idx": {
-          "name": "junior_conversation_messages_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('english', \"text\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_conversation_messages_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_conversation_messages_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_conversation_messages",
-          "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_conversation_messages_author_identity_id_junior_identities_id_fk": {
-          "name": "junior_conversation_messages_author_identity_id_junior_identities_id_fk",
-          "tableFrom": "junior_conversation_messages",
-          "tableTo": "junior_identities",
-          "columnsFrom": ["author_identity_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_messages_conversation_id_message_id_pk": {
-          "name": "junior_conversation_messages_conversation_id_message_id_pk",
-          "columns": ["conversation_id", "message_id"]
         }
       },
       "uniqueConstraints": {},

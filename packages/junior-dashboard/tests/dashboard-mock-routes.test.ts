@@ -234,13 +234,13 @@ describe("dashboard canonical-event mock routes", () => {
       reason: "non_public_conversation",
     });
     expect(privateConversation.events[0]?.data).toMatchObject({
-      type: "visible_message",
+      type: "message",
       redacted: true,
     });
 
     const long = await readDetail("slack:CQA456:1770021600.000600");
     expect(long.events.map((event) => event.data.type)).toEqual(
-      expect.arrayContaining(["context_compacted", "model_handoff"]),
+      expect.arrayContaining(["compaction", "handoff"]),
     );
   });
 

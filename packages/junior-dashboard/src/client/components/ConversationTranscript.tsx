@@ -296,9 +296,7 @@ function VisibleTranscriptEntries(props: {
       renderContext={(entry, index) => (
         <TranscriptRailEvent
           key={`${props.conversation.conversationId}:context:${index}`}
-          kind={
-            entry.part.event.type === "model_handoff" ? "handoff" : "compaction"
-          }
+          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
         >
           <TranscriptContextEventView
             part={entry.part}
@@ -517,9 +515,7 @@ function RedactedTranscriptView(props: {
       renderContext={(entry, index) => (
         <TranscriptRailEvent
           key={`${props.conversation.conversationId}:redacted:context:${index}`}
-          kind={
-            entry.part.event.type === "model_handoff" ? "handoff" : "compaction"
-          }
+          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
         >
           <TranscriptContextEventView
             part={entry.part}
@@ -645,7 +641,7 @@ function transcriptMeta(
             <TokenMetric
               compactionCount={
                 conversation.events.filter(
-                  (event) => event.data.type === "context_compacted",
+                  (event) => event.data.type === "compaction",
                 ).length
               }
               modelUsage={conversation.modelUsage}

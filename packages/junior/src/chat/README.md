@@ -41,11 +41,11 @@ the production singleton.
 
 ## Vocabulary
 
-- **Conversation**: durable identity shared by visible messages and agent state.
+- **Conversation**: durable identity shared by messages and agent state.
 - **Turn**: one response-producing execution for accumulated user input.
 - **Run**: one bounded attempt to advance a turn; a turn may span resumed runs.
 - **Step**: one persisted agent-history entry.
-- **Context epoch**: replacement boundary after history compaction or handoff.
+- **History replacement**: explicit agent-history reset after compaction or handoff.
 - **Reply**: finalized destination-visible assistant output.
 - **Actor**: human or system principal associated with current work.
 - **Credential subject**: principal whose provider authority may be used.

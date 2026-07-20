@@ -32,8 +32,8 @@ WITH candidates AS MATERIALIZED (
   ORDER BY conversation_id
   LIMIT $2
 ),
--- Occurrence numbers preserve intentional duplicates within one epoch while
--- collapsing context copies of the same message across rebuilt epochs.
+-- Occurrence numbers preserve intentional duplicates within one history version
+-- while collapsing context copies of the same message across replacements.
 message_occurrences AS (
   SELECT
     event.conversation_id,
@@ -41,14 +41,14 @@ message_occurrences AS (
     row_number() OVER (
       PARTITION BY
         event.conversation_id,
-        event.context_epoch,
+        event.history_version,
         event.payload -> 'message'
       ORDER BY event.seq
     ) AS occurrence
   FROM junior_conversation_events AS event
   INNER JOIN candidates AS candidate
     ON candidate.conversation_id = event.conversation_id
-  WHERE event.type = 'message'
+  WHERE event.type = 'agent_step'
     AND event.payload -> 'message' ->> 'role' = 'assistant'
     AND jsonb_typeof(event.payload -> 'message' -> 'usage') = 'object'
 ),

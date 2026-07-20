@@ -117,7 +117,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: "active-user",
         role: "user",
         text: "Find the slow checkout requests from the last deployment.",
@@ -147,7 +147,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     cumulativeDurationMs: 98_000,
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: "qa-user",
         role: "user",
         text: "Review the dashboard plan before editing.",
@@ -178,10 +178,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         outcome: "success",
       }),
       reportEvent(6, iso(Date.parse(startedAt), 50_000), {
-        type: "context_compacted",
+        type: "compaction",
       }),
       reportEvent(7, iso(Date.parse(startedAt), 55_000), {
-        type: "visible_message",
+        type: "message",
         messageId: "qa-assistant",
         role: "assistant",
         text: "The canonical event rendering looks sound.",
@@ -205,13 +205,13 @@ function advisorConversation(
     cumulativeDurationMs: 18_000,
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 18_000), {
-        type: "visible_message",
+        type: "message",
         messageId: `${conversationId}:output`,
         role: "assistant",
         text: "Review complete; no blocking issues found.",
@@ -228,7 +228,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -92 * 60_000);
   const events: ConversationReportEvent[] = [
     reportEvent(0, startedAt, {
-      type: "visible_message",
+      type: "message",
       messageId: "release-user",
       role: "user",
       text: "Release the package, update the example app, and open a PR.",
@@ -248,13 +248,13 @@ function longConversation(nowMs: number): ConversationDetailReport {
   }
   events.push(
     reportEvent(13, iso(Date.parse(startedAt), 53_000), {
-      type: "context_compacted",
+      type: "compaction",
     }),
     reportEvent(14, iso(Date.parse(startedAt), 90_000), {
-      type: "model_handoff",
+      type: "handoff",
     }),
     reportEvent(15, iso(Date.parse(startedAt), 166_000), {
-      type: "visible_message",
+      type: "message",
       messageId: "release-assistant",
       role: "assistant",
       text: "Released the package and opened the update pull request.",
@@ -312,7 +312,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     cumulativeUsage: usage(0.0332),
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: "incident-user",
         role: "user",
         text: "Draft the rollback note with the exact evidence.",
@@ -322,7 +322,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         name: "sentry.get_issue",
       }),
       reportEvent(2, iso(Date.parse(startedAt), 35_000), {
-        type: "visible_message",
+        type: "message",
         messageId: "incident-assistant",
         role: "assistant",
         text: "The regression started with payments-v42; rollback is recommended.",
@@ -348,7 +348,7 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     eventHistory: { status: "redacted", reason: "non_public_conversation" },
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: "private-user",
         role: "user",
         redacted: true,
@@ -358,7 +358,7 @@ function privateConversation(nowMs: number): ConversationDetailReport {
         name: "sentry.search",
       }),
       reportEvent(2, iso(Date.parse(startedAt), 30_000), {
-        type: "visible_message",
+        type: "message",
         messageId: "private-assistant",
         role: "assistant",
         redacted: true,
@@ -383,7 +383,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
     cumulativeDurationMs: 19_000,
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: "failed-user",
         role: "user",
         text: "Check the deployment failure.",
@@ -422,7 +422,7 @@ function simpleConversation(
     cumulativeDurationMs: 12_000,
     events: [
       reportEvent(0, startedAt, {
-        type: "visible_message",
+        type: "message",
         messageId: `${options.conversationId}:message`,
         role: "assistant",
         text: "Scheduled operation completed successfully.",

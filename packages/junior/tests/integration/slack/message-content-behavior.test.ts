@@ -9,6 +9,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { commitMessages } from "@/chat/conversations/projection";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getConversationEventStore } from "@/chat/db";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -245,6 +246,14 @@ describe("Slack behavior: message content", () => {
         timestamp: 2,
       },
     ] as PiMessage[];
+    const durableFirstTurnHistory: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "I need the budget by Friday" }],
+        timestamp: 1,
+      },
+      storedFirstTurnHistory[1]!,
+    ];
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -326,7 +335,7 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
-    expect(calls[1]?.piMessages).toEqual(storedFirstTurnHistory);
+    expect(calls[1]?.piMessages).toEqual(durableFirstTurnHistory);
   });
 
   it("auto compacts oversized reusable Pi history before the next turn", async () => {
@@ -351,7 +360,6 @@ describe("Slack behavior: message content", () => {
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.000" });
     await commitMessages({
-      modelId: "test/model",
       conversationId: thread.id,
       messages: priorMessages,
     });
@@ -463,9 +471,8 @@ describe("Slack behavior: message content", () => {
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005006.000" });
     await commitMessages({
-      modelId: "test/model",
       conversationId: thread.id,
-      messages: priorMessages,
+      messages: activeMessages,
     });
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
@@ -474,6 +481,15 @@ describe("Slack behavior: message content", () => {
       sliceId: 1,
       state: "running",
       piMessages: activeMessages,
+    });
+    await getConversationEventStore().replaceHistory(thread.id, {
+      createdAtMs: 4,
+      data: {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "test/model",
+        replacementHistory: priorMessages.map((message) => ({ message })),
+      },
     });
     const conversation = coerceThreadConversationState({});
     conversation.processing.activeTurnId = "turn-active-crashed";

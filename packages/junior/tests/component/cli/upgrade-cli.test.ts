@@ -619,21 +619,24 @@ WHERE conversation_id = $1
         },
         updatedAtMs: 4_000,
       });
-      await eventStore.startEpoch(CONVERSATION_ID, {
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: "test-model",
-        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
-      });
-      await eventStore.startEpoch(CONVERSATION_ID, {
-        reason: "compaction",
-        modelProfile: "standard",
-        modelId: "test-model",
-        replacementHistory: [{ message: firstAssistant }],
+      await eventStore.append(CONVERSATION_ID, [
+        {
+          data: { type: "agent_step", message: firstAssistant },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await eventStore.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 2_500,
+        data: {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "test-model",
+          replacementHistory: [{ message: firstAssistant }],
+        },
       });
       await eventStore.append(CONVERSATION_ID, [
         {
-          data: { type: "message", message: secondAssistant },
+          data: { type: "agent_step", message: secondAssistant },
           createdAtMs: 3_000,
         },
       ]);
@@ -648,7 +651,7 @@ WHERE conversation_id = $1
       await eventStore.append(mixedConversationId, [
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 3, totalTokens: 999 },
@@ -658,7 +661,7 @@ WHERE conversation_id = $1
         },
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { totalTokens: 5 },
@@ -668,7 +671,7 @@ WHERE conversation_id = $1
         },
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: {
               role: "user",
               usage: { input: 1_000, output: 1_000 },
@@ -688,7 +691,7 @@ WHERE conversation_id = $1
       await eventStore.append(unsafeConversationId, [
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 9_007_199_254_740_992 },
@@ -791,7 +794,7 @@ WHERE conversation_id = $1
         await eventStore.append(conversationId, [
           {
             data: {
-              type: "message",
+              type: "agent_step",
               message: {
                 role: "assistant",
                 usage: { input: index + 1, totalTokens: index + 1 },
@@ -932,7 +935,7 @@ WHERE conversation_id = $1
       await eventStore.append(CONVERSATION_ID, [
         {
           data: {
-            type: "message",
+            type: "agent_step",
             message: {
               role: "assistant",
               usage: { input: 4, output: 2, totalTokens: 6 },

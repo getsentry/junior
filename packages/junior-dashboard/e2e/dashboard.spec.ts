@@ -322,7 +322,7 @@ test("scrolls long conversation and transcript panes independently", async ({
             Date.parse(generatedAt) + index * 1_000,
           ).toISOString(),
           data: {
-            type: "visible_message",
+            type: "message",
             messageId: `message-${index + 1}`,
             role: index % 2 === 0 ? "user" : "assistant",
             text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,

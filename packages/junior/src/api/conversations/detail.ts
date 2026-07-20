@@ -96,7 +96,7 @@ async function readConversationDetailFromSql(
     conversationEventSchema.parse({
       schemaVersion: row.schemaVersion,
       seq: row.seq,
-      contextEpoch: row.contextEpoch,
+      historyVersion: row.historyVersion,
       ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
       createdAtMs: row.createdAt.getTime(),
       data: { ...row.payload, type: row.type },

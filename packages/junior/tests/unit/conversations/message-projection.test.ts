@@ -4,7 +4,7 @@ import {
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
-import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 
 function event(
   seq: number,
@@ -14,18 +14,18 @@ function event(
   return conversationEventSchema.parse({
     schemaVersion: 1,
     seq,
-    contextEpoch: 0,
+    historyVersion: 0,
     createdAtMs,
     data,
   });
 }
 
-describe("visible message projection", () => {
-  it("merges metadata and preserves the first replied fact", () => {
+describe("message projection", () => {
+  it("preserves message metadata and marks a handled message", () => {
     expect(
-      projectVisibleConversationMessages([
+      projectConversationMessages([
         event(0, 1_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "m1",
           role: "user",
           text: "hello",
@@ -34,20 +34,12 @@ describe("visible message projection", () => {
             explicitMention: true,
           },
         }),
-        event(1, 2_000, {
-          type: "visible_message_metadata_updated",
-          messageId: "m1",
-          meta: {
-            author: { userId: "U1", userName: "alice", fullName: "Alice" },
-            imageFileIds: ["F1"],
-          },
-        }),
-        event(2, 3_000, {
-          type: "visible_message_replied",
+        event(1, 3_000, {
+          type: "message_handled",
           messageId: "m1",
         }),
-        event(3, 4_000, {
-          type: "visible_message_replied",
+        event(2, 4_000, {
+          type: "message_handled",
           messageId: "m1",
         }),
       ]),
@@ -57,70 +49,92 @@ describe("visible message projection", () => {
         role: "user",
         text: "hello",
         createdAtMs: 1_000,
-        author: { userId: "U1", userName: "alice", fullName: "Alice" },
+        author: { userId: "U1", userName: "alice" },
         meta: {
           explicitMention: true,
-          imageFileIds: ["F1"],
           replied: true,
         },
       },
     ]);
   });
 
-  it.each([
-    "visible_message_metadata_updated",
-    "visible_message_replied",
-  ] as const)("rejects %s without an uncompacted baseline", (type) => {
-    const data =
-      type === "visible_message_metadata_updated"
-        ? { type, messageId: "missing", meta: { late: true } }
-        : { type, messageId: "missing" };
-    expect(() =>
-      projectVisibleConversationMessages([event(0, 1_000, data)]),
-    ).toThrow("before visible_message_recorded");
+  it("rejects a handled marker without an uncompacted baseline", () => {
+    const data = { type: "message_handled" as const, messageId: "missing" };
+    expect(() => projectConversationMessages([event(0, 1_000, data)])).toThrow(
+      "before message",
+    );
     expect(
-      projectVisibleConversationMessages([event(10, 1_000, data)], {
+      projectConversationMessages([event(10, 1_000, data)], {
         historyFromSeq: 10,
       }),
     ).toEqual([]);
   });
 
+  it("applies the latest message state without changing its original position", () => {
+    expect(
+      projectConversationMessages([
+        event(0, 1_000, {
+          type: "message",
+          messageId: "m1",
+          role: "user",
+          text: "hello",
+          meta: { imagesHydrated: false },
+        }),
+        event(1, 2_000, {
+          type: "message_updated",
+          messageId: "m1",
+          role: "user",
+          text: "hello",
+          meta: { imagesHydrated: true, imageFileIds: ["F1"] },
+        }),
+      ]),
+    ).toEqual([
+      {
+        id: "m1",
+        role: "user",
+        text: "hello",
+        createdAtMs: 1_000,
+        meta: { imagesHydrated: true, imageFileIds: ["F1"] },
+      },
+    ]);
+  });
+
   it("rejects duplicate recorded baselines", () => {
     expect(() =>
-      projectVisibleConversationMessages([
+      projectConversationMessages([
         event(0, 1_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "m1",
           role: "user",
           text: "first",
         }),
         event(1, 1_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "m1",
           role: "user",
           text: "conflict",
         }),
       ]),
-    ).toThrow("Duplicate visible_message_recorded");
+    ).toThrow("Duplicate message");
   });
 
   it("preserves canonical event order rather than source timestamps", () => {
     expect(
-      projectVisibleConversationMessages([
+      projectConversationMessages([
         event(0, 2_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "later",
           role: "assistant",
           text: "later",
         }),
         event(1, 1_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "b",
           role: "user",
           text: "b",
         }),
         event(2, 1_000, {
-          type: "visible_message_recorded",
+          type: "message",
           messageId: "a",
           role: "user",
           text: "a",

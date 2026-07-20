@@ -137,7 +137,7 @@ describe("dashboard conversation formatting", () => {
     const conversation = transcript(
       [
         event(0, {
-          type: "visible_message",
+          type: "message",
           messageId: "user",
           role: "user",
           text: "run search",
@@ -150,7 +150,7 @@ describe("dashboard conversation formatting", () => {
           toolStartedSeq: 1,
         }),
         event(3, {
-          type: "visible_message",
+          type: "message",
           messageId: "assistant",
           role: "assistant",
           text: "done",
@@ -180,7 +180,7 @@ describe("dashboard conversation formatting", () => {
   it("does not count assistant-only history as actor turns", () => {
     const conversation = transcript([
       event(0, {
-        type: "visible_message",
+        type: "message",
         messageId: "assistant",
         role: "assistant",
         text: "proactive update",

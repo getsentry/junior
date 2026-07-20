@@ -6,28 +6,28 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 
-/** Project the latest visible-context compaction snapshot from event history. */
-export function projectVisibleConversationCompactions(
+/** Project the latest source-message summary snapshot from event history. */
+export function projectConversationMessageSummaries(
   events: ConversationEvent[],
 ): ConversationCompaction[] {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const data = events[index]?.data;
-    if (data?.type === "visible_context_compacted") {
+    if (data?.type === "messages_summarized") {
       return data.compactions;
     }
   }
   return [];
 }
 
-/** Persist a changed visible-context compaction snapshot in event history. */
-export async function persistConversationCompactions(args: {
+/** Persist a changed source-message summary snapshot in event history. */
+export async function persistConversationMessageSummaries(args: {
   conversation: ThreadConversationState;
   conversationId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const history = await eventStore.loadVisibleHistory(args.conversationId);
+  const history = await eventStore.loadMessageHistory(args.conversationId);
   const existing = history.compaction
-    ? projectVisibleConversationCompactions([history.compaction])
+    ? projectConversationMessageSummaries([history.compaction])
     : [];
   if (isDeepStrictEqual(existing, args.conversation.compactions)) {
     return;
@@ -37,13 +37,12 @@ export async function persistConversationCompactions(args: {
   );
   const historyFromSeq = history.events.find(
     (event) =>
-      event.data.type === "visible_message_recorded" &&
-      liveMessageIds.has(event.data.messageId),
+      event.data.type === "message" && liveMessageIds.has(event.data.messageId),
   )?.seq;
   const nextHistoryFromSeq =
     historyFromSeq ??
     Math.max(
-      history.compaction?.data.type === "visible_context_compacted"
+      history.compaction?.data.type === "messages_summarized"
         ? history.compaction.data.historyFromSeq
         : 0,
       (history.events.at(-1)?.seq ?? -1) + 1,
@@ -51,7 +50,7 @@ export async function persistConversationCompactions(args: {
   await eventStore.append(args.conversationId, [
     {
       data: {
-        type: "visible_context_compacted",
+        type: "messages_summarized",
         historyFromSeq: nextHistoryFromSeq,
         compactions: args.conversation.compactions,
       },

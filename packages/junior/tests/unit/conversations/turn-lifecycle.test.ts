@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
-  ContextEpochStart,
   ConversationEvent,
   ConversationEventStore,
+  HistoryReplacement,
   NewConversationEvent,
 } from "@/chat/conversations/history";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -28,7 +28,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
       this.history.push({
         schemaVersion: 1,
         seq: this.history.length,
-        contextEpoch: 0,
+        historyVersion: 0,
         ...(event.idempotencyKey
           ? { idempotencyKey: event.idempotencyKey }
           : {}),
@@ -38,22 +38,22 @@ class MemoryConversationEventStore implements ConversationEventStore {
     }
   }
 
-  async startEpoch(
+  async replaceHistory(
     _conversationId: string,
-    _opts: ContextEpochStart,
+    _replacement: HistoryReplacement,
   ): Promise<void> {
     throw new Error("not implemented");
   }
 
-  async loadCurrentEpoch(): Promise<ConversationEvent[]> {
+  async loadCurrentHistory(): Promise<ConversationEvent[]> {
     return this.history;
   }
 
-  async loadEpochContaining(): Promise<ConversationEvent[]> {
+  async loadHistoryContaining(): Promise<ConversationEvent[]> {
     return this.history;
   }
 
-  async loadVisibleHistory(): Promise<{
+  async loadMessageHistory(): Promise<{
     events: ConversationEvent[];
     compaction: ConversationEvent | undefined;
   }> {

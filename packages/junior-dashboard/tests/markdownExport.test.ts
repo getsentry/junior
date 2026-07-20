@@ -46,13 +46,13 @@ describe("dashboard canonical-event Markdown export", () => {
     const markdown = buildConversationMarkdown(
       conversation([
         event(0, {
-          type: "visible_message",
+          type: "message",
           messageId: "user-1",
           role: "user",
           text: "please investigate",
         }),
         event(2, {
-          type: "visible_message",
+          type: "message",
           messageId: "assistant-1",
           role: "assistant",
           text: "investigation complete",
@@ -76,7 +76,7 @@ describe("dashboard canonical-event Markdown export", () => {
           childConversationId: "child-1",
           subagentKind: "advisor",
         }),
-        event(2, { type: "context_compacted" }),
+        event(2, { type: "compaction" }),
         event(3, {
           type: "turn_lifecycle",
           turnId: "turn-1",
@@ -135,7 +135,7 @@ describe("dashboard canonical-event Markdown export", () => {
       conversation(
         [
           event(0, {
-            type: "visible_message",
+            type: "message",
             messageId: "private-user",
             role: "user",
             redacted: true,

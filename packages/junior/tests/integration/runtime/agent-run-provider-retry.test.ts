@@ -603,9 +603,7 @@ describe("executeAgentRun provider retry", () => {
 
     const report = await readConversationDetail("slack:C123:1712345.0001");
     const visibleText = report?.events.flatMap((event) =>
-      event.data.type === "visible_message" && event.data.text
-        ? [event.data.text]
-        : [],
+      event.data.type === "message" && event.data.text ? [event.data.text] : [],
     );
     expect(visibleText).not.toContain("previous question");
     expect(visibleText).toEqual([]);

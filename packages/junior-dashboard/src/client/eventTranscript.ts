@@ -48,7 +48,7 @@ function specialToolStarts(events: ConversationReportEvent[]): Set<number> {
   for (const event of events) {
     const data = event.data;
     if (
-      (data.type === "model_handoff" || data.type === "subagent_started") &&
+      (data.type === "handoff" || data.type === "subagent_started") &&
       data.toolStartedSeq !== undefined
     ) {
       starts.add(data.toolStartedSeq);
@@ -87,7 +87,7 @@ export function conversationTranscriptMessages(
   // producers may preserve ingestion order while clocks are skewed.
   for (const event of conversation.events) {
     const data = event.data;
-    if (data.type === "visible_message") {
+    if (data.type === "message") {
       messages.push(
         eventMessage(event, data.role, [
           data.redacted
@@ -119,7 +119,7 @@ export function conversationTranscriptMessages(
       continue;
     }
 
-    if (data.type === "context_compacted" || data.type === "model_handoff") {
+    if (data.type === "compaction" || data.type === "handoff") {
       messages.push(
         eventMessage(event, "system", [
           {

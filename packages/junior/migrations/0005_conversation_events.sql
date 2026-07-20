@@ -49,16 +49,18 @@ BEGIN
 	END IF;
 END
 $$;--> statement-breakpoint
-ALTER INDEX "junior_agent_steps_epoch_idx" RENAME TO "junior_conversation_events_epoch_idx";--> statement-breakpoint
+ALTER INDEX "junior_agent_steps_epoch_idx" RENAME TO "junior_conversation_events_history_version_idx";--> statement-breakpoint
+ALTER TABLE "junior_conversation_events" RENAME COLUMN "context_epoch" TO "history_version";--> statement-breakpoint
 ALTER TABLE "junior_conversation_events" ADD COLUMN "schema_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "junior_conversation_events" DROP COLUMN "role";--> statement-breakpoint
 ALTER TABLE "junior_conversation_events" ADD COLUMN "idempotency_key" text;--> statement-breakpoint
 CREATE UNIQUE INDEX "junior_conversation_events_idempotency_idx" ON "junior_conversation_events" USING btree ("conversation_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX "junior_conversation_events_type_idx" ON "junior_conversation_events" USING btree ("conversation_id","type","seq");--> statement-breakpoint
+CREATE INDEX "junior_conversation_events_message_search_idx" ON "junior_conversation_events" USING gin (to_tsvector('english', "payload"->>'text')) WHERE "type" = 'message';--> statement-breakpoint
 UPDATE "junior_conversation_events"
 SET
 	"schema_version" = 1,
-	"type" = 'message',
+	"type" = 'agent_step',
 	"payload" = CASE
 		WHEN jsonb_typeof("payload") = 'object'
 			THEN "payload" - 'schemaVersion'
@@ -75,6 +77,9 @@ SET "payload" = "payload" - 'args'
 WHERE "type" = 'tool_execution_started'
 	AND jsonb_typeof("payload") = 'object'
 	AND "payload" ? 'args';--> statement-breakpoint
+UPDATE "junior_conversation_events"
+SET "type" = 'messages_summarized'
+WHERE "type" = 'visible_context_compacted';--> statement-breakpoint
 UPDATE "junior_conversation_events" AS snapshot
 SET "payload" =
 	(snapshot."payload" - 'compactions') ||
@@ -85,7 +90,7 @@ SET "payload" =
 			FROM "junior_conversation_events" AS recorded
 			WHERE recorded."conversation_id" = snapshot."conversation_id"
 				AND recorded."seq" < snapshot."seq"
-				AND recorded."type" = 'visible_message_recorded'
+				AND recorded."type" = 'message'
 				AND EXISTS (
 					SELECT 1
 					FROM jsonb_array_elements(snapshot."payload"->'compactions') AS compaction,
@@ -101,7 +106,7 @@ SET "payload" =
 							SELECT 1
 							FROM "junior_conversation_events" AS recorded
 							WHERE recorded."conversation_id" = snapshot."conversation_id"
-								AND recorded."type" = 'visible_message_recorded'
+								AND recorded."type" = 'message'
 						)
 							THEN compaction - 'coveredMessageIds'
 						ELSE compaction
@@ -114,4 +119,4 @@ SET "payload" =
 			FROM jsonb_array_elements(snapshot."payload"->'compactions') AS compaction
 		), '[]'::jsonb)
 	)
-WHERE snapshot."type" = 'visible_context_compacted';--> statement-breakpoint
+WHERE snapshot."type" = 'messages_summarized';--> statement-breakpoint

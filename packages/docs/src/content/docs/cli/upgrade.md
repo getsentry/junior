@@ -42,7 +42,7 @@ The canonical conversation-event cutover is not rolling-compatible. Do not run i
 2. Let existing work drain, then verify that no turns remain running or awaiting resume.
 3. Stop every old worker, queue consumer, and heartbeat. Keep the old deployment stopped for the rest of the procedure.
 4. Run the upgrade from an operator environment with the production `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and `DATABASE_URL`.
-5. Confirm the history import and visible-message seal complete with no missing rows.
+5. Confirm the history import and message-event seal complete with no missing rows.
 6. Run `junior check`, deploy the new release, and only then reopen ingress and start the new workers.
 
 Run the upgrade as a separate operator command:
@@ -52,7 +52,7 @@ pnpm exec junior upgrade
 pnpm exec junior check
 ```
 
-The checkpoint and visible-message rewrites fail closed if resumable work remains. After the drain succeeds, each rewrite invalidates stale resume state before changing physical event positions. Checkpoint normalization closes deletion gaps, and the visible-message migration resequences the streams it changes while preserving reporting summaries.
+The checkpoint and message-event rewrites fail closed if resumable work remains. After the drain succeeds, each rewrite invalidates stale resume state before changing physical event positions. Checkpoint normalization closes deletion gaps, and the message migration resequences the streams it changes while preserving reporting summaries.
 
 If the command exits nonzero, leave the deployment stopped, correct the reported state, and rerun it. Do not restart workers after only part of the sequence completes.
 
@@ -87,7 +87,7 @@ After running the command:
 
 1. Confirm the final log line includes `Junior upgrade complete`.
 2. Confirm `backfill-conversation-events-sql` scanned the complete retained activity index and did not stop at one page.
-3. Confirm `backfill-conversation-visible-message-events` reports `missing=0`; this is the canonical-history seal.
+3. Confirm `move-conversation-messages-to-events` reports `missing=0`; this is the canonical-history seal and removes the legacy message table.
 4. Run `pnpm exec junior check` before building or deploying the app.
 
 A nonzero `missing` count for `repair-conversation-usage` means retained SQL assistant messages did not contain usable, schema-safe usage values. Junior leaves those totals unchanged.

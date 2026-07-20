@@ -43,18 +43,15 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
-import {
-  commitMessages,
-  loadProjection,
-} from "@/chat/conversations/projection";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
+import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
@@ -229,9 +226,6 @@ export async function runLocalAgentTurn(
   let failureCode: ConversationTurnFailureCode = "persistence_failed";
   let modelFailureEventId: string | undefined;
   let modelFailureCaptureAttempted = false;
-  let piMessagesBeforeRun:
-    | Awaited<ReturnType<typeof loadLocalPiMessages>>
-    | undefined;
   const localActor = {
     fullName: "Local CLI",
     platform: "local" as const,
@@ -243,7 +237,6 @@ export async function runLocalAgentTurn(
     const piMessages = await (deps.loadPiMessages ?? loadLocalPiMessages)({
       conversationId: input.conversationId,
     });
-    piMessagesBeforeRun = piMessages;
     failureCode = "agent_run_failed";
     const outcome = await deps.agentRunner.run({
       input: {
@@ -350,13 +343,6 @@ export async function runLocalAgentTurn(
             turnId,
           });
     try {
-      if (reply) {
-        await commitMessages({
-          conversationId: input.conversationId,
-          modelId: reply.diagnostics.modelId,
-          messages: piMessagesBeforeRun ?? [],
-        });
-      }
       markTurnFailed({
         conversation,
         nowMs: now(),

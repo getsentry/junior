@@ -6,7 +6,7 @@ import { getChatConfig } from "@/chat/config";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { migrateConversationVisibleMessageEvents } from "@/cli/upgrade/migrations/conversation-visible-message-events";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
 import { normalizeConversationContextCheckpoints } from "@/cli/upgrade/migrations/conversation-context-checkpoints";
 import { prepareConversationEventResequence } from "@/cli/upgrade/migrations/conversation-event-cursors";
@@ -184,7 +184,7 @@ describe("conversation event migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_agent_steps (
           conversation_id, seq, context_epoch, type, role, payload, created_at
-        ) VALUES ($1, 0, 0, 'visible_context_compacted', NULL, $2::jsonb, $3)`,
+        ) VALUES ($1, 0, 0, 'messages_summarized', NULL, $2::jsonb, $3)`,
         [
           conversationId,
           JSON.stringify({
@@ -215,7 +215,7 @@ describe("conversation event migration", () => {
            )::integer AS "coveredIds"
            FROM junior_conversation_events
            WHERE conversation_id = $1
-             AND type = 'visible_context_compacted'`,
+             AND type = 'messages_summarized'`,
           [conversationId],
         ),
       ).resolves.toEqual([{ coveredIds: 500 }]);
@@ -255,9 +255,9 @@ describe("conversation event migration", () => {
       ).resolves.toMatchObject({ migrated: 502, missing: 0 });
 
       const store = createSqlConversationEventStore(fixture.sql);
-      const visible = await store.loadVisibleHistory(conversationId);
+      const visible = await store.loadMessageHistory(conversationId);
       expect(visible.compaction?.data).toEqual({
-        type: "visible_context_compacted",
+        type: "messages_summarized",
         historyFromSeq: 502,
         compactions: [
           {
@@ -270,7 +270,7 @@ describe("conversation event migration", () => {
       });
       expect(visible.events.map((event) => event.seq)).toEqual([502]);
       expect(
-        projectVisibleConversationMessages(visible.events, {
+        projectConversationMessages(visible.events, {
           historyFromSeq: 502,
         }).map((message) => message.id),
       ).toEqual(["live"]);
@@ -459,7 +459,7 @@ describe("conversation event migration", () => {
       const events = await eventStore.loadHistory(conversationId);
       expect(
         events.map((event) => ({
-          contextEpoch: event.contextEpoch,
+          historyVersion: event.historyVersion,
           idempotencyKey: event.idempotencyKey,
           messageId:
             "messageId" in event.data ? event.data.messageId : undefined,
@@ -468,32 +468,32 @@ describe("conversation event migration", () => {
         })),
       ).toEqual([
         {
-          contextEpoch: 0,
+          historyVersion: 0,
           idempotencyKey: undefined,
           messageId: undefined,
           seq: 0,
+          type: "agent_step",
+        },
+        {
+          historyVersion: 0,
+          idempotencyKey: "message:before",
+          messageId: "before",
+          seq: 1,
           type: "message",
         },
         {
-          contextEpoch: 0,
-          idempotencyKey: "visible-message:before:recorded",
-          messageId: "before",
-          seq: 1,
-          type: "visible_message_recorded",
-        },
-        {
-          contextEpoch: 0,
-          idempotencyKey: "visible-message:before:replied",
+          historyVersion: 0,
+          idempotencyKey: "message:before:handled",
           messageId: "before",
           seq: 2,
-          type: "visible_message_replied",
+          type: "message_handled",
         },
         {
-          contextEpoch: 0,
+          historyVersion: 0,
           idempotencyKey: undefined,
           messageId: undefined,
           seq: 3,
-          type: "message",
+          type: "agent_step",
         },
       ]);
     } finally {
@@ -605,7 +605,7 @@ describe("conversation event migration", () => {
       await expect(
         fixture.sql.query<{
           conversationId: string;
-          contextEpoch: number;
+          historyVersion: number;
           createdAt: Date;
           idempotencyKey: string | null;
           payload: Record<string, unknown>;
@@ -616,7 +616,7 @@ describe("conversation event migration", () => {
 SELECT
   conversation_id AS "conversationId",
   seq,
-  context_epoch AS "contextEpoch",
+  history_version AS "historyVersion",
   schema_version AS "schemaVersion",
   idempotency_key AS "idempotencyKey",
   type,
@@ -627,7 +627,7 @@ ORDER BY seq
 `),
       ).resolves.toEqual([
         {
-          contextEpoch: 2,
+          historyVersion: 2,
           conversationId: "conversation-one",
           createdAt: new Date("2026-07-14T10:01:00.000Z"),
           idempotencyKey: null,
@@ -639,10 +639,10 @@ ORDER BY seq
           },
           schemaVersion: 1,
           seq: 1,
-          type: "message",
+          type: "agent_step",
         },
         {
-          contextEpoch: 3,
+          historyVersion: 3,
           conversationId: "conversation-one",
           createdAt: new Date("2026-07-14T10:01:00.000Z"),
           idempotencyKey: null,
@@ -657,7 +657,7 @@ ORDER BY seq
           type: "authorization_completed",
         },
         {
-          contextEpoch: 3,
+          historyVersion: 3,
           conversationId: "conversation-one",
           createdAt: new Date("2026-07-14T10:01:00.000Z"),
           idempotencyKey: null,
@@ -671,7 +671,7 @@ ORDER BY seq
           type: "subagent_started",
         },
         {
-          contextEpoch: 3,
+          historyVersion: 3,
           conversationId: "conversation-one",
           createdAt: new Date("2026-07-14T10:01:00.000Z"),
           idempotencyKey: null,
@@ -688,7 +688,7 @@ ORDER BY seq
         fixture.sql,
       ).loadHistory("conversation-one");
       expect(decoded.map((event) => event.data.type)).toEqual([
-        "message",
+        "agent_step",
         "authorization_completed",
         "subagent_started",
         "tool_execution_started",
@@ -746,8 +746,9 @@ ORDER BY indexname
 `),
       ).resolves.toEqual([
         { name: "junior_conversation_events_conversation_id_seq_pk" },
-        { name: "junior_conversation_events_epoch_idx" },
+        { name: "junior_conversation_events_history_version_idx" },
         { name: "junior_conversation_events_idempotency_idx" },
+        { name: "junior_conversation_events_message_search_idx" },
         { name: "junior_conversation_events_type_idx" },
       ]);
     } finally {
@@ -778,9 +779,9 @@ ORDER BY indexname
         `INSERT INTO junior_agent_steps (
           conversation_id, seq, context_epoch, type, role, payload, created_at
         ) VALUES
-          ($1, 0, 0, 'visible_message_recorded', NULL, $2::jsonb, $5),
-          ($1, 1, 0, 'visible_message_recorded', NULL, $3::jsonb, $5),
-          ($1, 2, 0, 'visible_context_compacted', NULL, $4::jsonb, $5)`,
+          ($1, 0, 0, 'message', NULL, $2::jsonb, $5),
+          ($1, 1, 0, 'message', NULL, $3::jsonb, $5),
+          ($1, 2, 0, 'messages_summarized', NULL, $4::jsonb, $5)`,
         [
           "conversation-compacted",
           JSON.stringify({ messageId: "covered", role: "user", text: "old" }),
@@ -805,10 +806,10 @@ ORDER BY indexname
       );
 
       const store = createSqlConversationEventStore(fixture.sql);
-      const history = await store.loadVisibleHistory("conversation-compacted");
+      const history = await store.loadMessageHistory("conversation-compacted");
       expect(history.events.map((event) => event.seq)).toEqual([1]);
       expect(history.compaction?.data).toEqual({
-        type: "visible_context_compacted",
+        type: "messages_summarized",
         historyFromSeq: 1,
         compactions: [
           {
@@ -904,15 +905,15 @@ ORDER BY indexname
       );
       const at = new Date("2026-07-14T10:01:00.000Z");
       const rows: Array<[number, number, string, Record<string, unknown>]> = [
-        [0, 0, "message", { message: user }],
-        [1, 0, "message", { message: firstAssistant }],
+        [0, 0, "agent_step", { message: user }],
+        [1, 0, "agent_step", { message: firstAssistant }],
         [2, 1, "context_epoch_started", { reason: "compaction" }],
-        [3, 1, "message", { message: user }],
-        [4, 1, "message", { message: compactionSummary }],
+        [3, 1, "agent_step", { message: user }],
+        [4, 1, "agent_step", { message: compactionSummary }],
         [
           5,
           1,
-          "message",
+          "agent_step",
           {
             message: {
               role: "assistant",
@@ -936,8 +937,8 @@ ORDER BY indexname
             modelId: "test/handoff",
           },
         ],
-        [8, 2, "message", { message: handoffSummary }],
-        [9, 2, "message", { message: handoffAssistant }],
+        [8, 2, "agent_step", { message: handoffSummary }],
+        [9, 2, "agent_step", { message: handoffAssistant }],
         [
           10,
           3,
@@ -948,12 +949,12 @@ ORDER BY indexname
             modelId: "test/handoff",
           },
         ],
-        [11, 3, "message", { message: handoffSummary }],
-        [12, 3, "message", { message: handoffAssistant }],
+        [11, 3, "agent_step", { message: handoffSummary }],
+        [12, 3, "agent_step", { message: handoffAssistant }],
         [
           13,
           3,
-          "message",
+          "agent_step",
           {
             message: {
               role: "user",
@@ -964,7 +965,7 @@ ORDER BY indexname
         [
           14,
           3,
-          "visible_context_compacted",
+          "messages_summarized",
           {
             historyFromSeq: 13,
             compactions: [
@@ -978,16 +979,16 @@ ORDER BY indexname
           },
         ],
       ];
-      for (const [seq, contextEpoch, type, payload] of rows) {
+      for (const [seq, historyVersion, type, payload] of rows) {
         await fixture.sql.execute(
           `INSERT INTO junior_conversation_events (
-            conversation_id, seq, context_epoch, schema_version, type,
+            conversation_id, seq, history_version, schema_version, type,
             payload, created_at
           ) VALUES ($1, $2, $3, 1, $4, $5::jsonb, $6)`,
           [
             conversationId,
             seq,
-            contextEpoch,
+            historyVersion,
             type,
             JSON.stringify(payload),
             at,
@@ -1067,13 +1068,15 @@ ORDER BY indexname
       expect(history.map((event) => event.seq)).toEqual([
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
       ]);
-      const markers = history.filter(
-        (event) => event.data.type === "context_epoch_started",
+      const replacements = history.filter(
+        (event) =>
+          event.data.type === "compaction" ||
+          event.data.type === "handoff" ||
+          event.data.type === "rollback",
       );
-      expect(markers.map((event) => event.data)).toEqual([
+      expect(replacements.map((event) => event.data)).toEqual([
         {
-          type: "context_epoch_started",
-          reason: "compaction",
+          type: "compaction",
           modelProfile: "standard",
           modelId: "test/standard",
           replacementHistory: [
@@ -1082,16 +1085,14 @@ ORDER BY indexname
           ],
         },
         {
-          type: "context_epoch_started",
-          reason: "handoff",
+          type: "handoff",
           modelProfile: "handoff",
           modelId: "test/handoff",
           triggeringToolCallId: "handoff-call",
           replacementHistory: [{ message: handoffSummary }],
         },
         {
-          type: "context_epoch_started",
-          reason: "rollback",
+          type: "rollback",
           modelProfile: "handoff",
           modelId: "test/handoff",
           replacementHistory: [
@@ -1101,7 +1102,7 @@ ORDER BY indexname
         },
       ]);
       expect(
-        history.find((event) => event.data.type === "visible_context_compacted")
+        history.find((event) => event.data.type === "messages_summarized")
           ?.data,
       ).toMatchObject({ historyFromSeq: 8 });
       await expect(

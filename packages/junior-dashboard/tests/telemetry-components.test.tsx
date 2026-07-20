@@ -183,7 +183,7 @@ describe("dashboard canonical-event components", () => {
     const staleDetail = conversation(
       [
         event(0, {
-          type: "visible_message",
+          type: "message",
           messageId: "cached-answer",
           role: "assistant",
           text: "cached canonical answer",
@@ -191,10 +191,7 @@ describe("dashboard canonical-event components", () => {
       ],
       { status: "active" },
     );
-    staleClient.setQueryData(
-      ["conversation", "conversation-1"],
-      staleDetail,
-    );
+    staleClient.setQueryData(["conversation", "conversation-1"], staleDetail);
     const staleQuery = staleClient.getQueryCache().find({
       queryKey: ["conversation", "conversation-1"],
     });
@@ -219,7 +216,7 @@ describe("dashboard canonical-event components", () => {
       conversation(
         [
           event(0, {
-            type: "visible_message",
+            type: "message",
             messageId: "private",
             role: "user",
             redacted: true,
@@ -239,8 +236,8 @@ describe("dashboard canonical-event components", () => {
   it("renders failure and context lifecycle rows", () => {
     const html = renderTranscript(
       conversation([
-        event(0, { type: "context_compacted" }),
-        event(1, { type: "model_handoff" }),
+        event(0, { type: "compaction" }),
+        event(1, { type: "handoff" }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",
@@ -328,7 +325,7 @@ describe("dashboard canonical-event components", () => {
     const child = conversation(
       [
         event(0, {
-          type: "visible_message",
+          type: "message",
           messageId: "child-answer",
           role: "assistant",
           text: "child detail answer",
@@ -818,7 +815,7 @@ describe("dashboard canonical-event components", () => {
     const detail = conversation(
       [
         event(0, {
-          type: "visible_message",
+          type: "message",
           messageId: "cached-answer",
           role: "assistant",
           text: "cached canonical answer",

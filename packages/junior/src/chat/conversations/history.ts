@@ -1,9 +1,9 @@
 /**
  * Durable conversation event history port.
  *
- * Events append under the conversation lease in stable sequence order. Context
- * rebuilds (compaction, handoff, rollback) open a new context epoch instead of
- * rewriting history. Unknown event types or malformed shapes fail loudly;
+ * Events append under the conversation lease in stable sequence order.
+ * Compaction and handoff replace the active model history without rewriting
+ * prior events. Unknown event types or malformed shapes fail loudly;
  * provider-specific message fields are validated by the Pi adapter when it
  * restores model context.
  */
@@ -17,30 +17,26 @@ const handoffModelProfileSchema = modelProfileSchema.refine(
   "handoff profile must not be standard",
 );
 
-/** Store a model message while leaving provider-specific validation to Pi. */
-export const conversationModelMessageSchema = z
+/** Store one opaque agent-step payload while Pi owns provider validation. */
+export const conversationAgentStepPayloadSchema = z
   .object({ role: z.string() })
   .passthrough()
   .transform((value) => value as { role: string });
 
-/** A model message stored in the conversation event log. */
-export type ConversationModelMessage = z.output<
-  typeof conversationModelMessageSchema
+/** The opaque Pi history entry carried by an `agent_step` event. */
+export type ConversationAgentStepPayload = z.output<
+  typeof conversationAgentStepPayloadSchema
 >;
 
 const conversationMessageDataSchema = z
   .object({
-    message: conversationModelMessageSchema,
+    message: conversationAgentStepPayloadSchema,
     provenance: conversationMessageProvenanceSchema.optional(),
   })
   .strict();
 
-const messageEventDataSchema = conversationMessageDataSchema.extend({
-  type: z.literal("message"),
-});
-
-const contextEpochMessageSchema = conversationMessageDataSchema.extend({
-  createdAtMs: z.number().finite(),
+const agentStepEventDataSchema = conversationMessageDataSchema.extend({
+  type: z.literal("agent_step"),
 });
 
 const replacementHistoryMessageSchema = conversationMessageDataSchema.extend({
@@ -50,25 +46,16 @@ const replacementHistoryMessageSchema = conversationMessageDataSchema.extend({
 });
 
 /**
- * The complete message list used immediately after a context reset. Later
- * `message` events append to it. These entries are replayed model input, not
+ * The complete agent history used immediately after a replacement. Later
+ * `agent_step` events append to it. These entries are replayed model input, not
  * new conversation activity.
  */
 const replacementHistorySchema = z.array(replacementHistoryMessageSchema);
 
-const contextEpochStartedEventDataSchema = z.discriminatedUnion("reason", [
+const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
   z
     .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("initial"),
-      modelProfile: z.literal("standard"),
-      modelId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("handoff"),
+      type: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
       triggeringToolCallId: z.string().min(1),
@@ -77,17 +64,7 @@ const contextEpochStartedEventDataSchema = z.discriminatedUnion("reason", [
     .strict(),
   z
     .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("compaction"),
-      modelProfile: modelProfileSchema,
-      modelId: z.string().min(1),
-      replacementHistory: replacementHistorySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("context_epoch_started"),
-      reason: z.literal("rollback"),
+      type: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       replacementHistory: replacementHistorySchema,
@@ -95,50 +72,27 @@ const contextEpochStartedEventDataSchema = z.discriminatedUnion("reason", [
     .strict(),
 ]);
 
-/**
- * Validate a context reset. Initial `messages` are new events. On rollback,
- * `replacementHistory` replays the unchanged prefix and `messages` contains
- * only the newly generated suffix.
- */
-export const contextEpochStartSchema = z.discriminatedUnion("reason", [
-  z
-    .object({
-      reason: z.literal("initial"),
-      modelProfile: z.literal("standard"),
-      modelId: z.string().min(1),
-      messages: z.array(contextEpochMessageSchema),
-    })
-    .strict(),
-  z
-    .object({
-      reason: z.literal("handoff"),
-      modelProfile: handoffModelProfileSchema,
-      modelId: z.string().min(1),
-      triggeringToolCallId: z.string().min(1),
-      replacementHistory: replacementHistorySchema,
-    })
-    .strict(),
-  z
-    .object({
-      reason: z.literal("compaction"),
-      modelProfile: modelProfileSchema,
-      modelId: z.string().min(1),
-      replacementHistory: replacementHistorySchema,
-    })
-    .strict(),
-  z
-    .object({
-      reason: z.literal("rollback"),
-      modelProfile: modelProfileSchema,
-      modelId: z.string().min(1),
-      replacementHistory: replacementHistorySchema,
-      messages: z.array(contextEpochMessageSchema),
-    })
-    .strict(),
-]);
+// Read-only compatibility for histories written before automatic rollback was
+// removed. Live writers cannot create this event through replaceHistory().
+const legacyRollbackEventDataSchema = z
+  .object({
+    type: z.literal("rollback"),
+    modelProfile: modelProfileSchema,
+    modelId: z.string().min(1),
+    replacementHistory: replacementHistorySchema,
+  })
+  .strict();
 
-/** One atomically persisted context epoch and its model binding. */
-export type ContextEpochStart = z.output<typeof contextEpochStartSchema>;
+/** Validate an event that intentionally replaces active model history. */
+export const historyReplacementSchema = z
+  .object({
+    data: historyReplacementEventDataSchema,
+    createdAtMs: z.number().finite(),
+  })
+  .strict();
+
+/** One atomically persisted model-history replacement. */
+export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
 
 const mcpProviderConnectedEventDataSchema = z
   .object({
@@ -187,41 +141,37 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
-const visibleMessageRoleSchema = z.union([
+const conversationMessageRoleSchema = z.union([
   z.literal("user"),
   z.literal("assistant"),
   z.literal("system"),
 ]);
 
-const visibleMessageRecordedEventDataSchema = z
+const messageEventDataSchema = z
   .object({
-    type: z.literal("visible_message_recorded"),
+    type: z.literal("message"),
     messageId: z.string().min(1),
-    role: visibleMessageRoleSchema,
+    role: conversationMessageRoleSchema,
     text: z.string(),
     authorIdentityId: z.string().min(1).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
-const visibleMessageMetadataUpdatedEventDataSchema = z
-  .object({
-    type: z.literal("visible_message_metadata_updated"),
-    messageId: z.string().min(1),
-    meta: z.record(z.string(), z.unknown()),
-  })
-  .strict();
+const messageUpdatedEventDataSchema = messageEventDataSchema.extend({
+  type: z.literal("message_updated"),
+});
 
-const visibleMessageRepliedEventDataSchema = z
+const messageHandledEventDataSchema = z
   .object({
-    type: z.literal("visible_message_replied"),
+    type: z.literal("message_handled"),
     messageId: z.string().min(1),
   })
   .strict();
 
-const visibleContextCompactedEventDataSchema = z
+const messagesSummarizedEventDataSchema = z
   .object({
-    type: z.literal("visible_context_compacted"),
+    type: z.literal("messages_summarized"),
     historyFromSeq: z.number().int().nonnegative(),
     compactions: z.array(
       z
@@ -318,17 +268,17 @@ const subagentEndedEventDataSchema = z
   })
   .strict();
 
-/** Prevent ordinary appends from bypassing context-epoch lifecycle validation. */
+/** Prevent ordinary appends from bypassing history-replacement validation. */
 const appendableConversationEventDataSchema = z.union([
   messageEventDataSchema,
+  messageUpdatedEventDataSchema,
+  agentStepEventDataSchema,
   mcpProviderConnectedEventDataSchema,
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
-  visibleMessageRecordedEventDataSchema,
-  visibleMessageMetadataUpdatedEventDataSchema,
-  visibleMessageRepliedEventDataSchema,
-  visibleContextCompactedEventDataSchema,
+  messageHandledEventDataSchema,
+  messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -339,7 +289,8 @@ const appendableConversationEventDataSchema = z.union([
 /** Strict event-data contract reused by the SQL row codec. */
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
-  contextEpochStartedEventDataSchema,
+  historyReplacementEventDataSchema,
+  legacyRollbackEventDataSchema,
 ]);
 
 /** One durable conversation event's validated data. */
@@ -355,7 +306,7 @@ export const conversationEventSchema = z
   .object({
     schemaVersion: z.literal(1),
     seq: z.number().int().nonnegative(),
-    contextEpoch: z.number().int().nonnegative(),
+    historyVersion: z.number().int().nonnegative(),
     idempotencyKey: z.string().min(1).optional(),
     createdAtMs: z.number().finite(),
     data: conversationEventDataSchema,
@@ -365,7 +316,7 @@ export const conversationEventSchema = z
 /** One versioned event read from the durable conversation log. */
 export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
-/** Validate a current-epoch append without permitting epoch markers. */
+/** Validate an append without permitting model-history replacement events. */
 export const newConversationEventSchema = z
   .object({
     data: appendableConversationEventDataSchema,
@@ -374,33 +325,31 @@ export const newConversationEventSchema = z
   })
   .strict();
 
-/** An event to append; the store assigns `seq` and the current context epoch. */
+/** An event to append; the store assigns `seq` and current history version. */
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
-
-/** A new message written while opening a context epoch. */
-export type ContextEpochMessage = z.output<typeof contextEpochMessageSchema>;
 
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
   /** Append events atomically, assigning `seq = max+1` under the lease. */
   append(conversationId: string, events: NewConversationEvent[]): Promise<void>;
-  /**
-   * Open initial epoch 0 or the next replacement epoch in one transaction.
-   */
-  startEpoch(conversationId: string, opts: ContextEpochStart): Promise<void>;
-  /** Events of the highest epoch in `seq` order (all types; caller filters). */
-  loadCurrentEpoch(conversationId: string): Promise<ConversationEvent[]>;
-  /** Events in the epoch containing `seq`, or undefined when it is absent. */
-  loadEpochContaining(
+  /** Replace active model history with a compaction or handoff event. */
+  replaceHistory(
+    conversationId: string,
+    replacement: HistoryReplacement,
+  ): Promise<void>;
+  /** Events of the current history version in `seq` order. */
+  loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events in the history version containing `seq`, when it exists. */
+  loadHistoryContaining(
     conversationId: string,
     seq: number,
     throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined>;
-  /** Live visible-message facts and their latest compaction snapshot. */
-  loadVisibleHistory(conversationId: string): Promise<{
+  /** Current source/destination messages and their latest summary snapshot. */
+  loadMessageHistory(conversationId: string): Promise<{
     events: ConversationEvent[];
     compaction: ConversationEvent | undefined;
   }>;
-  /** All events across every epoch in `seq` order, for audit and reporting. */
+  /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
 }

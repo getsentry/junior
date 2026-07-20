@@ -49,9 +49,9 @@ export const conversationSummaryReportSchema = z
   })
   .strict();
 
-const conversationReportVisibleMessageEventDataSchema = z
+const conversationReportMessageEventDataSchema = z
   .object({
-    type: z.literal("visible_message"),
+    type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
     text: z.string().optional(),
@@ -62,14 +62,14 @@ const conversationReportVisibleMessageEventDataSchema = z
     if ((data.text === undefined) === (data.redacted !== true)) {
       context.addIssue({
         code: "custom",
-        message: "visible message content must be text or explicitly redacted",
+        message: "message content must be text or explicitly redacted",
       });
     }
   });
 
-const conversationReportVisibleMessageRepliedEventDataSchema = z
+const conversationReportMessageHandledEventDataSchema = z
   .object({
-    type: z.literal("visible_message_replied"),
+    type: z.literal("message_handled"),
     messageId: z.string().min(1),
   })
   .strict();
@@ -102,13 +102,13 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   ],
 );
 
-const conversationReportContextCompactedEventDataSchema = z
-  .object({ type: z.literal("context_compacted") })
+const conversationReportCompactionEventDataSchema = z
+  .object({ type: z.literal("compaction") })
   .strict();
 
-const conversationReportModelHandoffEventDataSchema = z
+const conversationReportHandoffEventDataSchema = z
   .object({
-    type: z.literal("model_handoff"),
+    type: z.literal("handoff"),
     toolStartedSeq: z.number().int().nonnegative().optional(),
   })
   .strict();
@@ -132,12 +132,12 @@ const conversationReportSubagentEndedEventDataSchema = z
 
 /** Privacy-safe event variants owned by the conversation reporting API. */
 export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
-  conversationReportVisibleMessageEventDataSchema,
-  conversationReportVisibleMessageRepliedEventDataSchema,
+  conversationReportMessageEventDataSchema,
+  conversationReportMessageHandledEventDataSchema,
   conversationReportToolStartedEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
-  conversationReportContextCompactedEventDataSchema,
-  conversationReportModelHandoffEventDataSchema,
+  conversationReportCompactionEventDataSchema,
+  conversationReportHandoffEventDataSchema,
   conversationReportSubagentStartedEventDataSchema,
   conversationReportSubagentEndedEventDataSchema,
 ]);
@@ -202,7 +202,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
       }
     }
     for (const [index, event] of report.events.entries()) {
-      if (event.data.type !== "visible_message") continue;
+      if (event.data.type !== "message") continue;
       if (
         report.eventHistory.status === "redacted" &&
         event.data.redacted !== true
@@ -210,7 +210,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
         context.addIssue({
           code: "custom",
           path: ["events", index, "data"],
-          message: "redacted event history must redact visible messages",
+          message: "redacted event history must redact messages",
         });
       }
       if (
@@ -220,7 +220,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
         context.addIssue({
           code: "custom",
           path: ["events", index, "data"],
-          message: "available event history must expose visible messages",
+          message: "available event history must expose messages",
         });
       }
     }

@@ -12,7 +12,7 @@ import {
   coerceThreadConversationState,
   type ThreadConversationState,
 } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 
 /** Mark an auth-paused turn complete after private authorization link delivery. */
 export function completeAuthPauseTurn(args: {

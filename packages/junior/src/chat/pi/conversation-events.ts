@@ -10,18 +10,22 @@ import type {
   ConversationEventData,
 } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
+import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 
-type MessageEventData = Extract<ConversationEventData, { type: "message" }>;
+type AgentStepEventData = Extract<
+  ConversationEventData,
+  { type: "agent_step" }
+>;
 type AuthorizationCompletedEventData = Extract<
   ConversationEventData,
   { type: "authorization_completed" }
 >;
 
-/** Pi context projected from one Junior conversation epoch. */
+/** Pi context projected from one Junior model-history version. */
 export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
@@ -52,16 +56,20 @@ function authorizationObservationMessage(
 }
 
 function messageEventProvenance(
-  data: MessageEventData,
+  data: AgentStepEventData,
 ): ConversationMessageProvenance {
   return data.provenance ?? contextProvenance;
+}
+
+function durableMessages(message: unknown): PiMessage[] {
+  return stripRuntimeTurnContext([piMessageSchema.parse(message)]);
 }
 
 /**
  * Project ordered Junior events into Pi context.
  *
- * An epoch marker starts with its replacement history. Ordinary message events
- * in that epoch append after it.
+ * Compaction and handoff start with replacement history. Later agent-step
+ * events append after it.
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
@@ -78,22 +86,28 @@ export function projectConversationEvents(
 
   for (const event of events) {
     if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
-    if (event.data.type === "context_epoch_started") {
+    if (
+      event.data.type === "compaction" ||
+      event.data.type === "handoff" ||
+      event.data.type === "rollback"
+    ) {
       modelProfile = event.data.modelProfile;
       modelId = event.data.modelId;
-      if (event.data.reason !== "initial") {
-        for (const replacement of event.data.replacementHistory) {
-          messages.push(piMessageSchema.parse(replacement.message));
+      for (const replacement of event.data.replacementHistory) {
+        for (const message of durableMessages(replacement.message)) {
+          messages.push(message);
           provenance.push(replacement.provenance ?? contextProvenance);
           seqs.push(replacement.sourceEventSeq ?? event.seq);
         }
       }
       continue;
     }
-    if (event.data.type === "message") {
-      messages.push(piMessageSchema.parse(event.data.message));
-      provenance.push(messageEventProvenance(event.data));
-      seqs.push(event.seq);
+    if (event.data.type === "agent_step") {
+      for (const message of durableMessages(event.data.message)) {
+        messages.push(message);
+        provenance.push(messageEventProvenance(event.data));
+        seqs.push(event.seq);
+      }
       continue;
     }
     if (event.data.type === "authorization_completed") {

@@ -97,10 +97,9 @@ export async function readConversationEventPrivacySnapshot(
       event: {
         ...conversationEventColumns,
         // Replacement history is model context, never dashboard report data.
-        // Keep the required checkpoint field while replacing its contents.
+        // Keep the required replacement field while redacting its contents.
         payload: sql<Record<string, unknown>>`case
-          when ${juniorConversationEvents.type} = 'context_epoch_started'
-            and ${juniorConversationEvents.payload}->>'reason' <> 'initial'
+          when ${juniorConversationEvents.type} in ('compaction', 'handoff')
           then jsonb_set(
             ${juniorConversationEvents.payload},
             '{replacementHistory}',
