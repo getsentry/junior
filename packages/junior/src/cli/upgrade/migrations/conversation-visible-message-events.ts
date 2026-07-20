@@ -1,4 +1,3 @@
-import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { getChatConfig } from "@/chat/config";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import type { ConversationMessageRole } from "@/chat/conversations/messages";
@@ -11,17 +10,11 @@ import type { JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { MigrationContext, MigrationResult } from "../types";
+import { prepareConversationEventResequence } from "./conversation-event-cursors";
 
 const VISIBLE_EVENT_BATCH_SIZE = 500;
 const VISIBLE_EVENT_BACKFILL_LOCK =
   "junior:upgrade:conversation-visible-message-events";
-const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
-const REDIS_SCAN_COUNT = 500;
-
-type RedisCommandClient = {
-  sendCommand<T = unknown>(args: readonly string[]): Promise<T>;
-};
-
 const LOAD_VISIBLE_CONVERSATION_IDS_SQL = `
 SELECT DISTINCT conversation_id
 FROM junior_conversation_messages
@@ -173,101 +166,6 @@ function eventsForRow(row: VisibleMessageRow): NewConversationEvent[] {
   return events;
 }
 
-function turnSessionConversationIndexKey(conversationId: string): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
-}
-
-function turnSessionRecordKey(
-  conversationId: string,
-  sessionId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
-}
-
-function rawTurnSessionKeyPattern(): string {
-  const statePrefix = getChatConfig().state.keyPrefix;
-  return `*:cache:${statePrefix ? `${statePrefix}:` : ""}${AGENT_TURN_SESSION_PREFIX}:*`;
-}
-
-async function discoverRawTurnSessionKeys(
-  redisStateAdapter: RedisStateAdapter | undefined,
-): Promise<Map<string, string>> {
-  const client = redisStateAdapter?.getClient() as
-    | RedisCommandClient
-    | undefined;
-  const discovered = new Map<string, string>();
-  if (!client) return discovered;
-
-  let cursor = "0";
-  do {
-    const reply = await client.sendCommand<unknown>([
-      "SCAN",
-      cursor,
-      "MATCH",
-      rawTurnSessionKeyPattern(),
-      "COUNT",
-      String(REDIS_SCAN_COUNT),
-    ]);
-    if (
-      !Array.isArray(reply) ||
-      reply.length !== 2 ||
-      (typeof reply[0] !== "string" && typeof reply[0] !== "number") ||
-      !Array.isArray(reply[1])
-    ) {
-      throw new Error(
-        "Unexpected Redis SCAN response while checking turn-session cursors",
-      );
-    }
-    cursor = String(reply[0]);
-    for (const rawKey of reply[1]) {
-      if (typeof rawKey !== "string") continue;
-      const encoded = await client.sendCommand<unknown>(["GET", rawKey]);
-      if (typeof encoded !== "string") continue;
-      let value: unknown;
-      try {
-        value = JSON.parse(encoded);
-      } catch {
-        continue;
-      }
-      if (!isRecord(value)) continue;
-      const conversationId = toOptionalString(value.conversationId);
-      const sessionId = toOptionalString(value.sessionId);
-      if (!conversationId || !sessionId) continue;
-      discovered.set(
-        turnSessionRecordKey(conversationId, sessionId),
-        conversationId,
-      );
-    }
-  } while (cursor !== "0");
-
-  return discovered;
-}
-
-async function indexedTurnSessionIds(
-  context: MigrationContext,
-  conversationId: string,
-): Promise<string[]> {
-  const summaries = await context.stateAdapter.getList(
-    turnSessionConversationIndexKey(conversationId),
-  );
-  return [
-    ...new Set(
-      summaries.flatMap((summary) => {
-        if (!isRecord(summary)) return [];
-        const sessionId = toOptionalString(summary.sessionId);
-        return sessionId ? [sessionId] : [];
-      }),
-    ),
-  ];
-}
-
-function hasSeqCursor(record: Record<string, unknown>): boolean {
-  return (
-    Number.isInteger(record.committedSeq) ||
-    Number.isInteger(record.turnStartSeq)
-  );
-}
-
 async function visitConversationIds(
   executor: JuniorSqlExecutor,
   query: string,
@@ -301,48 +199,6 @@ async function visitVisibleConversations(
   );
 }
 
-async function loadTurnCursorRecords(
-  context: MigrationContext,
-  executor: JuniorSqlExecutor,
-  batchSize: number,
-): Promise<Map<string, Record<string, unknown>>> {
-  await context.stateAdapter.connect();
-  const visibleConversationIds = new Set<string>();
-  await visitVisibleConversations(
-    executor,
-    batchSize,
-    async (conversationId) => {
-      visibleConversationIds.add(conversationId);
-    },
-  );
-
-  const keys = new Set<string>();
-  for (const conversationId of visibleConversationIds) {
-    for (const sessionId of await indexedTurnSessionIds(
-      context,
-      conversationId,
-    )) {
-      keys.add(turnSessionRecordKey(conversationId, sessionId));
-    }
-  }
-  for (const [key, conversationId] of await discoverRawTurnSessionKeys(
-    context.redisStateAdapter,
-  )) {
-    if (visibleConversationIds.has(conversationId)) {
-      keys.add(key);
-    }
-  }
-
-  const records = new Map<string, Record<string, unknown>>();
-  for (const key of keys) {
-    const value = await context.stateAdapter.get<unknown>(key);
-    if (isRecord(value) && hasSeqCursor(value)) {
-      records.set(key, value);
-    }
-  }
-  return records;
-}
-
 async function readLegacyCompactionState(
   context: MigrationContext,
   conversationId: string,
@@ -374,38 +230,6 @@ async function readLegacyCompactionState(
     ...(compactedMessageCount === undefined ? {} : { compactedMessageCount }),
     liveMessageIds,
   };
-}
-
-/** Refuse to resequence while a resumable Redis cursor can still be consumed. */
-function assertNoUnfinishedTurnCursors(
-  records: Map<string, Record<string, unknown>>,
-): void {
-  for (const [key, value] of records) {
-    if (value.state === "running" || value.state === "awaiting_resume") {
-      throw new Error(
-        `Cannot resequence conversation events while unfinished turn session ${key} retains a seq cursor`,
-      );
-    }
-    if (
-      value.state !== "completed" &&
-      value.state !== "failed" &&
-      value.state !== "abandoned"
-    ) {
-      throw new Error(
-        `Cannot resequence conversation events with invalid cursor-bearing turn session ${key}`,
-      );
-    }
-  }
-}
-
-/** Invalidate terminal physical-seq cursors before the chronological hard cut. */
-async function invalidateTerminalTurnCursors(
-  context: MigrationContext,
-  records: Map<string, Record<string, unknown>>,
-): Promise<void> {
-  for (const key of records.keys()) {
-    await context.stateAdapter.delete(key);
-  }
 }
 
 function sqlVisibleEvents(events: NewConversationEvent[]): SqlVisibleEvent[] {
@@ -841,13 +665,15 @@ export async function migrateConversationVisibleMessageEvents(
     if (before.count > 0) {
       // This hard cut changes physical event positions. Drain resumable turns,
       // then invalidate terminal cursor records before any SQL sequence changes.
-      const turnCursorRecords = await loadTurnCursorRecords(
-        context,
+      const visibleConversationIds = new Set<string>();
+      await visitVisibleConversations(
         executor,
         batchSize,
+        async (conversationId) => {
+          visibleConversationIds.add(conversationId);
+        },
       );
-      assertNoUnfinishedTurnCursors(turnCursorRecords);
-      await invalidateTerminalTurnCursors(context, turnCursorRecords);
+      await prepareConversationEventResequence(context, visibleConversationIds);
     }
     while (true) {
       const rows = await executor.withLock(VISIBLE_EVENT_BACKFILL_LOCK, () =>

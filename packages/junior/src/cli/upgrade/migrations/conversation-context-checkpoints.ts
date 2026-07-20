@@ -9,6 +9,7 @@ import {
   isLegacyOrCurrentCheckpointText,
   normalizeLegacyContextMessage,
 } from "./conversation-history/legacy-context-message";
+import { prepareConversationEventResequence } from "./conversation-event-cursors";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const PAGE_SIZE = 250;
@@ -143,9 +144,12 @@ async function normalizeConversation(args: {
   conversationId: string;
   executor: JuniorSqlExecutor;
 }): Promise<number> {
-  return await args.executor.transaction(async () => {
-    const rows = await args.executor.query<StoredEventRow>(
-      `SELECT
+  return await args.executor.withLock(
+    `junior_conversation:event:${args.conversationId}`,
+    async () =>
+      await args.executor.transaction(async () => {
+        const rows = await args.executor.query<StoredEventRow>(
+          `SELECT
          seq,
          context_epoch AS "contextEpoch",
          type,
@@ -154,80 +158,121 @@ async function normalizeConversation(args: {
        WHERE conversation_id = $1
          AND type IN ('context_epoch_started', 'message', 'tool_execution_started')
        ORDER BY seq`,
-      [args.conversationId],
-    );
-    const messagesByEpoch = new Map<number, StoredEventRow[]>();
-    for (const row of rows) {
-      if (row.type !== "message") continue;
-      const messages = messagesByEpoch.get(row.contextEpoch) ?? [];
-      messages.push(row);
-      messagesByEpoch.set(row.contextEpoch, messages);
-    }
-
-    let migrated = 0;
-    for (const marker of rows) {
-      if (
-        marker.type !== "context_epoch_started" ||
-        marker.payload.reason === "initial" ||
-        Array.isArray(marker.payload.replacementHistory)
-      ) {
-        continue;
-      }
-      const reason = marker.payload.reason;
-      if (
-        reason !== "compaction" &&
-        reason !== "handoff" &&
-        reason !== "rollback"
-      ) {
-        throw new Error(
-          `Unknown context checkpoint reason at event ${marker.seq}`,
+          [args.conversationId],
         );
-      }
-      const current = messagesByEpoch.get(marker.contextEpoch) ?? [];
-      let replacementCount: number;
-      if (reason === "rollback") {
-        const previous = messagesByEpoch.get(marker.contextEpoch - 1) ?? [];
-        replacementCount = matchingMessagePrefix(previous, current);
-      } else {
-        const end = checkpointEnd(current);
-        if (end < 0) {
-          throw new Error(
-            `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
-          );
+        const messagesByEpoch = new Map<number, StoredEventRow[]>();
+        for (const row of rows) {
+          if (row.type !== "message") continue;
+          const messages = messagesByEpoch.get(row.contextEpoch) ?? [];
+          messages.push(row);
+          messagesByEpoch.set(row.contextEpoch, messages);
         }
-        replacementCount = end + 1;
-      }
-      const replacementRows = current.slice(0, replacementCount);
-      const binding = resolvedBinding(marker.payload, args.bot);
-      const payload = {
-        reason,
-        ...binding,
-        ...(reason === "handoff"
-          ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
-          : {}),
-        replacementHistory: replacementRows.map(replacementEntry),
-      };
-      await args.executor.execute(
-        `UPDATE junior_conversation_events
+
+        let migrated = 0;
+        const removedSeqs: number[] = [];
+        for (const marker of rows) {
+          if (
+            marker.type !== "context_epoch_started" ||
+            marker.payload.reason === "initial" ||
+            Array.isArray(marker.payload.replacementHistory)
+          ) {
+            continue;
+          }
+          const reason = marker.payload.reason;
+          if (
+            reason !== "compaction" &&
+            reason !== "handoff" &&
+            reason !== "rollback"
+          ) {
+            throw new Error(
+              `Unknown context checkpoint reason at event ${marker.seq}`,
+            );
+          }
+          const current = messagesByEpoch.get(marker.contextEpoch) ?? [];
+          let replacementCount: number;
+          if (reason === "rollback") {
+            const previous = messagesByEpoch.get(marker.contextEpoch - 1) ?? [];
+            replacementCount = matchingMessagePrefix(previous, current);
+          } else {
+            const end = checkpointEnd(current);
+            if (end < 0) {
+              throw new Error(
+                `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
+              );
+            }
+            replacementCount = end + 1;
+          }
+          const replacementRows = current.slice(0, replacementCount);
+          const binding = resolvedBinding(marker.payload, args.bot);
+          const payload = {
+            reason,
+            ...binding,
+            ...(reason === "handoff"
+              ? { triggeringToolCallId: handoffToolCallId(rows, marker) }
+              : {}),
+            replacementHistory: replacementRows.map(replacementEntry),
+          };
+          await args.executor.execute(
+            `UPDATE junior_conversation_events
          SET payload = $3::jsonb
          WHERE conversation_id = $1 AND seq = $2`,
-        [
-          args.conversationId,
-          marker.seq,
-          JSON.stringify(sanitizePostgresJson(payload)),
-        ],
-      );
-      if (replacementRows.length > 0) {
-        await args.executor.execute(
-          `DELETE FROM junior_conversation_events
-           WHERE conversation_id = $1 AND seq = ANY($2::integer[])`,
-          [args.conversationId, replacementRows.map((row) => row.seq)],
-        );
-      }
-      migrated += 1;
-    }
-    return migrated;
-  });
+            [
+              args.conversationId,
+              marker.seq,
+              JSON.stringify(sanitizePostgresJson(payload)),
+            ],
+          );
+          removedSeqs.push(...replacementRows.map((row) => row.seq));
+          migrated += 1;
+        }
+        if (removedSeqs.length > 0) {
+          await args.executor.execute(
+            `UPDATE junior_conversation_events
+         SET payload = jsonb_set(
+           payload,
+           '{historyFromSeq}',
+           to_jsonb(
+             (payload->>'historyFromSeq')::integer - (
+               SELECT count(*)::integer
+               FROM unnest($2::integer[]) removed(seq)
+               WHERE removed.seq < (payload->>'historyFromSeq')::integer
+             )
+           )
+         )
+         WHERE conversation_id = $1
+           AND type = 'visible_context_compacted'
+           AND jsonb_typeof(payload->'historyFromSeq') = 'number'`,
+            [args.conversationId, removedSeqs],
+          );
+          await args.executor.execute(
+            `DELETE FROM junior_conversation_events
+         WHERE conversation_id = $1 AND seq = ANY($2::integer[])`,
+            [args.conversationId, removedSeqs],
+          );
+          await args.executor.execute(
+            `UPDATE junior_conversation_events
+         SET seq = -seq - 1
+         WHERE conversation_id = $1`,
+            [args.conversationId],
+          );
+          await args.executor.execute(
+            `WITH ranked AS (
+           SELECT
+             ctid,
+             row_number() OVER (ORDER BY -seq - 1) - 1 AS next_seq
+           FROM junior_conversation_events
+           WHERE conversation_id = $1
+         )
+         UPDATE junior_conversation_events event
+         SET seq = ranked.next_seq
+         FROM ranked
+         WHERE event.ctid = ranked.ctid`,
+            [args.conversationId],
+          );
+        }
+        return migrated;
+      }),
+  );
 }
 
 /**
@@ -236,7 +281,7 @@ async function normalizeConversation(args: {
  * as ordinary events.
  */
 export async function normalizeConversationContextCheckpoints(
-  _context: MigrationContext,
+  context: MigrationContext,
   options: { bot?: BotConfig; executor?: JuniorSqlExecutor } = {},
 ): Promise<MigrationResult> {
   const config = options.executor && options.bot ? undefined : getChatConfig();
@@ -270,6 +315,10 @@ export async function normalizeConversationContextCheckpoints(
         [PAGE_SIZE],
       );
       if (conversations.length === 0) break;
+      await prepareConversationEventResequence(
+        context,
+        new Set(conversations.map(({ conversationId }) => conversationId)),
+      );
       for (const { conversationId } of conversations) {
         result.scanned += 1;
         result.migrated += await normalizeConversation({

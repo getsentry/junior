@@ -871,6 +871,22 @@ ORDER BY indexname
             },
           },
         ],
+        [
+          14,
+          3,
+          "visible_context_compacted",
+          {
+            historyFromSeq: 13,
+            compactions: [
+              {
+                id: "visible-compaction",
+                summary: "older visible messages",
+                createdAtMs: at.getTime(),
+                coveredMessageCount: 1,
+              },
+            ],
+          },
+        ],
       ];
       for (const [seq, contextEpoch, type, payload] of rows) {
         await fixture.sql.execute(
@@ -893,18 +909,46 @@ ORDER BY indexname
         io: { info: () => {} },
         stateAdapter: getStateAdapter(),
       };
+      await context.stateAdapter.connect();
+      const sessionId = "checkpoint-upgrade-turn";
+      const sessionKey = `junior:agent_turn_session:${conversationId}:${sessionId}`;
+      await context.stateAdapter.appendToList(
+        `junior:agent_turn_session:conversation:${conversationId}:index`,
+        { conversationId, sessionId, state: "running" },
+      );
+      await context.stateAdapter.set(sessionKey, {
+        conversationId,
+        sessionId,
+        state: "running",
+        committedSeq: 13,
+        turnStartSeq: 10,
+      });
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).rejects.toThrow("unfinished turn session");
+      await context.stateAdapter.set(sessionKey, {
+        conversationId,
+        sessionId,
+        state: "completed",
+        committedSeq: 13,
+        turnStartSeq: 10,
+      });
       await expect(
         normalizeConversationContextCheckpoints(context, {
           executor: fixture.sql,
           bot,
         }),
       ).resolves.toMatchObject({ migrated: 3, scanned: 1 });
+      await expect(context.stateAdapter.get(sessionKey)).resolves.toBeNull();
 
       const history = await createSqlConversationEventStore(
         fixture.sql,
       ).loadHistory(conversationId);
       expect(history.map((event) => event.seq)).toEqual([
-        0, 1, 2, 5, 6, 7, 9, 10, 13,
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
       ]);
       const markers = history.filter(
         (event) => event.data.type === "context_epoch_started",
@@ -939,6 +983,10 @@ ORDER BY indexname
           ],
         },
       ]);
+      expect(
+        history.find((event) => event.data.type === "visible_context_compacted")
+          ?.data,
+      ).toMatchObject({ historyFromSeq: 8 });
       await expect(
         normalizeConversationContextCheckpoints(context, {
           executor: fixture.sql,

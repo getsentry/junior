@@ -13,6 +13,7 @@
  * it after the legacy Redis operator-migration horizon passes.
  */
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { type ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -27,7 +28,7 @@ import {
   type LegacyAdvisorSessionReader,
 } from "./advisor-session";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { juniorConversationEvents } from "@/db/schema";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   convertAdvisorMessages,
@@ -153,8 +154,12 @@ export async function importConversationFromLegacy(
   conversationId: string,
   deps: LegacyImportDeps,
 ): Promise<{ imported: boolean }> {
-  const eventStore = createSqlConversationEventStore(deps.executor);
-  const existing = await eventStore.loadCurrentEpoch(conversationId);
+  const existing = await deps.executor
+    .db()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId))
+    .limit(1);
   if (existing.length > 0) {
     return { imported: false };
   }

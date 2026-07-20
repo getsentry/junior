@@ -109,15 +109,17 @@ Follow `../../../../../policies/data-redaction.md` and
 - Stop every pre-event-log worker before running the event-table schema cut.
   The migration renames `junior_agent_steps` directly and intentionally
   provides no rolling compatibility view.
-- Drain running and awaiting-resume turns before the final visible-message
-  backfill. That backfill fails closed while an unfinished Redis turn-session
-  record retains a physical `committedSeq` or `turnStartSeq` cursor.
-- While workers remain stopped, invalidate terminal cursor-bearing records at
-  `junior:agent_turn_session:<conversationId>:<sessionId>`, chronologically
-  resequence each SQL event stream, and run the final rerunnable zero-gap seal.
-  Summary indexes remain intact because they do not store event cursors. Repeat
-  cursor invalidation on every rerun and start new workers only after the seal
-  verifies no missing visible-message facts.
+- Drain running and awaiting-resume turns before the checkpoint and
+  visible-message rewrites. Both fail closed while an unfinished Redis
+  turn-session record retains a physical `committedSeq` or `turnStartSeq`
+  cursor.
+- While workers remain stopped, each rewrite invalidates terminal
+  cursor-bearing records at
+  `junior:agent_turn_session:<conversationId>:<sessionId>` before changing
+  physical event positions. Checkpoint normalization closes deletion gaps;
+  visible-message backfill chronologically resequences each stream it changes
+  and verifies that no message facts remain missing. Summary indexes remain
+  intact because they do not store event cursors.
 - Purge and migration jobs operate in bounded batches and are safe to retry.
 
 Representative coverage lives in

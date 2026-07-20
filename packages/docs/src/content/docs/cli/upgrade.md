@@ -52,7 +52,7 @@ pnpm exec junior upgrade
 pnpm exec junior check
 ```
 
-The visible-message seal fails closed if resumable work remains. After the drain succeeds, the upgrade invalidates stale resume state before it resequences conversation history while preserving reporting summaries.
+The checkpoint and visible-message rewrites fail closed if resumable work remains. After the drain succeeds, each rewrite invalidates stale resume state before changing physical event positions. Checkpoint normalization closes deletion gaps, and the visible-message migration resequences the streams it changes while preserving reporting summaries.
 
 If the command exits nonzero, leave the deployment stopped, correct the reported state, and rerun it. Do not restart workers after only part of the sequence completes.
 

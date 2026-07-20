@@ -32,10 +32,7 @@ function createDb(args: {
   });
 }
 
-/**
- * Return the process SQL executor. Exposed for the one-time legacy import
- * writer, which needs explicit-`seq`/epoch inserts the event-store port omits.
- */
+/** Return the process SQL executor for SQL-specific queries and transactions. */
 export function getSqlExecutor(): JuniorSqlExecutor {
   const { sql } = getChatConfig();
   if (

@@ -156,11 +156,13 @@ class SqlConversationEventStore implements ConversationEventStore {
                   )
               ).flatMap((row) => (row.key ? [row.key] : [])),
             );
-      const pending = parsed.filter(
-        (event) =>
-          event.idempotencyKey === undefined ||
-          !persistedKeys.has(event.idempotencyKey),
-      );
+      const acceptedKeys = new Set(persistedKeys);
+      const pending = parsed.filter((event) => {
+        if (event.idempotencyKey === undefined) return true;
+        if (acceptedKeys.has(event.idempotencyKey)) return false;
+        acceptedKeys.add(event.idempotencyKey);
+        return true;
+      });
       if (pending.length === 0) {
         return;
       }

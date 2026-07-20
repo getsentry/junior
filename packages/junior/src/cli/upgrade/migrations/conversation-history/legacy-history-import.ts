@@ -442,7 +442,7 @@ function mergeImportedChronology(
  * Write a converted legacy history for one conversation, all-or-nothing.
  *
  * Serialized by a per-conversation advisory lock and skipped when event rows
- * already exist, so a re-run (bulk or lazy) never double-imports. Parent and
+ * already exist, so a repeated operator run never double-imports. Parent and
  * advisor-child rows land in one transaction; explicit `seq`/`context_epoch`
  * are what make this need a dedicated writer rather than the narrow port.
  */

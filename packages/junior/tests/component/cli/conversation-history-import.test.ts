@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asc, eq, inArray } from "drizzle-orm";
-import { juniorConversationMessages, juniorConversations } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversationMessages,
+  juniorConversations,
+} from "@/db/schema";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   closeDb,
@@ -429,6 +433,57 @@ describe("operator conversation history import", () => {
       await fixture.close();
     }
   }, 20_000);
+
+  it("treats transitional SQL rows as an existing import without decoding them", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+
+    try {
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: CONVERSATION_ID,
+          schemaVersion: 1,
+          createdAt: new Date(1_000),
+          lastActivityAt: new Date(1_000),
+          updatedAt: new Date(1_000),
+          executionStatus: "idle",
+        });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          conversationId: CONVERSATION_ID,
+          seq: 0,
+          contextEpoch: 0,
+          schemaVersion: 1,
+          type: "visible_context_compacted",
+          payload: {
+            compactions: [
+              {
+                id: "transitional",
+                summary: "not canonical until the next upgrade step",
+                createdAtMs: 1_000,
+                coveredMessageIds: ["message-1"],
+              },
+            ],
+          },
+          createdAt: new Date(1_000),
+        });
+
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, {
+          executor: fixture.sql,
+          modelId: MODEL_ID,
+          sessionLogStore: staticSessionLogStore([]),
+          loadVisibleMessages: async () => [],
+        }),
+      ).resolves.toEqual({ imported: false });
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("never fabricates import-time timestamps for timestamp-less rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();

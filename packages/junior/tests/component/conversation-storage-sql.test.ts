@@ -528,6 +528,48 @@ describe("SQL conversation storage", () => {
     }
   });
 
+  it("deduplicates repeated keys within one append without leaving seq gaps", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const store = createSqlConversationEventStore(fixture.sql);
+
+    try {
+      await migrateSchema(fixture.sql);
+      await store.append(CONVERSATION_ID, [
+        {
+          idempotencyKey: "event:repeated",
+          createdAtMs: 1_000,
+          data: { type: "mcp_provider_connected", provider: "github" },
+        },
+        {
+          idempotencyKey: "event:repeated",
+          createdAtMs: 2_000,
+          data: { type: "mcp_provider_connected", provider: "linear" },
+        },
+        {
+          idempotencyKey: "event:next",
+          createdAtMs: 3_000,
+          data: { type: "mcp_provider_connected", provider: "sentry" },
+        },
+      ]);
+
+      expect(
+        (await store.loadHistory(CONVERSATION_ID)).map((event) => ({
+          idempotencyKey: event.idempotencyKey,
+          provider:
+            event.data.type === "mcp_provider_connected"
+              ? event.data.provider
+              : undefined,
+          seq: event.seq,
+        })),
+      ).toEqual([
+        { idempotencyKey: "event:repeated", provider: "github", seq: 0 },
+        { idempotencyKey: "event:next", provider: "sentry", seq: 1 },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists only the first conflicting terminal turn event", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
