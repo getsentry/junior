@@ -11,7 +11,50 @@ vi.mock("../../../src/behavior-harness", () => ({
   runEvalScenario: runEvalScenarioMock,
 }));
 
-import { slackHarness } from "../../../src/helpers";
+import { serializeVisibleTranscript, slackHarness } from "../../../src/helpers";
+
+it("includes visible Slack author names in rubric transcripts", () => {
+  expect(
+    JSON.parse(
+      serializeVisibleTranscript({
+        events: [
+          {
+            type: "message",
+            role: "user",
+            content: "I prefer risks first.",
+            metadata: { author_name: "Alice Example" },
+          },
+          {
+            type: "message",
+            role: "user",
+            content: "I prefer customer impact first.",
+            metadata: { author_name: "Bob Example" },
+          },
+          {
+            type: "message",
+            role: "assistant",
+            content: "Here is the revised draft.",
+          },
+        ],
+      } as never),
+    ),
+  ).toEqual([
+    {
+      role: "user",
+      author: "Alice Example",
+      content: "I prefer risks first.",
+    },
+    {
+      role: "user",
+      author: "Bob Example",
+      content: "I prefer customer impact first.",
+    },
+    {
+      role: "assistant",
+      content: "Here is the revised draft.",
+    },
+  ]);
+});
 
 it("includes captured Slack posts in the rubric-visible transcript", async () => {
   runEvalScenarioMock.mockResolvedValueOnce({
@@ -36,7 +79,7 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
         content: "What is the capital of France?",
       },
     ],
-    slackAdapter: { statusCalls: [] },
+    slackAdapter: { promptCalls: [], statusCalls: [], titleCalls: [] },
     toolInvocations: [],
   } as never);
 

@@ -196,7 +196,8 @@ function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
   });
 }
 
-function serializeVisibleTranscript(session: NormalizedSession): string {
+/** Serialize user-visible conversation text and Slack author attribution. */
+export function serializeVisibleTranscript(session: NormalizedSession): string {
   return JSON.stringify(
     session.events.flatMap((event) => {
       if (
@@ -211,6 +212,9 @@ function serializeVisibleTranscript(session: NormalizedSession): string {
       return [
         {
           role: event.role,
+          ...(event.role === "user" && event.metadata?.author_name
+            ? { author: event.metadata.author_name }
+            : {}),
           content: event.content,
         },
       ];
