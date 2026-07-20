@@ -110,10 +110,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   evals:
-    name: evals / suite
+    name: evals / suite ${{ matrix.shard }}/4
     needs: gate
     if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -163,10 +167,11 @@ jobs:
         run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
       - name: Run evals
         env:
+          VITEST_EVALS_OUTPUT_FILE: vitest-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals
+        run: pnpm --filter @sentry/junior-evals evals --shard=${{ matrix.shard }}/4
       - name: Publish eval report
         if: always()
         uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
         with:
-          results: packages/junior-evals/vitest-results.json
+          results: packages/junior-evals/vitest-results-${{ matrix.shard }}.json

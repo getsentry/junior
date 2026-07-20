@@ -98,8 +98,9 @@ Tool replay:
 - `pnpm --filter @sentry/junior-evals evals`: Run from any directory
 - `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts`: Run one eval file
 - `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts -t "subscribed"`: Run one eval case by name
+- `pnpm --filter @sentry/junior-evals evals --shard=1/4`: Run one of the four CI shards
 
-Pass eval file paths and `-t` filters directly after the `evals` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
+Pass eval file paths, `-t` filters, and shard options directly after the `evals` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
 
 ## Optional CI Runs
 
