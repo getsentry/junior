@@ -12,7 +12,9 @@ const QUICK_TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/i;
 const QUICK_TUNNEL_START_TIMEOUT_MS = 30_000;
 const QUICK_TUNNEL_CONNECTED_PATTERN = /Registered tunnel connection/i;
 const PUBLIC_HEALTH_TIMEOUT_MS = 20_000;
-const QUICK_TUNNEL_ATTEMPTS = 3;
+const QUICK_TUNNEL_ATTEMPTS = 5;
+const QUICK_TUNNEL_RETRY_BASE_DELAY_MS = 1_000;
+const QUICK_TUNNEL_RETRY_MAX_DELAY_MS = 5_000;
 const RESET_PATH = "/__junior_eval/reset";
 const STATE_PATH = "/__junior_eval/state";
 
@@ -414,6 +416,13 @@ export async function startEvalEgress(
         lastError = error;
         await stopTunnel(tunnel);
         tunnel = undefined;
+        if (attempt < QUICK_TUNNEL_ATTEMPTS) {
+          const retryDelayMs = Math.min(
+            QUICK_TUNNEL_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+            QUICK_TUNNEL_RETRY_MAX_DELAY_MS,
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        }
       }
     }
     throw new Error(
