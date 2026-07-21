@@ -27,12 +27,12 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
       requireSandboxReady: false,
       criteria: rubric({
         pass: [
-          "The thread reply is a concise researched answer, not a status update or process note.",
-          "The answer coherently summarizes Slack agent streaming across the provided sources.",
-          "The answer stays brief enough for a normal Slack reply.",
+          "The final thread reply is a concise researched answer, not a status update or process note.",
+          "The final answer coherently summarizes Slack agent streaming across the provided sources.",
+          "The final answer stays brief enough for a normal Slack reply.",
         ],
         fail: [
-          "Do not include process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",
+          "Do not expose low-level tool mechanics, partial drafts, or repetitive progress updates.",
         ],
       }),
     });

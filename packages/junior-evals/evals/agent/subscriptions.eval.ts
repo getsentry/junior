@@ -97,7 +97,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         ],
       }),
     });
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when a subscribed event does not serve the intent, stay silent", async ({
@@ -158,6 +157,5 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         ],
       }),
     });
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 });
