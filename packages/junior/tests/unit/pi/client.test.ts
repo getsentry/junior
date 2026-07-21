@@ -152,7 +152,7 @@ describe("completeText", () => {
     >;
     expect(context).toMatchObject({
       conversationId: "slack:D1:123",
-      slackChannelId: "D1",
+      destinationName: "D1",
       modelId: "openai/gpt-4o-mini",
     });
     expect(attributes["app.conversation.privacy"]).toBe("private");
