@@ -36,9 +36,10 @@ export const sandboxFileReferenceSchema = z.object({
     .number()
     .int()
     .nonnegative()
+    .nullable()
     .optional()
     .describe(
-      "Optional known file size returned by a producing tool. Sending tools validate the file contents directly.",
+      "Optional known file size returned by a producing tool. Null is treated as omitted; sending tools validate the file contents directly.",
     ),
 });
 

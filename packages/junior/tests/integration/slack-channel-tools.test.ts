@@ -479,7 +479,14 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
+      files: [
+        {
+          path: "/tmp/report.txt",
+          filename: null,
+          mimeType: null,
+          bytes: null,
+        },
+      ],
     });
 
     expect(result).toMatchObject({
