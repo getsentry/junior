@@ -1,7 +1,6 @@
 ---
 name: agent-browser
 description: Automate websites with the agent-browser CLI for navigation, form flows, screenshots, extraction, and repeatable browser tasks. Use when users ask to interact with web apps, gather evidence from pages, or run browser-based QA steps.
-allowed-tools: bash sendFiles
 ---
 
 # Browser Automation

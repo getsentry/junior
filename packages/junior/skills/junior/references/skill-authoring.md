@@ -24,7 +24,7 @@ description: Prepare release notes from local project context. Use when users as
 | `metadata`              | Optional object. Use only when runtime or UI code reads it.                                                                                              |
 | `compatibility`         | Optional string, maximum 500 chars.                                                                                                                      |
 | `license`               | Optional string.                                                                                                                                         |
-| `allowed-tools`         | Optional whitespace-separated string of allowed tool names.                                                                                              |
+| `allowed-tools`         | Rare optional restriction. Omit by default; use only when the skill must hide otherwise available tools while active.                                    |
 | `requires-capabilities` | Forbidden. Plugin capabilities come from `plugin.yaml`.                                                                                                  |
 | `uses-config`           | Forbidden. Plugin config keys come from `plugin.yaml`.                                                                                                   |
 
