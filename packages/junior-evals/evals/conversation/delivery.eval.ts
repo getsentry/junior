@@ -114,7 +114,10 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     const sendFilesCall = toolCalls(result.session).find(
       (call) => call.name === "sendFiles",
     );
-    expect(sendFilesCall?.arguments).not.toHaveProperty("target");
+    expect(sendFilesCall).toMatchObject({
+      status: "ok",
+      result: { ok: true, status: "success" },
+    });
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);

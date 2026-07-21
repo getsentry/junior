@@ -1652,7 +1652,6 @@ describe("agent continuation Slack integration", () => {
       }
       await sendFiles.execute(
         {
-          caption: "Sharing the resumed image.",
           files: [{ path: "/tmp/resumed-image.png" }],
         },
         {} as never,
@@ -1727,7 +1726,6 @@ describe("agent continuation Slack integration", () => {
     ).toMatchObject({
       channel_id: "C123",
       thread_ts: "1712345.0003",
-      initial_comment: "Sharing the resumed image.",
     });
     expect(slackApiOutbox.calls("files.completeUploadExternal")).toHaveLength(
       1,

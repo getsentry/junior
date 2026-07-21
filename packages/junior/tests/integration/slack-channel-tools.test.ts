@@ -337,41 +337,6 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
-  it("sends a caption with files through Slack file upload", async () => {
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      caption: "Here is the report.",
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: {
-        channel_id: "C123",
-        file_count: 1,
-      },
-    });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
-      1,
-    );
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      initial_comment: "Here is the report.",
-    });
-  });
-
   it("sends file-only messages without posting empty text", async () => {
     const tool = createSendFilesTool(
       createContext("share this file"),
@@ -473,7 +438,7 @@ describe("slack channel tools", () => {
     });
   });
 
-  it("treats nullable optional sendFiles fields as omitted", async () => {
+  it("treats nullable optional file metadata as omitted", async () => {
     const tool = createSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
@@ -485,7 +450,6 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
-      caption: null,
       files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
     });
 

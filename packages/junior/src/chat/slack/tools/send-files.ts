@@ -62,10 +62,6 @@ const sendFilesResultSchema = juniorToolResultSchema.extend({
 
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
-function hasText(text: string | null | undefined): text is string {
-  return typeof text === "string" && text.trim().length > 0;
-}
-
 function normalizeFiles(
   files: FileInput[],
 ): Array<{ path: string; filename?: string; mimeType?: string }> {
@@ -99,21 +95,15 @@ export function createSendFilesTool(
 ) {
   return zodTool({
     description:
-      "Send one or more sandbox files into the active Slack conversation, with an optional caption. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
+      "Send one or more sandbox files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: z.object({
-      caption: z
-        .string()
-        .max(40000)
-        .nullable()
-        .optional()
-        .describe("Slack mrkdwn text to send. Null is treated as omitted."),
       files: z
         .array(fileInputSchema)
         .min(1)
         .describe("One or more sandbox files to include in the message."),
     }),
     outputSchema: sendFilesResultSchema,
-    execute: async ({ caption, files }) => {
+    execute: async ({ files }) => {
       const filesToSend = normalizeFiles(files);
       const activeChannelId = context.sourceChannelId;
       if (!activeChannelId) {
@@ -125,14 +115,12 @@ export function createSendFilesTool(
           "No active Slack conversation timestamp is available.",
         );
       }
-      const captionToSend = hasText(caption) ? caption : undefined;
       const materializedFiles = await Promise.all(
         filesToSend.map((file) => materializeFile(file)),
       );
       const operationKey = createOperationKey("sendFiles", {
         channel_id: activeChannelId,
         thread_ts: threadTs,
-        ...(captionToSend ? { caption: captionToSend } : {}),
         files: fileOperationInput(materializedFiles),
       });
       const cached = state.getOperationResult<SendFilesResult>(operationKey);
@@ -154,7 +142,6 @@ export function createSendFilesTool(
         channelId: activeChannelId,
         files: uploads,
         threadTs,
-        ...(captionToSend ? { initialComment: captionToSend } : {}),
       });
       const fileIds = uploaded?.files
         ?.map((file) => file.id)

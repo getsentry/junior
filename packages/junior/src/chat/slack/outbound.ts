@@ -237,7 +237,6 @@ export interface SlackUploadedFile {
 /** Upload files into a Slack conversation or thread via the shared outbound file boundary. */
 export async function uploadFilesToConversation(input: {
   channelId: string;
-  initialComment?: string;
   threadTs?: string;
   files: Array<{ data: Buffer; filename: string }>;
 }): Promise<{ files?: SlackUploadedFile[] }> {
@@ -264,13 +263,11 @@ export async function uploadFilesToConversation(input: {
     };
   });
 
-  const initialComment = input.initialComment?.trim();
   const response = await withSlackRetries(
     () =>
       getSlackClient().filesUploadV2({
         channel_id: channelId,
         ...(threadTs ? { thread_ts: threadTs } : {}),
-        ...(initialComment ? { initial_comment: initialComment } : {}),
         file_uploads: fileUploads,
       }),
     3,
