@@ -111,7 +111,6 @@ async function seedResumedTurn(threadTs: string) {
 
 describe("resumeSlackTurn", () => {
   beforeEach(async () => {
-    vi.useFakeTimers();
     postMessageMock.mockReset();
     setStatusMock.mockReset();
     uploadFilesToThreadMock.mockReset();
@@ -122,56 +121,8 @@ describe("resumeSlackTurn", () => {
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
     setPlugins([]);
     await disconnectStateAdapter();
-  });
-
-  it("runs failure handling when resumed reply generation exceeds the configured timeout", async () => {
-    const onFailure = vi.fn(async () => undefined);
-
-    const resumePromise = resumeSlackTurn({
-      messageText: "tell me the saved deadline",
-      conversationId: "slack:C-test:1700000000.0001",
-      turnId: "turn-timeout",
-      channelId: "C-test",
-      threadTs: "1700000000.0001",
-      initialText: "connected",
-      replyContext: {
-        routing: {
-          credentialContext: {
-            actor: { type: "user", userId: "U-test" },
-          },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.0001"),
-          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
-        },
-      },
-      agentRunner: { run: () => new Promise<never>(() => {}) },
-      replyTimeoutMs: 10,
-      onFailure,
-    });
-
-    await vi.advanceTimersByTimeAsync(10);
-    await resumePromise;
-
-    expect(onFailure).toHaveBeenCalledTimes(1);
-    expect(postMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0001",
-        text: "connected",
-      }),
-    );
-    expect(postMessageMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0001",
-        text: expect.stringContaining(
-          "I ran into an internal error while processing that. Reference: `event_id=",
-        ),
-      }),
-    );
   });
 
   it("persists failure state before posting the failure reply", async () => {

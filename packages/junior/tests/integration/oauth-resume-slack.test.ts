@@ -148,6 +148,45 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
+  it("posts a failure reply when resumed generation times out", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const onFailure = vi.fn(async () => undefined);
+
+    await resumeSlackTurn({
+      messageText: "What budget deadline did I mention earlier?",
+      conversationId: "slack:C123:1700000000.010",
+      turnId: "turn-resume-timeout",
+      channelId: "C123",
+      threadTs: "1700000000.010",
+      initialText: "Connected. Continuing...",
+      replyContext: {
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.010"),
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+      },
+      agentRunner: { run: () => new Promise<never>(() => {}) },
+      replyTimeoutMs: 10,
+      onFailure,
+    });
+
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").map(
+        (call) => call.params.text,
+      ),
+    ).toEqual([
+      "Connected. Continuing...",
+      expect.stringContaining(
+        "I ran into an internal error while processing that. Reference: `event_id=",
+      ),
+    ]);
+  });
+
   it("persists resumed assistant messages without canonical user history", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
     const { getPersistedThreadState } =
