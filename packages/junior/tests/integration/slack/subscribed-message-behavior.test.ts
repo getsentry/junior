@@ -238,7 +238,10 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "I’m checking the subscribed event." },
+              ]);
               return {
                 status: "awaiting_auth",
                 providerDisplayName: "GitHub",
@@ -275,10 +278,28 @@ describe("Slack behavior: subscribed messages", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
+    expect(thread.posts).toHaveLength(2);
+    expect(toPostedText(thread.posts[0])).toBe(
+      "I’m checking the subscribed event.",
+    );
+    expect(toPostedText(thread.posts[1])).toContain(
       "GitHub needs user authorization",
     );
+    const conversation = coerceThreadConversationState(
+      (await thread.state) ?? {},
+    );
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    expect(
+      conversation.messages
+        .filter((entry) => entry.role === "assistant")
+        .map((entry) => entry.id),
+    ).toEqual([
+      "turn_resource-event-resub-1-check-suite-auth:assistant:1",
+      "turn_resource-event-resub-1-check-suite-auth:assistant:2",
+    ]);
   });
 
   it("replies when classifier approves a subscribed-thread message", async () => {

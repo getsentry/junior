@@ -1365,31 +1365,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 "Subscribed Slack turn could not continue without user authorization",
               );
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
-              await postThreadReply(
-                buildSlackOutputMessage(text),
-                "thread_reply",
-              );
-              markConversationMessage(
-                preparedState.conversation,
-                preparedState.userMessageId,
-                {
-                  replied: true,
-                  skippedReason: undefined,
-                },
-              );
-              upsertConversationMessage(preparedState.conversation, {
-                id: buildDeterministicAssistantMessageId(turnId),
-                role: "assistant",
-                text: normalizeConversationText(text),
-                createdAtMs: Date.now(),
-                author: {
-                  userName: botConfig.userName,
-                  isBot: true,
-                },
-                meta: {
-                  replied: true,
-                },
-              });
+              await deliverAssistantMessage({ text });
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
@@ -1709,31 +1685,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           if (createdCanvasUrl) {
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
-            await postThreadReply(
-              buildSlackOutputMessage(recoveryText),
-              "thread_reply",
-            );
-            markConversationMessage(
-              preparedState.conversation,
-              preparedState.userMessageId,
-              {
-                replied: true,
-                skippedReason: undefined,
-              },
-            );
-            upsertConversationMessage(preparedState.conversation, {
-              id: buildDeterministicAssistantMessageId(turnId),
-              role: "assistant",
-              text: normalizeConversationText(recoveryText),
-              createdAtMs: Date.now(),
-              author: {
-                userName: botConfig.userName,
-                isBot: true,
-              },
-              meta: {
-                replied: true,
-              },
-            });
+            await deliverAssistantMessage({ text: recoveryText });
             markTurnClosed({
               conversation: preparedState.conversation,
               nowMs: Date.now(),

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRunRequest } from "@/chat/agent/request";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import {
   createTestMessage,
   createTestThread,
@@ -23,6 +26,9 @@ function toPostedText(value: unknown): string {
 describe("Slack behavior: canvas failure recovery", () => {
   it("points to a created canvas when reply generation fails before final text", async () => {
     const executeAgentRun = vi.fn(async (request: AgentRunRequest) => {
+      await deliverAssistantMessagesForTest(request, [
+        { text: "I’m creating the canvas now." },
+      ]);
       await request.durability?.onArtifactStateUpdated?.({
         lastCanvasId: "F_CANVAS",
         lastCanvasUrl: "https://slack.example/docs/T/F_CANVAS",
@@ -59,10 +65,32 @@ describe("Slack behavior: canvas failure recovery", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
+    expect(thread.posts).toHaveLength(2);
+    expect(toPostedText(thread.posts[0])).toBe("I’m creating the canvas now.");
+    expect(toPostedText(thread.posts[1])).toContain(
       "https://slack.example/docs/T/F_CANVAS",
     );
+    const conversation = coerceThreadConversationState(
+      (await thread.state) ?? {},
+    );
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    expect(
+      conversation.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => ({ id: message.id, text: message.text })),
+    ).toEqual([
+      {
+        id: "turn_m-canvas-1:assistant:1",
+        text: "I’m creating the canvas now.",
+      },
+      {
+        id: "turn_m-canvas-1:assistant:2",
+        text: expect.stringContaining("https://slack.example/docs/T/F_CANVAS"),
+      },
+    ]);
     expect(thread.getState()).toMatchObject({
       artifacts: {
         lastCanvasId: "F_CANVAS",
