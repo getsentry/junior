@@ -6,5 +6,5 @@ export function buildDeterministicTurnId(messageId: string): string {
 
 /** Build the stable visible assistant-message identity for one logical turn. */
 export function buildDeterministicAssistantMessageId(turnId: string): string {
-  return `assistant:${turnId}`;
+  return `${turnId}:assistant:1`;
 }

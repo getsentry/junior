@@ -5,6 +5,7 @@ import {
   turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
 describe("conversation memory title source", () => {
   it("selects the earliest human message known for the thread", () => {
@@ -170,7 +171,7 @@ describe("turnHasReply", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
-        id: "turn-1:assistant:1",
+        id: buildDeterministicAssistantMessageId("turn-1"),
         role: "assistant",
         text: "Working on it.",
         createdAtMs: 1,
