@@ -29,6 +29,7 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { runWithLogContext } from "@/chat/log-context";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   findSkillByName,
@@ -185,8 +186,41 @@ export async function executeAgentRun(
       request.routing.destinationVisibility ??
       request.routing.slackConversation?.visibility,
   });
-  return runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
-    executeAgentRunInPrivacyContext(request, conversationPrivacy),
+  const credentialActor = request.routing.credentialContext?.actor;
+  const actor = actorFromRouting(request.routing);
+  const userActor = actor && "userId" in actor ? actor : undefined;
+  return runWithLogContext(
+    {
+      conversationId: request.conversationId,
+      platform: request.routing.source.platform,
+      messageConversationId:
+        request.routing.source.platform === "slack"
+          ? request.conversationId
+          : request.routing.source.conversationId,
+      destinationName:
+        request.routing.destination.platform === "slack"
+          ? request.routing.destination.channelId
+          : request.routing.destination.conversationId,
+      userId: userActor?.userId,
+      userName: userActor?.userName,
+      userEmail: userActor?.email,
+      runId: request.runId,
+      actorType: credentialActor
+        ? "type" in credentialActor
+          ? credentialActor.type
+          : "system"
+        : undefined,
+      actorId: credentialActor
+        ? "type" in credentialActor
+          ? credentialActor.userId
+          : credentialActor.name
+        : undefined,
+      assistantUserName: botConfig.userName,
+    },
+    () =>
+      runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
+        executeAgentRunInPrivacyContext(request, conversationPrivacy),
+      ),
   );
 }
 
@@ -292,16 +326,7 @@ async function executeAgentRunInPrivacyContext(
     activeModelProfile = projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     const shouldTrace = shouldEmitDevAgentTrace();
-    const spanContext: LogContext = {
-      conversationId,
-      messageConversationId: slackSource ? conversationId : undefined,
-      userId: slackActor?.userId,
-      destinationName: slackDestination?.channelId,
-      runId,
-      ...credentialActorLogContext,
-      assistantUserName: botConfig.userName,
-      modelId: activeModelId,
-    };
+    const spanContext: LogContext = { modelId: activeModelId };
 
     // ── Skill discovery ──────────────────────────────────────────────
     const availableSkills = await discoverRunSkills({
@@ -592,11 +617,18 @@ async function executeAgentRunInPrivacyContext(
     };
 
     setTags({
-      conversationId: spanContext.conversationId,
-      messageConversationId: spanContext.messageConversationId,
-      userId: spanContext.userId,
-      destinationName: spanContext.destinationName,
-      runId: spanContext.runId,
+      conversationId,
+      platform: runSource.platform,
+      messageConversationId:
+        runSource.platform === "slack" ? conversationId : runSource.conversationId,
+      destinationName:
+        routing.destination.platform === "slack"
+          ? routing.destination.channelId
+          : routing.destination.conversationId,
+      userId: actor && "userId" in actor ? actor.userId : undefined,
+      userName: actor && "userId" in actor ? actor.userName : undefined,
+      userEmail: actor && "userId" in actor ? actor.email : undefined,
+      runId,
       ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
@@ -1195,16 +1227,7 @@ async function executeAgentRunInPrivacyContext(
     logException(
       error,
       "assistant_reply_generation_failed",
-      {
-        conversationId,
-        messageConversationId: slackSource ? conversationId : undefined,
-        userId: slackActor?.userId,
-        destinationName: slackDestination?.channelId,
-        runId,
-        ...credentialActorLogContext,
-        assistantUserName: botConfig.userName,
-        modelId: activeModelId,
-      },
+      { modelId: activeModelId },
       {},
       "executeAgentRun failed",
     );

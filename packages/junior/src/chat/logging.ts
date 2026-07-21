@@ -15,11 +15,12 @@ import type {
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import {
-  bindLogAttributes,
-  extendLogAttributes,
   getBoundLogAttributes,
   logContextStorage,
+  logContextToAttributes,
+  runWithLogContext,
   type LogAttributes,
+  type LogContext,
 } from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { getActiveSpan } from "@/chat/sentry";
@@ -29,34 +30,13 @@ import { getDeploymentTelemetryAttributes } from "@/deployment";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
-export type { LogAttributes } from "@/chat/log-context";
+export type { LogAttributes, LogContext } from "@/chat/log-context";
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface EmittedLogRecord {
   attributes: LogAttributes;
   body: string;
   eventName: string;
   level: LogLevel;
-}
-
-export interface LogContext {
-  conversationId?: string;
-  platform?: string;
-  requestId?: string;
-  messageConversationId?: string;
-  destinationName?: string;
-  userId?: string;
-  userName?: string;
-  userEmail?: string;
-  runId?: string;
-  actorType?: string;
-  actorId?: string;
-  assistantUserName?: string;
-  modelId?: string;
-  skillName?: string;
-  httpMethod?: string;
-  httpPath?: string;
-  urlFull?: string;
-  userAgent?: string;
 }
 
 export type TracePropagationHeaders = Partial<
@@ -430,36 +410,7 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
   return sanitizePrimitive(value);
 }
 
-function contextToAttributes(context: LogContext): LogAttributes {
-  const attributes: Record<string, unknown> = {
-    "gen_ai.conversation.id": context.conversationId,
-    "app.platform": context.platform,
-    "app.request.id": context.requestId,
-    "messaging.system":
-      context.platform === "slack" ? "slack" : context.platform,
-    "messaging.message.conversation_id": context.messageConversationId,
-    "messaging.destination.name": context.destinationName,
-    "enduser.id": context.userId,
-    "enduser.pseudo.id": context.userName,
-    "app.run.id": context.runId,
-    "app.actor.type": context.actorType,
-    "app.actor.id": context.actorId,
-    "gen_ai.agent.name": context.assistantUserName,
-    "gen_ai.request.model": context.modelId,
-    "app.skill.name": context.skillName,
-    "http.request.method": context.httpMethod,
-    "url.path": context.httpPath,
-    "url.full": context.urlFull,
-    "user_agent.original": context.userAgent,
-  };
-
-  const normalized: LogAttributes = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    const sanitized = sanitizeValue(value);
-    if (sanitized !== undefined) normalized[key] = sanitized;
-  }
-  return normalized;
-}
+const contextToAttributes = logContextToAttributes;
 
 function getTraceCorrelationAttributes(): LogAttributes {
   const sentry = Sentry as unknown as SentryLike;
@@ -1398,11 +1349,7 @@ export function withLogContext<T>(
   context: LogContext,
   callback: () => Promise<T>,
 ): Promise<T> {
-  return bindLogAttributes(contextToAttributes(context), callback);
-}
-
-export function setLogContext(context: LogContext): void {
-  extendLogAttributes(contextToAttributes(context));
+  return runWithLogContext(context, callback);
 }
 
 export function getLogContextAttributes(): LogAttributes {
@@ -1645,9 +1592,8 @@ export function logException(
   );
 }
 
-/** Set log context and Sentry scope metadata for the current request. */
+/** Set Sentry scope metadata; async log context is bound at operation boundaries. */
 export function setTags(context: LogContext = {}): void {
-  setLogContext(context);
   setSentryTagsFromContext(context);
   setSentryUser(sentryUserIdentityFromContext(context));
 }
