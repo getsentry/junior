@@ -18,7 +18,8 @@ import {
   getBoundLogAttributes,
   logContextStorage,
   logContextToAttributes,
-  runWithLogContext,
+  runWithLogAttributes,
+  updateLogAttributes,
   type LogAttributes,
   type LogContext,
 } from "@/chat/log-context";
@@ -410,7 +411,9 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
   return sanitizePrimitive(value);
 }
 
-const contextToAttributes = logContextToAttributes;
+function contextToAttributes(context: LogContext): LogAttributes {
+  return mergeAttributes(logContextToAttributes(context));
+}
 
 function getTraceCorrelationAttributes(): LogAttributes {
   const sentry = Sentry as unknown as SentryLike;
@@ -1349,7 +1352,7 @@ export function withLogContext<T>(
   context: LogContext,
   callback: () => Promise<T>,
 ): Promise<T> {
-  return runWithLogContext(context, callback);
+  return runWithLogAttributes(contextToAttributes(context), callback);
 }
 
 export function getLogContextAttributes(): LogAttributes {
@@ -1592,8 +1595,9 @@ export function logException(
   );
 }
 
-/** Set Sentry scope metadata; async log context is bound at operation boundaries. */
+/** Add context to the current operation and Sentry scope. */
 export function setTags(context: LogContext = {}): void {
+  updateLogAttributes(contextToAttributes(context));
   setSentryTagsFromContext(context);
   setSentryUser(sentryUserIdentityFromContext(context));
 }

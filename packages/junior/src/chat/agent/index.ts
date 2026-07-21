@@ -25,11 +25,11 @@ import {
   setSpanAttributes,
   setTags,
   summarizeMessageText,
+  withLogContext,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
-import { runWithLogContext } from "@/chat/log-context";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   findSkillByName,
@@ -189,7 +189,7 @@ export async function executeAgentRun(
   const credentialActor = request.routing.credentialContext?.actor;
   const actor = actorFromRouting(request.routing);
   const userActor = actor && "userId" in actor ? actor : undefined;
-  return runWithLogContext(
+  return withLogContext(
     {
       conversationId: request.conversationId,
       platform: request.routing.source.platform,
@@ -620,7 +620,9 @@ async function executeAgentRunInPrivacyContext(
       conversationId,
       platform: runSource.platform,
       messageConversationId:
-        runSource.platform === "slack" ? conversationId : runSource.conversationId,
+        runSource.platform === "slack"
+          ? conversationId
+          : runSource.conversationId,
       destinationName:
         routing.destination.platform === "slack"
           ? routing.destination.channelId

@@ -68,18 +68,23 @@ export function logContextToAttributes(context: LogContext): LogAttributes {
   });
 }
 
-/** Run an operation with merged context, restoring its parent on completion. */
-export function runWithLogContext<T>(
-  context: LogContext,
+/** Run an operation with merged attributes, restoring its parent on completion. */
+export function runWithLogAttributes<T>(
+  attributes: LogAttributes,
   callback: () => T,
 ): T {
   return logContextStorage.run(
-    {
-      ...logContextStorage.getStore(),
-      ...logContextToAttributes(context),
-    },
+    { ...logContextStorage.getStore(), ...attributes },
     callback,
   );
+}
+
+/** Merge attributes into the current scoped operation. */
+export function updateLogAttributes(attributes: LogAttributes): void {
+  const current = logContextStorage.getStore();
+  if (current) {
+    Object.assign(current, attributes);
+  }
 }
 
 /** Read the attributes bound to the current operation. */
