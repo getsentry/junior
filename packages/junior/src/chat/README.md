@@ -15,8 +15,9 @@ file.
 4. `runtime/` prepares and orchestrates the run; `agent/` owns Pi execution.
 5. Tools, plugins, credentials, sandbox, and MCP operate within harness-owned
    actor and destination context.
-6. `agent/` emits every completed visible assistant message through one awaited
-   delivery port; provider adapters deliver and record each message in order.
+6. `agent/` emits every completed, tool-free visible assistant message through
+   one awaited delivery port; provider adapters deliver and record each message
+   in order. Tool-bearing assistant text remains internal to the agent loop.
 7. The completed run result supplies diagnostics and artifacts; successful
    delivery or intentional no-reply completion commits the durable turn outcome.
 
@@ -59,8 +60,10 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Each completed visible assistant message is delivered before the run advances;
-  assistant output handling settles before the turn is finalized.
+- Each completed tool-free visible assistant message is delivered before the
+  run advances; assistant output handling settles before the turn is finalized.
+- Tool-bearing assistant text stays in agent history but is not destination
+  output; explicit progress uses the runtime status surface.
 - Tool failures remain internal agent-loop data unless the final result exposes
   an appropriate diagnostic.
 - Durable state is committed before acknowledging queue work or yielding.

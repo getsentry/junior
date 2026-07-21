@@ -140,12 +140,12 @@ export interface AgentRunObservers {
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
 }
 
-/** One completed assistant message ready for destination delivery. */
+/** One completed tool-free assistant message ready for destination delivery. */
 export interface AgentAssistantMessage {
   text: string;
 }
 
-/** Delivers completed assistant messages in model order. */
+/** Delivers completed tool-free assistant messages in model order. */
 export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }

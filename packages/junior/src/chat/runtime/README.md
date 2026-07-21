@@ -10,10 +10,11 @@ directory owns product orchestration around it.
   cooperatively yield, or fail.
 - Silence is explicit; absence of model text is not automatically a successful
   silent outcome.
-- Every completed assistant message with visible text is delivered as its own
-  destination reply. Thinking and raw tool-call parts remain internal.
-- Assistant delivery is awaited before the run advances; tool-bearing messages
-  are delivered before their tool batch executes.
+- Every completed tool-free assistant message with visible text is delivered as
+  its own destination reply. Thinking, tool calls, and text emitted alongside
+  tool calls remain internal.
+- Assistant delivery is awaited before the run advances. Explicit progress uses
+  the runtime status surface rather than tool-bearing assistant text.
 - The runtime records each assistant message only after delivery succeeds.
 - Resumed runs continue the same durable turn and must not repeat already
   committed side effects.

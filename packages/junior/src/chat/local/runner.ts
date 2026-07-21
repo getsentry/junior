@@ -4,7 +4,7 @@
  * This module owns the Slack-free execution boundary for CLI-originated turns:
  * it persists local conversation state, invokes the shared agent runner with
  * a local destination, and only commits assistant delivery after the CLI sink
- * accepts each completed assistant message.
+ * accepts each completed tool-free assistant message.
  */
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { randomUUID } from "node:crypto";

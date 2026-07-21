@@ -303,7 +303,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.summaryCalls).toBe(1);
   });
 
-  it("delivers completed assistant messages in model order", async () => {
+  it("delivers only the tool-free assistant message after tool use", async () => {
     observations.progressTool = true;
     const delivered: Array<{ text: string }> = [];
     const conversationId = "local:test:assistant-message-delivery";
@@ -324,13 +324,10 @@ describe("executeAgentRun model handoff", () => {
     });
 
     expect(outcome.status).toBe("completed");
-    expect(delivered).toEqual([
-      { text: "Let me do that now." },
-      { text: "Handoff model completed it." },
-    ]);
+    expect(delivered).toEqual([{ text: "Handoff model completed it." }]);
   });
 
-  it("propagates delivery failure before the agent executes the tool", async () => {
+  it("executes tools before a terminal assistant delivery failure", async () => {
     observations.progressTool = true;
     const deliveryError = new Error("destination unavailable");
     const conversationId = "local:test:assistant-message-delivery-failure";
@@ -356,8 +353,8 @@ describe("executeAgentRun model handoff", () => {
         },
       }),
     ).rejects.toBe(deliveryError);
-    expect(observations.providerCalls).toBe(1);
-    expect(observations.statuses).not.toContain("Checking details");
+    expect(observations.providerCalls).toBe(2);
+    expect(observations.statuses).toContain("Checking details");
   });
 
   it("preserves explicit agent reasoning across handoff without routing", async () => {

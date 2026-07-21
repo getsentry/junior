@@ -10,10 +10,10 @@ provider mailbox worker.
 - Conversation IDs use `local:<workspace-key>:<conversation-slug>`.
 - Source context is local, the credential actor is the `local-cli` system actor,
   and Slack-only authorization or delivery surfaces are disabled.
-- User input is persisted before execution; each completed assistant message is
-  written to stdout and recorded in conversation order. Post-delivery state is
-  attempted immediately without blocking later tools, then persisted again at
-  turn completion.
+- User input is persisted before execution; each completed tool-free assistant
+  message is written to stdout and recorded in conversation order. Text emitted
+  alongside tool calls remains internal. Post-delivery state is attempted
+  immediately, then persisted again at turn completion.
 - Each invocation uses a collision-resistant turn ID independent of transcript
   length. It records `turn_started` after durable input, then a terminal
   success, no-reply, or privacy-safe failure after the owning boundary.

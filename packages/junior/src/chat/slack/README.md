@@ -15,8 +15,10 @@ runtime orchestration.
 
 ## Delivery
 
-- Post each completed assistant message in the originating conversation
-  context, preserving model message boundaries.
+- Post each completed tool-free assistant message in the originating
+  conversation context, preserving destination-visible model message
+  boundaries. Tool-bearing assistant text remains agent history; explicit
+  progress uses the status surface.
 - Translate Junior Markdown to Slack `mrkdwn` only at the outbound boundary.
 - Continue oversized replies without splitting code fences into invalid
   fragments.

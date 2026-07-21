@@ -5,9 +5,10 @@
  * runtime/ingress code has parsed and routed the request. Wires the phase
  * modules (session restore, skills, tools, prompt, resume), runs the Pi
  * agent with the inline provider retry loop, and translates expected run
- * endings into `AgentRunOutcome` values. It emits every completed visible
- * assistant message through the delivery port; the result carries diagnostics,
- * artifacts, and transcript state for destination-owned completion.
+ * endings into `AgentRunOutcome` values. It emits every completed, tool-free
+ * visible assistant message through the delivery port; the result carries
+ * diagnostics, artifacts, and transcript state for destination-owned
+ * completion.
  */
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
@@ -620,7 +621,7 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
-    /** Deliver one completed visible message before the agent advances. */
+    /** Deliver one completed tool-free visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {

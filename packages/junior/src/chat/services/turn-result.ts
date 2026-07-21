@@ -168,16 +168,18 @@ function getVisibleAssistantText(rawText: string): string | undefined {
   return text;
 }
 
-/** Return the destination-visible text from one completed assistant message. */
+/** Return destination-visible text from one completed tool-free assistant message. */
 export function getAssistantMessageText(
   message: Parameters<typeof extractAssistantText>[0],
 ): string | undefined {
+  if (message.content.some((part) => part.type === "toolCall")) {
+    return undefined;
+  }
   const text = getVisibleAssistantText(extractAssistantText(message));
   if (!text) {
     return undefined;
   }
-  const hasToolCall = message.content.some((part) => part.type === "toolCall");
-  return !hasToolCall && isExecutionEscapeResponse(text) ? undefined : text;
+  return isExecutionEscapeResponse(text) ? undefined : text;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */

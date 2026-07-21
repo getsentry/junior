@@ -2,7 +2,6 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { beforeAll, expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
-  assistantTextContent,
   hasImageAttachment,
   mention,
   rubric,
@@ -61,67 +60,65 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
-  it("when a task needs a progress update, post complete messages rather than partial revisions", async ({
+  it("when a task needs a progress update, use status before one completed reply", async ({
     run,
   }) => {
     const result = await run({
       initialEvents: [
         mention(
-          "Tell me the current UTC time. Send a short update before you check, then give me the answer separately when you're done.",
+          "Tell me the current UTC time, and keep me posted while you check.",
         ),
       ],
       requireSandboxReady: false,
       criteria: rubric({
         pass: [
-          "The assistant sends a distinct progress update before a separate completed summary.",
-          "Each visible assistant message reads as a complete message at that point in the work.",
+          "The assistant returns the requested UTC time in one concise completed reply.",
         ],
         fail: [
-          "Do not expose token-by-token fragments, cumulative drafts, or repeated copies of the same reply.",
+          "Do not post intermediate process narration, cumulative drafts, or repeated copies of the reply.",
         ],
       }),
     });
 
-    expect(
-      toolCalls(result.session).some((call) => call.name === "systemTime"),
-    ).toBe(true);
-    const replies = visibleThreadReplies(result.session);
-    expect(replies.length).toBeGreaterThanOrEqual(2);
-    const replyTexts = replies.map((reply) =>
-      assistantTextContent(reply.content).trim(),
-    );
-    expect(new Set(replyTexts).size).toBe(replyTexts.length);
+    const callNames = toolCalls(result.session).map((call) => call.name);
+    expect(callNames).toContain("reportProgress");
+    expect(callNames).toContain("systemTime");
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
-  it("when a generated image should be shared here, send it to the thread", async ({
+  it("when asked to show an image, attach it without process chatter", async ({
     run,
   }) => {
     const result = await run({
       overrides: { mock_image_generation: true },
-      initialEvents: [
-        mention("make a small image of a launch checklist and share it here"),
-      ],
+      initialEvents: [mention("show me an image of a red panda")],
+      criteria: rubric({
+        pass: [
+          "Any visible text is limited to at most one concise acknowledgement that the requested image was delivered.",
+        ],
+        fail: [
+          "Do not narrate image generation, file lookup, attachment paths, permission checks, retries, or other internal process steps.",
+          "Do not post multiple progress or troubleshooting messages before the image.",
+        ],
+      }),
     });
 
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "imageGenerate" }),
-        expect.objectContaining({
-          name: "sendFiles",
-        }),
-      ]),
+    const imageGenerateCalls = toolCalls(result.session).filter(
+      (call) => call.name === "imageGenerate",
     );
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "sendFiles",
-          status: "ok",
-          result: expect.objectContaining({ ok: true, status: "success" }),
-        }),
-      ]),
+    const sendFilesCalls = toolCalls(result.session).filter(
+      (call) => call.name === "sendFiles",
     );
+
+    expect(imageGenerateCalls).toHaveLength(1);
+    expect(sendFilesCalls).toEqual([
+      expect.objectContaining({
+        status: "ok",
+        result: expect.objectContaining({ ok: true, status: "success" }),
+      }),
+    ]);
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
-    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
+    expect(visibleThreadReplies(result.session).length).toBeLessThanOrEqual(1);
   });
 });

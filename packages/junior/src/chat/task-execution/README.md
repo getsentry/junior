@@ -22,8 +22,9 @@ source of truth.
 2. The worker validates the queue callback and acquires the conversation lease.
 3. It drains available mailbox messages into durable agent history.
 4. Runtime advances the turn until completion, auth pause, cooperative yield,
-   or terminal failure, delivering and recording completed assistant messages
-   as it advances.
+   or terminal failure, delivering and recording completed tool-free assistant
+   messages as it advances. Tool-bearing assistant text remains agent history;
+   explicit progress uses the status surface.
 5. Before yielding, the worker commits a safe history boundary, sends another
    nudge, and releases the lease.
 6. Terminal delivery or intentional no-reply completion records the delivered

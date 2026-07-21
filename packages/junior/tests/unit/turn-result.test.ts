@@ -86,10 +86,10 @@ describe("getAssistantMessageText", () => {
     ).toBeUndefined();
   });
 
-  it("keeps progress text attached to a tool call", () => {
+  it("suppresses text attached to a tool call", () => {
     expect(
       getAssistantMessageText(assistantMessage("Let me do that now.", true)),
-    ).toBe("Let me do that now.");
+    ).toBeUndefined();
   });
 
   it("keeps prose that quotes a tool payload fragment", () => {
