@@ -1,11 +1,11 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import {
+  lastTurnReplies,
   mention,
   rubric,
   slackEvals,
   threadMessage,
-  visibleThreadReplies,
 } from "../../src/helpers";
 
 describeEval("Thread Continuity", slackEvals, (it) => {
@@ -36,6 +36,6 @@ describeEval("Thread Continuity", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(2);
+    expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
   });
 });

@@ -106,6 +106,20 @@ export function visibleThreadReplies(session: NormalizedSession) {
   );
 }
 
+/** Return visible replies from the last user turn. */
+export function lastTurnReplies(session: NormalizedSession) {
+  let start = session.events.length;
+  while (start > 0) {
+    const event = session.events[start - 1];
+    if (event?.type === "message" && event.role === "user") break;
+    start -= 1;
+  }
+  return visibleThreadReplies({
+    ...session,
+    events: session.events.slice(start),
+  });
+}
+
 /** Join user-visible assistant text recorded in an eval session. */
 export function visibleAssistantText(session: NormalizedSession): string {
   return assistantMessages(session)

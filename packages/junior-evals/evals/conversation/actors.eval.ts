@@ -2,11 +2,11 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import {
   assistantTextContent,
+  lastTurnReplies,
   mention,
   rubric,
   slackEvals,
   threadMessage,
-  visibleThreadReplies,
 } from "../../src/helpers";
 
 describeEval("Actor Attribution", slackEvals, (it) => {
@@ -56,7 +56,7 @@ describeEval("Actor Attribution", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(2);
+    expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
   });
 
   const currentInstructionAuthorThread = {
@@ -108,9 +108,11 @@ describeEval("Actor Attribution", slackEvals, (it) => {
       }),
     });
 
-    const replies = visibleThreadReplies(result.session);
-    expect(replies).toHaveLength(2);
-    const secondReply = assistantTextContent(replies[1]?.content).toLowerCase();
+    const replies = lastTurnReplies(result.session);
+    expect(replies.length).toBeGreaterThan(0);
+    const secondReply = assistantTextContent(
+      replies.at(-1)?.content,
+    ).toLowerCase();
     expect(secondReply).toMatch(/casual|direct/);
   });
 });

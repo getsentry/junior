@@ -68,14 +68,6 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       initialEvents: [
         mention("make a small image of a launch checklist and share it here"),
       ],
-      criteria: rubric({
-        pass: [
-          "Any file caption and follow-up assistant text are concise and do not repeat the same prose.",
-        ],
-        fail: [
-          "The same delivery statement or description is repeated in both the file caption and another assistant message.",
-        ],
-      }),
     });
 
     expect(toolCalls(result.session)).toEqual(

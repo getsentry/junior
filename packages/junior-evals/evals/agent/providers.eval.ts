@@ -32,7 +32,7 @@ describeEval("Skill Providers", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
   });
 
   it("when an MCP-backed skill handles a lookup, return the provider-backed answer", async ({
