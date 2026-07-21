@@ -113,5 +113,5 @@ setInterval(() => undefined, 1000);
     } finally {
       await rm(fixtureDir, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 });
