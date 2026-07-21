@@ -370,6 +370,35 @@ describe("slack channel tools", () => {
     ).not.toHaveProperty("initial_comment");
   });
 
+  it("accepts a generated artifact reference without translating its path", async () => {
+    const imageBytes = Buffer.from("image bytes");
+    const generatedArtifact = {
+      bytes: imageBytes.byteLength,
+      filename: "generated.png",
+      mimeType: "image/png",
+      path: "/tmp/junior/artifacts/generated.png",
+    };
+    const tool = createSendFilesTool(
+      createContext("share the generated image"),
+      createToolState(),
+      createMaterializeFile({ [generatedArtifact.path]: imageBytes }),
+    );
+
+    const result = await executeTool(tool, { files: [generatedArtifact] });
+
+    expect(
+      getCapturedSlackApiCalls("files.getUploadURLExternal")[0]?.params,
+    ).toMatchObject({
+      filename: generatedArtifact.filename,
+      length: String(imageBytes.byteLength),
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      status: "success",
+      data: { file_count: 1 },
+    });
+  });
+
   it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
     const context = createContext("attach this here", {
       sourceChannelId: "D123",

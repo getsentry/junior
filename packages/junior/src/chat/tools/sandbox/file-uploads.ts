@@ -3,11 +3,72 @@ import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command"
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { z } from "zod";
 
 /** Maximum single file size accepted by model-facing upload tools. */
 export const MAX_SANDBOX_FILE_UPLOAD_BYTES = 10 * 1024 * 1024;
 /** Sandbox directory for generated files that later tools can consume. */
 export const SANDBOX_ARTIFACTS_DIR = "/tmp/junior/artifacts";
+
+/** Canonical model-facing reference to a file that already exists in the sandbox. */
+export const sandboxFileReferenceSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .describe(
+      "Exact source path of an existing sandbox file. Preserve paths returned by other tools unchanged; do not move or rewrite them before sending.",
+    ),
+  filename: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Optional filename override shown to the recipient. Null is treated as omitted.",
+    ),
+  mimeType: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Optional MIME type override. Null is treated as omitted."),
+  bytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "Optional known file size returned by a producing tool. Sending tools validate the file contents directly.",
+    ),
+});
+
+/** Model input accepted anywhere an existing sandbox file can be referenced. */
+export type SandboxFileReferenceInput = z.input<
+  typeof sandboxFileReferenceSchema
+>;
+
+type WithoutNull<T> = {
+  [Key in keyof T]: Exclude<T[Key], null>;
+};
+
+/** Normalized projection consumed when materializing a sandbox file. */
+export type SandboxFileMaterializationInput = WithoutNull<
+  Omit<z.output<typeof sandboxFileReferenceSchema>, "bytes">
+>;
+
+/** Generated file reference whose path and metadata can be passed directly to sendFiles. */
+export const generatedArtifactFileRefSchema = sandboxFileReferenceSchema
+  .extend({
+    filename: z.string().min(1),
+    mimeType: z.string().min(1).optional(),
+    bytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** Fully materialized generated artifact returned to model-facing tools. */
+export type GeneratedArtifactFileRef = z.output<
+  typeof generatedArtifactFileRefSchema
+>;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -118,11 +179,7 @@ async function detectMimeType(
 /** Read and validate one sandbox file for Slack/file reply upload. */
 export async function readSandboxFileUpload(
   sandbox: SandboxWorkspace,
-  input: {
-    path: string;
-    filename?: string;
-    mimeType?: string;
-  },
+  input: SandboxFileMaterializationInput,
 ): Promise<SandboxFileUpload> {
   const targetPath = normalizeSandboxPath(input.path);
   const fileBuffer = await sandbox.readFileToBuffer({ path: targetPath });

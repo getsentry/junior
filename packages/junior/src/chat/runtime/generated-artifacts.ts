@@ -2,8 +2,8 @@ import type { FileUpload } from "chat";
 import {
   SANDBOX_ARTIFACTS_DIR,
   sandboxArtifactPath,
+  type GeneratedArtifactFileRef,
 } from "@/chat/tools/sandbox/file-uploads";
-import type { GeneratedArtifactFileRef } from "@/chat/tools/types";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 
 /** Sandbox operations needed to make generated artifacts visible to later tools. */

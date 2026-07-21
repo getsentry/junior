@@ -111,13 +111,15 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
         }),
       ]),
     );
-    const sendFilesCall = toolCalls(result.session).find(
-      (call) => call.name === "sendFiles",
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "sendFiles",
+          status: "ok",
+          result: expect.objectContaining({ ok: true, status: "success" }),
+        }),
+      ]),
     );
-    expect(sendFilesCall).toMatchObject({
-      status: "ok",
-      result: { ok: true, status: "success" },
-    });
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);

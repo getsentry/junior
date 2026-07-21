@@ -118,16 +118,25 @@ describe("createImageGenerateTool", () => {
     });
     expect(JSON.stringify(result)).not.toContain("sendFiles");
     const generated = result as {
-      images: Array<{ attachment_path: string }>;
+      images: Array<{
+        bytes: number;
+        filename: string;
+        mimeType: string;
+        path: string;
+      }>;
     };
     expect(generated).toMatchObject({
       images: [
-        expect.objectContaining({
-          attachment_path:
-            "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
-        }),
+        {
+          bytes: 3,
+          filename: "generated-image-1737000000000-1.png",
+          mimeType: "image/png",
+          path: "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
+        },
       ],
     });
+    expect(JSON.stringify(generated)).not.toContain("attachment_path");
+    expect(JSON.stringify(generated)).not.toContain("media_type");
     expect(uploads[0]?.filename).toContain("generated-image-1737000000000-1");
     expect(uploads[0]?.data).toEqual(Buffer.from("img"));
   });
@@ -152,7 +161,9 @@ describe("createImageGenerateTool", () => {
     expect(result).toMatchObject({
       ok: true,
       image_count: 1,
-      delivery: expect.stringContaining("sendFiles"),
+      delivery: expect.stringContaining(
+        "pass the returned image objects unchanged",
+      ),
     });
   });
 

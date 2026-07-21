@@ -113,10 +113,10 @@ describe("web fetch tool", () => {
       media_type: "image/png",
       images: [
         {
+          bytes: Buffer.from("png-bytes").byteLength,
           filename: "logo.png",
+          mimeType: "image/png",
           path: "/tmp/junior/artifacts/logo.png",
-          attachment_path: "/tmp/junior/artifacts/logo.png",
-          media_type: "image/png",
         },
       ],
     });

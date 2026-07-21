@@ -5,45 +5,19 @@ import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import {
+  sandboxFileReferenceSchema,
+  type SandboxFileMaterializationInput,
+  type SandboxFileReferenceInput,
+  type SandboxFileUpload,
+} from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 
 /** Convert a model-supplied sandbox file path into bytes safe for Slack upload. */
-export type MaterializeFile = (input: {
-  path: string;
-  filename?: string;
-  mimeType?: string;
-}) => Promise<SandboxFileUpload>;
-
-type FileInput = {
-  path: string;
-  filename?: string | null;
-  mimeType?: string | null;
-};
-
-const fileInputSchema = z.object({
-  path: z
-    .string()
-    .min(1)
-    .describe(
-      "Sandbox file path to include in the message. Absolute paths and workspace-relative paths are supported.",
-    ),
-  filename: z
-    .string()
-    .min(1)
-    .nullable()
-    .optional()
-    .describe(
-      "Optional filename override shown in Slack. Null is treated as omitted.",
-    ),
-  mimeType: z
-    .string()
-    .min(1)
-    .nullable()
-    .optional()
-    .describe("Optional MIME type override. Null is treated as omitted."),
-});
+export type MaterializeFile = (
+  input: SandboxFileMaterializationInput,
+) => Promise<SandboxFileUpload>;
 
 const sendFilesDataSchema = z.object({
   channel_id: z.string().min(1),
@@ -63,8 +37,8 @@ const sendFilesResultSchema = juniorToolResultSchema.extend({
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
 function normalizeFiles(
-  files: FileInput[],
-): Array<{ path: string; filename?: string; mimeType?: string }> {
+  files: SandboxFileReferenceInput[],
+): SandboxFileMaterializationInput[] {
   return files.map((file) => ({
     path: file.path,
     ...(file.filename ? { filename: file.filename } : {}),
@@ -98,9 +72,11 @@ export function createSendFilesTool(
       "Send one or more sandbox files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: z.object({
       files: z
-        .array(fileInputSchema)
+        .array(sandboxFileReferenceSchema)
         .min(1)
-        .describe("One or more sandbox files to include in the message."),
+        .describe(
+          "One or more existing sandbox files. Objects returned by imageGenerate or webFetch can be passed unchanged.",
+        ),
     }),
     outputSchema: sendFilesResultSchema,
     execute: async ({ files }) => {

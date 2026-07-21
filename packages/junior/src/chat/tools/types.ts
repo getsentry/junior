@@ -18,6 +18,7 @@ import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
 import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
+import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 
 interface HandoffControl {
   /** Non-empty catalog with the default target first. */
@@ -44,14 +45,6 @@ export interface WebSearchToolDeps {
     query: string;
     max_results?: number;
   }) => Promise<JuniorToolResult> | JuniorToolResult;
-}
-
-/** Sandbox file handle returned to the model after a generated artifact is written. */
-export interface GeneratedArtifactFileRef {
-  bytes: number;
-  filename: string;
-  mimeType?: string;
-  path: string;
 }
 
 export interface ToolHooks {

@@ -10,6 +10,7 @@ import {
 } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
+import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
 
@@ -19,21 +20,7 @@ const imageGenerateOutputSchema = juniorToolResultSchema
     prompt: z.string(),
     enrichedPrompt: z.string(),
     image_count: z.number().int().nonnegative(),
-    images: z.array(
-      z
-        .object({
-          filename: z.string(),
-          path: z.string(),
-          attachment_path: z
-            .string()
-            .describe(
-              "Exact sandbox path to pass unchanged as sendFiles files[].path.",
-            ),
-          media_type: z.string().optional(),
-          bytes: z.number().int().nonnegative(),
-        })
-        .strict(),
-    ),
+    images: z.array(generatedArtifactFileRefSchema),
     delivery: z.string(),
   })
   .strict();
@@ -202,15 +189,9 @@ export function createImageGenerateTool(
           prompt,
           enrichedPrompt,
           image_count: artifactRefs.length,
-          images: artifactRefs.map((artifact) => ({
-            filename: artifact.filename,
-            path: artifact.path,
-            attachment_path: artifact.path,
-            media_type: artifact.mimeType,
-            bytes: artifact.bytes,
-          })),
+          images: artifactRefs,
           delivery: options.canSendFilesToActiveConversation
-            ? "Generated images were written to sandbox paths. To share one, pass its exact attachment_path unchanged as sendFiles files[].path."
+            ? "Generated images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
             : "Generated images were written to sandbox paths, but this runtime has no file-send tool for the active conversation.",
         };
       }
