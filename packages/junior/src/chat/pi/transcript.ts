@@ -118,15 +118,15 @@ export function extractAssistantText(message: AssistantMessage): string {
 export function getTerminalAssistantMessages(
   messages: readonly unknown[],
 ): AssistantMessage[] {
-  let lastToolResultIndex = -1;
+  let lastNonAssistantIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (isToolResultMessage(messages[index])) {
-      lastToolResultIndex = index;
+    if (!isAssistantMessage(messages[index])) {
+      lastNonAssistantIndex = index;
       break;
     }
   }
 
-  return messages.slice(lastToolResultIndex + 1).filter(isAssistantMessage);
+  return messages.slice(lastNonAssistantIndex + 1).filter(isAssistantMessage);
 }
 
 /** Remove trailing assistant messages before committing a resumable boundary. */

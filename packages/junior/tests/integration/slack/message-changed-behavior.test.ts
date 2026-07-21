@@ -279,7 +279,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
                 userId: "U123",
                 userName: "dcramer",
               });
-              await context?.onTextDelta?.("Hello world");
               return completedAgentRun({
                 text: "Hello world",
                 diagnostics: makeDiagnostics(),

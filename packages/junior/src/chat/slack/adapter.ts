@@ -8,8 +8,8 @@ import {
  * Create the repository's Slack adapter.
  *
  * Junior used to patch private Slack adapter internals to alter native stream
- * buffering. Visible reply delivery now relies on finalized thread posts plus
- * assistant status updates, so we keep the adapter on the documented surface.
+ * buffering. Visible reply delivery now relies on completed assistant-message
+ * thread posts plus status updates, so we keep the documented surface.
  */
 export function createJuniorSlackAdapter(
   config?: SlackAdapterConfig,

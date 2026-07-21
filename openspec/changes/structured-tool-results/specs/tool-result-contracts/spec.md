@@ -113,7 +113,7 @@ follow-up or side-effect auditing materially affects agent behavior.
 
 - **WHEN** the first implementation slice is complete
 - **THEN** `bash`, `readFile`, `grep`, `listDir`, `editFile`, `writeFile`,
-  and `sendMessage` return structured result objects
+  and `sendFiles` return structured result objects
 - **AND** `callMcpTool` preserves provider-native model content without declaring
   a Junior `outputSchema`
 - **AND** provider bridge tools preserve native model content when required for

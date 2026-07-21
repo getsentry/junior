@@ -10,8 +10,10 @@ provider mailbox worker.
 - Conversation IDs use `local:<workspace-key>:<conversation-slug>`.
 - Source context is local, the credential actor is the `local-cli` system actor,
   and Slack-only authorization or delivery surfaces are disabled.
-- User input is persisted before execution; finalized assistant output is
-  persisted after stdout delivery succeeds.
+- User input is persisted before execution; each completed assistant message is
+  written to stdout and recorded in conversation order. Post-delivery state is
+  attempted immediately without blocking later tools, then persisted again at
+  terminal completion.
 - Each invocation uses a collision-resistant turn ID independent of transcript
   length. It records `turn_started` after durable input, then a terminal
   success, no-reply, or privacy-safe failure after the owning boundary.
@@ -21,7 +23,8 @@ provider mailbox worker.
   and SQL persistence are not one transaction. A process death in that interval
   can strand a started turn; lifecycle history does not claim otherwise.
 - New CLI invocations do not promise restoration of prior interactive history.
-- Status and diagnostics go to stderr; the final answer goes to stdout.
+- Status and diagnostics go to stderr; assistant messages go to stdout in model
+  message order.
 - Local file requests use paths named by the user. The adapter does not
   synthesize Slack attachments or file-delivery tools.
 

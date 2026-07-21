@@ -206,13 +206,12 @@ describe("Slack behavior: subscribed messages", () => {
     expect(classifierCalled).toBe(false);
     expect(replyContexts).toEqual([
       expect.objectContaining({
+        conversationId: "slack:C0BEHAVIOR:1700002000.002",
+        turnId: "turn_resource-event-resub-1-check-suite-1",
         credentialContext: {
           actor: { platform: "system", name: "resource-event" },
         },
         actor: undefined,
-        correlation: expect.objectContaining({
-          actorId: undefined,
-        }),
       }),
     ]);
     expect(thread.posts).toHaveLength(1);

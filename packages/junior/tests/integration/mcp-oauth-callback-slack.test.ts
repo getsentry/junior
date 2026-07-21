@@ -518,7 +518,14 @@ describe("mcp oauth callback slack integration", () => {
       },
     });
     expect(conversation.processing.pendingAuth).toBeUndefined();
-    expect(conversation.messages.at(-1)).toMatchObject({
+    expect(
+      conversation.messages.find(
+        (message) =>
+          message.role === "assistant" &&
+          message.text ===
+            "The budget deadline you mentioned earlier was Friday.",
+      ),
+    ).toMatchObject({
       role: "assistant",
       text: "The budget deadline you mentioned earlier was Friday.",
     });

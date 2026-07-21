@@ -120,10 +120,10 @@ describe("web fetch tool", () => {
         },
       ],
     });
-    expect(JSON.stringify(result)).toContain("sendMessage");
+    expect(JSON.stringify(result)).toContain("sendFiles");
   });
 
-  it("does not recommend sendMessage for fetched images without file-send support", async () => {
+  it("does not recommend sendFiles for fetched images without file-send support", async () => {
     const safeUrl = new URL("https://example.com/local.png");
     assertPublicUrlMock.mockResolvedValue(safeUrl);
     fetchTextWithRedirectsMock.mockResolvedValue(
@@ -148,7 +148,7 @@ describe("web fetch tool", () => {
       {} as never,
     );
 
-    expect(JSON.stringify(result)).not.toContain("sendMessage");
+    expect(JSON.stringify(result)).not.toContain("sendFiles");
     expect(result).toMatchObject({
       ok: true,
       delivery: expect.stringContaining("no file-send tool"),

@@ -150,9 +150,7 @@ export function finalizeFailedTurnReplyWithEvent(args: {
       text: providerPartialText
         ? `${providerPartialText}${getInterruptionMarker()}`
         : buildTurnFailureResponse(eventId),
-      deliveryMode: "thread",
       deliveryPlan: {
-        mode: "thread",
         postThreadText: true,
       },
     },

@@ -39,7 +39,7 @@ makes continuation behavior depend on prose conventions and model inference.
   - `editFile`
   - `writeFile`
   - `callMcpTool`
-  - Slack side-effect tools, starting with `sendMessage`
+  - Slack side-effect tools, starting with `sendFiles`
 - Include structured continuation data for partial or paginated results.
 - Include structured error data for expected operational failures that the model
   can repair or route around.

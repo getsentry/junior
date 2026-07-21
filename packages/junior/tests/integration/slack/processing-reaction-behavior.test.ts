@@ -316,7 +316,6 @@ describe("Slack behavior: processing reaction", () => {
               return completedAgentRun({
                 text: "",
                 deliveryPlan: {
-                  mode: "thread",
                   postThreadText: false,
                 },
                 diagnostics: successDiagnostics(["addReaction"]),

@@ -11,6 +11,7 @@ const observations = vi.hoisted(() => ({
   initialModelId: "",
   initialToolNames: [] as string[],
   mixedBatch: false,
+  progressTool: false,
   providerCalls: 0,
   requestedProfile: undefined as string | null | undefined,
   routedReasoningLevel: "high",
@@ -18,7 +19,6 @@ const observations = vi.hoisted(() => ({
   summaryCalls: 0,
   handoffStatusBeforeSummary: false,
   statuses: [] as string[],
-  textDeltas: [] as string[],
 }));
 
 vi.mock("@/chat/config", async (importOriginal) => {
@@ -72,7 +72,9 @@ vi.mock("@/chat/pi/traced-stream", () => ({
 
       const text =
         call === 1
-          ? "The standard model started an answer that must be hidden."
+          ? observations.progressTool
+            ? "Let me do that now."
+            : "The standard model started an answer that must be hidden."
           : observations.mixedBatch
             ? "Standard model recovered safely."
             : "Handoff model completed it.";
@@ -80,14 +82,15 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       if (call === 1) {
         content.push({
           type: "toolCall",
-          id: "handoff-call-1",
-          name: "handoff",
-          arguments:
-            observations.requestedProfile === undefined
+          id: observations.progressTool ? "progress-call-1" : "handoff-call-1",
+          name: observations.progressTool ? "reportProgress" : "handoff",
+          arguments: observations.progressTool
+            ? { message: "Checking details" }
+            : observations.requestedProfile === undefined
               ? {}
               : { profile: observations.requestedProfile },
         });
-        if (observations.mixedBatch) {
+        if (observations.mixedBatch && !observations.progressTool) {
           content.push({
             type: "toolCall",
             id: "bash-call-1",
@@ -182,6 +185,7 @@ describe("executeAgentRun model handoff", () => {
     observations.initialModelId = "";
     observations.initialToolNames = [];
     observations.mixedBatch = false;
+    observations.progressTool = false;
     observations.providerCalls = 0;
     observations.requestedProfile = undefined;
     observations.routedReasoningLevel = "high";
@@ -189,7 +193,6 @@ describe("executeAgentRun model handoff", () => {
     observations.summaryCalls = 0;
     observations.handoffStatusBeforeSummary = false;
     observations.statuses = [];
-    observations.textDeltas = [];
     await disconnectStateAdapter();
   });
 
@@ -206,22 +209,17 @@ describe("executeAgentRun model handoff", () => {
     observations.requestedProfile = null;
     const conversationId = "local:test:model-handoff";
     const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-model-handoff",
+      turnId: "turn-model-handoff",
       input: { messageText: "Implement the multi-file refactor." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-model-handoff",
-          turnId: "turn-model-handoff",
-        },
       },
       observers: {
         onStatus: ({ text }) => {
           observations.statuses.push(text);
-        },
-        onTextDelta: (text) => {
-          observations.textDeltas.push(text);
         },
       },
     });
@@ -234,7 +232,6 @@ describe("executeAgentRun model handoff", () => {
       (outcome.result.diagnostics.usage?.inputTokens ?? 0) +
         (outcome.result.diagnostics.usage?.outputTokens ?? 0),
     ).toBe(10);
-    expect(observations.textDeltas).toEqual(["Handoff model completed it."]);
     expect(observations.initialModelId).not.toBe(
       observations.afterHandoffModelId,
     );
@@ -288,15 +285,13 @@ describe("executeAgentRun model handoff", () => {
     ]);
 
     const followUp = await executeAgentRun({
+      conversationId,
+      runId: "run-model-handoff-follow-up",
+      turnId: "turn-model-handoff-follow-up",
       input: { messageText: "Now explain the verification result." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-model-handoff-follow-up",
-          turnId: "turn-model-handoff-follow-up",
-        },
       },
     });
     expect(followUp.status).toBe("completed");
@@ -308,19 +303,71 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.summaryCalls).toBe(1);
   });
 
+  it("delivers tool-bearing assistant text before the terminal message", async () => {
+    observations.progressTool = true;
+    const delivered: Array<{ text: string }> = [];
+    const conversationId = "local:test:assistant-message-delivery";
+
+    const outcome = await executeAgentRun({
+      conversationId,
+      turnId: "turn-assistant-message-delivery",
+      input: { messageText: "Check the details." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      delivery: {
+        onAssistantMessage: (message) => {
+          delivered.push(message);
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    expect(delivered).toEqual([{ text: "Let me do that now." }]);
+  });
+
+  it("propagates delivery failure before the agent executes the tool", async () => {
+    observations.progressTool = true;
+    const deliveryError = new Error("destination unavailable");
+    const conversationId = "local:test:assistant-message-delivery-failure";
+
+    await expect(
+      executeAgentRun({
+        conversationId,
+        turnId: "turn-assistant-message-delivery-failure",
+        input: { messageText: "Check the details." },
+        routing: {
+          destination: { platform: "local", conversationId },
+          source: createLocalSource(conversationId),
+        },
+        delivery: {
+          onAssistantMessage: () => {
+            throw deliveryError;
+          },
+        },
+        observers: {
+          onStatus: ({ text }) => {
+            observations.statuses.push(text);
+          },
+        },
+      }),
+    ).rejects.toBe(deliveryError);
+    expect(observations.providerCalls).toBe(1);
+    expect(observations.statuses).not.toContain("Checking details");
+  });
+
   it("preserves explicit agent reasoning across handoff without routing", async () => {
     observations.requestedProfile = null;
     observations.routedReasoningLevel = "low";
     const conversationId = "local:test:model-handoff-explicit-reasoning";
     const outcome = await executeAgentRun({
+      conversationId,
+      turnId: "turn-model-handoff-explicit-reasoning",
       input: { messageText: "Implement the multi-file refactor." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          turnId: "turn-model-handoff-explicit-reasoning",
-        },
       },
       policy: { reasoningLevel: "xhigh" },
     });
@@ -335,14 +382,12 @@ describe("executeAgentRun model handoff", () => {
     observations.requestedProfile = null;
     const conversationId = "local:test:model-handoff-status-failure";
     const outcome = await executeAgentRun({
+      conversationId,
+      turnId: "turn-model-handoff-status-failure",
       input: { messageText: "Implement the multi-file refactor." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          turnId: "turn-model-handoff-status-failure",
-        },
       },
       observers: {
         onStatus: () => {
@@ -360,15 +405,13 @@ describe("executeAgentRun model handoff", () => {
     observations.requestedProfile = "coding";
     const conversationId = "local:test:named-model-handoff";
     const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-named-model-handoff",
+      turnId: "turn-named-model-handoff",
       input: { messageText: "Implement the focused code change." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-named-model-handoff",
-          turnId: "turn-named-model-handoff",
-        },
       },
     });
 
@@ -394,15 +437,13 @@ describe("executeAgentRun model handoff", () => {
     ]);
 
     const followUp = await executeAgentRun({
+      conversationId,
+      runId: "run-named-model-handoff-follow-up",
+      turnId: "turn-named-model-handoff-follow-up",
       input: { messageText: "Verify that change now." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-named-model-handoff-follow-up",
-          turnId: "turn-named-model-handoff-follow-up",
-        },
       },
     });
     expect(followUp.status).toBe("completed");
@@ -416,15 +457,13 @@ describe("executeAgentRun model handoff", () => {
     observations.mixedBatch = true;
     const conversationId = "local:test:mixed-model-handoff";
     const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-mixed-handoff",
+      turnId: "turn-mixed-handoff",
       input: { messageText: "Implement the change." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-mixed-handoff",
-          turnId: "turn-mixed-handoff",
-        },
       },
     });
 
@@ -443,14 +482,13 @@ describe("executeAgentRun model handoff", () => {
   it("allows a durable conversation to hand off without a resumable turn record", async () => {
     const conversationId = "local:test:model-handoff-without-turn-record";
     const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-model-handoff-without-turn-record",
+      turnId: "turn-model-handoff-without-turn-record",
       input: { messageText: "Implement the refactor." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-model-handoff-without-turn-record",
-        },
       },
     });
 
@@ -480,15 +518,13 @@ describe("executeAgentRun model handoff", () => {
     const conversationId = "local:test:model-handoff-yield";
     const sessionId = "turn-model-handoff-yield";
     const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-model-handoff-yield",
+      turnId: sessionId,
       input: { messageText: "Implement the risky refactor." },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        correlation: {
-          conversationId,
-          runId: "run-model-handoff-yield",
-          turnId: sessionId,
-        },
       },
       durability: {
         shouldYield: () => true,

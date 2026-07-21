@@ -13,6 +13,7 @@ const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
       | "pendingProviderCall"
       | "cooperativeYield"
       | "steering"
+      | "steeringDelivery"
       | "steeringSteerThrows"
       | "toolActivity",
   },
@@ -183,16 +184,38 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       if (
         agentMode.value === "cooperativeYield" ||
         agentMode.value === "steering" ||
+        agentMode.value === "steeringDelivery" ||
         agentMode.value === "steeringSteerThrows"
       ) {
+        if (agentMode.value === "steeringDelivery") {
+          const firstMessage = {
+            role: "assistant",
+            content: [{ type: "text", text: "Initial answer." }],
+            stopReason: "stop",
+            usage: { input: 2, output: 2 },
+          };
+          this.state.messages.push(firstMessage);
+          await Promise.all(
+            this.subscribers.map((subscriber) =>
+              subscriber({ type: "message_end", message: firstMessage }),
+            ),
+          );
+        }
         try {
           await this.prepareNextTurn?.();
         } catch (error) {
           this.recordRunFailure(error);
           return {};
         }
+        if (agentMode.value === "steeringDelivery") {
+          await Promise.all(
+            this.subscribers.map((subscriber) =>
+              subscriber({ type: "turn_start" }),
+            ),
+          );
+        }
         this.state.messages.push(...this.steeringMessages);
-        this.state.messages.push({
+        const finalMessage = {
           role: "assistant",
           content: [{ type: "text", text: "Steered." }],
           stopReason: "stop",
@@ -200,7 +223,15 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             input: 2,
             output: 2,
           },
-        });
+        };
+        this.state.messages.push(finalMessage);
+        if (agentMode.value === "steeringDelivery") {
+          await Promise.all(
+            this.subscribers.map((subscriber) =>
+              subscriber({ type: "message_end", message: finalMessage }),
+            ),
+          );
+        }
         return {};
       }
       this.state.messages.push({
@@ -383,17 +414,13 @@ describe("executeAgentRun provider retry", () => {
 
   it("continues from the last safe boundary after a transient provider stream error", async () => {
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-1",
+      turnId: "turn-1",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-1",
-          turnId: "turn-1",
-          channelId: "C123",
-          threadTs: "1712345.0001",
-        },
       },
     });
 
@@ -443,17 +470,13 @@ describe("executeAgentRun provider retry", () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-cancelled-backoff",
+      turnId: "turn-cancelled-backoff",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-cancelled-backoff",
-          turnId: "turn-cancelled-backoff",
-          channelId: "C123",
-          threadTs: "1712345.0001",
-        },
       },
       policy: { signal: controller.signal },
     });
@@ -479,17 +502,13 @@ describe("executeAgentRun provider retry", () => {
     agentMode.value = "pendingProviderCall";
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-cancelled-provider",
+      turnId: "turn-cancelled-provider",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-cancelled-provider",
-          turnId: "turn-cancelled-provider",
-          channelId: "C123",
-          threadTs: "1712345.0001",
-        },
       },
       policy: { signal: controller.signal },
     });
@@ -547,17 +566,13 @@ describe("executeAgentRun provider retry", () => {
 
     const reply = finalReply(
       await executeAgentRun({
+        conversationId: "slack:C123:1712345.0001",
+        turnId: "turn-steering",
         input: { messageText: "help me", piMessages: priorMessages },
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          correlation: {
-            conversationId: "slack:C123:1712345.0001",
-            turnId: "turn-steering",
-            channelId: "C123",
-            threadTs: "1712345.0001",
-          },
         },
         durability: {
           drainSteeringMessages: async (inject) => {
@@ -609,21 +624,54 @@ describe("executeAgentRun provider retry", () => {
     expect(visibleText).toEqual([]);
   });
 
-  it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
-    agentMode.value = "cooperativeYield";
+  it("delivers a text-only message before a steered terminal response", async () => {
+    agentMode.value = "steeringDelivery";
+    const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
+      conversationId: "conversation-steering-delivery",
+      turnId: "turn-steering-delivery",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-yield",
-          turnId: "turn-yield",
-          channelId: "C123",
-          threadTs: "1712345.0003",
+      },
+      delivery: {
+        onAssistantMessage: (message) => {
+          delivered.push(message);
         },
+      },
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          const messages = [
+            {
+              text: "actually do the other thing",
+              timestampMs: 2_000,
+              provenance: { authority: "instruction" as const },
+            },
+          ];
+          await inject(messages);
+          return messages;
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    expect(delivered).toEqual([{ text: "Initial answer." }]);
+  });
+
+  it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
+    agentMode.value = "cooperativeYield";
+
+    const outcome = await executeAgentRun({
+      conversationId: "conversation-yield",
+      turnId: "turn-yield",
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       durability: { shouldYield: () => true },
     });
@@ -664,15 +712,11 @@ describe("executeAgentRun provider retry", () => {
     agentMode.value = "cooperativeYield";
 
     const outcome = await executeAgentRun({
+      conversationId: "conversation-yield-steering",
+      turnId: "turn-yield-steering",
       input: { messageText: "help me" },
       routing: {
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-yield-steering",
-          turnId: "turn-yield-steering",
-          channelId: "C123",
-          threadTs: "1712345.0005",
-        },
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
       },
@@ -724,17 +768,13 @@ describe("executeAgentRun provider retry", () => {
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await executeAgentRun({
+      conversationId: "conversation-yield-persist-failure",
+      turnId: "turn-yield-persist-failure",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-yield-persist-failure",
-          turnId: "turn-yield-persist-failure",
-          channelId: "C123",
-          threadTs: "1712345.0004",
-        },
       },
       durability: { shouldYield: () => true },
     }).then(
@@ -761,17 +801,13 @@ describe("executeAgentRun provider retry", () => {
 
     const reply = finalReply(
       await executeAgentRun({
+        conversationId: "conversation-tool-activity",
+        turnId: "turn-tool-activity",
         input: { messageText: "run the tool" },
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          correlation: {
-            conversationId: "conversation-tool-activity",
-            turnId: "turn-tool-activity",
-            channelId: "C123",
-            threadTs: "1712345.0006",
-          },
         },
       }),
     );
@@ -804,17 +840,13 @@ describe("executeAgentRun provider retry", () => {
 
     const reply = finalReply(
       await executeAgentRun({
+        conversationId,
+        turnId: sessionId,
         input: { messageText: "help me", piMessages: [checkpointedPrompt] },
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          correlation: {
-            conversationId,
-            turnId: sessionId,
-            channelId: "C123",
-            threadTs: "1712345.0007",
-          },
         },
       }),
     );
@@ -839,17 +871,13 @@ describe("executeAgentRun provider retry", () => {
     let injectCompleted = false;
 
     await executeAgentRun({
+      conversationId: "conversation-steering-failure",
+      turnId: "turn-steering-failure",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-steering-failure",
-          turnId: "turn-steering-failure",
-          channelId: "C123",
-          threadTs: "1712345.0002",
-        },
       },
       durability: {
         drainSteeringMessages: async (inject) => {

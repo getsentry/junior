@@ -5,8 +5,9 @@
  * runtime/ingress code has parsed and routed the request. Wires the phase
  * modules (session restore, skills, tools, prompt, resume), runs the Pi
  * agent with the inline provider retry loop, and translates expected run
- * endings into `AgentRunOutcome` values. Delivery and thread presentation
- * stay outside this module.
+ * endings into `AgentRunOutcome` values. It emits completed intermediate
+ * assistant messages through the delivery port; terminal text stays in the
+ * result for destination-owned delivery.
  */
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
@@ -56,6 +57,7 @@ import {
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  extractAssistantText,
   isAssistantMessage,
   retainRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -63,7 +65,10 @@ import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  getVisibleAssistantText,
+} from "@/chat/services/turn-result";
 import {
   isProviderRetryError,
   nextProviderRetry,
@@ -87,9 +92,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import {
-  assertCorrelationDestinationMatch,
-  assertActorDestinationMatch,
-  getSessionIdentifiers,
+  assertRunRoutingConsistency,
   actorFromRouting,
   surfaceFromRouting,
   type AgentRunRequest,
@@ -115,6 +118,13 @@ import { compactContextForHandoff } from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+
+/** Preserve delivery-error ownership across the agent generation boundary. */
+class AssistantMessageDeliveryError extends Error {
+  constructor(readonly originalError: unknown) {
+    super("Assistant message delivery failed");
+  }
+}
 
 /** Bound post-abort waiting so timeout recovery can persist before the host kills the slice. */
 function waitForAbortSettlement(
@@ -154,12 +164,16 @@ function waitForAbortSettlement(
 export async function executeAgentRun(
   request: AgentRunRequest,
 ): Promise<AgentRunOutcome> {
+  if (!request.routing.destination) {
+    throw new TypeError("Assistant reply generation requires a destination");
+  }
+  const channelId =
+    request.routing.destination.platform === "slack"
+      ? request.routing.destination.channelId
+      : undefined;
   const conversationPrivacy = resolveConversationPrivacy({
-    channelId: request.routing.correlation?.channelId,
-    conversationId:
-      request.routing.correlation?.conversationId ??
-      request.routing.correlation?.threadId ??
-      request.routing.correlation?.runId,
+    channelId,
+    conversationId: request.conversationId,
     // Destination visibility is provider-neutral. Slack event context remains
     // a compatibility fallback for callers that have not projected it yet.
     visibility:
@@ -175,20 +189,17 @@ async function executeAgentRunInPrivacyContext(
   request: AgentRunRequest,
   conversationPrivacy: ConversationPrivacy | undefined,
 ): Promise<AgentRunOutcome> {
-  const { input, routing } = request;
+  const { conversationId, input, routing, runId, turnId } = request;
   const policy = request.policy ?? {};
   const signal = policy.signal;
   const state = request.state ?? {};
   const observers = request.observers ?? {};
+  const delivery = request.delivery;
   const durability = request.durability ?? {};
 
   signal?.throwIfAborted();
 
-  if (!routing.destination) {
-    throw new TypeError("Assistant reply generation requires a destination");
-  }
-  assertActorDestinationMatch(routing);
-  assertCorrelationDestinationMatch(routing);
+  assertRunRoutingConsistency(request);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
@@ -209,7 +220,6 @@ async function executeAgentRunInPrivacyContext(
     state.sandbox?.sandboxDependencyProfileHash;
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
-  let canRecordMcpProviders = false;
   let turnUsage: AgentTurnUsage | undefined;
   let handoffPhaseUsage: AgentTurnUsage | undefined;
   const configuredReasoningLevel =
@@ -225,6 +235,10 @@ async function executeAgentRunInPrivacyContext(
   const actor = actorFromRouting(routing);
   const surface = surfaceFromRouting(routing);
   const runSource = routing.source;
+  const slackSource = runSource.platform === "slack" ? runSource : undefined;
+  const slackDestination =
+    routing.destination.platform === "slack" ? routing.destination : undefined;
+  const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
   const credentialActor = routing.credentialContext?.actor;
   const credentialActorLogContext = credentialActor
@@ -237,25 +251,19 @@ async function executeAgentRunInPrivacyContext(
       }
     : {};
   const sessionRecordLogContext = {
-    threadId: routing.correlation?.threadId,
-    actorId: routing.correlation?.actorId,
-    channelId: routing.correlation?.channelId,
-    runId: routing.correlation?.runId,
+    threadId: slackSource ? conversationId : undefined,
+    actorId: slackActor?.userId,
+    channelId: slackDestination?.channelId,
+    runId,
     ...credentialActorLogContext,
     assistantUserName: botConfig.userName,
   };
-  const { conversationId: sessionConversationId, sessionId } =
-    getSessionIdentifiers(routing);
   const recordConnectedMcpProvider = async (provider: string) => {
-    if (
-      !canRecordMcpProviders ||
-      !sessionConversationId ||
-      connectedMcpProviders.has(provider)
-    ) {
+    if (connectedMcpProviders.has(provider)) {
       return;
     }
     await recordMcpProviderConnected({
-      conversationId: sessionConversationId,
+      conversationId,
       provider,
     });
     connectedMcpProviders.add(provider);
@@ -274,20 +282,16 @@ async function executeAgentRunInPrivacyContext(
   });
 
   try {
-    if (sessionConversationId) {
-      const projection = await openConversationProjection({
-        conversationId: sessionConversationId,
-      });
-      activeModelProfile = projection.modelProfile;
-      activeModelId = modelIdForProfile(botConfig, activeModelProfile);
-    }
+    const projection = await openConversationProjection({ conversationId });
+    activeModelProfile = projection.modelProfile;
+    activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = {
-      conversationId: sessionConversationId,
-      slackThreadId: routing.correlation?.threadId,
-      slackUserId: routing.correlation?.actorId,
-      slackChannelId: routing.correlation?.channelId,
-      runId: routing.correlation?.runId,
+      conversationId,
+      slackThreadId: slackSource ? conversationId : undefined,
+      slackUserId: slackActor?.userId,
+      slackChannelId: slackDestination?.channelId,
+      runId,
       ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
@@ -312,7 +316,7 @@ async function executeAgentRunInPrivacyContext(
           // look indistinguishable from Slack ingress dropping attachments.
           "app.message.attachment_count": inboundAttachmentCount,
           "app.message.prompt_attachment_count": promptAttachmentCount,
-          "messaging.message.id": routing.correlation?.messageTs ?? "",
+          "messaging.message.id": slackSource?.messageTs ?? "",
         },
         "Agent message received",
       );
@@ -334,7 +338,10 @@ async function executeAgentRunInPrivacyContext(
       resumedFromSessionRecord,
       currentSliceId,
       existingSessionRecord,
-    } = await restoreSessionRecord(routing);
+    } = await restoreSessionRecord({
+      conversationId,
+      turnId,
+    });
     // Mirror the committed provenance prefix the turn session record owns. A
     // fresh run may already include batched parked input committed before the
     // agent starts, then adds the current actor's turn-start instruction.
@@ -347,13 +354,8 @@ async function executeAgentRunInPrivacyContext(
     ];
     const runActors = (): Actor[] =>
       instructionActors(committedInstructionProvenance);
-    canRecordMcpProviders = Boolean(
-      sessionRecordState.canUseTurnSession &&
-      sessionConversationId &&
-      sessionId,
-    );
     resume = createResumeState({
-      channelName: routing.correlation?.channelName,
+      channelName: routing.slackConversation?.name,
       destination: routing.destination,
       durability,
       getLoadedSkillNames: () => loadedSkillNamesForResume,
@@ -363,8 +365,8 @@ async function executeAgentRunInPrivacyContext(
       recordActiveMcpProviders,
       actor,
       runSource,
-      sessionConversationId,
-      sessionId,
+      conversationId,
+      turnId,
       sessionRecordState,
       startedAtMs: replyStartedAtMs,
       surface,
@@ -375,16 +377,9 @@ async function executeAgentRunInPrivacyContext(
       toolCallId: string;
       toolName: string;
     }) => {
-      if (
-        !sessionRecordState.canUseTurnSession ||
-        !sessionConversationId ||
-        !sessionId
-      ) {
-        return;
-      }
       try {
         await recordToolExecutionStarted({
-          conversationId: sessionConversationId,
+          conversationId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
         });
@@ -417,11 +412,7 @@ async function executeAgentRunInPrivacyContext(
       ? existingSessionRecord?.piMessages
       : input.piMessages;
     connectedMcpProviders = new Set(
-      sessionRecordState.canUseTurnSession && sessionConversationId
-        ? await loadConnectedMcpProviders({
-            conversationId: sessionConversationId,
-          })
-        : [],
+      await loadConnectedMcpProviders({ conversationId }),
     );
 
     // ── Restore skill runtime handles from durable Pi history ────────
@@ -442,10 +433,10 @@ async function executeAgentRunInPrivacyContext(
       completeObject,
       conversationContext: input.conversationContext,
       context: {
-        threadId: routing.correlation?.threadId,
-        channelId: routing.correlation?.channelId,
-        actorId: routing.correlation?.actorId,
-        runId: routing.correlation?.runId,
+        threadId: conversationId,
+        channelId: slackDestination?.channelId,
+        actorId: slackActor?.userId,
+        runId,
       },
       currentTurnBlocks: routerBlocks,
       fastModelId: botConfig.fastModelId,
@@ -475,7 +466,7 @@ async function executeAgentRunInPrivacyContext(
         .sort(),
     ];
     const requestHandoff =
-      activeModelProfile === STANDARD_MODEL_PROFILE && sessionConversationId
+      activeModelProfile === STANDARD_MODEL_PROFILE
         ? {
             profiles: handoffProfiles,
             execute: async (
@@ -516,17 +507,17 @@ async function executeAgentRunInPrivacyContext(
               const handoffMessages = await compactContextForHandoff(
                 {
                   conversationContext: input.conversationContext,
-                  conversationId: sessionConversationId,
+                  conversationId,
                   piMessages: sourceMessages,
                   runtimeContext,
                   signal: options.signal,
                   triggeringToolCallId: options.toolCallId,
                   target,
                   metadata: {
-                    threadId: routing.correlation?.threadId,
-                    channelId: routing.correlation?.channelId,
-                    actorId: routing.correlation?.actorId,
-                    runId: routing.correlation?.runId,
+                    threadId: conversationId,
+                    channelId: slackDestination?.channelId,
+                    actorId: slackActor?.userId,
+                    runId,
                   },
                 },
                 { completeText },
@@ -545,10 +536,10 @@ async function executeAgentRunInPrivacyContext(
 
     setTags({
       conversationId: spanContext.conversationId,
-      slackThreadId: routing.correlation?.threadId,
-      slackUserId: routing.correlation?.actorId,
-      slackChannelId: routing.correlation?.channelId,
-      runId: routing.correlation?.runId,
+      slackThreadId: slackSource ? conversationId : undefined,
+      slackUserId: slackActor?.userId,
+      slackChannelId: slackDestination?.channelId,
+      runId,
       ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
@@ -581,8 +572,8 @@ async function executeAgentRunInPrivacyContext(
       requestHandoff,
       resume: runResume,
       routing,
-      sessionConversationId,
-      sessionId,
+      conversationId,
+      turnId,
       skillSandbox,
       spanContext,
       state,
@@ -626,51 +617,31 @@ async function executeAgentRunInPrivacyContext(
       userContentParts,
     });
     // ── Agent execution ──────────────────────────────────────────────
-    let hasEmittedText = false;
-    let needsSeparator = false;
-    // Standard text is provisional until message_end proves the assistant did
-    // not request handoff; post-handoff output can stream immediately.
-    let bufferedStandardText = "";
-    let bufferedStandardMessageStart = false;
-    const startAssistantMessage = () => {
-      Promise.resolve(observers.onAssistantMessageStart?.()).catch((error) => {
-        logWarn(
-          "streaming_message_start_error",
-          {},
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Failed to deliver assistant message start to stream coordinator",
+    let pendingTextOnlyAssistant:
+      | Parameters<typeof extractAssistantText>[0]
+      | undefined;
+    let assistantMessageDeliveryError:
+      | AssistantMessageDeliveryError
+      | undefined;
+    /** Deliver one completed visible message before the agent advances. */
+    const deliverAssistantMessage = async (
+      message: Parameters<typeof extractAssistantText>[0],
+    ): Promise<void> => {
+      const text = getVisibleAssistantText(extractAssistantText(message));
+      if (!text || !delivery) {
+        return;
+      }
+      try {
+        await delivery.onAssistantMessage({ text });
+      } catch (error) {
+        assistantMessageDeliveryError = new AssistantMessageDeliveryError(
+          error,
         );
-      });
-      if (hasEmittedText) {
-        needsSeparator = true;
+        throw assistantMessageDeliveryError;
       }
     };
-    const deliverText = (deltaText: string) => {
-      const text = needsSeparator ? "\n\n" + deltaText : deltaText;
-      needsSeparator = false;
-      hasEmittedText = true;
-      Promise.resolve(observers.onTextDelta?.(text)).catch((error) => {
-        logWarn(
-          "streaming_text_delta_error",
-          {},
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Failed to deliver text delta to stream",
-        );
-      });
-    };
     const drainSteeringMessages = async (): Promise<void> => {
-      if (
-        !durability.drainSteeringMessages ||
-        !sessionRecordState.canUseTurnSession ||
-        !sessionConversationId ||
-        !sessionId
-      ) {
+      if (!durability.drainSteeringMessages) {
         return;
       }
 
@@ -792,40 +763,31 @@ async function executeAgentRunInPrivacyContext(
           .persistSafeBoundary([...agent!.state.messages])
           .then(() => undefined);
       }
-      if (event.type === "message_start") {
-        if (activeModelProfile === STANDARD_MODEL_PROFILE && requestHandoff) {
-          bufferedStandardMessageStart = true;
-          bufferedStandardText = "";
-        } else {
-          startAssistantMessage();
-        }
-        return;
+      if (event.type === "turn_start" && pendingTextOnlyAssistant) {
+        const message = pendingTextOnlyAssistant;
+        pendingTextOnlyAssistant = undefined;
+        return deliverAssistantMessage(message);
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (!bufferedStandardMessageStart) {
+        if (
+          event.message.stopReason === "error" ||
+          event.message.stopReason === "aborted"
+        ) {
           return;
         }
         const containsHandoff = event.message.content.some(
           (part) => part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
         );
-        if (!containsHandoff) {
-          startAssistantMessage();
-          if (bufferedStandardText) {
-            deliverText(bufferedStandardText);
-          }
+        if (containsHandoff) {
+          return;
         }
-        bufferedStandardMessageStart = false;
-        bufferedStandardText = "";
-        return;
-      }
-      if (event.type !== "message_update") return;
-      if (event.assistantMessageEvent.type !== "text_delta") return;
-      const deltaText = event.assistantMessageEvent.delta;
-      if (!deltaText) return;
-      if (bufferedStandardMessageStart) {
-        bufferedStandardText += deltaText;
-      } else {
-        deliverText(deltaText);
+        const containsToolCall = event.message.content.some(
+          (part) => part.type === "toolCall",
+        );
+        if (containsToolCall) {
+          return deliverAssistantMessage(event.message);
+        }
+        pendingTextOnlyAssistant = event.message;
       }
     });
 
@@ -976,6 +938,9 @@ async function executeAgentRunInPrivacyContext(
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
             await runAgentStep(run);
+            if (assistantMessageDeliveryError) {
+              throw assistantMessageDeliveryError;
+            }
             signal?.throwIfAborted();
             if (runResume.cooperativeYieldError) {
               throw runResume.cooperativeYieldError;
@@ -1065,10 +1030,8 @@ async function executeAgentRunInPrivacyContext(
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
             : {}),
-          ...(sessionConversationId
-            ? { "app.ai.session.conversation_id": sessionConversationId }
-            : {}),
-          ...(sessionId ? { "app.ai.turn.session_id": sessionId } : {}),
+          "app.ai.session.conversation_id": conversationId,
+          "app.ai.turn.session_id": turnId,
           ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
@@ -1080,44 +1043,40 @@ async function executeAgentRunInPrivacyContext(
       unsubscribe();
     }
 
-    if (
-      sessionRecordState.canUseTurnSession &&
-      sessionConversationId &&
-      sessionId
-    ) {
-      await recordActiveMcpProviders();
-      // Generation completing is not delivery: the session record stays at its
-      // latest running safe boundary here. The destination boundary commits
-      // the final messages and terminal completed state only after the visible
-      // reply is accepted, so an undelivered assistant reply never surfaces as
-      // delivered conversation history and a crash before delivery stays
-      // recoverable through stranded-running continuation.
-    }
+    await recordActiveMcpProviders();
+    // Generation completing is not delivery: the session record stays at its
+    // latest running safe boundary here. The destination boundary commits the
+    // final messages and terminal completed state only after the visible reply
+    // is accepted, so an undelivered assistant reply never surfaces as
+    // delivered conversation history and a crash before delivery stays
+    // recoverable through stranded-running continuation.
 
     // ── Build turn result ────────────────────────────────────────────
+    const result = buildTurnResult({
+      newMessages,
+      userInput,
+      artifactStatePatch,
+      toolCalls,
+      sandboxId: sandboxExecutor.getSandboxId(),
+      sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
+      piMessages: [...agent.state.messages],
+      durationMs: Date.now() - replyStartedAtMs,
+      generatedFileCount: generatedFiles.length,
+      shouldTrace,
+      spanContext,
+      usage: turnUsage,
+      reasoningSelection,
+      assistantUserName: botConfig.userName,
+      modelId: activeModelId,
+    });
     return {
       status: "completed",
-      result: buildTurnResult({
-        newMessages,
-        userInput,
-        artifactStatePatch,
-        toolCalls,
-        sandboxId: sandboxExecutor.getSandboxId(),
-        sandboxDependencyProfileHash:
-          sandboxExecutor.getDependencyProfileHash(),
-        piMessages: [...agent.state.messages],
-        durationMs: Date.now() - replyStartedAtMs,
-        generatedFileCount: generatedFiles.length,
-        shouldTrace,
-        spanContext,
-        usage: turnUsage,
-        reasoningSelection,
-        correlation: routing.correlation,
-        assistantUserName: botConfig.userName,
-        modelId: activeModelId,
-      }),
+      result,
     };
   } catch (error) {
+    if (error instanceof AssistantMessageDeliveryError) {
+      throw error.originalError;
+    }
     if (resume) {
       const { outcome } = await resume.translateExpectedEnding({
         currentUsage: turnUsage,
@@ -1148,10 +1107,11 @@ async function executeAgentRunInPrivacyContext(
       error,
       "assistant_reply_generation_failed",
       {
-        slackThreadId: routing.correlation?.threadId,
-        slackUserId: routing.correlation?.actorId,
-        slackChannelId: routing.correlation?.channelId,
-        runId: routing.correlation?.runId,
+        conversationId,
+        slackThreadId: slackSource ? conversationId : undefined,
+        slackUserId: slackActor?.userId,
+        slackChannelId: slackDestination?.channelId,
+        runId,
         ...credentialActorLogContext,
         assistantUserName: botConfig.userName,
         modelId: activeModelId,

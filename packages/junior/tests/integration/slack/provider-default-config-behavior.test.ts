@@ -67,9 +67,7 @@ describe("Slack behavior: provider default configuration", () => {
     const executeAgentRun = vi.fn(async () =>
       completedAgentRun({
         text: "Created the issue.",
-        deliveryMode: "thread" as const,
         deliveryPlan: {
-          mode: "thread" as const,
           postThreadText: true,
         },
         diagnostics: {

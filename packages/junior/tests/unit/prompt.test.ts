@@ -29,7 +29,7 @@ describe("prompt builders", () => {
     });
 
     expect(systemPrompt).toContain(
-      `When no visible final thread reply is useful, make the final message exactly ${NO_REPLY_MARKER}.`,
+      `When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
     );
     expect(systemPrompt).not.toContain(
       "Side-effect-only completion for addReaction",

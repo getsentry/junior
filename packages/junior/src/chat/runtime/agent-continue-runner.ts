@@ -293,13 +293,11 @@ export async function continueSlackAgentRun(
   const resumeTurn = options.resumeTurn ?? resumeSlackTurn;
   return await resumeTurn({
     messageText: "",
+    conversationId: payload.conversationId,
+    turnId: payload.sessionId,
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
-    lifecycleCorrelation: {
-      conversationId: payload.conversationId,
-      turnId: payload.sessionId,
-    },
     agentRunner: options.agentRunner,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
@@ -418,13 +416,6 @@ export async function continueSlackAgentRun(
               ...(actor ? { actor } : {}),
               destination: payload.destination,
               source: activeSessionRecord.source,
-              correlation: {
-                conversationId: payload.conversationId,
-                turnId: payload.sessionId,
-                channelId: thread.channelId,
-                threadTs: thread.threadTs,
-                ...(actor ? { actorId: actor.userId } : {}),
-              },
               toolChannelId:
                 artifacts.assistantContextChannelId ?? thread.channelId,
             },

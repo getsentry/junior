@@ -1,13 +1,9 @@
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   buildSlackReplyBlocks,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import {
-  buildSlackOutputMessage,
-  splitSlackReplyText,
-} from "@/chat/slack/output";
+import { splitSlackReplyText } from "@/chat/slack/output";
 
 export type PlannedSlackReplyStage =
   | "thread_reply"
@@ -18,47 +14,13 @@ export interface PlannedSlackReplyPost {
   text: string;
 }
 
-function shouldPostThreadReply(reply: AgentRunResult): boolean {
-  const deliveryPlan = reply.deliveryPlan ?? {
-    mode: reply.deliveryMode ?? "thread",
-    postThreadText: (reply.deliveryMode ?? "thread") !== "channel_only",
-  };
-
-  return deliveryPlan.postThreadText;
-}
-
-function buildReplyText(text: string): string {
-  const message = buildSlackOutputMessage(text);
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "markdown" in message &&
-    typeof message.markdown === "string"
-  ) {
-    return message.markdown;
-  }
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "raw" in message &&
-    typeof message.raw === "string"
-  ) {
-    return message.raw;
-  }
-  return "";
-}
-
-function buildTextPosts(args: {
-  text: string;
-  firstStage?: PlannedSlackReplyStage;
-}): PlannedSlackReplyPost[] {
-  const chunks = splitSlackReplyText(args.text);
-  return chunks.map((chunk, index) => ({
+/** Plan the Slack posts for one completed assistant message. */
+export function planSlackAssistantMessagePosts(
+  text: string,
+): PlannedSlackReplyPost[] {
+  return splitSlackReplyText(text).map((chunk, index) => ({
     text: chunk,
-    stage:
-      index === 0
-        ? (args.firstStage ?? "thread_reply")
-        : "thread_reply_continuation",
+    stage: index === 0 ? "thread_reply" : "thread_reply_continuation",
   }));
 }
 
@@ -70,32 +32,6 @@ function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
   }
 
   return -1;
-}
-
-/**
- * Plan the Slack thread posts needed to realize a completed assistant reply,
- * including chunking and interruption markers.
- */
-export function planSlackReplyPosts(args: {
-  reply: AgentRunResult;
-}): PlannedSlackReplyPost[] {
-  const posts: PlannedSlackReplyPost[] = [];
-
-  const textPosts = shouldPostThreadReply(args.reply)
-    ? buildTextPosts({
-        text: args.reply.text,
-      })
-    : [];
-  posts.push(...textPosts);
-
-  if (shouldPostThreadReply(args.reply) && textPosts.length === 0) {
-    posts.push({
-      text: buildReplyText(args.reply.text),
-      stage: "thread_reply",
-    });
-  }
-
-  return posts;
 }
 
 /**

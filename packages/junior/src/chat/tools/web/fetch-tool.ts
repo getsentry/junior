@@ -116,7 +116,7 @@ export function createWebFetchTool(
             delivery:
               artifactRefs.length > 0
                 ? options.canSendFilesToActiveConversation
-                  ? "Fetched image was written to a sandbox path. Use sendMessage to share or attach the image in the active conversation."
+                  ? "Fetched image was written to a sandbox path. Use sendFiles to share or attach the image in the active conversation."
                   : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."
                 : "Fetched image bytes are available only in this tool result; this runtime has no file-send tool for the active conversation.",
           };

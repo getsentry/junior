@@ -1698,9 +1698,7 @@ function buildRuntimeServices(
             replyState.successfulCount += 1;
             return completedAgentRun({
               text: replyText,
-              deliveryMode: "thread",
               deliveryPlan: {
-                mode: "thread",
                 postThreadText: true,
               },
               diagnostics: {

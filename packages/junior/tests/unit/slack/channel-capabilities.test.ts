@@ -8,7 +8,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "C123",
       expected: {
         canCreateCanvas: true,
-        canSendMessage: true,
+        canSendFiles: true,
         canPostToChannel: true,
         canAddReactions: true,
       },
@@ -18,7 +18,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "G456",
       expected: {
         canCreateCanvas: true,
-        canSendMessage: true,
+        canSendFiles: true,
         canPostToChannel: true,
         canAddReactions: true,
       },
@@ -28,7 +28,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "D789",
       expected: {
         canCreateCanvas: true,
-        canSendMessage: true,
+        canSendFiles: true,
         canPostToChannel: false,
         canAddReactions: true,
       },
@@ -38,7 +38,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: undefined,
       expected: {
         canCreateCanvas: false,
-        canSendMessage: false,
+        canSendFiles: false,
         canPostToChannel: false,
         canAddReactions: false,
       },
@@ -48,7 +48,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "",
       expected: {
         canCreateCanvas: false,
-        canSendMessage: false,
+        canSendFiles: false,
         canPostToChannel: false,
         canAddReactions: false,
       },

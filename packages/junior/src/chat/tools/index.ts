@@ -23,7 +23,7 @@ import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversati
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSendMessageTool } from "@/chat/slack/tools/send-message";
+import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
 import { createSlackCanvasReadTool } from "@/chat/slack/tools/canvas/read";
@@ -97,7 +97,7 @@ export function createTools(
     ? resolveChannelCapabilities(slackContext.sourceChannelId)
     : undefined;
   const canSendFilesToActiveConversation = Boolean(
-    slackContext && slackSourceCapabilities?.canSendMessage,
+    slackContext && slackSourceCapabilities?.canSendFiles,
   );
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
@@ -187,8 +187,8 @@ export function createTools(
       );
     }
 
-    if (rawChannelCapabilities.canSendMessage) {
-      tools.sendMessage = createSendMessageTool(slackContext, state, (input) =>
+    if (rawChannelCapabilities.canSendFiles) {
+      tools.sendFiles = createSendFilesTool(slackContext, state, (input) =>
         readSandboxFileUpload(context.sandbox, input),
       );
     }

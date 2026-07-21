@@ -81,7 +81,7 @@ function createToolContext(
   return {
     artifactState: request.state?.artifactState,
     configuration: request.policy?.configuration,
-    conversationId: request.routing.correlation?.conversationId,
+    conversationId: request.conversationId,
     destination: request.routing.destination,
     egress: {} as ToolRuntimeContext["egress"],
     actor:
@@ -903,9 +903,6 @@ describe("agent continuation Slack integration", () => {
           },
           destination: SLACK_DESTINATION,
           source: storedSource,
-          correlation: expect.not.objectContaining({
-            actorId: expect.anything(),
-          }),
         }),
       }),
     );
@@ -1639,13 +1636,13 @@ describe("agent continuation Slack integration", () => {
           }),
         ),
       );
-      const sendMessage = tools.sendMessage;
-      if (!sendMessage?.execute) {
-        throw new Error("sendMessage tool missing from resumed Slack context");
+      const sendFiles = tools.sendFiles;
+      if (!sendFiles?.execute) {
+        throw new Error("sendFiles tool missing from resumed Slack context");
       }
-      await sendMessage.execute(
+      await sendFiles.execute(
         {
-          text: "Sharing the resumed image.",
+          caption: "Sharing the resumed image.",
           files: [{ path: "/tmp/resumed-image.png" }],
         },
         {} as never,

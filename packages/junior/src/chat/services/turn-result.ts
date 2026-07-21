@@ -1,9 +1,6 @@
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
-import {
-  containsNoReplyMarker,
-  isNoReplyMarker,
-} from "@/chat/no-reply";
+import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnReasoningSelection } from "@/chat/services/turn-reasoning-level";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -90,9 +87,7 @@ function isRawToolPayloadResponse(text: string): boolean {
   if (isToolPayloadShape(parsed)) {
     return true;
   }
-
-  const compact = text.replace(/\s+/g, " ");
-  return /"type"\s*:\s*"tool[-_](use|call|result|error)"/i.test(compact);
+  return false;
 }
 
 const POST_CANVAS_REPLY_MAX_CHARS = 700;
@@ -121,7 +116,6 @@ export interface AgentRunResult {
   text: string;
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   deliveryPlan?: ReplyDeliveryPlan;
-  deliveryMode?: "thread" | "channel_only";
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   piMessages?: PiMessage[];
@@ -142,12 +136,6 @@ export interface TurnResultInput {
   spanContext: LogContext;
   usage?: AgentTurnUsage;
   reasoningSelection: TurnReasoningSelection;
-  correlation?: {
-    threadId?: string;
-    actorId?: string;
-    channelId?: string;
-    runId?: string;
-  };
   assistantUserName?: string;
   modelId: string;
 }
@@ -196,6 +184,20 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
+/** Return safe visible text from completed assistant output, if any. */
+export function getVisibleAssistantText(rawText: string): string | undefined {
+  const text = stripThinkingXmlBlocks(rawText).trim();
+  if (
+    !text ||
+    isNoReplyMarker(text) ||
+    containsNoReplyMarker(text) ||
+    isRawToolPayloadResponse(text)
+  ) {
+    return undefined;
+  }
+  return text;
+}
+
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
@@ -209,7 +211,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     spanContext,
     usage,
     reasoningSelection,
-    correlation,
     assistantUserName,
     modelId,
   } = input;
@@ -241,8 +242,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
   const silentCompletionSuccess = noReplyRequested;
+  const resultLogContext = {
+    ...spanContext,
+    assistantUserName,
+    modelId,
+  };
   const baseDeliveryPlan: ReplyDeliveryPlan = {
-    mode: "thread",
     postThreadText: true,
   };
   const lastAssistant = terminalAssistantMessages.at(-1) as
@@ -260,14 +265,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   if (exactNoReplyMarker) {
     const markerCategory = reactionPerformed ? "reaction" : "none";
-    const markerContext = {
-      slackThreadId: correlation?.threadId,
-      slackUserId: correlation?.actorId,
-      slackChannelId: correlation?.channelId,
-      runId: correlation?.runId,
-      assistantUserName,
-      modelId,
-    };
+    const markerContext = resultLogContext;
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_category": markerCategory,
@@ -285,14 +283,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   } else if (mixedNoReplyMarker) {
     logWarn(
       "ai_no_reply_marker_mixed_text",
-      {
-        slackThreadId: correlation?.threadId,
-        slackUserId: correlation?.actorId,
-        slackChannelId: correlation?.channelId,
-        runId: correlation?.runId,
-        assistantUserName,
-        modelId,
-      },
+      resultLogContext,
       {
         "app.ai.no_reply_marker": true,
         "app.ai.no_reply_marker_mode": "mixed",
@@ -304,14 +295,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   if (!primaryText && !silentCompletionSuccess && !isProviderError) {
     logWarn(
       "ai_model_response_empty",
-      {
-        slackThreadId: correlation?.threadId,
-        slackUserId: correlation?.actorId,
-        slackChannelId: correlation?.channelId,
-        runId: correlation?.runId,
-        assistantUserName,
-        modelId,
-      },
+      resultLogContext,
       {
         "app.ai.tool_results": toolResults.length,
         "app.ai.tool_error_results": toolErrorCount,
@@ -350,7 +334,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
           postThreadText: false,
         }
       : baseDeliveryPlan;
-  const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
 
   if (shouldTrace) {
     logInfo(
@@ -393,7 +376,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
         ? artifactStatePatch
         : undefined,
     deliveryPlan,
-    deliveryMode,
     sandboxId,
     sandboxDependencyProfileHash,
     piMessages: input.piMessages,

@@ -70,15 +70,18 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
-  it("registers thread sendMessage but not channel-only tools in DM context", () => {
+  it("registers thread sendFiles but not channel-only tools in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
-    expect(tools).toHaveProperty("sendMessage");
-    const sendMessageTool = tools.sendMessage;
-    if (!sendMessageTool) {
-      throw new Error("sendMessage tool missing");
+    expect(tools).toHaveProperty("sendFiles");
+    const sendFilesTool = tools.sendFiles;
+    if (!sendFilesTool) {
+      throw new Error("sendFiles tool missing");
     }
-    expect(sendMessageTool.inputSchema).not.toHaveProperty("properties.target");
+    expect(sendFilesTool.inputSchema).not.toHaveProperty("properties.target");
+    expect(sendFilesTool.inputSchema).toMatchObject({
+      required: expect.arrayContaining(["files"]),
+    });
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
@@ -89,7 +92,7 @@ describe("Slack tool registration", () => {
   it("registers channel-scope tools in shared channel context", () => {
     const tools = createTools([], {}, ctx("C12345"));
 
-    expect(tools).toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendFiles");
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackPublicSearch");
@@ -119,13 +122,13 @@ describe("Slack tool registration", () => {
   it("registers tools when runtime channel ids are Junior Slack references", () => {
     const tools = createTools([], {}, ctx("slack:C12345"));
 
-    expect(tools).toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendFiles");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
-  it("keeps active-conversation sendMessage outside interactive Slack turns", () => {
+  it("keeps active-conversation sendFiles outside interactive Slack turns", () => {
     const tools = createTools(
       [],
       {},
@@ -135,7 +138,7 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendFiles");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackThreadRead");
   });
@@ -154,7 +157,7 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendFiles");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
@@ -209,7 +212,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).not.toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("slackCanvasRead");
-    expect(tools).not.toHaveProperty("sendMessage");
+    expect(tools).not.toHaveProperty("sendFiles");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("addReaction");
   });

@@ -85,12 +85,12 @@ interface ToolWiringArgs {
   requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
   routing: AgentRunRouting;
-  sessionConversationId?: string;
-  sessionId?: string;
+  conversationId: string;
+  turnId: string;
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
   state: AgentRunState;
-  surface?: AgentTurnSurface;
+  surface: AgentTurnSurface;
   syncLoadedSkillNamesForResume: () => void;
   toolCalls: string[];
   userInput: string;
@@ -176,13 +176,16 @@ export async function wireAgentTools(
 
   const mcpAuth = createMcpAuthOrchestration({
     abortAgent: args.abortAgent,
-    conversationId: args.sessionConversationId,
-    sessionId: args.sessionId,
+    conversationId: args.conversationId,
+    sessionId: args.turnId,
     actorId: authActorId,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,
-    threadTs: args.routing.correlation?.threadTs,
+    threadTs:
+      args.routing.source.platform === "slack"
+        ? args.routing.source.threadTs
+        : undefined,
     toolChannelId: args.routing.toolChannelId,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
@@ -198,13 +201,16 @@ export async function wireAgentTools(
   });
   const pluginAuth = createPluginAuthOrchestration({
     abortAgent: args.abortAgent,
-    conversationId: args.sessionConversationId,
-    sessionId: args.sessionId,
+    conversationId: args.conversationId,
+    sessionId: args.turnId,
     actorId: authActorId,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,
-    threadTs: args.routing.correlation?.threadTs,
+    threadTs:
+      args.routing.source.platform === "slack"
+        ? args.routing.source.threadTs
+        : undefined,
     userMessage: args.userInput,
     channelConfiguration: args.policy.channelConfiguration,
     pendingAuth: args.state.pendingAuth,
@@ -229,7 +235,7 @@ export async function wireAgentTools(
       skill.name === args.invokedSkill?.name,
   );
   const commonToolRuntimeContext = {
-    conversationId: args.sessionConversationId,
+    conversationId: args.conversationId,
     userText: args.userInput,
     artifactState: args.state.artifactState,
     configuration: args.configurationValues,

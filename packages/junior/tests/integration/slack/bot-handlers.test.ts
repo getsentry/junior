@@ -815,10 +815,9 @@ describe("bot handlers (integration)", () => {
     expect(turnLifecycle.complete).not.toHaveBeenCalled();
   });
 
-  it("passes conversation and turn correlation IDs into assistant reply context", async () => {
-    const capturedCorrelation: Array<{
+  it("passes conversation and turn identity into assistant reply context", async () => {
+    const capturedIdentity: Array<{
       conversationId?: string;
-      threadId?: string;
       turnId?: string;
       runId?: string;
     }> = [];
@@ -832,11 +831,10 @@ describe("bot handlers (integration)", () => {
                 ...flattenAgentRunRequestForTest(request),
               };
 
-              capturedCorrelation.push({
-                conversationId: context?.correlation?.conversationId,
-                threadId: context?.correlation?.threadId,
-                turnId: context?.correlation?.turnId,
-                runId: context?.correlation?.runId,
+              capturedIdentity.push({
+                conversationId: context?.conversationId,
+                turnId: context?.turnId,
+                runId: context?.runId,
               });
               return completedAgentRun({
                 text: "Done.",
@@ -872,15 +870,14 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(capturedCorrelation).toHaveLength(1);
-    expect(capturedCorrelation[0]).toEqual(
+    expect(capturedIdentity).toHaveLength(1);
+    expect(capturedIdentity[0]).toEqual(
       expect.objectContaining({
         conversationId: "slack:C0CORRELATION:1700000000.000",
-        threadId: "slack:C0CORRELATION:1700000000.000",
         runId: "run-123",
       }),
     );
-    expect(capturedCorrelation[0].turnId).toBe("turn_msg-correlation");
+    expect(capturedIdentity[0].turnId).toBe("turn_msg-correlation");
   });
 
   it("parks MCP auth resume turns without rethrowing to the queue", async () => {
@@ -2148,13 +2145,7 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (request) => {
-              const _prompt = request.input.messageText;
-              const context = {
-                ...flattenAgentRunRequestForTest(request),
-              };
-
-              await context?.onTextDelta?.("Partial output...");
+            run: async () => {
               return completedAgentRun({
                 text: "Partial output...",
                 diagnostics: {

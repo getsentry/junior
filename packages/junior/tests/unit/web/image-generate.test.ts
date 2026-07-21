@@ -116,7 +116,7 @@ describe("createImageGenerateTool", () => {
       image_count: 1,
       delivery: expect.stringContaining("no file-send tool"),
     });
-    expect(JSON.stringify(result)).not.toContain("sendMessage");
+    expect(JSON.stringify(result)).not.toContain("sendFiles");
     const generated = result as {
       images: Array<{ attachment_path: string }>;
     };
@@ -132,7 +132,7 @@ describe("createImageGenerateTool", () => {
     expect(uploads[0]?.data).toEqual(Buffer.from("img"));
   });
 
-  it("recommends sendMessage when active file-send support is available", async () => {
+  it("recommends sendFiles when active file-send support is available", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = vi
@@ -152,7 +152,7 @@ describe("createImageGenerateTool", () => {
     expect(result).toMatchObject({
       ok: true,
       image_count: 1,
-      delivery: expect.stringContaining("sendMessage"),
+      delivery: expect.stringContaining("sendFiles"),
     });
   });
 

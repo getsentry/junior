@@ -16,7 +16,6 @@ import {
 import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   ResumeTurnBusyError,
-  resumeAuthorizedRequest,
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
@@ -40,7 +39,7 @@ import {
   getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
-import { markTurnFailed } from "@/chat/runtime/turn";
+import { buildDeterministicTurnId, markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
@@ -271,14 +270,12 @@ async function resumeOAuthSessionRecordTurn(
     messageText: pendingAuth
       ? userMessage.text
       : (stored.pendingMessage ?? userMessage.text),
+    conversationId: stored.resumeConversationId,
+    turnId: resolvedSessionId,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
-    lifecycleCorrelation: {
-      conversationId: stored.resumeConversationId,
-      turnId: resolvedSessionId,
-    },
     initialText: "",
     agentRunner: options.agentRunner,
     beforeStart: async () => {
@@ -419,13 +416,6 @@ async function resumeOAuthSessionRecordTurn(
             actor,
             destination,
             source: lockedSessionRecord.source,
-            correlation: {
-              conversationId: stored.resumeConversationId!,
-              turnId: lockedSessionId,
-              channelId: stored.channelId!,
-              threadTs: stored.threadTs!,
-              actorId: actor.userId,
-            },
             toolChannelId:
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
           },
@@ -532,12 +522,22 @@ async function resumePendingOAuthMessage(
   );
   const actor = await lookupSlackActor(destination.teamId, stored.userId);
   const messageTs = getTurnUserSlackMessageTs(latestUserMessage);
-  await resumeAuthorizedRequest({
+  const turnId =
+    stored.resumeSessionId ??
+    (latestUserMessage
+      ? buildDeterministicTurnId(latestUserMessage.id)
+      : undefined);
+  if (!turnId) {
+    return;
+  }
+  await resumeSlackTurn({
     messageText: stored.pendingMessage,
+    conversationId: threadId,
+    turnId,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     messageTs,
-    connectedText: "",
+    initialText: "",
     agentRunner: options.agentRunner,
     replyContext: {
       input: {
@@ -552,12 +552,6 @@ async function resumePendingOAuthMessage(
         actor,
         destination: stored.destination,
         source,
-        correlation: {
-          conversationId: threadId,
-          channelId: stored.channelId,
-          threadTs: stored.threadTs,
-          actorId: stored.userId,
-        },
       },
       policy: {
         configuration: stored.configuration,

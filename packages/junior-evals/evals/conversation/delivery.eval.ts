@@ -27,6 +27,9 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       ],
     });
 
+    expect(toolCalls(result.session).map((call) => call.name)).toContain(
+      "addReaction",
+    );
     expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
@@ -51,7 +54,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     });
 
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "sendMessage",
+      "sendFiles",
     );
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
@@ -65,20 +68,28 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       initialEvents: [
         mention("make a small image of a launch checklist and share it here"),
       ],
+      criteria: rubric({
+        pass: [
+          "Any file caption and follow-up assistant text are concise and do not repeat the same prose.",
+        ],
+        fail: [
+          "The same delivery statement or description is repeated in both the file caption and another assistant message.",
+        ],
+      }),
     });
 
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "imageGenerate" }),
         expect.objectContaining({
-          name: "sendMessage",
+          name: "sendFiles",
         }),
       ]),
     );
-    const sendMessageCall = toolCalls(result.session).find(
-      (call) => call.name === "sendMessage",
+    const sendFilesCall = toolCalls(result.session).find(
+      (call) => call.name === "sendFiles",
     );
-    expect(sendMessageCall?.arguments).not.toHaveProperty("target");
+    expect(sendFilesCall?.arguments).not.toHaveProperty("target");
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);

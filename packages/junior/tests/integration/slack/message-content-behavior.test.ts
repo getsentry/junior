@@ -283,13 +283,13 @@ describe("Slack behavior: message content", () => {
               });
               if (
                 calls.length === 1 &&
-                context?.correlation?.conversationId &&
-                context.correlation.turnId
+                context?.conversationId &&
+                context.turnId
               ) {
                 await upsertAgentTurnSessionRecord({
                   modelId: "test/model",
-                  conversationId: context.correlation.conversationId,
-                  sessionId: context.correlation.turnId,
+                  conversationId: context.conversationId,
+                  sessionId: context.turnId,
                   sliceId: 1,
                   state: "completed",
                   piMessages: storedFirstTurnHistory,

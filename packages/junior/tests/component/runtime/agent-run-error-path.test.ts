@@ -1,8 +1,5 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import {
-  createLocalSource,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 
 const originalAiModel = process.env.AI_MODEL;
 
@@ -23,17 +20,6 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:respond-error-path",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
-const SLACK_DESTINATION = {
-  platform: "slack" as const,
-  teamId: "T123",
-  channelId: "C123",
-};
-const SLACK_SOURCE = createSlackSource({
-  teamId: SLACK_DESTINATION.teamId,
-  channelId: SLACK_DESTINATION.channelId,
-  type: "priv",
-});
-
 describe("executeAgentRun error path", () => {
   afterAll(() => {
     if (originalAiModel === undefined) {
@@ -45,6 +31,8 @@ describe("executeAgentRun error path", () => {
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
     const outcome = await executeAgentRun({
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-sandbox-failure",
       input: { messageText: "hello" },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
       state: {
@@ -71,6 +59,8 @@ describe("executeAgentRun error path", () => {
 
   it("preserves configured reasoning in failure diagnostics", async () => {
     const outcome = await executeAgentRun({
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-reasoning-failure",
       input: { messageText: "hello" },
       policy: { reasoningLevel: "high" },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
@@ -85,6 +75,8 @@ describe("executeAgentRun error path", () => {
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
       executeAgentRun({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        turnId: "turn-input-failure",
         input: { messageText: "hello" },
         routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
         durability: {
@@ -99,6 +91,8 @@ describe("executeAgentRun error path", () => {
   it("hard-fails missing destinations", async () => {
     await expect(
       executeAgentRun({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        turnId: "turn-missing-destination",
         input: { messageText: "hello" },
         routing: {} as Parameters<typeof executeAgentRun>[0]["routing"],
       }),
@@ -108,6 +102,8 @@ describe("executeAgentRun error path", () => {
   it("hard-fails actor and destination platform mismatches", async () => {
     await expect(
       executeAgentRun({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        turnId: "turn-actor-mismatch",
         input: { messageText: "hello" },
         routing: {
           destination: LOCAL_DESTINATION,
@@ -124,21 +120,19 @@ describe("executeAgentRun error path", () => {
     );
   });
 
-  it("hard-fails Slack correlation and destination mismatches", async () => {
+  it("hard-fails conflicting local conversation identities", async () => {
     await expect(
       executeAgentRun({
+        conversationId: "local:test:different-conversation",
+        turnId: "turn-conversation-mismatch",
         input: { messageText: "hello" },
         routing: {
-          destination: SLACK_DESTINATION,
-          source: SLACK_SOURCE,
-          correlation: {
-            channelId: "C999",
-            teamId: "T123",
-          },
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
         },
       }),
     ).rejects.toThrow(
-      "Slack correlation channel does not match destination channel",
+      "Local source, destination, and run conversation IDs do not match",
     );
   });
 });

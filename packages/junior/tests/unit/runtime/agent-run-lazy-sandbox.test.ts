@@ -176,6 +176,14 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
   shouldEmitDevAgentTrace: () => false,
 }));
 
+vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
+  loadConnectedMcpProviders: async () => [],
+  openConversationProjection: async () => ({ modelProfile: "standard" }),
+  recordMcpProviderConnected: async () => undefined,
+  recordToolExecutionStarted: async () => undefined,
+}));
+
 vi.mock("@/chat/capabilities/factory", () => ({
   createUserTokenStore: () => ({
     get: async () => undefined,
@@ -214,8 +222,8 @@ vi.mock("@/chat/services/turn-session-record", () => ({
             piMessages: [...sessionRecordPiMessages.value],
           }
         : undefined,
-    canUseTurnSession: false,
   }),
+  persistRunningSessionRecord: async () => false,
   persistCompletedSessionRecord: async () => undefined,
   persistAuthPauseSessionRecord: async () => ({
     version: 1,
@@ -376,6 +384,8 @@ async function generateLocalReply(
 ) {
   const outcome = await executeAgentRun({
     ...context,
+    conversationId: context.conversationId ?? LOCAL_DESTINATION.conversationId,
+    turnId: context.turnId ?? "turn-agent-run-lazy-sandbox",
     input: {
       messageText: message,
       ...(context.input ?? {}),

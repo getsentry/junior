@@ -64,7 +64,7 @@ describe("delivered turn state", () => {
       conversation: coerceThreadConversationState({}),
       reply: {
         text: "",
-        deliveryPlan: { mode: "thread", postThreadText: false },
+        deliveryPlan: { postThreadText: false },
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "test/model",

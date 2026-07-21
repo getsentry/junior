@@ -15,13 +15,15 @@ runtime orchestration.
 
 ## Delivery
 
-- Post the primary finalized reply in the originating conversation context.
+- Post each completed assistant message in the originating conversation
+  context, preserving model message boundaries.
 - Translate Junior Markdown to Slack `mrkdwn` only at the outbound boundary.
 - Continue oversized replies without splitting code fences into invalid
   fragments.
 - Upload files only through validated runtime artifacts; do not trust arbitrary
   model-provided paths or destinations.
-- Reactions and status messages are progress UI, not completion contracts.
+- Reactions and status messages are progress UI, not assistant-message delivery
+  contracts.
 - OAuth links and other private authorization material use private delivery.
 
 `outbound.ts` owns Slack API calls and retry classification. `mrkdwn.ts` owns

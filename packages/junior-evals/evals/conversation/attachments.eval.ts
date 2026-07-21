@@ -23,7 +23,7 @@ describeEval("Media and Attachments", slackEvals, (it) => {
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "imageGenerate" }),
-        expect.objectContaining({ name: "sendMessage" }),
+        expect.objectContaining({ name: "sendFiles" }),
       ]),
     );
     expect(hasImageAttachment(result.session)).toBe(true);

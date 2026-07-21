@@ -2,6 +2,7 @@ import path from "node:path";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Maximum single file size accepted by model-facing upload tools. */
 export const MAX_SANDBOX_FILE_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -33,7 +34,7 @@ export interface SandboxFileUpload {
 }
 
 /** Signal that a model-provided file path did not resolve in the active sandbox. */
-export class SandboxFileNotFoundError extends Error {
+export class SandboxFileNotFoundError extends ToolInputError {
   constructor(readonly path: string) {
     super(`failed to read file: ${path}`);
   }
@@ -130,11 +131,11 @@ export async function readSandboxFileUpload(
   }
 
   if (fileBuffer.byteLength === 0) {
-    throw new Error(`file is empty: ${targetPath}`);
+    throw new ToolInputError(`file is empty: ${targetPath}`);
   }
 
   if (fileBuffer.byteLength > MAX_SANDBOX_FILE_UPLOAD_BYTES) {
-    throw new Error(
+    throw new ToolInputError(
       `file exceeds ${MAX_SANDBOX_FILE_UPLOAD_BYTES} bytes: ${targetPath} (${fileBuffer.byteLength} bytes)`,
     );
   }

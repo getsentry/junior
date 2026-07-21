@@ -40,15 +40,15 @@
       adding Junior-owned status and provider/tool identity.
 - [x] Keep MCP image output in native model content instead of replacing it with
       only a structured summary.
-- [x] Convert `sendMessage` to return structured channel/thread/message/file
-      identifiers, permalink, and deduplication state.
+- [x] Convert `sendFiles` to return structured channel/thread/file identifiers
+      and deduplication state.
 
 ## 4. Tests
 
 - [x] Add focused tests for the result helper to prove `content` and `details`
       are derived from the same object.
 - [x] Add integration-style tool tests for the converted file/search tools.
-- [x] Add focused Slack side-effect coverage for the converted `sendMessage`
+- [x] Add focused Slack side-effect coverage for the converted `sendFiles`
       result shape.
 - [x] Add coverage that output schema failures are not reported as
       `ToolInputError`.

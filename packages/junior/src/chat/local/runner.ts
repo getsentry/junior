@@ -4,7 +4,7 @@
  * This module owns the Slack-free execution boundary for CLI-originated turns:
  * it persists local conversation state, invokes the shared agent runner with
  * a local destination, and only commits assistant delivery after the CLI sink
- * accepts the final output.
+ * accepts each completed assistant message.
  */
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { randomUUID } from "node:crypto";
@@ -38,6 +38,7 @@ import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
+  recordDeliveredAssistantMessage,
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
@@ -52,6 +53,8 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/messages";
+import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
@@ -91,7 +94,6 @@ export interface LocalAgentTurnDeps {
   turnLifecycle?: ConversationTurnLifecycle;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
-  onTextDelta?: (deltaText: string) => void | Promise<void>;
   onToolInvocation?: (invocation: LocalToolInvocation) => void | Promise<void>;
   onToolResult?: (result: LocalToolResult) => void | Promise<void>;
 }
@@ -114,12 +116,6 @@ function localDestination(conversationId: string): LocalDestination {
 
 function localTurnId(): string {
   return `local-turn-${randomUUID()}`;
-}
-
-function localReply(reply: AgentRunResult): LocalAgentReply {
-  return {
-    text: reply.text,
-  };
 }
 
 function captureLocalBoundaryFailure(args: {
@@ -232,6 +228,48 @@ export async function runLocalAgentTurn(
     userId: "local-cli",
     userName: "local",
   };
+  let assistantMessageDelivered = false;
+  /** Print and record one completed assistant message in local conversation order. */
+  const deliverAssistantMessage = async (message: {
+    terminal: boolean;
+    text: string;
+  }): Promise<void> => {
+    if (!message.text.trim()) {
+      if (message.terminal) {
+        throw new Error(
+          "Local terminal assistant message did not contain visible text",
+        );
+      }
+      return;
+    }
+    failureCode = "delivery_failed";
+    await deps.deliverReply({ text: message.text });
+    assistantMessageDelivered = true;
+    recordDeliveredAssistantMessage({
+      conversation,
+      sessionId: turnId,
+      terminal: message.terminal,
+      text: message.text,
+      userMessageId,
+    });
+    try {
+      await persistWithRetry(() =>
+        persistConversationMessages({
+          conversation,
+          conversationId: input.conversationId,
+        }),
+      );
+    } catch (error) {
+      logException(
+        new Error("Accepted assistant message persistence failed"),
+        "local_assistant_message_post_delivery_persist_failed",
+        { conversationId: input.conversationId },
+        { "error.type": error instanceof Error ? error.name : typeof error },
+        "Failed to persist an accepted local assistant message",
+      );
+    }
+    failureCode = "agent_run_failed";
+  };
   try {
     await persistThreadStateById(input.conversationId, { conversation });
     const piMessages = await (deps.loadPiMessages ?? loadLocalPiMessages)({
@@ -239,6 +277,9 @@ export async function runLocalAgentTurn(
     });
     failureCode = "agent_run_failed";
     const outcome = await deps.agentRunner.run({
+      conversationId: input.conversationId,
+      turnId,
+      runId: turnId,
       input: {
         messageText: text,
         conversationContext: buildConversationContext(conversation, {
@@ -254,11 +295,6 @@ export async function runLocalAgentTurn(
         source,
         actor: localActor,
         surface: "internal",
-        correlation: {
-          conversationId: input.conversationId,
-          turnId,
-          runId: turnId,
-        },
       },
       policy: {
         authorizationFlowMode: "disabled",
@@ -274,13 +310,16 @@ export async function runLocalAgentTurn(
         onStatus: async (status) => {
           await deps.onStatus?.(status.text);
         },
-        onTextDelta: deps.onTextDelta,
         onToolInvocation: async (invocation) => {
           await deps.onToolInvocation?.(invocation);
         },
         onToolResult: async (result) => {
           await deps.onToolResult?.(result);
         },
+      },
+      delivery: {
+        onAssistantMessage: ({ text }) =>
+          deliverAssistantMessage({ terminal: false, text }),
       },
       durability: {
         onArtifactStateUpdated: async (nextArtifacts) => {
@@ -320,6 +359,12 @@ export async function runLocalAgentTurn(
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
 
+    if (reply.diagnostics.outcome !== "success") {
+      await deliverAssistantMessage({ terminal: true, text: reply.text });
+    } else if (shouldDeliverReplyText(reply)) {
+      await deliverAssistantMessage({ terminal: true, text: reply.text });
+    }
+
     completedState = buildDeliveredTurnStatePatch({
       artifacts,
       conversation,
@@ -327,10 +372,6 @@ export async function runLocalAgentTurn(
       sessionId: turnId,
       userMessageId,
     });
-    if (reply.deliveryPlan?.postThreadText !== false) {
-      failureCode = "delivery_failed";
-      await deps.deliverReply(localReply(reply));
-    }
   } catch (error) {
     const failureEventId =
       modelFailureCaptureAttempted && failureCode === "agent_run_failed"
@@ -438,7 +479,9 @@ export async function runLocalAgentTurn(
       conversationId: input.conversationId,
       createdAtMs: now(),
       outcome:
-        reply.deliveryPlan?.postThreadText === false ? "no_reply" : "success",
+        assistantMessageDelivered || shouldDeliverReplyText(reply)
+          ? "success"
+          : "no_reply",
       turnId,
     });
   } else {

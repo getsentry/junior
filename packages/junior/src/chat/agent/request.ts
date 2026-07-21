@@ -16,13 +16,12 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createActor, isUserActor, type Actor } from "@/chat/actor";
+import type { Actor } from "@/chat/actor";
 import type { SandboxAcquiredState } from "@/chat/sandbox/sandbox";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
-import { parseSlackThreadId } from "@/chat/slack/context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -92,18 +91,6 @@ export interface AgentRunRouting {
     metadata?: Record<string, string>;
     plugin?: string;
   };
-  correlation?: {
-    conversationId?: string;
-    threadId?: string;
-    turnId?: string;
-    runId?: string;
-    channelId?: string;
-    channelName?: string;
-    teamId?: string;
-    messageTs?: string;
-    threadTs?: string;
-    actorId?: string;
-  };
   toolChannelId?: string;
 }
 
@@ -144,8 +131,6 @@ export interface AgentRunState {
  * their failures never affect the run.
  */
 export interface AgentRunObservers {
-  onTextDelta?: (deltaText: string) => void | Promise<void>;
-  onAssistantMessageStart?: () => void | Promise<void>;
   onToolInvocation?: (invocation: {
     params: Record<string, unknown>;
     toolCallId: string;
@@ -153,6 +138,16 @@ export interface AgentRunObservers {
   }) => void | Promise<void>;
   onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+}
+
+/** One completed intermediate assistant message ready for destination delivery. */
+export interface AgentAssistantMessage {
+  text: string;
+}
+
+/** Delivers intermediate messages before the agent advances to more work. */
+export interface AgentRunDelivery {
+  onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }
 
 /** Carries durable-worker ports that commit or update resumable run state. */
@@ -174,52 +169,28 @@ export interface AgentRunDurability {
 
 /** Groups the per-slice run request by the runtime role each field serves. */
 export interface AgentRunRequest {
+  /** Durable conversation advanced by this run. */
+  conversationId: string;
+  /** Stable turn advanced across this run and any continuation runs. */
+  turnId: string;
+  /** Optional bounded-run identifier used only for observability. */
+  runId?: string;
   input: AgentRunInput;
   routing: AgentRunRouting;
   policy?: AgentRunPolicy;
   state?: AgentRunState;
   observers?: AgentRunObservers;
+  delivery?: AgentRunDelivery;
   durability?: AgentRunDurability;
 }
 
-/** Extract conversation and session identifiers from correlation context. */
-export function getSessionIdentifiers(routing: AgentRunRouting): {
-  conversationId?: string;
-  sessionId?: string;
-} {
-  return {
-    conversationId:
-      routing.correlation?.conversationId ??
-      routing.correlation?.threadId ??
-      routing.correlation?.runId,
-    sessionId: routing.correlation?.turnId,
-  };
-}
-
-/** Derive the acting actor, filling platform and team from the destination. */
+/** Resolve the explicit actor or the system credential actor for this run. */
 export function actorFromRouting(routing: AgentRunRouting): Actor | undefined {
   if (routing.dispatch?.actor) {
     return routing.dispatch.actor;
   }
-  const userActor = createActor(
-    isUserActor(routing.actor) ? routing.actor : undefined,
-    {
-      platform:
-        (isUserActor(routing.actor) ? routing.actor.platform : undefined) ??
-        (routing.destination.platform === "slack" ? "slack" : undefined),
-      teamId:
-        (routing.destination.platform === "slack"
-          ? routing.destination.teamId
-          : undefined) ??
-        routing.correlation?.teamId ??
-        (routing.actor?.platform === "slack"
-          ? routing.actor.teamId
-          : undefined),
-      userId: routing.correlation?.actorId,
-    },
-  );
-  if (userActor) {
-    return userActor;
+  if (routing.actor) {
+    return routing.actor;
   }
   if (
     routing.credentialContext &&
@@ -230,10 +201,31 @@ export function actorFromRouting(routing: AgentRunRouting): Actor | undefined {
   return undefined;
 }
 
-/** Reject actor identities that do not belong to the active destination. */
-export function assertActorDestinationMatch(routing: AgentRunRouting): void {
-  const { destination, actor } = routing;
-  if (!actor) {
+/** Reject contradictory provider coordinates before the run touches state. */
+export function assertRunRoutingConsistency(
+  request: Pick<AgentRunRequest, "conversationId" | "routing">,
+): void {
+  const { destination, source } = request.routing;
+  if (source.platform !== destination.platform) {
+    throw new TypeError("Run source and destination platforms do not match");
+  }
+  if (source.platform === "slack" && destination.platform === "slack") {
+    if (source.teamId !== destination.teamId) {
+      throw new TypeError("Slack source and destination teams do not match");
+    }
+  } else if (
+    source.platform === "local" &&
+    destination.platform === "local" &&
+    (source.conversationId !== request.conversationId ||
+      destination.conversationId !== request.conversationId)
+  ) {
+    throw new TypeError(
+      "Local source, destination, and run conversation IDs do not match",
+    );
+  }
+
+  const actor = request.routing.dispatch?.actor ?? request.routing.actor;
+  if (!actor || actor.platform === "system") {
     return;
   }
   if (actor.platform !== destination.platform) {
@@ -247,32 +239,6 @@ export function assertActorDestinationMatch(routing: AgentRunRouting): void {
     actor.teamId !== destination.teamId
   ) {
     throw new TypeError("Slack actor team does not match destination team");
-  }
-}
-
-/** Reject legacy Slack correlation fields that conflict with the destination. */
-export function assertCorrelationDestinationMatch(
-  routing: AgentRunRouting,
-): void {
-  const { correlation, destination } = routing;
-  if (destination.platform !== "slack") {
-    return;
-  }
-  if (
-    correlation?.channelId !== undefined &&
-    correlation.channelId !== destination.channelId
-  ) {
-    throw new TypeError(
-      "Slack correlation channel does not match destination channel",
-    );
-  }
-  if (
-    correlation?.teamId !== undefined &&
-    correlation.teamId !== destination.teamId
-  ) {
-    throw new TypeError(
-      "Slack correlation team does not match destination team",
-    );
   }
 }
 
@@ -291,24 +257,9 @@ export function toolInvocationDestination(
 }
 
 /** Infer the run surface when the caller did not state one. */
-export function surfaceFromRouting(
-  routing: AgentRunRouting,
-): AgentTurnSurface | undefined {
+export function surfaceFromRouting(routing: AgentRunRouting): AgentTurnSurface {
   if (routing.surface) {
     return routing.surface;
   }
-  const conversationId =
-    routing.correlation?.conversationId ??
-    routing.correlation?.threadId ??
-    routing.correlation?.runId;
-  if (
-    routing.slackConversation ||
-    (conversationId ? parseSlackThreadId(conversationId) : undefined)
-  ) {
-    return "slack";
-  }
-  if (conversationId) {
-    return "api";
-  }
-  return undefined;
+  return routing.source.platform === "slack" ? "slack" : "internal";
 }

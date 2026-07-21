@@ -38,7 +38,7 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { resumeAuthorizedRequest } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
@@ -252,17 +252,15 @@ async function resumeAuthorizedMcpTurn(args: {
     return;
   }
 
-  await resumeAuthorizedRequest({
+  await resumeSlackTurn({
     messageText: userMessage.text,
+    conversationId: authSession.conversationId,
+    turnId: resolvedSessionId,
     channelId: authSession.channelId,
     threadTs: authSession.threadTs,
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
-    lifecycleCorrelation: {
-      conversationId: authSession.conversationId,
-      turnId: resolvedSessionId,
-    },
-    connectedText: "",
+    initialText: "",
     agentRunner,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
@@ -386,13 +384,6 @@ async function resumeAuthorizedMcpTurn(args: {
             actor,
             destination,
             source: lockedSessionRecord.source,
-            correlation: {
-              conversationId: authSession.conversationId,
-              turnId: lockedSessionId,
-              channelId: authSession.channelId,
-              threadTs: authSession.threadTs,
-              actorId: actor.userId,
-            },
             toolChannelId:
               authSession.toolChannelId ??
               lockedArtifacts.assistantContextChannelId ??

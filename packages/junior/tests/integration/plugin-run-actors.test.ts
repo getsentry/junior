@@ -153,15 +153,13 @@ describe("run actors threading", () => {
 
   it("seeds the live actors getter with the run actor and grows it as steering drains", async () => {
     await executeAgentRun({
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-run-actors",
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
         actor: RUN_ACTOR,
-        correlation: {
-          conversationId: "conversation-run-actors",
-          turnId: "turn-run-actors",
-        },
       },
       durability: {
         drainSteeringMessages: async (inject) => {
@@ -181,7 +179,7 @@ describe("run actors threading", () => {
   });
 
   it("seeds the live actors getter from a fresh run's committed prefix", async () => {
-    const conversationId = "conversation-run-actors-batched";
+    const conversationId = LOCAL_DESTINATION.conversationId;
     const sessionId = "turn-run-actors-batched";
 
     await upsertAgentTurnSessionRecord({
@@ -204,15 +202,13 @@ describe("run actors threading", () => {
     });
 
     await executeAgentRun({
+      conversationId,
+      turnId: sessionId,
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
         actor: RUN_ACTOR,
-        correlation: {
-          conversationId,
-          turnId: sessionId,
-        },
       },
     });
 
@@ -222,15 +218,13 @@ describe("run actors threading", () => {
 
   it("does not credit an unresolvable steering actor", async () => {
     await executeAgentRun({
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-run-actors-unresolved",
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
         actor: RUN_ACTOR,
-        correlation: {
-          conversationId: "conversation-run-actors-unresolved",
-          turnId: "turn-run-actors-unresolved",
-        },
       },
       durability: {
         drainSteeringMessages: async (inject) => {

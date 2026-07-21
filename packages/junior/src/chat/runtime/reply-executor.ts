@@ -23,7 +23,7 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  planSlackReplyPosts,
+  planSlackAssistantMessagePosts,
   postSlackApiReplyPosts,
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
@@ -61,6 +61,7 @@ import {
   type ConversationMemoryService,
   markConversationMessage,
   normalizeConversationText,
+  recordDeliveredAssistantMessage,
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
@@ -128,6 +129,7 @@ import {
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
+import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -474,6 +476,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const slackActionToken = readSlackActionToken(message);
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
+    if (!conversationId) {
+      throw new Error("Slack reply execution requires a conversation id");
+    }
 
     await withSpan(
       "chat.reply",
@@ -1016,7 +1021,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         // destination accepted the final posts, later errors in the same turn
         // must not mark it failed or trigger the fallback failure reply.
         let finalReplyDelivered = false;
+        let assistantMessageDelivered = false;
         let lifecycleTerminalized = false;
+        const replyFooter = buildSlackReplyFooter({ conversationId });
+        const shouldUseSlackFooter =
+          Boolean(replyFooter) &&
+          Boolean(channelId && threadTs) &&
+          (thread.adapter as { name?: string } | undefined)?.name === "slack";
         let turnCompletionNotified = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
@@ -1025,14 +1036,106 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           "agent_run_failed";
         let boundaryFailureEventId: string | undefined;
         let finalizedFailureEventId: string | undefined;
-        const hasVisibleSlackDelivery = (post: { text: string }) =>
-          post.text.trim().length > 0;
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
             return;
           }
           await options.onTurnCompleted?.();
           turnCompletionNotified = true;
+        };
+        /** Post and record one completed assistant message in the active thread. */
+        const deliverAssistantMessage = async (assistantMessage: {
+          terminal: boolean;
+          text: string;
+        }): Promise<void> => {
+          const posts = planSlackAssistantMessagePosts(assistantMessage.text);
+          if (posts.length === 0) {
+            if (assistantMessage.terminal) {
+              throw new Error(
+                "Slack terminal assistant message did not contain visible text",
+              );
+            }
+            return;
+          }
+          boundaryFailureCode = "delivery_failed";
+          let slackTs: string | undefined;
+          if (assistantMessage.terminal && shouldUseSlackFooter) {
+            if (!channelId || !threadTs) {
+              throw new Error(
+                "Slack footer delivery requires a concrete channel and thread timestamp",
+              );
+            }
+            slackTs = await postSlackApiReplyPosts({
+              beforePost: beforeFirstResponsePost,
+              channelId,
+              threadTs,
+              posts,
+              footer: replyFooter,
+              onPostError: ({ error, messageTs: failedMessageTs, stage }) => {
+                boundaryFailureEventId = logException(
+                  error,
+                  "slack_thread_post_failed",
+                  turnTraceContext,
+                  {
+                    "app.slack.reply_stage": stage,
+                    ...(failedMessageTs
+                      ? { "messaging.message.id": failedMessageTs }
+                      : {}),
+                    ...getSlackErrorObservabilityAttributes(error),
+                  },
+                  "Failed to post Slack assistant message",
+                );
+              },
+            });
+          } else {
+            for (const post of posts) {
+              const sentMessage = await postThreadReply(
+                buildSlackOutputMessage(post.text),
+                post.stage,
+              );
+              slackTs = sentMessage.id;
+            }
+          }
+
+          if (assistantMessage.terminal) {
+            finalReplyDelivered = true;
+            shouldPersistFailureState = false;
+          }
+          assistantMessageDelivered = true;
+          const recordedMessageId = recordDeliveredAssistantMessage({
+            conversation: preparedState.conversation,
+            sessionId: turnId,
+            terminal: assistantMessage.terminal,
+            text: assistantMessage.text,
+            userMessageId: preparedState.userMessageId,
+          });
+          if (slackTs) {
+            markConversationMessage(
+              preparedState.conversation,
+              recordedMessageId,
+              { slackTs },
+            );
+          }
+          try {
+            await persistWithRetry(() =>
+              persistConversationMessages({
+                conversation: preparedState.conversation,
+                conversationId,
+              }),
+            );
+          } catch (error) {
+            logException(
+              new Error("Accepted assistant message persistence failed"),
+              "slack_assistant_message_post_delivery_persist_failed",
+              turnTraceContext,
+              {
+                "error.type":
+                  error instanceof Error ? error.name : typeof error,
+              },
+              "Failed to persist an accepted Slack assistant message",
+            );
+          }
+          boundaryFailureCode = "agent_run_failed";
         };
 
         try {
@@ -1217,6 +1320,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
             : undefined;
           const outcome = await deps.services.agentRunner.run({
+            conversationId,
+            turnId,
+            ...(runId ? { runId } : {}),
             input: {
               actor: {
                 ...(activeInstructionAuthorId
@@ -1243,18 +1349,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               destination,
               destinationVisibility,
               surface: "slack",
-              correlation: {
-                conversationId,
-                threadId,
-                turnId,
-                threadTs,
-                messageTs,
-                teamId,
-                runId,
-                channelId,
-                channelName,
-                actorId: slackActorId,
-              },
               toolChannelId,
               slackActionToken,
             },
@@ -1277,6 +1371,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             observers: {
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
+            },
+            delivery: {
+              onAssistantMessage: ({ text }) =>
+                deliverAssistantMessage({ terminal: false, text }),
             },
             durability: {
               onInputCommitted: options.ack,
@@ -1440,86 +1538,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             reply = finalized.reply;
             finalizedFailureEventId = finalized.eventId;
-          }
-
-          const artifactStatePatch: Partial<ThreadArtifactsState> =
-            reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
-
-          const plannedPosts = planSlackReplyPosts({ reply });
-          const replyFooter = buildSlackReplyFooter({
-            conversationId,
-          });
-          const shouldUseSlackFooter =
-            Boolean(replyFooter) &&
-            Boolean(channelId && threadTs) &&
-            (thread.adapter as { name?: string } | undefined)?.name === "slack";
-
-          boundaryFailureCode = "delivery_failed";
-
-          // Text replies must be accepted by Slack before completion;
-          // no-reply turns intentionally complete without thread text.
-          if (plannedPosts.length > 0) {
-            const hasVisibleDelivery = plannedPosts.some(
-              hasVisibleSlackDelivery,
-            );
-            if (!hasVisibleDelivery) {
-              throw new Error(
-                "Slack final reply plan did not contain visible delivery",
-              );
-            }
-            if (shouldUseSlackFooter) {
-              const slackChannelId = channelId;
-              const slackThreadTs = threadTs;
-              if (!slackChannelId || !slackThreadTs) {
-                throw new Error(
-                  "Slack footer delivery requires a concrete channel and thread timestamp",
-                );
-              }
-
-              await postSlackApiReplyPosts({
-                beforePost: beforeFirstResponsePost,
-                channelId: slackChannelId,
-                threadTs: slackThreadTs,
-                posts: plannedPosts,
-                footer: replyFooter,
-                onPostError: ({ error, messageTs, stage }) => {
-                  boundaryFailureEventId = logException(
-                    error,
-                    "slack_thread_post_failed",
-                    turnTraceContext,
-                    {
-                      "app.slack.reply_stage": stage,
-                      ...(messageTs
-                        ? { "messaging.message.id": messageTs }
-                        : {}),
-                      ...getSlackErrorObservabilityAttributes(error),
-                    },
-                    "Failed to post Slack thread reply",
-                  );
-                },
-              });
-            } else {
-              for (const post of plannedPosts) {
-                if (!hasVisibleSlackDelivery(post)) {
-                  continue;
-                }
-                await postThreadReply(
-                  buildSlackOutputMessage(post.text),
-                  post.stage,
-                );
-              }
-            }
-            // Slack accepted every final post: the turn is delivered even if
-            // completion persistence below fails.
-            finalReplyDelivered = true;
-            shouldPersistFailureState = false;
+            await deliverAssistantMessage({
+              terminal: true,
+              text: reply.text,
+            });
+          } else if (shouldDeliverReplyText(reply)) {
+            await deliverAssistantMessage({
+              terminal: true,
+              text: reply.text,
+            });
           } else {
-            // No-reply turns have no thread reply to deliver; the assistant's
-            // reserved marker is the completion boundary.
+            // Explicit no-reply turns intentionally complete without terminal
+            // text after any preceding assistant/tool work has settled.
             finalReplyDelivered = true;
             shouldPersistFailureState = false;
           }
           boundaryFailureCode = "agent_run_failed";
+
+          const artifactStatePatch: Partial<ThreadArtifactsState> =
+            reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
 
           const completedState = buildDeliveredTurnStatePatch({
             artifactStatePatch: {
@@ -1629,7 +1666,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.turnLifecycle.complete({
                 conversationId,
                 createdAtMs: Date.now(),
-                outcome: plannedPosts.length === 0 ? "no_reply" : "success",
+                outcome:
+                  assistantMessageDelivered || shouldDeliverReplyText(reply)
+                    ? "success"
+                    : "no_reply",
                 turnId,
               });
             } else {

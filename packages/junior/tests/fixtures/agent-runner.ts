@@ -1,4 +1,7 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { AgentAssistantMessage } from "@/chat/agent/request";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 /**
  * Default harness runner: resolve @/chat/agent-run at call time so a test's
@@ -13,18 +16,21 @@ export const realAgentRunner: AgentRunner = {
 };
 
 /**
- * Flatten a grouped run request so tests can assert on the legacy flat field
- * surface without hand-copying the group spreads at every mock boundary.
+ * Flatten a grouped run request for concise assertions at fake-runner boundaries.
  */
 export function flattenAgentRunRequestForTest(
   request: Parameters<AgentRunner["run"]>[0],
 ) {
   return {
+    conversationId: request.conversationId,
+    turnId: request.turnId,
+    ...(request.runId ? { runId: request.runId } : {}),
     ...request.input,
     ...request.routing,
     ...(request.policy ?? {}),
     ...(request.state ?? {}),
     ...(request.observers ?? {}),
+    ...(request.delivery ?? {}),
     ...(request.durability ?? {}),
   };
 }
@@ -37,6 +43,24 @@ export function neverRunAgentRunner(): AgentRunner {
   return {
     run: async () => {
       throw new Error("agent runner should not run in this test");
+    },
+  };
+}
+
+/** Script completed assistant messages through the production delivery port. */
+export function scriptedAssistantMessageRunner(args: {
+  messages: AgentAssistantMessage[];
+  result: AgentRunResult;
+}): AgentRunner {
+  return {
+    run: async (request) => {
+      if (!request.delivery) {
+        throw new Error("scripted runner requires assistant delivery");
+      }
+      for (const message of args.messages) {
+        await request.delivery.onAssistantMessage(message);
+      }
+      return completedAgentRun(args.result);
     },
   };
 }

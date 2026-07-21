@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSendMessageTool } from "@/chat/slack/tools/send-message";
+import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ToolState } from "@/chat/tools/types";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
-  chatGetPermalinkOk,
-  chatPostMessageOk,
   conversationsHistoryPage,
   reactionsAddOk,
 } from "../fixtures/slack/factories/api";
@@ -151,58 +150,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("slack channel tools", () => {
-  it("posts text into the active Slack conversation", async () => {
-    queueSlackApiResponse("chat.postMessage", {
-      body: chatPostMessageOk({
-        ts: "1700000000.111",
-        channel: "C123",
-      }),
-    });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink: "https://example.invalid/permalink-1",
-      }),
-    });
-    const tool = createSendMessageTool(
-      createContext("summarize this thread"),
-      createToolState(),
-      createMaterializeFile(),
-    );
-    const result = await executeTool(tool, {
-      text: "Posting this update",
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      ts: "1700000000.111",
-    });
-    expect(
-      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
-    ).toMatchObject({
-      channel: "C123",
-      thread_ts: "1700000000.321",
-      text: "Posting this update",
-    });
-  });
-
-  it("uses source coordinates for sendMessage and destination context for channel reads", async () => {
+  it("uses source coordinates for sendFiles and destination context for channel reads", async () => {
     const context = createContext("share this in the current channel", {
       sourceChannelId: "D123",
       destinationChannelId: "C0SHARED",
-    });
-    queueSlackApiResponse("chat.postMessage", {
-      body: chatPostMessageOk({
-        ts: "1700000000.112",
-        channel: "D123",
-      }),
-    });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink: "https://example.invalid/permalink-shared",
-      }),
     });
     queueSlackApiResponse("conversations.history", {
       body: conversationsHistoryPage({
@@ -211,77 +162,30 @@ describe("slack channel tools", () => {
     });
 
     await executeTool(
-      createSendMessageTool(
+      createSendFilesTool(
         context,
         createToolState(),
-        createMaterializeFile(),
+        createMaterializeFile({
+          "/tmp/shared.txt": Buffer.from("shared update"),
+        }),
       ),
-      { text: "Shared update" },
+      { files: [{ path: "/tmp/shared.txt" }] },
     );
     await executeTool(createSlackChannelListMessagesTool(context), {
       limit: 10,
     });
 
     expect(
-      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
     ).toMatchObject({
-      channel: "D123",
+      channel_id: "D123",
       thread_ts: "1700000000.321",
-      text: "Shared update",
     });
     expect(
       getCapturedSlackApiCalls("conversations.history")[0]?.params,
     ).toMatchObject({
       channel: "C0SHARED",
     });
-  });
-
-  it("sends active-conversation text once for duplicate inputs", async () => {
-    queueSlackApiResponse("chat.postMessage", {
-      body: chatPostMessageOk({
-        ts: "1700000000.200",
-        channel: "C123",
-      }),
-    });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink: "https://example.invalid/permalink",
-      }),
-    });
-    const tool = createSendMessageTool(
-      createContext("please share this here"),
-      createToolState(),
-      createMaterializeFile(),
-    );
-
-    const first = await executeTool(tool, {
-      text: "Incident resolved.",
-    });
-    const second = await executeTool(tool, {
-      text: "Incident resolved.",
-    });
-
-    expect(first).toMatchObject({
-      ok: true,
-      status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      ts: "1700000000.200",
-    });
-    expect(second).toMatchObject({
-      ok: true,
-      status: "success",
-      deduplicated: true,
-    });
-
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
-    expect(postCalls).toHaveLength(1);
-    expect(postCalls[0]?.params).toMatchObject({
-      channel: "C123",
-      thread_ts: "1700000000.321",
-      text: "Incident resolved.",
-    });
-    expect(getCapturedSlackApiCalls("chat.getPermalink")).toHaveLength(1);
   });
 
   it("lists channel messages across history parameters and forwards filters", async () => {
@@ -433,40 +337,8 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
-  it("returns posted conversation message even when permalink lookup fails", async () => {
-    queueSlackApiResponse("chat.postMessage", {
-      body: chatPostMessageOk({
-        ts: "1700000000.400",
-        channel: "C123",
-      }),
-    });
-    queueSlackApiError("chat.getPermalink", {
-      error: "not_in_channel",
-    });
-    const tool = createSendMessageTool(
-      createContext("please post this in #eng channel"),
-      createToolState(),
-      createMaterializeFile(),
-    );
-
-    const result = await executeTool(tool, {
-      text: "Heads-up update",
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      ts: "1700000000.400",
-      permalink: undefined,
-    });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("chat.getPermalink")).toHaveLength(1);
-  });
-
-  it("sends text with files through Slack file upload", async () => {
-    const tool = createSendMessageTool(
+  it("sends a caption with files through Slack file upload", async () => {
+    const tool = createSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -475,15 +347,17 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
-      text: "Here is the report.",
+      caption: "Here is the report.",
       files: [{ path: "/tmp/report.txt" }],
     });
 
     expect(result).toMatchObject({
       ok: true,
       status: "success",
-      channel_id: "C123",
-      file_count: 1,
+      data: {
+        channel_id: "C123",
+        file_count: 1,
+      },
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
@@ -499,7 +373,7 @@ describe("slack channel tools", () => {
   });
 
   it("sends file-only messages without posting empty text", async () => {
-    const tool = createSendMessageTool(
+    const tool = createSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -514,8 +388,10 @@ describe("slack channel tools", () => {
     expect(result).toMatchObject({
       ok: true,
       status: "success",
-      channel_id: "C123",
-      file_count: 1,
+      data: {
+        channel_id: "C123",
+        file_count: 1,
+      },
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -529,53 +405,13 @@ describe("slack channel tools", () => {
     ).not.toHaveProperty("initial_comment");
   });
 
-  it("sends text messages into the current Slack thread", async () => {
-    queueSlackApiResponse("chat.postMessage", {
-      body: chatPostMessageOk({
-        ts: "1700000000.700",
-        channel: "C123",
-      }),
-    });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink: "https://example.invalid/thread-message",
-      }),
-    });
-    const tool = createSendMessageTool(
-      createContext("reply in thread", {
-        threadTs: "1700000000.321",
-      }),
-      createToolState(),
-      createMaterializeFile(),
-    );
-
-    const result = await executeTool(tool, {
-      text: "Thread update.",
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      ts: "1700000000.700",
-    });
-    expect(
-      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
-    ).toMatchObject({
-      channel: "C123",
-      thread_ts: "1700000000.321",
-      text: "Thread update.",
-    });
-  });
-
   it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
     const context = createContext("attach this here", {
       sourceChannelId: "D123",
       destinationChannelId: "CSHARED",
       threadTs: "1700000000.321",
     });
-    const tool = createSendMessageTool(
+    const tool = createSendFilesTool(
       context,
       createToolState(),
       createMaterializeFile({
@@ -590,9 +426,11 @@ describe("slack channel tools", () => {
     expect(result).toMatchObject({
       ok: true,
       status: "success",
-      channel_id: "D123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+      data: {
+        channel_id: "D123",
+        thread_ts: "1700000000.321",
+        file_count: 1,
+      },
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
@@ -603,7 +441,7 @@ describe("slack channel tools", () => {
   });
 
   it("uploads files into the current Slack thread", async () => {
-    const tool = createSendMessageTool(
+    const tool = createSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -620,9 +458,11 @@ describe("slack channel tools", () => {
     expect(result).toMatchObject({
       ok: true,
       status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+      data: {
+        channel_id: "C123",
+        thread_ts: "1700000000.321",
+        file_count: 1,
+      },
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -633,8 +473,8 @@ describe("slack channel tools", () => {
     });
   });
 
-  it("defaults file uploads to the current Slack thread", async () => {
-    const tool = createSendMessageTool(
+  it("treats nullable optional sendFiles fields as omitted", async () => {
+    const tool = createSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -645,46 +485,18 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
-    });
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-    });
-  });
-
-  it("treats nullable optional sendMessage fields as omitted", async () => {
-    const tool = createSendMessageTool(
-      createContext("attach the report", {
-        threadTs: "1700000000.321",
-      }),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      text: null,
+      caption: null,
       files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
     });
 
     expect(result).toMatchObject({
       ok: true,
       status: "success",
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+      data: {
+        channel_id: "C123",
+        thread_ts: "1700000000.321",
+        file_count: 1,
+      },
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
@@ -698,7 +510,7 @@ describe("slack channel tools", () => {
     const files = {
       "/tmp/report.txt": Buffer.from("first report"),
     };
-    const tool = createSendMessageTool(
+    const tool = createSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(files),
@@ -717,16 +529,57 @@ describe("slack channel tools", () => {
     ).toHaveLength(2);
   });
 
-  it("requires text or at least one file", async () => {
-    const tool = createSendMessageTool(
+  it("deduplicates repeated uploads of the same file contents", async () => {
+    const tool = createSendFilesTool(
+      createContext("share this file"),
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    await executeTool(tool, {
+      files: [{ path: "/tmp/report.txt" }],
+    });
+    const second = await executeTool(tool, {
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    expect(second).toMatchObject({
+      ok: true,
+      status: "success",
+      data: { deduplicated: true },
+    });
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal"),
+    ).toHaveLength(1);
+  });
+
+  it("reports a missing sendFiles path as repairable tool input", async () => {
+    const tool = createSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),
     );
 
-    await expect(executeTool(tool, {})).rejects.toThrow(
-      "sendMessage requires text or at least one file",
+    await expect(
+      executeTool(tool, {
+        files: [{ path: "/tmp/missing.txt" }],
+      }),
+    ).rejects.toBeInstanceOf(ToolInputError);
+    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual(
+      [],
     );
+  });
+
+  it("requires at least one file", async () => {
+    const tool = createSendFilesTool(
+      createContext("share this file"),
+      createToolState(),
+      createMaterializeFile(),
+    );
+
+    expect(() => tool.prepareArguments?.({})).toThrow(/files/);
   });
 
   it("traverses conversation history pagination up to the requested limit", async () => {

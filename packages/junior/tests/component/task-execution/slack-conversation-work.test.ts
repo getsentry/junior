@@ -1629,7 +1629,7 @@ describe("Slack conversation work execution", () => {
                 ],
               });
               currentNowMs = 242_000;
-              yieldedSessionId = context?.correlation?.turnId;
+              yieldedSessionId = context?.turnId;
               return { status: "suspended", resumeVersion: 1 };
             },
           },

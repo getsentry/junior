@@ -1,8 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  postSlackMessage,
-  uploadFilesToConversation,
-} from "@/chat/slack/outbound";
+import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -13,13 +10,13 @@ import type { ToolState } from "@/chat/tools/types";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 
 /** Convert a model-supplied sandbox file path into bytes safe for Slack upload. */
-export type MaterializeMessageFile = (input: {
+export type MaterializeFile = (input: {
   path: string;
   filename?: string;
   mimeType?: string;
 }) => Promise<SandboxFileUpload>;
 
-type MessageFileInput = {
+type FileInput = {
   path: string;
   filename?: string | null;
   mimeType?: string | null;
@@ -48,36 +45,31 @@ const fileInputSchema = z.object({
     .describe("Optional MIME type override. Null is treated as omitted."),
 });
 
-interface SendMessageResult {
-  ok: true;
-  status: "success";
-  target: string;
-  data: {
-    channel_id: string;
-    deduplicated?: boolean;
-    file_count?: number;
-    file_ids?: string[];
-    permalink?: string;
-    thread_ts?: string;
-    ts?: string;
-  };
-  channel_id: string;
-  deduplicated?: boolean;
-  file_count?: number;
-  file_ids?: string[];
-  permalink?: string;
-  thread_ts?: string;
-  ts?: string;
-}
+const sendFilesDataSchema = z.object({
+  channel_id: z.string().min(1),
+  deduplicated: z.boolean().optional(),
+  file_count: z.number().int().nonnegative(),
+  file_ids: z.array(z.string().min(1)).optional(),
+  thread_ts: z.string().min(1),
+});
+
+const sendFilesResultSchema = juniorToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.string().min(1),
+  data: sendFilesDataSchema,
+});
+
+type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
 function hasText(text: string | null | undefined): text is string {
   return typeof text === "string" && text.trim().length > 0;
 }
 
-function normalizeMessageFiles(
-  files: MessageFileInput[] | null | undefined,
+function normalizeFiles(
+  files: FileInput[],
 ): Array<{ path: string; filename?: string; mimeType?: string }> {
-  return (files ?? []).map((file) => ({
+  return files.map((file) => ({
     path: file.path,
     ...(file.filename ? { filename: file.filename } : {}),
     ...(file.mimeType ? { mimeType: file.mimeType } : {}),
@@ -99,17 +91,17 @@ function fileOperationInput(files: SandboxFileUpload[]) {
   }));
 }
 
-/** Create the Slack side-effect tool for active-conversation text and file messages. */
-export function createSendMessageTool(
+/** Create the Slack side-effect tool for active-conversation file messages. */
+export function createSendFilesTool(
   context: SlackToolContext,
   state: ToolState,
-  materializeFile: MaterializeMessageFile,
+  materializeFile: MaterializeFile,
 ) {
   return zodTool({
     description:
-      "Send a Slack message with optional files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. The message can contain text, files, or both; file-only messages are allowed. Do not use for top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
+      "Send one or more sandbox files into the active Slack conversation, with an optional caption. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: z.object({
-      text: z
+      caption: z
         .string()
         .max(40000)
         .nullable()
@@ -118,15 +110,11 @@ export function createSendMessageTool(
       files: z
         .array(fileInputSchema)
         .min(1)
-        .nullable()
-        .optional()
-        .describe(
-          "Sandbox files to include in the message. Null is treated as omitted.",
-        ),
+        .describe("One or more sandbox files to include in the message."),
     }),
-    outputSchema: juniorToolResultSchema,
-    execute: async ({ text, files }) => {
-      const filesToSend = normalizeMessageFiles(files);
+    outputSchema: sendFilesResultSchema,
+    execute: async ({ caption, files }) => {
+      const filesToSend = normalizeFiles(files);
       const activeChannelId = context.sourceChannelId;
       if (!activeChannelId) {
         throw new ToolInputError("No active Slack conversation is available.");
@@ -137,86 +125,50 @@ export function createSendMessageTool(
           "No active Slack conversation timestamp is available.",
         );
       }
-      const textToSend = hasText(text) ? text : undefined;
-      if (!textToSend && filesToSend.length === 0) {
-        throw new ToolInputError(
-          "sendMessage requires text or at least one file.",
-        );
-      }
-
+      const captionToSend = hasText(caption) ? caption : undefined;
       const materializedFiles = await Promise.all(
         filesToSend.map((file) => materializeFile(file)),
       );
-      const operationKey = createOperationKey("sendMessage", {
+      const operationKey = createOperationKey("sendFiles", {
         channel_id: activeChannelId,
         thread_ts: threadTs,
-        ...(textToSend ? { text: textToSend } : {}),
-        ...(materializedFiles.length > 0
-          ? { files: fileOperationInput(materializedFiles) }
-          : {}),
+        ...(captionToSend ? { caption: captionToSend } : {}),
+        files: fileOperationInput(materializedFiles),
       });
-      const cached = state.getOperationResult<SendMessageResult>(operationKey);
+      const cached = state.getOperationResult<SendFilesResult>(operationKey);
       if (cached) {
-        return {
+        return sendFilesResultSchema.parse({
           ...cached,
           data: {
             ...cached.data,
             deduplicated: true,
           },
-          deduplicated: true,
-        };
+        });
       }
 
       const uploads = materializedFiles.map((file) => ({
         data: file.data,
         filename: file.filename,
       }));
-      const posted =
-        uploads.length === 0 && textToSend
-          ? await postSlackMessage({
-              channelId: activeChannelId,
-              text: textToSend,
-              threadTs,
-              includePermalink: true,
-            })
-          : undefined;
-      const uploaded =
-        uploads.length > 0
-          ? await uploadFilesToConversation({
-              channelId: activeChannelId,
-              files: uploads,
-              threadTs,
-              ...(textToSend ? { initialComment: textToSend } : {}),
-            })
-          : undefined;
-      const response = {
+      const uploaded = await uploadFilesToConversation({
+        channelId: activeChannelId,
+        files: uploads,
+        threadTs,
+        ...(captionToSend ? { initialComment: captionToSend } : {}),
+      });
+      const fileIds = uploaded?.files
+        ?.map((file) => file.id)
+        .filter((id): id is string => Boolean(id));
+      const response: SendFilesResult = {
         ok: true,
         status: "success" as const,
         target: `${activeChannelId}:${threadTs}`,
         data: {
           channel_id: activeChannelId,
           thread_ts: threadTs,
-          ...(posted ? { ts: posted.ts, permalink: posted.permalink } : {}),
-          ...(uploads.length > 0 ? { file_count: uploads.length } : {}),
-          ...(uploaded?.files
-            ? {
-                file_ids: uploaded.files
-                  .map((file) => file.id)
-                  .filter((id): id is string => Boolean(id)),
-              }
-            : {}),
+          file_count: uploads.length,
+          ...(fileIds ? { file_ids: fileIds } : {}),
         },
-        channel_id: activeChannelId,
-        thread_ts: threadTs,
-        ...(posted ? { ts: posted.ts, permalink: posted.permalink } : {}),
-        ...(uploads.length > 0 ? { file_count: uploads.length } : {}),
-        ...(uploaded?.files
-          ? {
-              file_ids: uploaded.files
-                .map((file) => file.id)
-                .filter((id): id is string => Boolean(id)),
-            }
-          : {}),
       };
       state.setOperationResult(operationKey, response);
       return response;

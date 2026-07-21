@@ -598,6 +598,8 @@ function makeAgentRunRequest(
     channelId: "C123",
   };
   return {
+    conversationId: args.conversationId,
+    turnId: args.turnId,
     input: {
       messageText,
       ...(overrides.input ?? {}),
@@ -615,12 +617,6 @@ function makeAgentRunRequest(
         type: "priv",
       }),
       actor: TEST_ACTOR,
-      correlation: {
-        channelId: "C123",
-        conversationId: args.conversationId,
-        threadTs: args.threadTs,
-        turnId: args.turnId,
-      },
       ...(overrides.routing ?? {}),
     },
     ...(overrides.policy ? { policy: overrides.policy } : {}),

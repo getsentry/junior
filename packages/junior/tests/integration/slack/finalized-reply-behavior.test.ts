@@ -11,7 +11,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { scriptedAssistantMessageRunner } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -53,7 +53,7 @@ function makeDiagnostics(
 }
 
 describe("Slack behavior: finalized thread replies", () => {
-  it("posts only the finalized assistant reply even when deltas were emitted", async () => {
+  it("posts each completed assistant message", async () => {
     const turnLifecycle = {
       complete: vi.fn(),
       fail: vi.fn(),
@@ -66,12 +66,6 @@ describe("Slack behavior: finalized thread replies", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.input.messageText;
-              const context = {
-                ...flattenAgentRunRequestForTest(request),
-              };
-
-              await context?.onTextDelta?.("Hello ");
-              await context?.onTextDelta?.("world");
               return completedAgentRun({
                 text: "Hello world",
                 diagnostics: makeDiagnostics(),
@@ -112,28 +106,19 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(turnLifecycle.fail).not.toHaveBeenCalled();
   });
 
-  it("drops provisional pre-tool deltas and posts the post-tool answer once", async () => {
+  it("posts pre-tool and terminal assistant messages separately", async () => {
     const finalReply =
       "I checked five outlets. The dominant story is the escalating US-Iran conflict.";
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.input.messageText;
-              const context = {
-                ...flattenAgentRunRequestForTest(request),
-              };
-
-              await context?.onTextDelta?.("Fetching sources now...");
-              await context?.onAssistantMessageStart?.();
-              await context?.onTextDelta?.(finalReply);
-              return completedAgentRun({
-                text: finalReply,
-                diagnostics: makeDiagnostics({ toolCalls: ["webSearch"] }),
-              });
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [{ text: "Fetching sources now..." }],
+            result: {
+              text: finalReply,
+              diagnostics: makeDiagnostics({ toolCalls: ["webSearch"] }),
             },
-          },
+          }),
         },
       },
     });
@@ -150,8 +135,11 @@ describe("Slack behavior: finalized thread replies", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(thread.posts.map(toPostedText)).toEqual([finalReply]);
+    expect(thread.postKinds).toEqual(["value", "value"]);
+    expect(thread.posts.map(toPostedText)).toEqual([
+      "Fetching sources now...",
+      finalReply,
+    ]);
   });
 
   it("posts a failure fallback instead of completing an empty final post plan", async () => {
@@ -163,7 +151,6 @@ describe("Slack behavior: finalized thread replies", () => {
               completedAgentRun({
                 text: "",
                 deliveryPlan: {
-                  mode: "thread",
                   postThreadText: true,
                 },
                 diagnostics: makeDiagnostics(),

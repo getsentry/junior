@@ -3,6 +3,10 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 
 const { postMessageMock, setStatusMock, uploadFilesToThreadMock } = vi.hoisted(
   () => ({
@@ -65,10 +69,7 @@ vi.mock("@/chat/slack/outbound", () => ({
   uploadFilesToThread: uploadFilesToThreadMock,
 }));
 
-import {
-  resumeAuthorizedRequest,
-  resumeSlackTurn,
-} from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 
 const TEST_SLACK_DESTINATION = {
   platform: "slack",
@@ -86,7 +87,29 @@ function testSlackSource(threadTs: string) {
   });
 }
 
-describe("resumeAuthorizedRequest", () => {
+async function seedResumedTurn(threadTs: string) {
+  const visibleConversationId = `slack:C-test:${threadTs}`;
+  const conversationId = `slack:T-test:C-test:${threadTs}`;
+  const userMessageId = threadTs;
+  const conversation = coerceThreadConversationState({});
+  conversation.messages.push({
+    id: userMessageId,
+    role: "user",
+    text: "continue this turn",
+    createdAtMs: 1,
+    author: { userId: "U-test", userName: "test" },
+    meta: { slackTs: threadTs },
+  });
+  await persistThreadStateById(visibleConversationId, { conversation });
+  await persistConversationMessages({ conversation, conversationId });
+  return {
+    conversationId,
+    turnId: buildDeterministicTurnId(userMessageId),
+    visibleConversationId,
+  };
+}
+
+describe("resumeSlackTurn", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     postMessageMock.mockReset();
@@ -107,11 +130,13 @@ describe("resumeAuthorizedRequest", () => {
   it("runs failure handling when resumed reply generation exceeds the configured timeout", async () => {
     const onFailure = vi.fn(async () => undefined);
 
-    const resumePromise = resumeAuthorizedRequest({
+    const resumePromise = resumeSlackTurn({
       messageText: "tell me the saved deadline",
+      conversationId: "slack:C-test:1700000000.0001",
+      turnId: "turn-timeout",
       channelId: "C-test",
       threadTs: "1700000000.0001",
-      connectedText: "connected",
+      initialText: "connected",
       replyContext: {
         routing: {
           credentialContext: {
@@ -152,11 +177,13 @@ describe("resumeAuthorizedRequest", () => {
   it("persists failure state before posting the failure reply", async () => {
     const onFailure = vi.fn(async () => undefined);
 
-    await resumeAuthorizedRequest({
+    await resumeSlackTurn({
       messageText: "tell me the saved deadline",
+      conversationId: "slack:C-test:1700000000.0004",
+      turnId: "turn-failure",
       channelId: "C-test",
       threadTs: "1700000000.0004",
-      connectedText: "connected",
+      initialText: "connected",
       replyContext: {
         routing: {
           credentialContext: {
@@ -196,10 +223,13 @@ describe("resumeAuthorizedRequest", () => {
 
   it("does not post a failure reply when completion persistence fails after final delivery", async () => {
     const onFailure = vi.fn(async () => undefined);
+    const resumed = await seedResumedTurn("1700000000.0005");
 
     await expect(
       resumeSlackTurn({
         messageText: "continue this turn",
+        conversationId: "slack:T-test:C-test:1700000000.0005",
+        turnId: resumed.turnId,
         channelId: "C-test",
         threadTs: "1700000000.0005",
         replyContext: {
@@ -259,19 +289,18 @@ describe("resumeAuthorizedRequest", () => {
 
   it("schedules plugin tasks after a successful resumed turn", async () => {
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
+    const resumed = await seedResumedTurn("1700000000.0006");
 
     await resumeSlackTurn({
       messageText: "continue this turn",
+      conversationId: "slack:T-test:C-test:1700000000.0006",
+      turnId: resumed.turnId,
       channelId: "C-test",
       threadTs: "1700000000.0006",
       replyContext: {
         routing: {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
-          },
-          correlation: {
-            conversationId: "slack:T-test:C-test:1700000000.0006",
-            turnId: "turn_1700000000_0006",
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0006"),
@@ -298,7 +327,7 @@ describe("resumeAuthorizedRequest", () => {
 
     expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
       conversationId: "slack:T-test:C-test:1700000000.0006",
-      sessionId: "turn_1700000000_0006",
+      sessionId: resumed.turnId,
     });
   });
 
@@ -318,6 +347,8 @@ describe("resumeAuthorizedRequest", () => {
 
     await resumeSlackTurn({
       messageText: "continue this turn",
+      conversationId: "slack:C-test:1700000000.0002",
+      turnId: "turn-timeout-pause",
       channelId: "C-test",
       threadTs: "1700000000.0002",
       replyContext: {
@@ -348,6 +379,8 @@ describe("resumeAuthorizedRequest", () => {
 
     await resumeSlackTurn({
       messageText: "continue this turn",
+      conversationId: "slack:C-test:1700000000.0003",
+      turnId: "turn-timeout-pause-failure",
       channelId: "C-test",
       threadTs: "1700000000.0003",
       replyContext: {

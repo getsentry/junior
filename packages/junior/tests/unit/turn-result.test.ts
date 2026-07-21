@@ -1,12 +1,47 @@
 import { describe, expect, it } from "vitest";
 
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  getVisibleAssistantText,
+} from "@/chat/services/turn-result";
 
 const reasoningSelection = {
   reasoningLevel: "medium" as const,
   reason: "test",
 };
+
+describe("getVisibleAssistantText", () => {
+  it("returns visible text without thinking content", () => {
+    expect(
+      getVisibleAssistantText(
+        "<thinking>private reasoning</thinking>Visible answer.",
+      ),
+    ).toBe("Visible answer.");
+  });
+
+  it("suppresses the explicit no-reply marker", () => {
+    expect(getVisibleAssistantText(NO_REPLY_MARKER)).toBeUndefined();
+  });
+
+  it("suppresses raw tool payload text", () => {
+    expect(
+      getVisibleAssistantText(
+        JSON.stringify({
+          type: "tool_call",
+          name: "addReaction",
+          input: { emoji: "eyes" },
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps prose that quotes a tool payload fragment", () => {
+    const text = 'The field `"type": "tool_call"` identifies a tool call.';
+
+    expect(getVisibleAssistantText(text)).toBe(text);
+  });
+});
 
 describe("buildTurnResult", () => {
   it("treats empty tool-only turns as execution failures", () => {
@@ -111,7 +146,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("keeps assistant text across steered user messages", () => {
+  it("returns only terminal assistant text after steered user messages", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -143,9 +178,7 @@ describe("buildTurnResult", () => {
       reasoningSelection,
     });
 
-    expect(reply.text).toBe(
-      ["Initial answer.", "Updated answer."].join("\n\n"),
-    );
+    expect(reply.text).toBe("Updated answer.");
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.assistantMessageCount).toBe(2);
   });
@@ -326,7 +359,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryMode).toBe("thread");
     expect(reply.deliveryPlan).toMatchObject({
       postThreadText: false,
     });
@@ -339,9 +371,7 @@ describe("buildTurnResult", () => {
       newMessages: [
         {
           role: "assistant",
-          content: [
-            { type: "text", text: `Done. ${NO_REPLY_MARKER}` },
-          ],
+          content: [{ type: "text", text: `Done. ${NO_REPLY_MARKER}` }],
           stopReason: "stop",
         },
       ],
@@ -367,7 +397,7 @@ describe("buildTurnResult", () => {
       newMessages: [
         {
           role: "toolResult",
-          toolName: "sendMessage",
+          toolName: "sendFiles",
           isError: false,
           content: [{ type: "text", text: "posted in thread" }],
         },
@@ -379,7 +409,7 @@ describe("buildTurnResult", () => {
       ],
       userInput: "share this here without extra commentary",
       artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
+      toolCalls: ["sendFiles"],
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
@@ -394,12 +424,12 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
-  it("does not correct attachment claims after sendMessage sends files", () => {
+  it("does not correct attachment claims after sendFiles sends files", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "toolResult",
-          toolName: "sendMessage",
+          toolName: "sendFiles",
           isError: false,
           content: [{ type: "text", text: "uploaded file" }],
           details: {
@@ -418,7 +448,7 @@ describe("buildTurnResult", () => {
       ],
       userInput: "attach it here",
       artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
+      toolCalls: ["sendFiles"],
       generatedFileCount: 1,
       shouldTrace: false,
       spanContext: {},

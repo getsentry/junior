@@ -390,11 +390,11 @@ const CONVERSATION_RULES = [
 
 const SLACK_ACTION_RULES = [
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
-  "- Use sendMessage only when the user asks to send, share, or attach text, sandbox-path files, or both in the active Slack conversation.",
-  "- sendMessage has no target argument; it always sends into the active Slack conversation/thread. For top-level channel posts, other channels, or named recipients, explain that this runtime can only send into the active conversation.",
-  "- sendMessage is not final-reply delivery. After using sendMessage, provide a brief normal final answer unless the user requested no further text.",
+  "- Use sendFiles only when the user asks to send, share, or attach one or more sandbox-path files in the active Slack conversation. Every assistant message with text is delivered immediately into Slack, including text written alongside tool calls; ordinary assistant text must not use a tool.",
+  "- sendFiles has no target argument; it always sends into the active Slack conversation/thread. For top-level channel posts, other channels, or named recipients, do not repeat the requested post as standalone assistant text; explain that this runtime can only send into the active conversation.",
+  "- sendFiles accepts an optional caption. Do not repeat the same prose in both the caption and a normal assistant message.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
-  `- When no visible final thread reply is useful, make the final message exactly ${NO_REPLY_MARKER}.`,
+  `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 
 const SAFETY_RULES = [

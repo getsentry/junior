@@ -260,7 +260,6 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { executeAgentRun } from "@/chat/agent";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -304,32 +303,15 @@ describe("executeAgentRun agent continuation", () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
-  it("rejects durable input when no prompt checkpoint can be persisted", async () => {
-    const onInputCommitted = vi.fn();
-
-    const error = await executeAgentRun({
-      input: { messageText: "help me" },
-      routing: { destination: TEST_DESTINATION, source: TEST_SOURCE },
-      durability: { onInputCommitted },
-    }).catch((caught) => caught);
-
-    expect(isTurnInputCommitLostError(error)).toBe(true);
-    expect(onInputCommitted).not.toHaveBeenCalled();
-  });
-
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-1",
+      turnId: "turn-1",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-1",
-          turnId: "turn-1",
-          channelId: "C123",
-          threadTs: "1712345.0001",
-        },
       },
     });
 
@@ -379,17 +361,13 @@ describe("executeAgentRun agent continuation", () => {
     });
 
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-timeout-cap",
+      turnId: "turn-timeout-cap",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-timeout-cap",
-          turnId: "turn-timeout-cap",
-          channelId: "C123",
-          threadTs: "1712345.0006",
-        },
       },
     }).catch((caught) => caught);
 
@@ -417,17 +395,13 @@ describe("executeAgentRun agent continuation", () => {
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-short-deadline",
+      turnId: "turn-short-deadline",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-short-deadline",
-          turnId: "turn-short-deadline",
-          channelId: "C123",
-          threadTs: "1712345.0005",
-        },
       },
       policy: { turnDeadlineAtMs: startedAtMs + 2_500 },
     });
@@ -448,6 +422,8 @@ describe("executeAgentRun agent continuation", () => {
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-2",
+      turnId: "turn-2",
       input: {
         messageText: "what is in this image?",
         omittedImageAttachmentCount: 1,
@@ -456,12 +432,6 @@ describe("executeAgentRun agent continuation", () => {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-2",
-          turnId: "turn-2",
-          channelId: "C123",
-          threadTs: "1712345.0002",
-        },
       },
     }).catch((caught) => caught);
 
@@ -493,17 +463,13 @@ describe("executeAgentRun agent continuation", () => {
   it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-hung",
+      turnId: "turn-hung",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-hung",
-          turnId: "turn-hung",
-          channelId: "C123",
-          threadTs: "1712345.0003",
-        },
       },
     });
 
@@ -538,17 +504,13 @@ describe("executeAgentRun agent continuation", () => {
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
     const replyPromise = executeAgentRun({
+      conversationId: "conversation-retry",
+      turnId: "turn-retry",
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
-        correlation: {
-          conversationId: "conversation-retry",
-          turnId: "turn-retry",
-          channelId: "C123",
-          threadTs: "1712345.0004",
-        },
       },
     });
 

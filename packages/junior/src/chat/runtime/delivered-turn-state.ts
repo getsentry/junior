@@ -16,7 +16,7 @@ import {
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
-/** Build the canonical thread-state patch after final Slack delivery succeeds. */
+/** Build state after destination delivery or intentional no-reply completion. */
 export function buildDeliveredTurnStatePatch(args: {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   artifacts: ThreadArtifactsState;
@@ -36,18 +36,22 @@ export function buildDeliveredTurnStatePatch(args: {
       : undefined;
 
   clearPendingAuth(conversation, args.sessionId);
-  const assistantText =
-    normalizeConversationText(args.reply.text) || "[empty response]";
   markConversationMessage(conversation, args.userMessageId, {
     replied: true,
     skippedReason: undefined,
   });
   const intentionalSilence = args.reply.deliveryPlan?.postThreadText === false;
-  if (!intentionalSilence) {
+  const terminalMessageId = buildDeterministicAssistantMessageId(
+    args.sessionId,
+  );
+  if (
+    !intentionalSilence &&
+    !conversation.messages.some((message) => message.id === terminalMessageId)
+  ) {
     upsertConversationMessage(conversation, {
-      id: buildDeterministicAssistantMessageId(args.sessionId),
+      id: terminalMessageId,
       role: "assistant",
-      text: assistantText,
+      text: normalizeConversationText(args.reply.text) || "[empty response]",
       createdAtMs: Date.now(),
       author: {
         userName: botConfig.userName,

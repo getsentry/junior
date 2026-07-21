@@ -10,9 +10,11 @@ this directory owns product orchestration around it.
   cooperatively yield, or fail.
 - Silence is explicit; absence of model text is not automatically a successful
   silent outcome.
-- Tool calls and intermediate text are not destination replies.
-- The runtime posts only finalized assistant output and records it only after
-  delivery succeeds.
+- Every completed assistant message with visible text is delivered as its own
+  destination reply. Thinking and raw tool-call parts remain internal.
+- Assistant delivery is awaited before the run advances; tool-bearing messages
+  are delivered before their tool batch executes.
+- The runtime records each assistant message only after delivery succeeds.
 - Resumed runs continue the same durable turn and must not repeat already
   committed side effects.
 
@@ -26,10 +28,10 @@ this directory owns product orchestration around it.
 - Auth pauses persist the pending authorization state and end the live run;
   callbacks append new work and start a later run.
 - Completion and delivery markers make retries idempotent.
-- Canonical turn lifecycle uses stable correlation IDs: input is durable before
-  `turn_started`, and completion/failure is appended only at the owning
-  delivery-and-persistence boundary. Competing terminal writes share one
-  idempotency key, so the first committed outcome wins.
+- Canonical turn lifecycle uses stable conversation and turn IDs: input is
+  durable before `turn_started`, and completion/failure is appended only at the
+  owning delivery-and-persistence boundary. Competing terminal writes share
+  one idempotency key, so the first committed outcome wins.
 - Intentional silence is a `turn_completed` `no_reply` outcome and does not
   create a synthetic visible assistant message.
 - Stable lifecycle keys make explicit retries idempotent; they do not cover

@@ -7,13 +7,13 @@
  * state, and schedules follow-up slices when a turn needs to continue.
  */
 import { botConfig } from "@/chat/config";
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
 import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
+  recordDeliveredAssistantMessage,
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
@@ -38,7 +38,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
-  planSlackReplyPosts,
+  planSlackAssistantMessagePosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
@@ -51,6 +51,7 @@ import {
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { persistWithRetry } from "@/chat/services/persist-retry";
+import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -86,27 +87,6 @@ function getAssistantMessageId(dispatch: DispatchRecord): string {
 
 function buildDispatchConversationText(dispatch: DispatchRecord): string {
   return `[dispatched task] ${dispatch.input}`;
-}
-
-/** True when dispatch finalization should produce a visible Slack text reply. */
-function shouldPostDispatchReplyText(reply: AgentRunResult): boolean {
-  return (
-    reply.deliveryPlan?.postThreadText ??
-    (reply.deliveryMode ?? "thread") !== "channel_only"
-  );
-}
-
-function ensureVisibleDeliveryText(reply: AgentRunResult): AgentRunResult {
-  if (!shouldPostDispatchReplyText(reply)) {
-    return reply;
-  }
-  if (reply.text.trim().length > 0) {
-    return reply;
-  }
-  return {
-    ...reply,
-    text: "The task completed without a visible response.",
-  };
 }
 
 function upsertDispatchUserMessage(args: {
@@ -328,7 +308,68 @@ export async function runAgentDispatchSlice(
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
+    let resultMessageTs: string | undefined;
+    /** Post and record one completed assistant message for this dispatch. */
+    const deliverAssistantMessage = async (assistantMessage: {
+      terminal: boolean;
+      text: string;
+    }): Promise<void> => {
+      const posts = planSlackAssistantMessagePosts(assistantMessage.text);
+      if (posts.length === 0) {
+        if (assistantMessage.terminal) {
+          throw new Error(
+            "Dispatch terminal assistant message did not contain visible text",
+          );
+        }
+        return;
+      }
+      failureCode = "delivery_failed";
+      resultMessageTs = await postSlackApiReplyPosts({
+        channelId: dispatch.destination.channelId,
+        posts,
+        ...(assistantMessage.terminal
+          ? { footer: buildSlackReplyFooter({ conversationId }) }
+          : {}),
+      });
+      const recordedMessageId = recordDeliveredAssistantMessage({
+        conversation,
+        ...(assistantMessage.terminal
+          ? { messageId: getAssistantMessageId(dispatch) }
+          : {}),
+        sessionId: turnId,
+        terminal: assistantMessage.terminal,
+        text: assistantMessage.text,
+        userMessageId,
+      });
+      if (resultMessageTs) {
+        markConversationMessage(conversation, recordedMessageId, {
+          slackTs: resultMessageTs,
+        });
+      }
+      try {
+        await persistWithRetry(() =>
+          persistConversationMessages({ conversation, conversationId }),
+        );
+      } catch (persistError) {
+        logException(
+          new Error("Accepted assistant message persistence failed"),
+          "agent_dispatch_assistant_message_post_delivery_persist_failed",
+          logContext,
+          {
+            "error.type":
+              persistError instanceof Error
+                ? persistError.name
+                : typeof persistError,
+          },
+          "Failed to persist an accepted dispatch assistant message",
+        );
+      }
+      failureCode = "agent_run_failed";
+    };
     const outcome = await deps.agentRunner.run({
+      conversationId,
+      turnId,
+      runId: dispatch.id,
       input: {
         messageText: dispatch.input,
         conversationContext,
@@ -351,14 +392,6 @@ export async function runAgentDispatchSlice(
           metadata: dispatch.metadata,
           plugin: dispatch.plugin,
         },
-        correlation: {
-          conversationId,
-          threadId: conversationId,
-          turnId,
-          runId: dispatch.id,
-          channelId: dispatch.destination.channelId,
-          teamId: dispatch.destination.teamId,
-        },
         surface: "api",
         toolChannelId: dispatch.destination.channelId,
       },
@@ -373,6 +406,10 @@ export async function runAgentDispatchSlice(
           sandboxId,
           sandboxDependencyProfileHash,
         },
+      },
+      delivery: {
+        onAssistantMessage: ({ text }) =>
+          deliverAssistantMessage({ terminal: false, text }),
       },
       durability: {
         onSandboxAcquired: async (sandbox) => {
@@ -445,64 +482,36 @@ export async function runAgentDispatchSlice(
       });
       reply = finalized.reply;
       modelFailureEventId = finalized.eventId;
+      await deliverAssistantMessage({ terminal: true, text: reply.text });
+    } else if (shouldDeliverReplyText(reply)) {
+      await deliverAssistantMessage({ terminal: true, text: reply.text });
     }
 
-    const deliveryReply = ensureVisibleDeliveryText(reply);
-    failureCode = "delivery_failed";
-    const resultMessageTs = await postSlackApiReplyPosts({
-      channelId: dispatch.destination.channelId,
-      posts: planSlackReplyPosts({ reply: deliveryReply }),
-      footer: buildSlackReplyFooter({
-        conversationId,
-      }),
-    });
     failureCode = "persistence_failed";
 
-    // Slack accepted the reply: everything after this point serves duplicate
-    // suppression and bookkeeping, and must not turn into a failed dispatch
-    // that a retry would re-post. Persist the delivered marker
-    // (`meta.slackTs`, checked by the redelivery guard above) immediately and
-    // durably before the dispatch is marked terminal so the crash window
-    // between post and marker stays as small as possible. The retry-and-swallow
-    // `persistRuntimePatch` below appends canonical message facts, so
-    // no separate transcript persist runs outside that guarded block.
+    // Final bookkeeping retries all accepted message facts and runtime state
+    // before terminalizing the dispatch; it must never re-post a delivery.
     markConversationMessage(conversation, userMessageId, {
       replied: true,
       skippedReason: undefined,
     });
-    if (reply.deliveryPlan?.postThreadText !== false) {
-      upsertConversationMessage(conversation, {
-        id: getAssistantMessageId(dispatch),
-        role: "assistant",
-        text:
-          normalizeConversationText(deliveryReply.text) || "[empty response]",
-        createdAtMs: nowMs,
-        author: {
-          userName: botConfig.userName,
-          isBot: true,
-        },
-        meta: {
-          replied: true,
-          slackTs: resultMessageTs,
-        },
-      });
-    }
     updateConversationStats(conversation);
     const nextArtifacts = reply.artifactStatePatch
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
       : artifacts;
     let statePersisted = false;
     try {
-      await persistWithRetry(() =>
-        persistRuntimePatch({
+      await persistWithRetry(async () => {
+        await persistConversationMessages({ conversation, conversationId });
+        await persistRuntimePatch({
           threadId: conversationId,
           conversation,
           artifacts: nextArtifacts,
           sandboxId: reply.sandboxId ?? sandboxId,
           sandboxDependencyProfileHash:
             reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
-        }),
-      );
+        });
+      });
       statePersisted = true;
     } catch (persistError) {
       const eventId = logException(

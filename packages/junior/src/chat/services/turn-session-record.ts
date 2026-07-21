@@ -20,12 +20,11 @@ import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
 
 export interface TurnSessionContext {
-  conversationId?: string;
-  sessionId?: string;
+  conversationId: string;
+  sessionId: string;
 }
 
 export interface TurnSessionState {
-  canUseTurnSession: boolean;
   resumedFromSessionRecord: boolean;
   currentSliceId: number;
   existingSessionRecord?: AgentTurnSessionRecord;
@@ -109,19 +108,14 @@ function resumableBoundary(
 export async function loadTurnSessionRecord(
   ctx: TurnSessionContext,
 ): Promise<TurnSessionState> {
-  const canUseTurnSession = Boolean(ctx.conversationId && ctx.sessionId);
-  const existingSessionRecord =
-    canUseTurnSession && ctx.conversationId && ctx.sessionId
-      ? await getAgentTurnSessionRecordForResume(
-          ctx.conversationId,
-          ctx.sessionId,
-        )
-      : undefined;
+  const existingSessionRecord = await getAgentTurnSessionRecordForResume(
+    ctx.conversationId,
+    ctx.sessionId,
+  );
   const hasAwaitingResumeRecord = Boolean(
     existingSessionRecord && existingSessionRecord.state === "awaiting_resume",
   );
   return {
-    canUseTurnSession,
     resumedFromSessionRecord: hasAwaitingResumeRecord,
     currentSliceId: hasAwaitingResumeRecord
       ? existingSessionRecord!.sliceId

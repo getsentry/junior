@@ -50,11 +50,11 @@ interface ResumeStateArgs {
   recordActiveMcpProviders: () => Promise<void>;
   actor?: Actor;
   runSource: Source;
-  sessionConversationId?: string;
-  sessionId?: string;
+  conversationId: string;
+  turnId: string;
   sessionRecordState: LoadedSessionRecordState;
   startedAtMs: number;
-  surface?: AgentTurnSurface;
+  surface: AgentTurnSurface;
 }
 
 interface ExpectedEndingTranslation {
@@ -82,18 +82,14 @@ export function createResumeState(args: ResumeStateArgs) {
   let turnStartMessageIndex: number | undefined;
 
   const currentSliceId = args.sessionRecordState.currentSliceId;
-  const canPersistSession =
-    args.sessionRecordState.canUseTurnSession &&
-    Boolean(args.sessionConversationId && args.sessionId);
-
   const currentDurationMs = () => Date.now() - args.startedAtMs;
 
   const sessionRecordBase = () => ({
     channelName: args.channelName,
-    conversationId: args.sessionConversationId!,
+    conversationId: args.conversationId,
     destination: args.destination,
     source: args.runSource,
-    sessionId: args.sessionId!,
+    sessionId: args.turnId,
     loadedSkillNames: args.getLoadedSkillNames(),
     logContext: args.logContext,
     modelId: args.getModelId(),
@@ -101,7 +97,7 @@ export function createResumeState(args: ResumeStateArgs) {
       ? { reasoningLevel: args.getReasoningLevel() }
       : {}),
     actor: args.actor,
-    ...(args.surface ? { surface: args.surface } : {}),
+    surface: args.surface,
   });
 
   return {
@@ -150,10 +146,6 @@ export function createResumeState(args: ResumeStateArgs) {
       messages: PiMessage[],
       trailingMessageProvenance?: ConversationMessageProvenance[],
     ): Promise<boolean> {
-      if (!canPersistSession) {
-        return false;
-      }
-
       const persisted = await persistRunningSessionRecord({
         ...sessionRecordBase(),
         sliceId: currentSliceId,
@@ -180,7 +172,7 @@ export function createResumeState(args: ResumeStateArgs) {
       );
       if (!persisted && args.durability.onInputCommitted) {
         throw new TurnInputCommitLostError(
-          `Durable turn input could not be checkpointed for conversation=${args.sessionConversationId ?? "unknown"} session=${args.sessionId ?? "unknown"}`,
+          `Durable turn input could not be checkpointed for conversation=${args.conversationId} turn=${args.turnId}`,
         );
       }
       return persisted;
@@ -206,10 +198,6 @@ export function createResumeState(args: ResumeStateArgs) {
       error: unknown;
     }): Promise<ExpectedEndingTranslation> {
       const { error } = args2;
-      if (!args.sessionConversationId || !args.sessionId) {
-        return {};
-      }
-
       if (cooperativeYieldError && error instanceof CooperativeTurnYieldError) {
         const usage =
           args2.currentUsage ??
@@ -225,7 +213,7 @@ export function createResumeState(args: ResumeStateArgs) {
         });
         if (!sessionRecord) {
           throw new Error(
-            `Failed to persist cooperative yield continuation for conversation=${args.sessionConversationId} session=${args.sessionId}`,
+            `Failed to persist cooperative yield continuation for conversation=${args.conversationId} turn=${args.turnId}`,
           );
         }
         return {
@@ -252,7 +240,7 @@ export function createResumeState(args: ResumeStateArgs) {
         });
         if (!sessionRecord) {
           throw new Error(
-            `Failed to persist timeout continuation for conversation=${args.sessionConversationId} session=${args.sessionId}`,
+            `Failed to persist timeout continuation for conversation=${args.conversationId} turn=${args.turnId}`,
           );
         }
         if (sessionRecord.state === "awaiting_resume") {
