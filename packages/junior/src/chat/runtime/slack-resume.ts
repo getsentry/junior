@@ -68,6 +68,7 @@ import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import {
   markConversationMessage,
   recordDeliveredAssistantMessage,
+  turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import { persistWithRetry } from "@/chat/services/persist-retry";
@@ -337,9 +338,7 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-  onAssistantMessage: NonNullable<
-    NonNullable<AgentRunRequest["delivery"]>["onAssistantMessage"]
-  >,
+  delivery: NonNullable<AgentRunRequest["delivery"]>,
 ): AgentRunRequest {
   const replyContext = args.replyContext;
   if (!replyContext) {
@@ -393,9 +392,7 @@ function createResumeReplyContext(
         await replyContext.observers?.onStatus?.(nextStatus);
       },
     },
-    delivery: {
-      onAssistantMessage,
-    },
+    delivery,
     durability: {
       ...replyContext.durability,
       onSandboxAcquired: async (sandbox) => {
@@ -605,9 +602,16 @@ export async function resumeSlackTurn(
       }
       failureCode = "agent_run_failed";
     };
-    const replyContext = createResumeReplyContext(runArgs, status, ({ text }) =>
-      deliverAssistantMessage({ terminal: false, text }),
+    const deliveryState = await getDeliveryConversation();
+    assistantMessageDelivered = turnHasReply(
+      deliveryState.conversation,
+      sessionId,
     );
+    const replyContext = createResumeReplyContext(runArgs, status, {
+      hasDeliveredMessage: assistantMessageDelivered,
+      onAssistantMessage: ({ text }) =>
+        deliverAssistantMessage({ terminal: false, text }),
+    });
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,

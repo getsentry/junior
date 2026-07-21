@@ -112,6 +112,45 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("accepts delivered assistant text when no terminal message follows", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "I attached the requested file." },
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "sendFiles",
+              arguments: { files: [{ path: "/tmp/report.pdf" }] },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolName: "sendFiles",
+          isError: false,
+          content: [{ type: "text", text: "uploaded file" }],
+        },
+      ],
+      assistantMessageDelivered: true,
+      userInput: "Share the report here",
+      artifactStatePatch: {},
+      toolCalls: ["sendFiles"],
+      generatedFileCount: 1,
+      shouldTrace: false,
+      spanContext: {},
+      modelId: "test-model",
+      reasoningSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({ postThreadText: false });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
   it("uses only terminal assistant text after tool results", () => {
     const reply = buildTurnResult({
       newMessages: [

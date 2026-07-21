@@ -147,6 +147,8 @@ export interface AgentAssistantMessage {
 
 /** Delivers intermediate messages before the agent advances to more work. */
 export interface AgentRunDelivery {
+  /** True when an earlier slice already delivered a message for this turn. */
+  hasDeliveredMessage?: boolean;
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }
 

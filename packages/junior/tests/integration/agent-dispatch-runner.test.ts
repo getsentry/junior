@@ -320,7 +320,7 @@ describe("agent dispatch runner", () => {
           }),
         }),
         expect.objectContaining({
-          id: `dispatch:${created.record.id}:assistant`,
+          id: `assistant:dispatch:${created.record.id}`,
           meta: expect.objectContaining({
             slackTs: "1700000000.000001",
             replied: true,
@@ -441,7 +441,7 @@ describe("agent dispatch runner", () => {
           id: `dispatch:${created.record.id}:user`,
         }),
         expect.objectContaining({
-          id: `dispatch:${created.record.id}:assistant`,
+          id: `assistant:dispatch:${created.record.id}`,
         }),
       ]),
     );
@@ -505,6 +505,14 @@ describe("agent dispatch runner", () => {
         (message) => message.role === "assistant",
       ),
     ).toBeUndefined();
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(dispatchConversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      turnId: `dispatch:${created.record.id}`,
+      outcome: "no_reply",
+    });
   });
 
   it("preserves task-scoped creator credentials across dispatch slices", async () => {

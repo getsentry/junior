@@ -190,6 +190,20 @@ export function recordDeliveredAssistantMessage(args: {
   return messageId;
 }
 
+/** Return whether a turn already has a destination-accepted assistant reply. */
+export function turnHasReply(
+  conversation: ThreadConversationState,
+  turnId: string,
+): boolean {
+  const terminalId = buildDeterministicAssistantMessageId(turnId);
+  const intermediatePrefix = `${turnId}:assistant:`;
+  return conversation.messages.some(
+    (message) =>
+      message.role === "assistant" &&
+      (message.id === terminalId || message.id.startsWith(intermediatePrefix)),
+  );
+}
+
 export function markConversationMessage(
   conversation: ThreadConversationState,
   messageId: string | undefined,

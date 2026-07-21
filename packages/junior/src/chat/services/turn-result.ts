@@ -124,6 +124,8 @@ export interface AgentRunResult {
 
 export interface TurnResultInput {
   newMessages: unknown[];
+  /** Whether a completed intermediate assistant message reached the destination. */
+  assistantMessageDelivered?: boolean;
   userInput: string;
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
@@ -202,6 +204,7 @@ export function getVisibleAssistantText(rawText: string): string | undefined {
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
     newMessages,
+    assistantMessageDelivered,
     artifactStatePatch,
     toolCalls,
     sandboxId,
@@ -241,7 +244,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
-  const silentCompletionSuccess = noReplyRequested;
+  const completedWithoutTerminalText =
+    noReplyRequested || (assistantMessageDelivered && toolErrorCount === 0);
   const resultLogContext = {
     ...spanContext,
     assistantUserName,
@@ -292,7 +296,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     );
   }
 
-  if (!primaryText && !silentCompletionSuccess && !isProviderError) {
+  if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
     logWarn(
       "ai_model_response_empty",
       resultLogContext,
@@ -309,7 +313,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (primaryText || silentCompletionSuccess) {
+  } else if (primaryText || completedWithoutTerminalText) {
     outcome = "success";
   } else {
     outcome = "execution_failure";

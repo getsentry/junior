@@ -14,6 +14,7 @@ import {
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
+  turnHasReply,
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
@@ -37,6 +38,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import {
   planSlackAssistantMessagePosts,
   postSlackApiReplyPosts,
@@ -82,7 +84,7 @@ function getUserMessageId(dispatch: DispatchRecord): string {
 }
 
 function getAssistantMessageId(dispatch: DispatchRecord): string {
-  return `dispatch:${dispatch.id}:assistant`;
+  return buildDeterministicAssistantMessageId(getDispatchTurnId(dispatch.id));
 }
 
 function buildDispatchConversationText(dispatch: DispatchRecord): string {
@@ -309,6 +311,7 @@ export async function runAgentDispatchSlice(
       excludeMessageId: userMessageId,
     });
     let resultMessageTs: string | undefined;
+    let assistantMessageDelivered = turnHasReply(conversation, turnId);
     /** Post and record one completed assistant message for this dispatch. */
     const deliverAssistantMessage = async (assistantMessage: {
       terminal: boolean;
@@ -331,6 +334,7 @@ export async function runAgentDispatchSlice(
           ? { footer: buildSlackReplyFooter({ conversationId }) }
           : {}),
       });
+      assistantMessageDelivered = true;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation,
         ...(assistantMessage.terminal
@@ -408,6 +412,7 @@ export async function runAgentDispatchSlice(
         },
       },
       delivery: {
+        hasDeliveredMessage: assistantMessageDelivered,
         onAssistantMessage: ({ text }) =>
           deliverAssistantMessage({ terminal: false, text }),
       },
@@ -569,7 +574,10 @@ export async function runAgentDispatchSlice(
           conversationId,
           turnId,
           createdAtMs: Date.now(),
-          outcome: "success",
+          outcome:
+            assistantMessageDelivered || shouldDeliverReplyText(reply)
+              ? "success"
+              : "no_reply",
         });
       }
       lifecycleTerminalized = true;

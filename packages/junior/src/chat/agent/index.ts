@@ -623,6 +623,7 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
+    let assistantMessageDelivered = delivery?.hasDeliveredMessage ?? false;
     /** Deliver one completed visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
@@ -633,6 +634,7 @@ async function executeAgentRunInPrivacyContext(
       }
       try {
         await delivery.onAssistantMessage({ text });
+        assistantMessageDelivered = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
           error,
@@ -1054,6 +1056,7 @@ async function executeAgentRunInPrivacyContext(
     // ── Build turn result ────────────────────────────────────────────
     const result = buildTurnResult({
       newMessages,
+      assistantMessageDelivered,
       userInput,
       artifactStatePatch,
       toolCalls,
