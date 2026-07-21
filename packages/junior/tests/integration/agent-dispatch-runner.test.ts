@@ -64,9 +64,6 @@ function zeroUsage() {
 function createReply(): AgentRunResult {
   return {
     text: "Dispatch delivered.",
-    deliveryPlan: {
-      postThreadText: true,
-    },
     diagnostics: {
       assistantMessageCount: 1,
       durationMs: 1234,
@@ -95,6 +92,17 @@ function createReply(): AgentRunResult {
       },
     ],
   };
+}
+
+async function deliverCompletedReply(
+  request: Parameters<AgentRunner["run"]>[0],
+  reply = createReply(),
+) {
+  if (!request.delivery) {
+    throw new Error("dispatch test runner requires assistant delivery");
+  }
+  await request.delivery.onAssistantMessage({ text: reply.text });
+  return completedAgentRun(reply);
 }
 
 function failedDispatchPiMessages(): PiMessage[] {
@@ -204,7 +212,10 @@ describe("agent dispatch runner", () => {
       { id: created.record.id, expectedVersion: created.record.version },
       {
         agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Starting now." }],
+          messages: [
+            { text: "Starting now." },
+            { text: "Dispatch delivered." },
+          ],
           result: createReply(),
         }),
       },
@@ -274,7 +285,7 @@ describe("agent dispatch runner", () => {
       expect(context.sandboxTracePropagation).toEqual({
         domains: ["*.sentry.io"],
       });
-      return completedAgentRun(createReply());
+      return await deliverCompletedReply(request);
     });
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
@@ -320,7 +331,7 @@ describe("agent dispatch runner", () => {
           }),
         }),
         expect.objectContaining({
-          id: `assistant:dispatch:${created.record.id}`,
+          id: `dispatch:${created.record.id}:assistant:1`,
           meta: expect.objectContaining({
             slackTs: "1700000000.000001",
             replied: true,
@@ -407,7 +418,7 @@ describe("agent dispatch runner", () => {
       const context = flattenAgentRunRequestForTest(request);
       expect(context.conversationContext).toBeUndefined();
       expect(context.piMessages).toEqual([]);
-      return completedAgentRun(createReply());
+      return await deliverCompletedReply(request);
     });
 
     await runAgentDispatchSlice(
@@ -441,7 +452,7 @@ describe("agent dispatch runner", () => {
           id: `dispatch:${created.record.id}:user`,
         }),
         expect.objectContaining({
-          id: `assistant:dispatch:${created.record.id}`,
+          id: `dispatch:${created.record.id}:assistant:1`,
         }),
       ]),
     );
@@ -473,9 +484,6 @@ describe("agent dispatch runner", () => {
             completedAgentRun({
               ...sideEffectReply,
               text: "",
-              deliveryPlan: {
-                postThreadText: false,
-              },
               diagnostics: {
                 ...sideEffectReply.diagnostics,
                 toolCalls: ["addReaction"],
@@ -550,7 +558,7 @@ describe("agent dispatch runner", () => {
             },
           },
         });
-        return completedAgentRun(createReply());
+        return await deliverCompletedReply(request);
       });
 
     await runAgentDispatchSlice(
@@ -624,7 +632,7 @@ describe("agent dispatch runner", () => {
         },
       });
       expect(context.authorizationFlowMode).toBe("disabled");
-      return completedAgentRun(createReply());
+      return await deliverCompletedReply(request);
     });
 
     await runAgentDispatchSlice(
@@ -678,7 +686,7 @@ describe("agent dispatch runner", () => {
         },
       });
       expect(context.authorizationFlowMode).toBe("disabled");
-      return completedAgentRun(createReply());
+      return await deliverCompletedReply(request);
     });
 
     await runAgentDispatchSlice(
@@ -732,7 +740,7 @@ describe("agent dispatch runner", () => {
           expectedVersion: created.record.version,
         },
         {
-          agentRunner: { run: async () => completedAgentRun(createReply()) },
+          agentRunner: { run: deliverCompletedReply },
         },
       );
     } finally {
@@ -850,7 +858,7 @@ describe("agent dispatch runner", () => {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { agentRunner: { run: async () => completedAgentRun(createReply()) } },
+      { agentRunner: { run: deliverCompletedReply } },
     );
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "completed",

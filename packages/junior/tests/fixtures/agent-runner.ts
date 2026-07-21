@@ -47,6 +47,19 @@ export function neverRunAgentRunner(): AgentRunner {
   };
 }
 
+/** Deliver explicitly scripted assistant messages from an inline fake runner. */
+export async function deliverAssistantMessagesForTest(
+  request: Parameters<AgentRunner["run"]>[0],
+  messages: AgentAssistantMessage[],
+): Promise<void> {
+  if (!request.delivery) {
+    throw new Error("scripted runner requires assistant delivery");
+  }
+  for (const message of messages) {
+    await request.delivery.onAssistantMessage(message);
+  }
+}
+
 /** Script completed assistant messages through the production delivery port. */
 export function scriptedAssistantMessageRunner(args: {
   messages: AgentAssistantMessage[];
@@ -54,12 +67,7 @@ export function scriptedAssistantMessageRunner(args: {
 }): AgentRunner {
   return {
     run: async (request) => {
-      if (!request.delivery) {
-        throw new Error("scripted runner requires assistant delivery");
-      }
-      for (const message of args.messages) {
-        await request.delivery.onAssistantMessage(message);
-      }
+      await deliverAssistantMessagesForTest(request, args.messages);
       return completedAgentRun(args.result);
     },
   };

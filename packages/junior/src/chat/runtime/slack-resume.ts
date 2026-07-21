@@ -70,7 +70,6 @@ import {
   recordDeliveredAssistantMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
-import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
@@ -413,9 +412,9 @@ function createResumeReplyContext(
 /**
  * Resume a paused Slack turn under the normal thread lock.
  *
- * Started resumes own their terminal side effects: final delivery, pause
- * persistence, or failure response. Returns false only when `beforeStart`
- * proves the resume is stale before generation begins.
+ * Started resumes own their completion side effects: assistant-message
+ * delivery, pause persistence, or failure response. Returns false only when
+ * `beforeStart` proves the resume is stale before generation begins.
  */
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
@@ -440,7 +439,7 @@ export async function resumeSlackTurn(
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
-  let finalReplyDelivered = false;
+  let runResultHandled = false;
   let assistantMessageDelivered = false;
   let postDeliveryCommitError: unknown;
   const turnLifecycle =
@@ -544,16 +543,10 @@ export async function resumeSlackTurn(
     };
     /** Post and record one completed assistant message for the resumed turn. */
     const deliverAssistantMessage = async (assistantMessage: {
-      terminal: boolean;
       text: string;
     }): Promise<void> => {
       const posts = planSlackAssistantMessagePosts(assistantMessage.text);
       if (posts.length === 0) {
-        if (assistantMessage.terminal) {
-          throw new Error(
-            "Slack terminal assistant message did not contain visible text",
-          );
-        }
         return;
       }
       failureCode = "delivery_failed";
@@ -562,20 +555,11 @@ export async function resumeSlackTurn(
         channelId: runArgs.channelId,
         threadTs: runArgs.threadTs,
         posts,
-        ...(assistantMessage.terminal
-          ? {
-              footer: buildSlackReplyFooter({ conversationId }),
-            }
-          : {}),
       });
-      if (assistantMessage.terminal) {
-        finalReplyDelivered = true;
-      }
       assistantMessageDelivered = true;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
-        terminal: assistantMessage.terminal,
         text: assistantMessage.text,
         userMessageId: deliveryState.userMessageId,
       });
@@ -608,9 +592,7 @@ export async function resumeSlackTurn(
       sessionId,
     );
     const replyContext = createResumeReplyContext(runArgs, status, {
-      hasDeliveredMessage: assistantMessageDelivered,
-      onAssistantMessage: ({ text }) =>
-        deliverAssistantMessage({ terminal: false, text }),
+      onAssistantMessage: deliverAssistantMessage,
     });
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
@@ -685,19 +667,16 @@ export async function resumeSlackTurn(
       });
       const reply = finalized.reply;
       if (reply.diagnostics.outcome !== "success") {
-        await deliverAssistantMessage({ terminal: true, text: reply.text });
-      } else if (shouldDeliverReplyText(reply)) {
-        await deliverAssistantMessage({ terminal: true, text: reply.text });
-      } else {
-        finalReplyDelivered = true;
+        await deliverAssistantMessage({ text: reply.text });
       }
+      runResultHandled = true;
 
       await status.clear();
       failureCode = "persistence_failed";
-      // Destination acceptance is the completion boundary: only now commit the
-      // final assistant messages and the terminal completed session record.
-      // Persistence is retried and any remaining failure reaches this runtime
-      // boundary instead of being mistaken for a completed durable turn.
+      // Output handling is the completion boundary: only now commit the
+      // completed session record. Persistence is retried and any remaining
+      // failure reaches this runtime boundary instead of being mistaken for a
+      // completed durable turn.
       if (reply.piMessages?.length) {
         await persistCompletedSessionRecord({
           conversationId: runArgs.conversationId,
@@ -726,10 +705,7 @@ export async function resumeSlackTurn(
           conversationId: runArgs.conversationId,
           turnId: runArgs.turnId,
           createdAtMs: Date.now(),
-          outcome:
-            assistantMessageDelivered || shouldDeliverReplyText(reply)
-              ? "success"
-              : "no_reply",
+          outcome: assistantMessageDelivered ? "success" : "no_reply",
         });
       } else {
         await turnLifecycle.fail({
@@ -765,7 +741,7 @@ export async function resumeSlackTurn(
   } catch (error) {
     await status.clear();
 
-    if (finalReplyDelivered) {
+    if (runResultHandled) {
       postDeliveryCommitError = error;
       try {
         await runArgs.onPostDeliveryCommitFailure?.(error);
@@ -792,7 +768,7 @@ export async function resumeSlackTurn(
       };
     }
   } finally {
-    if (finalReplyDelivered) {
+    if (runResultHandled) {
       await processingReaction?.complete();
     } else {
       await processingReaction?.stop();
@@ -806,7 +782,7 @@ export async function resumeSlackTurn(
       "slack_resume_success_handler_failed",
       getResumeLogContext(runArgs, lockKey),
       {},
-      "Failed to persist resumed turn state after final reply delivery",
+      "Failed to persist resumed turn state after assistant output handling",
     );
     await turnLifecycle.fail({
       conversationId: runArgs.conversationId,

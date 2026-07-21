@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   buildTurnResult,
-  getVisibleAssistantText,
+  getAssistantMessageText,
 } from "@/chat/services/turn-result";
 
 const reasoningSelection = {
@@ -11,35 +12,90 @@ const reasoningSelection = {
   reason: "test",
 };
 
-describe("getVisibleAssistantText", () => {
+function assistantMessage(
+  text: string,
+  withToolCall = false,
+): AssistantMessage {
+  return {
+    role: "assistant" as const,
+    content: [
+      { type: "text" as const, text },
+      ...(withToolCall
+        ? [
+            {
+              type: "toolCall" as const,
+              id: "call-1",
+              name: "bash",
+              arguments: {},
+            },
+          ]
+        : []),
+    ],
+    api: "responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 1,
+  };
+}
+
+describe("getAssistantMessageText", () => {
   it("returns visible text without thinking content", () => {
     expect(
-      getVisibleAssistantText(
-        "<thinking>private reasoning</thinking>Visible answer.",
+      getAssistantMessageText(
+        assistantMessage(
+          "<thinking>private reasoning</thinking>Visible answer.",
+        ),
       ),
     ).toBe("Visible answer.");
   });
 
   it("suppresses the explicit no-reply marker", () => {
-    expect(getVisibleAssistantText(NO_REPLY_MARKER)).toBeUndefined();
+    expect(
+      getAssistantMessageText(assistantMessage(NO_REPLY_MARKER)),
+    ).toBeUndefined();
   });
 
   it("suppresses raw tool payload text", () => {
     expect(
-      getVisibleAssistantText(
-        JSON.stringify({
-          type: "tool_call",
-          name: "addReaction",
-          input: { emoji: "eyes" },
-        }),
+      getAssistantMessageText(
+        assistantMessage(
+          JSON.stringify({
+            type: "tool_call",
+            name: "addReaction",
+            input: { emoji: "eyes" },
+          }),
+        ),
       ),
     ).toBeUndefined();
+  });
+
+  it("suppresses execution deferrals", () => {
+    expect(
+      getAssistantMessageText(
+        assistantMessage("Let me do that now. Give me a moment."),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps progress text attached to a tool call", () => {
+    expect(
+      getAssistantMessageText(assistantMessage("Let me do that now.", true)),
+    ).toBe("Let me do that now.");
   });
 
   it("keeps prose that quotes a tool payload fragment", () => {
     const text = 'The field `"type": "tool_call"` identifies a tool call.';
 
-    expect(getVisibleAssistantText(text)).toBe(text);
+    expect(getAssistantMessageText(assistantMessage(text))).toBe(text);
   });
 });
 
@@ -78,7 +134,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
-  it("ignores provisional assistant text that appears before the last tool result", () => {
+  it("requires a completed answer after a progress message and tool result", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -112,7 +168,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
-  it("accepts delivered assistant text when no terminal message follows", () => {
+  it("requires completed output after a user-visible tool call", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -134,7 +190,6 @@ describe("buildTurnResult", () => {
           content: [{ type: "text", text: "uploaded file" }],
         },
       ],
-      assistantMessageDelivered: true,
       userInput: "Share the report here",
       artifactStatePatch: {},
       toolCalls: ["sendFiles"],
@@ -146,8 +201,7 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({ postThreadText: false });
-    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
@@ -329,9 +383,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("Handled it.");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: true,
-    });
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
@@ -371,9 +422,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: true,
-    });
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
@@ -398,9 +446,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
@@ -425,9 +470,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
@@ -457,9 +499,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
@@ -497,54 +536,6 @@ describe("buildTurnResult", () => {
 
     expect(reply.text).toBe("Here's the image.");
     expect(reply.diagnostics.outcome).toBe("success");
-  });
-
-  it("keeps post-canvas thread replies brief", () => {
-    const verboseReply = [
-      "I put together a reusable reference here:",
-      "https://example.invalid/files/F123",
-      "",
-      "**Highlights**",
-      "- Timeline details that belong in the canvas.",
-      "- API details that belong in the canvas.",
-      "- Limit details that belong in the canvas.",
-      "- Migration details that belong in the canvas.",
-      "",
-      "**Note**",
-      "- More caveats that belong in the canvas.",
-    ].join("\n");
-
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackCanvasCreate",
-          isError: false,
-          content: [{ type: "text", text: "canvas created" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: verboseReply }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "create a reusable reference",
-      artifactStatePatch: {
-        lastCanvasUrl: "https://example.invalid/files/F123",
-      },
-      toolCalls: ["slackCanvasCreate"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      modelId: "test-model",
-      reasoningSelection,
-    });
-
-    expect(reply.text).toBe(
-      "I created a canvas with the full reference: https://example.invalid/files/F123",
-    );
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
   it("preserves structured timing and usage diagnostics", () => {

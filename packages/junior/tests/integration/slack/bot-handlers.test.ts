@@ -34,7 +34,10 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
 
@@ -223,8 +226,11 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Hello from the bot!" },
+              ]);
+              return completedAgentRun({
                 text: "Hello from the bot!",
                 diagnostics: {
                   assistantMessageCount: 1,
@@ -235,7 +241,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
           scheduleSessionCompletedPluginTasks,
         },
@@ -394,8 +401,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Replying to mention" },
+              ]);
+              return completedAgentRun({
                 text: "Replying to mention",
                 diagnostics: {
                   assistantMessageCount: 1,
@@ -406,7 +416,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
         },
         visionContext: {
@@ -559,7 +570,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           turnLifecycle,
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               // Simulate agent-run durable input checkpoint: the session record
               // is running at the prompt boundary when generation finishes.
               await upsertAgentTurnSessionRecord({
@@ -570,6 +581,9 @@ describe("bot handlers (integration)", () => {
                 state: "running",
                 piMessages: promptMessages,
               });
+              await deliverAssistantMessagesForTest(request, [
+                { text: finalText },
+              ]);
               return completedAgentRun({
                 text: finalText,
                 piMessages: [
@@ -685,7 +699,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           turnLifecycle,
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               await upsertAgentTurnSessionRecord({
                 modelId: "test/model",
                 conversationId,
@@ -694,6 +708,9 @@ describe("bot handlers (integration)", () => {
                 state: "running",
                 piMessages: promptMessages,
               });
+              await deliverAssistantMessagesForTest(request, [
+                { text: finalText },
+              ]);
               return completedAgentRun({
                 text: finalText,
                 piMessages: [
@@ -1237,8 +1254,11 @@ describe("bot handlers (integration)", () => {
   it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
     const conversationId = "slack:C0AUTHPARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
-    const executeAgentRun = vi.fn().mockResolvedValue(
-      completedAgentRun({
+    const executeAgentRun = vi.fn().mockImplementation(async (request) => {
+      await deliverAssistantMessagesForTest(request, [
+        { text: "Fresh answer without the provider." },
+      ]);
+      return completedAgentRun({
         text: "Fresh answer without the provider.",
         diagnostics: {
           assistantMessageCount: 1,
@@ -1249,8 +1269,8 @@ describe("bot handlers (integration)", () => {
           toolResultCount: 0,
           usedPrimaryText: true,
         },
-      }),
-    );
+      });
+    });
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
@@ -1855,8 +1875,9 @@ describe("bot handlers (integration)", () => {
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
     const conversationId = "slack:C0BADCONTINUATION:1700000000.000";
     const activeSessionId = "turn_msg-timeout-original";
-    const executeAgentRun = vi.fn().mockResolvedValue(
-      completedAgentRun({
+    const executeAgentRun = vi.fn().mockImplementation(async (request) => {
+      await deliverAssistantMessagesForTest(request, [{ text: "Recovered." }]);
+      return completedAgentRun({
         text: "Recovered.",
         diagnostics: {
           assistantMessageCount: 1,
@@ -1867,8 +1888,8 @@ describe("bot handlers (integration)", () => {
           toolResultCount: 0,
           usedPrimaryText: true,
         },
-      }),
-    );
+      });
+    });
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
@@ -2274,8 +2295,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyStarted = true;
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Reply lands after the pending status is drained." },
+              ]);
               return completedAgentRun({
                 text: "Still replied while status was pending.",
                 diagnostics: {
@@ -2323,7 +2347,7 @@ describe("bot handlers (integration)", () => {
     await turnPromise;
   });
 
-  it("posts the final reply even while the initial assistant status write is pending", async () => {
+  it("posts a completed message even while the initial assistant status write is pending", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let releaseFirstStatus: (() => void) | undefined;
     let statusCallCount = 0;
@@ -2359,8 +2383,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyStarted = true;
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Reply lands after the pending status is drained." },
+              ]);
               return completedAgentRun({
                 text: "Reply lands after the pending status is drained.",
                 diagnostics: {
@@ -2549,8 +2576,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Today is April 16, 2026." },
+              ]);
+              return completedAgentRun({
                 text: "Today is April 16, 2026.",
                 diagnostics: {
                   assistantMessageCount: 1,
@@ -2561,7 +2591,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
         },
       },
@@ -2622,8 +2653,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Today is April 16, 2026." },
+              ]);
+              return completedAgentRun({
                 text: "Today is April 16, 2026.",
                 diagnostics: {
                   assistantMessageCount: 1,
@@ -2634,7 +2668,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
         },
       },
@@ -2840,8 +2875,11 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async (request) => {
+              await deliverAssistantMessagesForTest(request, [
+                { text: "This reply should still succeed." },
+              ]);
+              return completedAgentRun({
                 text: "This reply should still succeed.",
                 diagnostics: {
                   assistantMessageCount: 1,
@@ -2852,7 +2890,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
         },
       },

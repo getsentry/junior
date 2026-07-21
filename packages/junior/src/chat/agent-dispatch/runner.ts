@@ -38,12 +38,10 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import {
   planSlackAssistantMessagePosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import {
@@ -53,7 +51,7 @@ import {
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -81,10 +79,6 @@ export interface AgentDispatchRunnerDeps {
 
 function getUserMessageId(dispatch: DispatchRecord): string {
   return `dispatch:${dispatch.id}:user`;
-}
-
-function getAssistantMessageId(dispatch: DispatchRecord): string {
-  return buildDeterministicAssistantMessageId(getDispatchTurnId(dispatch.id));
 }
 
 function buildDispatchConversationText(dispatch: DispatchRecord): string {
@@ -264,17 +258,24 @@ export async function runAgentDispatchSlice(
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
     await hydrateConversationMessages({ conversation, conversationId });
-    const deliveredMessage = conversation.messages.find(
-      (message) =>
-        message.id === getAssistantMessageId(dispatch) &&
-        message.meta?.replied === true &&
-        typeof message.meta.slackTs === "string",
+    const completedSession = await getAgentTurnSessionRecord(
+      conversationId,
+      turnId,
     );
-    if (typeof deliveredMessage?.meta?.slackTs === "string") {
+    if (completedSession?.state === "completed") {
+      const deliveredMessage = [...conversation.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.id.startsWith(`${turnId}:assistant:`) &&
+            typeof message.meta?.slackTs === "string",
+        );
       await markDispatch({
         dispatch,
         status: "completed",
-        resultMessageTs: deliveredMessage.meta.slackTs,
+        ...(deliveredMessage?.meta?.slackTs
+          ? { resultMessageTs: deliveredMessage.meta.slackTs }
+          : {}),
       });
       return;
     }
@@ -314,34 +315,21 @@ export async function runAgentDispatchSlice(
     let assistantMessageDelivered = turnHasReply(conversation, turnId);
     /** Post and record one completed assistant message for this dispatch. */
     const deliverAssistantMessage = async (assistantMessage: {
-      terminal: boolean;
       text: string;
     }): Promise<void> => {
       const posts = planSlackAssistantMessagePosts(assistantMessage.text);
       if (posts.length === 0) {
-        if (assistantMessage.terminal) {
-          throw new Error(
-            "Dispatch terminal assistant message did not contain visible text",
-          );
-        }
         return;
       }
       failureCode = "delivery_failed";
       resultMessageTs = await postSlackApiReplyPosts({
         channelId: dispatch.destination.channelId,
         posts,
-        ...(assistantMessage.terminal
-          ? { footer: buildSlackReplyFooter({ conversationId }) }
-          : {}),
       });
       assistantMessageDelivered = true;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation,
-        ...(assistantMessage.terminal
-          ? { messageId: getAssistantMessageId(dispatch) }
-          : {}),
         sessionId: turnId,
-        terminal: assistantMessage.terminal,
         text: assistantMessage.text,
         userMessageId,
       });
@@ -412,9 +400,7 @@ export async function runAgentDispatchSlice(
         },
       },
       delivery: {
-        hasDeliveredMessage: assistantMessageDelivered,
-        onAssistantMessage: ({ text }) =>
-          deliverAssistantMessage({ terminal: false, text }),
+        onAssistantMessage: deliverAssistantMessage,
       },
       durability: {
         onSandboxAcquired: async (sandbox) => {
@@ -487,9 +473,7 @@ export async function runAgentDispatchSlice(
       });
       reply = finalized.reply;
       modelFailureEventId = finalized.eventId;
-      await deliverAssistantMessage({ terminal: true, text: reply.text });
-    } else if (shouldDeliverReplyText(reply)) {
-      await deliverAssistantMessage({ terminal: true, text: reply.text });
+      await deliverAssistantMessage({ text: reply.text });
     }
 
     failureCode = "persistence_failed";
@@ -574,10 +558,7 @@ export async function runAgentDispatchSlice(
           conversationId,
           turnId,
           createdAtMs: Date.now(),
-          outcome:
-            assistantMessageDelivered || shouldDeliverReplyText(reply)
-              ? "success"
-              : "no_reply",
+          outcome: assistantMessageDelivered ? "success" : "no_reply",
         });
       }
       lifecycleTerminalized = true;

@@ -130,7 +130,7 @@ export function markTurnClosed(args: {
 }
 
 /**
- * Mark a turn as completed after final reply delivery succeeds.
+ * Mark a turn as completed after its assistant output has been handled.
  */
 export function markTurnCompleted(args: {
   conversation: ThreadConversationState;

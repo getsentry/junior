@@ -125,6 +125,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       }>;
     };
     private aborted = false;
+    private subscribers: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       initialState: {
@@ -144,8 +145,22 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       };
     }
 
-    subscribe() {
-      return () => undefined;
+    subscribe(subscriber: (event: unknown) => unknown) {
+      this.subscribers.push(subscriber);
+      return () => {
+        this.subscribers = this.subscribers.filter(
+          (candidate) => candidate !== subscriber,
+        );
+      };
+    }
+
+    private async appendAssistantMessage(message: unknown) {
+      this.state.messages.push(message);
+      await Promise.all(
+        this.subscribers.map((subscriber) =>
+          subscriber({ type: "message_end", message }),
+        ),
+      );
     }
 
     abort() {
@@ -159,7 +174,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
       if (agentProbe.shouldBypassSkill) {
         // Simulate an unrelated request that does not need any MCP tools.
-        this.state.messages.push({
+        await this.appendAssistantMessage({
           role: "assistant",
           content: [{ type: "text", text: unrelatedAuthPendingReply }],
           stopReason: "stop",
@@ -254,7 +269,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         return {};
       }
 
-      this.state.messages.push({
+      await this.appendAssistantMessage({
         role: "assistant",
         content: [
           {
@@ -847,7 +862,8 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       state: "failed",
-      errorMessage: "Agent turn failed before final reply delivery completed",
+      errorMessage:
+        "Agent turn failed before assistant output handling completed",
     });
 
     const persistedState =

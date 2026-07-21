@@ -11,6 +11,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -101,6 +102,9 @@ describe("Slack contract: edited-message reply delivery", () => {
       agentRunner: {
         run: async (request) => {
           const _prompt = request.input.messageText;
+          await deliverAssistantMessagesForTest(request, [
+            { text: "Hello world" },
+          ]);
           return completedAgentRun({
             text: "Hello world",
             diagnostics: makeDiagnostics(),
@@ -126,43 +130,28 @@ describe("Slack contract: edited-message reply delivery", () => {
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          blocks: [
-            {
-              type: "markdown",
-              text: "Hello world",
-            },
-            {
-              type: "context",
-              elements: expect.arrayContaining([
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: expect.stringContaining(
-                    "*ID:* slack:D12345:1700000100.000100",
-                  ),
-                }),
-              ]),
-            },
-          ],
           channel: "D12345",
           thread_ts: "1700000100.000100",
-          text: "Hello world",
+          markdown_text: "Hello world",
         }),
       }),
     ]);
   });
 
-  it("posts continuation messages with chat.postMessage when the final reply overflows", async () => {
+  it("posts continuation messages with chat.postMessage when a completed message overflows", async () => {
     const longReply = Array.from(
       { length: 80 },
       (_, i) => `line ${i + 1}`,
     ).join("\n");
     const bot = await createEditedDmBot({
       agentRunner: {
-        run: async () =>
-          completedAgentRun({
+        run: async (request) => {
+          await deliverAssistantMessagesForTest(request, [{ text: longReply }]);
+          return completedAgentRun({
             text: longReply,
             diagnostics: makeDiagnostics(),
-          }),
+          });
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();

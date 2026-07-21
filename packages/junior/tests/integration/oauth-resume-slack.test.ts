@@ -81,18 +81,20 @@ describe("oauth resume slack integration", () => {
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
       },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: "The budget deadline you mentioned earlier was Friday.",
-            diagnostics: makeDiagnostics("success", {
-              durationMs: 842,
-              usage: {
-                totalTokens: 1234,
-              },
-            }),
+      agentRunner: scriptedAssistantMessageRunner({
+        messages: [
+          { text: "The budget deadline you mentioned earlier was Friday." },
+        ],
+        result: {
+          text: "The budget deadline you mentioned earlier was Friday.",
+          diagnostics: makeDiagnostics("success", {
+            durationMs: 842,
+            usage: {
+              totalTokens: 1234,
+            },
           }),
-      },
+        },
+      }),
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
@@ -123,23 +125,6 @@ describe("oauth resume slack integration", () => {
       }),
       expect.objectContaining({
         params: expect.objectContaining({
-          blocks: [
-            {
-              type: "markdown",
-              text: "The budget deadline you mentioned earlier was Friday.",
-            },
-            {
-              type: "context",
-              elements: [
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: expect.stringContaining(
-                    "*ID:* slack:C123:1700000000.001",
-                  ),
-                }),
-              ],
-            },
-          ],
           channel: "C123",
           thread_ts: "1700000000.001",
           text: "The budget deadline you mentioned earlier was Friday.",
@@ -216,7 +201,7 @@ describe("oauth resume slack integration", () => {
         },
       },
       agentRunner: scriptedAssistantMessageRunner({
-        messages: [{ text: "Checking now." }],
+        messages: [{ text: "Checking now." }, { text: "Done." }],
         result: {
           text: "Done.",
           diagnostics: makeDiagnostics(),
@@ -306,83 +291,6 @@ describe("oauth resume slack integration", () => {
     ]);
   });
 
-  it("uses the conversation ID for resumed reply footers", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId: "conversation-1",
-      sessionId: "turn-1",
-      sliceId: 2,
-      state: "awaiting_resume",
-      piMessages: [],
-      resumeReason: "timeout",
-      cumulativeDurationMs: 1_000,
-      cumulativeUsage: {
-        totalTokens: 1_000,
-      },
-      source: testSlackSource("1700000000.007"),
-    });
-
-    await resumeSlackTurn({
-      messageText: "continue this turn",
-      conversationId: "conversation-1",
-      turnId: "turn-1",
-      channelId: "C123",
-      threadTs: "1700000000.007",
-      initialText: "",
-      replyContext: {
-        routing: {
-          credentialContext: {
-            actor: { type: "user", userId: "U123" },
-          },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.007"),
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-      },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: "done",
-            diagnostics: makeDiagnostics("success", {
-              durationMs: 500,
-              usage: {
-                outputTokens: 7,
-              },
-            }),
-          }),
-      },
-    });
-
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.007",
-          text: "done",
-          blocks: [
-            {
-              type: "markdown",
-              text: "done",
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: "*ID:* conversation-1",
-                },
-              ],
-            },
-          ],
-        }),
-      }),
-    ]);
-  });
-
   it("posts resumed auth pause notices with the conversation footer", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
 
@@ -451,13 +359,13 @@ describe("oauth resume slack integration", () => {
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
       },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: longReply,
-            diagnostics: makeDiagnostics(),
-          }),
-      },
+      agentRunner: scriptedAssistantMessageRunner({
+        messages: [{ text: longReply }],
+        result: {
+          text: longReply,
+          diagnostics: makeDiagnostics(),
+        },
+      }),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");

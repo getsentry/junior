@@ -211,13 +211,13 @@ export async function persistRunningSessionRecord(args: {
 }
 
 /**
- * Commit the delivered final reply as the terminal completed session record.
+ * Commit a run after assistant output handling has settled.
  *
- * Generation completing is not delivery: call this only after the destination
- * accepted the visible final reply, so an undelivered assistant reply never
- * becomes durable conversation history or a terminal completed state. The
- * write is retried because the reply is already user-visible, then any remaining
- * failure surfaces to the post-delivery boundary for one authoritative error.
+ * Generation completing is not durable completion: call this only after the
+ * destination accepted each visible message or intentional silence was
+ * resolved. The write is retried because output may already be user-visible;
+ * any remaining failure surfaces to the post-output boundary for one
+ * authoritative error.
  */
 export async function persistCompletedSessionRecord(args: {
   channelName?: string;

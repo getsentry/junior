@@ -53,7 +53,6 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/messages";
-import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
@@ -231,15 +230,9 @@ export async function runLocalAgentTurn(
   let assistantMessageDelivered = false;
   /** Print and record one completed assistant message in local conversation order. */
   const deliverAssistantMessage = async (message: {
-    terminal: boolean;
     text: string;
   }): Promise<void> => {
     if (!message.text.trim()) {
-      if (message.terminal) {
-        throw new Error(
-          "Local terminal assistant message did not contain visible text",
-        );
-      }
       return;
     }
     failureCode = "delivery_failed";
@@ -248,7 +241,6 @@ export async function runLocalAgentTurn(
     recordDeliveredAssistantMessage({
       conversation,
       sessionId: turnId,
-      terminal: message.terminal,
       text: message.text,
       userMessageId,
     });
@@ -318,8 +310,7 @@ export async function runLocalAgentTurn(
         },
       },
       delivery: {
-        onAssistantMessage: ({ text }) =>
-          deliverAssistantMessage({ terminal: false, text }),
+        onAssistantMessage: deliverAssistantMessage,
       },
       durability: {
         onArtifactStateUpdated: async (nextArtifacts) => {
@@ -360,9 +351,7 @@ export async function runLocalAgentTurn(
     modelFailureEventId = finalized.eventId;
 
     if (reply.diagnostics.outcome !== "success") {
-      await deliverAssistantMessage({ terminal: true, text: reply.text });
-    } else if (shouldDeliverReplyText(reply)) {
-      await deliverAssistantMessage({ terminal: true, text: reply.text });
+      await deliverAssistantMessage({ text: reply.text });
     }
 
     completedState = buildDeliveredTurnStatePatch({
@@ -478,10 +467,7 @@ export async function runLocalAgentTurn(
     await lifecycle.complete({
       conversationId: input.conversationId,
       createdAtMs: now(),
-      outcome:
-        assistantMessageDelivered || shouldDeliverReplyText(reply)
-          ? "success"
-          : "no_reply",
+      outcome: assistantMessageDelivered ? "success" : "no_reply",
       turnId,
     });
   } else {

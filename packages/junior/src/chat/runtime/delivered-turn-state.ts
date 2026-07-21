@@ -1,4 +1,3 @@
-import { botConfig } from "@/chat/config";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -9,12 +8,9 @@ import {
 import { markTurnCompleted } from "@/chat/runtime/turn";
 import {
   markConversationMessage,
-  normalizeConversationText,
-  upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
-import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
 /** Build state after destination delivery or intentional no-reply completion. */
 export function buildDeliveredTurnStatePatch(args: {
@@ -40,28 +36,6 @@ export function buildDeliveredTurnStatePatch(args: {
     replied: true,
     skippedReason: undefined,
   });
-  const intentionalSilence = args.reply.deliveryPlan?.postThreadText === false;
-  const terminalMessageId = buildDeterministicAssistantMessageId(
-    args.sessionId,
-  );
-  if (
-    !intentionalSilence &&
-    !conversation.messages.some((message) => message.id === terminalMessageId)
-  ) {
-    upsertConversationMessage(conversation, {
-      id: terminalMessageId,
-      role: "assistant",
-      text: normalizeConversationText(args.reply.text) || "[empty response]",
-      createdAtMs: Date.now(),
-      author: {
-        userName: botConfig.userName,
-        isBot: true,
-      },
-      meta: {
-        replied: true,
-      },
-    });
-  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),

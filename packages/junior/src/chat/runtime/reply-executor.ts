@@ -129,7 +129,6 @@ import {
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import { shouldDeliverReplyText } from "@/chat/services/reply-delivery-plan";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -1017,24 +1016,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
-        // Mirrors slack-resume's finalReplyDelivered guard: once the
-        // destination accepted the final posts, later errors in the same turn
-        // must not mark it failed or trigger the fallback failure reply.
-        let finalReplyDelivered = false;
+        // Once model output is settled, later commit errors must not trigger a
+        // second visible failure reply.
+        let runResultHandled = false;
         let assistantMessageDelivered = false;
         let lifecycleTerminalized = false;
-        const replyFooter = buildSlackReplyFooter({ conversationId });
-        const shouldUseSlackFooter =
-          Boolean(replyFooter) &&
-          Boolean(channelId && threadTs) &&
-          (thread.adapter as { name?: string } | undefined)?.name === "slack";
         let turnCompletionNotified = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let agentContinueScheduleError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
-        let boundaryFailureEventId: string | undefined;
         let finalizedFailureEventId: string | undefined;
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
@@ -1045,67 +1037,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         /** Post and record one completed assistant message in the active thread. */
         const deliverAssistantMessage = async (assistantMessage: {
-          terminal: boolean;
           text: string;
         }): Promise<void> => {
           const posts = planSlackAssistantMessagePosts(assistantMessage.text);
           if (posts.length === 0) {
-            if (assistantMessage.terminal) {
-              throw new Error(
-                "Slack terminal assistant message did not contain visible text",
-              );
-            }
             return;
           }
           boundaryFailureCode = "delivery_failed";
           let slackTs: string | undefined;
-          if (assistantMessage.terminal && shouldUseSlackFooter) {
-            if (!channelId || !threadTs) {
-              throw new Error(
-                "Slack footer delivery requires a concrete channel and thread timestamp",
-              );
-            }
-            slackTs = await postSlackApiReplyPosts({
-              beforePost: beforeFirstResponsePost,
-              channelId,
-              threadTs,
-              posts,
-              footer: replyFooter,
-              onPostError: ({ error, messageTs: failedMessageTs, stage }) => {
-                boundaryFailureEventId = logException(
-                  error,
-                  "slack_thread_post_failed",
-                  turnTraceContext,
-                  {
-                    "app.slack.reply_stage": stage,
-                    ...(failedMessageTs
-                      ? { "messaging.message.id": failedMessageTs }
-                      : {}),
-                    ...getSlackErrorObservabilityAttributes(error),
-                  },
-                  "Failed to post Slack assistant message",
-                );
-              },
-            });
-          } else {
-            for (const post of posts) {
-              const sentMessage = await postThreadReply(
-                buildSlackOutputMessage(post.text),
-                post.stage,
-              );
-              slackTs = sentMessage.id;
-            }
-          }
-
-          if (assistantMessage.terminal) {
-            finalReplyDelivered = true;
-            shouldPersistFailureState = false;
+          for (const post of posts) {
+            const sentMessage = await postThreadReply(
+              buildSlackOutputMessage(post.text),
+              post.stage,
+            );
+            slackTs = sentMessage.id;
           }
           assistantMessageDelivered = true;
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
-            terminal: assistantMessage.terminal,
             text: assistantMessage.text,
             userMessageId: preparedState.userMessageId,
           });
@@ -1373,8 +1323,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onToolInvocation: options.onToolInvocation,
             },
             delivery: {
-              onAssistantMessage: ({ text }) =>
-                deliverAssistantMessage({ terminal: false, text }),
+              onAssistantMessage: deliverAssistantMessage,
             },
             durability: {
               onInputCommitted: options.ack,
@@ -1538,21 +1487,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             reply = finalized.reply;
             finalizedFailureEventId = finalized.eventId;
-            await deliverAssistantMessage({
-              terminal: true,
-              text: reply.text,
-            });
-          } else if (shouldDeliverReplyText(reply)) {
-            await deliverAssistantMessage({
-              terminal: true,
-              text: reply.text,
-            });
-          } else {
-            // Explicit no-reply turns intentionally complete without terminal
-            // text after any preceding assistant/tool work has settled.
-            finalReplyDelivered = true;
-            shouldPersistFailureState = false;
+            await deliverAssistantMessage({ text: reply.text });
           }
+          runResultHandled = true;
+          shouldPersistFailureState = false;
           boundaryFailureCode = "agent_run_failed";
 
           const artifactStatePatch: Partial<ThreadArtifactsState> =
@@ -1666,10 +1604,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.turnLifecycle.complete({
                 conversationId,
                 createdAtMs: Date.now(),
-                outcome:
-                  assistantMessageDelivered || shouldDeliverReplyText(reply)
-                    ? "success"
-                    : "no_reply",
+                outcome: assistantMessageDelivered ? "success" : "no_reply",
                 turnId,
               });
             } else {
@@ -1715,9 +1650,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
         } catch (error) {
-          if (finalReplyDelivered) {
-            // Delivered-turn guard: errors after Slack accepted the final
-            // reply (redundant-ack cleanup, completion callbacks) must not
+          if (runResultHandled) {
+            // Errors after the completed run produced output or intentional
+            // silence (redundant-ack cleanup, completion callbacks) must not
             // fail the turn or trigger the visible failure fallback.
             // Still mark the turn completed so processing reactions run the
             // complete lifecycle (remove thinking + add done), including for
@@ -1761,7 +1696,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             classifiedFailure?.failureCode ?? boundaryFailureCode;
           const failureEventId =
             classifiedFailure?.eventId ??
-            boundaryFailureEventId ??
             logException(
               failureCause,
               "slack_turn_execution_failed",
@@ -1866,7 +1800,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     expectedVersion: sessionRecord.version,
                     sessionId: turnId,
                     errorMessage:
-                      "Agent turn failed before final reply delivery completed",
+                      "Agent turn failed before assistant output handling completed",
                   });
                 }
               } catch (recordError) {

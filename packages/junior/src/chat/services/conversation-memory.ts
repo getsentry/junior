@@ -5,7 +5,6 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   calculateContextCompactionTargetTokens,
@@ -152,9 +151,7 @@ export function upsertConversationMessage(
 /** Record one assistant message after its destination accepts it. */
 export function recordDeliveredAssistantMessage(args: {
   conversation: ThreadConversationState;
-  messageId?: string;
   sessionId: string;
-  terminal: boolean;
   text: string;
   userMessageId?: string;
 }): string {
@@ -163,17 +160,11 @@ export function recordDeliveredAssistantMessage(args: {
     args.conversation.messages.filter((message) =>
       message.id.startsWith(prefix),
     ).length + 1;
-  const messageId =
-    args.messageId ??
-    (args.terminal
-      ? buildDeterministicAssistantMessageId(args.sessionId)
-      : `${prefix}${ordinal}`);
-  if (args.terminal) {
-    markConversationMessage(args.conversation, args.userMessageId, {
-      replied: true,
-      skippedReason: undefined,
-    });
-  }
+  const messageId = `${prefix}${ordinal}`;
+  markConversationMessage(args.conversation, args.userMessageId, {
+    replied: true,
+    skippedReason: undefined,
+  });
   upsertConversationMessage(args.conversation, {
     id: messageId,
     role: "assistant",
@@ -195,12 +186,10 @@ export function turnHasReply(
   conversation: ThreadConversationState,
   turnId: string,
 ): boolean {
-  const terminalId = buildDeterministicAssistantMessageId(turnId);
-  const intermediatePrefix = `${turnId}:assistant:`;
+  const assistantPrefix = `${turnId}:assistant:`;
   return conversation.messages.some(
     (message) =>
-      message.role === "assistant" &&
-      (message.id === terminalId || message.id.startsWith(intermediatePrefix)),
+      message.role === "assistant" && message.id.startsWith(assistantPrefix),
   );
 }
 

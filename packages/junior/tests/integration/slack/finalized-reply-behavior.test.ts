@@ -10,7 +10,6 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { scriptedAssistantMessageRunner } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
@@ -63,15 +62,13 @@ describe("Slack behavior: finalized thread replies", () => {
       services: {
         replyExecutor: {
           turnLifecycle,
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.input.messageText;
-              return completedAgentRun({
-                text: "Hello world",
-                diagnostics: makeDiagnostics(),
-              });
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [{ text: "Hello world" }],
+            result: {
+              text: "Hello world",
+              diagnostics: makeDiagnostics(),
             },
-          },
+          }),
         },
       },
     });
@@ -106,14 +103,17 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(turnLifecycle.fail).not.toHaveBeenCalled();
   });
 
-  it("posts pre-tool and terminal assistant messages separately", async () => {
+  it("posts completed assistant messages separately", async () => {
     const finalReply =
       "I checked five outlets. The dominant story is the escalating US-Iran conflict.";
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
           agentRunner: scriptedAssistantMessageRunner({
-            messages: [{ text: "Fetching sources now..." }],
+            messages: [
+              { text: "Fetching sources now..." },
+              { text: finalReply },
+            ],
             result: {
               text: finalReply,
               diagnostics: makeDiagnostics({ toolCalls: ["webSearch"] }),
@@ -142,20 +142,17 @@ describe("Slack behavior: finalized thread replies", () => {
     ]);
   });
 
-  it("posts a failure fallback instead of completing an empty final post plan", async () => {
+  it("posts a fallback after progress when the run fails", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "",
-                deliveryPlan: {
-                  postThreadText: true,
-                },
-                diagnostics: makeDiagnostics(),
-              }),
-          },
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [{ text: "Checking that now..." }],
+            result: {
+              text: "",
+              diagnostics: makeDiagnostics({ outcome: "execution_failure" }),
+            },
+          }),
         },
       },
     });
@@ -172,13 +169,14 @@ describe("Slack behavior: finalized thread replies", () => {
       { destination: createTestDestination(thread), isFinalAttempt: true },
     );
 
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(toPostedText(thread.posts[0])).toContain(
+    expect(thread.postKinds).toEqual(["value", "value"]);
+    expect(toPostedText(thread.posts[0])).toBe("Checking that now...");
+    expect(toPostedText(thread.posts[1])).toContain(
       "I ran into an internal error while processing that.",
     );
   });
 
-  it("splits long replies into continuation posts after the final reply is known", async () => {
+  it("splits long completed messages into continuation posts", async () => {
     const longReply = Array.from(
       { length: 80 },
       (_, i) => `line ${i + 1}`,
@@ -186,13 +184,13 @@ describe("Slack behavior: finalized thread replies", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: longReply,
-                diagnostics: makeDiagnostics(),
-              }),
-          },
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [{ text: longReply }],
+            result: {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            },
+          }),
         },
       },
     });
@@ -225,13 +223,13 @@ describe("Slack behavior: finalized thread replies", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: longReply,
-                diagnostics: makeDiagnostics(),
-              }),
-          },
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [{ text: longReply }],
+            result: {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            },
+          }),
         },
       },
     });
@@ -271,13 +269,13 @@ describe("Slack behavior: finalized thread replies", () => {
       services: {
         replyExecutor: {
           turnLifecycle,
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: longReply,
-                diagnostics: makeDiagnostics({ outcome: "provider_error" }),
-              }),
-          },
+          agentRunner: scriptedAssistantMessageRunner({
+            messages: [],
+            result: {
+              text: longReply,
+              diagnostics: makeDiagnostics({ outcome: "provider_error" }),
+            },
+          }),
         },
       },
     });

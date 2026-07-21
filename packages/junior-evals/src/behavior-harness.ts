@@ -1695,12 +1695,10 @@ function buildRuntimeServices(
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
             await runRequest.durability?.onInputCommitted?.();
+            await runRequest.delivery?.onAssistantMessage({ text: replyText });
             replyState.successfulCount += 1;
             return completedAgentRun({
               text: replyText,
-              deliveryPlan: {
-                postThreadText: true,
-              },
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "eval-reply-text",

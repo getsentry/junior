@@ -7,6 +7,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { persistConversationMessages } from "@/chat/conversations/messages";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 const { postMessageMock, setStatusMock, uploadFilesToThreadMock } = vi.hoisted(
   () => ({
@@ -198,8 +199,11 @@ describe("resumeSlackTurn", () => {
           },
         },
         agentRunner: {
-          run: async () =>
-            completedAgentRun({
+          run: async (request) => {
+            await deliverAssistantMessagesForTest(request, [
+              { text: "Final resumed answer" },
+            ]);
+            return completedAgentRun({
               text: "Final resumed answer",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -210,7 +214,8 @@ describe("resumeSlackTurn", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            }),
+            });
+          },
         },
         onSuccess: async () => {
           throw new Error("state write failed");
@@ -259,8 +264,11 @@ describe("resumeSlackTurn", () => {
         },
       },
       agentRunner: {
-        run: async () =>
-          completedAgentRun({
+        run: async (request) => {
+          await deliverAssistantMessagesForTest(request, [
+            { text: "Final resumed answer" },
+          ]);
+          return completedAgentRun({
             text: "Final resumed answer",
             diagnostics: {
               assistantMessageCount: 1,
@@ -271,7 +279,8 @@ describe("resumeSlackTurn", () => {
               toolResultCount: 0,
               usedPrimaryText: true,
             },
-          }),
+          });
+        },
       },
       scheduleSessionCompletedPluginTasks,
     });

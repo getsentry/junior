@@ -303,7 +303,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.summaryCalls).toBe(1);
   });
 
-  it("delivers tool-bearing assistant text before the terminal message", async () => {
+  it("delivers completed assistant messages in model order", async () => {
     observations.progressTool = true;
     const delivered: Array<{ text: string }> = [];
     const conversationId = "local:test:assistant-message-delivery";
@@ -324,7 +324,10 @@ describe("executeAgentRun model handoff", () => {
     });
 
     expect(outcome.status).toBe("completed");
-    expect(delivered).toEqual([{ text: "Let me do that now." }]);
+    expect(delivered).toEqual([
+      { text: "Let me do that now." },
+      { text: "Handoff model completed it." },
+    ]);
   });
 
   it("propagates delivery failure before the agent executes the tool", async () => {

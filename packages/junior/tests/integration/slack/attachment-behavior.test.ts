@@ -6,7 +6,10 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -75,6 +78,9 @@ describe("Slack behavior: attachment handling", () => {
                 capturedAttachmentMediaTypes.push(attachments[0].mediaType);
               }
 
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Image received. The chart trend is upward." },
+              ]);
               return completedAgentRun({
                 text: "Image received. The chart trend is upward.",
                 diagnostics: {

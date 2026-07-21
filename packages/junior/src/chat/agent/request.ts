@@ -140,15 +140,13 @@ export interface AgentRunObservers {
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
 }
 
-/** One completed intermediate assistant message ready for destination delivery. */
+/** One completed assistant message ready for destination delivery. */
 export interface AgentAssistantMessage {
   text: string;
 }
 
-/** Delivers intermediate messages before the agent advances to more work. */
+/** Delivers completed assistant messages in model order. */
 export interface AgentRunDelivery {
-  /** True when an earlier slice already delivered a message for this turn. */
-  hasDeliveredMessage?: boolean;
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }
 

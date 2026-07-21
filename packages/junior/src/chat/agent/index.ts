@@ -5,9 +5,9 @@
  * runtime/ingress code has parsed and routed the request. Wires the phase
  * modules (session restore, skills, tools, prompt, resume), runs the Pi
  * agent with the inline provider retry loop, and translates expected run
- * endings into `AgentRunOutcome` values. It emits completed intermediate
- * assistant messages through the delivery port; terminal text stays in the
- * result for destination-owned delivery.
+ * endings into `AgentRunOutcome` values. It emits every completed visible
+ * assistant message through the delivery port; the result carries diagnostics,
+ * artifacts, and transcript state for destination-owned completion.
  */
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
@@ -67,7 +67,7 @@ import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import {
   buildTurnResult,
-  getVisibleAssistantText,
+  getAssistantMessageText,
 } from "@/chat/services/turn-result";
 import {
   isProviderRetryError,
@@ -617,24 +617,19 @@ async function executeAgentRunInPrivacyContext(
       userContentParts,
     });
     // ── Agent execution ──────────────────────────────────────────────
-    let pendingTextOnlyAssistant:
-      | Parameters<typeof extractAssistantText>[0]
-      | undefined;
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
-    let assistantMessageDelivered = delivery?.hasDeliveredMessage ?? false;
     /** Deliver one completed visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      const text = getVisibleAssistantText(extractAssistantText(message));
+      const text = getAssistantMessageText(message);
       if (!text || !delivery) {
         return;
       }
       try {
         await delivery.onAssistantMessage({ text });
-        assistantMessageDelivered = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
           error,
@@ -765,11 +760,6 @@ async function executeAgentRunInPrivacyContext(
           .persistSafeBoundary([...agent!.state.messages])
           .then(() => undefined);
       }
-      if (event.type === "turn_start" && pendingTextOnlyAssistant) {
-        const message = pendingTextOnlyAssistant;
-        pendingTextOnlyAssistant = undefined;
-        return deliverAssistantMessage(message);
-      }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (
           event.message.stopReason === "error" ||
@@ -783,13 +773,7 @@ async function executeAgentRunInPrivacyContext(
         if (containsHandoff) {
           return;
         }
-        const containsToolCall = event.message.content.some(
-          (part) => part.type === "toolCall",
-        );
-        if (containsToolCall) {
-          return deliverAssistantMessage(event.message);
-        }
-        pendingTextOnlyAssistant = event.message;
+        return deliverAssistantMessage(event.message);
       }
     });
 
@@ -1046,17 +1030,14 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
-    // Generation completing is not delivery: the session record stays at its
-    // latest running safe boundary here. The destination boundary commits the
-    // final messages and terminal completed state only after the visible reply
-    // is accepted, so an undelivered assistant reply never surfaces as
-    // delivered conversation history and a crash before delivery stays
-    // recoverable through stranded-running continuation.
+    // Generation completing is not durable completion: the session record
+    // stays at its latest running safe boundary here. The destination owns the
+    // completed session record after assistant output handling settles, so a
+    // crash before that commit remains recoverable as a stranded run.
 
     // ── Build turn result ────────────────────────────────────────────
     const result = buildTurnResult({
       newMessages,
-      assistantMessageDelivered,
       userInput,
       artifactStatePatch,
       toolCalls,

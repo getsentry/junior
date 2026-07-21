@@ -82,6 +82,16 @@ async function loadLifecycleEvents(conversationId: string) {
 
 type FlatAgentRunRequest = ReturnType<typeof flattenAgentRunRequestForTest>;
 
+async function deliverAssistantText(
+  request: Parameters<AgentRunner["run"]>[0],
+  text: string,
+): Promise<void> {
+  if (!request.delivery) {
+    throw new Error("local test runner requires assistant delivery");
+  }
+  await request.delivery.onAssistantMessage({ text });
+}
+
 async function persistCompletedSessionForFakeReply(
   context: FlatAgentRunRequest,
   piMessages: PiMessage[],
@@ -125,7 +135,7 @@ describe("local agent runner", () => {
           delivered.push(reply);
         },
         agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Checking now." }],
+          messages: [{ text: "Checking now." }, { text: "Done." }],
           result: successReply("Done."),
         }),
       },
@@ -157,6 +167,7 @@ describe("local agent runner", () => {
       const context = flattenAgentRunRequestForTest(request);
 
       contexts.push(context);
+      await deliverAssistantText(request, "hello from local");
       return completedAgentRun(successReply("hello from local"));
     });
     const delivered: LocalAgentReply[] = [];
@@ -269,11 +280,7 @@ describe("local agent runner", () => {
       { conversationId: conversationId!, message: "react only" },
       {
         agentRunner: {
-          run: async () =>
-            completedAgentRun({
-              ...successReply(""),
-              deliveryPlan: { postThreadText: false },
-            }),
+          run: async () => completedAgentRun(successReply("")),
         },
         deliverReply,
       },
@@ -305,7 +312,7 @@ describe("local agent runner", () => {
     ]);
   });
 
-  it("records success when an intermediate message precedes intentional silence", async () => {
+  it("records success when a completed message precedes intentional silence", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "message-then-no-reply",
       cwd: "/tmp/local-agent-runner-message-then-no-reply",
@@ -317,10 +324,7 @@ describe("local agent runner", () => {
       {
         agentRunner: scriptedAssistantMessageRunner({
           messages: [{ text: "Checked it." }],
-          result: {
-            ...successReply(""),
-            deliveryPlan: { postThreadText: false },
-          },
+          result: successReply(""),
         }),
         deliverReply: async (reply) => {
           delivered.push(reply);
@@ -494,7 +498,12 @@ describe("local agent runner", () => {
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          agentRunner: { run: async () => completedAgentRun(reply) },
+          agentRunner: {
+            run: async (request) => {
+              await deliverAssistantText(request, reply.text);
+              return completedAgentRun(reply);
+            },
+          },
           completeDeliveredTurn: async () => {
             throw new Error(rawError);
           },
@@ -675,6 +684,7 @@ describe("local agent runner", () => {
                 },
               ] as PiMessage[];
               await persistCompletedSessionForFakeReply(context, piMessages);
+              await deliverAssistantText(request, "captured");
               return completedAgentRun(
                 successReply("captured", {
                   piMessages,
@@ -748,7 +758,9 @@ describe("local agent runner", () => {
       const context = flattenAgentRunRequestForTest(request);
 
       contexts.push(context);
-      return completedAgentRun(successReply(`reply to ${text}`));
+      const replyText = `reply to ${text}`;
+      await deliverAssistantText(request, replyText);
+      return completedAgentRun(successReply(replyText));
     });
 
     await runLocalAgentTurn(
@@ -932,13 +944,14 @@ describe("local agent runner", () => {
         content: [{ type: "text", text: "persisted pi output" }],
       },
     ] as PiMessage[];
-    const generateReply = vi.fn<AgentRunner["run"]>(async () =>
-      completedAgentRun(
+    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
+      await deliverAssistantText(request, "persisted visible output");
+      return completedAgentRun(
         successReply("persisted visible output", {
           piMessages: generatedMessages,
         }),
-      ),
-    );
+      );
+    });
 
     await runLocalAgentTurn(
       {
@@ -1033,6 +1046,7 @@ describe("local agent runner", () => {
                   context,
                   generatedMessages,
                 );
+                await deliverAssistantText(request, "visible reply");
                 return completedAgentRun(
                   successReply("visible reply", {
                     piMessages: generatedMessages,
@@ -1123,6 +1137,7 @@ describe("local agent runner", () => {
         sandboxDependencyProfileHash: "profile-undelivered",
         sandboxId: "sandbox-undelivered",
       });
+      await deliverAssistantText(request, "not delivered");
       return completedAgentRun(successReply("not delivered"));
     });
 

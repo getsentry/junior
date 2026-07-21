@@ -7,7 +7,10 @@ import {
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 function successDiagnostics(toolCalls: string[] = []) {
   return {
@@ -37,9 +40,12 @@ describe("Slack behavior: processing reaction", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
               expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Done." },
+              ]);
               return completedAgentRun({
                 text: "Done.",
                 diagnostics: successDiagnostics(),
@@ -195,9 +201,12 @@ describe("Slack behavior: processing reaction", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
               expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Done." },
+              ]);
               return completedAgentRun({
                 text: "Done.",
                 diagnostics: successDiagnostics(),
@@ -315,9 +324,6 @@ describe("Slack behavior: processing reaction", () => {
               });
               return completedAgentRun({
                 text: "",
-                deliveryPlan: {
-                  postThreadText: false,
-                },
                 diagnostics: successDiagnostics(["addReaction"]),
               });
             },

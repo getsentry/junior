@@ -16,7 +16,10 @@ import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -279,6 +282,9 @@ describe("Slack behavior: message_changed webhook ingress", () => {
                 userId: "U123",
                 userName: "dcramer",
               });
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Hello world" },
+              ]);
               return completedAgentRun({
                 text: "Hello world",
                 diagnostics: makeDiagnostics(),
@@ -340,7 +346,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         params: expect.objectContaining({
           channel: "D12345",
           thread_ts: "1700000100.000100",
-          text: "Hello world",
+          markdown_text: "Hello world",
         }),
       }),
     );

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 
 const executeAgentRunMock = vi.hoisted(() => vi.fn());
 
@@ -76,9 +77,10 @@ export const plugins = {
 `,
     );
     process.chdir(tempDir);
-    executeAgentRunMock.mockResolvedValue(
-      completedAgentRun(successReply("hello local")),
-    );
+    executeAgentRunMock.mockImplementation(async (request) => {
+      await deliverAssistantMessagesForTest(request, [{ text: "hello local" }]);
+      return completedAgentRun(successReply("hello local"));
+    });
     const output: string[] = [];
 
     try {

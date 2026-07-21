@@ -13,7 +13,7 @@ provider mailbox worker.
 - User input is persisted before execution; each completed assistant message is
   written to stdout and recorded in conversation order. Post-delivery state is
   attempted immediately without blocking later tools, then persisted again at
-  terminal completion.
+  turn completion.
 - Each invocation uses a collision-resistant turn ID independent of transcript
   length. It records `turn_started` after durable input, then a terminal
   success, no-reply, or privacy-safe failure after the owning boundary.

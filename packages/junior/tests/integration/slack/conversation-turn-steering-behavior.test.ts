@@ -27,7 +27,10 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
@@ -279,11 +282,13 @@ describe("Slack behavior: durable turn steering", () => {
         prompt,
         steeringTexts,
       });
+      const replyText = [
+        `Handled initial: ${prompt}`,
+        `Steered: ${steeringTexts.join(" | ")}`,
+      ].join("\n");
+      await deliverAssistantMessagesForTest(request, [{ text: replyText }]);
       return completedAgentRun({
-        text: [
-          `Handled initial: ${prompt}`,
-          `Steered: ${steeringTexts.join(" | ")}`,
-        ].join("\n"),
+        text: replyText,
         diagnostics: makeDiagnostics(),
       });
     };
@@ -387,7 +392,9 @@ describe("Slack behavior: durable turn steering", () => {
       expect.objectContaining({
         channel: CHANNEL_ID,
         thread_ts: THREAD_TS,
-        text: expect.stringContaining("Steered: include the rollback owner"),
+        markdown_text: expect.stringContaining(
+          "Steered: include the rollback owner",
+        ),
       }),
     );
 
@@ -413,7 +420,9 @@ describe("Slack behavior: durable turn steering", () => {
     ]);
     const deliveredMessages = slackApiOutbox.messages();
     expect(deliveredMessages).toHaveLength(2);
-    expect(deliveredMessages.map((message) => message.params.text)).toEqual([
+    expect(
+      deliveredMessages.map((message) => message.params.markdown_text),
+    ).toEqual([
       "Handled initial: start the incident summary\n\nSteered: include the rollback owner",
       `Handled initial: ${agentCalls[1]?.prompt}\n\nSteered:`,
     ]);

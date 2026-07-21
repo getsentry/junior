@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -50,10 +51,13 @@ describe("Slack behavior: thread continuity", () => {
               const prompt = request.input.messageText;
 
               prompts.push(prompt);
+              const replyText =
+                scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply";
+              await deliverAssistantMessagesForTest(request, [
+                { text: replyText },
+              ]);
               return completedAgentRun({
-                text:
-                  scriptedReplies[prompts.length - 1] ??
-                  "Unexpected extra reply",
+                text: replyText,
                 diagnostics: {
                   assistantMessageCount: 1,
                   modelId: "fake-agent-model",

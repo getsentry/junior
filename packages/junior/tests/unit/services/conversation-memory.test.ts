@@ -166,7 +166,7 @@ describe("buildConversationContext", () => {
 });
 
 describe("turnHasReply", () => {
-  it("recognizes terminal and intermediate assistant message ids", () => {
+  it("recognizes delivered assistant message ids", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
@@ -175,16 +175,10 @@ describe("turnHasReply", () => {
         text: "Working on it.",
         createdAtMs: 1,
       },
-      {
-        id: "assistant:turn-2",
-        role: "assistant",
-        text: "Done.",
-        createdAtMs: 2,
-      },
     ];
 
     expect(turnHasReply(conversation, "turn-1")).toBe(true);
-    expect(turnHasReply(conversation, "turn-2")).toBe(true);
+    expect(turnHasReply(conversation, "turn-2")).toBe(false);
     expect(turnHasReply(conversation, "turn-3")).toBe(false);
   });
 });

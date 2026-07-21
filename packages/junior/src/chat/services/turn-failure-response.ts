@@ -100,7 +100,7 @@ export function getAgentTurnDiagnosticsAttributes(
   };
 }
 
-/** Sanitized final reply plus its optional captured failure correlation. */
+/** Sanitized failure fallback plus its optional captured event ID. */
 export interface FinalizedTurnFailure {
   eventId?: string;
   reply: AgentRunResult;
@@ -150,9 +150,6 @@ export function finalizeFailedTurnReplyWithEvent(args: {
       text: providerPartialText
         ? `${providerPartialText}${getInterruptionMarker()}`
         : buildTurnFailureResponse(eventId),
-      deliveryPlan: {
-        postThreadText: true,
-      },
     },
   };
 }

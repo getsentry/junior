@@ -595,7 +595,7 @@ describe("executeAgentRun provider retry", () => {
     expect(injectedTexts).toEqual(["actually do the other thing"]);
 
     // Simulate the destination boundary committing completion after
-    // acceptance; generation itself no longer persists the final reply.
+    // acceptance; generation itself does not commit provider delivery.
     await persistCompletedSessionRecord({
       modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
@@ -658,7 +658,10 @@ describe("executeAgentRun provider retry", () => {
     });
 
     expect(outcome.status).toBe("completed");
-    expect(delivered).toEqual([{ text: "Initial answer." }]);
+    expect(delivered).toEqual([
+      { text: "Initial answer." },
+      { text: "Steered." },
+    ]);
   });
 
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {

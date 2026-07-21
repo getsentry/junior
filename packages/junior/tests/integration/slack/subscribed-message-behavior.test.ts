@@ -9,9 +9,13 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
 
@@ -47,7 +51,11 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
-function completedReply(text: string) {
+async function completedReply(
+  request: Parameters<AgentRunner["run"]>[0],
+  text: string,
+) {
+  await deliverAssistantMessagesForTest(request, [{ text }]);
   return completedAgentRun({
     text,
     diagnostics: {
@@ -170,7 +178,10 @@ describe("Slack behavior: subscribed messages", () => {
               };
 
               replyContexts.push(context);
-              return completedReply("I checked the subscribed PR event.");
+              return await completedReply(
+                request,
+                "I checked the subscribed PR event.",
+              );
             },
           },
         },
@@ -296,7 +307,8 @@ describe("Slack behavior: subscribed messages", () => {
               const prompt = request.input.messageText;
 
               replyCalls.push(prompt);
-              return completedReply(
+              return await completedReply(
+                request,
                 "Action item captured: monitor dashboards for 30 minutes.",
               );
             },
@@ -349,7 +361,10 @@ describe("Slack behavior: subscribed messages", () => {
               const prompt = request.input.messageText;
 
               replyCalls.push(prompt);
-              return completedReply("Yes. Shipping status is green.");
+              return await completedReply(
+                request,
+                "Yes. Shipping status is green.",
+              );
             },
           },
         },
@@ -396,7 +411,10 @@ describe("Slack behavior: subscribed messages", () => {
               const context = flattenAgentRunRequestForTest(request);
 
               replyCalls.push({ prompt, piMessages: context.piMessages });
-              return completedReply("Handled queued subscribed turn.");
+              return await completedReply(
+                request,
+                "Handled queued subscribed turn.",
+              );
             },
           },
         },
@@ -468,7 +486,8 @@ describe("Slack behavior: subscribed messages", () => {
               const prompt = request.input.messageText;
 
               replyCalls.push(prompt);
-              return completedReply(
+              return await completedReply(
+                request,
                 replyCalls.length === 1
                   ? "I can help with this thread."
                   : "I'm back because you mentioned me again.",
@@ -549,9 +568,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -597,9 +619,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -651,9 +676,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -707,9 +735,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -761,9 +792,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -822,9 +856,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -884,9 +921,12 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async () => {
+            run: async (request) => {
               replyCalled = true;
-              return completedReply("This should never be posted.");
+              return await completedReply(
+                request,
+                "This should never be posted.",
+              );
             },
           },
         },
@@ -958,7 +998,10 @@ describe("Slack behavior: subscribed messages", () => {
               const prompt = request.input.messageText;
 
               replyCalls.push(prompt);
-              return completedReply("You asked for the budget by Friday.");
+              return await completedReply(
+                request,
+                "You asked for the budget by Friday.",
+              );
             },
           },
         },
@@ -1021,7 +1064,8 @@ describe("Slack behavior: subscribed messages", () => {
               const prompt = request.input.messageText;
 
               replyCalls.push(prompt);
-              return completedReply(
+              return await completedReply(
+                request,
                 replyCalls.length === 1
                   ? "The deploy changed billing, auth, and the API gateway."
                   : "The three services were billing, auth, and the API gateway.",

@@ -1,8 +1,8 @@
 # Agent Runtime
 
 The runtime prepares turns, advances durable agent state, handles continuation,
-and produces a finalized delivery plan. `../agent/` owns the Pi execution loop;
-this directory owns product orchestration around it.
+and coordinates provider delivery. `../agent/` owns the Pi execution loop; this
+directory owns product orchestration around it.
 
 ## Turn Handling
 

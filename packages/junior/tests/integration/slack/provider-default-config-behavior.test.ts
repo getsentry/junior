@@ -6,6 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -64,12 +65,12 @@ describe("Slack behavior: provider default configuration", () => {
   });
 
   it("does not intercept combined repo setup and agent work", async () => {
-    const executeAgentRun = vi.fn(async () =>
-      completedAgentRun({
+    const executeAgentRun = vi.fn(async (request) => {
+      await deliverAssistantMessagesForTest(request, [
+        { text: "Created the issue." },
+      ]);
+      return completedAgentRun({
         text: "Created the issue.",
-        deliveryPlan: {
-          postThreadText: true,
-        },
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "test-model",
@@ -79,8 +80,8 @@ describe("Slack behavior: provider default configuration", () => {
           toolResultCount: 0,
           usedPrimaryText: true,
         },
-      }),
-    );
+      });
+    });
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {

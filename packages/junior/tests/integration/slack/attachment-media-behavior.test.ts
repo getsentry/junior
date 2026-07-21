@@ -7,7 +7,10 @@ import {
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  flattenAgentRunRequestForTest,
+} from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -244,7 +247,12 @@ describe("Slack behavior: mixed attachment media", () => {
   it("still runs the assistant when only images are attached and vision is disabled", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const capturedOmittedImageCounts: number[] = [];
-    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (_request) => {
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      await deliverAssistantMessagesForTest(request, [
+        {
+          text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
+        },
+      ]);
       return completedAgentRun({
         text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
         diagnostics: {

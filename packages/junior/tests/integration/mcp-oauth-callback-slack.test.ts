@@ -18,6 +18,7 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -203,8 +204,11 @@ async function createAwaitingMcpTurnRecord(args: {
 describe("mcp oauth callback slack integration", () => {
   beforeEach(async () => {
     executeAgentRunMock.mockReset();
-    executeAgentRunMock.mockResolvedValue(
-      completedAgentRun({
+    executeAgentRunMock.mockImplementation(async (request) => {
+      await deliverAssistantMessagesForTest(request, [
+        { text: "The budget deadline you mentioned earlier was Friday." },
+      ]);
+      return completedAgentRun({
         text: "The budget deadline you mentioned earlier was Friday.",
         artifactStatePatch: {
           lastCanvasUrl: "https://example.com/canvas",
@@ -212,8 +216,8 @@ describe("mcp oauth callback slack integration", () => {
         sandboxId: "sandbox-1",
         sandboxDependencyProfileHash: "hash-1",
         diagnostics: makeDiagnostics(),
-      }),
-    );
+      });
+    });
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -320,7 +324,7 @@ describe("mcp oauth callback slack integration", () => {
       },
     });
     await createAwaitingMcpTurnRecord({
-      conversationId: "conversation-1",
+      conversationId: threadId,
       actor: {
         platform: "slack",
         teamId: "T123",
@@ -337,7 +341,7 @@ describe("mcp oauth callback slack integration", () => {
 
     const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
       provider: EVAL_MCP_AUTH_PROVIDER,
-      conversationId: "conversation-1",
+      conversationId: threadId,
       destination: SLACK_DESTINATION,
       sessionId,
       userId: "U123",
@@ -381,7 +385,7 @@ describe("mcp oauth callback slack integration", () => {
       authSessionId: authProvider.authSessionId,
       provider: EVAL_MCP_AUTH_PROVIDER,
       userId: "U123",
-      conversationId: "conversation-1",
+      conversationId: threadId,
       destination: SLACK_DESTINATION,
       sessionId,
       userMessage: "what did i say about the budget?",
@@ -404,7 +408,7 @@ describe("mcp oauth callback slack integration", () => {
 
     const repeatedProvider = await mcpOauthModule.createMcpOAuthClientProvider({
       provider: EVAL_MCP_AUTH_PROVIDER,
-      conversationId: "conversation-1",
+      conversationId: threadId,
       destination: SLACK_DESTINATION,
       sessionId,
       userId: "U123",

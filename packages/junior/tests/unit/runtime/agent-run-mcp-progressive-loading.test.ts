@@ -17,13 +17,10 @@ const {
   listToolsMock,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
-  omitFinalAssistantAfterTool,
   pendingAuthRecords,
-  pushPreToolAssistantMessage,
   promptCallCount,
   promptMessages,
   promptSeedMessages,
-  recordToolResultMessage,
   resumeMessages,
   resumeTurnContextCounts,
   searchMcpToolNames,
@@ -46,13 +43,10 @@ const {
   listToolsMock: vi.fn(),
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
-  omitFinalAssistantAfterTool: { value: false },
   pendingAuthRecords: [] as ConversationPendingAuthState[],
   promptCallCount: { value: 0 },
   promptMessages: [] as unknown[],
   promptSeedMessages: [] as unknown[][],
-  pushPreToolAssistantMessage: { value: false },
-  recordToolResultMessage: { value: false },
   resumeMessages: [] as unknown[][],
   resumeTurnContextCounts: [] as number[],
   searchMcpToolNames: [] as string[][],
@@ -220,18 +214,6 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
         );
       }
-      if (pushPreToolAssistantMessage.value) {
-        this.state.messages.push({
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "Let me search for related articles and compare perspectives.",
-            },
-          ],
-        });
-      }
-
       const callMcpTool = this.state.tools.find(
         (tool) => tool.name === "callMcpTool",
       );
@@ -243,17 +225,6 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
-      if (recordToolResultMessage.value) {
-        this.state.messages.push({
-          role: "toolResult",
-          toolName: "callMcpTool",
-          isError: false,
-          content: [{ type: "text", text: "pong" }],
-        });
-      }
-      if (omitFinalAssistantAfterTool.value) {
-        return {};
-      }
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -649,13 +620,10 @@ describe("executeAgentRun progressive MCP loading", () => {
     searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
-    omitFinalAssistantAfterTool.value = false;
     pendingAuthRecords.length = 0;
     promptCallCount.value = 0;
     promptMessages.length = 0;
     promptSeedMessages.length = 0;
-    pushPreToolAssistantMessage.value = false;
-    recordToolResultMessage.value = false;
     resumeMessages.length = 0;
     resumeTurnContextCounts.length = 0;
     turnContextInputs.length = 0;
@@ -1217,28 +1185,6 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(resumedSessionRecord).toMatchObject({
       state: "awaiting_resume",
     });
-  });
-
-  it("does not leak provisional pre-tool assistant text as the final reply", async () => {
-    pushPreToolAssistantMessage.value = true;
-    recordToolResultMessage.value = true;
-    omitFinalAssistantAfterTool.value = true;
-    listToolsMock.mockReset();
-    listToolsMock.mockResolvedValue([makeDemoMcpTool("ping")]);
-
-    const reply = finalReply(
-      await executeAgentRun(
-        makeAgentRunRequest("help me", {
-          conversationId: "conversation-5",
-          threadTs: "1712345.0005",
-          turnId: "turn-5",
-        }),
-      ),
-    );
-
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("execution_failure");
-    expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
   it("does not return auth resume when auth session record persistence fails", async () => {
