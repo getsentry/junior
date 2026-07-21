@@ -294,9 +294,9 @@ async function executeAgentRunInPrivacyContext(
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = {
       conversationId,
-      slackThreadId: slackSource ? conversationId : undefined,
-      slackUserId: slackActor?.userId,
-      slackChannelId: slackDestination?.channelId,
+      messageConversationId: slackSource ? conversationId : undefined,
+      userId: slackActor?.userId,
+      destinationName: slackDestination?.channelId,
       runId,
       ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
@@ -593,10 +593,10 @@ async function executeAgentRunInPrivacyContext(
 
     setTags({
       conversationId: spanContext.conversationId,
-      slackThreadId: slackSource ? conversationId : undefined,
-      slackUserId: slackActor?.userId,
-      slackChannelId: slackDestination?.channelId,
-      runId,
+      messageConversationId: spanContext.messageConversationId,
+      userId: spanContext.userId,
+      destinationName: spanContext.destinationName,
+      runId: spanContext.runId,
       ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
@@ -1197,9 +1197,9 @@ async function executeAgentRunInPrivacyContext(
       "assistant_reply_generation_failed",
       {
         conversationId,
-        slackThreadId: slackSource ? conversationId : undefined,
-        slackUserId: slackActor?.userId,
-        slackChannelId: slackDestination?.channelId,
+        messageConversationId: slackSource ? conversationId : undefined,
+        userId: slackActor?.userId,
+        destinationName: slackDestination?.channelId,
         runId,
         ...credentialActorLogContext,
         assistantUserName: botConfig.userName,

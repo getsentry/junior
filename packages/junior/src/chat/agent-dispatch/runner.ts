@@ -206,8 +206,8 @@ export async function runAgentDispatchSlice(
   const turnId = getDispatchTurnId(dispatch.id);
   const logContext = {
     conversationId,
-    slackThreadId: conversationId,
-    slackChannelId: dispatch.destination.channelId,
+    messageConversationId: conversationId,
+    destinationName: dispatch.destination.channelId,
     runId: dispatch.id,
     actorType: dispatch.actor.platform,
     actorId: dispatch.actor.name,

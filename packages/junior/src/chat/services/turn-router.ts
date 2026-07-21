@@ -213,9 +213,9 @@ export async function selectTurnRoute(args: {
   });
 
   const logContext: LogContext = {
-    slackThreadId: args.context?.threadId,
-    slackChannelId: args.context?.channelId,
-    slackUserId: args.context?.actorId,
+    messageConversationId: args.context?.threadId,
+    destinationName: args.context?.channelId,
+    userId: args.context?.actorId,
     runId: args.context?.runId,
     modelId: args.fastModelId,
   };

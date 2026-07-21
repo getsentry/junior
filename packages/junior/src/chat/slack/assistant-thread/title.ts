@@ -64,9 +64,9 @@ export function maybeUpdateAssistantTitle(args: {
       logWarn(
         "thread_title_generation_failed",
         {
-          slackThreadId: args.threadId,
-          slackUserId: args.actorId,
-          slackChannelId: args.channelId,
+          messageConversationId: args.threadId,
+          userId: args.actorId,
+          destinationName: args.channelId,
           runId: args.runId,
           assistantUserName: args.assistantUserName,
           modelId: args.modelId,
@@ -108,9 +108,9 @@ export function maybeUpdateAssistantTitle(args: {
           logError(
             "thread_title_generation_permission_denied",
             {
-              slackThreadId: args.threadId,
-              slackUserId: args.actorId,
-              slackChannelId: args.channelId,
+              messageConversationId: args.threadId,
+              userId: args.actorId,
+              destinationName: args.channelId,
               runId: args.runId,
               assistantUserName: args.assistantUserName,
               modelId: args.modelId,
@@ -122,9 +122,9 @@ export function maybeUpdateAssistantTitle(args: {
           logWarn(
             "thread_title_slack_update_failed",
             {
-              slackThreadId: args.threadId,
-              slackUserId: args.actorId,
-              slackChannelId: args.channelId,
+              messageConversationId: args.threadId,
+              userId: args.actorId,
+              destinationName: args.channelId,
               runId: args.runId,
               assistantUserName: args.assistantUserName,
               modelId: args.modelId,

@@ -354,9 +354,9 @@ async function summarizeConversationChunk(
     logWarn(
       "conversation_compaction_summary_failed",
       {
-        slackThreadId: context.threadId,
-        slackUserId: context.actorId,
-        slackChannelId: context.channelId,
+        messageConversationId: context.threadId,
+        userId: context.actorId,
+        destinationName: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.fastModelId,

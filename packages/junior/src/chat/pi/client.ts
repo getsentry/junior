@@ -266,9 +266,9 @@ function logContextFromMetadata(
       : typeof metadata?.threadId === "string"
         ? metadata.threadId
         : undefined;
-  const slackThreadId =
+  const messageConversationId =
     typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
-  const slackChannelId =
+  const destinationName =
     typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
   const runId =
     typeof metadata?.runId === "string" ? metadata.runId : undefined;
@@ -276,8 +276,8 @@ function logContextFromMetadata(
   return {
     modelId,
     ...(conversationId ? { conversationId } : {}),
-    ...(slackThreadId ? { slackThreadId } : {}),
-    ...(slackChannelId ? { slackChannelId } : {}),
+    ...(messageConversationId ? { messageConversationId } : {}),
+    ...(destinationName ? { destinationName } : {}),
     ...(runId ? { runId } : {}),
   };
 }

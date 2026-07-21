@@ -33,9 +33,9 @@ export function createSubscribedReplyPolicy(
         logWarn(
           "subscribed_message_classifier_failed",
           {
-            slackThreadId: input.context.threadId,
-            slackUserId: input.context.actorId,
-            slackChannelId: input.context.channelId,
+            messageConversationId: input.context.threadId,
+            userId: input.context.actorId,
+            destinationName: input.context.channelId,
             runId: input.context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.fastModelId,

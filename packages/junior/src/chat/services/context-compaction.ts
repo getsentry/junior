@@ -411,9 +411,9 @@ async function maybeCompactWithDeps(
     logWarn(
       "context_compaction_summary_failed",
       {
-        slackThreadId: args.metadata?.threadId,
-        slackUserId: args.metadata?.actorId,
-        slackChannelId: args.metadata?.channelId,
+        messageConversationId: args.metadata?.threadId,
+        userId: args.metadata?.actorId,
+        destinationName: args.metadata?.channelId,
         runId: args.metadata?.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.fastModelId,

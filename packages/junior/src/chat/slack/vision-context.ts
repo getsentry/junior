@@ -314,9 +314,9 @@ async function resolveUserAttachmentsWithDeps(
         logWarn(
           "attachment_skipped_size_limit",
           {
-            slackThreadId: context.threadId,
-            slackUserId: context.actorId,
-            slackChannelId: context.channelId,
+            messageConversationId: context.threadId,
+            userId: context.actorId,
+            destinationName: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: standardModelId(botConfig),
@@ -343,9 +343,9 @@ async function resolveUserAttachmentsWithDeps(
         logWarn(
           "image_attachment_processing_failed",
           {
-            slackThreadId: context.threadId,
-            slackUserId: context.actorId,
-            slackChannelId: context.channelId,
+            messageConversationId: context.threadId,
+            userId: context.actorId,
+            destinationName: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.visionModelId ?? standardModelId(botConfig),
@@ -364,9 +364,9 @@ async function resolveUserAttachmentsWithDeps(
       logWarn(
         "attachment_resolution_failed",
         {
-          slackThreadId: context.threadId,
-          slackUserId: context.actorId,
-          slackChannelId: context.channelId,
+          messageConversationId: context.threadId,
+          userId: context.actorId,
+          destinationName: context.channelId,
           runId: context.runId,
           assistantUserName: botConfig.userName,
           modelId: standardModelId(botConfig),
@@ -431,9 +431,9 @@ async function summarizeConversationImage(
     logWarn(
       "conversation_image_vision_failed",
       {
-        slackThreadId: args.context.threadId,
-        slackUserId: args.context.actorId,
-        slackChannelId: args.context.channelId,
+        messageConversationId: args.context.threadId,
+        userId: args.context.actorId,
+        destinationName: args.context.channelId,
         runId: args.context.runId,
         assistantUserName: botConfig.userName,
         modelId: visionModelId,
@@ -505,9 +505,9 @@ async function hydrateConversationVisionContextWithDeps(
     logWarn(
       "conversation_image_replies_fetch_failed",
       {
-        slackThreadId: context.threadId,
-        slackUserId: context.actorId,
-        slackChannelId: context.channelId,
+        messageConversationId: context.threadId,
+        userId: context.actorId,
+        destinationName: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: standardModelId(botConfig),
@@ -589,9 +589,9 @@ async function hydrateConversationVisionContextWithDeps(
         logWarn(
           "conversation_image_skipped_size_limit",
           {
-            slackThreadId: context.threadId,
-            slackUserId: context.actorId,
-            slackChannelId: context.channelId,
+            messageConversationId: context.threadId,
+            userId: context.actorId,
+            destinationName: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: standardModelId(botConfig),
@@ -620,9 +620,9 @@ async function hydrateConversationVisionContextWithDeps(
         logWarn(
           "conversation_image_download_failed",
           {
-            slackThreadId: context.threadId,
-            slackUserId: context.actorId,
-            slackChannelId: context.channelId,
+            messageConversationId: context.threadId,
+            userId: context.actorId,
+            destinationName: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: standardModelId(botConfig),
@@ -642,9 +642,9 @@ async function hydrateConversationVisionContextWithDeps(
         logWarn(
           "conversation_image_skipped_size_limit",
           {
-            slackThreadId: context.threadId,
-            slackUserId: context.actorId,
-            slackChannelId: context.channelId,
+            messageConversationId: context.threadId,
+            userId: context.actorId,
+            destinationName: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: standardModelId(botConfig),
@@ -694,9 +694,9 @@ async function hydrateConversationVisionContextWithDeps(
     logInfo(
       "conversation_image_context_hydrated",
       {
-        slackThreadId: context.threadId,
-        slackUserId: context.actorId,
-        slackChannelId: context.channelId,
+        messageConversationId: context.threadId,
+        userId: context.actorId,
+        destinationName: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: standardModelId(botConfig),

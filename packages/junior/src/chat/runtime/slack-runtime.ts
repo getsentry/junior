@@ -103,12 +103,12 @@ function shouldRethrowTurnControlError(error: unknown): boolean {
 type RuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
   conversationId?: string;
+  destinationName?: string;
+  messageConversationId?: string;
   modelId: string;
-  slackChannelId?: string;
-  slackThreadId?: string;
-  slackUserId?: string;
-  slackUserName?: string;
   runId?: string;
+  userId?: string;
+  userName?: string;
 };
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
@@ -350,10 +350,10 @@ function buildLogContext(
 ): RuntimeLogContext {
   return {
     conversationId: args.threadId ?? args.runId,
-    slackThreadId: args.threadId,
-    slackUserId: args.actorId,
-    slackUserName: args.actorUserName,
-    slackChannelId: args.channelId,
+    messageConversationId: args.threadId,
+    userId: args.actorId,
+    userName: args.actorUserName,
+    destinationName: args.channelId,
     runId: args.runId,
     assistantUserName: deps.assistantUserName,
     modelId: deps.modelId,
@@ -1249,9 +1249,9 @@ export function createSlackTurnRuntime<
           error,
           "assistant_thread_started_handler_failed",
           {
-            slackThreadId: event.threadId,
-            slackUserId: event.userId,
-            slackChannelId: event.channelId,
+            messageConversationId: event.threadId,
+            userId: event.userId,
+            destinationName: event.channelId,
             assistantUserName: deps.assistantUserName,
             modelId: deps.modelId,
           },
@@ -1274,9 +1274,9 @@ export function createSlackTurnRuntime<
           error,
           "assistant_context_changed_handler_failed",
           {
-            slackThreadId: event.threadId,
-            slackUserId: event.userId,
-            slackChannelId: event.channelId,
+            messageConversationId: event.threadId,
+            userId: event.userId,
+            destinationName: event.channelId,
             assistantUserName: deps.assistantUserName,
             modelId: deps.modelId,
           },

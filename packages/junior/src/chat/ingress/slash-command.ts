@@ -90,7 +90,7 @@ async function handleUnlink(
 
   logInfo(
     "slash_command_unlink",
-    { slackUserId: actorId },
+    { userId: actorId },
     { "app.credential.provider": provider },
     `Unlinked ${formatProviderLabel(provider)} account via ${getCommandName()} slash command`,
   );

@@ -54,9 +54,9 @@ function logSessionRecordError(
     error,
     eventName,
     {
-      slackThreadId: args.logContext.threadId,
-      slackUserId: args.logContext.actorId,
-      slackChannelId: args.logContext.channelId,
+      messageConversationId: args.logContext.threadId,
+      userId: args.logContext.actorId,
+      destinationName: args.logContext.channelId,
       runId: args.logContext.runId,
       assistantUserName: args.logContext.assistantUserName,
       modelId: args.modelId,

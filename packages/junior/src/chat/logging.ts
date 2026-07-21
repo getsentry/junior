@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { styleText } from "node:util";
 import {
@@ -15,6 +14,13 @@ import type {
   LogLevel as ChatSdkLogLevel,
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import {
+  bindLogAttributes,
+  extendLogAttributes,
+  getBoundLogAttributes,
+  logContextStorage,
+  type LogAttributes,
+} from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { getActiveSpan } from "@/chat/sentry";
 import * as Sentry from "@/chat/sentry";
@@ -23,7 +29,7 @@ import { getDeploymentTelemetryAttributes } from "@/deployment";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
-export type LogAttributes = Record<string, AttributeValue>;
+export type { LogAttributes } from "@/chat/log-context";
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface EmittedLogRecord {
   attributes: LogAttributes;
@@ -36,11 +42,11 @@ export interface LogContext {
   conversationId?: string;
   platform?: string;
   requestId?: string;
-  slackThreadId?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-  slackUserEmail?: string;
-  slackChannelId?: string;
+  messageConversationId?: string;
+  destinationName?: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
   runId?: string;
   actorType?: string;
   actorId?: string;
@@ -141,7 +147,6 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
   );
 }
 
-const contextStorage = new AsyncLocalStorage<LogAttributes>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
 const deploymentLogAttributes = getDeploymentTelemetryAttributes();
 type ConsoleTextStyle = Parameters<typeof styleText>[0];
@@ -432,10 +437,10 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "app.request.id": context.requestId,
     "messaging.system":
       context.platform === "slack" ? "slack" : context.platform,
-    "messaging.message.conversation_id": context.slackThreadId,
-    "messaging.destination.name": context.slackChannelId,
-    "enduser.id": context.slackUserId,
-    "enduser.pseudo.id": context.slackUserName,
+    "messaging.message.conversation_id": context.messageConversationId,
+    "messaging.destination.name": context.destinationName,
+    "enduser.id": context.userId,
+    "enduser.pseudo.id": context.userName,
     "app.run.id": context.runId,
     "app.actor.type": context.actorType,
     "app.actor.id": context.actorId,
@@ -615,7 +620,7 @@ function ensureLoggerBackend(): void {
           lowestLevel: "error",
         },
       ],
-      contextLocalStorage: contextStorage,
+      contextLocalStorage: logContextStorage,
     });
     ownsLogTapeBackend = true;
     rootLogger = getLogger([...ROOT_LOGGER_CATEGORY]);
@@ -1138,7 +1143,7 @@ function emitRecord(
   const source = getLogSource([...ROOT_LOGGER_CATEGORY, ...category]);
   const contextAttributes = ownsLogTapeBackend
     ? undefined
-    : contextStorage.getStore();
+    : getBoundLogAttributes();
   const attributes = mergeAttributes(
     contextAttributes,
     traceAttributes,
@@ -1258,7 +1263,7 @@ export const log = {
           setSentryScopeContext(scope, context);
         }
         for (const [key, value] of Object.entries(
-          mergeAttributes(contextStorage.getStore(), attrs),
+          mergeAttributes(getBoundLogAttributes(), attrs),
         )) {
           scope.setExtra(key, value);
         }
@@ -1393,23 +1398,15 @@ export function withLogContext<T>(
   context: LogContext,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const next = mergeAttributes(
-    contextStorage.getStore(),
-    contextToAttributes(context),
-  );
-  return contextStorage.run(next, callback);
+  return bindLogAttributes(contextToAttributes(context), callback);
 }
 
 export function setLogContext(context: LogContext): void {
-  const merged = mergeAttributes(
-    contextStorage.getStore(),
-    contextToAttributes(context),
-  );
-  contextStorage.enterWith(merged);
+  extendLogAttributes(contextToAttributes(context));
 }
 
 export function getLogContextAttributes(): LogAttributes {
-  return contextStorage.getStore() ?? {};
+  return getBoundLogAttributes();
 }
 
 /** Return inherited log context filtered to attributes valid for the span operation. */
@@ -1479,11 +1476,11 @@ export function setSentryTagsFromContext(context: LogContext): void {
 function sentryUserIdentityFromContext(
   context: LogContext,
 ): SentryUserIdentity | undefined {
-  if (context.slackUserId) {
-    const email = normalizeIdentityEmail(context.slackUserEmail);
+  if (context.userId) {
+    const email = normalizeIdentityEmail(context.userEmail);
     return {
-      id: context.slackUserId,
-      ...(context.slackUserName ? { username: context.slackUserName } : {}),
+      id: context.userId,
+      ...(context.userName ? { username: context.userName } : {}),
       ...(email ? { email } : {}),
     };
   }

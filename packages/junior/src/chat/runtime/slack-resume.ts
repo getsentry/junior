@@ -220,10 +220,11 @@ function getResumeLogContext(
   const actor = routing?.actor;
   return {
     conversationId: args.conversationId,
-    slackThreadId: lockKey,
-    slackUserId: isUserActor(actor) ? actor.userId : undefined,
-    slackUserName: isUserActor(actor) ? actor.userName : undefined,
-    slackChannelId: args.channelId,
+    messageConversationId: lockKey,
+    userId: isUserActor(actor) ? actor.userId : undefined,
+    userName: isUserActor(actor) ? actor.userName : undefined,
+    destinationName: args.channelId,
+    runId: routing?.correlation?.runId,
     assistantUserName: botConfig.userName,
     modelId: standardModelId(botConfig),
   };

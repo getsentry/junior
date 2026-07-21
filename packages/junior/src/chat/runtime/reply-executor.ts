@@ -491,9 +491,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       "chat.reply",
       {
         conversationId,
-        slackThreadId: threadId,
-        slackUserId: message.author.userId,
-        slackChannelId: channelId,
+        messageConversationId: threadId,
+        userId: message.author.userId,
+        destinationName: channelId,
         runId,
         assistantUserName: botConfig.userName,
         modelId: standardModelId(botConfig),
@@ -562,9 +562,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const turnId = buildDeterministicTurnId(message.id);
         const turnTraceContext = {
           conversationId,
-          slackThreadId: threadId,
-          slackUserId: message.author.userId,
-          slackChannelId: channelId,
+          messageConversationId: threadId,
+          userId: message.author.userId,
+          destinationName: channelId,
           runId,
           assistantUserName: botConfig.userName,
           modelId: standardModelId(botConfig),
@@ -966,7 +966,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
         }
         if (actor?.userName) {
-          setTags({ slackUserName: actor.userName });
+          setTags({ userName: actor.userName });
         }
         const turnAttachments = collectTurnAttachments(
           message,
@@ -1455,9 +1455,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           let reply = outcome.result;
           const diagnosticsContext = {
-            slackThreadId: threadId,
-            slackUserId: message.author.userId,
-            slackChannelId: channelId,
+            messageConversationId: threadId,
+            userId: message.author.userId,
+            destinationName: channelId,
             runId,
             assistantUserName: botConfig.userName,
             modelId: reply.diagnostics.modelId,

@@ -338,7 +338,7 @@ async function handleSlackEvent(args: {
       );
     } catch (error) {
       logException(error, "slack_app_home_publish_failed", {
-        slackUserId: userId,
+        userId,
       });
     }
   }
@@ -485,7 +485,7 @@ async function handleSlashCommandForm(args: {
   await withSpan(
     "chat.slash_command",
     "chat.slash_command",
-    { slackUserId: userId },
+    { userId: userId },
     async () => {
       await handleSlashCommand({
         adapter: args.adapter,
@@ -529,7 +529,7 @@ async function handleInteractivePayload(args: {
   await withSpan(
     "chat.app_home_disconnect",
     "chat.app_home_disconnect",
-    { slackUserId: userId },
+    { userId: userId },
     async () => {
       try {
         await unlinkProvider(userId, provider, args.userTokenStore);
@@ -537,7 +537,7 @@ async function handleInteractivePayload(args: {
         logException(
           error,
           "app_home_disconnect_unlink_failed",
-          { slackUserId: userId },
+          { userId: userId },
           { "app.credential.provider": provider },
         );
       }
@@ -548,7 +548,7 @@ async function handleInteractivePayload(args: {
         logException(
           error,
           "app_home_disconnect_publish_failed",
-          { slackUserId: userId },
+          { userId: userId },
           { "app.credential.provider": provider },
         );
       }
@@ -603,7 +603,7 @@ async function handleSlackForm(args: {
         }),
       ).catch((error) => {
         logException(error, "slash_command_failed", {
-          slackUserId: params.get("user_id") ?? undefined,
+          userId: params.get("user_id") ?? undefined,
         });
       }),
     );
@@ -635,7 +635,7 @@ async function handleSlackForm(args: {
       }),
     ).catch((error) => {
       logException(error, "slack_interactive_payload_failed", {
-        slackUserId: payload.user?.id?.trim() || undefined,
+        userId: payload.user?.id?.trim() || undefined,
       });
     }),
   );
