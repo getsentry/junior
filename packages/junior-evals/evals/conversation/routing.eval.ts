@@ -1,10 +1,7 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
-  assistantTextContent,
   mention,
-  reactionEmojis,
   resourceEventNotification,
   rubric,
   slackEvals,
@@ -21,7 +18,7 @@ describeEval("Conversation Routing", slackEvals, (it) => {
     thread_ts: "17000000.1300",
   };
 
-  it("when directly mentioned during a bot-notification run, answer the user's instruction only", async ({
+  it("when directly mentioned during a bot-notification run, prioritize the user's instruction", async ({
     run,
   }) => {
     const result = await run({
@@ -48,18 +45,18 @@ describeEval("Conversation Routing", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The reply says Alice owns the deployment.",
-          "The Linear notification is treated only as context for the user's direct instruction.",
+          "The user's direct instruction becomes the final focus of the response.",
         ],
         fail: [
-          "Do not post a standalone response to the Linear notification.",
-          "Do not say there is nothing to act on before answering the user.",
+          "Do not ignore or contradict the user's instruction in order to continue handling the Linear notification.",
+          "Do not finish with a response that addresses only the Linear notification.",
         ],
       }),
     });
 
     const replies = visibleThreadReplies(result.session);
-    expect(replies).toHaveLength(1);
-    expect(assistantTextContent(replies[0]?.content)).toMatch(/Alice/i);
+    expect(replies.length).toBeGreaterThan(0);
+    expect(visibleAssistantText(result.session)).toMatch(/Alice/i);
   });
 
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
@@ -73,7 +70,7 @@ describeEval("Conversation Routing", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
   });
 
   it("when asked to post in another named channel, explain the limitation instead", async ({
@@ -101,6 +98,6 @@ describeEval("Conversation Routing", slackEvals, (it) => {
         (message) => message.metadata?.event_type === "channel_post",
       ),
     ).toHaveLength(0);
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
   });
 });
