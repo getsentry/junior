@@ -53,6 +53,8 @@ export async function readConversationEventPrivacySnapshot(
   const rows = await executor
     .db()
     .select({
+      requestedConversationId: juniorConversations.conversationId,
+      requestedParentConversationId: juniorConversations.parentConversationId,
       requestedRootConversationId: juniorConversations.rootConversationId,
       rootConversationId: privacyRoot.conversationId,
       rootParentConversationId: privacyRoot.parentConversationId,
@@ -103,6 +105,8 @@ export async function readConversationEventPrivacySnapshot(
   if (!first) return undefined;
   const hasValidRoot =
     first.requestedRootConversationId !== null &&
+    (first.requestedParentConversationId !== null ||
+      first.requestedRootConversationId === first.requestedConversationId) &&
     first.rootConversationId === first.requestedRootConversationId &&
     first.rootParentConversationId === null &&
     first.rootRootConversationId === first.rootConversationId;
@@ -115,6 +119,7 @@ export async function readConversationEventPrivacySnapshot(
   };
 }
 
+/** Accept only a structurally valid persisted root as privacy authority. */
 async function readRootCandidate(
   executor: JuniorSqlDatabase,
   conversationId: string,
@@ -122,6 +127,8 @@ async function readRootCandidate(
   const rows = await executor
     .db()
     .select({
+      requestedConversationId: juniorConversations.conversationId,
+      requestedParentConversationId: juniorConversations.parentConversationId,
       requestedRootConversationId: juniorConversations.rootConversationId,
       rootConversationId: privacyRoot.conversationId,
       rootDestinationId: privacyRoot.destinationId,
@@ -136,6 +143,8 @@ async function readRootCandidate(
     .where(eq(juniorConversations.conversationId, conversationId));
   const row = rows[0];
   return row?.requestedRootConversationId !== null &&
+    (row?.requestedParentConversationId !== null ||
+      row?.requestedRootConversationId === row?.requestedConversationId) &&
     row?.rootConversationId === row.requestedRootConversationId &&
     row.rootRootConversationId === row.rootConversationId &&
     row.rootParentConversationId === null &&

@@ -261,7 +261,9 @@ async function seedConversation(
     .values(
       buildJuniorSqlConversation({
         conversationId,
-        ...(parentConversationId ? { parentConversationId } : {}),
+        ...(parentConversationId
+          ? { parentConversationId, rootConversationId: parentConversationId }
+          : {}),
       }),
     );
 }

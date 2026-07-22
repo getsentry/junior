@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationDetail } from "@/api/conversations/detail";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
@@ -687,6 +688,37 @@ describe("dashboard canonical event reporting", () => {
       eventHistory: { status: "redacted" },
       isParticipant: false,
     });
+
+    const foreignRoot = "slack:C-reporting:foreign-private-root";
+    const malformedTopLevel = "slack:C-reporting:malformed-top-level";
+    await recordRoot(foreignRoot, "private", {
+      slackUserId: "U-foreign-owner",
+      teamId: "T-reporting",
+      email: "foreign-owner@example.com",
+    });
+    await recordRoot(malformedTopLevel, "private");
+    await appendVisibleHistory(malformedTopLevel, "Malformed private answer");
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: foreignRoot })
+      .where(eq(juniorConversations.conversationId, malformedTopLevel));
+
+    await expect(
+      readConversationDetail(malformedTopLevel, {
+        authorizedUserEmail: "foreign-owner@example.com",
+      }),
+    ).resolves.toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
+    const malformedSummary = (
+      await readConversationFeedFromSql({
+        authorizedUserEmail: "foreign-owner@example.com",
+      })
+    ).conversations.find(
+      (conversation) => conversation.conversationId === malformedTopLevel,
+    );
+    expect(malformedSummary).toMatchObject({ isParticipant: false });
   });
 
   it("lets requested-row expiry win and stamps both root and child purges", async () => {

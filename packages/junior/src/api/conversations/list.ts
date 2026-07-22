@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -37,7 +37,11 @@ async function conversationRows(
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
       userDisplayName: juniorUsers.displayName,
-      isParticipant: participantMatchColumn(authorizedUserEmail),
+      isParticipant: sql<boolean>`COALESCE(
+        ${juniorConversations.rootConversationId} = ${juniorConversations.conversationId}
+          AND ${participantMatchColumn(authorizedUserEmail)},
+        false
+      )`,
     })
     .from(juniorConversations)
     .leftJoin(

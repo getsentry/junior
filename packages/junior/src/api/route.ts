@@ -5,6 +5,7 @@ export type JuniorApiVariables = {
   authorizedUserEmail?: string;
 };
 
+/** Carry authenticated viewer state through Junior REST route handlers. */
 export type JuniorApiEnv = {
   Variables: JuniorApiVariables;
 };

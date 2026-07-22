@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -331,9 +341,20 @@ async function recentLocationRows(
       usage: juniorConversations.usage,
     })
     .from(juniorConversations)
-    .innerJoin(
+    .leftJoin(
       privacyRoot,
-      eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
+      and(
+        eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
+        eq(privacyRoot.rootConversationId, privacyRoot.conversationId),
+        isNull(privacyRoot.parentConversationId),
+        or(
+          isNotNull(juniorConversations.parentConversationId),
+          eq(
+            juniorConversations.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        ),
+      ),
     )
     .leftJoin(
       privacyRootIdentity,

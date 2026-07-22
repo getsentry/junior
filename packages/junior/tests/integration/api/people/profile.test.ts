@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { readPeopleListFromSql } from "@/api/people/list.query";
 import { readPeopleProfileFromSql } from "@/api/people/profile.query";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -11,6 +12,107 @@ import {
 import { seedDisplayNameBackfill, seedPeople } from "./fixture";
 
 describe("people profile API", () => {
+  test("derives child participation and visibility from its root", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const rootConversationId = "slack:G-private:root";
+    const childConversationId = "slack:C-public:child";
+
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: rootConversationId,
+        actor: {
+          email: "owner@example.com",
+          platform: "slack",
+          slackUserId: "U-owner",
+          teamId: "T1",
+        },
+        destination: {
+          channelId: "G-private",
+          platform: "slack",
+          teamId: "T1",
+        },
+        title: "Private root title",
+        visibility: "private",
+      });
+      await store.recordActivity({
+        conversationId: childConversationId,
+        actor: {
+          email: "child@example.com",
+          platform: "slack",
+          slackUserId: "U-child",
+          teamId: "T1",
+        },
+        destination: {
+          channelId: "C-public",
+          platform: "slack",
+          teamId: "T1",
+        },
+        title: "Child title must stay private",
+        visibility: "public",
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          parentConversationId: rootConversationId,
+          rootConversationId,
+        })
+        .where(eq(juniorConversations.conversationId, childConversationId));
+
+      const report = await readPeopleProfileFromSql("child@example.com", {
+        authorizedUserEmail: "OWNER@example.com",
+      });
+
+      expect(report.recentConversations).toEqual([
+        expect.objectContaining({
+          conversationId: childConversationId,
+          displayTitle: "Private Conversation",
+          isParticipant: true,
+        }),
+      ]);
+      expect(report.recentConversations[0]).not.toHaveProperty("locationId");
+
+      const malformedConversationId = "slack:C-public:malformed-root";
+      await store.recordActivity({
+        conversationId: malformedConversationId,
+        actor: {
+          email: "malformed@example.com",
+          platform: "slack",
+          slackUserId: "U-malformed",
+          teamId: "T1",
+        },
+        destination: {
+          channelId: "C-public",
+          platform: "slack",
+          teamId: "T1",
+        },
+        title: "Malformed title must stay private",
+        visibility: "public",
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ rootConversationId })
+        .where(eq(juniorConversations.conversationId, malformedConversationId));
+
+      const malformed = await readPeopleProfileFromSql(
+        "malformed@example.com",
+        { authorizedUserEmail: "owner@example.com" },
+      );
+      expect(malformed.recentConversations).toEqual([
+        expect.objectContaining({
+          conversationId: malformedConversationId,
+          displayTitle: "Private Conversation",
+          isParticipant: false,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("reads profiles case-insensitively from shared verified identity", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));

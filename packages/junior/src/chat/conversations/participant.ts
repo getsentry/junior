@@ -7,8 +7,7 @@ interface ParticipantIdentityColumns {
   emailVerified: AnyPgColumn;
 }
 
-/** Normalize the authenticated email used for participant comparisons. */
-export function normalizeAuthorizedUserEmail(
+function normalizeAuthorizedUserEmail(
   email: string | undefined,
 ): string | undefined {
   const normalized = email?.trim().toLowerCase();

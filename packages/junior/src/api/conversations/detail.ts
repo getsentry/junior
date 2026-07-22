@@ -15,7 +15,6 @@ import {
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readRootConversationUsageFromSql } from "./usage";
-import { normalizeAuthorizedUserEmail } from "@/chat/conversations/participant";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
 import type { ApiRoute } from "../route";
@@ -89,13 +88,12 @@ async function readConversationDetailFromSql(
   if (!record) return undefined;
 
   const executor = getSqlExecutor();
-  const authorizedUserEmail = normalizeAuthorizedUserEmail(
-    options.authorizedUserEmail,
-  );
   const includeDescendantUsage = record.rootConversationId === conversationId;
   const [snapshot, modelUsage, usageByRoot] = await Promise.all([
     readConversationEventPrivacySnapshot(executor, {
-      ...(authorizedUserEmail ? { authorizedUserEmail } : {}),
+      ...(options.authorizedUserEmail
+        ? { authorizedUserEmail: options.authorizedUserEmail }
+        : {}),
       conversationId,
       eventTypes: conversationReportSourceEventTypes,
     }),
