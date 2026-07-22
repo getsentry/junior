@@ -50,6 +50,10 @@ function getLocalDateWeekday(date: LocalDate): number {
   return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
 }
 
+function getWeekStart(date: LocalDate): LocalDate {
+  return addDays(date, -((getLocalDateWeekday(date) + 6) % 7));
+}
+
 /** Resolve a UTC timestamp into calendar parts for a named time zone. */
 export function getZonedDateTimeParts(
   timestampMs: number,
@@ -174,7 +178,10 @@ function weeklyRecurrenceMatchesDate(
   return (
     normalizeWeekdays(recurrence.weekdays).includes(
       getLocalDateWeekday(date),
-    ) && Math.floor(daysBetween(start, date) / 7) % recurrence.interval === 0
+    ) &&
+    Math.floor(daysBetween(getWeekStart(start), getWeekStart(date)) / 7) %
+      recurrence.interval ===
+      0
   );
 }
 

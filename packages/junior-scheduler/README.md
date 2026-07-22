@@ -16,6 +16,8 @@ Junior's durable agent runtime.
 - Relative delays are elapsed durations. Calendar schedules use local wall-clock
   time: nonexistent recurring times are skipped, nonexistent one-off times are
   rejected, and repeated times use their first instant.
+- Multi-week recurrences use Monday-based calendar weeks; `startDate` is the
+  lower bound and its containing week is the first active week.
 - Create tool-call identities produce stable task ids so retrying one committed
   tool invocation returns the existing task instead of duplicating it.
 - Update tool-call identities retain their committed task snapshot so replaying

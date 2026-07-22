@@ -5,6 +5,28 @@ import { compileScheduleIntent } from "../../../../junior-scheduler/src/schedule
 
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
+function scheduledTask(
+  compiled: ReturnType<typeof compileScheduleIntent>,
+  nowMs: number,
+): ScheduledTask {
+  return {
+    id: "sched_test",
+    createdAtMs: nowMs,
+    createdBy: { slackUserId: "U123" },
+    credentialMode: "system",
+    destination: {
+      platform: "slack",
+      teamId: "T123",
+      channelId: "C123",
+    },
+    nextRunAtMs: compiled.nextRunAtMs,
+    schedule: compiled.schedule,
+    status: "active",
+    task: { text: "Post the reminder." },
+    updatedAtMs: nowMs,
+  };
+}
+
 describe("schedule intent compiler", () => {
   it("resolves relative one-offs from the trusted server clock", () => {
     const nowMs = Date.parse("2026-05-28T02:17:48.005Z");
@@ -182,6 +204,52 @@ describe("schedule intent compiler", () => {
       interval: 4,
       startDate: "2028-02-29",
     });
+  });
+
+  it("starts an unanchored daily interval at the next occurrence", () => {
+    const nowMs = Date.parse("2026-05-24T18:00:00.000Z");
+    const compiled = compileScheduleIntent({
+      defaultTimezone: DEFAULT_TIMEZONE,
+      intent: {
+        kind: "recurring",
+        frequency: "daily",
+        interval: 2,
+        time: "09:00",
+      },
+      nowMs,
+    });
+
+    expect(compiled.nextRunAtMs).toBe(Date.parse("2026-05-25T16:00:00.000Z"));
+    expect(compiled.schedule.recurrence).toMatchObject({
+      interval: 2,
+      startDate: "2026-05-25",
+    });
+    expect(
+      getNextRunAtMs(scheduledTask(compiled, nowMs), compiled.nextRunAtMs),
+    ).toBe(Date.parse("2026-05-27T16:00:00.000Z"));
+  });
+
+  it("anchors multi-week schedules to calendar weeks", () => {
+    const nowMs = Date.parse("2026-05-26T18:00:00.000Z");
+    const compiled = compileScheduleIntent({
+      defaultTimezone: DEFAULT_TIMEZONE,
+      intent: {
+        kind: "recurring",
+        frequency: "weekly",
+        interval: 2,
+        time: "09:00",
+        weekdays: ["monday", "friday"],
+      },
+      nowMs,
+    });
+    const task = scheduledTask(compiled, nowMs);
+    const secondRunAtMs = getNextRunAtMs(task, compiled.nextRunAtMs);
+
+    expect(compiled.nextRunAtMs).toBe(Date.parse("2026-05-29T16:00:00.000Z"));
+    expect(secondRunAtMs).toBe(Date.parse("2026-06-08T16:00:00.000Z"));
+    expect(getNextRunAtMs(task, secondRunAtMs!)).toBe(
+      Date.parse("2026-06-12T16:00:00.000Z"),
+    );
   });
 
   it("does not schedule before a future recurrence start date", () => {
