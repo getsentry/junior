@@ -52,30 +52,29 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
-  it("classifies code-change asks as xhigh with the fast model", async () => {
+  it("accepts medium for a bounded code-change classification", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
-        reasoning_level: "xhigh",
+        reasoning_level: "medium",
         profile: "handoff",
         confidence: 0.93,
-        reason: "code change request",
+        reason: "bounded code change request",
       },
     }));
 
     const profile = await routeTurn({
       completeObject,
       fastModelId: "openai/gpt-5.4-mini",
-      messageText:
-        "fix the failing test in packages/junior/src/chat/agent-run.ts",
+      messageText: "change the retry constant from 2 to 3 in config.ts",
     });
 
     expect(profile).toMatchObject({
-      reasoningLevel: "xhigh",
+      reasoningLevel: "medium",
       profile: "handoff",
-      reason: "code change request",
+      reason: "bounded code change request",
     });
     expect(completeObject).toHaveBeenCalledOnce();
-    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("xhigh");
+    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
   it("wraps and escapes the current instruction in the classifier prompt", async () => {
@@ -324,27 +323,28 @@ describe("selectTurnRoute", () => {
     expect(capturedPrompt).toContain("…[truncated]…");
   });
 
-  it("does not floor xhigh classifications", async () => {
+  it("accepts xhigh for an explicit maximum-depth classification", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         reasoning_level: "xhigh",
         profile: "handoff",
         confidence: 0.95,
-        reason: "multi-file refactor with architecture implications",
+        reason: "explicit maximum-depth cross-system analysis",
       },
     }));
 
     const profile = await routeTurn({
       completeObject,
-      conversationContext: "Prior task context about a large refactor.",
+      conversationContext: "Prior task context spanning several systems.",
       fastModelId: "openai/gpt-5.4-mini",
-      messageText: "go ahead and implement the refactor",
+      messageText:
+        "use the maximum available reasoning depth for this cross-system redesign",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "xhigh",
       profile: "handoff",
-      reason: "multi-file refactor with architecture implications",
+      reason: "explicit maximum-depth cross-system analysis",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("xhigh");
   });

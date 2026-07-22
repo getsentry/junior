@@ -191,10 +191,7 @@ function parseProfiles(
 ): Readonly<Record<string, ExecutionProfileConfig>> {
   const profiles: Record<string, ExecutionProfileConfig> = {
     [STANDARD_MODEL_PROFILE]: { modelId: standardModelId },
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
-      modelId: handoffModelId,
-      reasoningLevel: "xhigh",
-    },
+    [DEFAULT_HANDOFF_MODEL_PROFILE]: { modelId: handoffModelId },
   };
   const trimmed = toOptionalTrimmed(rawValue);
   if (trimmed === undefined) {

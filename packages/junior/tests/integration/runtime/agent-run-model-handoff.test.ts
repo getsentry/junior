@@ -289,7 +289,7 @@ describe("executeAgentRun model handoff", () => {
       data: Buffer.from("architecture-diagram").toString("base64"),
       mimeType: "image/png",
     });
-    expect(observations.reasoningLevels).toEqual(["xhigh"]);
+    expect(observations.reasoningLevels).toEqual(["high"]);
     expect(observations.summaryCalls).toBe(1);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
@@ -360,7 +360,7 @@ describe("executeAgentRun model handoff", () => {
       observations.afterHandoffModelId,
     );
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "xhigh"]);
+    expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "high"]);
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames,
@@ -425,6 +425,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.routerCalls).toBe(1);
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.afterHandoffToolNames).toContain("handoff");
+    expect(observations.reasoningLevels).toEqual(["high", "high", "medium"]);
     expect(observations.summaryCalls).toBe(1);
   });
 

@@ -44,6 +44,7 @@ import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
+import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import {
@@ -341,6 +342,7 @@ export interface EvalResult {
     timestamp: string;
   }>;
   modelIds: string[];
+  reasoningLevels: TurnReasoningLevel[];
   slackAdapter: FakeSlackAdapter;
   toolInvocations: EvalToolInvocation[];
   usage?: AgentTurnUsage;
@@ -414,6 +416,7 @@ interface QueueDelivery {
 interface RuntimeObservations {
   authorizationCompletions: AuthorizationCompletion[];
   modelIds: Set<string>;
+  reasoningLevels: TurnReasoningLevel[];
   sessionMessages: NormalizedMessage[];
   toolInvocations: EvalToolInvocation[];
   usage?: AgentTurnUsage;
@@ -1790,6 +1793,11 @@ function buildRuntimeServices(
             observations.usage = addAgentTurnUsage(observations.usage, usage);
             if (outcome.status === "completed") {
               observations.modelIds.add(outcome.result.diagnostics.modelId);
+              if (outcome.result.diagnostics.reasoningLevel) {
+                observations.reasoningLevels.push(
+                  outcome.result.diagnostics.reasoningLevel,
+                );
+              }
             }
             replyState.successfulCount += 1;
             return outcome;
@@ -2337,6 +2345,7 @@ function collectResults(
     authorizationCompletions: observations.authorizationCompletions,
     reactions,
     modelIds: [...observations.modelIds],
+    reasoningLevels: observations.reasoningLevels,
     posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
     sessionMessages: observations.sessionMessages,
     slackAdapter,
@@ -2378,6 +2387,7 @@ export async function runEvalScenario(
     const observations: RuntimeObservations = {
       authorizationCompletions: [],
       modelIds: new Set(),
+      reasoningLevels: [],
       sessionMessages: [],
       toolInvocations: [],
     };
