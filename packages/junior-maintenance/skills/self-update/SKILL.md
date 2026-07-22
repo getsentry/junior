@@ -36,28 +36,16 @@ Stop if any package lacks the target on npm.
 
 ### 3. Build release context
 
-Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target). Prefer GitHub release notes over PR scraping. Do not read `CHANGELOG.md` — release bodies already carry that content.
+Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target) from GitHub release notes. Do not read `CHANGELOG.md` or scrape PRs — release bodies carry the authoritative release context.
 
-1. **GitHub releases** (preferred). Tags match package versions with no `v` prefix (for example `0.107.1`):
+Tags match package versions with no `v` prefix (for example `0.107.1`):
 
 ```bash
 gh release list --repo getsentry/junior --limit 50
 gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Collect bodies for every release tag in `(old_version, target_version]`.
-
-2. **PR-window scrape** only if release notes for that range are unavailable:
-
-```bash
-pnpm view @sentry/junior time --json
-gh pr list --repo getsentry/junior --state merged \
-  --search "merged:>=<old_published_at> merged:<=<target_published_at>" \
-  --limit 100 \
-  --json number,title,url,mergedAt
-```
-
-From the chosen source, save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
+Collect bodies for every release tag in `(old_version, target_version]`. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -107,7 +95,7 @@ For `vercel.json`, do not normalize the whole file against the example. Use upst
 git -C /tmp/junior-upstream diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
-Only act on Junior-owned deployment requirements proven by that diff or by release-window PRs/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
+Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
 
 ### 8. Verify
 
@@ -133,7 +121,7 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release summary (cite source: GitHub releases or PR-window fallback), config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 ## Stop conditions
 
