@@ -51,6 +51,7 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const HIGH_CONFIDENCE_DUPLICATE_DISTANCE = 0.015;
 const PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT = 10;
+const PREFERENCE_ADJUDICATION_VECTOR_LIMIT = 5;
 const VECTOR_SEARCH_OVERFETCH = 4;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
@@ -817,7 +818,7 @@ async function rememberDuplicateIdempotency(args: {
     .onConflictDoNothing();
 }
 
-/** Select semantic preference candidates, falling back to recency without embeddings. */
+/** Select semantic preferences, then fill the window by recency for unembedded records. */
 async function listPreferenceAdjudicationCandidates(args: {
   db: MemoryDb;
   embedding?: MemoryEmbedding;
@@ -825,30 +826,39 @@ async function listPreferenceAdjudicationCandidates(args: {
   scope: ResolvedMemoryScope;
   subject: ResolvedMemorySubject;
 }): Promise<MemoryRecord[]> {
-  if (args.embedding) {
-    return await listVectorPreferenceAdjudicationCandidates({
-      db: args.db,
-      embedding: args.embedding,
-      nowMs: args.nowMs,
-      scope: args.scope,
-      subject: args.subject,
-    });
-  }
-  const rows = await args.db
-    .select()
-    .from(juniorMemoryMemories)
-    .where(
-      activeScopedSubjectPredicate({
-        ...args,
-        kind: "preference",
-      }),
-    )
-    .orderBy(
-      desc(juniorMemoryMemories.createdAtMs),
-      asc(juniorMemoryMemories.id),
-    )
-    .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
-  return rows.map(parseMemoryRow);
+  const vectorCandidates = args.embedding
+    ? await listVectorPreferenceAdjudicationCandidates({
+        db: args.db,
+        embedding: args.embedding,
+        nowMs: args.nowMs,
+        scope: args.scope,
+        subject: args.subject,
+      })
+    : [];
+  const recentCandidates = (
+    await args.db
+      .select()
+      .from(juniorMemoryMemories)
+      .where(
+        activeScopedSubjectPredicate({
+          ...args,
+          kind: "preference",
+        }),
+      )
+      .orderBy(
+        desc(juniorMemoryMemories.createdAtMs),
+        asc(juniorMemoryMemories.id),
+      )
+      .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT)
+  ).map(parseMemoryRow);
+  return [
+    ...new Map(
+      [...vectorCandidates, ...recentCandidates].map((memory) => [
+        memory.id,
+        memory,
+      ]),
+    ).values(),
+  ].slice(0, PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
 }
 
 async function listVectorPreferenceAdjudicationCandidates(args: {
@@ -887,7 +897,7 @@ async function listVectorPreferenceAdjudicationCandidates(args: {
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),
     )
-    .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
+    .limit(PREFERENCE_ADJUDICATION_VECTOR_LIMIT);
   return rows.flatMap((row) => {
     if (hashEmbeddedContent(row.memory.content) !== row.contentHash) {
       return [];

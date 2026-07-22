@@ -769,18 +769,11 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const oldContent = "Prefers Python for automation scripts.";
-      const newContent = "Prefers TypeScript for automation scripts.";
-      const embedder = createTestEmbedder({
-        [oldContent]: unitEmbedding(0),
-        [newContent]: cosineEmbedding(0.98),
-      });
       const store = createMemoryStore(memoryDb(fixture), localContext(), {
-        embedder,
         now: () => TEST_NOW_MS,
       });
       const oldMemory = await store.createMemory({
-        content: oldContent,
+        content: "Prefers Python for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
       });
@@ -801,7 +794,7 @@ describe("memory plugin storage", () => {
             object: {
               memories: [
                 {
-                  canonicalFact: newContent,
+                  canonicalFact: "Prefers TypeScript for automation scripts.",
                   expiresAtMs: null,
                   kind: "preference",
                   evidenceMessageIndices: [0],
@@ -815,7 +808,6 @@ describe("memory plugin storage", () => {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          embedder,
           model,
           run: {
             async load() {
