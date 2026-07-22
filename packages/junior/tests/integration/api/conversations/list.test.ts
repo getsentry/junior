@@ -160,6 +160,7 @@ describe("conversation list API", () => {
 
       const feed = await readConversationFeedFromSql({
         actorEmail: "morgan@example.com",
+        authorizedUserEmail: "MORGAN@example.com",
         limit: 1,
       });
 
@@ -169,6 +170,7 @@ describe("conversation list API", () => {
             email: "Morgan@Example.com",
           }),
           conversationId: "slack:C1:morgan-newest",
+          isParticipant: true,
         }),
       ]);
       await expect(

@@ -153,6 +153,7 @@ function channelNameRedactedFromConversation(
 export function conversationSummaryFromStoredConversation(args: {
   conversation: StoredConversation;
   durationMs: number;
+  isParticipant: boolean;
   locationId?: string;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -169,6 +170,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
     displayTitle: titleFromConversation({ conversation, surface }),
+    isParticipant: args.isParticipant,
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),

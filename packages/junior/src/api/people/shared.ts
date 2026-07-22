@@ -11,6 +11,7 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "./schema";
+import { participantMatchColumn } from "../conversations/participant";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
@@ -89,7 +90,10 @@ export function verifiedActorWhere(email?: string) {
 }
 
 /** Read only the recent conversation rows required by a People profile. */
-export async function recentActorRows(email: string) {
+export async function recentActorRows(
+  email: string,
+  authorizedUserEmail?: string,
+) {
   return getDb()
     .select({
       channelName: juniorConversations.channelName,
@@ -103,6 +107,7 @@ export async function recentActorRows(email: string) {
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
+      isParticipant: participantMatchColumn(authorizedUserEmail),
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: juniorIdentities.providerSubjectId,
       source: juniorConversations.source,

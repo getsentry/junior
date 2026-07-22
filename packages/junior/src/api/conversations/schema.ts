@@ -33,6 +33,7 @@ export const conversationSummaryReportSchema = z
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     conversationId: z.string(),
+    isParticipant: z.boolean(),
     status: conversationReportStatusSchema,
     startedAt: z.string(),
     lastSeenAt: z.string(),
@@ -209,7 +210,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     generatedAt: z.string(),
-    isParticipant: z.boolean(),
     sentryConversationUrl: z.string().optional(),
   })
   .strict()

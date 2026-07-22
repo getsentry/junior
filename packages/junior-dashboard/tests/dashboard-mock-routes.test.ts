@@ -30,6 +30,7 @@ describe("dashboard canonical-event mock routes", () => {
       conversationId,
       cumulativeDurationMs: 1_000,
       displayTitle: conversationId,
+      isParticipant: false,
       lastProgressAt: lastSeenAt,
       lastSeenAt,
       startedAt,

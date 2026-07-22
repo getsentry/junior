@@ -672,6 +672,7 @@ describe("dashboard canonical-event components", () => {
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
+          isParticipant: false,
           lastProgressAt: "2026-01-02T00:00:00.000Z",
           lastSeenAt: "2026-01-02T00:00:00.000Z",
           actorIdentity: {
@@ -820,6 +821,7 @@ describe("dashboard canonical-event components", () => {
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
+          isParticipant: false,
           lastProgressAt: "2026-01-05T00:00:00.000Z",
           lastSeenAt: "2026-01-05T00:00:00.000Z",
           startedAt: "2026-01-05T00:00:00.000Z",
@@ -959,6 +961,7 @@ describe("dashboard canonical-event components", () => {
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",
+      isParticipant: false,
       lastProgressAt: "2026-01-01T00:00:01.000Z",
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",

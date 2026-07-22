@@ -9,6 +9,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationSummaryFromStoredConversation } from "./projection";
+import { participantMatchColumn } from "./participant";
 import { conversationFeedSchema } from "./schema";
 import type { ConversationFeed } from "./schema";
 import type { ApiRoute } from "../route";
@@ -21,6 +22,7 @@ async function conversationRows(
   db: JuniorDatabase,
   limit: number,
   actorEmail?: string,
+  authorizedUserEmail?: string,
 ) {
   return db
     .select({
@@ -34,6 +36,7 @@ async function conversationRows(
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
       userDisplayName: juniorUsers.displayName,
+      isParticipant: participantMatchColumn(authorizedUserEmail),
     })
     .from(juniorConversations)
     .leftJoin(
@@ -67,7 +70,9 @@ async function conversationRows(
 type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
-function conversationFromRow(row: ConversationRow): Conversation {
+function conversationFromRow(
+  row: Omit<ConversationRow, "isParticipant">,
+): Conversation {
   const value = row.conversation;
   const actorFullName = row.userDisplayName?.trim()
     ? row.userDisplayName
@@ -171,19 +176,25 @@ export async function readConversationRecordFromSql(
  * before the limit when one is provided.
  */
 export async function readConversationFeedFromSql(
-  options: { actorEmail?: string; limit?: number } = {},
+  options: {
+    actorEmail?: string;
+    authorizedUserEmail?: string;
+    limit?: number;
+  } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const rows = await conversationRows(
     getDb(),
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.actorEmail,
+    options.authorizedUserEmail,
   );
   return {
     conversations: rows.map((row) =>
       conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
+        isParticipant: row.isParticipant,
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
           : {}),
@@ -200,10 +211,10 @@ export async function readConversationFeedFromSql(
  * filter. This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: { actorEmail?: string } = {},
+  options: { actorEmail?: string; authorizedUserEmail?: string } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
-    await readConversationFeedFromSql({ actorEmail: options.actorEmail }),
+    await readConversationFeedFromSql(options),
   );
 }
 
@@ -216,6 +227,12 @@ export default {
       conversationFeedQuerySchema,
       c.req.query(),
     );
-    return Response.json(await readConversationFeed({ actorEmail }));
+    const authorizedUserEmail = c.get("authorizedUserEmail");
+    return Response.json(
+      await readConversationFeed({
+        ...(actorEmail ? { actorEmail } : {}),
+        ...(authorizedUserEmail ? { authorizedUserEmail } : {}),
+      }),
+    );
   },
 } satisfies ApiRoute;

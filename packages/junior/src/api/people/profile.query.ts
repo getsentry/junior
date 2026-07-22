@@ -109,6 +109,7 @@ function locationLabel(row: {
 /** Load one complete person profile while bounding only its recent-conversation list. */
 export async function readPeopleProfileFromSql(
   email: string,
+  options: { authorizedUserEmail?: string } = {},
 ): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
@@ -195,7 +196,7 @@ export async function readPeopleProfileFromSql(
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
         .where(where)
         .groupBy(surface),
-      recentActorRows(normalizedEmail),
+      recentActorRows(normalizedEmail, options.authorizedUserEmail),
     ]);
 
   const totalsRow = totalsRows[0];

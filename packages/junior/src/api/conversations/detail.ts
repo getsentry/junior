@@ -14,6 +14,7 @@ import {
 } from "./events";
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
+import { normalizeAuthorizedUserEmail } from "./participant";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
 import type { ApiRoute } from "../route";
@@ -56,11 +57,11 @@ function projectConversationDetail(args: {
     ...conversationSummaryFromStoredConversation({
       conversation: authorizedConversation,
       durationMs: args.durationMs,
+      isParticipant: args.isParticipant,
       ...(args.locationId ? { locationId: args.locationId } : {}),
       usage: args.usage,
     }),
     events: projectConversationReportEvents({ canExposePayload, events }),
-    isParticipant: args.isParticipant,
     ...(modelUsage.length > 0 ? { modelUsage } : {}),
     eventHistory:
       transcriptPurgedAtMs !== undefined
@@ -87,7 +88,9 @@ async function readConversationDetailFromSql(
   if (!record) return undefined;
 
   const executor = getSqlExecutor();
-  const authorizedUserEmail = options.authorizedUserEmail?.trim().toLowerCase();
+  const authorizedUserEmail = normalizeAuthorizedUserEmail(
+    options.authorizedUserEmail,
+  );
   const [snapshot, modelUsage] = await Promise.all([
     readConversationEventPrivacySnapshot(executor, {
       ...(authorizedUserEmail ? { authorizedUserEmail } : {}),

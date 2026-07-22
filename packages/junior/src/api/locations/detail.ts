@@ -5,8 +5,11 @@ import { parseParams } from "../http";
 import { locationParamsSchema } from "../schema";
 
 /** Expose operational detail for one persisted public conversation location. */
-export async function readLocationDetail(locationId: string) {
-  const report = await readLocationDetailFromSql(locationId);
+export async function readLocationDetail(
+  locationId: string,
+  options: { authorizedUserEmail?: string } = {},
+) {
+  const report = await readLocationDetailFromSql(locationId, options);
   return report ? locationDetailReportSchema.parse(report) : undefined;
 }
 
@@ -16,7 +19,11 @@ export default {
   path: "/:locationId",
   handler: async (c) => {
     const { locationId } = parseParams(locationParamsSchema, c.req.param());
-    const report = await readLocationDetail(locationId);
+    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const report = await readLocationDetail(
+      locationId,
+      authorizedUserEmail ? { authorizedUserEmail } : {},
+    );
     return report
       ? Response.json(report)
       : Response.json({ error: "Location not found." }, { status: 404 });

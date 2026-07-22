@@ -8,8 +8,11 @@ import { personParamsSchema } from "../schema";
 /** Load one person profile from verified user identities in SQL. */
 export async function readPeopleProfile(
   email: string,
+  options: { authorizedUserEmail?: string } = {},
 ): Promise<ActorProfileReport> {
-  return actorProfileReportSchema.parse(await readPeopleProfileFromSql(email));
+  return actorProfileReportSchema.parse(
+    await readPeopleProfileFromSql(email, options),
+  );
 }
 
 /** Serve one People profile endpoint. */
@@ -18,6 +21,12 @@ export default {
   path: "/:email",
   handler: async (c) => {
     const { email } = parseParams(personParamsSchema, c.req.param());
-    return Response.json(await readPeopleProfile(email));
+    const authorizedUserEmail = c.get("authorizedUserEmail");
+    return Response.json(
+      await readPeopleProfile(
+        email,
+        authorizedUserEmail ? { authorizedUserEmail } : {},
+      ),
+    );
   },
 } satisfies ApiRoute;

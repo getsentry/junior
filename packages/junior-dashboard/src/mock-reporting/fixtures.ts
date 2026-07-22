@@ -540,7 +540,6 @@ function summaryFromConversation(
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
-    isParticipant: _isParticipant,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
     sentryConversationUrl: _sentryConversationUrl,

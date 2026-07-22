@@ -22,6 +22,7 @@ export type ReportingConversationRow = {
   executionUpdatedAt: Date | null;
   fullName: string | null;
   handle: string | null;
+  isParticipant: boolean;
   lastActivityAt: Date;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
@@ -150,6 +151,7 @@ export function summaryFromRow(
     conversationId: row.conversationId,
     cumulativeDurationMs: row.durationMs,
     displayTitle: titleFromRow(row, surface),
+    isParticipant: row.isParticipant,
     lastProgressAt: new Date(
       row.executionUpdatedAt ?? row.updatedAt,
     ).toISOString(),

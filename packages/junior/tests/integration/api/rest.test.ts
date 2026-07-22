@@ -367,12 +367,48 @@ describe("Junior REST API", () => {
       isParticipant: false,
     });
 
+    const anonymousFeed = await createJuniorApi().request(
+      "http://localhost/api/conversations",
+    );
+    await expect(anonymousFeed.json()).resolves.toMatchObject({
+      conversations: [
+        expect.objectContaining({
+          conversationId,
+          isParticipant: false,
+        }),
+      ],
+    });
+
     const participantApi = new Hono<{ Variables: JuniorApiVariables }>();
     participantApi.use("*", async (context, next) => {
       context.set("authorizedUserEmail", "participant@example.COM");
       await next();
     });
     participantApi.route("/", createJuniorApi());
+
+    const participantFeed = await participantApi.request(
+      "http://localhost/api/conversations",
+    );
+    await expect(participantFeed.json()).resolves.toMatchObject({
+      conversations: [
+        expect.objectContaining({
+          conversationId,
+          isParticipant: true,
+        }),
+      ],
+    });
+
+    const participantProfile = await participantApi.request(
+      "http://localhost/api/people/participant%40example.com",
+    );
+    await expect(participantProfile.json()).resolves.toMatchObject({
+      recentConversations: [
+        expect.objectContaining({
+          conversationId,
+          isParticipant: true,
+        }),
+      ],
+    });
 
     const visible = await participantApi.request(
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,

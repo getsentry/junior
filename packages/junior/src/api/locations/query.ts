@@ -13,6 +13,7 @@ import {
   conversationRangeColumns,
 } from "../conversations/aggregate";
 import type { ActorIdentity } from "../conversations/schema";
+import { participantMatchColumn } from "../conversations/participant";
 import { summaryFromRow } from "../conversations/reporting";
 import type {
   LocationActorSummaryReport,
@@ -286,7 +287,11 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
   };
 }
 
-async function recentLocationRows(db: JuniorDatabase, locationId: string) {
+async function recentLocationRows(
+  db: JuniorDatabase,
+  locationId: string,
+  authorizedUserEmail?: string,
+) {
   return db
     .select({
       channelName: juniorConversations.channelName,
@@ -303,6 +308,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
+      isParticipant: participantMatchColumn(authorizedUserEmail),
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: sql<string | null>`CASE
         WHEN ${juniorIdentities.provider} = 'slack'
@@ -340,6 +346,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
 /** Load one public location's complete activity while bounding only recent conversations. */
 export async function readLocationDetailFromSql(
   locationId: string,
+  options: { authorizedUserEmail?: string } = {},
 ): Promise<LocationDetailReport | undefined> {
   const nowMs = Date.now();
   const end = new Date(nowMs);
@@ -406,7 +413,7 @@ export async function readLocationDetailFromSql(
         juniorIdentities.provider,
         juniorIdentities.providerSubjectId,
       ),
-    recentLocationRows(getDb(), locationId),
+    recentLocationRows(getDb(), locationId, options.authorizedUserEmail),
   ]);
 
   const locationRow = locationRows[0];
