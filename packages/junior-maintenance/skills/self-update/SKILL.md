@@ -36,7 +36,7 @@ Stop if any package lacks the target on npm.
 
 ### 3. Build release context
 
-Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target). Prefer published notes over PR scraping.
+Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target). Prefer GitHub release notes over PR scraping. Do not read `CHANGELOG.md` — release bodies already carry that content.
 
 1. **GitHub releases** (preferred). Tags match package versions with no `v` prefix (for example `0.107.1`):
 
@@ -47,16 +47,7 @@ gh release view <version> --repo getsentry/junior --json tagName,name,body,publi
 
 Collect bodies for every release tag in `(old_version, target_version]`.
 
-2. **`CHANGELOG.md`** when release bodies are missing or incomplete:
-
-```bash
-gh api repos/getsentry/junior/contents/CHANGELOG.md --jq .content | base64 -d
-# or: https://raw.githubusercontent.com/getsentry/junior/main/CHANGELOG.md
-```
-
-Extract each `## <version>` section in `(old_version, target_version]`.
-
-3. **PR-window scrape** only if both releases and changelog sections are unavailable:
+2. **PR-window scrape** only if release notes for that range are unavailable:
 
 ```bash
 pnpm view @sentry/junior time --json
@@ -142,7 +133,7 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release summary (cite source: GitHub releases, `CHANGELOG.md`, or PR-window fallback), config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary (cite source: GitHub releases or PR-window fallback), config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 ## Stop conditions
 
