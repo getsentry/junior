@@ -31,11 +31,11 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       overrides: {
         skill_dirs: ["fixtures/coding-skills"],
         reply_timeout_ms: 60_000,
-        turn_timeout_ms: 20_000,
+        turn_timeout_ms: 40_000,
       },
       initialEvents: [
         mention(
-          "In the eval coding fixture, run the project's slow integration test and keep working until it succeeds. Then report the exact contents of slow-test-result.txt.",
+          "In the eval coding fixture, immediately run `bash skills/coding-workspace-fixture/project/slow-integration-test.sh` and keep working until it succeeds. Then report the exact contents of slow-test-result.txt.",
         ),
       ],
       criteria: rubric({

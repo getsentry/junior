@@ -7,7 +7,7 @@ result_file="$script_dir/slow-test-result.txt"
 
 if [[ ! -f "$started_marker" ]]; then
   touch "$started_marker"
-  sleep 30
+  sleep 50
 fi
 
 printf 'slow integration test passed after continuation\n' >"$result_file"
