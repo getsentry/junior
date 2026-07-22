@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
@@ -11,7 +11,11 @@ import {
 } from "./reporting";
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
-export function createJuniorApi(): Hono {
+export function createJuniorApi(
+  options: {
+    getVerifiedViewerEmail?: (context: Context) => string | undefined;
+  } = {},
+): Hono {
   const app = new Hono();
 
   app.get("/api/health", async () => {
@@ -30,7 +34,7 @@ export function createJuniorApi(): Hono {
     return Response.json(await readPluginOperationalReportFeed());
   });
 
-  app.route("/api/conversations", createConversationRoutes());
+  app.route("/api/conversations", createConversationRoutes(options));
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
 

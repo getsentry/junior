@@ -687,7 +687,19 @@ export function createDashboardApp(
   if (options.mockConversations) {
     app.route("/api", createMockReportingApi());
   }
-  app.route("/", createJuniorApi());
+  app.route(
+    "/",
+    createJuniorApi({
+      getVerifiedViewerEmail: (context) => {
+        const session = context.get("authSession") as
+          | DashboardSession
+          | undefined;
+        return session?.user.emailVerified === true
+          ? session.user.email.trim().toLowerCase()
+          : undefined;
+      },
+    }),
+  );
   app.get("/api/config", () => {
     return Response.json(
       dashboardConfigSchema.parse({

@@ -108,9 +108,11 @@ The current authenticated product API slices are:
 | `/api/locations`                   | Public location directory and generic private-activity totals.                                              |
 | `/api/locations/:location`         | Activity, actors, and recent conversations for one public location.                                         |
 | `/api/plugin-reports`              | Sanitized plugin operational summaries.                                                                     |
-| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private conversations return redacted metadata only.  |
+| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private transcripts are owner-authorized.             |
 | `/api/config`                      | Safe dashboard config signals and feature readiness.                                                        |
 | `/api/me`                          | Signed-in dashboard identity.                                                                               |
+
+For a private conversation, the transcript is available only when the signed-in verified email matches the persisted verified actor email. Other viewers receive redacted metadata.
 
 The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/locations` provides aggregate browsing for public destinations without exposing private destination identity, while `/system` shows seven-day aggregate conversation metrics, loaded plugin inventory, and operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.

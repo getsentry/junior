@@ -10,6 +10,7 @@ import {
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
+  juniorIdentities,
 } from "@/db/schema";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -457,6 +458,66 @@ describe("dashboard canonical event reporting", () => {
     expect(serialized).not.toContain("visible tool query");
     expect(serialized).not.toContain("model-visible result");
     expect(serialized).not.toContain('"matches":2');
+  });
+
+  it("exposes a private root and child only to their verified owner", async () => {
+    const rootConversationId = "slack:C-reporting:private-owner-root";
+    const childConversationId = "child:reporting-private-owner";
+    await recordRoot(rootConversationId, "private");
+    const { getConversationStore, getDb } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: rootConversationId,
+      actor: {
+        platform: "slack",
+        slackUserId: "U-owner",
+        teamId: "T-reporting",
+        email: "Owner@Example.com",
+      },
+      nowMs: 2,
+      source: "slack",
+    });
+    await appendVisibleHistory(rootConversationId, "Private owner answer");
+    await createChild({
+      childConversationId,
+      parentConversationId: rootConversationId,
+    });
+
+    expect((await requireDetail(rootConversationId)).eventHistory.status).toBe(
+      "redacted",
+    );
+    expect(
+      (
+        await readConversationDetail(rootConversationId, {
+          verifiedViewerEmail: "other@example.com",
+        })
+      )?.eventHistory.status,
+    ).toBe("redacted");
+    expect(
+      (
+        await readConversationDetail(rootConversationId, {
+          verifiedViewerEmail: " owner@example.COM ",
+        })
+      )?.events[0]?.data,
+    ).toMatchObject({ text: "Private owner answer" });
+    expect(
+      (
+        await readConversationDetail(childConversationId, {
+          verifiedViewerEmail: "owner@example.com",
+        })
+      )?.events[0]?.data,
+    ).toMatchObject({ text: "Child answer" });
+
+    await getDb()
+      .update(juniorIdentities)
+      .set({ emailVerified: false })
+      .where(eq(juniorIdentities.providerSubjectId, "U-owner"));
+    expect(
+      (
+        await readConversationDetail(rootConversationId, {
+          verifiedViewerEmail: "owner@example.com",
+        })
+      )?.eventHistory.status,
+    ).toBe("redacted");
   });
 
   it("authorizes children from their persisted root and rejects forged or malformed lineage", async () => {
