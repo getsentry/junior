@@ -11,6 +11,7 @@ import {
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deliverAssistantMessagesForTest,
@@ -226,6 +227,116 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     ]);
     expect(thread.posts).toHaveLength(1);
+  });
+
+  it("processes resource events when compacted history retains a handled marker without its message", async () => {
+    const agentRunner = vi.fn<AgentRunner["run"]>(async (request) =>
+      completedReply(request, "I processed the recovered check event."),
+    );
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: { agentRunner: { run: agentRunner } },
+      },
+    });
+    const thread = createTestThread({
+      id: "slack:C0BEHAVIOR:1700002000.0025",
+    });
+    const destination = createTestDestination(thread);
+    await getConversationStore().recordActivity({
+      conversationId: thread.id,
+      destination,
+      nowMs: 1_000,
+      source: "resource_event",
+      visibility: "private",
+    });
+    // Late delivery state remains valid after its covered message falls before
+    // the readable compaction boundary.
+    await getConversationEventStore().append(thread.id, [
+      {
+        data: {
+          type: "message",
+          messageId: "compacted-user-message",
+          role: "user",
+          text: "Old request that has already been summarized.",
+        },
+        createdAtMs: 1_000,
+      },
+      {
+        data: {
+          type: "messages_summarized",
+          historyFromSeq: 2,
+          compactions: [
+            {
+              id: "compaction-1",
+              summary: "The old request was completed.",
+              coveredMessageCount: 1,
+              createdAtMs: 2_000,
+            },
+          ],
+        },
+        createdAtMs: 2_000,
+      },
+      {
+        data: {
+          type: "message_handled",
+          messageId: "compacted-user-message",
+        },
+        createdAtMs: 3_000,
+      },
+    ]);
+
+    const message = createTestMessage({
+      id: "resource-event-resub-checks-recovered",
+      text: "[event notification]\n\nThe subscribed check recovered.",
+      isMention: false,
+      threadId: thread.id,
+      author: {
+        userId: "UJRNEVENT",
+        userName: "junior-event",
+        fullName: "Junior event",
+        isBot: true,
+      },
+      raw: {
+        channel: "C0BEHAVIOR",
+        event_type: "resource_event",
+        thread_ts: "1700002000.0025",
+        ts: "resource-event-resub-checks-recovered",
+        type: "message",
+        user: "UJRNEVENT",
+      },
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message, {
+      destination,
+    });
+
+    expect(agentRunner).toHaveBeenCalledOnce();
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "I processed the recovered check event.",
+    );
+    const conversation = coerceThreadConversationState(
+      (await thread.state) ?? {},
+    );
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    expect(conversation.messages).not.toContainEqual(
+      expect.objectContaining({ id: "compacted-user-message" }),
+    );
+    expect(conversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "resource-event-resub-checks-recovered",
+          role: "user",
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          text: "I processed the recovered check event.",
+        }),
+      ]),
+    );
   });
 
   it("posts an auth-needed reply when a resource-event turn needs user auth", async () => {

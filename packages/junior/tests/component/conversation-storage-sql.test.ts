@@ -757,6 +757,7 @@ INSERT INTO junior_conversation_events (
             compactions: [],
           },
         }),
+        historyFromSeq: 2,
       });
     } finally {
       await fixture.close();
@@ -828,9 +829,7 @@ WHERE conversation_id = $1 AND seq = 0
       expect(visible.events[0]?.seq).toBe(historyFromSeq);
       expect(visible.events).toHaveLength(conversation.messages.length);
       expect(
-        projectConversationMessages(visible.events).map(
-          (message) => message.id,
-        ),
+        projectConversationMessages(visible).map((message) => message.id),
       ).toEqual(conversation.messages.map((message) => message.id));
     } finally {
       await fixture.close();
@@ -1084,7 +1083,7 @@ INSERT INTO junior_conversation_events (
         },
       ]);
       const history = await store.loadMessageHistory(CONVERSATION_ID);
-      expect(projectConversationMessages(history.events)).toEqual([
+      expect(projectConversationMessages(history)).toEqual([
         {
           id: "m1",
           role: "user",

@@ -76,13 +76,7 @@ export async function hydrateConversationMessages(args: {
   args.conversation.compactions = history.compaction
     ? projectConversationMessageSummaries([history.compaction])
     : [];
-  const historyFromSeq =
-    history.compaction?.data.type === "messages_summarized"
-      ? history.compaction.data.historyFromSeq
-      : 0;
-  args.conversation.messages = projectConversationMessages(history.events, {
-    historyFromSeq,
-  });
+  args.conversation.messages = projectConversationMessages(history);
   updateConversationStats(args.conversation);
 }
 
@@ -98,7 +92,7 @@ export async function persistConversationMessages(args: {
     args.conversationId,
   );
   const existingMessages = new Map(
-    projectConversationMessages(history.events).map((message) => [
+    projectConversationMessages(history).map((message) => [
       message.id,
       message,
     ]),

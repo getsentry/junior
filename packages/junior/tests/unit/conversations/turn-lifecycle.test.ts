@@ -3,6 +3,7 @@ import type {
   ConversationEvent,
   ConversationEventStore,
   HistoryReplacement,
+  MessageHistory,
   NewConversationEvent,
 } from "@/chat/conversations/history";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -53,11 +54,8 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history;
   }
 
-  async loadMessageHistory(): Promise<{
-    events: ConversationEvent[];
-    compaction: ConversationEvent | undefined;
-  }> {
-    return { events: this.history, compaction: undefined };
+  async loadMessageHistory(): Promise<MessageHistory> {
+    return { events: this.history, compaction: undefined, historyFromSeq: 0 };
   }
 
   async loadHistory(): Promise<ConversationEvent[]> {

@@ -1,4 +1,4 @@
-import type { ConversationEvent } from "./history";
+import type { ConversationEvent, MessageHistory } from "./history";
 import type {
   ConversationAuthor,
   ConversationMessage,
@@ -48,14 +48,13 @@ function missingBaselineError(event: MessageEvent): Error {
   );
 }
 
-/** Reduce canonical message facts into destination-facing history. */
+/** Reduce a boundary-bearing message-history suffix into destination history. */
 export function projectConversationMessages(
-  events: ConversationEvent[],
-  options: { historyFromSeq?: number } = {},
+  history: Pick<MessageHistory, "events" | "historyFromSeq">,
 ): ConversationMessage[] {
   const byId = new Map<string, ProjectedMessage>();
 
-  for (const event of events) {
+  for (const event of history.events) {
     if (!isMessageEvent(event)) continue;
     const data = event.data;
     const current = byId.get(data.messageId);
@@ -73,7 +72,7 @@ export function projectConversationMessages(
           `Duplicate message event for ${data.messageId} at seq ${event.seq}`,
         );
       if (data.type === "message_updated" && !current) {
-        if ((options.historyFromSeq ?? 0) > 0) continue;
+        if (history.historyFromSeq > 0) continue;
         throw missingBaselineError(event);
       }
       byId.set(data.messageId, {
@@ -89,7 +88,7 @@ export function projectConversationMessages(
     }
 
     if (!current) {
-      if ((options.historyFromSeq ?? 0) > 0) continue;
+      if (history.historyFromSeq > 0) continue;
       throw missingBaselineError(event);
     }
     current.repliedAtMs ??= event.createdAtMs;
