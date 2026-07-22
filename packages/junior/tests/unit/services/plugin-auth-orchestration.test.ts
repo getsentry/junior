@@ -109,7 +109,6 @@ describe("createPluginAuthOrchestration", () => {
       abortAgent: vi.fn(),
       actorId: "U123",
       source: slackSource,
-      userMessage: "check Sentry",
       userTokenStore: tokens,
     });
 
@@ -126,7 +125,6 @@ describe("createPluginAuthOrchestration", () => {
       expect.objectContaining({
         actorId: "U123",
         source: slackSource,
-        userMessage: "check Sentry",
       }),
     );
     expect(unlinkProvider).not.toHaveBeenCalled();
@@ -144,7 +142,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokens,
     });
 
@@ -165,7 +162,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent,
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokenStore(),
       authorizationFlowMode: "disabled",
     });
@@ -181,7 +177,6 @@ describe("createPluginAuthOrchestration", () => {
   it("returns AuthorizationFlowDisabledError when no actor and flow is disabled", async () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
-      userMessage: "<scheduled-task-run />",
       authorizationFlowMode: "disabled",
     });
 
@@ -205,7 +200,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent,
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokens,
     });
 
@@ -229,7 +223,6 @@ describe("createPluginAuthOrchestration", () => {
       conversationId: "slack:C123:1700000000.000000",
       sessionId: "run_new",
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokenStore(),
     });
 
@@ -250,7 +243,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokenStore(),
     });
 
@@ -271,7 +263,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "push the branch",
       userTokenStore: tokens,
     });
 
@@ -287,7 +278,6 @@ describe("createPluginAuthOrchestration", () => {
       "github",
       expect.objectContaining({
         actorId: "U123",
-        userMessage: "push the branch",
       }),
     );
     expect(unlinkProvider).not.toHaveBeenCalled();
@@ -305,7 +295,6 @@ describe("createPluginAuthOrchestration", () => {
       conversationId: "slack:C123:1700000000.000000",
       sessionId: "run_new",
       actorId: "U123",
-      userMessage: "check Sentry",
       userTokenStore: tokenStore(),
       pendingAuth: {
         kind: "plugin",
@@ -348,7 +337,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "inspect a repo",
       userTokenStore: tokenStore(),
     });
 
@@ -375,7 +363,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "inspect a repo",
       userTokenStore: tokenStore(),
     });
 
@@ -398,7 +385,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "inspect a repo",
       userTokenStore: tokenStore(),
     });
 
@@ -421,7 +407,6 @@ describe("createPluginAuthOrchestration", () => {
   it("preserves no-oauth auth signal messages when authorization flow is disabled", async () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
-      userMessage: "<scheduled-task-run />",
       authorizationFlowMode: "disabled",
     });
 
@@ -444,7 +429,6 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       actorId: "U123",
-      userMessage: "check GitHub",
       userTokenStore: tokenStore(),
     });
 
@@ -462,7 +446,6 @@ describe("createPluginAuthOrchestration", () => {
   it("no-ops when result is empty", async () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
-      userMessage: "check Sentry",
     });
 
     await expect(
@@ -495,7 +478,6 @@ describe("createPluginAuthOrchestration", () => {
       const orchestration = createPluginAuthOrchestration({
         abortAgent: vi.fn(),
         actorId: "U123",
-        userMessage: "do something",
         userTokenStore: tokenStore(),
       });
 

@@ -265,9 +265,7 @@ async function resumeOAuthSessionRecordTurn(
   }
 
   await resumeSlackTurn({
-    messageText: pendingAuth
-      ? userMessage.text
-      : (stored.pendingMessage ?? userMessage.text),
+    messageText: userMessage.text,
     conversationId: stored.resumeConversationId,
     turnId: resolvedSessionId,
     channelId: stored.channelId,
@@ -389,9 +387,7 @@ async function resumeOAuthSessionRecordTurn(
 
       const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);
       return {
-        messageText: lockedPendingAuth
-          ? lockedUserMessage.text
-          : (stored.pendingMessage ?? lockedUserMessage.text),
+        messageText: lockedUserMessage.text,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
         replyContext: {
@@ -661,7 +657,10 @@ export async function GET(
     }
   });
 
-  if (stored.pendingMessage && stored.channelId && stored.threadTs) {
+  const resumesAgentTurn = Boolean(
+    stored.resumeConversationId && stored.resumeSessionId,
+  );
+  if (resumesAgentTurn) {
     waitUntil(async () => {
       try {
         // Agent OAuth links resume their durable session record. Do not rebuild
@@ -702,7 +701,7 @@ export async function GET(
     );
   }
 
-  const statusMessage = stored.pendingMessage
+  const statusMessage = resumesAgentTurn
     ? "Your request is being processed in Slack."
     : "You can close this tab and return to Slack.";
   const html = `<!DOCTYPE html>

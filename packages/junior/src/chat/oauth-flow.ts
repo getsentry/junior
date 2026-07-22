@@ -29,7 +29,6 @@ export type OAuthStatePayload = {
   destination?: Destination;
   source?: Source;
   threadTs?: string;
-  pendingMessage?: string;
   resumeConversationId?: string;
   resumeSessionId?: string;
   scope?: string;
@@ -41,7 +40,6 @@ type OAuthFlowInput = {
   destination?: Destination;
   source?: Source;
   threadTs?: string;
-  userMessage?: string;
   activeSkillName?: string;
   resumeConversationId?: string;
   resumeSessionId?: string;
@@ -75,10 +73,6 @@ export function parseOAuthStatePayload(
   if (value.source !== undefined && (!source || !source.success)) {
     return undefined;
   }
-  const pendingMessage = optionalString(value.pendingMessage);
-  if (pendingMessage && !source?.success) {
-    return undefined;
-  }
   return {
     userId: value.userId,
     provider: value.provider,
@@ -90,7 +84,6 @@ export function parseOAuthStatePayload(
     ...(optionalString(value.threadTs)
       ? { threadTs: optionalString(value.threadTs) }
       : {}),
-    ...(pendingMessage ? { pendingMessage } : {}),
     ...(optionalString(value.resumeConversationId)
       ? { resumeConversationId: optionalString(value.resumeConversationId) }
       : {}),
@@ -258,7 +251,6 @@ export async function startOAuthFlow(
       ...(input.destination ? { destination: input.destination } : {}),
       ...(input.source ? { source: input.source } : {}),
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
       ...(input.resumeConversationId
         ? { resumeConversationId: input.resumeConversationId }
         : {}),

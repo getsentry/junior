@@ -208,7 +208,6 @@ describe("oauth callback slack integration", () => {
         destination: SLACK_DESTINATION,
         source: slackSource("1700000000.009"),
         threadTs: "1700000000.009",
-        pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
         resumeSessionId: sessionId,
         scope: "read",
@@ -442,7 +441,6 @@ describe("oauth callback slack integration", () => {
         destination: SLACK_DESTINATION,
         source: slackSource("1700000000.012"),
         threadTs: "1700000000.012",
-        pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
         resumeSessionId: sessionId,
         scope: "read",
@@ -609,7 +607,6 @@ describe("oauth callback slack integration", () => {
         destination: SLACK_DESTINATION,
         source: slackSource("1700000000.011"),
         threadTs: "1700000000.011",
-        pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
         resumeSessionId: sessionId,
       });
@@ -732,7 +729,6 @@ describe("oauth callback slack integration", () => {
         destination: SLACK_DESTINATION,
         source: slackSource("1700000000.012"),
         threadTs: "1700000000.012",
-        pendingMessage: "old request",
         resumeConversationId: conversationId,
         resumeSessionId: oldSessionId,
       });
@@ -837,7 +833,6 @@ describe("oauth callback slack integration", () => {
         destination: SLACK_DESTINATION,
         source: slackSource("1700000000.010"),
         threadTs: "1700000000.010",
-        pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
         resumeSessionId: sessionId,
       });

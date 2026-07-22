@@ -56,7 +56,6 @@ export interface PluginAuthOrchestrationInput {
   destination?: Destination;
   source?: Source;
   threadTs?: string;
-  userMessage: string;
   pendingAuth?: ConversationPendingAuthState;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
@@ -172,7 +171,6 @@ export function createPluginAuthOrchestration(
         destination: input.destination,
         source: input.source,
         threadTs: input.threadTs,
-        userMessage: input.userMessage,
         ...(options?.scope ? { scope: options.scope } : {}),
         resumeConversationId: input.conversationId,
         resumeSessionId: input.sessionId,

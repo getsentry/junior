@@ -672,7 +672,7 @@ describe("oauth callback handler", () => {
     expect(body).toContain("&lt;img");
   });
 
-  it("shows pending-message status in success page", async () => {
+  it("shows resumable-turn status in success page", async () => {
     const stateKey = "oauth-state:pending-test";
     await putStoredState(stateKey, {
       userId: "U111",
@@ -686,7 +686,8 @@ describe("oauth callback handler", () => {
         type: "priv",
       }),
       threadTs: "123.789",
-      pendingMessage: "list my sentry issues",
+      resumeConversationId: "slack:C123:123.789",
+      resumeSessionId: "turn-123",
     });
 
     configureSentryOAuthEnv();
