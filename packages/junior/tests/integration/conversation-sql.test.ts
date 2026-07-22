@@ -139,6 +139,56 @@ ORDER BY table_name ASC, constraint_name ASC
     }
   });
 
+  it("backfills the owning root for existing conversation trees", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      for (let index = 0; index < 6; index += 1) {
+        await applyCoreMigration(fixture.sql, index);
+      }
+      await fixture.sql.execute(`
+INSERT INTO junior_conversations (
+  conversation_id,
+  parent_conversation_id,
+  created_at,
+  last_activity_at,
+  updated_at,
+  execution_status
+) VALUES
+  ('root', NULL, now(), now(), now(), 'idle'),
+  ('child', 'root', now(), now(), now(), 'idle'),
+  ('grandchild', 'child', now(), now(), now(), 'idle'),
+  ('cycle-a', NULL, now(), now(), now(), 'idle'),
+  ('cycle-b', 'cycle-a', now(), now(), now(), 'idle')
+`);
+      await fixture.sql.execute(
+        "UPDATE junior_conversations SET parent_conversation_id = 'cycle-b' WHERE conversation_id = 'cycle-a'",
+      );
+
+      await applyCoreMigration(fixture.sql, 6);
+
+      const rows = await fixture.sql.query<{
+        conversationId: string;
+        rootConversationId: string | null;
+      }>(`
+SELECT
+  conversation_id AS "conversationId",
+  root_conversation_id AS "rootConversationId"
+FROM junior_conversations
+ORDER BY conversation_id
+`);
+      expect(rows).toEqual([
+        { conversationId: "child", rootConversationId: "root" },
+        { conversationId: "cycle-a", rootConversationId: null },
+        { conversationId: "cycle-b", rootConversationId: null },
+        { conversationId: "grandchild", rootConversationId: "root" },
+        { conversationId: "root", rootConversationId: "root" },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps core migrations separate from another Drizzle journal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

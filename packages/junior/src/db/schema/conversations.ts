@@ -58,6 +58,11 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // Roots reference themselves; descendants reference the root whose actor
+    // and destination own their privacy boundary.
+    rootConversationId: text("root_conversation_id").references(
+      (): AnyPgColumn => juniorConversations.conversationId,
+    ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
@@ -92,5 +97,6 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
+    index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );

@@ -11,7 +11,7 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "./schema";
-import { participantMatchColumn } from "../conversations/participant";
+import { participantMatchColumn } from "@/chat/conversations/participant";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;

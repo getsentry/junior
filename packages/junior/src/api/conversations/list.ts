@@ -9,7 +9,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import { participantMatchColumn } from "./participant";
+import { participantMatchColumn } from "@/chat/conversations/participant";
 import { conversationFeedSchema } from "./schema";
 import type { ConversationFeed } from "./schema";
 import type { ApiRoute } from "../route";

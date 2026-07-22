@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { juniorIdentities } from "@/db/schema";
+
+interface ParticipantIdentityColumns {
+  emailNormalized: AnyPgColumn;
+  emailVerified: AnyPgColumn;
+}
 
 /** Normalize the authenticated email used for participant comparisons. */
 export function normalizeAuthorizedUserEmail(
@@ -10,11 +16,14 @@ export function normalizeAuthorizedUserEmail(
 }
 
 /** Select whether the joined verified actor identity matches the viewer. */
-export function participantMatchColumn(authorizedUserEmail?: string) {
+export function participantMatchColumn(
+  authorizedUserEmail?: string,
+  identity: ParticipantIdentityColumns = juniorIdentities,
+) {
   const normalizedEmail = normalizeAuthorizedUserEmail(authorizedUserEmail);
   return sql<boolean>`COALESCE(
-    ${juniorIdentities.emailVerified} = true
-      AND ${juniorIdentities.emailNormalized} = ${normalizedEmail ?? null},
+    ${identity.emailVerified} = true
+      AND ${identity.emailNormalized} = ${normalizedEmail ?? null},
     false
   )`;
 }

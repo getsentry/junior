@@ -81,6 +81,12 @@ Destination visibility is the privacy authority. Messages, agent steps, child
 conversations, and plugin projections inherit it. Retention distinguishes
 expired content from redacted content and purges the complete child tree.
 
+Every conversation row carries its owning `root_conversation_id`. Roots
+self-reference; descendants copy the root from their immediate parent when
+they are created. `parent_conversation_id` remains the tree-navigation edge,
+while REST authorization joins directly through the indexed root relation.
+Missing or structurally invalid root metadata fails closed.
+
 Follow `../../../../../policies/data-redaction.md` and
 `../../../../../policies/runtime-boundary-schemas.md`.
 

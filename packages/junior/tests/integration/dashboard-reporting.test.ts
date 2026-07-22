@@ -211,9 +211,15 @@ async function createChild(args: {
 }): Promise<void> {
   const { getConversationEventStore, getDb } = await import("@/chat/db");
   const at = new Date(3);
+  const [parent] = await getDb()
+    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, args.parentConversationId));
+  if (!parent?.rootConversationId) throw new Error("Missing conversation root");
   await getDb().insert(juniorConversations).values({
     conversationId: args.childConversationId,
     parentConversationId: args.parentConversationId,
+    rootConversationId: parent.rootConversationId,
     createdAt: at,
     lastActivityAt: at,
     updatedAt: at,

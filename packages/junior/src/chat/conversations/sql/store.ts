@@ -758,6 +758,19 @@ export class SqlStore implements ConversationStore {
           conversation.updatedAtMs,
         )
       : undefined;
+    const rootConversationId = conversation.lineage
+      ? sql<string | null>`(
+          select coalesce(
+            parent.root_conversation_id,
+            case
+              when parent.parent_conversation_id is null
+              then parent.conversation_id
+            end
+          )
+          from junior_conversations parent
+          where parent.conversation_id = ${conversation.lineage.parentConversationId}
+        )`
+      : conversation.conversationId;
     await this.executor
       .db()
       .insert(juniorConversations)
@@ -795,6 +808,7 @@ export class SqlStore implements ConversationStore {
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId:
           conversation.lineage?.parentConversationId ?? null,
+        rootConversationId,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -817,6 +831,7 @@ export class SqlStore implements ConversationStore {
           runId: sql`case when ${incomingExecutionIsFresh} then excluded.run_id else ${juniorConversations.runId} end`,
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
+          rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
         },
       });
   }

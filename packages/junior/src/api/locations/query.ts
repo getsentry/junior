@@ -13,7 +13,7 @@ import {
   conversationRangeColumns,
 } from "../conversations/aggregate";
 import type { ActorIdentity } from "../conversations/schema";
-import { participantMatchColumn } from "../conversations/participant";
+import { participantMatchColumn } from "@/chat/conversations/participant";
 import { summaryFromRow } from "../conversations/reporting";
 import type {
   LocationActorSummaryReport,

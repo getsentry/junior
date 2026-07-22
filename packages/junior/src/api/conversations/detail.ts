@@ -14,7 +14,7 @@ import {
 } from "./events";
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import { normalizeAuthorizedUserEmail } from "./participant";
+import { normalizeAuthorizedUserEmail } from "@/chat/conversations/participant";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
 import type { ApiRoute } from "../route";
