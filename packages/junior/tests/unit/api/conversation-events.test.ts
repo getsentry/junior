@@ -649,6 +649,7 @@ describe("conversation report event projection", () => {
       surface: "internal" as const,
       generatedAt: "2026-07-15T12:00:00.000Z",
       eventHistory: { status: "available" as const },
+      isParticipant: false,
     };
     const reportEvent = (seq: number) => ({
       seq,
@@ -691,6 +692,7 @@ describe("conversation report event projection", () => {
       lastProgressAt: "2026-07-15T12:00:00.000Z",
       surface: "internal" as const,
       generatedAt: "2026-07-15T12:00:00.000Z",
+      isParticipant: false,
     };
     const visibleEvent = (
       data:
