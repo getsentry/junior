@@ -204,8 +204,8 @@ export function createResumeState(args: ResumeStateArgs) {
       const retryingDelivery = error instanceof RetryableDeliveryError;
       if (retryingDelivery || timedOut) {
         if (retryingDelivery) {
-          // The failed assistant message was never committed. Regenerate it
-          // from the last safe transcript; an ambiguous provider write may
+          // The failed assistant message was never saved. Regenerate it from
+          // the latest saved agent history; an ambiguous provider write may
           // therefore produce a duplicate reply.
           resumeMessages = [...latestSafeBoundaryMessages];
         }

@@ -28,7 +28,7 @@ runtime orchestration.
   contracts.
 - OAuth links and other private authorization material use private delivery.
 - Explicit Slack API rejections fail delivery. Transient or ambiguous failures
-  resume the agent from its last safe transcript boundary; a reply may be
+  resume the agent from its latest saved history; a reply may be
   duplicated if Slack accepted it before the failure became visible.
 
 `outbound.ts` owns Slack API calls and immediate transport retries. `errors.ts`
