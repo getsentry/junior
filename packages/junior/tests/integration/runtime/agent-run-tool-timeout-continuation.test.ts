@@ -285,6 +285,8 @@ describe("executeAgentRun tool timeout continuation", () => {
     });
     await waitForToolStart();
     await vi.advanceTimersByTimeAsync(10_000);
+    // Let the runtime's bounded abort-settlement grace window expire if needed.
+    await vi.advanceTimersByTimeAsync(5_000);
     const suspended = await suspendedPromise;
 
     expect(observations.toolStarted).toBe(true);
