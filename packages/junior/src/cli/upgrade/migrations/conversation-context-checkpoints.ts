@@ -207,12 +207,11 @@ async function normalizeConversation(args: {
               replacementCount = matchingMessagePrefix(previous, current);
             } else {
               const end = checkpointEnd(current);
-              if (end < 0) {
-                throw new Error(
-                  `Cannot find ${reason} summary at event ${marker.seq} during upgrade`,
-                );
-              }
-              replacementCount = end + 1;
+              // TODO(v0.108.0): Remove the full-epoch fallback after deployed
+              // checkpoint rows without a recognizable summary are upgraded.
+              // The epoch's final row set is still an exact history snapshot,
+              // so folding its appended suffix into the replacement is lossless.
+              replacementCount = end < 0 ? current.length : end + 1;
             }
             const replacementRows = current.slice(0, replacementCount);
             replacementHistory = replacementRows.map((row, index) =>

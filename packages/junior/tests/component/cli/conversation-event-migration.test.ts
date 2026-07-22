@@ -1145,4 +1145,100 @@ ORDER BY indexname
       await fixture.close();
     }
   }, 20_000);
+
+  it("preserves active history when a deployed compaction summary is missing", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const conversationId = "conversation-compaction-without-summary";
+    const retainedUser = {
+      role: "user",
+      content: [{ type: "text", text: "retain this request" }],
+    };
+    const liveAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "retain this response too" }],
+    };
+    const bot = {
+      embeddingModelId: "test/embedding",
+      fastModelId: "test/fast",
+      loadingMessages: [],
+      profiles: {
+        standard: { modelId: "test/standard" },
+        handoff: { modelId: "test/handoff", reasoningLevel: "xhigh" as const },
+      },
+      maxSlicesPerTurn: 1,
+      turnTimeoutMs: 1,
+      userName: "Junior",
+    };
+
+    try {
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        historicalPreDrizzleEventDdl,
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0004_useful_magus.sql"),
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+          conversation_id, created_at, last_activity_at, updated_at,
+          execution_status
+        ) VALUES ($1, $2, $2, $2, 'idle')`,
+        [conversationId, new Date("2026-07-14T10:00:00.000Z")],
+      );
+      await executeStatements(
+        (statement) => fixture.sql.execute(statement),
+        migrationStatements("0005_conversation_events.sql"),
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversation_events (
+          conversation_id, seq, history_version, schema_version, type,
+          payload, created_at
+        ) VALUES
+          ($1, 10, 1, 1, 'context_epoch_started', $2::jsonb, $5),
+          ($1, 11, 1, 1, 'agent_step', $3::jsonb, $5),
+          ($1, 12, 1, 1, 'agent_step', $4::jsonb, $5)`,
+        [
+          conversationId,
+          JSON.stringify({ reason: "compaction" }),
+          JSON.stringify({ message: retainedUser }),
+          JSON.stringify({ message: liveAssistant }),
+          new Date("2026-07-14T10:01:00.000Z"),
+        ],
+      );
+
+      const context = {
+        io: { info: () => {} },
+        stateAdapter: getStateAdapter(),
+      };
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).resolves.toMatchObject({ migrated: 1, scanned: 1 });
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadCurrentHistory(conversationId);
+      expect(history).toHaveLength(1);
+      expect(history[0]?.data).toEqual({
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "test/standard",
+        replacementHistory: [
+          { message: retainedUser },
+          { message: liveAssistant },
+        ],
+      });
+      await expect(
+        normalizeConversationContextCheckpoints(context, {
+          executor: fixture.sql,
+          bot,
+        }),
+      ).resolves.toMatchObject({ migrated: 0, scanned: 0 });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
 });
