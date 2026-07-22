@@ -213,17 +213,13 @@ const memorySupersessionCandidateSchema = z
   })
   .strict();
 const memorySupersessionCandidatesSchema = z
-  .tuple([memorySupersessionCandidateSchema], memorySupersessionCandidateSchema)
-  .refine(
-    (candidates) =>
-      candidates.length <= PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT,
-    { message: "Too many preference candidates." },
-  );
+  .array(memorySupersessionCandidateSchema)
+  .min(1)
+  .max(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
 const supersededIdsSchema = z
-  .tuple([z.string().min(1)], z.string().min(1))
-  .refine((ids) => ids.length <= PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT, {
-    message: "Too many superseded memory ids.",
-  });
+  .array(z.string().min(1))
+  .min(1)
+  .max(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
 
 /** Validated preference comparison input supplied to a supersession decider. */
 export const memorySupersessionInputSchema = z
@@ -833,8 +829,9 @@ async function rememberDuplicateIdempotency(args: {
 }
 
 /**
- * Prefer lexical and vector matches, then fill the bounded model input with
- * recent active preferences so text shape cannot veto semantic adjudication.
+ * Reserve the best lexical and vector matches, then fill the bounded model
+ * input with ranked and recent active preferences so one retrieval strategy
+ * cannot veto semantic adjudication.
  */
 async function listPreferenceAdjudicationCandidates(args: {
   content: string;
@@ -891,7 +888,16 @@ async function listPreferenceAdjudicationCandidates(args: {
       })
     : [];
   const byId = new Map<string, MemoryRecord>();
-  for (const memory of [...lexicalCandidates, ...vectorCandidates]) {
+  for (const candidates of [lexicalCandidates, vectorCandidates]) {
+    const first = candidates[0];
+    if (first) {
+      byId.set(first.id, first);
+    }
+  }
+  for (const memory of [
+    ...lexicalCandidates.slice(1),
+    ...vectorCandidates.slice(1),
+  ]) {
     if (byId.size >= PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT) {
       break;
     }
@@ -978,7 +984,7 @@ async function adjudicatePreferenceCandidate(args: {
   if (args.kind !== "preference" || !args.decider || !firstCandidate) {
     return { supersededIds: [] };
   }
-  const existingMemories: MemorySupersessionInput["existingMemories"] = [
+  const existingMemories = [
     { content: firstCandidate.content, id: firstCandidate.id },
     ...remainingCandidates.map((memory) => ({
       content: memory.content,
