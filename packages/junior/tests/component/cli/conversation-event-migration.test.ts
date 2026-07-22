@@ -904,8 +904,10 @@ ORDER BY indexname
       embeddingModelId: "test/embedding",
       fastModelId: "test/fast",
       loadingMessages: [],
-      modelId: "test/standard",
-      modelProfiles: { handoff: "test/handoff" },
+      profiles: {
+        standard: { modelId: "test/standard" },
+        handoff: { modelId: "test/handoff", reasoningLevel: "xhigh" as const },
+      },
       maxSlicesPerTurn: 1,
       turnTimeoutMs: 1,
       userName: "Junior",

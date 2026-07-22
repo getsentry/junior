@@ -54,6 +54,9 @@ directory owns product orchestration around it.
 
 ## Compaction And Handoff
 
+- The host profile registry maps stable names to models and may force a
+  reasoning level. Only `standard` uses the turn router; named profiles start
+  directly and can use `handoff` to switch to another named profile.
 - Compaction replaces agent history. Its replacement history contains the
   retained user messages followed by a summary; later messages append normally.
   Visible conversation history remains unchanged.

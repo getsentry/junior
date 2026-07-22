@@ -1,5 +1,6 @@
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import type { completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
@@ -318,7 +319,7 @@ async function resolveUserAttachmentsWithDeps(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId,
+            modelId: standardModelId(botConfig),
           },
           {
             "file.size": data.byteLength,
@@ -347,7 +348,7 @@ async function resolveUserAttachmentsWithDeps(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.visionModelId ?? botConfig.modelId,
+            modelId: botConfig.visionModelId ?? standardModelId(botConfig),
           },
           {
             "exception.message":
@@ -368,7 +369,7 @@ async function resolveUserAttachmentsWithDeps(
           slackChannelId: context.channelId,
           runId: context.runId,
           assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
+          modelId: standardModelId(botConfig),
         },
         {
           "exception.message":
@@ -509,7 +510,7 @@ async function hydrateConversationVisionContextWithDeps(
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId,
+        modelId: standardModelId(botConfig),
       },
       {
         "exception.message":
@@ -593,7 +594,7 @@ async function hydrateConversationVisionContextWithDeps(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId,
+            modelId: standardModelId(botConfig),
           },
           {
             "app.file.id": fileId,
@@ -624,7 +625,7 @@ async function hydrateConversationVisionContextWithDeps(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId,
+            modelId: standardModelId(botConfig),
           },
           {
             "exception.message":
@@ -646,7 +647,7 @@ async function hydrateConversationVisionContextWithDeps(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId,
+            modelId: standardModelId(botConfig),
           },
           {
             "app.file.id": fileId,
@@ -698,7 +699,7 @@ async function hydrateConversationVisionContextWithDeps(
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId,
+        modelId: standardModelId(botConfig),
       },
       {
         "app.conversation_image.cache_hits": cacheHits,

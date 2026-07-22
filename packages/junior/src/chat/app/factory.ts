@@ -41,6 +41,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -116,7 +117,7 @@ export function createSlackRuntime(
 
   return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
     assistantUserName: botConfig.userName,
-    modelId: botConfig.modelId,
+    modelId: standardModelId(botConfig),
     now: options.now ?? (() => Date.now()),
     getThreadId,
     getChannelId,

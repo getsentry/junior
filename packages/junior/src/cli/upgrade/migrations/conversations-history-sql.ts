@@ -1,4 +1,5 @@
 import { getChatConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import { importConversationFromLegacy } from "./conversation-history/import";
 import { createStateConversationStore } from "./conversation-history/state-conversation-store";
 import type { LegacyAdvisorSessionReader } from "./conversation-history/advisor-session";
@@ -62,7 +63,7 @@ export async function migrateConversationHistoryToSql(
           conversation.conversationId,
           {
             executor,
-            modelId: chatConfig.bot.modelId,
+            modelId: standardModelId(chatConfig.bot),
             conversationRecord: conversation,
             ...(options.sessionLogStore
               ? { sessionLogStore: options.sessionLogStore }

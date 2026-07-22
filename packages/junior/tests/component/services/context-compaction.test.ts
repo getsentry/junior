@@ -303,7 +303,7 @@ describe("context compaction projection reset", () => {
         runtimeContext,
         triggeringToolCallId: "handoff-call-1",
         target: {
-          modelId: botConfig.modelProfiles.handoff,
+          modelId: botConfig.profiles.handoff!.modelId,
           modelProfile: "handoff",
         },
       },
@@ -346,7 +346,7 @@ describe("context compaction projection reset", () => {
     expect(marker).toEqual({
       type: "handoff",
       modelProfile: "handoff",
-      modelId: botConfig.modelProfiles.handoff,
+      modelId: botConfig.profiles.handoff!.modelId,
       triggeringToolCallId: "handoff-call-1",
       replacementHistory: [
         {
@@ -397,12 +397,12 @@ describe("context compaction projection reset", () => {
       {
         type: "handoff",
         modelProfile: "handoff",
-        modelId: botConfig.modelProfiles.handoff,
+        modelId: botConfig.profiles.handoff!.modelId,
       },
       {
         type: "compaction",
         modelProfile: "handoff",
-        modelId: botConfig.modelProfiles.handoff,
+        modelId: botConfig.profiles.handoff!.modelId,
       },
     ]);
   });

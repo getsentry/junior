@@ -17,7 +17,8 @@ const observations = vi.hoisted(() => ({
   mixedBatch: false,
   progressTool: false,
   providerCalls: 0,
-  requestedProfile: undefined as string | null | undefined,
+  routerCalls: 0,
+  requestedProfile: "handoff" as string | null | undefined,
   routedModelProfile: "standard",
   routedReasoningLevel: "high",
   reasoningLevels: [] as string[],
@@ -42,14 +43,17 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
   return {
     ...actual,
-    completeObject: async () => ({
-      object: {
-        reasoning_level: observations.routedReasoningLevel,
-        model_profile: observations.routedModelProfile,
-        confidence: 0.99,
-        reason: "complex implementation",
-      },
-    }),
+    completeObject: async () => {
+      observations.routerCalls += 1;
+      return {
+        object: {
+          reasoning_level: observations.routedReasoningLevel,
+          profile: observations.routedModelProfile,
+          confidence: 0.99,
+          reason: "complex implementation",
+        },
+      };
+    },
     completeText: async (args: { signal?: AbortSignal }) => {
       observations.handoffStatusBeforeSummary =
         observations.statuses.includes("Switching models");
@@ -225,7 +229,8 @@ describe("executeAgentRun model handoff", () => {
     observations.mixedBatch = false;
     observations.progressTool = false;
     observations.providerCalls = 0;
-    observations.requestedProfile = undefined;
+    observations.routerCalls = 0;
+    observations.requestedProfile = "handoff";
     observations.routedModelProfile = "standard";
     observations.routedReasoningLevel = "high";
     observations.reasoningLevels = [];
@@ -274,14 +279,15 @@ describe("executeAgentRun model handoff", () => {
     expect(outcome.result.text).toBe("Handoff model completed it.");
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(observations.providerCalls).toBe(1);
+    expect(observations.routerCalls).toBe(1);
     expect(observations.initialModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.initialToolNames).not.toContain("handoff");
+    expect(observations.initialToolNames).toContain("handoff");
     expect(observations.initialImagePart).toEqual({
       type: "image",
       data: Buffer.from("architecture-diagram").toString("base64"),
       mimeType: "image/png",
     });
-    expect(observations.reasoningLevels).toEqual(["high"]);
+    expect(observations.reasoningLevels).toEqual(["xhigh"]);
     expect(observations.summaryCalls).toBe(1);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
@@ -322,7 +328,7 @@ describe("executeAgentRun model handoff", () => {
   });
 
   it("compacts and upgrades the same conversation before continuing the turn", async () => {
-    observations.requestedProfile = null;
+    observations.requestedProfile = "handoff";
     const conversationId = "local:test:model-handoff";
     const outcome = await executeAgentRun({
       conversationId,
@@ -352,10 +358,10 @@ describe("executeAgentRun model handoff", () => {
       observations.afterHandoffModelId,
     );
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "high"]);
-    expect(observations.afterHandoffToolNames).not.toContain("handoff");
+    expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "xhigh"]);
+    expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.afterHandoffToolNames).toEqual(
-      observations.initialToolNames.filter((name) => name !== "handoff"),
+      observations.initialToolNames,
     );
     expect(observations.summaryCalls).toBe(1);
     expect(observations.handoffStatusBeforeSummary).toBe(true);
@@ -414,8 +420,9 @@ describe("executeAgentRun model handoff", () => {
     if (followUp.status !== "completed") return;
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(observations.providerCalls).toBe(3);
+    expect(observations.routerCalls).toBe(1);
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.afterHandoffToolNames).not.toContain("handoff");
+    expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
   });
 
@@ -473,8 +480,8 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.statuses).toContain("Checking details");
   });
 
-  it("preserves explicit agent reasoning across handoff without routing", async () => {
-    observations.requestedProfile = null;
+  it("preserves explicit agent reasoning across handoff", async () => {
+    observations.requestedProfile = "handoff";
     observations.routedReasoningLevel = "low";
     const conversationId = "local:test:model-handoff-explicit-reasoning";
     const outcome = await executeAgentRun({
@@ -496,7 +503,7 @@ describe("executeAgentRun model handoff", () => {
   });
 
   it("keeps handoff independent from status observer failures", async () => {
-    observations.requestedProfile = null;
+    observations.requestedProfile = "handoff";
     const conversationId = "local:test:model-handoff-status-failure";
     const outcome = await executeAgentRun({
       conversationId,
@@ -566,7 +573,8 @@ describe("executeAgentRun model handoff", () => {
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.4");
-    expect(observations.afterHandoffToolNames).not.toContain("handoff");
+    expect(observations.routerCalls).toBe(1);
+    expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
   });
 
@@ -612,7 +620,7 @@ describe("executeAgentRun model handoff", () => {
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.afterHandoffToolNames).not.toContain("handoff");
+    expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");

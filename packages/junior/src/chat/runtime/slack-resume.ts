@@ -6,6 +6,7 @@
  * reuse the shared Slack reply footer path when they are user-visible.
  */
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -220,7 +221,7 @@ function getResumeLogContext(
     slackUserName: isUserActor(actor) ? actor.userName : undefined,
     slackChannelId: args.channelId,
     assistantUserName: botConfig.userName,
-    modelId: botConfig.modelId,
+    modelId: standardModelId(botConfig),
   };
 }
 

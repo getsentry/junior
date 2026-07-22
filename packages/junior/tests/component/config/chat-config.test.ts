@@ -24,7 +24,9 @@ describe("chat config", () => {
     delete process.env.AI_FAST_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelId).toBe("anthropic/claude-opus-4.6");
+    expect(botConfig.profiles.standard).toEqual({
+      modelId: "anthropic/claude-opus-4.6",
+    });
     expect(botConfig.fastModelId).toBe("anthropic/claude-opus-4.6");
   });
 
@@ -48,7 +50,9 @@ describe("chat config", () => {
     delete process.env.AI_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelId).toBe("xai/grok-4.5");
+    expect(botConfig.profiles.standard).toEqual({
+      modelId: "xai/grok-4.5",
+    });
   });
 
   it("leaves reasoning unset by default", async () => {
@@ -83,8 +87,12 @@ describe("chat config", () => {
     delete process.env.AI_MODEL_PROFILES;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelProfiles).toEqual({
-      handoff: "openai/gpt-5.6-sol",
+    expect(botConfig.profiles).toEqual({
+      standard: { modelId: "xai/grok-4.5" },
+      handoff: {
+        modelId: "openai/gpt-5.6-sol",
+        reasoningLevel: "xhigh",
+      },
     });
   });
 
@@ -92,7 +100,10 @@ describe("chat config", () => {
     process.env.AI_HANDOFF_MODEL = "openai/gpt-5.4";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelProfiles.handoff).toBe("openai/gpt-5.4");
+    expect(botConfig.profiles.handoff).toEqual({
+      modelId: "openai/gpt-5.4",
+      reasoningLevel: "xhigh",
+    });
   });
 
   it("adds named profiles from AI_MODEL_PROFILES", async () => {
@@ -102,10 +113,14 @@ describe("chat config", () => {
     });
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelProfiles).toEqual({
-      handoff: "openai/gpt-5.6-sol",
-      coding: "openai/gpt-5.4",
-      research: "anthropic/claude-opus-4.6",
+    expect(botConfig.profiles).toEqual({
+      standard: { modelId: "xai/grok-4.5" },
+      handoff: {
+        modelId: "openai/gpt-5.6-sol",
+        reasoningLevel: "xhigh",
+      },
+      coding: { modelId: "openai/gpt-5.4" },
+      research: { modelId: "anthropic/claude-opus-4.6" },
     });
   });
 
@@ -238,7 +253,9 @@ describe("chat config", () => {
     process.env.AI_VISION_MODEL = "openai/gpt-5.4";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelId).toBe("anthropic/claude-opus-4.6");
+    expect(botConfig.profiles.standard).toEqual({
+      modelId: "anthropic/claude-opus-4.6",
+    });
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
 

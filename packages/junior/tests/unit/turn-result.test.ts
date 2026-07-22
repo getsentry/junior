@@ -8,6 +8,7 @@ import {
 } from "@/chat/services/turn-result";
 
 const executionProfile = {
+  profile: "standard",
   reasoningLevel: "medium" as const,
   reason: "test",
 };

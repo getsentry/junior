@@ -17,13 +17,14 @@ import {
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
-vi.mock("@/chat/services/turn-execution-profile", async () => {
+vi.mock("@/chat/services/turn-router", async () => {
   const actual = await vi.importActual<
-    typeof import("@/chat/services/turn-execution-profile")
-  >("@/chat/services/turn-execution-profile");
+    typeof import("@/chat/services/turn-router")
+  >("@/chat/services/turn-router");
   return {
     ...actual,
-    selectTurnExecutionProfile: async () => ({
+    selectTurnRoute: async () => ({
+      profile: "standard" as const,
       reasoningLevel: "medium" as const,
       reason: "test_default",
     }),

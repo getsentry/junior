@@ -2,7 +2,7 @@ import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
 import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { TurnExecutionProfile } from "@/chat/services/turn-execution-profile";
+import type { TurnRoute } from "@/chat/services/turn-router";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -100,7 +100,7 @@ export interface AgentTurnDiagnostics {
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
-  reasoningLevel?: TurnExecutionProfile["reasoningLevel"];
+  reasoningLevel?: TurnRoute["reasoningLevel"];
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -132,7 +132,7 @@ export interface TurnResultInput {
   shouldTrace: boolean;
   spanContext: LogContext;
   usage?: AgentTurnUsage;
-  executionProfile: TurnExecutionProfile;
+  executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
 }

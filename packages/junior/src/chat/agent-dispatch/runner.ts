@@ -7,6 +7,7 @@
  * state, and schedules follow-up slices when a turn needs to continue.
  */
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
 import {
@@ -625,7 +626,7 @@ export async function runAgentDispatchSlice(
       "agent_dispatch_run_failed",
       {
         ...logContext,
-        modelId: botConfig.modelId,
+        modelId: standardModelId(botConfig),
       },
       {},
       "Agent dispatch failed",

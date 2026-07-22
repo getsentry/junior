@@ -1,4 +1,5 @@
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import { resolveGatewayModel } from "@/chat/pi/client";
 
 const COMPACTION_TRIGGER_INPUT_RATIO = 0.75;
@@ -53,7 +54,7 @@ export function calculateContextCompactionTargetTokens(
 
 /** Resolve the automatic compaction threshold for the active agent model. */
 export function getAgentContextCompactionTriggerTokens(): number {
-  const model = resolveGatewayModel(botConfig.modelId);
+  const model = resolveGatewayModel(standardModelId(botConfig));
   return calculateContextCompactionTriggerTokens({
     contextWindow: botConfig.modelContextWindowTokens ?? model.contextWindow,
     maxTokens: model.maxTokens,

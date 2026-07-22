@@ -98,15 +98,16 @@ function expectBlocksIncludeConversationId(
   expect(JSON.stringify(params.blocks)).toContain(conversationId);
 }
 
-vi.mock("@/chat/services/turn-execution-profile", async () => {
+vi.mock("@/chat/services/turn-router", async () => {
   const actual = await vi.importActual<
-    typeof import("@/chat/services/turn-execution-profile")
-  >("@/chat/services/turn-execution-profile");
+    typeof import("@/chat/services/turn-router")
+  >("@/chat/services/turn-router");
   return {
     ...actual,
     // Bypass the classifier to keep this an agent-boundary test with no
     // model traffic.
-    selectTurnExecutionProfile: async () => ({
+    selectTurnRoute: async () => ({
+      profile: "standard" as const,
       reasoningLevel: "medium" as const,
       reason: "test_default",
     }),

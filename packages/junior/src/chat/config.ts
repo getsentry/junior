@@ -8,6 +8,7 @@ import {
 } from "@/chat/reasoning-level";
 import {
   DEFAULT_HANDOFF_MODEL_PROFILE,
+  type ExecutionProfileConfig,
   modelProfileSchema,
   STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
@@ -43,8 +44,7 @@ export interface BotConfig {
   embeddingModelId: string;
   fastModelId: string;
   loadingMessages: string[];
-  modelId: string;
-  modelProfiles: Readonly<Record<string, string>>;
+  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   modelContextWindowTokens?: number;
   visionModelId?: string;
@@ -184,12 +184,17 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
-function parseModelProfiles(
+function parseProfiles(
   rawValue: string | undefined,
+  standardModelId: string,
   handoffModelId: string,
-): Readonly<Record<string, string>> {
-  const profiles: Record<string, string> = {
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: handoffModelId,
+): Readonly<Record<string, ExecutionProfileConfig>> {
+  const profiles: Record<string, ExecutionProfileConfig> = {
+    [STANDARD_MODEL_PROFILE]: { modelId: standardModelId },
+    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
+      modelId: handoffModelId,
+      reasoningLevel: "xhigh",
+    },
   };
   const trimmed = toOptionalTrimmed(rawValue);
   if (trimmed === undefined) {
@@ -224,7 +229,7 @@ function parseModelProfiles(
     if (!modelId) {
       throw new Error(`AI_MODEL_PROFILES.${profile} must not be empty`);
     }
-    profiles[profile] = modelId;
+    profiles[profile] = { modelId };
   }
   return profiles;
 }
@@ -260,8 +265,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
-    modelId,
-    modelProfiles: parseModelProfiles(env.AI_MODEL_PROFILES, handoffModelId),
+    profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
     modelContextWindowTokens: parseOptionalPositiveInteger(
       "AI_MODEL_CONTEXT_WINDOW_TOKENS",
       env.AI_MODEL_CONTEXT_WINDOW_TOKENS,

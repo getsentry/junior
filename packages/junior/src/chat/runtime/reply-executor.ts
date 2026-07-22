@@ -10,6 +10,7 @@ import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
+import { standardModelId } from "@/chat/model-profile";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
@@ -489,7 +490,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         slackChannelId: channelId,
         runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId,
+        modelId: standardModelId(botConfig),
       },
       async () => {
         const strippedUserText = stripLeadingBotMention(message.text, {
@@ -560,7 +561,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           slackChannelId: channelId,
           runId,
           assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
+          modelId: standardModelId(botConfig),
         };
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
