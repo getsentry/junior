@@ -227,7 +227,13 @@ async function executeAgentRunInPrivacyContext(
   let handoffPhaseUsage: AgentTurnUsage | undefined;
   const configuredReasoningLevel =
     policy.reasoningLevel ?? botConfig.reasoningLevel;
-  let turnRoute: TurnRoute | undefined;
+  let turnRoute: TurnRoute | undefined = configuredReasoningLevel
+    ? configuredTurnRoute(
+        STANDARD_MODEL_PROFILE,
+        configuredReasoningLevel,
+        policy.reasoningLevel ? "agent_config" : "default",
+      )
+    : undefined;
   let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRouting(routing);
