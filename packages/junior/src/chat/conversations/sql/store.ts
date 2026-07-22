@@ -18,6 +18,7 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorUsers,
 } from "@/db/schema";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import type {
@@ -33,6 +34,7 @@ interface ConversationReadRow {
   conversation: ConversationRow;
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
+  actorUserDisplayName: string | null;
 }
 
 interface DestinationUpsert {
@@ -227,8 +229,10 @@ function privacyFromRow(
   return row.destination.visibility === "public" ? "public" : "private";
 }
 
+/** Reconstruct a Slack actor with the linked user name and identity-scoped provider fields. */
 function actorFromIdentityRow(
   identity: IdentityRow | null,
+  userDisplayName: string | null,
 ): StoredSlackActor | undefined {
   if (!identity) {
     return undefined;
@@ -236,13 +240,14 @@ function actorFromIdentityRow(
   if (identity.provider !== "slack") {
     return undefined;
   }
+  const fullName = userDisplayName ?? identity.displayName;
   return {
     ...(identity.emailNormalized
       ? { email: identity.emailNormalized }
       : identity.email
         ? { email: identity.email }
         : {}),
-    ...(identity.displayName ? { fullName: identity.displayName } : {}),
+    ...(fullName ? { fullName } : {}),
     platform: "slack",
     slackUserId: identity.providerSubjectId,
     ...(identity.handle ? { slackUserName: identity.handle } : {}),
@@ -283,7 +288,10 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     throw new Error("Conversation legacy actor is not migrated");
   }
   const destination = destinationFromRow(readRow.destination);
-  const actor = actorFromIdentityRow(readRow.actorIdentity);
+  const actor = actorFromIdentityRow(
+    readRow.actorIdentity,
+    readRow.actorUserDisplayName,
+  );
   if (readRow.destination !== null && !destination) {
     throw new Error("Conversation record destination is invalid");
   }
@@ -710,6 +718,7 @@ export class SqlStore implements ConversationStore {
         conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
+        actorUserDisplayName: juniorUsers.displayName,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -720,6 +729,7 @@ export class SqlStore implements ConversationStore {
         juniorIdentities,
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
+      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
       // Subagent child conversations are excluded from top-level listings and
       // purge with their root on the root's visibility window.
       .where(isNull(juniorConversations.parentConversationId))
@@ -787,6 +797,7 @@ export class SqlStore implements ConversationStore {
         conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
+        actorUserDisplayName: juniorUsers.displayName,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -797,6 +808,7 @@ export class SqlStore implements ConversationStore {
         juniorIdentities,
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
+      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
   }
