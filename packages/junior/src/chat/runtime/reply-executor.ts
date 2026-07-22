@@ -24,9 +24,9 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  planSlackAssistantMessagePosts,
-  postSlackApiReplyPosts,
-  type PlannedSlackReplyStage,
+  planSlackReplyChunks,
+  sendSlackReply,
+  type SlackReplyChunkStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
@@ -82,7 +82,6 @@ import {
   createSlackAdapterAssistantStatusSession,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
   conversationVisibilityFromSlackChannelType,
@@ -587,20 +586,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             actor.userId,
             providerDisplayName,
           );
-          const footer = buildSlackReplyFooter({ conversationId });
           try {
             if (channelId && threadTs) {
-              await postSlackApiReplyPosts({
+              await sendSlackReply({
                 beforePost: beforeFirstResponsePost,
                 channelId,
+                conversationId,
+                text,
                 threadTs,
-                posts: [
-                  {
-                    text,
-                    stage: "thread_reply",
-                  },
-                ],
-                footer,
               });
             } else {
               await beforeFirstResponsePost();
@@ -997,7 +990,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
-          stage: PlannedSlackReplyStage,
+          stage: SlackReplyChunkStage,
         ): Promise<SentMessage> => {
           await beforeFirstResponsePost();
           try {
@@ -1049,32 +1042,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const deliverAssistantMessage = async (assistantMessage: {
           text: string;
         }): Promise<void> => {
-          const posts = planSlackAssistantMessagePosts(assistantMessage.text);
-          if (posts.length === 0) {
+          if (!assistantMessage.text.trim()) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
-          const replyFooter = buildSlackReplyFooter({ conversationId });
-          const shouldUseSlackFooter =
-            Boolean(replyFooter) &&
+          // Production Slack adapters expose name "slack". Harness threads use
+          // the Chat SDK thread.post path even when channel/thread ids parse
+          // from the synthetic thread id.
+          const canSendViaSlackApi =
             Boolean(channelId && threadTs) &&
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
           let slackTs: string | undefined;
-          if (shouldUseSlackFooter) {
-            const slackChannelId = channelId;
-            const slackThreadTs = threadTs;
-            if (!slackChannelId || !slackThreadTs) {
-              throw new Error(
-                "Slack footer delivery requires a concrete channel and thread timestamp",
-              );
-            }
+          if (canSendViaSlackApi && channelId && threadTs) {
             try {
-              slackTs = await postSlackApiReplyPosts({
+              slackTs = await sendSlackReply({
                 beforePost: beforeFirstResponsePost,
-                channelId: slackChannelId,
-                threadTs: slackThreadTs,
-                posts,
-                footer: replyFooter,
+                channelId,
+                conversationId,
+                threadTs,
+                text: assistantMessage.text,
                 onPostError: ({ error, messageTs, stage }) => {
                   const eventId = logException(
                     error,
@@ -1106,10 +1092,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               throw error;
             }
           } else {
-            for (const post of posts) {
+            const chunks = planSlackReplyChunks(assistantMessage.text);
+            for (const chunk of chunks) {
               const sentMessage = await postThreadReply(
-                buildSlackOutputMessage(post.text),
-                post.stage,
+                buildSlackOutputMessage(chunk.text),
+                chunk.stage,
               );
               slackTs = sentMessage.id;
             }

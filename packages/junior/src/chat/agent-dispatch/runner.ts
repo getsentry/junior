@@ -40,11 +40,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
-import {
-  planSlackAssistantMessagePosts,
-  postSlackApiReplyPosts,
-} from "@/chat/slack/reply";
+import { sendSlackReply } from "@/chat/slack/reply";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import {
@@ -321,17 +317,15 @@ export async function runAgentDispatchSlice(
     const deliverAssistantMessage = async (assistantMessage: {
       text: string;
     }): Promise<void> => {
-      const posts = planSlackAssistantMessagePosts(assistantMessage.text);
-      if (posts.length === 0) {
+      if (!assistantMessage.text.trim()) {
         return;
       }
       failureCode = "delivery_failed";
-      const footer = buildSlackReplyFooter({ conversationId });
       try {
-        resultMessageTs = await postSlackApiReplyPosts({
+        resultMessageTs = await sendSlackReply({
           channelId: dispatch.destination.channelId,
-          posts,
-          footer,
+          conversationId,
+          text: assistantMessage.text,
         });
       } catch (error) {
         if (isRetryableSlackPostError(error)) {

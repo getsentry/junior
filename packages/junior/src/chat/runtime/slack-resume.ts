@@ -2,9 +2,8 @@
  * Slack resume execution boundary.
  *
  * Resumed turns run from persisted request context under the Slack thread lock.
- * Status notices are best effort, while completed assistant replies and
- * auth-pause notices reuse the shared Slack reply footer path when they are
- * user-visible.
+ * Status notices are best effort. Completed assistant replies and auth-pause
+ * notices use `sendSlackReply` so footer attachment stays consistent.
  */
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
@@ -37,14 +36,7 @@ import {
   type AssistantStatusSession,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
-import {
-  buildSlackReplyFooter,
-  type SlackReplyFooter,
-} from "@/chat/slack/footer";
-import {
-  planSlackAssistantMessagePosts,
-  postSlackApiReplyPosts,
-} from "@/chat/slack/reply";
+import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -96,20 +88,15 @@ async function postSlackMessageBestEffort(
   channelId: string,
   threadTs: string,
   text: string,
-  footer?: SlackReplyFooter,
+  conversationId?: string,
 ): Promise<void> {
   try {
-    if (footer) {
-      await postSlackApiReplyPosts({
+    if (conversationId) {
+      await sendSlackReply({
         channelId,
+        conversationId,
+        text,
         threadTs,
-        posts: [
-          {
-            text,
-            stage: "thread_reply",
-          },
-        ],
-        footer,
       });
       return;
     }
@@ -550,22 +537,18 @@ export async function resumeSlackTurn(
     const deliverAssistantMessage = async (assistantMessage: {
       text: string;
     }): Promise<void> => {
-      const posts = planSlackAssistantMessagePosts(assistantMessage.text);
-      if (posts.length === 0) {
+      if (!assistantMessage.text.trim()) {
         return;
       }
       failureCode = "delivery_failed";
       const deliveryState = await getDeliveryConversation();
-      const footer = buildSlackReplyFooter({
-        conversationId: runArgs.conversationId,
-      });
       let messageTs: string | undefined;
       try {
-        messageTs = await postSlackApiReplyPosts({
+        messageTs = await sendSlackReply({
           channelId: runArgs.channelId,
+          conversationId: runArgs.conversationId,
+          text: assistantMessage.text,
           threadTs: runArgs.threadTs,
-          posts,
-          footer,
         });
       } catch (error) {
         if (isRetryableSlackPostError(error)) {
@@ -813,9 +796,6 @@ export async function resumeSlackTurn(
     try {
       await deferredPauseHandler();
       if (deferredAuthInfo) {
-        const footer = buildSlackReplyFooter({
-          conversationId: runArgs.conversationId,
-        });
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
@@ -823,7 +803,7 @@ export async function resumeSlackTurn(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
           ),
-          footer,
+          runArgs.conversationId,
         );
       }
       return true;

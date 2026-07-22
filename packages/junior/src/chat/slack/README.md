@@ -32,9 +32,11 @@ runtime orchestration.
   resume the agent from its latest saved history; a reply may be
   duplicated if Slack accepted it before the failure became visible.
 
-`outbound.ts` owns Slack API calls and immediate transport retries. `errors.ts`
-owns reply-failure classification. `mrkdwn.ts` owns format conversion.
-`assistant-thread/` owns assistant-thread lifecycle and status rendering.
+`reply.ts` owns destination-visible reply chunking, conversation footers, and
+the `sendSlackReply` helper. `outbound.ts` owns Slack API calls and immediate
+transport retries. `errors.ts` owns reply-failure classification. `mrkdwn.ts`
+owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
+status rendering.
 
 ## Boundaries
 

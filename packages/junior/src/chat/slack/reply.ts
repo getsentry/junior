@@ -1,32 +1,44 @@
+/**
+ * Slack reply delivery.
+ *
+ * Owns chunking, conversation footer attachment, and outbound posting for
+ * destination-visible Slack replies. Runtime call sites should prefer
+ * `sendSlackReply` instead of assembling footer/blocks themselves.
+ */
 import {
   buildSlackReplyBlocks,
+  buildSlackReplyFooter,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { splitSlackReplyText } from "@/chat/slack/output";
 
-export type PlannedSlackReplyStage =
+export type SlackReplyChunkStage =
   | "thread_reply"
   | "thread_reply_continuation";
 
-export interface PlannedSlackReplyPost {
-  stage: PlannedSlackReplyStage;
+export interface SlackReplyChunk {
+  stage: SlackReplyChunkStage;
   text: string;
 }
 
-/** Plan the Slack posts for one completed assistant message. */
-export function planSlackAssistantMessagePosts(
-  text: string,
-): PlannedSlackReplyPost[] {
+export interface SendSlackReplyErrorContext {
+  error: unknown;
+  messageTs?: string;
+  stage: SlackReplyChunkStage;
+}
+
+/** Split one reply into Slack-sized chunks with continuation stages. */
+export function planSlackReplyChunks(text: string): SlackReplyChunk[] {
   return splitSlackReplyText(text).map((chunk, index) => ({
     text: chunk,
     stage: index === 0 ? "thread_reply" : "thread_reply_continuation",
   }));
 }
 
-function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
-  for (let index = posts.length - 1; index >= 0; index -= 1) {
-    if (posts[index]?.text.trim().length) {
+function findLastTextChunkIndex(chunks: SlackReplyChunk[]): number {
+  for (let index = chunks.length - 1; index >= 0; index -= 1) {
+    if (chunks[index]?.text.trim().length) {
       return index;
     }
   }
@@ -35,39 +47,35 @@ function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
 }
 
 /**
- * Deliver planned Slack reply posts over raw Slack Web API calls for resume and
- * callback handlers that do not have a Chat SDK thread object.
+ * Post pre-planned Slack reply chunks, attaching the footer on the last
+ * visible chunk only.
  */
-export async function postSlackApiReplyPosts(args: {
+export async function postSlackReplyChunks(args: {
   beforePost?: () => Promise<void>;
-  footer?: SlackReplyFooter;
   channelId: string;
-  onPostError?: (context: {
-    error: unknown;
-    messageTs?: string;
-    stage: PlannedSlackReplyStage;
-  }) => Promise<void> | void;
+  chunks: SlackReplyChunk[];
+  footer?: SlackReplyFooter;
+  onPostError?: (context: SendSlackReplyErrorContext) => Promise<void> | void;
   threadTs?: string;
-  posts: PlannedSlackReplyPost[];
 }): Promise<string | undefined> {
-  const lastTextPostIndex = findLastTextPostIndex(args.posts);
+  const lastTextChunkIndex = findLastTextChunkIndex(args.chunks);
   let lastPostedMessageTs: string | undefined;
 
-  for (const [index, post] of args.posts.entries()) {
-    const hasVisibleDelivery = post.text.trim().length > 0;
+  for (const [index, chunk] of args.chunks.entries()) {
+    const hasVisibleDelivery = chunk.text.trim().length > 0;
     if (hasVisibleDelivery) {
       await args.beforePost?.();
     }
 
     let messageTs: string | undefined;
     try {
-      if (post.text.trim().length > 0) {
-        const footer = index === lastTextPostIndex ? args.footer : undefined;
-        const blocks = buildSlackReplyBlocks(post.text, footer);
+      if (chunk.text.trim().length > 0) {
+        const footer = index === lastTextChunkIndex ? args.footer : undefined;
+        const blocks = buildSlackReplyBlocks(chunk.text, footer);
         const response = await postSlackMessage({
           channelId: args.channelId,
           threadTs: args.threadTs,
-          text: post.text,
+          text: chunk.text,
           ...(blocks ? { blocks } : {}),
         });
         messageTs = response.ts;
@@ -79,11 +87,42 @@ export async function postSlackApiReplyPosts(args: {
       await args.onPostError?.({
         error,
         messageTs,
-        stage: post.stage,
+        stage: chunk.stage,
       });
       throw error;
     }
   }
 
   return lastPostedMessageTs;
+}
+
+/**
+ * Send one destination-visible Slack reply.
+ *
+ * Chunks oversized text, builds the conversation footer from
+ * `conversationId`, and posts through the shared Slack outbound boundary.
+ */
+export async function sendSlackReply(args: {
+  beforePost?: () => Promise<void>;
+  channelId: string;
+  conversationId?: string;
+  onPostError?: (context: SendSlackReplyErrorContext) => Promise<void> | void;
+  text: string;
+  threadTs?: string;
+}): Promise<string | undefined> {
+  const chunks = planSlackReplyChunks(args.text);
+  if (chunks.length === 0) {
+    return undefined;
+  }
+
+  return await postSlackReplyChunks({
+    beforePost: args.beforePost,
+    channelId: args.channelId,
+    chunks,
+    footer: buildSlackReplyFooter({
+      conversationId: args.conversationId,
+    }),
+    onPostError: args.onPostError,
+    threadTs: args.threadTs,
+  });
 }
