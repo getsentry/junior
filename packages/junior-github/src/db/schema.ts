@@ -1,11 +1,5 @@
-import {
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const githubPullRequestStateSchema = z.enum([
@@ -33,14 +27,12 @@ export const juniorGitHubPullRequests = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => [
-    uniqueIndex("junior_github_pull_requests_repository_number_idx").on(
-      table.repositoryId,
-      table.number,
-    ),
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
     index("junior_github_pull_requests_merged_at_idx").on(table.mergedAt),
     index("junior_github_pull_requests_closed_at_idx").on(table.closedAt),
-    index("junior_github_pull_requests_state_idx").on(table.state),
+    index("junior_github_pull_requests_open_idx")
+      .on(table.pullRequestId)
+      .where(sql`${table.state} = 'open'`),
   ],
 );
 

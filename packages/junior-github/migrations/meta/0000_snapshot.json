@@ -1,5 +1,5 @@
 {
-  "id": "d45ec2e6-85b9-4634-972e-ede8ce8fa37d",
+  "id": "2c771be0-ac94-4eff-a69a-ade43801be34",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -64,27 +64,6 @@
         }
       },
       "indexes": {
-        "junior_github_pull_requests_repository_number_idx": {
-          "name": "junior_github_pull_requests_repository_number_idx",
-          "columns": [
-            {
-              "expression": "repository_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_github_pull_requests_opened_at_idx": {
           "name": "junior_github_pull_requests_opened_at_idx",
           "columns": [
@@ -130,17 +109,18 @@
           "method": "btree",
           "with": {}
         },
-        "junior_github_pull_requests_state_idx": {
-          "name": "junior_github_pull_requests_state_idx",
+        "junior_github_pull_requests_open_idx": {
+          "name": "junior_github_pull_requests_open_idx",
           "columns": [
             {
-              "expression": "state",
+              "expression": "pull_request_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
+          "where": "\"junior_github_pull_requests\".\"state\" = 'open'",
           "concurrently": false,
           "method": "btree",
           "with": {}
