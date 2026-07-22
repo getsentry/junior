@@ -12,7 +12,9 @@ vi.mock("@/chat/config", () => ({
   botConfig: {
     embeddingModelId: "test-embedding-model",
     fastModelId: "openai/gpt-5.4-mini",
-    modelId: "openai/gpt-5.5",
+    profiles: {
+      standard: { modelId: "openai/gpt-5.5" },
+    },
   },
 }));
 
