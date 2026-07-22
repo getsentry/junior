@@ -103,6 +103,7 @@ function shouldRethrowTurnControlError(error: unknown): boolean {
 /** Apply a subscribed-thread opt-out decision before any agent work runs. */
 async function maybeHandleThreadOptOutDecision(args: {
   beforeFirstResponsePost?: () => Promise<void>;
+  cancelResourceEventSubscriptions: (conversationId: string) => Promise<void>;
   decision?: { shouldUnsubscribe?: boolean };
   thread: Thread;
 }): Promise<boolean> {
@@ -110,6 +111,7 @@ async function maybeHandleThreadOptOutDecision(args: {
     return false;
   }
 
+  await args.cancelResourceEventSubscriptions(args.thread.id);
   await args.thread.unsubscribe();
   await args.beforeFirstResponsePost?.();
   await args.thread.post(THREAD_OPTOUT_ACK);
@@ -129,6 +131,7 @@ type RuntimeLogContext = Record<string, unknown> & {
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
+  cancelResourceEventSubscriptions: (conversationId: string) => Promise<void>;
   getChannelId: (thread: Thread, message: Message) => string | undefined;
   getPreparedConversationContext: (
     preparedState: TPreparedState,
@@ -674,6 +677,7 @@ export function createSlackTurnRuntime<
         thread: args.thread,
         decision: skipped.decision,
         beforeFirstResponsePost: args.beforeFirstResponsePost,
+        cancelResourceEventSubscriptions: deps.cancelResourceEventSubscriptions,
       });
       logSkippedSubscribedDecision(skipped);
       await deps.recordSkippedSteeringMessage({
@@ -1041,6 +1045,8 @@ export function createSlackTurnRuntime<
               thread,
               decision,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+              cancelResourceEventSubscriptions:
+                deps.cancelResourceEventSubscriptions,
             })
           ) {
             await skipSubscribedMessage({

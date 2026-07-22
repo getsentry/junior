@@ -42,6 +42,7 @@ import {
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
+import { cancelConversationResourceEventSubscriptions } from "@/chat/resource-events/store";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -117,6 +118,9 @@ export function createSlackRuntime(
 
   return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
     assistantUserName: botConfig.userName,
+    cancelResourceEventSubscriptions: async (conversationId) => {
+      await cancelConversationResourceEventSubscriptions({ conversationId });
+    },
     modelId: standardModelId(botConfig),
     now: options.now ?? (() => Date.now()),
     getThreadId,

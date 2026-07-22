@@ -13,6 +13,10 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
+  createResourceEventSubscription,
+  listResourceEventSubscriptions,
+} from "@/chat/resource-events/store";
+import {
   deliverAssistantMessagesForTest,
   flattenAgentRunRequestForTest,
 } from "../../fixtures/agent-runner";
@@ -535,6 +539,31 @@ describe("Slack behavior: subscribed messages", () => {
 
     expect(thread.subscribed).toBe(true);
 
+    const subscriptionDestination = createTestDestination(thread);
+    const expiresAtMs = Date.now() + 60_000;
+    await createResourceEventSubscription({
+      conversationId: thread.id,
+      destination: subscriptionDestination,
+      events: ["checks.failed"],
+      expiresAtMs,
+      intent: "Watch CI for this thread.",
+      label: "Pull request checks",
+      provider: "github",
+      resourceRef: "github:pull_request:getsentry/junior#100",
+      resourceType: "pull_request",
+    });
+    await createResourceEventSubscription({
+      conversationId: thread.id,
+      destination: subscriptionDestination,
+      events: ["issue.updated"],
+      expiresAtMs,
+      intent: "Watch the issue for this thread.",
+      label: "Tracking issue",
+      provider: "github",
+      resourceRef: "github:issue:getsentry/junior#101",
+      resourceType: "issue",
+    });
+
     await slackRuntime.handleSubscribedMessage(
       thread,
       createTestMessage({
@@ -550,6 +579,9 @@ describe("Slack behavior: subscribed messages", () => {
     expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
     expect(thread.subscribed).toBe(false);
+    await expect(
+      listResourceEventSubscriptions({ conversationId: thread.id }),
+    ).resolves.toEqual([]);
     expect(toPostedText(thread.posts[1])).toContain(
       "I'll stay out of this thread unless someone @mentions me again.",
     );
