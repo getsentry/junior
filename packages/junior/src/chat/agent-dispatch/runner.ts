@@ -8,6 +8,7 @@
  */
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
+import { RetryableDeliveryError } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { logException } from "@/chat/logging";
 import {
@@ -55,6 +56,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
+import { isRetryableSlackPostError } from "@/chat/slack/errors";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import { scheduleDispatchCallback } from "./signing";
 import {
@@ -323,10 +325,17 @@ export async function runAgentDispatchSlice(
         return;
       }
       failureCode = "delivery_failed";
-      resultMessageTs = await postSlackApiReplyPosts({
-        channelId: dispatch.destination.channelId,
-        posts,
-      });
+      try {
+        resultMessageTs = await postSlackApiReplyPosts({
+          channelId: dispatch.destination.channelId,
+          posts,
+        });
+      } catch (error) {
+        if (isRetryableSlackPostError(error)) {
+          throw new RetryableDeliveryError(error);
+        }
+        throw error;
+      }
       assistantMessageDelivered = true;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation,

@@ -22,6 +22,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { RetryableDeliveryError } from "@/chat/agent/request";
 import {
   bindScheduledTaskCredentialSubject,
   bindSlackDirectCredentialSubject,
@@ -33,6 +34,7 @@ import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
+  queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import {
@@ -524,6 +526,12 @@ describe("agent dispatch runner", () => {
   });
 
   it("preserves task-scoped creator credentials across dispatch slices", async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      queueSlackApiError("chat.postMessage", {
+        error: "internal_error",
+        status: 503,
+      });
+    }
     const created = await createOrGetDispatch({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
@@ -539,7 +547,12 @@ describe("agent dispatch runner", () => {
     const scheduleCallback = vi.fn(async () => undefined);
     const executeAgentRun = vi
       .fn<AgentRunner["run"]>()
-      .mockResolvedValueOnce({ status: "suspended", resumeVersion: 7 })
+      .mockImplementationOnce(async (request) => {
+        await expect(deliverCompletedReply(request)).rejects.toBeInstanceOf(
+          RetryableDeliveryError,
+        );
+        return { status: "suspended", resumeVersion: 7 };
+      })
       .mockImplementationOnce(async (request) => {
         expect(
           flattenAgentRunRequestForTest(request).credentialContext,
