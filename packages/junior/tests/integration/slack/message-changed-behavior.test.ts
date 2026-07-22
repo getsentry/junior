@@ -346,7 +346,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         params: expect.objectContaining({
           channel: "D12345",
           thread_ts: "1700000100.000100",
-          markdown_text: "Hello world",
+          text: "Hello world",
         }),
       }),
     );
