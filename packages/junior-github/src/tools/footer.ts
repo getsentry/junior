@@ -1,7 +1,9 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 
-export const GITHUB_SESSION_FOOTER_START = "<!-- junior-session-footer:start -->";
+export const GITHUB_SESSION_FOOTER_START =
+  "<!-- junior-session-footer:start -->";
 export const GITHUB_SESSION_FOOTER_END = "<!-- junior-session-footer:end -->";
+const GITHUB_CONVERSATION_ID_MARKER = "junior-conversation-id:";
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
@@ -64,7 +66,35 @@ export function githubConversationFooter(
   const label = normalizedDashboardUrl
     ? "View Junior Session"
     : "View Junior Session in Sentry";
-  return `${GITHUB_SESSION_FOOTER_START}\n\n--\n\n[${label}](${sessionUrl})\n\n${GITHUB_SESSION_FOOTER_END}`;
+  const conversationMarker = `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(id)} -->`;
+  return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n[${label}](${sessionUrl})\n\n${GITHUB_SESSION_FOOTER_END}`;
+}
+
+/** Read opaque native conversation ids from Junior-owned GitHub footers. */
+export function githubConversationIds(
+  body: string | null | undefined,
+): string[] {
+  if (!body) return [];
+  const ids = new Set<string>();
+  const footer = new RegExp(
+    `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,
+    "g",
+  );
+  const marker = new RegExp(
+    `<!--\\s*${escapeRegExp(GITHUB_CONVERSATION_ID_MARKER)}([^\\s]+)\\s*-->`,
+    "g",
+  );
+  for (const footerMatch of body.matchAll(footer)) {
+    for (const markerMatch of footerMatch[0].matchAll(marker)) {
+      try {
+        const id = decodeURIComponent(markerMatch[1] ?? "").trim();
+        if (id) ids.add(id);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [...ids];
 }
 
 /**

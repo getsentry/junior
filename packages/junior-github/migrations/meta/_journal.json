@@ -8,6 +8,27 @@
       "when": 1784743423488,
       "tag": "0000_pull_request_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784760512145,
+      "tag": "0001_issue_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784761404746,
+      "tag": "0002_pull_request_commit_composition",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784762053015,
+      "tag": "0003_pull_request_conversations",
+      "breakpoints": true
     }
   ]
 }
