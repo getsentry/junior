@@ -22,7 +22,7 @@ const {
   return {
     executeAgentRunMock: vi.fn<
       (request: {
-        policy?: { signal?: AbortSignal };
+        policy?: { signal?: AbortSignal; turnDeadlineAtMs?: number };
       }) => Promise<Record<string, never>>
     >(async () => ({})),
     observedRuntimeIds,
@@ -166,6 +166,21 @@ describe("behavior harness", () => {
     await expect(
       runtimeState.agentRunner?.run({ policy: {} }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("forces a shorter agent turn deadline without shortening the reply timeout", async () => {
+    await runEvalScenario({
+      initialEvents: [],
+      overrides: { reply_timeout_ms: 1_000, turn_timeout_ms: 25 },
+    });
+
+    const startedAtMs = Date.now();
+    await runtimeState.agentRunner?.run({ policy: {} });
+
+    const deadlineAtMs =
+      executeAgentRunMock.mock.calls[0]?.[0]?.policy?.turnDeadlineAtMs;
+    expect(deadlineAtMs).toBeGreaterThanOrEqual(startedAtMs);
+    expect(deadlineAtMs).toBeLessThanOrEqual(startedAtMs + 100);
   });
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {

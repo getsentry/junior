@@ -1,0 +1,220 @@
+import { Buffer } from "node:buffer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
+
+const observations = vi.hoisted(() => ({
+  continuationMessages: [] as Array<{
+    role?: unknown;
+    content?: unknown;
+  }>,
+  providerCalls: 0,
+  toolAborted: false,
+  toolStarted: false,
+}));
+
+vi.mock("@/chat/pi/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/pi/client")>();
+  return {
+    ...actual,
+    completeObject: async () => ({
+      object: {
+        reasoning_level: "medium",
+        profile: "standard",
+        confidence: 1,
+        reason: "test-router",
+      },
+    }),
+  };
+});
+
+// Keep the provider as the integration boundary. The real Pi loop executes
+// the tool, handles abort, persists the toolResult, and invokes continue().
+vi.mock("@/chat/pi/traced-stream", () => ({
+  createTracedStreamFn: () => async (model: { id: string }, context: any) => {
+    observations.providerCalls += 1;
+    const call = observations.providerCalls;
+    if (call > 1) {
+      observations.continuationMessages = context.messages ?? [];
+    }
+
+    const message =
+      call === 1
+        ? {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "bash-call-1",
+                name: "bash",
+                arguments: {
+                  command: "run-the-targeted-cloudflare-test",
+                  timeoutMs: 180_000,
+                },
+              },
+            ],
+            stopReason: "toolUse",
+            api: "test",
+            provider: "test",
+            model: model.id,
+            timestamp: Date.now(),
+            usage: { input: 2, output: 1, totalTokens: 3 },
+          }
+        : {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "The work was interrupted during the targeted Cloudflare test rerun.",
+              },
+            ],
+            stopReason: "stop",
+            api: "test",
+            provider: "test",
+            model: model.id,
+            timestamp: Date.now(),
+            usage: { input: 4, output: 3, totalTokens: 7 },
+          };
+
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield { type: "start", partial: { ...message, content: [] } };
+        yield { type: "done", reason: message.stopReason, message };
+      },
+      result: async () => message,
+    };
+  },
+}));
+
+vi.mock("@/chat/sandbox/sandbox", () => ({
+  createSandboxExecutor: () => ({
+    configureSkills: () => undefined,
+    configureReferenceFiles: () => undefined,
+    createSandbox: async () => ({
+      readFileToBuffer: async () => Buffer.from("", "utf8"),
+      runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+    }),
+    canExecute: (toolName: string) => toolName === "bash",
+    execute: async ({ signal }: { signal?: AbortSignal }) => {
+      observations.toolStarted = true;
+      await new Promise<void>((resolve) => {
+        const abort = () => {
+          observations.toolAborted = true;
+          resolve();
+        };
+        if (signal?.aborted) {
+          abort();
+          return;
+        }
+        signal?.addEventListener("abort", abort, { once: true });
+      });
+      const details = {
+        ok: false,
+        status: "error",
+        target: "run-the-targeted-cloudflare-test",
+        data: {
+          aborted: true,
+          exit_code: 130,
+          stderr: "Command aborted because the agent turn was cancelled.",
+        },
+        error: {
+          kind: "outcome_unknown",
+          message: "Command was interrupted before its outcome was confirmed.",
+          retryable: false,
+        },
+        aborted: true,
+        exit_code: 130,
+        stderr: "Command aborted because the agent turn was cancelled.",
+      };
+      return {
+        result: {
+          content: [{ type: "text", text: JSON.stringify(details) }],
+          details,
+        },
+      };
+    },
+    getSandboxId: () => undefined,
+    getDependencyProfileHash: () => undefined,
+    dispose: async () => undefined,
+  }),
+}));
+
+vi.mock("@/chat/skills", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/skills")>()),
+  discoverSkills: async () => [],
+  findSkillByName: () => null,
+  parseSkillInvocation: () => null,
+}));
+
+import { executeAgentRun } from "@/chat/agent";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+
+const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+
+describe("executeAgentRun tool timeout continuation", () => {
+  beforeEach(async () => {
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    observations.continuationMessages = [];
+    observations.providerCalls = 0;
+    observations.toolAborted = false;
+    observations.toolStarted = false;
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    if (ORIGINAL_STATE_ADAPTER === undefined) {
+      delete process.env.JUNIOR_STATE_ADAPTER;
+    } else {
+      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+    }
+  });
+
+  it("does not finish a timed-out tool continuation with an interruption-only reply", async () => {
+    const conversationId = "local:test:tool-timeout-continuation";
+    const turnId = "turn-tool-timeout-continuation";
+    const request = {
+      conversationId,
+      turnId,
+      input: { messageText: "Run the targeted test and create the PR." },
+      routing: {
+        destination: { platform: "local" as const, conversationId },
+        source: createLocalSource(conversationId),
+      },
+    };
+
+    const suspended = await executeAgentRun({
+      ...request,
+      policy: { turnDeadlineAtMs: Date.now() + 100 },
+    });
+
+    expect(observations.toolStarted).toBe(true);
+    expect(observations.toolAborted).toBe(true);
+    expect(suspended.status).toBe("suspended");
+    const suspendedRecord = await getAgentTurnSessionRecord(
+      conversationId,
+      turnId,
+    );
+    expect(suspendedRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+    });
+    expect(suspendedRecord?.piMessages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: false,
+    });
+    expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
+      "outcome_unknown",
+    );
+
+    const resumed = await executeAgentRun(request);
+
+    expect(observations.providerCalls).toBe(3);
+    expect(observations.continuationMessages.at(-1)).toMatchObject({
+      role: "toolResult",
+    });
+    expect(resumed.status).toBe("completed");
+    if (resumed.status !== "completed") return;
+    expect(resumed.result.text).not.toMatch(/interrupted/i);
+  });
+});

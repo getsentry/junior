@@ -301,6 +301,7 @@ export interface EvalOverrides {
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
+  turn_timeout_ms?: number;
   unset_gateway_api_key?: boolean;
 }
 
@@ -1631,6 +1632,7 @@ function buildRuntimeServices(
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
       : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "60000", 10);
+  const turnTimeoutMs = scenario.overrides?.turn_timeout_ms ?? replyTimeoutMs;
   if (
     !Number.isInteger(replyTimeoutMs) ||
     replyTimeoutMs <= 0 ||
@@ -1638,6 +1640,15 @@ function buildRuntimeServices(
   ) {
     throw new Error(
       `Eval reply timeout must be an integer from 1 to 60000 milliseconds, got ${replyTimeoutMs}`,
+    );
+  }
+  if (
+    !Number.isInteger(turnTimeoutMs) ||
+    turnTimeoutMs <= 0 ||
+    turnTimeoutMs > replyTimeoutMs
+  ) {
+    throw new Error(
+      `Eval turn timeout must be an integer from 1 to the ${replyTimeoutMs}ms reply timeout, got ${turnTimeoutMs}`,
     );
   }
   let decisionIndex = 0;
@@ -1746,7 +1757,7 @@ function buildRuntimeServices(
                   turnDeadlineAtMs: Math.min(
                     runRequest.policy?.turnDeadlineAtMs ??
                       Number.POSITIVE_INFINITY,
-                    Date.now() + replyTimeoutMs,
+                    Date.now() + turnTimeoutMs,
                   ),
                   ...(env.configuredSkillDirs.length > 0
                     ? { skillDirs: env.configuredSkillDirs }
