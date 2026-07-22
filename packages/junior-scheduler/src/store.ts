@@ -78,22 +78,8 @@ const taskSpecSchema = z
     text: z.string(),
   })
   .strict();
-const taskMutationSnapshotSchema = z
-  .object({
-    credentialMode: scheduledTaskCredentialModeSchema,
-    lastRunAtMs: z.number().optional(),
-    nextRunAtMs: z.number().optional(),
-    runNowAtMs: z.number().optional(),
-    schedule: taskScheduleSchema,
-    status: z.enum(["active", "paused", "blocked", "deleted"]),
-    statusReason: z.string().optional(),
-    task: taskSpecSchema,
-    updatedAtMs: z.number(),
-  })
-  .strict();
 const taskRecordFields = {
   id: z.string(),
-  creationFingerprint: z.string().optional(),
   conversationAccess: z
     .object({
       audience: z.enum(["direct", "group", "channel"]),
@@ -112,17 +98,6 @@ const taskRecordFields = {
     .strict()
     .optional(),
   lastRunAtMs: z.number().optional(),
-  mutationLedger: z
-    .record(
-      z.string(),
-      z
-        .object({
-          fingerprint: z.string(),
-          result: taskMutationSnapshotSchema,
-        })
-        .strict(),
-    )
-    .optional(),
   nextRunAtMs: z.number().optional(),
   originalRequest: z.string().optional(),
   runNowAtMs: z.number().optional(),
@@ -172,12 +147,6 @@ const runRecordSchema = z
   .strict();
 
 export interface SchedulerStore {
-  applyTaskMutation(args: {
-    fingerprint: string;
-    operationId: string;
-    taskId: string;
-    update: (task: ScheduledTask | undefined) => ScheduledTask;
-  }): Promise<ScheduledTask>;
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
   createTask(task: ScheduledTask): Promise<ScheduledTask>;
   getRun(runId: string): Promise<ScheduledRun | undefined>;
@@ -226,22 +195,6 @@ export interface SchedulerStore {
 export interface SchedulerOperationalStore {
   listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
   listTasks(): Promise<ScheduledTask[]>;
-}
-
-export class SchedulerOperationConflictError extends Error {}
-
-function taskMutationSnapshot(task: ScheduledTask) {
-  return taskMutationSnapshotSchema.parse({
-    credentialMode: task.credentialMode,
-    lastRunAtMs: task.lastRunAtMs,
-    nextRunAtMs: task.nextRunAtMs,
-    runNowAtMs: task.runNowAtMs,
-    schedule: task.schedule,
-    status: task.status,
-    statusReason: task.statusReason,
-    task: task.task,
-    updatedAtMs: task.updatedAtMs,
-  });
 }
 
 function taskKey(taskId: string): string {
@@ -680,37 +633,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
 
   constructor(state: PluginState) {
     this.state = state;
-  }
-
-  async applyTaskMutation(args: {
-    fingerprint: string;
-    operationId: string;
-    taskId: string;
-    update: (task: ScheduledTask | undefined) => ScheduledTask;
-  }): Promise<ScheduledTask> {
-    return await withLock(this.state, taskLockKey(args.taskId), async () => {
-      const current = await getTaskFromState(this.state, args.taskId);
-      const recorded = current?.mutationLedger?.[args.operationId];
-      if (current && recorded) {
-        if (recorded.fingerprint !== args.fingerprint) {
-          throw new SchedulerOperationConflictError();
-        }
-        return { ...current, ...recorded.result };
-      }
-      const updated = args.update(current);
-      const next = requireStoredTask({
-        ...updated,
-        mutationLedger: {
-          ...current?.mutationLedger,
-          [args.operationId]: {
-            fingerprint: args.fingerprint,
-            result: taskMutationSnapshot(updated),
-          },
-        },
-      });
-      await this.saveTaskRecord(next, current);
-      return next;
-    });
   }
 
   async createTask(task: ScheduledTask): Promise<ScheduledTask> {
@@ -1345,37 +1267,6 @@ async function listIncompleteRunsForTasksFromSql(
 
 class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   constructor(private readonly db: SchedulerDb) {}
-
-  async applyTaskMutation(args: {
-    fingerprint: string;
-    operationId: string;
-    taskId: string;
-    update: (task: ScheduledTask | undefined) => ScheduledTask;
-  }): Promise<ScheduledTask> {
-    return await withSqlLock(this.db, taskLockKey(args.taskId), async (db) => {
-      const current = await getTaskFromSql(db, args.taskId);
-      const recorded = current?.mutationLedger?.[args.operationId];
-      if (current && recorded) {
-        if (recorded.fingerprint !== args.fingerprint) {
-          throw new SchedulerOperationConflictError();
-        }
-        return { ...current, ...recorded.result };
-      }
-      const updated = args.update(current);
-      const next = requireStoredTask({
-        ...updated,
-        mutationLedger: {
-          ...current?.mutationLedger,
-          [args.operationId]: {
-            fingerprint: args.fingerprint,
-            result: taskMutationSnapshot(updated),
-          },
-        },
-      });
-      await this.saveTaskRecord(db, next, current);
-      return next;
-    });
-  }
 
   async createTask(task: ScheduledTask): Promise<ScheduledTask> {
     const next = requireStoredTask(task);

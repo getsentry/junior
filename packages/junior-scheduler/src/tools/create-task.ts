@@ -9,7 +9,6 @@ import { SCHEDULED_TASK_SYSTEM_ACTOR } from "../types";
 import type { ScheduledTask } from "../types";
 import {
   buildTaskId,
-  buildTaskCreationFingerprint,
   compactTask,
   getConversationAccess,
   getDefaultScheduleTimezone,
@@ -56,14 +55,12 @@ export function createSlackScheduleCreateTaskTool(
         destination,
         toolCallId: options.toolCallId,
       });
-      const creationFingerprint = buildTaskCreationFingerprint(input);
       // Replaying a durable tool call returns its original task instead of duplicating it.
       const existing = await store.getTask(id);
       if (existing) {
         if (
           !sameDestination(existing, destination) ||
-          existing.createdBy.slackUserId !== actor.slackUserId ||
-          existing.creationFingerprint !== creationFingerprint
+          existing.createdBy.slackUserId !== actor.slackUserId
         ) {
           throwToolInputError("Scheduled task operation identity is invalid.");
         }
@@ -94,7 +91,6 @@ export function createSlackScheduleCreateTaskTool(
 
       const task: ScheduledTask = {
         id,
-        creationFingerprint,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
         createdBy: actor,
@@ -114,8 +110,7 @@ export function createSlackScheduleCreateTaskTool(
       const committed = await store.createTask(task);
       if (
         !sameDestination(committed, destination) ||
-        committed.createdBy.slackUserId !== actor.slackUserId ||
-        committed.creationFingerprint !== creationFingerprint
+        committed.createdBy.slackUserId !== actor.slackUserId
       ) {
         throwToolInputError("Scheduled task operation identity is invalid.");
       }

@@ -20,8 +20,6 @@ Junior's durable agent runtime.
   lower bound and its containing week is the first active week.
 - Create tool-call identities produce stable task ids so retrying one committed
   tool invocation returns the existing task instead of duplicating it.
-- Update tool-call identities retain their committed task snapshot so replaying
-  an older mutation cannot recompute relative time or overwrite a later edit.
 - Updates and deletion invalidate obsolete pending run times.
 
 ## Dispatch

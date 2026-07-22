@@ -29,37 +29,6 @@ const TASK_ID_PREFIX = "sched";
 export const MAX_LISTED_TASKS = 50;
 const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 
-function canonicalFingerprintValue(value: unknown, key?: string): unknown {
-  if (value == null) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    const items = value.map((item) => canonicalFingerprintValue(item));
-    return key === "weekdays"
-      ? [...new Set(items)].sort((left, right) =>
-          String(left).localeCompare(String(right)),
-        )
-      : items;
-  }
-  if (typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .flatMap(([childKey, childValue]) => {
-          const canonical = canonicalFingerprintValue(childValue, childKey);
-          return canonical === undefined ? [] : [[childKey, canonical]];
-        }),
-    );
-  }
-  return value;
-}
-
-function fingerprint(value: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(canonicalFingerprintValue(value)))
-    .digest("hex");
-}
-
 const compactTaskResultSchema = z
   .object({
     id: z.string(),
@@ -329,40 +298,6 @@ export function buildTaskId(args: {
     .digest("hex")
     .slice(0, 32);
   return `${TASK_ID_PREFIX}_${digest}`;
-}
-
-/** Fingerprint canonical create arguments so an operation id cannot change meaning. */
-export function buildTaskCreationFingerprint(input: unknown): string {
-  return fingerprint(input);
-}
-
-/** Bind a retryable task mutation to its task, tool call, and canonical input. */
-export function buildTaskMutationIdentity(args: {
-  actor: ScheduledTaskPrincipal;
-  destination: SlackDestination;
-  input: unknown;
-  taskId: string;
-  toolCallId: string | undefined;
-}): { fingerprint: string; operationId: string } {
-  const toolCallId = args.toolCallId?.trim();
-  if (!toolCallId) {
-    throw new Error("Scheduler task updates require a tool-call identity.");
-  }
-  return {
-    fingerprint: fingerprint(args.input),
-    operationId: createHash("sha256")
-      .update(
-        JSON.stringify({
-          actor: args.actor.slackUserId,
-          channel: args.destination.channelId,
-          operation: toolCallId,
-          platform: args.destination.platform,
-          task: args.taskId,
-          team: args.destination.teamId,
-        }),
-      )
-      .digest("hex"),
-  };
 }
 
 /** Keep concrete scheduler tools coupled to the injected store, not global state. */

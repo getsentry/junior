@@ -6,15 +6,12 @@ import {
   scheduleIntentSchema,
 } from "../schedule-intent";
 import type { ScheduledTask } from "../types";
-import { SchedulerOperationConflictError } from "../store";
 import {
-  buildTaskMutationIdentity,
   compactTask,
   getDefaultScheduleTimezone,
+  getWritableTask,
   normalizeStatus,
-  requireActiveConversation,
   requireActor,
-  sameDestination,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
   schedulerStore,
@@ -61,99 +58,74 @@ export function createSlackScheduleUpdateTaskTool(
       })
       .strict(),
     outputSchema: scheduleTaskToolResultSchema,
-    execute: async (input, options) => {
-      const destination = requireActiveConversation(context);
-      const actor = requireActor(context, destination);
-      const mutation = buildTaskMutationIdentity({
-        actor,
-        destination,
-        input,
+    execute: async (input) => {
+      const lookup = await getWritableTask({
+        context,
         taskId: input.task_id,
-        toolCallId: options.toolCallId,
       });
-      const nowMs = context.now?.() ?? Date.now();
-      let committed: ScheduledTask;
-      try {
-        committed = await schedulerStore(context).applyTaskMutation({
-          ...mutation,
-          taskId: input.task_id,
-          update: (lookup) => {
-            if (!lookup || lookup.status === "deleted") {
-              throwToolInputError(
-                "Scheduled task was not found in the active Slack conversation.",
-              );
-            }
-            if (!sameDestination(lookup, destination)) {
-              throwToolInputError(
-                "Scheduled task can only be managed from the Slack destination where it was created.",
-              );
-            }
-            const isCreator =
-              actor.slackUserId === lookup.createdBy.slackUserId;
-            if (input.credential_mode === "creator" && !isCreator) {
-              throwToolInputError(
-                "Only the scheduled task creator can enable creator credential use.",
-              );
-            }
-
-            const compiled = input.schedule
-              ? compileScheduleIntent({
-                  defaultTimezone:
-                    lookup.schedule.timezone || getDefaultScheduleTimezone(),
-                  intent: input.schedule,
-                  nowMs,
-                })
-              : undefined;
-            const nextRunAtMs = compiled?.nextRunAtMs ?? lookup.nextRunAtMs;
-
-            const status = normalizeStatus(input.status);
-            if (input.status && !status) {
-              throwToolInputError("status must be active, paused, or blocked.");
-            }
-            if (status === "active" && !nextRunAtMs) {
-              throwToolInputError(
-                "Active scheduled tasks require a schedule with a future occurrence.",
-              );
-            }
-            const nextStatus = status ?? lookup.status;
-            // Another actor changing executable text revokes creator delegation.
-            const credentialMode =
-              input.task !== undefined &&
-              input.task !== lookup.task.text &&
-              !isCreator
-                ? "system"
-                : (input.credential_mode ?? lookup.credentialMode);
-
-            return {
-              ...lookup,
-              credentialMode,
-              updatedAtMs: nowMs,
-              nextRunAtMs,
-              runNowAtMs:
-                nextStatus === "active" && !compiled
-                  ? lookup.runNowAtMs
-                  : undefined,
-              status: nextStatus,
-              statusReason:
-                nextStatus === "blocked" ? lookup.statusReason : undefined,
-              schedule: compiled?.schedule ?? lookup.schedule,
-              task: input.task ? { text: input.task } : lookup.task,
-            };
-          },
-        });
-      } catch (error) {
-        if (error instanceof ScheduleIntentError) {
-          throwToolInputError(error.message);
-        }
-        if (error instanceof SchedulerOperationConflictError) {
-          throwToolInputError("Scheduled task operation identity is invalid.");
-        }
-        throw error;
+      const actor = requireActor(context, lookup.destination);
+      const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
+      if (input.credential_mode === "creator" && !isCreator) {
+        throwToolInputError(
+          "Only the scheduled task creator can enable creator credential use.",
+        );
       }
 
+      const nowMs = context.now?.() ?? Date.now();
+      let compiled;
+      if (input.schedule) {
+        try {
+          compiled = compileScheduleIntent({
+            defaultTimezone:
+              lookup.schedule.timezone || getDefaultScheduleTimezone(),
+            intent: input.schedule,
+            nowMs,
+          });
+        } catch (error) {
+          if (error instanceof ScheduleIntentError) {
+            throwToolInputError(error.message);
+          }
+          throw error;
+        }
+      }
+      const nextRunAtMs = compiled?.nextRunAtMs ?? lookup.nextRunAtMs;
+
+      const status = normalizeStatus(input.status);
+      if (input.status && !status) {
+        throwToolInputError("status must be active, paused, or blocked.");
+      }
+      if (status === "active" && !nextRunAtMs) {
+        throwToolInputError(
+          "Active scheduled tasks require a schedule with a future occurrence.",
+        );
+      }
+      const nextStatus = status ?? lookup.status;
+      // Another actor changing executable text revokes creator delegation.
+      const credentialMode =
+        input.task !== undefined &&
+        input.task !== lookup.task.text &&
+        !isCreator
+          ? "system"
+          : (input.credential_mode ?? lookup.credentialMode);
+
+      const next: ScheduledTask = {
+        ...lookup,
+        credentialMode,
+        updatedAtMs: nowMs,
+        nextRunAtMs,
+        runNowAtMs:
+          nextStatus === "active" && !compiled ? lookup.runNowAtMs : undefined,
+        status: nextStatus,
+        statusReason:
+          nextStatus === "blocked" ? lookup.statusReason : undefined,
+        schedule: compiled?.schedule ?? lookup.schedule,
+        task: input.task ? { text: input.task } : lookup.task,
+      };
+
+      await schedulerStore(context).saveTask(next);
       return scheduleTaskToolResult(
         "slackScheduleUpdateTask",
-        compactTask(committed),
+        compactTask(next),
       );
     },
   });

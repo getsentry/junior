@@ -317,36 +317,31 @@ describe("Slack schedule tools", () => {
     ).resolves.toHaveLength(1);
   });
 
-  it("rejects reuse of a create operation id with different arguments", async () => {
+  it("allows separate create calls to make equivalent tasks", async () => {
     const tool = createSlackScheduleCreateTaskTool(createContext());
-    await executeTool(
-      tool,
-      {
-        task: "Post the first reminder.",
-        schedule: {
-          kind: "one_off",
-          timing: { type: "after", value: 1, unit: "minute" },
+    const input = {
+      task: "Post the reminder.",
+      schedule: {
+        kind: "one_off" as const,
+        timing: {
+          type: "after" as const,
+          value: 1,
+          unit: "minute" as const,
         },
       },
-      { toolCallId: "call-create-conflict" },
-    );
+    };
 
-    await expect(
-      executeTool(
-        tool,
-        {
-          task: "Post a different reminder.",
-          schedule: {
-            kind: "one_off",
-            timing: { type: "after", value: 2, unit: "minute" },
-          },
-        },
-        { toolCallId: "call-create-conflict" },
-      ),
-    ).rejects.toThrow("Scheduled task operation identity is invalid.");
+    const first = await executeTool(tool, input, {
+      toolCallId: "call-create-first",
+    });
+    const second = await executeTool(tool, input, {
+      toolCallId: "call-create-second",
+    });
+
+    expect(second.task.id).not.toBe(first.task.id);
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toHaveLength(1);
+    ).resolves.toHaveLength(2);
   });
 
   it("does not store Slack ids as creator display identity", async () => {
@@ -690,67 +685,6 @@ describe("Slack schedule tools", () => {
         status: "paused",
       },
     });
-  });
-
-  it("deduplicates relative update replays across intervening edits", async () => {
-    let nowCalls = 0;
-    const context = createContext({
-      now: () => Date.parse("2026-05-24T12:00:00.000Z") + nowCalls++ * 1_000,
-    });
-    const created = (await createTask(context)) as { task: { id: string } };
-    const tool = createSlackScheduleUpdateTaskTool(context);
-    const input = {
-      task_id: created.task.id,
-      schedule: {
-        kind: "one_off" as const,
-        timing: {
-          type: "after" as const,
-          value: 5,
-          unit: "minute" as const,
-        },
-      },
-    };
-
-    const [first, replay] = await Promise.all([
-      executeTool(tool, input, { toolCallId: "call-update-relative" }),
-      executeTool(tool, input, { toolCallId: "call-update-relative" }),
-    ]);
-
-    expect(replay.task.next_run_at).toBe(first.task.next_run_at);
-    const second = await executeTool(
-      tool,
-      {
-        task_id: created.task.id,
-        schedule: {
-          kind: "one_off",
-          timing: { type: "after", value: 10, unit: "minute" },
-        },
-      },
-      { toolCallId: "call-update-later" },
-    );
-    const historicalReplay = await executeTool(tool, input, {
-      toolCallId: "call-update-relative",
-    });
-    expect(historicalReplay.task.next_run_at).toBe(first.task.next_run_at);
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
-      nextRunAtMs: Date.parse(second.task.next_run_at!),
-    });
-
-    await expect(
-      executeTool(
-        tool,
-        {
-          task_id: created.task.id,
-          schedule: {
-            kind: "one_off",
-            timing: { type: "after", value: 15, unit: "minute" },
-          },
-        },
-        { toolCallId: "call-update-relative" },
-      ),
-    ).rejects.toThrow("Scheduled task operation identity is invalid.");
   });
 
   it("rejects removed top-level rescheduling fields", async () => {
