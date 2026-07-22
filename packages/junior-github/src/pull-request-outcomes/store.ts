@@ -25,24 +25,9 @@ const githubPullRequestOutcomeInputSchema = z
   })
   .strict();
 
-const githubPullRequestRowSchema = z
-  .object({
-    closedAt: z.date().nullable(),
-    mergedAt: z.date().nullable(),
-    number: z.number().int().positive(),
-    openedAt: z.date(),
-    pullRequestId: z.string().min(1),
-    repositoryFullName: z.string().min(1),
-    repositoryId: z.string().min(1),
-    state: githubPullRequestStateSchema,
-    updatedAt: z.date(),
-  })
-  .strict();
-
 export type GitHubPullRequestOutcomeInput = z.output<
   typeof githubPullRequestOutcomeInputSchema
 >;
-export type GitHubPullRequestRow = z.output<typeof githubPullRequestRowSchema>;
 
 /** Select mutable lifecycle fields while excluding transient ownership inputs. */
 function projectionValues(input: GitHubPullRequestOutcomeInput) {
@@ -56,13 +41,6 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     state: input.state,
     updatedAt: input.updatedAt,
   };
-}
-
-/** Assert rows loaded from the durable pull request projection. */
-export function parseGitHubPullRequestRows(
-  input: unknown,
-): GitHubPullRequestRow[] {
-  return z.array(githubPullRequestRowSchema).parse(input);
 }
 
 /**

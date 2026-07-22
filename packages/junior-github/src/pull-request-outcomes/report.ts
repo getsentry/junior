@@ -1,60 +1,157 @@
 import type { PluginOperationalReportContent } from "@sentry/junior-plugin-api";
-import { eq, gte, or } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { juniorGitHubPullRequests } from "../db/schema.js";
-import {
-  parseGitHubPullRequestRows,
-  type GitHubDb,
-  type GitHubPullRequestRow,
-} from "./store.js";
+import type { GitHubDb } from "./store.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
 
-interface OutcomeStats {
-  closed: number;
-  created: number;
-  medianMergeTimeMs?: number;
-  mergeRate?: number;
-  merged: number;
-  open: number;
+const outcomeStatsSchema = z
+  .object({
+    closed: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+    days: z.number().int().positive(),
+    medianMergeTimeMs: z.number().nonnegative().nullable(),
+    merged: z.number().int().nonnegative(),
+    open: z.number().int().nonnegative(),
+  })
+  .strict()
+  .transform((row) => {
+    const terminal = row.merged + row.closed;
+    return {
+      ...row,
+      medianMergeTimeMs: row.medianMergeTimeMs ?? undefined,
+      mergeRate: terminal > 0 ? row.merged / terminal : undefined,
+    };
+  });
+
+const repositoryStatsSchema = z
+  .object({
+    closed: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+    merged: z.number().int().nonnegative(),
+    open: z.number().int().nonnegative(),
+    repository: z.string().min(1),
+  })
+  .strict()
+  .transform((row) => {
+    const terminal = row.merged + row.closed;
+    return {
+      ...row,
+      mergeRate: terminal > 0 ? row.merged / terminal : undefined,
+    };
+  });
+
+type OutcomeStats = z.output<typeof outcomeStatsSchema>;
+type RepositoryStats = z.output<typeof repositoryStatsSchema>;
+
+function queryRows(result: unknown): unknown[] {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("rows" in result) ||
+    !Array.isArray(result.rows)
+  ) {
+    throw new TypeError("GitHub outcome query did not return rows");
+  }
+  return result.rows;
 }
 
-function median(values: number[]): number | undefined {
-  if (values.length === 0) return undefined;
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1]! + sorted[middle]!) / 2
-    : sorted[middle];
+async function aggregateOutcomeWindows(args: {
+  db: GitHubDb;
+  nowMs: number;
+}): Promise<OutcomeStats[]> {
+  const starts = WINDOWS.map(
+    (days) => [days, new Date(args.nowMs - days * DAY_MS)] as const,
+  );
+  const oldestStart = starts.at(-1)![1];
+  const table = juniorGitHubPullRequests;
+  const result = await args.db.execute(sql`
+    WITH windows(days, start_at) AS (
+      VALUES
+        (${starts[0][0]}::integer, ${starts[0][1]}::timestamptz),
+        (${starts[1][0]}::integer, ${starts[1][1]}::timestamptz),
+        (${starts[2][0]}::integer, ${starts[2][1]}::timestamptz)
+    ), recent_pull_requests AS MATERIALIZED (
+      SELECT
+        ${table.pullRequestId},
+        ${table.state},
+        ${table.openedAt},
+        ${table.mergedAt},
+        ${table.closedAt}
+      FROM ${table}
+      WHERE ${table.state} = 'open'
+        OR ${table.openedAt} >= ${oldestStart}
+        OR ${table.mergedAt} >= ${oldestStart}
+        OR ${table.closedAt} >= ${oldestStart}
+    )
+    SELECT
+      windows.days AS "days",
+      count(recent_pull_requests.pull_request_id)
+        FILTER (WHERE recent_pull_requests.opened_at >= windows.start_at)::integer
+        AS "created",
+      count(recent_pull_requests.pull_request_id)
+        FILTER (
+          WHERE recent_pull_requests.state = 'merged'
+            AND recent_pull_requests.merged_at >= windows.start_at
+        )::integer AS "merged",
+      count(recent_pull_requests.pull_request_id)
+        FILTER (
+          WHERE recent_pull_requests.state = 'closed_unmerged'
+            AND recent_pull_requests.closed_at >= windows.start_at
+        )::integer AS "closed",
+      count(recent_pull_requests.pull_request_id)
+        FILTER (WHERE recent_pull_requests.state = 'open')::integer AS "open",
+      (
+        percentile_cont(0.5) WITHIN GROUP (
+          ORDER BY extract(
+            epoch FROM (
+              recent_pull_requests.merged_at - recent_pull_requests.opened_at
+            )
+          ) * 1000
+        ) FILTER (
+          WHERE recent_pull_requests.state = 'merged'
+            AND recent_pull_requests.merged_at >= windows.start_at
+        )
+      )::double precision AS "medianMergeTimeMs"
+    FROM windows
+    LEFT JOIN recent_pull_requests ON true
+    GROUP BY windows.days
+    ORDER BY windows.days
+  `);
+  return z.array(outcomeStatsSchema).parse(queryRows(result));
 }
 
-function outcomeStats(
-  rows: GitHubPullRequestRow[],
-  nowMs: number,
-  days: number,
-): OutcomeStats {
-  const startMs = nowMs - days * DAY_MS;
-  const created = rows.filter((row) => row.openedAt.getTime() >= startMs);
-  const merged = rows.filter(
-    (row) =>
-      row.state === "merged" && (row.mergedAt?.getTime() ?? 0) >= startMs,
-  );
-  const closed = rows.filter(
-    (row) =>
-      row.state === "closed_unmerged" &&
-      (row.closedAt?.getTime() ?? 0) >= startMs,
-  );
-  const terminal = merged.length + closed.length;
-  return {
-    closed: closed.length,
-    created: created.length,
-    medianMergeTimeMs: median(
-      merged.map((row) => row.mergedAt!.getTime() - row.openedAt.getTime()),
-    ),
-    mergeRate: terminal > 0 ? merged.length / terminal : undefined,
-    merged: merged.length,
-    open: rows.filter((row) => row.state === "open").length,
-  };
+async function aggregateRepositories(args: {
+  db: GitHubDb;
+  nowMs: number;
+}): Promise<RepositoryStats[]> {
+  const start = new Date(args.nowMs - 30 * DAY_MS);
+  const table = juniorGitHubPullRequests;
+  const result = await args.db.execute(sql`
+    SELECT
+      ${table.repositoryFullName} AS "repository",
+      count(*) FILTER (WHERE ${table.openedAt} >= ${start})::integer
+        AS "created",
+      count(*) FILTER (
+        WHERE ${table.state} = 'merged' AND ${table.mergedAt} >= ${start}
+      )::integer AS "merged",
+      count(*) FILTER (
+        WHERE ${table.state} = 'closed_unmerged'
+          AND ${table.closedAt} >= ${start}
+      )::integer AS "closed",
+      count(*) FILTER (WHERE ${table.state} = 'open')::integer AS "open"
+    FROM ${table}
+    WHERE ${table.state} = 'open'
+      OR ${table.openedAt} >= ${start}
+      OR ${table.mergedAt} >= ${start}
+      OR ${table.closedAt} >= ${start}
+    GROUP BY ${table.repositoryFullName}
+    ORDER BY "merged" DESC, "created" DESC, "repository" ASC
+    LIMIT 25
+  `);
+  return z.array(repositoryStatsSchema).parse(queryRows(result));
 }
 
 function formatPercent(value: number | undefined): string {
@@ -69,55 +166,16 @@ function formatDuration(value: number | undefined): string {
   return `${Math.round((hours / 24) * 10) / 10}d`;
 }
 
-function repositoryRows(rows: GitHubPullRequestRow[], nowMs: number) {
-  const byRepository = new Map<string, GitHubPullRequestRow[]>();
-  for (const row of rows) {
-    const current = byRepository.get(row.repositoryFullName) ?? [];
-    current.push(row);
-    byRepository.set(row.repositoryFullName, current);
-  }
-  return [...byRepository.entries()]
-    .map(([repository, repositoryOutcomes]) => ({
-      repository,
-      stats: outcomeStats(repositoryOutcomes, nowMs, 30),
-    }))
-    .filter(
-      ({ stats }) =>
-        stats.created + stats.merged + stats.closed + stats.open > 0,
-    )
-    .sort(
-      (left, right) =>
-        right.stats.merged - left.stats.merged ||
-        right.stats.created - left.stats.created ||
-        left.repository.localeCompare(right.repository),
-    )
-    .slice(0, 25);
-}
-
 /** Build the generic dashboard report for Junior-owned pull request outcomes. */
 export async function buildGitHubOutcomeReport(args: {
   db: GitHubDb;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
-  const start = new Date(args.nowMs - 90 * DAY_MS);
-  const rows = parseGitHubPullRequestRows(
-    await args.db
-      .select()
-      .from(juniorGitHubPullRequests)
-      .where(
-        or(
-          eq(juniorGitHubPullRequests.state, "open"),
-          gte(juniorGitHubPullRequests.openedAt, start),
-          gte(juniorGitHubPullRequests.mergedAt, start),
-          gte(juniorGitHubPullRequests.closedAt, start),
-        ),
-      ),
-  );
-  const windows = WINDOWS.map((days) => ({
-    days,
-    stats: outcomeStats(rows, args.nowMs, days),
-  }));
-  const thirtyDays = windows.find((window) => window.days === 30)!.stats;
+  const [windows, repositories] = await Promise.all([
+    aggregateOutcomeWindows(args),
+    aggregateRepositories(args),
+  ]);
+  const thirtyDays = windows.find((window) => window.days === 30)!;
 
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
@@ -148,10 +206,10 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "mergeRate", label: "Merge rate" },
           { key: "mergeTime", label: "Median merge time" },
         ],
-        records: windows.map(({ days, stats }) => ({
-          id: `${days}d`,
+        records: windows.map((stats) => ({
+          id: `${stats.days}d`,
           values: {
-            window: `${days} days`,
+            window: `${stats.days} days`,
             created: String(stats.created),
             merged: String(stats.merged),
             closed: String(stats.closed),
@@ -171,19 +229,17 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "open", label: "Open now" },
           { key: "mergeRate", label: "Merge rate" },
         ],
-        records: repositoryRows(rows, args.nowMs).map(
-          ({ repository, stats }) => ({
-            id: repository,
-            values: {
-              repository,
-              created: String(stats.created),
-              merged: String(stats.merged),
-              closed: String(stats.closed),
-              open: String(stats.open),
-              mergeRate: formatPercent(stats.mergeRate),
-            },
-          }),
-        ),
+        records: repositories.map(({ repository, ...stats }) => ({
+          id: repository,
+          values: {
+            repository,
+            created: String(stats.created),
+            merged: String(stats.merged),
+            closed: String(stats.closed),
+            open: String(stats.open),
+            mergeRate: formatPercent(stats.mergeRate),
+          },
+        })),
       },
     ],
   };

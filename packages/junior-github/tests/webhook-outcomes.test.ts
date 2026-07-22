@@ -634,6 +634,28 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("reports zero outcomes without loading any pull request records", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const report = await buildGitHubOutcomeReport({
+        db: fixture.db(),
+        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
+      });
+
+      expect(report.metrics).toEqual([
+        { label: "created · 30d", value: "0" },
+        { label: "merged · 30d", tone: "neutral", value: "0" },
+        { label: "closed unmerged · 30d", value: "0" },
+        { label: "open now", value: "0" },
+        { label: "merge rate · 30d", value: "—" },
+        { label: "median merge time · 30d", value: "—" },
+      ]);
+      expect(report.recordSets?.[1]?.records).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it.each([
     {
       label: "configured bot without the Junior footer",
