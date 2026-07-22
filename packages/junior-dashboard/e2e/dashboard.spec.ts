@@ -457,7 +457,7 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(drawer).toBeVisible();
 });
 
-test("archives a conversation from the sidebar without navigating", async ({
+test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -486,5 +486,29 @@ test("archives a conversation from the sidebar without navigating", async ({
   const archiveRequest = await archiveRequestPromise;
 
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
+  expect(page.url()).toBe(currentUrl);
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Dashboard QA edge cases archived",
+    }),
+  ).toBeVisible();
+
+  const restoreRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  );
+  await page
+    .getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    })
+    .click();
+  const restoreRequest = await restoreRequestPromise;
+
+  expect(restoreRequest.postDataJSON()).toMatchObject({ archived: false });
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Dashboard QA edge cases archived",
+    }),
+  ).toHaveCount(0);
   expect(page.url()).toBe(currentUrl);
 });

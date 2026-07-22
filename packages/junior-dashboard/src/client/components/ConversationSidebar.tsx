@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Archive, MessageSquareText, Search } from "lucide-react";
 import { Link } from "react-router";
 
@@ -22,8 +23,10 @@ export function ConversationSidebar(props: {
   selectedId?: string;
   onQueryChange(value: string): void;
 }) {
+  const [archivedConversation, setArchivedConversation] =
+    useState<Conversation>();
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
         <div className="mb-2 flex items-center gap-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
           <MessageSquareText aria-hidden="true" size={13} />
@@ -70,18 +73,26 @@ export function ConversationSidebar(props: {
               <ConversationSidebarRow
                 conversation={conversation}
                 key={conversation.id}
+                onArchived={setArchivedConversation}
                 selected={conversation.id === props.selectedId}
               />
             ))}
           </nav>
         )}
       </div>
+      {archivedConversation ? (
+        <ArchivedConversationNotice
+          conversation={archivedConversation}
+          onRestored={() => setArchivedConversation(undefined)}
+        />
+      ) : null}
     </aside>
   );
 }
 
 function ConversationSidebarRow(props: {
   conversation: Conversation;
+  onArchived(conversation: Conversation): void;
   selected: boolean;
 }) {
   const archive = useArchiveConversation(props.conversation.id);
@@ -135,10 +146,15 @@ function ConversationSidebarRow(props: {
         )}
         disabled={archive.isPending}
         onClick={() =>
-          archive.mutate({
-            archived: true,
-            lastSeenAt: props.conversation.lastSeenAt,
-          })
+          archive.mutate(
+            {
+              archived: true,
+              lastSeenAt: props.conversation.lastSeenAt,
+            },
+            {
+              onSuccess: () => props.onArchived(props.conversation),
+            },
+          )
         }
         title={
           archive.error ? `Could not archive ${title}` : `Archive ${title}`
@@ -147,6 +163,51 @@ function ConversationSidebarRow(props: {
       >
         <Archive aria-hidden="true" size={15} />
       </button>
+    </div>
+  );
+}
+
+function ArchivedConversationNotice(props: {
+  conversation: Conversation;
+  onRestored(): void;
+}) {
+  const restore = useArchiveConversation(props.conversation.id);
+  const title = conversationDisplayTitle(props.conversation);
+  return (
+    <div className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className="min-w-0 flex-1 truncate font-mono text-[0.68rem] text-white/65"
+          role="status"
+        >
+          {title} archived
+        </div>
+        <button
+          aria-label={`Undo archive for ${title}`}
+          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-[0.65rem] text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:opacity-40"
+          disabled={restore.isPending}
+          onClick={() =>
+            restore.mutate(
+              {
+                archived: false,
+                lastSeenAt: props.conversation.lastSeenAt,
+              },
+              { onSuccess: props.onRestored },
+            )
+          }
+          type="button"
+        >
+          {restore.isPending ? "Restoring…" : "Undo"}
+        </button>
+      </div>
+      {restore.error ? (
+        <div
+          className="mt-1 font-mono text-[0.62rem] text-rose-200/80"
+          role="alert"
+        >
+          Could not restore the conversation.
+        </div>
+      ) : null}
     </div>
   );
 }
