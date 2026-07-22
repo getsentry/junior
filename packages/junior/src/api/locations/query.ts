@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -25,6 +26,12 @@ import type {
 
 const RECENT_LIMIT = 25;
 const ACTIVITY_DAYS = 90;
+
+const privacyRoot = alias(juniorConversations, "location_privacy_root");
+const privacyRootIdentity = alias(
+  juniorIdentities,
+  "location_privacy_root_identity",
+);
 
 type AggregateMetrics = Pick<
   LocationSummaryReport,
@@ -308,7 +315,10 @@ async function recentLocationRows(
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
-      isParticipant: participantMatchColumn(authorizedUserEmail),
+      isParticipant: participantMatchColumn(authorizedUserEmail, {
+        emailNormalized: privacyRootIdentity.emailNormalized,
+        emailVerified: privacyRootIdentity.emailVerified,
+      }),
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: sql<string | null>`CASE
         WHEN ${juniorIdentities.provider} = 'slack'
@@ -321,6 +331,14 @@ async function recentLocationRows(
       usage: juniorConversations.usage,
     })
     .from(juniorConversations)
+    .innerJoin(
+      privacyRoot,
+      eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
+    )
+    .leftJoin(
+      privacyRootIdentity,
+      eq(privacyRootIdentity.id, privacyRoot.actorIdentityId),
+    )
     .innerJoin(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),

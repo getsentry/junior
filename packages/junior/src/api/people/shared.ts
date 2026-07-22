@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -15,6 +16,12 @@ import { participantMatchColumn } from "@/chat/conversations/participant";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
+
+const privacyRoot = alias(juniorConversations, "people_privacy_root");
+const privacyRootIdentity = alias(
+  juniorIdentities,
+  "people_privacy_root_identity",
+);
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {
@@ -107,7 +114,10 @@ export async function recentActorRows(
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
-      isParticipant: participantMatchColumn(authorizedUserEmail),
+      isParticipant: participantMatchColumn(authorizedUserEmail, {
+        emailNormalized: privacyRootIdentity.emailNormalized,
+        emailVerified: privacyRootIdentity.emailVerified,
+      }),
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: juniorIdentities.providerSubjectId,
       source: juniorConversations.source,
@@ -116,6 +126,14 @@ export async function recentActorRows(
       usage: juniorConversations.usage,
     })
     .from(juniorConversations)
+    .innerJoin(
+      privacyRoot,
+      eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
+    )
+    .leftJoin(
+      privacyRootIdentity,
+      eq(privacyRootIdentity.id, privacyRoot.actorIdentityId),
+    )
     .innerJoin(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
