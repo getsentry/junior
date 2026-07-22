@@ -19,7 +19,7 @@ function createMockDeps(
 ): SlackTurnRuntimeDependencies<TestState> {
   return {
     assistantUserName: "test-bot",
-    cancelResourceEventSubscriptions: vi.fn().mockResolvedValue(undefined),
+    cancelEventSubscriptions: vi.fn().mockResolvedValue(undefined),
     modelId: "test-model",
     now: () => 1700000000000,
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
@@ -121,9 +121,7 @@ describe("createSlackTurnRuntime", () => {
     it("does not unsubscribe the thread when resource cleanup fails", async () => {
       const cleanupError = new Error("resource cleanup failed");
       const deps = createMockDeps({
-        cancelResourceEventSubscriptions: vi
-          .fn()
-          .mockRejectedValue(cleanupError),
+        cancelEventSubscriptions: vi.fn().mockRejectedValue(cleanupError),
         decideSubscribedReply: vi.fn().mockResolvedValue({
           shouldReply: false,
           shouldUnsubscribe: true,
@@ -141,9 +139,9 @@ describe("createSlackTurnRuntime", () => {
         }),
       ).resolves.toBeUndefined();
 
-      expect(deps.cancelResourceEventSubscriptions).toHaveBeenCalledWith(
-        thread.id,
-      );
+      expect(deps.cancelEventSubscriptions).toHaveBeenCalledWith({
+        conversationId: thread.id,
+      });
       expect(thread.subscribed).toBe(true);
       expect(thread.posts).toHaveLength(1);
       expect(thread.posts).not.toContain(

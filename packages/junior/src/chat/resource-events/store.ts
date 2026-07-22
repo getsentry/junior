@@ -412,25 +412,20 @@ export async function cancelResourceEventSubscription(input: {
 }
 
 /** Cancel every active resource event subscription bound to one conversation. */
-export async function cancelConversationResourceEventSubscriptions(input: {
+export async function cancelSubscriptions(input: {
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<ResourceEventSubscription[]> {
+}): Promise<void> {
   const subscriptions = await listResourceEventSubscriptions(input);
-  const cancelled: ResourceEventSubscription[] = [];
   for (const subscription of subscriptions) {
-    const result = await cancelResourceEventSubscription({
+    await cancelResourceEventSubscription({
       conversationId: input.conversationId,
       id: subscription.id,
       nowMs: input.nowMs,
       state: input.state,
     });
-    if (result) {
-      cancelled.push(result);
-    }
   }
-  return cancelled;
 }
 
 /** Find active subscriptions interested in a normalized provider event. */
