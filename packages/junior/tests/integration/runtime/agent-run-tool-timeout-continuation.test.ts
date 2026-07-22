@@ -32,48 +32,35 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
 // Keep the provider as the integration boundary. The real Pi loop executes
 // the tool, handles abort, persists the toolResult, and invokes continue().
 vi.mock("@/chat/pi/traced-stream", () => ({
-  createTracedStreamFn: () => async (model: { id: string }, context: any) => {
-    observations.providerCalls += 1;
-    const call = observations.providerCalls;
-    if (call > 1) {
-      observations.continuationMessages = context.messages ?? [];
-    }
+  createTracedStreamFn:
+    () =>
+    async (
+      model: { id: string },
+      context: any,
+      options?: { signal?: AbortSignal },
+    ) => {
+      observations.providerCalls += 1;
+      const call = observations.providerCalls;
+      if (call > 1) {
+        observations.continuationMessages = context.messages ?? [];
+      }
 
-    const timeoutContinuation = String(context.systemPrompt ?? "").includes(
-      "<timeout-continuation>",
-    );
-    const message =
-      call === 1
-        ? {
-            role: "assistant",
-            content: [
-              {
-                type: "toolCall",
-                id: "bash-call-1",
-                name: "bash",
-                arguments: {
-                  command: "run-the-targeted-cloudflare-test",
-                  timeoutMs: 180_000,
-                },
-              },
-            ],
-            stopReason: "toolUse",
-            api: "test",
-            provider: "test",
-            model: model.id,
-            timestamp: Date.now(),
-            usage: { input: 2, output: 1, totalTokens: 3 },
-          }
-        : timeoutContinuation && observations.toolExecutions.length === 1
+      const timeoutContinuation =
+        !options?.signal?.aborted &&
+        JSON.stringify(context.messages ?? []).includes(
+          '"cause":"turn_deadline"',
+        );
+      const message =
+        call === 1
           ? {
               role: "assistant",
               content: [
                 {
                   type: "toolCall",
-                  id: "bash-call-2",
+                  id: "bash-call-1",
                   name: "bash",
                   arguments: {
-                    command: "rerun-the-targeted-cloudflare-test",
+                    command: "run-the-targeted-cloudflare-test",
                     timeoutMs: 180_000,
                   },
                 },
@@ -83,48 +70,69 @@ vi.mock("@/chat/pi/traced-stream", () => ({
               provider: "test",
               model: model.id,
               timestamp: Date.now(),
-              usage: { input: 4, output: 3, totalTokens: 7 },
+              usage: { input: 2, output: 1, totalTokens: 3 },
             }
-          : timeoutContinuation
+          : timeoutContinuation && observations.toolExecutions.length === 1
             ? {
                 role: "assistant",
                 content: [
                   {
-                    type: "text",
-                    text: "The targeted test passed and the pull request was created.",
+                    type: "toolCall",
+                    id: "bash-call-2",
+                    name: "bash",
+                    arguments: {
+                      command: "rerun-the-targeted-cloudflare-test",
+                      timeoutMs: 180_000,
+                    },
                   },
                 ],
-                stopReason: "stop",
+                stopReason: "toolUse",
                 api: "test",
                 provider: "test",
                 model: model.id,
                 timestamp: Date.now(),
                 usage: { input: 4, output: 3, totalTokens: 7 },
               }
-            : {
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text: "The work was interrupted during the targeted Cloudflare test rerun.",
-                  },
-                ],
-                stopReason: "stop",
-                api: "test",
-                provider: "test",
-                model: model.id,
-                timestamp: Date.now(),
-                usage: { input: 4, output: 3, totalTokens: 7 },
-              };
+            : timeoutContinuation
+              ? {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: "The targeted test passed and the pull request was created.",
+                    },
+                  ],
+                  stopReason: "stop",
+                  api: "test",
+                  provider: "test",
+                  model: model.id,
+                  timestamp: Date.now(),
+                  usage: { input: 4, output: 3, totalTokens: 7 },
+                }
+              : {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: "The work was interrupted during the targeted Cloudflare test rerun.",
+                    },
+                  ],
+                  stopReason: "stop",
+                  api: "test",
+                  provider: "test",
+                  model: model.id,
+                  timestamp: Date.now(),
+                  usage: { input: 4, output: 3, totalTokens: 7 },
+                };
 
-    return {
-      async *[Symbol.asyncIterator]() {
-        yield { type: "start", partial: { ...message, content: [] } };
-        yield { type: "done", reason: message.stopReason, message };
-      },
-      result: async () => message,
-    };
-  },
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "start", partial: { ...message, content: [] } };
+          yield { type: "done", reason: message.stopReason, message };
+        },
+        result: async () => message,
+      };
+    },
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
@@ -292,10 +300,13 @@ describe("executeAgentRun tool timeout continuation", () => {
     });
     expect(suspendedRecord?.piMessages.at(-1)).toMatchObject({
       role: "toolResult",
-      isError: false,
+      isError: true,
     });
     expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
       "outcome_unknown",
+    );
+    expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
+      '"cause":"turn_deadline"',
     );
 
     const resumed = await executeAgentRun(request);

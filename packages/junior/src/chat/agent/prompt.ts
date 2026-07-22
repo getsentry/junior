@@ -30,7 +30,6 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import type { AgentTurnResumeReason } from "@/chat/state/turn-session";
 import type {
   AgentRunInput,
   AgentRunInstructionActor,
@@ -40,23 +39,6 @@ import type {
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
-
-const TIMEOUT_CONTINUATION_INSTRUCTIONS = [
-  "<timeout-continuation>",
-  "The previous execution slice reached an internal runtime deadline. This was not a user cancellation and the original request is still active.",
-  "Continue the task from the durable history until it is complete or genuinely blocked. Do not finish with only an interruption or timeout status update.",
-  "If a tool result has an unknown outcome, reconcile its possible side effects before deciding whether it is safe to retry.",
-  "</timeout-continuation>",
-].join("\n");
-
-function buildContinuationInstructions(
-  resumedFromSessionRecord: boolean,
-  resumeReason: AgentTurnResumeReason | undefined,
-): string | null {
-  return resumedFromSessionRecord && resumeReason === "timeout"
-    ? TIMEOUT_CONTINUATION_INSTRUCTIONS
-    : null;
-}
 
 export type UserContentPart =
   | { type: "text"; text: string }
@@ -368,7 +350,6 @@ export async function assemblePrompt(args: {
   existingTurnStartMessageIndex?: number;
   invocation: SkillInvocation | null;
   priorPiMessages?: PiMessage[];
-  resumeReason?: AgentTurnResumeReason;
   resumedFromSessionRecord: boolean;
   routing: AgentRunRouting;
   spanContext: LogContext;
@@ -403,15 +384,7 @@ export async function assemblePrompt(args: {
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const continuationInstructions = buildContinuationInstructions(
-    args.resumedFromSessionRecord,
-    args.resumeReason,
-  );
-  const baseInstructions = [
-    buildSystemPrompt({ source }),
-    pluginSystemPrompt,
-    continuationInstructions,
-  ]
+  const baseInstructions = [buildSystemPrompt({ source }), pluginSystemPrompt]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions = !shouldPromptAgent

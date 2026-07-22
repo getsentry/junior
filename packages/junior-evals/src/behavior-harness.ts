@@ -70,6 +70,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import type {
@@ -1716,11 +1717,21 @@ function buildRuntimeServices(
               },
               error: {
                 kind: "outcome_unknown",
-                message:
-                  "Command was interrupted before its outcome was confirmed.",
+                message: "Command outcome was not confirmed.",
                 retryable: false,
               },
             };
+            const deadlineResult = annotateTurnDeadlineToolResult({
+              content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
+              details: unknownOutcome,
+            });
+            if (
+              !deadlineResult?.content ||
+              deadlineResult.details === undefined ||
+              deadlineResult.isError !== true
+            ) {
+              throw new Error("Failed to build timeout continuation fixture");
+            }
             const piMessages = [
               {
                 role: "user",
@@ -1748,10 +1759,9 @@ function buildRuntimeServices(
                 role: "toolResult",
                 toolCallId,
                 toolName: "bash",
-                content: [
-                  { type: "text", text: JSON.stringify(unknownOutcome) },
-                ],
-                isError: false,
+                content: deadlineResult.content,
+                details: deadlineResult.details,
+                isError: deadlineResult.isError,
                 timestamp: nowMs,
               },
             ] as PiMessage[];
