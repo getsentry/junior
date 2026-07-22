@@ -92,6 +92,7 @@ vi.mock("@/chat/pi/client", () => ({
   completeObject: async () => ({
     object: {
       reasoning_level: "medium",
+      model_profile: "standard",
       confidence: 1,
       reason: "test-router",
     },

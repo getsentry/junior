@@ -58,7 +58,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
       type: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
-      triggeringToolCallId: z.string().min(1),
+      triggeringToolCallId: z.string().min(1).optional(),
       replacementHistory: replacementHistorySchema,
     })
     .strict(),

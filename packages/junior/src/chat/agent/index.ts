@@ -75,10 +75,10 @@ import {
   nextProviderRetry,
 } from "@/chat/services/provider-retry";
 import {
-  configuredTurnReasoningLevel,
-  selectTurnReasoningLevel,
+  configuredTurnExecutionProfile,
+  selectTurnExecutionProfile,
   toPiReasoningLevel,
-} from "@/chat/services/turn-reasoning-level";
+} from "@/chat/services/turn-execution-profile";
 import {
   addAgentTurnUsage,
   hasAgentTurnUsage,
@@ -225,8 +225,8 @@ async function executeAgentRunInPrivacyContext(
   let handoffPhaseUsage: AgentTurnUsage | undefined;
   const configuredReasoningLevel =
     policy.reasoningLevel ?? botConfig.reasoningLevel;
-  let reasoningSelection = configuredReasoningLevel
-    ? configuredTurnReasoningLevel(
+  let executionProfile = configuredReasoningLevel
+    ? configuredTurnExecutionProfile(
         configuredReasoningLevel,
         policy.reasoningLevel ? "agent_config" : "default",
       )
@@ -360,7 +360,7 @@ async function executeAgentRunInPrivacyContext(
       destination: routing.destination,
       durability,
       getLoadedSkillNames: () => loadedSkillNamesForResume,
-      getReasoningLevel: () => reasoningSelection?.reasoningLevel,
+      getReasoningLevel: () => executionProfile?.reasoningLevel,
       logContext: sessionRecordLogContext,
       getModelId: () => activeModelId,
       recordActiveMcpProviders,
@@ -430,7 +430,7 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    reasoningSelection ??= await selectTurnReasoningLevel({
+    executionProfile ??= await selectTurnExecutionProfile({
       completeObject,
       conversationContext: input.conversationContext,
       context: {
@@ -466,6 +466,69 @@ async function executeAgentRunInPrivacyContext(
         .filter((profile) => profile !== DEFAULT_HANDOFF_MODEL_PROFILE)
         .sort(),
     ];
+    const scheduleHandoff = async (args: {
+      profile: ModelProfile;
+      signal?: AbortSignal;
+      sourceMessages: PiMessage[];
+      triggeringToolCallId?: string;
+    }) => {
+      const runtimeContext = retainRuntimeTurnContext(args.sourceMessages);
+      const standardPhaseUsage = extractGenAiUsageSummary(
+        ...args.sourceMessages
+          .slice(runResume.beforeMessageCount)
+          .filter(isAssistantMessage),
+      );
+      const phaseUsage = hasAgentTurnUsage(standardPhaseUsage)
+        ? standardPhaseUsage
+        : undefined;
+      const target = {
+        modelId: modelIdForProfile(botConfig, args.profile),
+        modelProfile: args.profile,
+      };
+      const handoffModel = resolveGatewayModel(target.modelId);
+      const handoffThinkingLevel = toPiReasoningLevel(
+        executionProfile!.reasoningLevel,
+      );
+      void (async () => {
+        await observers.onStatus?.({ text: "Switching models" });
+      })().catch((error) => {
+        logWarn(
+          "assistant_status_observer_failed",
+          {},
+          {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to report assistant status",
+        );
+      });
+      const handoffMessages = await compactContextForHandoff(
+        {
+          conversationContext: input.conversationContext,
+          conversationId,
+          piMessages: args.sourceMessages,
+          runtimeContext,
+          signal: args.signal,
+          triggeringToolCallId: args.triggeringToolCallId,
+          target,
+          metadata: {
+            threadId: conversationId,
+            channelId: slackDestination?.channelId,
+            actorId: slackActor?.userId,
+            runId,
+          },
+        },
+        { completeText },
+      );
+      handoffPhaseUsage = phaseUsage;
+      pendingHandoff = {
+        messages: handoffMessages,
+        model: handoffModel,
+        thinkingLevel: handoffThinkingLevel,
+      };
+      activeModelProfile = args.profile;
+      activeModelId = target.modelId;
+    };
     const requestHandoff =
       activeModelProfile === STANDARD_MODEL_PROFILE
         ? {
@@ -473,65 +536,13 @@ async function executeAgentRunInPrivacyContext(
             execute: async (
               profile: ModelProfile,
               options: { signal?: AbortSignal; toolCallId: string },
-            ) => {
-              const sourceMessages = [...agent!.state.messages];
-              const runtimeContext = retainRuntimeTurnContext(sourceMessages);
-              const standardPhaseUsage = extractGenAiUsageSummary(
-                ...sourceMessages
-                  .slice(runResume.beforeMessageCount)
-                  .filter(isAssistantMessage),
-              );
-              const phaseUsage = hasAgentTurnUsage(standardPhaseUsage)
-                ? standardPhaseUsage
-                : undefined;
-              const target = {
-                modelId: modelIdForProfile(botConfig, profile),
-                modelProfile: profile,
-              };
-              const handoffModel = resolveGatewayModel(target.modelId);
-              const handoffThinkingLevel = toPiReasoningLevel(
-                reasoningSelection!.reasoningLevel,
-              );
-              void (async () => {
-                await observers.onStatus?.({ text: "Switching models" });
-              })().catch((error) => {
-                logWarn(
-                  "assistant_status_observer_failed",
-                  {},
-                  {
-                    "exception.message":
-                      error instanceof Error ? error.message : String(error),
-                  },
-                  "Failed to report assistant status",
-                );
-              });
-              const handoffMessages = await compactContextForHandoff(
-                {
-                  conversationContext: input.conversationContext,
-                  conversationId,
-                  piMessages: sourceMessages,
-                  runtimeContext,
-                  signal: options.signal,
-                  triggeringToolCallId: options.toolCallId,
-                  target,
-                  metadata: {
-                    threadId: conversationId,
-                    channelId: slackDestination?.channelId,
-                    actorId: slackActor?.userId,
-                    runId,
-                  },
-                },
-                { completeText },
-              );
-              handoffPhaseUsage = phaseUsage;
-              pendingHandoff = {
-                messages: handoffMessages,
-                model: handoffModel,
-                thinkingLevel: handoffThinkingLevel,
-              };
-              activeModelProfile = profile;
-              activeModelId = target.modelId;
-            },
+            ) =>
+              await scheduleHandoff({
+                profile,
+                signal: options.signal,
+                sourceMessages: [...agent!.state.messages],
+                triggeringToolCallId: options.toolCallId,
+              }),
           }
         : undefined;
 
@@ -617,6 +628,35 @@ async function executeAgentRunInPrivacyContext(
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
     });
+    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
+      if (!pendingHandoff) {
+        return undefined;
+      }
+      const { messages, model, thinkingLevel } = pendingHandoff;
+      const replacement = [...messages];
+      pendingHandoff = undefined;
+      agent!.state.messages = replacement;
+      agent!.state.model = model;
+      agent!.state.thinkingLevel = thinkingLevel;
+      agent!.state.tools = toolsAfterHandoff;
+      runResume.setBeforeMessageCount(replacement.length);
+      runResume.setTurnStartMessageIndex(0);
+      runResume.adoptCommittedBoundary(replacement);
+      setSpanAttributes({
+        "gen_ai.agent.model": activeModelId,
+        "gen_ai.agent.model_profile": activeModelProfile,
+        "gen_ai.agent.reasoning.level": executionProfile!.reasoningLevel,
+      });
+      return {
+        context: {
+          systemPrompt: baseInstructions,
+          messages: replacement,
+          tools: toolsAfterHandoff,
+        },
+        model,
+        thinkingLevel,
+      };
+    };
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
@@ -710,33 +750,7 @@ async function executeAgentRunInPrivacyContext(
         return undefined;
       },
       prepareNextTurn: async () => {
-        let update: AgentLoopTurnUpdate | undefined;
-        if (pendingHandoff) {
-          const { messages, model, thinkingLevel } = pendingHandoff;
-          const replacement = [...messages];
-          pendingHandoff = undefined;
-          agent!.state.messages = replacement;
-          agent!.state.model = model;
-          agent!.state.thinkingLevel = thinkingLevel;
-          agent!.state.tools = toolsAfterHandoff;
-          runResume.setBeforeMessageCount(replacement.length);
-          runResume.setTurnStartMessageIndex(0);
-          runResume.adoptCommittedBoundary(replacement);
-          setSpanAttributes({
-            "gen_ai.agent.model": activeModelId,
-            "gen_ai.agent.model_profile": activeModelProfile,
-            "gen_ai.agent.reasoning.level": reasoningSelection!.reasoningLevel,
-          });
-          update = {
-            context: {
-              systemPrompt: baseInstructions,
-              messages: replacement,
-              tools: toolsAfterHandoff,
-            },
-            model,
-            thinkingLevel,
-          };
-        }
+        const update = applyPendingHandoff();
         await drainSteeringMessages();
         runResume.yieldAtSafeBoundaryIfDue(currentAgentMessages());
         return update;
@@ -744,7 +758,7 @@ async function executeAgentRunInPrivacyContext(
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(activeModelId),
-        thinkingLevel: toPiReasoningLevel(reasoningSelection.reasoningLevel),
+        thinkingLevel: toPiReasoningLevel(executionProfile.reasoningLevel),
         tools: wiring.agentTools,
       },
     });
@@ -871,10 +885,10 @@ async function executeAgentRunInPrivacyContext(
                     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                     "gen_ai.operation.name": "invoke_agent",
                     "gen_ai.request.model": activeModelId,
-                    ...(reasoningSelection
+                    ...(executionProfile
                       ? {
                           "gen_ai.request.reasoning.level":
-                            reasoningSelection.reasoningLevel,
+                            executionProfile.reasoningLevel,
                         }
                       : {}),
                     "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
@@ -919,9 +933,26 @@ async function executeAgentRunInPrivacyContext(
             }
           };
 
-          let run = shouldPromptAgent
-            ? agent!.prompt(freshPromptMessage)
-            : agent!.continue();
+          const requestedModelProfile =
+            activeModelProfile === STANDARD_MODEL_PROFILE
+              ? executionProfile!.requestedModelProfile
+              : undefined;
+          let run: Promise<unknown>;
+          if (requestedModelProfile) {
+            await scheduleHandoff({
+              profile: requestedModelProfile,
+              signal,
+              sourceMessages: shouldPromptAgent
+                ? [...agent!.state.messages, freshPromptMessage]
+                : [...agent!.state.messages],
+            });
+            applyPendingHandoff();
+            run = agent!.continue();
+          } else {
+            run = shouldPromptAgent
+              ? agent!.prompt(freshPromptMessage)
+              : agent!.continue();
+          }
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
             await runAgentStep(run);
@@ -1005,12 +1036,12 @@ async function executeAgentRunInPrivacyContext(
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.agent.model": activeModelId,
           "gen_ai.agent.model_profile": activeModelProfile,
-          "gen_ai.agent.reasoning.level": reasoningSelection.reasoningLevel,
-          "gen_ai.agent.reasoning.level_reason": reasoningSelection.reason,
-          ...(reasoningSelection.confidence !== undefined
+          "gen_ai.agent.reasoning.level": executionProfile.reasoningLevel,
+          "gen_ai.agent.reasoning.level_reason": executionProfile.reason,
+          ...(executionProfile.confidence !== undefined
             ? {
                 "gen_ai.agent.reasoning.level_confidence":
-                  reasoningSelection.confidence,
+                  executionProfile.confidence,
               }
             : {}),
           "gen_ai.output.type": "text",
@@ -1050,7 +1081,7 @@ async function executeAgentRunInPrivacyContext(
       shouldTrace,
       spanContext,
       usage: turnUsage,
-      reasoningSelection,
+      executionProfile,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
     });
@@ -1117,9 +1148,9 @@ async function executeAgentRunInPrivacyContext(
           outcome: "provider_error",
           modelId: activeModelId,
           assistantMessageCount: 0,
-          ...(reasoningSelection
+          ...(executionProfile
             ? {
-                reasoningLevel: reasoningSelection.reasoningLevel,
+                reasoningLevel: executionProfile.reasoningLevel,
               }
             : {}),
           toolCalls: [],

@@ -107,7 +107,9 @@ export function projectConversationReportEvents(args: {
         };
       }
     } else if (event.data.type === "handoff") {
-      const toolStartedSeq = toolStarts.get(event.data.triggeringToolCallId);
+      const toolStartedSeq = event.data.triggeringToolCallId
+        ? toolStarts.get(event.data.triggeringToolCallId)
+        : undefined;
       data = {
         type: "handoff",
         ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),

@@ -132,6 +132,7 @@ vi.mock("@/chat/pi/client", () => ({
       return {
         object: {
           reasoning_level: "high",
+          model_profile: "standard",
           confidence: 1,
           reason: "attachment stack trace",
         },
@@ -141,6 +142,7 @@ vi.mock("@/chat/pi/client", () => ({
       return {
         object: {
           reasoning_level: "none",
+          model_profile: "standard",
           confidence: 1,
           reason: "ack",
         },
@@ -150,6 +152,7 @@ vi.mock("@/chat/pi/client", () => ({
       return {
         object: {
           reasoning_level: "high",
+          model_profile: "standard",
           confidence: 1,
           reason: "code change request",
         },
@@ -158,6 +161,7 @@ vi.mock("@/chat/pi/client", () => ({
     return {
       object: {
         reasoning_level: "medium",
+        model_profile: "standard",
         confidence: 1,
         reason: "test-router",
       },

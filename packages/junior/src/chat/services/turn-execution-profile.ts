@@ -5,6 +5,11 @@ import {
   TURN_REASONING_LEVELS,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
+import {
+  DEFAULT_HANDOFF_MODEL_PROFILE,
+  STANDARD_MODEL_PROFILE,
+  type ModelProfile,
+} from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 
@@ -39,6 +44,10 @@ function coerceClassifierConfidence(value: unknown): unknown {
 
 const turnExecutionProfileSchema = z.object({
   reasoning_level: z.enum(TURN_REASONING_LEVELS),
+  model_profile: z.enum([
+    STANDARD_MODEL_PROFILE,
+    DEFAULT_HANDOFF_MODEL_PROFILE,
+  ]),
   confidence: z.preprocess(
     coerceClassifierConfidence,
     z.number().min(0).max(1),
@@ -46,13 +55,14 @@ const turnExecutionProfileSchema = z.object({
   reason: z.string().min(1),
 });
 
-export interface TurnReasoningSelection {
+export interface TurnExecutionProfile {
   confidence?: number;
   reasoningLevel: TurnReasoningLevel;
+  requestedModelProfile?: ModelProfile;
   reason: string;
 }
 
-const CLASSIFIER_FALLBACK_REASONING_LEVEL: TurnReasoningSelection["reasoningLevel"] =
+const CLASSIFIER_FALLBACK_REASONING_LEVEL: TurnExecutionProfile["reasoningLevel"] =
   "medium";
 const REASONING_LEVEL_RANK: Record<TurnReasoningLevel, number> = {
   none: 0,
@@ -94,8 +104,9 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 
 function buildClassifierSystemPrompt(): string {
   return [
-    "You route assistant turns to the reasoning level most likely to produce a complete, source-grounded answer.",
+    "You choose the execution profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
+    "Choose model_profile standard or handoff independently from the reasoning bucket.",
     "",
     "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
     "Use low rarely: only for deterministic one-step answers or transformations with no tools, no current/external facts, no prior thread-context interpretation, and no source verification.",
@@ -103,10 +114,12 @@ function buildClassifierSystemPrompt(): string {
     "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
+    "Use model_profile handoff for writing, editing, reviewing, debugging, or substantially reasoning about code; multi-file changes; architecture or root-cause analysis; research-heavy synthesis or complex planning; or another task where a more capable model materially improves reliability. Otherwise use standard.",
+    "Code architecture includes advice about dependency injection, module boundaries, configuration ownership, API design, and test strategy, even when the user requests advice only or says repository inspection is unnecessary.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
-    "Return JSON only with reasoning_level, confidence, and reason.",
+    "Return JSON only with reasoning_level, model_profile, confidence, and reason.",
     "confidence must be a number from 0 to 1, not a word label.",
   ].join("\n");
 }
@@ -146,18 +159,18 @@ function buildClassifierPrompt(args: {
 }
 
 /** Preserve an explicitly configured reasoning level without invoking the router. */
-export function configuredTurnReasoningLevel(
+export function configuredTurnExecutionProfile(
   reasoningLevel: TurnReasoningLevel,
   source: "agent_config" | "default",
-): TurnReasoningSelection {
+): TurnExecutionProfile {
   return {
     reasoningLevel,
     reason: `configured:${source}`,
   };
 }
 
-/** Choose the reasoning level for the upcoming assistant turn when none is configured. */
-export async function selectTurnReasoningLevel(args: {
+/** Route the upcoming assistant turn to its reasoning and model profiles. */
+export async function selectTurnExecutionProfile(args: {
   completeObject: (args: {
     modelId: string;
     schema: typeof turnExecutionProfileSchema;
@@ -178,7 +191,7 @@ export async function selectTurnReasoningLevel(args: {
   currentTurnBlocks?: string[];
   fastModelId: string;
   messageText: string;
-}): Promise<TurnReasoningSelection> {
+}): Promise<TurnExecutionProfile> {
   const trimmedContext = trimContextForRouter(args.conversationContext);
   const instructionLength = args.messageText.trim().length;
   const turnBlockCount = (args.currentTurnBlocks ?? []).filter(
@@ -199,8 +212,8 @@ export async function selectTurnReasoningLevel(args: {
   };
 
   return withSpan(
-    "chat.route_reasoning",
-    "chat.route_reasoning",
+    "chat.route_execution_profile",
+    "chat.route_execution_profile",
     logContext,
     async () => {
       setSpanAttributes({
@@ -245,9 +258,9 @@ export async function selectTurnReasoningLevel(args: {
 }
 
 function applyReasoningFloor(
-  selection: TurnReasoningSelection,
+  selection: TurnExecutionProfile,
   args: { minimum?: TurnReasoningLevel },
-): TurnReasoningSelection {
+): TurnExecutionProfile {
   const minimum = args.minimum;
   if (
     !minimum ||
@@ -267,17 +280,17 @@ function applyReasoningFloor(
 
 async function classifyTurn(args: {
   completeObject: Parameters<
-    typeof selectTurnReasoningLevel
+    typeof selectTurnExecutionProfile
   >[0]["completeObject"];
   fastModelId: string;
   metadata: Record<string, string>;
   prompt: string;
-}): Promise<TurnReasoningSelection> {
+}): Promise<TurnExecutionProfile> {
   try {
     const result = await args.completeObject({
       modelId: args.fastModelId,
       schema: turnExecutionProfileSchema,
-      maxTokens: 120,
+      maxTokens: 140,
       metadata: args.metadata,
       prompt: args.prompt,
       thinkingLevel: "low",
@@ -299,6 +312,9 @@ async function classifyTurn(args: {
     return {
       confidence: parsed.confidence,
       reasoningLevel: parsed.reasoning_level,
+      ...(parsed.model_profile === DEFAULT_HANDOFF_MODEL_PROFILE
+        ? { requestedModelProfile: parsed.model_profile }
+        : {}),
       reason,
     };
   } catch {
@@ -311,7 +327,7 @@ async function classifyTurn(args: {
 
 /** Convert a routing bucket into the Pi Agent reasoning setting for a main turn. */
 export function toPiReasoningLevel(
-  level: TurnReasoningSelection["reasoningLevel"],
+  level: TurnExecutionProfile["reasoningLevel"],
 ): AgentThinkingLevel | "off" {
   switch (level) {
     case "none":

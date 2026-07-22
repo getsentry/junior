@@ -39,8 +39,8 @@ describe("withSpan", () => {
       },
       async () => {
         await withSpan(
-          "chat.route_reasoning",
-          "chat.route_reasoning",
+          "chat.route_execution_profile",
+          "chat.route_execution_profile",
           {
             modelId: "openai/gpt-4o-mini",
           },

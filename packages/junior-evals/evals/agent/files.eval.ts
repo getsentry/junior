@@ -74,7 +74,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ],
       }),
     });
-    expect(toolCalls(result.session)[0]).toMatchObject({ name: "handoff" });
+    expect(result.usage.model).toBe("openai/gpt-5.6-sol");
   });
 
   it("hands a coding task off once and keeps its workspace on the next turn", async ({
