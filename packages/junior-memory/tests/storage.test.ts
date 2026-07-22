@@ -769,11 +769,18 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
+      const oldContent = "Prefers Python for automation scripts.";
+      const newContent = "Prefers TypeScript for automation scripts.";
+      const embedder = createTestEmbedder({
+        [oldContent]: unitEmbedding(0),
+        [newContent]: cosineEmbedding(0.98),
+      });
       const store = createMemoryStore(memoryDb(fixture), localContext(), {
+        embedder,
         now: () => TEST_NOW_MS,
       });
       const oldMemory = await store.createMemory({
-        content: "Prefers Python for automation scripts.",
+        content: oldContent,
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
       });
@@ -794,7 +801,7 @@ describe("memory plugin storage", () => {
             object: {
               memories: [
                 {
-                  canonicalFact: "Prefers TypeScript for automation scripts.",
+                  canonicalFact: newContent,
                   expiresAtMs: null,
                   kind: "preference",
                   evidenceMessageIndices: [0],
@@ -808,6 +815,7 @@ describe("memory plugin storage", () => {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
+          embedder,
           model,
           run: {
             async load() {
@@ -3277,72 +3285,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("keeps the closest vector match when lexical candidates fill the adjudication limit", async () => {
-    const fixture = await createMemoryFixture();
-
-    try {
-      const existingContent =
-        "Prefers deployment summaries to lead with risks.";
-      const duplicateContent =
-        "Wants concise release notes with warnings first.";
-      const vectors: Record<string, number[]> = {
-        [existingContent]: unitEmbedding(0),
-        [duplicateContent]: cosineEmbedding(0.98),
-      };
-      const distractorContents = Array.from(
-        { length: 12 },
-        (_, index) => `Wants release notes for workflow detail ${index}.`,
-      );
-      for (const [index, content] of distractorContents.entries()) {
-        vectors[content] = unitEmbedding(index + 2);
-      }
-      let duplicateId: string | undefined;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
-        embedder: createTestEmbedder(vectors),
-        now: () => TEST_NOW_MS,
-        supersessionDecider: {
-          adjudicateSupersession(input) {
-            if (input.candidate.content !== duplicateContent || !duplicateId) {
-              return { decision: "distinct" };
-            }
-            return input.existingMemories.some(
-              (memory) => memory.id === duplicateId,
-            )
-              ? { decision: "duplicate", duplicateId }
-              : { decision: "distinct" };
-          },
-        },
-      });
-      const existing = await store.createMemory({
-        content: existingContent,
-        kind: "preference",
-        idempotencyKey: "memory-test:vector-candidate-existing",
-      });
-      duplicateId = existing.memory.id;
-      for (const [index, content] of distractorContents.entries()) {
-        await store.createMemory({
-          content,
-          kind: "preference",
-          idempotencyKey: `memory-test:vector-candidate-distractor-${index}`,
-        });
-      }
-
-      await expect(
-        store.createMemory({
-          content: duplicateContent,
-          kind: "preference",
-          idempotencyKey: "memory-test:vector-candidate-duplicate",
-        }),
-      ).resolves.toMatchObject({
-        created: false,
-        memory: { id: existing.memory.id },
-      });
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("keeps the most recent preference when lexical candidates fill the limit without embeddings", async () => {
+  it("uses recent preferences for adjudication without embeddings", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -3410,10 +3353,18 @@ INSERT INTO junior_memory_memories (
       let nowMs = TEST_NOW_MS;
       const oldContent = "Prefers Python for automation scripts.";
       const newContent = "Prefers TypeScript for automation scripts.";
-      const embedder = createTestEmbedder({
-        [oldContent]: unitEmbedding(1),
-        [newContent]: unitEmbedding(2),
-      });
+      const vectors: Record<string, number[]> = {
+        [oldContent]: unitEmbedding(0),
+        [newContent]: cosineEmbedding(0.98),
+      };
+      const unrelatedContents = Array.from(
+        { length: 12 },
+        (_, index) => `Prefers unrelated workflow detail ${index}.`,
+      );
+      for (const [index, content] of unrelatedContents.entries()) {
+        vectors[content] = unitEmbedding(index + 2);
+      }
+      const embedder = createTestEmbedder(vectors);
       const preferenceAdjudicationCalls: MemorySupersessionInput[] = [];
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
@@ -3438,10 +3389,10 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-old",
       });
 
-      for (let index = 0; index < 12; index += 1) {
+      for (const [index, content] of unrelatedContents.entries()) {
         nowMs = TEST_NOW_MS + index + 1;
         await store.createMemory({
-          content: `Prefers unrelated workflow detail ${index}.`,
+          content,
           kind: "preference",
           idempotencyKey: `memory-test:supersession-unrelated-${index}`,
         });
