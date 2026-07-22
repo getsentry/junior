@@ -451,6 +451,43 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("keeps a terminal outcome when its opening delivery arrives late", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      const opened = lifecyclePayload({
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 1051,
+        number: 949,
+      });
+      const merged = lifecyclePayload({
+        action: "closed",
+        closedAt: "2026-07-03T12:00:00.000Z",
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 1051,
+        merged: true,
+        mergedAt: "2026-07-03T12:00:00.000Z",
+        number: 949,
+        updatedAt: "2026-07-03T12:00:00.000Z",
+      });
+
+      await route.handler(signedRequest(merged));
+      await route.handler(signedRequest(opened));
+
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          pullRequestId: "1051",
+          state: "merged",
+          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reports open, merged, and unmerged outcomes across 7/30/90 days", async () => {
     const fixture = await createGitHubFixture();
     try {
@@ -658,7 +695,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("only classifies ownership from the opened event", async () => {
+  it("does not classify ownership from a reopened event", async () => {
     const fixture = await createGitHubFixture();
     try {
       const route = webhookRoute(fixture);

@@ -70,12 +70,14 @@ export function normalizeGitHubPullRequestOutcome(args: {
       "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify pull request ownership",
     );
   }
-  const candidateOwned = Boolean(
-    parsed.action === "opened" &&
+  const hasOwnershipMarker = Boolean(
     botLogin &&
     authorLogin === botLogin &&
     pullRequest.body?.includes(GITHUB_SESSION_FOOTER_START),
   );
+  const candidateOwned =
+    hasOwnershipMarker &&
+    (parsed.action === "opened" || parsed.action === "closed");
   const state =
     parsed.action !== "closed"
       ? "open"

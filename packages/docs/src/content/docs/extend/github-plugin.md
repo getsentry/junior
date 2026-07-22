@@ -158,6 +158,10 @@ merge-rate, and time-to-merge summaries for 7-, 30-, and 90-day windows, plus
 the current open count. This reporting is independent of conversation
 subscriptions and never stores pull request bodies.
 
+If GitHub delivers a terminal event before its opening event, the plugin can
+establish the same ownership from the bot-and-footer marker on that terminal
+payload. A later stale opening event cannot regress the recorded outcome.
+
 ## Verify
 
 Run a real GitHub workflow in the chat surface where people will use it:

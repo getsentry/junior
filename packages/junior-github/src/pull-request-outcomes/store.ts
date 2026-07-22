@@ -67,8 +67,8 @@ export function parseGitHubPullRequestRows(
 
 /**
  * Record the newest lifecycle projection for one Junior-owned pull request.
- * Only an ownership-qualified opening inserts; later events update existing
- * rows, and older provider timestamps cannot regress the projection.
+ * An ownership-qualified opening or terminal recovery inserts; later events
+ * update existing rows, and older provider timestamps cannot regress it.
  */
 export async function recordGitHubPullRequestOutcome(
   db: GitHubDb,
