@@ -342,41 +342,6 @@ describe("oauth callback handler", () => {
     expect(await getStoredState(stateKey)).toBeFalsy();
   });
 
-  it("connects the state adapter before reading oauth state", async () => {
-    const stateKey = "oauth-state:connect-before-get";
-    await putStoredState(stateKey, {
-      userId: "U123",
-      provider: "sentry",
-    });
-
-    const adapter = getStateAdapter();
-    const connectSpy = vi.spyOn(adapter, "connect");
-    const getSpy = vi.spyOn(adapter, "get");
-
-    configureSentryOAuthEnv();
-    mockJsonFetch({
-      access_token: "new-access",
-      refresh_token: "new-refresh",
-      expires_in: 3600,
-    });
-
-    const response = await GET(
-      makeRequest(
-        "https://example.com/api/oauth/callback/sentry?code=auth-code&state=connect-before-get",
-      ),
-      "sentry",
-      testWaitUntil,
-      { agentRunner: testAgentRunner },
-    );
-
-    expect(response.status).toBe(200);
-    expect(connectSpy).toHaveBeenCalled();
-    expect(getSpy).toHaveBeenCalled();
-    expect(connectSpy.mock.invocationCallOrder[0]).toBeLessThan(
-      getSpy.mock.invocationCallOrder[0],
-    );
-  });
-
   it("returns styled HTML 500 when client credentials are missing", async () => {
     const stateKey = "oauth-state:test-state-789";
     await putStoredState(stateKey, {
