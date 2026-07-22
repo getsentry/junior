@@ -829,9 +829,8 @@ async function rememberDuplicateIdempotency(args: {
 }
 
 /**
- * Reserve the best lexical and vector matches, then fill the bounded model
- * input with ranked and recent active preferences so one retrieval strategy
- * cannot veto semantic adjudication.
+ * Reserve the best lexical, vector, and recent matches, then fill the bounded
+ * model input so one retrieval strategy cannot veto semantic adjudication.
  */
 async function listPreferenceAdjudicationCandidates(args: {
   content: string;
@@ -887,8 +886,23 @@ async function listPreferenceAdjudicationCandidates(args: {
         subject: args.subject,
       })
     : [];
+  const recentCandidates = (
+    await args.db
+      .select()
+      .from(juniorMemoryMemories)
+      .where(predicate)
+      .orderBy(
+        desc(juniorMemoryMemories.createdAtMs),
+        asc(juniorMemoryMemories.id),
+      )
+      .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT)
+  ).map(parseMemoryRow);
   const byId = new Map<string, MemoryRecord>();
-  for (const candidates of [lexicalCandidates, vectorCandidates]) {
+  for (const candidates of [
+    lexicalCandidates,
+    vectorCandidates,
+    recentCandidates,
+  ]) {
     const first = candidates[0];
     if (first) {
       byId.set(first.id, first);
@@ -897,28 +911,12 @@ async function listPreferenceAdjudicationCandidates(args: {
   for (const memory of [
     ...lexicalCandidates.slice(1),
     ...vectorCandidates.slice(1),
+    ...recentCandidates.slice(1),
   ]) {
     if (byId.size >= PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT) {
       break;
     }
     byId.set(memory.id, memory);
-  }
-  if (byId.size < PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT) {
-    const fallbackRows = await args.db
-      .select()
-      .from(juniorMemoryMemories)
-      .where(predicate)
-      .orderBy(
-        desc(juniorMemoryMemories.createdAtMs),
-        asc(juniorMemoryMemories.id),
-      )
-      .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
-    for (const memory of fallbackRows.map(parseMemoryRow)) {
-      byId.set(memory.id, memory);
-      if (byId.size >= PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT) {
-        break;
-      }
-    }
   }
   return [...byId.values()];
 }

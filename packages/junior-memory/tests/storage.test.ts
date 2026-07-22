@@ -3342,6 +3342,67 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
+  it("keeps the most recent preference when lexical candidates fill the limit without embeddings", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const existingContent =
+        "Prefers deployment summaries to lead with risks.";
+      const duplicateContent =
+        "Wants concise release notes with warnings first.";
+      const distractorContents = Array.from(
+        { length: 12 },
+        (_, index) => `Wants release notes for workflow detail ${index}.`,
+      );
+      let duplicateId: string | undefined;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+        supersessionDecider: {
+          adjudicateSupersession(input) {
+            if (input.candidate.content !== duplicateContent || !duplicateId) {
+              return { decision: "distinct" };
+            }
+            return input.existingMemories.some(
+              (memory) => memory.id === duplicateId,
+            )
+              ? { decision: "duplicate", duplicateId }
+              : { decision: "distinct" };
+          },
+        },
+      });
+      for (const [index, content] of distractorContents.entries()) {
+        nowMs = TEST_NOW_MS + index;
+        await store.createMemory({
+          content,
+          kind: "preference",
+          idempotencyKey: `memory-test:recent-candidate-distractor-${index}`,
+        });
+      }
+      nowMs = TEST_NOW_MS + 20;
+      const existing = await store.createMemory({
+        content: existingContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:recent-candidate-existing",
+      });
+      duplicateId = existing.memory.id;
+
+      nowMs = TEST_NOW_MS + 21;
+      await expect(
+        store.createMemory({
+          content: duplicateContent,
+          kind: "preference",
+          idempotencyKey: "memory-test:recent-candidate-duplicate",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: existing.memory.id },
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("supersedes old actor preferences when adjudication is confident", async () => {
     const fixture = await createMemoryFixture();
 
