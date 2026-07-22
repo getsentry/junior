@@ -10,6 +10,7 @@ const observations = vi.hoisted(() => ({
   }>,
   providerCalls: 0,
   toolAborted: false,
+  toolExecutions: [] as string[],
   toolStarted: false,
 }));
 
@@ -63,37 +64,58 @@ vi.mock("@/chat/pi/traced-stream", () => ({
             timestamp: Date.now(),
             usage: { input: 2, output: 1, totalTokens: 3 },
           }
-        : timeoutContinuation
+        : timeoutContinuation && observations.toolExecutions.length === 1
           ? {
               role: "assistant",
               content: [
                 {
-                  type: "text",
-                  text: "The targeted test passed and the pull request was created.",
+                  type: "toolCall",
+                  id: "bash-call-2",
+                  name: "bash",
+                  arguments: {
+                    command: "rerun-the-targeted-cloudflare-test",
+                    timeoutMs: 180_000,
+                  },
                 },
               ],
-              stopReason: "stop",
+              stopReason: "toolUse",
               api: "test",
               provider: "test",
               model: model.id,
               timestamp: Date.now(),
               usage: { input: 4, output: 3, totalTokens: 7 },
             }
-          : {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: "The work was interrupted during the targeted Cloudflare test rerun.",
-                },
-              ],
-              stopReason: "stop",
-              api: "test",
-              provider: "test",
-              model: model.id,
-              timestamp: Date.now(),
-              usage: { input: 4, output: 3, totalTokens: 7 },
-            };
+          : timeoutContinuation
+            ? {
+                role: "assistant",
+                content: [
+                  {
+                    type: "text",
+                    text: "The targeted test passed and the pull request was created.",
+                  },
+                ],
+                stopReason: "stop",
+                api: "test",
+                provider: "test",
+                model: model.id,
+                timestamp: Date.now(),
+                usage: { input: 4, output: 3, totalTokens: 7 },
+              }
+            : {
+                role: "assistant",
+                content: [
+                  {
+                    type: "text",
+                    text: "The work was interrupted during the targeted Cloudflare test rerun.",
+                  },
+                ],
+                stopReason: "stop",
+                api: "test",
+                provider: "test",
+                model: model.id,
+                timestamp: Date.now(),
+                usage: { input: 4, output: 3, totalTokens: 7 },
+              };
 
     return {
       async *[Symbol.asyncIterator]() {
@@ -114,7 +136,40 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
     }),
     canExecute: (toolName: string) => toolName === "bash",
-    execute: async ({ signal }: { signal?: AbortSignal }) => {
+    execute: async ({
+      input,
+      signal,
+    }: {
+      input: { command?: string };
+      signal?: AbortSignal;
+    }) => {
+      const command = input.command ?? "";
+      observations.toolExecutions.push(command);
+      if (observations.toolExecutions.length > 1) {
+        return {
+          result: {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: true,
+                  status: "success",
+                  target: command,
+                  stdout: "targeted Cloudflare test passed",
+                  exit_code: 0,
+                }),
+              },
+            ],
+            details: {
+              ok: true,
+              status: "success",
+              target: command,
+              stdout: "targeted Cloudflare test passed",
+              exit_code: 0,
+            },
+          },
+        };
+      }
       observations.toolStarted = true;
       await new Promise<void>((resolve) => {
         const abort = () => {
@@ -187,6 +242,7 @@ describe("executeAgentRun tool timeout continuation", () => {
     observations.continuationMessages = [];
     observations.providerCalls = 0;
     observations.toolAborted = false;
+    observations.toolExecutions = [];
     observations.toolStarted = false;
     await disconnectStateAdapter();
     vi.useFakeTimers();
@@ -202,7 +258,7 @@ describe("executeAgentRun tool timeout continuation", () => {
     }
   });
 
-  it("does not finish a timed-out tool continuation with an interruption-only reply", async () => {
+  it("continues using tools after a tool is interrupted at the turn deadline", async () => {
     const conversationId = "local:test:tool-timeout-continuation";
     const turnId = "turn-tool-timeout-continuation";
     const request = {
@@ -247,6 +303,10 @@ describe("executeAgentRun tool timeout continuation", () => {
     expect(observations.continuationMessages.at(-1)).toMatchObject({
       role: "toolResult",
     });
+    expect(observations.toolExecutions).toEqual([
+      "run-the-targeted-cloudflare-test",
+      "rerun-the-targeted-cloudflare-test",
+    ]);
     expect(resumed.status).toBe("completed");
     if (resumed.status !== "completed") return;
     expect(resumed.result.text).not.toMatch(/interrupted/i);
