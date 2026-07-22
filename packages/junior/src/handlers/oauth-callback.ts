@@ -503,10 +503,12 @@ export async function GET(
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
 
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+
   if (errorParam) {
     if (state) {
-      const cleanupAdapter = getStateAdapter();
-      await cleanupAdapter.delete(`oauth-state:${state}`);
+      await stateAdapter.delete(`oauth-state:${state}`);
     }
 
     if (errorParam === "access_denied") {
@@ -531,7 +533,6 @@ export async function GET(
     );
   }
 
-  const stateAdapter = getStateAdapter();
   const stateKey = `oauth-state:${state}`;
   const stored = parseOAuthStatePayload(await stateAdapter.get(stateKey));
   if (!stored) {
