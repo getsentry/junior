@@ -21,7 +21,7 @@ import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 
 interface HandoffControl {
-  /** Non-empty catalog with the default target first. */
+  /** Non-empty catalog of configured targets. */
   profiles: readonly [ModelProfile, ...ModelProfile[]];
   execute: (
     profile: ModelProfile,

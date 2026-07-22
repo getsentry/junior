@@ -505,6 +505,9 @@ async function executeAgentRunInPrivacyContext(
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
     }) => {
+      if (args.profile === activeModelProfile) {
+        return;
+      }
       const runtimeContext = retainRuntimeTurnContext(
         args.runtimeContextSourceMessages ?? args.sourceMessages,
       );

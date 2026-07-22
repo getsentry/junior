@@ -349,7 +349,6 @@ const TURN_CONTEXT_HEADER =
 
 const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
-  "- Model upgrade: when `handoff` is available, call it immediately and as the only tool before handling any request to write, edit, review, debug, or substantially reason about code; make a multi-file change; perform architecture or root-cause analysis; do research-heavy synthesis or complex planning; or complete another task where a more capable model materially improves reliability. Choose the configured profile whose name best fits the task, or omit `profile` to use the default. Do not inspect or modify files first. After handoff, continue the same task normally.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",

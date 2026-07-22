@@ -18,11 +18,11 @@ export function createHandoffTool(
     .map((profile) => `\`${profile}\``)
     .join(", ");
   return zodTool({
-    description: `Switch execution profiles and continue the same task with the same workspace and tools. Available profiles: ${profileNames}. Call this as the only tool in the assistant message.`,
+    description: `Switch to another execution profile and continue the same task. Profiles: ${profileNames}. Call this as the only tool.`,
     executionMode: "sequential",
     inputSchema: z
       .object({
-        profile: profileSchema.describe("Execution profile to switch to"),
+        profile: profileSchema.describe("Target execution profile"),
       })
       .strict(),
     outputSchema: handoffResultSchema,
