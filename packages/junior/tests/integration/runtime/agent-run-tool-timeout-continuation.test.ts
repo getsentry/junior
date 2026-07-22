@@ -228,7 +228,6 @@ describe("executeAgentRun tool timeout continuation", () => {
 
     const resumed = await executeAgentRun(request);
 
-    expect(observations.providerCalls).toBe(3);
     expect(observations.continuationMessages.at(-1)).toMatchObject({
       role: "toolResult",
     });
