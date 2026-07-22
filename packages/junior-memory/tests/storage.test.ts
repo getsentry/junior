@@ -781,7 +781,7 @@ describe("memory plugin storage", () => {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
-            input.prompt.includes("<memory-supersession-input>")
+            input.prompt.includes("<memory-preference-adjudication-input>")
           ) {
             return {
               object: {
@@ -3228,6 +3228,55 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
+  it("reuses a semantic duplicate selected by preference adjudication without embeddings", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let duplicateId: string | undefined;
+      const model: PluginModel = {
+        async completeObject(input) {
+          expect(input.prompt).toContain(
+            "<memory-preference-adjudication-input>",
+          );
+          return {
+            object: duplicateId
+              ? { decision: "duplicate", duplicateId }
+              : { decision: "distinct" },
+          };
+        },
+      };
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => TEST_NOW_MS,
+        supersessionDecider: createMemoryAgent(model),
+      });
+      const existing = await store.createMemory({
+        content: "Prefers PR summaries with risks first.",
+        kind: "preference",
+        idempotencyKey: "memory-test:adjudicated-duplicate-original",
+      });
+      duplicateId = existing.memory.id;
+
+      await expect(
+        store.createMemory({
+          content: "Wants danger notes at the beginning of code review recaps.",
+          kind: "preference",
+          idempotencyKey: "memory-test:adjudicated-duplicate-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: {
+          content: existing.memory.content,
+          id: existing.memory.id,
+        },
+      });
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: existing.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("supersedes old actor preferences when adjudication is confident", async () => {
     const fixture = await createMemoryFixture();
 
@@ -3239,13 +3288,13 @@ INSERT INTO junior_memory_memories (
         [oldContent]: unitEmbedding(1),
         [newContent]: unitEmbedding(2),
       });
-      const supersessionCalls: MemorySupersessionInput[] = [];
+      const preferenceAdjudicationCalls: MemorySupersessionInput[] = [];
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession(input) {
-            supersessionCalls.push(input);
+            preferenceAdjudicationCalls.push(input);
             if (input.candidate.content !== newContent) {
               return { decision: "distinct" };
             }
@@ -3272,7 +3321,7 @@ INSERT INTO junior_memory_memories (
         });
       }
 
-      supersessionCalls.length = 0;
+      preferenceAdjudicationCalls.length = 0;
       nowMs = TEST_NOW_MS + 20;
       const newMemory = await store.createMemory({
         content: newContent,
@@ -3280,7 +3329,7 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-new",
       });
 
-      expect(supersessionCalls).toEqual([
+      expect(preferenceAdjudicationCalls).toEqual([
         expect.objectContaining({
           candidate: { content: newContent, kind: "preference" },
           existingMemories: expect.arrayContaining([
@@ -3288,7 +3337,7 @@ INSERT INTO junior_memory_memories (
           ]),
         }),
       ]);
-      expect(supersessionCalls[0]?.existingMemories[0]).toEqual({
+      expect(preferenceAdjudicationCalls[0]?.existingMemories[0]).toEqual({
         content: oldContent,
         id: oldMemory.memory.id,
       });
@@ -3395,14 +3444,14 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const decider: MemorySupersessionDecider = {
+      const adjudicator: MemorySupersessionDecider = {
         adjudicateSupersession() {
           throw new Error("expired replacement should not use supersession");
         },
       };
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
-        supersessionDecider: decider,
+        supersessionDecider: adjudicator,
       });
 
       const oldMemory = await store.createMemory({

@@ -76,6 +76,7 @@ export const evalMemoryModel: PluginModel = {
             input.prompt,
             "",
             "Return only raw JSON in exactly one of these shapes:",
+            '{"decision":"duplicate","duplicateId":"existing-memory-id"}',
             '{"decision":"supersedes_old","supersededIds":["existing-memory-id"]}',
             '{"decision":"distinct"}',
             '{"decision":"uncertain"}',
@@ -112,6 +113,20 @@ export async function readMemories(thread: MemoryThread) {
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
   return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
+}
+
+/** Read the durable memories currently eligible for recall in one eval thread. */
+export async function readActiveMemories(
+  thread: MemoryThread,
+  nowMs = Date.now(),
+) {
+  return (await readMemories(thread)).filter(
+    (memory) =>
+      memory.archivedAtMs === null &&
+      memory.supersededAtMs === null &&
+      memory.supersededById === null &&
+      (memory.expiresAtMs === null || memory.expiresAtMs > nowMs),
+  );
 }
 
 export async function clearMemories() {

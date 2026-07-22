@@ -1,8 +1,10 @@
 import { actorSchema, type PluginModel } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type {
-  MemorySupersessionDecision,
-  MemorySupersessionInput,
+import {
+  memorySupersessionDecisionSchema,
+  memorySupersessionInputSchema,
+  type MemorySupersessionDecision,
+  type MemorySupersessionInput,
 } from "./store";
 import {
   MEMORY_KINDS,
@@ -84,29 +86,6 @@ const extractSessionRequestSchema = z
       .min(1),
   })
   .strict();
-const supersessionRequestSchema = z
-  .object({
-    candidate: z
-      .object({
-        content: z.string().min(1),
-        kind: z.literal("preference"),
-      })
-      .strict(),
-    existingMemories: z
-      .array(
-        z
-          .object({
-            content: z.string().min(1),
-            id: z.string().min(1),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(10),
-    runtimeContext: memoryRuntimeContextSchema,
-  })
-  .strict();
-
 const expiresAtMsSchema = z
   .number()
   .finite()
@@ -186,20 +165,6 @@ const extractMemoriesResponseSchema = z
       ),
   })
   .strict();
-const supersessionDecisionResponseSchema = z.discriminatedUnion("decision", [
-  z
-    .object({
-      decision: z.literal("supersedes_old"),
-      supersededIds: z.array(z.string().min(1)).min(1).max(10),
-    })
-    .strict(),
-  z
-    .object({
-      decision: z.enum(["distinct", "uncertain"]),
-    })
-    .strict(),
-]);
-
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
@@ -212,7 +177,7 @@ export type ExtractSessionRequest = z.output<
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
 export interface MemoryAgent {
-  /** Decide whether a new preference safely replaces active old preferences. */
+  /** Classify a new preference against related active preferences. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
   ): Promise<MemorySupersessionDecision> | MemorySupersessionDecision;
@@ -238,11 +203,12 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
-const MEMORY_SUPERSESSION_SYSTEM = [
-  "You are Junior's memory supersession agent.",
-  "Decide whether a new actor preference clearly replaces existing active actor preferences.",
-  "Return supersedes_old only for obvious changed preferences about the same mutable slot.",
-  "If the facts are additive, different topics, duplicate, broader/narrower without direct replacement, or uncertain, do not supersede.",
+const MEMORY_PREFERENCE_ADJUDICATION_SYSTEM = [
+  "You are Junior's memory preference adjudication agent.",
+  "Classify how one new actor preference relates to existing active actor preferences.",
+  "Return duplicate when the same durable preference is merely phrased differently.",
+  "Return supersedes_old only for an obvious changed value in the same mutable preference slot.",
+  "Return distinct for additive preferences or different topics, and uncertain when the relationship is unclear.",
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
   "- Stored memory text must be a rewritten fact, not copied user wording or a sentence about who said it.",
@@ -478,10 +444,12 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   ].join("\n");
 }
 
-function supersessionPrompt(request: MemorySupersessionInput): string {
+function preferenceAdjudicationPrompt(
+  request: MemorySupersessionInput,
+): string {
   return [
-    "<memory-supersession-input>",
-    "Decide whether the candidate preference clearly replaces one or more existing active preferences.",
+    "<memory-preference-adjudication-input>",
+    "Classify the candidate preference against the related active preferences.",
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
@@ -496,14 +464,16 @@ function supersessionPrompt(request: MemorySupersessionInput): string {
     "</existing-memories>",
     "",
     "<rules>",
+    "- Return duplicate when the candidate and one existing memory express the same durable preference or value with different wording.",
     "- Return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
     "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
-    "- Do not supersede when the candidate is just more specific, an additional preference, a different task/context, or the same value phrased differently.",
+    "- Return distinct when the candidate is an additional preference or belongs to a different task or topic.",
+    "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
     "- Do not supersede memories from different topics even if they are both preferences.",
-    "- Only return ids that appear in existing-memories.",
+    "- duplicateId and supersededIds may contain only ids from existing-memories.",
     "- If unsure, return uncertain.",
     "</rules>",
-    "</memory-supersession-input>",
+    "</memory-preference-adjudication-input>",
   ].join("\n");
 }
 
@@ -511,18 +481,14 @@ function supersessionPrompt(request: MemorySupersessionInput): string {
 export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
     async adjudicateSupersession(rawRequest) {
-      const request = supersessionRequestSchema.parse(
-        rawRequest,
-      ) as MemorySupersessionInput;
+      const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({
-        schema: supersessionDecisionResponseSchema,
-        system: MEMORY_SUPERSESSION_SYSTEM,
-        prompt: supersessionPrompt(request),
+        schema: memorySupersessionDecisionSchema,
+        system: MEMORY_PREFERENCE_ADJUDICATION_SYSTEM,
+        prompt: preferenceAdjudicationPrompt(request),
         maxTokens: 400,
       });
-      return supersessionDecisionResponseSchema.parse(
-        result.object,
-      ) as MemorySupersessionDecision;
+      return memorySupersessionDecisionSchema.parse(result.object);
     },
     async extractSessionMemories(rawRequest) {
       const request = extractSessionRequestSchema.parse(rawRequest);

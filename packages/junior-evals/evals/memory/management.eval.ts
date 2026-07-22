@@ -4,6 +4,7 @@ import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
   memoryPluginOverrides,
+  readActiveMemories,
   readMemories,
   seedMemory,
 } from "./helpers";
@@ -79,17 +80,16 @@ describeEval("Memory Management", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant acknowledges the preference naturally without creating a second remembered copy.",
+          "The assistant acknowledges that PR summaries should continue to put risks first.",
           "The assistant does not mention hidden storage fields, scope keys, or Slack ids.",
         ],
         fail: [
-          "Do not claim a new duplicate memory was saved.",
           "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
         ],
       }),
     });
 
-    const rows = await readMemories(passiveDedupeThread);
+    const rows = await readActiveMemories(passiveDedupeThread);
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,

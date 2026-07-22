@@ -135,7 +135,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
     });
   });
 
-  it("when adjudicating preference supersession, distinguish replacement from additive preferences", async () => {
+  it("when adjudicating preferences, distinguish duplicates, replacements, and additive preferences", async () => {
     const agent = createMemoryAgent(evalMemoryModel);
     const runtimeContext = {
       conversationId: "slack:CMEMORYSUPERSESSION:17000000.000003",
@@ -172,6 +172,24 @@ describeEval("Personal Memory", slackEvals, (it) => {
       supersededIds: ["memory-old-language"],
     });
 
+    const duplicate = await agent.adjudicateSupersession({
+      candidate: {
+        content: "Wants meeting reminders 24 hours in advance.",
+        kind: "preference",
+      },
+      existingMemories: [
+        {
+          content: "Prefers calendar reminders one day before meetings.",
+          id: "memory-existing-reminder-timing",
+        },
+      ],
+      runtimeContext,
+    });
+    expect(duplicate).toEqual({
+      decision: "duplicate",
+      duplicateId: "memory-existing-reminder-timing",
+    });
+
     const additive = await agent.adjudicateSupersession({
       candidate: {
         content: "Prefers Slack updates in the morning.",
@@ -185,6 +203,6 @@ describeEval("Personal Memory", slackEvals, (it) => {
       ],
       runtimeContext,
     });
-    expect(additive.decision).not.toBe("supersedes_old");
+    expect(additive).toEqual({ decision: "distinct" });
   }, 120_000);
 });
