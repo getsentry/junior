@@ -40,22 +40,27 @@ describe("locations API", () => {
       expect(destination).toBeDefined();
 
       const now = new Date(nowMs);
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values(
-          Array.from({ length: 5_000 }, (_, index) =>
-            buildJuniorSqlConversation({
-              conversationId: `slack:C1:aggregate:${index}`,
-              destinationId: destination?.id,
-              durationMs: 2,
-              createdAt: now,
-              lastActivityAt: now,
-              updatedAt: now,
-              usage: { totalTokens: 3 },
-            }),
-          ),
-        );
+      const aggregateConversations = Array.from({ length: 5_000 }, (_, index) =>
+        buildJuniorSqlConversation({
+          conversationId: `slack:C1:aggregate:${index}`,
+          destinationId: destination?.id,
+          durationMs: 2,
+          createdAt: now,
+          lastActivityAt: now,
+          updatedAt: now,
+          usage: { totalTokens: 3 },
+        }),
+      );
+      for (
+        let index = 0;
+        index < aggregateConversations.length;
+        index += 1_000
+      ) {
+        await fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values(aggregateConversations.slice(index, index + 1_000));
+      }
       await fixture.sql
         .db()
         .insert(juniorConversations)

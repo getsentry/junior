@@ -4,8 +4,11 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 
 interface ConversationRow {
-  destinationId: string | null;
-  parentId: string | null;
+  requestedRootConversationId: string | null;
+  rootConversationId: string | null;
+  rootDestinationId: string | null;
+  rootParentConversationId: string | null;
+  rootRootConversationId: string | null;
 }
 
 function scriptedExecutor(args: {
@@ -29,6 +32,9 @@ function scriptedExecutor(args: {
       const query = {
         from(table: unknown) {
           source = table;
+          return query;
+        },
+        leftJoin() {
           return query;
         },
         where() {
@@ -57,8 +63,13 @@ describe("resolveRootVisibility", () => {
     const result = await resolveRootVisibility(
       scriptedExecutor({
         conversations: [
-          { destinationId: null, parentId: "root" },
-          { destinationId: "destination", parentId: null },
+          {
+            requestedRootConversationId: "root",
+            rootConversationId: "root",
+            rootDestinationId: "destination",
+            rootParentConversationId: null,
+            rootRootConversationId: "root",
+          },
         ],
         visibility: "public",
       }),
@@ -78,11 +89,27 @@ describe("resolveRootVisibility", () => {
     },
     {
       name: "a missing parent",
-      rows: [{ destinationId: null, parentId: "missing" }],
+      rows: [
+        {
+          requestedRootConversationId: "missing",
+          rootConversationId: null,
+          rootDestinationId: null,
+          rootParentConversationId: null,
+          rootRootConversationId: null,
+        },
+      ],
     },
     {
       name: "a missing root destination",
-      rows: [{ destinationId: null, parentId: null }],
+      rows: [
+        {
+          requestedRootConversationId: "requested",
+          rootConversationId: "requested",
+          rootDestinationId: null,
+          rootParentConversationId: null,
+          rootRootConversationId: "requested",
+        },
+      ],
     },
   ])("fails closed for $name", async ({ rows }) => {
     await expect(
