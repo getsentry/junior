@@ -1,6 +1,7 @@
-import { MessageSquareText, Search } from "lucide-react";
+import { Archive, MessageSquareText, Search } from "lucide-react";
 import { Link } from "react-router";
 
+import { useArchiveConversation } from "../api";
 import {
   conversationDisplayTitle,
   conversationPath,
@@ -83,45 +84,69 @@ function ConversationSidebarRow(props: {
   conversation: Conversation;
   selected: boolean;
 }) {
+  const archive = useArchiveConversation(props.conversation.id);
   const status = visualStatusForConversation(props.conversation);
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
   });
+  const title = conversationDisplayTitle(props.conversation);
   return (
-    <Link
-      aria-current={props.selected ? "page" : undefined}
-      className={cn(
-        "relative block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:border-white/[0.07] hover:bg-white/[0.035]",
-        props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
-      )}
-      to={conversationPath(props.conversation.id)}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            status === "active" &&
-              "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.55)]",
-            status === "failed" && "bg-rose-300",
-            status === "idle" && "bg-white/25",
-          )}
-        />
-        <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-white/90">
-          {conversationDisplayTitle(props.conversation)}
+    <div className="group relative min-w-0">
+      <Link
+        aria-current={props.selected ? "page" : undefined}
+        className={cn(
+          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:border-white/[0.07] hover:bg-white/[0.035]",
+          props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
+        )}
+        to={conversationPath(props.conversation.id)}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              status === "active" &&
+                "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.55)]",
+              status === "failed" && "bg-rose-300",
+              status === "idle" && "bg-white/25",
+            )}
+          />
+          <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-white/90">
+            {title}
+          </div>
         </div>
-      </div>
-      <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.62rem] leading-tight text-white/30">
-        <span className="shrink-0">
-          {formatRelativeTime(props.conversation.lastSeenAt)}
-        </span>
-        {location ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="truncate">{location}</span>
-          </>
-        ) : null}
-      </div>
-    </Link>
+        <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.62rem] leading-tight text-white/30">
+          <span className="shrink-0">
+            {formatRelativeTime(props.conversation.lastSeenAt)}
+          </span>
+          {location ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="truncate">{location}</span>
+            </>
+          ) : null}
+        </div>
+      </Link>
+      <button
+        aria-label={`Archive ${title}`}
+        className={cn(
+          "pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-md border border-white/15 bg-[#111719] text-white/60 opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:border-white/30 hover:text-white focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
+          archive.error && "border-rose-300/30 text-rose-200/80",
+        )}
+        disabled={archive.isPending}
+        onClick={() =>
+          archive.mutate({
+            archived: true,
+            lastSeenAt: props.conversation.lastSeenAt,
+          })
+        }
+        title={
+          archive.error ? `Could not archive ${title}` : `Archive ${title}`
+        }
+        type="button"
+      >
+        <Archive aria-hidden="true" size={15} />
+      </button>
+    </div>
   );
 }
