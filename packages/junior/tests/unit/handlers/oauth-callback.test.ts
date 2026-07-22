@@ -342,6 +342,37 @@ describe("oauth callback handler", () => {
     expect(await getStoredState(stateKey)).toBeFalsy();
   });
 
+  it("handles callbacks when the state adapter starts disconnected", async () => {
+    const stateKey = "oauth-state:cold-start";
+    await putStoredState(stateKey, {
+      userId: "U123",
+      provider: "sentry",
+    });
+
+    configureSentryOAuthEnv();
+    mockJsonFetch({
+      access_token: "new-access",
+      refresh_token: "new-refresh",
+      expires_in: 3600,
+    });
+
+    await getStateAdapter().disconnect();
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/sentry?code=auth-code&state=cold-start",
+      ),
+      "sentry",
+      testWaitUntil,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await getStoredTokens("U123", "sentry")).toMatchObject({
+      accessToken: "new-access",
+    });
+  });
+
   it("returns styled HTML 500 when client credentials are missing", async () => {
     const stateKey = "oauth-state:test-state-789";
     await putStoredState(stateKey, {
