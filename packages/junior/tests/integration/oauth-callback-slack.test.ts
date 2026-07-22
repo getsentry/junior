@@ -20,13 +20,6 @@ import {
   type ConversationMessage,
 } from "@/chat/state/conversation";
 
-const queueSendMock = vi.hoisted(() =>
-  vi.fn(async () => ({ messageId: "oauth-resume-wake" })),
-);
-
-vi.mock("@/chat/vercel-queue-client", () => ({
-  createVercelQueueClient: () => ({ send: queueSendMock }),
-}));
 /**
  * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
  * authority the resume handlers now read from. Takes the connected adapter so it
@@ -99,7 +92,6 @@ let pluginApp: PluginAppFixture | undefined;
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
     executeAgentRunMock.mockReset();
-    queueSendMock.mockClear();
     executeAgentRunMock.mockImplementation(async (request) => {
       await deliverAssistantMessagesForTest(request, [
         { text: "Here are your Sentry issues." },
@@ -166,171 +158,6 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     ]);
-  }, 20_000);
-
-  it("resumes a pending OAuth request with persisted thread context", async () => {
-    const storedSource = createSlackSource({
-      teamId: "T123",
-      channelId: "C123",
-      messageTs: "1700000000.oauth-source",
-      threadTs: "1700000000.001",
-
-      type: "priv",
-    });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-resume-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        threadTs: "1700000000.001",
-        pendingMessage: "list my sentry issues",
-      });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("thread-state:slack:C123:1700000000.001", {
-        conversation: {
-          messages: [
-            {
-              id: "assistant-1",
-              role: "assistant",
-              text: "You need the budget by Friday.",
-              createdAtMs: 1,
-              author: {
-                userName: "junior",
-                isBot: true,
-              },
-            },
-            {
-              id: "user-1",
-              role: "user",
-              text: "list my sentry issues",
-              createdAtMs: 2,
-              author: {
-                userId: "U123",
-                userName: "dcramer",
-              },
-            },
-          ],
-        },
-      });
-    await seedVisibleTranscriptFromThreadState(
-      stateAdapterModule.getStateAdapter(),
-      "slack:C123:1700000000.001",
-    );
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-resume-state",
-      code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
-    });
-
-    expect(response.status).toBe(200);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "slack:C123:1700000000.001",
-        turnId: "turn_user-1",
-        input: expect.objectContaining({
-          messageText: "list my sentry issues",
-          conversationContext: expect.stringContaining(
-            "You need the budget by Friday.",
-          ),
-        }),
-        routing: expect.objectContaining({
-          destination: SLACK_DESTINATION,
-          source: storedSource,
-        }),
-      }),
-    );
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      input?: { conversationContext?: string };
-    };
-    expect(resumeContext.input?.conversationContext).not.toContain(
-      "list my sentry issues",
-    );
-
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.001",
-            text: "Here are your Sentry issues.",
-          }),
-        }),
-      ]),
-    );
-  }, 20_000);
-
-  it("schedules a continuation when a pending OAuth resume suspends", async () => {
-    const threadTs = "1700000000.002";
-    const conversationId = `slack:C123:${threadTs}`;
-    const turnId = "turn_user-retry";
-    const storedSource = slackSource(threadTs);
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-retry-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        threadTs,
-        pendingMessage: "list my sentry issues",
-      });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set(`thread-state:${conversationId}`, {
-        conversation: {
-          messages: [
-            {
-              id: "user-retry",
-              role: "user",
-              text: "list my sentry issues",
-              createdAtMs: 1,
-              author: { userId: "U123", userName: "dcramer" },
-            },
-          ],
-        },
-      });
-    await seedVisibleTranscriptFromThreadState(
-      stateAdapterModule.getStateAdapter(),
-      conversationId,
-    );
-    executeAgentRunMock.mockImplementationOnce(async () => {
-      const record = await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId: turnId,
-        sliceId: 2,
-        state: "awaiting_resume",
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        piMessages: [],
-        resumeReason: "retry",
-      });
-      return { status: "suspended", resumeVersion: record.version } as const;
-    });
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-retry-state",
-      code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
-    });
-
-    expect(response.status).toBe(200);
-    const persistedState = await stateAdapterModule
-      .getStateAdapter()
-      .get<{
-        conversation?: { processing?: { activeTurnId?: string } };
-      }>(`thread-state:${conversationId}`);
-    expect(persistedState?.conversation?.processing?.activeTurnId).toBe(turnId);
-    expect(queueSendMock).toHaveBeenCalledOnce();
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   }, 20_000);
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {

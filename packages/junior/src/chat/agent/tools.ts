@@ -212,7 +212,6 @@ export async function wireAgentTools(
         ? args.routing.source.threadTs
         : undefined,
     userMessage: args.userInput,
-    channelConfiguration: args.policy.channelConfiguration,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,

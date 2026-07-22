@@ -4,7 +4,6 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -31,7 +30,6 @@ export type OAuthStatePayload = {
   source?: Source;
   threadTs?: string;
   pendingMessage?: string;
-  configuration?: Record<string, unknown>;
   resumeConversationId?: string;
   resumeSessionId?: string;
   scope?: string;
@@ -44,7 +42,6 @@ type OAuthFlowInput = {
   source?: Source;
   threadTs?: string;
   userMessage?: string;
-  channelConfiguration?: ChannelConfigurationService;
   activeSkillName?: string;
   resumeConversationId?: string;
   resumeSessionId?: string;
@@ -94,9 +91,6 @@ export function parseOAuthStatePayload(
       ? { threadTs: optionalString(value.threadTs) }
       : {}),
     ...(pendingMessage ? { pendingMessage } : {}),
-    ...(isRecord(value.configuration)
-      ? { configuration: value.configuration }
-      : {}),
     ...(optionalString(value.resumeConversationId)
       ? { resumeConversationId: optionalString(value.resumeConversationId) }
       : {}),
@@ -252,10 +246,6 @@ export async function startOAuthFlow(
     };
   }
 
-  const configuration =
-    input.userMessage && input.channelConfiguration
-      ? await input.channelConfiguration.resolveValues()
-      : undefined;
   const state = randomBytes(32).toString("hex");
   const requestedScope = input.scope ?? providerConfig.scope;
 
@@ -269,9 +259,6 @@ export async function startOAuthFlow(
       ...(input.source ? { source: input.source } : {}),
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
-      ...(configuration && Object.keys(configuration).length > 0
-        ? { configuration }
-        : {}),
       ...(input.resumeConversationId
         ? { resumeConversationId: input.resumeConversationId }
         : {}),

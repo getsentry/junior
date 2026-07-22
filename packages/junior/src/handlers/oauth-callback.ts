@@ -39,15 +39,10 @@ import {
   getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
-import {
-  buildDeterministicTurnId,
-  markTurnFailed,
-  startActiveTurn,
-} from "@/chat/runtime/turn";
+import { markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
-import { lookupSlackActor } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -186,7 +181,7 @@ async function persistFailedOAuthReplyState(args: {
 async function resumeOAuthSessionRecordTurn(
   stored: OAuthStatePayload,
   options: OAuthCallbackOptions,
-): Promise<boolean> {
+): Promise<void> {
   if (
     !stored.resumeConversationId ||
     !stored.resumeSessionId ||
@@ -195,7 +190,7 @@ async function resumeOAuthSessionRecordTurn(
     !stored.source ||
     !stored.threadTs
   ) {
-    return false;
+    return;
   }
   const destination = requireSlackDestination(
     stored.destination,
@@ -234,7 +229,7 @@ async function resumeOAuthSessionRecordTurn(
         errorMessage:
           "Auth completed after a newer thread message abandoned this blocked request.",
       });
-      return true;
+      return;
     }
   }
 
@@ -243,31 +238,30 @@ async function resumeOAuthSessionRecordTurn(
     resolvedSessionId,
   );
   if (!sessionRecord) {
-    return false;
+    return;
   }
-  // Terminal session record states are already handled; do not fall through to
-  // the pending-message resume which would re-post the original request.
+  // Terminal session record states are already handled.
   if (
     sessionRecord.state === "completed" ||
     sessionRecord.state === "failed" ||
     sessionRecord.state === "abandoned"
   ) {
-    return true;
+    return;
   }
   if (
     sessionRecord.state !== "awaiting_resume" ||
     sessionRecord.resumeReason !== "auth"
   ) {
-    return true;
+    return;
   }
   if (!userMessage?.author?.userId) {
-    return false;
+    return;
   }
   if (
     !pendingAuth &&
     conversation.processing.activeTurnId !== stored.resumeSessionId
   ) {
-    return true;
+    return;
   }
 
   await resumeSlackTurn({
@@ -490,104 +484,6 @@ async function resumeOAuthSessionRecordTurn(
       };
     },
   });
-
-  return true;
-}
-
-async function resumePendingOAuthMessage(
-  stored: OAuthStatePayload,
-  options: OAuthCallbackOptions,
-): Promise<void> {
-  const source = stored.source;
-  if (
-    !stored.pendingMessage ||
-    !stored.channelId ||
-    !stored.destination ||
-    !source ||
-    !stored.threadTs
-  ) {
-    return;
-  }
-
-  const threadId = `slack:${stored.channelId}:${stored.threadTs}`;
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(threadId),
-  );
-  await hydrateConversationMessages({ conversation, conversationId: threadId });
-  const latestUserMessage = [...conversation.messages]
-    .reverse()
-    .find((message) => message.role === "user");
-  const conversationContext = buildConversationContext(conversation, {
-    excludeMessageId: latestUserMessage?.id,
-  });
-  const destination = requireSlackDestination(
-    stored.destination,
-    "OAuth pending message resume",
-  );
-  const actor = await lookupSlackActor(destination.teamId, stored.userId);
-  const messageTs = getTurnUserSlackMessageTs(latestUserMessage);
-  const turnId =
-    stored.resumeSessionId ??
-    (latestUserMessage
-      ? buildDeterministicTurnId(latestUserMessage.id)
-      : undefined);
-  if (!turnId) {
-    return;
-  }
-  await resumeSlackTurn({
-    messageText: stored.pendingMessage,
-    conversationId: threadId,
-    turnId,
-    channelId: stored.channelId,
-    threadTs: stored.threadTs,
-    messageTs,
-    initialText: "",
-    agentRunner: options.agentRunner,
-    replyContext: {
-      input: {
-        conversationContext,
-        // Pi history is SQL-authoritative via the event-store projection.
-        piMessages: await loadProjection({ conversationId: threadId }),
-      },
-      routing: {
-        credentialContext: {
-          actor: { type: "user", userId: stored.userId },
-        },
-        actor,
-        destination: stored.destination,
-        source,
-      },
-      policy: {
-        configuration: stored.configuration,
-      },
-    },
-    onSuccess: async (reply) => {
-      logInfo(
-        "oauth_callback_resume_complete",
-        {},
-        {
-          "app.credential.provider": stored.provider,
-          "app.ai.outcome": reply.diagnostics.outcome,
-          "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
-        },
-        "OAuth callback auto-resumed pending message finished replying",
-      );
-    },
-    onSuspend: async (resumeVersion) => {
-      startActiveTurn({
-        conversation,
-        nextTurnId: turnId,
-        updateConversationStats,
-      });
-      await persistThreadStateById(threadId, { conversation });
-      await scheduleAgentContinue({
-        conversationId: threadId,
-        destination,
-        sessionId: turnId,
-        expectedVersion: resumeVersion,
-      });
-    },
-  });
 }
 
 export async function GET(
@@ -768,10 +664,9 @@ export async function GET(
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
     waitUntil(async () => {
       try {
-        const resumed = await resumeOAuthSessionRecordTurn(stored, options);
-        if (!resumed) {
-          await resumePendingOAuthMessage(stored, options);
-        }
+        // Agent OAuth links resume their durable session record. Do not rebuild
+        // a turn from pending message text when that record is missing.
+        await resumeOAuthSessionRecordTurn(stored, options);
       } catch (error) {
         if (error instanceof ResumeTurnBusyError) {
           logWarn(
