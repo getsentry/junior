@@ -66,6 +66,9 @@ export function getSlackErrorObservabilityAttributes(
 const TRANSIENT_SLACK_API_ERRORS = new Set([
   "fatal_error",
   "internal_error",
+  // chat.postMessage documents both spellings.
+  "rate_limited",
+  "ratelimited",
   "request_timeout",
   "service_unavailable",
 ]);

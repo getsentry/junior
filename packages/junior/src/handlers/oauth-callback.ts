@@ -475,7 +475,7 @@ async function resumeOAuthSessionRecordTurn(
             threadStateId: stored.resumeConversationId!,
           });
         },
-        onTimeoutPause: async ({ resumeVersion }) => {
+        onSuspend: async (resumeVersion) => {
           await scheduleAgentContinue({
             conversationId: stored.resumeConversationId!,
             destination,

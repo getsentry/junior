@@ -472,7 +472,7 @@ export async function continueSlackAgentRun(
               "Continued agent run parked for auth",
             );
           },
-          onTimeoutPause: async ({ resumeVersion }) => {
+          onSuspend: async (resumeVersion) => {
             await scheduleAgentContinue({
               conversationId: payload.conversationId,
               destination: payload.destination,

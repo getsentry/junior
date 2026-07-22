@@ -174,7 +174,7 @@ describe("agent continuation scheduling", () => {
     });
   });
 
-  it("passes runner options into awaiting continuations", async () => {
+  it("resumes delivery retries with the supplied runner", async () => {
     const { resumeAwaitingSlackContinuation } =
       await import("@/chat/runtime/agent-continue-runner");
     const conversationId = "slack:C123:1712345.0005";

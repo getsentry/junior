@@ -15,6 +15,13 @@ describe("isRetryableSlackPostError", () => {
       true,
     ],
     [
+      "a documented rate limit",
+      new SlackActionError("failed", "internal_error", {
+        apiError: "ratelimited",
+      }),
+      true,
+    ],
+    [
       "an explicit API rejection",
       { data: { error: "channel_not_found" } },
       false,

@@ -94,6 +94,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import {
+  RetryableDeliveryError,
   assertRunRoutingConsistency,
   actorFromRouting,
   surfaceFromRouting,
@@ -1146,6 +1147,12 @@ async function executeAgentRunInPrivacyContext(
       result,
     };
   } catch (error) {
+    if (
+      error instanceof AssistantMessageDeliveryError &&
+      !(error.originalError instanceof RetryableDeliveryError)
+    ) {
+      throw error.originalError;
+    }
     const runError =
       error instanceof AssistantMessageDeliveryError
         ? error.originalError

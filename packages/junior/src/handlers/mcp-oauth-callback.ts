@@ -454,7 +454,7 @@ async function resumeAuthorizedMcpTurn(args: {
             "Resumed MCP turn requested another authorization flow",
           );
         },
-        onTimeoutPause: async ({ resumeVersion }) => {
+        onSuspend: async (resumeVersion) => {
           await scheduleAgentContinue({
             conversationId: authSession.conversationId,
             destination,

@@ -291,8 +291,8 @@ describe("resumeSlackTurn", () => {
     });
   });
 
-  it("releases the thread lock before scheduling another timeout slice", async () => {
-    const onTimeoutPause = vi.fn(async () => {
+  it("releases the thread lock before scheduling a continuation", async () => {
+    const onSuspend = vi.fn(async () => {
       const stateAdapter = getStateAdapter();
       await stateAdapter.connect();
       const lock = await stateAdapter.acquireLock(
@@ -327,14 +327,15 @@ describe("resumeSlackTurn", () => {
           resumeVersion: 3,
         }),
       },
-      onTimeoutPause,
+      onSuspend,
     });
 
-    expect(onTimeoutPause).toHaveBeenCalledTimes(1);
+    expect(onSuspend).toHaveBeenCalledOnce();
+    expect(onSuspend).toHaveBeenCalledWith(3);
     expect(postMessageMock).not.toHaveBeenCalled();
   });
 
-  it("runs failure handling when timeout pause handling throws", async () => {
+  it("runs failure handling when suspension handling throws", async () => {
     const onFailure = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
@@ -359,7 +360,7 @@ describe("resumeSlackTurn", () => {
           resumeVersion: 3,
         }),
       },
-      onTimeoutPause: async () => {
+      onSuspend: async () => {
         throw new Error("continuation scheduling failed");
       },
       onFailure,

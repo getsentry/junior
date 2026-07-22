@@ -201,44 +201,6 @@ export function createResumeState(args: ResumeStateArgs) {
       error: unknown;
     }): Promise<ExpectedEndingTranslation> {
       const { error } = args2;
-      const retryingDelivery = error instanceof RetryableDeliveryError;
-      if (retryingDelivery || timedOut) {
-        if (retryingDelivery) {
-          // The failed assistant message was never saved. Regenerate it from
-          // the latest saved agent history; an ambiguous provider write may
-          // therefore produce a duplicate reply.
-          resumeMessages = [...latestSafeBoundaryMessages];
-        }
-        const usage =
-          args2.currentUsage ??
-          extractSliceUsage(resumeMessages, beforeMessageCount);
-        await args.recordActiveMcpProviders();
-        const sessionRecord = await persistContinuationSessionRecord({
-          ...sessionRecordBase(),
-          currentSliceId,
-          currentDurationMs: currentDurationMs(),
-          currentUsage: usage,
-          messages: resumeMessages,
-          errorMessage: error instanceof Error ? error.message : String(error),
-          resumeReason: retryingDelivery ? "retry" : "timeout",
-        });
-        if (!sessionRecord) {
-          throw new Error(
-            `Failed to persist continuation for conversation=${args.conversationId} turn=${args.turnId}`,
-          );
-        }
-        if (sessionRecord.state === "awaiting_resume") {
-          return {
-            outcome: {
-              status: "suspended",
-              resumeVersion: sessionRecord.version,
-              ...(usage ? { usage } : {}),
-            },
-          };
-        }
-        throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
-      }
-
       if (cooperativeYieldError && error instanceof CooperativeTurnYieldError) {
         const usage =
           args2.currentUsage ??
@@ -264,6 +226,49 @@ export function createResumeState(args: ResumeStateArgs) {
             ...(usage ? { usage } : {}),
           },
         };
+      }
+
+      const resumeReason =
+        error instanceof RetryableDeliveryError
+          ? "retry"
+          : timedOut
+            ? "timeout"
+            : undefined;
+      if (resumeReason) {
+        if (resumeReason === "retry") {
+          // The failed assistant message was never saved. Regenerate it from
+          // the latest saved agent history; an ambiguous provider write may
+          // therefore produce a duplicate reply.
+          resumeMessages = [...latestSafeBoundaryMessages];
+        }
+        const usage =
+          args2.currentUsage ??
+          extractSliceUsage(resumeMessages, beforeMessageCount);
+        await args.recordActiveMcpProviders();
+        const sessionRecord = await persistContinuationSessionRecord({
+          ...sessionRecordBase(),
+          currentSliceId,
+          currentDurationMs: currentDurationMs(),
+          currentUsage: usage,
+          messages: resumeMessages,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          resumeReason,
+        });
+        if (!sessionRecord) {
+          throw new Error(
+            `Failed to persist continuation for conversation=${args.conversationId} turn=${args.turnId}`,
+          );
+        }
+        if (sessionRecord.state === "awaiting_resume") {
+          return {
+            outcome: {
+              status: "suspended",
+              resumeVersion: sessionRecord.version,
+              ...(usage ? { usage } : {}),
+            },
+          };
+        }
+        throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
       }
 
       if (error instanceof AuthorizationPauseError) {

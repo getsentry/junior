@@ -180,7 +180,7 @@ interface ResumeSlackTurnArgs {
   onSuccess?: (reply: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
-  onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
+  onSuspend?: (resumeVersion: number) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<ResumePreparedTurn | false | void>;
   replyTimeoutMs?: number;
@@ -204,7 +204,7 @@ interface ResumePreparedTurn {
   onSuccess?: (reply: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
-  onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
+  onSuspend?: (resumeVersion: number) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
@@ -438,7 +438,6 @@ export async function resumeSlackTurn(
     threadTs: args.threadTs,
   });
   let processingReaction: ProcessingReactionSession | undefined;
-  let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredAuthInfo:
     | { providerDisplayName: string; actorId: string | undefined }
     | undefined;
@@ -640,9 +639,8 @@ export async function resumeSlackTurn(
       // mirroring the failure path below.
       await status.clear();
       const onAuthPause = runArgs.onAuthPause;
-      const onTimeoutPause = runArgs.onTimeoutPause;
+      const onSuspend = runArgs.onSuspend;
       if (outcome.status === "awaiting_auth" && onAuthPause) {
-        deferredPauseKind = "auth";
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
@@ -652,10 +650,9 @@ export async function resumeSlackTurn(
             providerDisplayName: outcome.providerDisplayName,
           });
         };
-      } else if (outcome.status === "suspended" && onTimeoutPause) {
-        deferredPauseKind = "timeout";
+      } else if (outcome.status === "suspended" && onSuspend) {
         deferredPauseHandler = async () => {
-          await onTimeoutPause({ resumeVersion: outcome.resumeVersion });
+          await onSuspend(outcome.resumeVersion);
         };
       } else {
         deferredFailureHandler = async () => {
@@ -810,7 +807,7 @@ export async function resumeSlackTurn(
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
-      if (deferredPauseKind === "auth" && deferredAuthInfo) {
+      if (deferredAuthInfo) {
         const footer = buildSlackReplyFooter({
           conversationId: runArgs.conversationId,
         });
