@@ -569,6 +569,14 @@ async function resumePendingOAuthMessage(
         "OAuth callback auto-resumed pending message finished replying",
       );
     },
+    onSuspend: async (resumeVersion) => {
+      await scheduleAgentContinue({
+        conversationId: threadId,
+        destination,
+        sessionId: turnId,
+        expectedVersion: resumeVersion,
+      });
+    },
   });
 }
 

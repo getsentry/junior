@@ -19,6 +19,14 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
+
+const queueSendMock = vi.hoisted(() =>
+  vi.fn(async () => ({ messageId: "oauth-resume-wake" })),
+);
+
+vi.mock("@/chat/vercel-queue-client", () => ({
+  createVercelQueueClient: () => ({ send: queueSendMock }),
+}));
 /**
  * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
  * authority the resume handlers now read from. Takes the connected adapter so it
@@ -91,6 +99,7 @@ let pluginApp: PluginAppFixture | undefined;
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
     executeAgentRunMock.mockReset();
+    queueSendMock.mockClear();
     executeAgentRunMock.mockImplementation(async (request) => {
       await deliverAssistantMessagesForTest(request, [
         { text: "Here are your Sentry issues." },
@@ -254,6 +263,38 @@ describe("oauth callback slack integration", () => {
         }),
       ]),
     );
+  }, 20_000);
+
+  it("schedules a continuation when a pending OAuth resume suspends", async () => {
+    const threadTs = "1700000000.002";
+    const turnId = "turn_user-retry";
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-retry-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        destination: SLACK_DESTINATION,
+        source: slackSource(threadTs),
+        threadTs,
+        pendingMessage: "list my sentry issues",
+        resumeSessionId: turnId,
+      });
+    executeAgentRunMock.mockResolvedValueOnce({
+      status: "suspended",
+      resumeVersion: 3,
+    });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-retry-state",
+      code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
+    });
+
+    expect(response.status).toBe(200);
+    expect(queueSendMock).toHaveBeenCalledOnce();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   }, 20_000);
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
