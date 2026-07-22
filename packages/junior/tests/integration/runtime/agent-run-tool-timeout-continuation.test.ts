@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 
@@ -170,6 +171,16 @@ import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
+async function waitForToolStart(): Promise<void> {
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+    if (observations.toolStarted) {
+      return;
+    }
+    await new Promise<void>((resolve) => realSetTimeout(resolve, 5));
+  }
+  throw new Error("Expected sandbox tool execution to start");
+}
+
 describe("executeAgentRun tool timeout continuation", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -178,9 +189,11 @@ describe("executeAgentRun tool timeout continuation", () => {
     observations.toolAborted = false;
     observations.toolStarted = false;
     await disconnectStateAdapter();
+    vi.useFakeTimers();
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
     if (ORIGINAL_STATE_ADAPTER === undefined) {
       delete process.env.JUNIOR_STATE_ADAPTER;
@@ -202,10 +215,13 @@ describe("executeAgentRun tool timeout continuation", () => {
       },
     };
 
-    const suspended = await executeAgentRun({
+    const suspendedPromise = executeAgentRun({
       ...request,
-      policy: { turnDeadlineAtMs: Date.now() + 100 },
+      policy: { turnDeadlineAtMs: Date.now() + 10_000 },
     });
+    await waitForToolStart();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const suspended = await suspendedPromise;
 
     expect(observations.toolStarted).toBe(true);
     expect(observations.toolAborted).toBe(true);
