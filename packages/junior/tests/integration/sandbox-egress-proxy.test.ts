@@ -419,7 +419,7 @@ describe("sandbox egress proxy integration", () => {
     });
   });
 
-  it("propagates configured trace headers through real plugin egress wiring", async () => {
+  it("preserves configured trace headers at the real plugin egress proxy", async () => {
     await registerManagedEgressPlugin({
       egressTracePropagationDomains: ["*.managed-egress.example.test"],
     });
@@ -437,11 +437,9 @@ describe("sandbox egress proxy integration", () => {
         traceparent: "00-trace-span-01",
       },
     });
-    expect(traceHeadersFor(networkPolicy, MANAGED_PROVIDER_SUBDOMAIN)).toEqual({
-      "sentry-trace": "trace-span-1",
-      baggage: "sentry-release=abc",
-      traceparent: "00-trace-span-01",
-    });
+    expect(
+      traceHeadersFor(networkPolicy, MANAGED_PROVIDER_SUBDOMAIN),
+    ).toBeUndefined();
     const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_SUBDOMAIN);
     const upstreamFetch = vi.fn(
       async (_url: URL | string, init?: RequestInit) => {
