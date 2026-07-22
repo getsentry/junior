@@ -41,11 +41,11 @@ Summarize changes between `old_version` and `target_version` (exclusive of old, 
 Tags match package versions with no `v` prefix (for example `0.107.1`):
 
 ```bash
-gh release list --repo getsentry/junior --limit 50
+gh api repos/getsentry/junior/releases --paginate --jq '.[].tag_name'
 gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Collect bodies for every release tag in `(old_version, target_version]`. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
+Collect bodies for every release tag in `(old_version, target_version]`; do not truncate the release list. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
