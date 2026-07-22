@@ -8,7 +8,6 @@ import {
 import {
   DEFAULT_HANDOFF_MODEL_PROFILE,
   STANDARD_MODEL_PROFILE,
-  type ModelProfile,
 } from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
@@ -58,7 +57,7 @@ const turnExecutionProfileSchema = z.object({
 export interface TurnExecutionProfile {
   confidence?: number;
   reasoningLevel: TurnReasoningLevel;
-  requestedModelProfile?: ModelProfile;
+  requestedModelProfile?: typeof DEFAULT_HANDOFF_MODEL_PROFILE;
   reason: string;
 }
 
@@ -114,8 +113,8 @@ function buildClassifierSystemPrompt(): string {
     "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
-    "Use model_profile handoff for writing, editing, reviewing, debugging, or substantially reasoning about code; multi-file changes; architecture or root-cause analysis; research-heavy synthesis or complex planning; or another task where a more capable model materially improves reliability. Otherwise use standard.",
-    "Code architecture includes advice about dependency injection, module boundaries, configuration ownership, API design, and test strategy, even when the user requests advice only or says repository inspection is unnecessary.",
+    "Use model_profile handoff for writing, editing, reviewing, debugging, or substantially reasoning about code; multi-file changes; root-cause analysis; research-heavy synthesis or complex planning; or another task where a more capable model materially improves reliability. Otherwise use standard.",
+    "Any request for a software architecture or component-design decision must use handoff, including advice-only requests with no implementation.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",

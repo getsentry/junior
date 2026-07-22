@@ -466,13 +466,17 @@ async function executeAgentRunInPrivacyContext(
         .filter((profile) => profile !== DEFAULT_HANDOFF_MODEL_PROFILE)
         .sort(),
     ];
+    /** Commit the durable handoff epoch before staging its in-memory model swap. */
     const scheduleHandoff = async (args: {
       profile: ModelProfile;
+      runtimeContextSourceMessages?: PiMessage[];
       signal?: AbortSignal;
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
     }) => {
-      const runtimeContext = retainRuntimeTurnContext(args.sourceMessages);
+      const runtimeContext = retainRuntimeTurnContext(
+        args.runtimeContextSourceMessages ?? args.sourceMessages,
+      );
       const standardPhaseUsage = extractGenAiUsageSummary(
         ...args.sourceMessages
           .slice(runResume.beforeMessageCount)
@@ -628,6 +632,7 @@ async function executeAgentRunInPrivacyContext(
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
     });
+    /** Apply a committed handoff to Pi and reset its durable resume baseline. */
     const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
       if (!pendingHandoff) {
         return undefined;
@@ -830,15 +835,17 @@ async function executeAgentRunInPrivacyContext(
             }
           }
 
+          /** Race one provider operation against the turn deadline and abort its owner. */
           const runAgentStep = async (
             run: Promise<unknown>,
+            abortRun: () => void = () => agent!.abort(),
           ): Promise<unknown> => {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
             let removeAbortListener: (() => void) | undefined;
             const timeoutPromise = new Promise<never>((_, reject) => {
               const rejectWithTimeout = () => {
                 runResume.markTimedOut();
-                agent!.abort();
+                abortRun();
                 reject(
                   new Error(
                     `Agent turn timed out after ${turnTimeoutBudgetMs}ms`,
@@ -855,7 +862,7 @@ async function executeAgentRunInPrivacyContext(
             const abortPromise = signal
               ? new Promise<never>((_, reject) => {
                   const rejectWithAbort = () => {
-                    agent!.abort();
+                    abortRun();
                     reject(signal.reason);
                   };
                   if (signal.aborted) {
@@ -939,15 +946,28 @@ async function executeAgentRunInPrivacyContext(
               : undefined;
           let run: Promise<unknown>;
           if (requestedModelProfile) {
-            await scheduleHandoff({
-              profile: requestedModelProfile,
-              signal,
-              sourceMessages: shouldPromptAgent
-                ? [...agent!.state.messages, freshPromptMessage]
-                : [...agent!.state.messages],
-            });
+            const handoffAbortController = new AbortController();
+            await runAgentStep(
+              scheduleHandoff({
+                profile: requestedModelProfile,
+                runtimeContextSourceMessages: shouldPromptAgent
+                  ? [freshPromptMessage]
+                  : undefined,
+                signal: handoffAbortController.signal,
+                sourceMessages: [...agent!.state.messages],
+              }),
+              () => handoffAbortController.abort(),
+            );
             applyPendingHandoff();
-            run = agent!.continue();
+            if (shouldPromptAgent) {
+              await runResume.requireDurableInputCheckpoint([
+                ...agent!.state.messages,
+                freshPromptMessage,
+              ]);
+              run = agent!.prompt(freshPromptMessage);
+            } else {
+              run = agent!.continue();
+            }
           } else {
             run = shouldPromptAgent
               ? agent!.prompt(freshPromptMessage)

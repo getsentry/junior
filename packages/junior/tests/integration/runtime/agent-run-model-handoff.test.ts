@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 
@@ -9,6 +10,9 @@ const observations = vi.hoisted(() => ({
   }>,
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
+  initialImagePart: undefined as
+    | { type: unknown; data: unknown; mimeType: unknown }
+    | undefined,
   initialToolNames: [] as string[],
   mixedBatch: false,
   progressTool: false,
@@ -18,6 +22,8 @@ const observations = vi.hoisted(() => ({
   routedReasoningLevel: "high",
   reasoningLevels: [] as string[],
   summaryCalls: 0,
+  summaryAborted: false,
+  summaryPending: false,
   handoffStatusBeforeSummary: false,
   statuses: [] as string[],
 }));
@@ -44,10 +50,23 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
         reason: "complex implementation",
       },
     }),
-    completeText: async () => {
+    completeText: async (args: { signal?: AbortSignal }) => {
       observations.handoffStatusBeforeSummary =
         observations.statuses.includes("Switching models");
       observations.summaryCalls += 1;
+      if (observations.summaryPending) {
+        return await new Promise<never>((_resolve, reject) => {
+          const abort = () => {
+            observations.summaryAborted = true;
+            reject(args.signal?.reason);
+          };
+          if (args.signal?.aborted) {
+            abort();
+            return;
+          }
+          args.signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
       return { text: "Implement the requested change and verify it." };
     },
   };
@@ -63,6 +82,19 @@ vi.mock("@/chat/pi/traced-stream", () => ({
         call === 1 && observations.routedModelProfile === "handoff";
       if (call === 1) {
         observations.initialModelId = model.id;
+        observations.initialImagePart = (
+          (context.messages ?? []) as Array<{
+            content?: Array<{
+              type?: unknown;
+              data?: unknown;
+              mimeType?: unknown;
+            }>;
+          }>
+        )
+          .flatMap((message) => message.content ?? [])
+          .find((part) => part.type === "image") as
+          | { type: unknown; data: unknown; mimeType: unknown }
+          | undefined;
         observations.initialToolNames = (context.tools ?? []).map(
           (tool: { name: string }) => tool.name,
         );
@@ -188,6 +220,7 @@ describe("executeAgentRun model handoff", () => {
     observations.afterHandoffMessages = [];
     observations.afterHandoffToolNames = [];
     observations.initialModelId = "";
+    observations.initialImagePart = undefined;
     observations.initialToolNames = [];
     observations.mixedBatch = false;
     observations.progressTool = false;
@@ -197,6 +230,8 @@ describe("executeAgentRun model handoff", () => {
     observations.routedReasoningLevel = "high";
     observations.reasoningLevels = [];
     observations.summaryCalls = 0;
+    observations.summaryAborted = false;
+    observations.summaryPending = false;
     observations.handoffStatusBeforeSummary = false;
     observations.statuses = [];
     await disconnectStateAdapter();
@@ -218,7 +253,16 @@ describe("executeAgentRun model handoff", () => {
       conversationId,
       runId: "run-router-model-handoff",
       turnId: "turn-router-model-handoff",
-      input: { messageText: "Recommend the architecture and test strategy." },
+      input: {
+        messageText: "Recommend the architecture and test strategy.",
+        userAttachments: [
+          {
+            data: Buffer.from("architecture-diagram"),
+            filename: "architecture.png",
+            mediaType: "image/png",
+          },
+        ],
+      },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
@@ -232,6 +276,11 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.providerCalls).toBe(1);
     expect(observations.initialModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.initialToolNames).not.toContain("handoff");
+    expect(observations.initialImagePart).toEqual({
+      type: "image",
+      data: Buffer.from("architecture-diagram").toString("base64"),
+      mimeType: "image/png",
+    });
     expect(observations.reasoningLevels).toEqual(["high"]);
     expect(observations.summaryCalls).toBe(1);
     expect(
@@ -249,6 +298,27 @@ describe("executeAgentRun model handoff", () => {
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
+  });
+
+  it("applies the turn deadline while preparing a router-requested handoff", async () => {
+    observations.routedModelProfile = "handoff";
+    observations.summaryPending = true;
+    const conversationId = "local:test:router-model-handoff-timeout";
+    const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-router-model-handoff-timeout",
+      turnId: "turn-router-model-handoff-timeout",
+      input: { messageText: "Recommend the architecture." },
+      policy: { turnDeadlineAtMs: Date.now() + 50 },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+    });
+
+    expect(outcome.status).toBe("suspended");
+    expect(observations.summaryAborted).toBe(true);
+    expect(observations.providerCalls).toBe(0);
   });
 
   it("compacts and upgrades the same conversation before continuing the turn", async () => {

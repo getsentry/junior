@@ -75,9 +75,12 @@ describeEval("Coding File Tools", slackEvals, (it) => {
       }),
     });
     expect(result.usage.model).toBe("openai/gpt-5.6-sol");
+    expect(
+      toolCalls(result.session).filter((call) => call.name === "handoff"),
+    ).toHaveLength(0);
   });
 
-  it("hands a coding task off once and keeps its workspace on the next turn", async ({
+  it("routes a coding task to the handoff model and keeps its workspace on the next turn", async ({
     run,
   }) => {
     const thread = {
@@ -112,11 +115,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     });
 
     const calls = toolCalls(result.session);
-    expect(calls[0]).toMatchObject({
-      name: "handoff",
-      arguments: { profile: "coding" },
-    });
-    expect(calls.filter((call) => call.name === "handoff")).toHaveLength(1);
+    expect(result.usage.model).toBe("openai/gpt-5.6-sol");
     expect(
       calls.some((call) => {
         const args = JSON.stringify(call.arguments) ?? "";
