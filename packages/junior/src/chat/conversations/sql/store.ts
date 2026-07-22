@@ -240,7 +240,9 @@ function actorFromIdentityRow(
   if (identity.provider !== "slack") {
     return undefined;
   }
-  const fullName = userDisplayName ?? identity.displayName;
+  const fullName = userDisplayName?.trim()
+    ? userDisplayName
+    : identity.displayName;
   return {
     ...(identity.emailNormalized
       ? { email: identity.emailNormalized }

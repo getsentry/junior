@@ -69,7 +69,9 @@ type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
-  const actorFullName = row.userDisplayName ?? row.identityDisplayName;
+  const actorFullName = row.userDisplayName?.trim()
+    ? row.userDisplayName
+    : row.identityDisplayName;
   const actor =
     row.identityProvider === "slack"
       ? {

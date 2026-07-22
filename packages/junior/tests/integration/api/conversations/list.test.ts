@@ -6,7 +6,11 @@ import {
 } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorConversations, juniorIdentities } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API", () => {
@@ -87,6 +91,23 @@ describe("conversation list API", () => {
             slackUserName: "workspace-alice",
           },
         },
+      });
+      await fixture.sql
+        .db()
+        .update(juniorUsers)
+        .set({ displayName: "" })
+        .where(eq(juniorUsers.primaryEmailNormalized, "alice@example.com"));
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: expect.arrayContaining([
+          expect.objectContaining({
+            actorIdentity: expect.objectContaining({
+              fullName: "Workspace Alice",
+              slackUserId: "U2",
+              slackUserName: "workspace-alice",
+            }),
+            conversationId: "slack:C1:provider-name",
+          }),
+        ]),
       });
     } finally {
       await fixture.close();

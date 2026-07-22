@@ -254,6 +254,20 @@ describe("conversation SQL store", () => {
           slackUserName: "alice-other",
         },
       });
+      await fixture.sql
+        .db()
+        .update(juniorUsers)
+        .set({ displayName: "" })
+        .where(eq(juniorUsers.primaryEmailNormalized, "alice@example.com"));
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        actor: {
+          fullName: "Alice Other Device",
+          slackUserId: "U456",
+          slackUserName: "alice-other",
+        },
+      });
     } finally {
       await fixture.close();
     }
