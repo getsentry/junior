@@ -40,14 +40,14 @@ Summarize changes between `old_version` and `target_version` (exclusive of old, 
 
 Tags match package versions with no `v` prefix (for example `0.107.1`):
 
-Use npm's published version set to select the exact tags, then fetch only those releases:
+Ask npm to resolve the semver range to the exact tags, then fetch only those releases:
 
 ```bash
-pnpm view @sentry/junior versions --json
+pnpm view '@sentry/junior@><old_version> <=<target_version>' version --json
 gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Filter the npm versions to `(old_version, target_version]`, then collect the corresponding release bodies. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
+Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -128,6 +128,7 @@ Open a draft PR. Include version change, release summary with links to the GitHu
 ## Stop conditions
 
 - Any Junior package lacks the target version on npm.
+- Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.
 - `package.json` changed but `pnpm-lock.yaml` did not.
