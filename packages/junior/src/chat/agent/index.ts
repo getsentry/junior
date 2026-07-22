@@ -663,6 +663,7 @@ async function executeAgentRunInPrivacyContext(
         existingSessionRecord?.turnStartMessageIndex,
       invocation: skillInvocation,
       priorPiMessages,
+      resumeReason: existingSessionRecord?.resumeReason,
       resumedFromSessionRecord,
       routing,
       spanContext,

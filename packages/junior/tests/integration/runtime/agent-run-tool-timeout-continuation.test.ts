@@ -37,6 +37,9 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       observations.continuationMessages = context.messages ?? [];
     }
 
+    const timeoutContinuation = String(context.systemPrompt ?? "").includes(
+      "<timeout-continuation>",
+    );
     const message =
       call === 1
         ? {
@@ -59,21 +62,37 @@ vi.mock("@/chat/pi/traced-stream", () => ({
             timestamp: Date.now(),
             usage: { input: 2, output: 1, totalTokens: 3 },
           }
-        : {
-            role: "assistant",
-            content: [
-              {
-                type: "text",
-                text: "The work was interrupted during the targeted Cloudflare test rerun.",
-              },
-            ],
-            stopReason: "stop",
-            api: "test",
-            provider: "test",
-            model: model.id,
-            timestamp: Date.now(),
-            usage: { input: 4, output: 3, totalTokens: 7 },
-          };
+        : timeoutContinuation
+          ? {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "The targeted test passed and the pull request was created.",
+                },
+              ],
+              stopReason: "stop",
+              api: "test",
+              provider: "test",
+              model: model.id,
+              timestamp: Date.now(),
+              usage: { input: 4, output: 3, totalTokens: 7 },
+            }
+          : {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "The work was interrupted during the targeted Cloudflare test rerun.",
+                },
+              ],
+              stopReason: "stop",
+              api: "test",
+              provider: "test",
+              model: model.id,
+              timestamp: Date.now(),
+              usage: { input: 4, output: 3, totalTokens: 7 },
+            };
 
     return {
       async *[Symbol.asyncIterator]() {
