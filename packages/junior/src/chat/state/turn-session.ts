@@ -61,7 +61,7 @@ export type AgentTurnSessionStatus =
 
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
-export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
+export type AgentTurnResumeReason = "timeout" | "auth" | "yield" | "retry";
 
 interface ConversationMessageProjection {
   messages: PiMessage[];
@@ -154,6 +154,7 @@ const agentTurnResumeReasonSchema = z.enum([
   "timeout",
   "auth",
   "yield",
+  "retry",
 ]) satisfies z.ZodType<AgentTurnResumeReason>;
 
 const nonNegativeNumberSchema = z.number().finite().nonnegative();

@@ -1146,17 +1146,22 @@ async function executeAgentRunInPrivacyContext(
       result,
     };
   } catch (error) {
-    if (error instanceof AssistantMessageDeliveryError) {
-      throw error.originalError;
-    }
+    const runError =
+      error instanceof AssistantMessageDeliveryError
+        ? error.originalError
+        : error;
     if (resume) {
       const { outcome } = await resume.translateExpectedEnding({
         currentUsage: turnUsage,
-        error,
+        error: runError,
       });
       if (outcome) {
         return outcome;
       }
+    }
+
+    if (error instanceof AssistantMessageDeliveryError) {
+      throw error.originalError;
     }
 
     if (error instanceof ModelProfileNotConfiguredError) {

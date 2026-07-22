@@ -40,7 +40,8 @@ export async function getAwaitingAgentContinueRequest(args: {
     !sessionRecord ||
     sessionRecord.state !== "awaiting_resume" ||
     (sessionRecord.resumeReason !== "timeout" &&
-      sessionRecord.resumeReason !== "yield") ||
+      sessionRecord.resumeReason !== "yield" &&
+      sessionRecord.resumeReason !== "retry") ||
     (sessionRecord.resumeReason === "timeout" && sessionRecord.sliceId < 2)
   ) {
     return undefined;

@@ -599,7 +599,7 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("carries cumulative diagnostics across pause records", async () => {
-    const { persistTimeoutSessionRecord } =
+    const { persistContinuationSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
@@ -627,7 +627,8 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     });
 
-    await persistTimeoutSessionRecord({
+    await persistContinuationSessionRecord({
+      resumeReason: "timeout",
       modelId: "test/model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -671,7 +672,7 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("fails timeout sessions instead of scheduling beyond the execution limit", async () => {
-    const { persistTimeoutSessionRecord } =
+    const { persistContinuationSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { botConfig } = await import("@/chat/config");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
@@ -697,7 +698,8 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     await expect(
-      persistTimeoutSessionRecord({
+      persistContinuationSessionRecord({
+        resumeReason: "timeout",
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
@@ -802,7 +804,7 @@ describe("persistAuthPauseSessionRecord", () => {
     const {
       loadTurnSessionRecord,
       persistAuthPauseSessionRecord,
-      persistTimeoutSessionRecord,
+      persistContinuationSessionRecord,
     } = await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
@@ -838,7 +840,8 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     await expect(
-      persistTimeoutSessionRecord({
+      persistContinuationSessionRecord({
+        resumeReason: "timeout",
         modelId: "test-model",
         conversationId: "conversation-timeout-empty",
         sessionId: "turn-timeout-empty",
@@ -1099,7 +1102,7 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("promotes the latest running record when timeout capture has no messages", async () => {
-    const { persistTimeoutSessionRecord, persistRunningSessionRecord } =
+    const { persistContinuationSessionRecord, persistRunningSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
@@ -1120,7 +1123,8 @@ describe("persistAuthPauseSessionRecord", () => {
       logContext: {},
     });
 
-    await persistTimeoutSessionRecord({
+    await persistContinuationSessionRecord({
+      resumeReason: "timeout",
       modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",

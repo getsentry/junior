@@ -452,11 +452,7 @@ export async function persistAuthPauseSessionRecord(args: {
   return undefined;
 }
 
-/**
- * Persist a timeout session record at the last safe boundary. Returns the durable
- * record so callers can distinguish scheduled continuations from terminal caps.
- */
-export async function persistTimeoutSessionRecord(args: {
+interface ContinuationRecordInput {
   channelName?: string;
   conversationId: string;
   sessionId: string;
@@ -473,7 +469,14 @@ export async function persistTimeoutSessionRecord(args: {
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
-}): Promise<AgentTurnSessionRecord | undefined> {
+}
+
+/** Persist a timeout or delivery-retry continuation at the last safe boundary. */
+export async function persistContinuationSessionRecord(
+  args: ContinuationRecordInput & {
+    resumeReason: "retry" | "timeout";
+  },
+): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
 
   try {
@@ -531,7 +534,7 @@ export async function persistTimeoutSessionRecord(args: {
                 args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
             }
           : {}),
-        resumeReason: "timeout",
+        resumeReason: args.resumeReason,
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
         errorMessage: new TurnSliceLimitExceededError(
           botConfig.maxSlicesPerTurn,
@@ -574,7 +577,7 @@ export async function persistTimeoutSessionRecord(args: {
               args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
           }
         : {}),
-      resumeReason: "timeout",
+      resumeReason: args.resumeReason,
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
       ...((args.actor ?? latestSessionRecord?.actor)

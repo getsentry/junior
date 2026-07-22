@@ -254,7 +254,9 @@ async function resolveContinuationActor(args: {
 function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
   return (
     summary.state === "awaiting_resume" &&
-    (summary.resumeReason === "timeout" || summary.resumeReason === "yield")
+    (summary.resumeReason === "timeout" ||
+      summary.resumeReason === "yield" ||
+      summary.resumeReason === "retry")
   );
 }
 
@@ -312,7 +314,8 @@ export async function continueSlackAgentRun(
           !sessionRecord ||
           sessionRecord.state !== "awaiting_resume" ||
           (sessionRecord.resumeReason !== "timeout" &&
-            sessionRecord.resumeReason !== "yield") ||
+            sessionRecord.resumeReason !== "yield" &&
+            sessionRecord.resumeReason !== "retry") ||
           sessionRecord.version !== payload.expectedVersion
         ) {
           return false;

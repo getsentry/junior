@@ -150,6 +150,14 @@ export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }
 
+/** Ask the agent runtime to resume from its last durable boundary and retry delivery. */
+export class RetryableDeliveryError extends Error {
+  constructor(cause: unknown) {
+    super("Assistant delivery should retry", { cause });
+    this.name = "RetryableDeliveryError";
+  }
+}
+
 /** Carries durable-worker ports that commit or update resumable run state. */
 export interface AgentRunDurability {
   onInputCommitted?: () => void | Promise<void>;

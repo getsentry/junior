@@ -27,10 +27,13 @@ runtime orchestration.
 - Reactions and status messages are progress UI, not assistant-message delivery
   contracts.
 - OAuth links and other private authorization material use private delivery.
+- Explicit Slack API rejections fail delivery. Transient or ambiguous failures
+  resume the agent from its last safe transcript boundary; a reply may be
+  duplicated if Slack accepted it before the failure became visible.
 
-`outbound.ts` owns Slack API calls and retry classification. `mrkdwn.ts` owns
-format conversion. `assistant-thread/` owns assistant-thread lifecycle and
-status rendering.
+`outbound.ts` owns Slack API calls and immediate transport retries. `errors.ts`
+owns reply-failure classification. `mrkdwn.ts` owns format conversion.
+`assistant-thread/` owns assistant-thread lifecycle and status rendering.
 
 ## Boundaries
 

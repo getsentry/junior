@@ -17,7 +17,8 @@ directory owns product orchestration around it.
   the runtime status surface rather than tool-bearing assistant text.
 - The runtime records each assistant message only after delivery succeeds.
 - Resumed runs continue the same durable turn and must not repeat already
-  committed side effects.
+  committed side effects. An ambiguous external delivery may be repeated when
+  the provider accepted it before the worker lost confirmation.
 
 ## Durable Continuation
 
@@ -28,17 +29,18 @@ directory owns product orchestration around it.
   and state updates are durable.
 - Auth pauses persist the pending authorization state and end the live run;
   callbacks append new work and start a later run.
-- Completion and delivery markers make retries idempotent.
+- Transient or ambiguous reply-delivery failures resume from the last safe
+  transcript boundary and share the normal bounded continuation limit.
+- Explicit provider rejections fail the turn instead of retrying.
 - Canonical turn lifecycle uses stable conversation and turn IDs: input is
   durable before `turn_started`, and completion/failure is appended only at the
   owning delivery-and-persistence boundary. Competing terminal writes share
   one idempotency key, so the first committed outcome wins.
 - Intentional silence is a `turn_completed` `no_reply` outcome and does not
   create a synthetic visible assistant message.
-- Stable lifecycle keys make explicit retries idempotent; they do not cover
-  process death between external delivery and persistence. Slack needs a
-  durable delivery outbox/receipt reconciler before terminal events are
-  crash-safe across that boundary.
+- Stable lifecycle keys make internal terminal writes idempotent. External
+  delivery remains best-effort: process death after a provider accepts a reply
+  can produce a duplicate when the turn recovers.
 
 ## Prompt Ownership
 

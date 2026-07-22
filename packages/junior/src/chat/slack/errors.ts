@@ -1,4 +1,4 @@
-import { getHeaderString } from "@/chat/slack/client";
+import { getHeaderString, SlackActionError } from "@/chat/slack/client";
 
 /** Extract Slack's stable API error code from Web API errors. */
 export function getSlackApiErrorCode(error: unknown): string | undefined {
@@ -61,6 +61,51 @@ export function getSlackErrorObservabilityAttributes(
   }
 
   return attributes;
+}
+
+const TRANSIENT_SLACK_API_ERRORS = new Set([
+  "fatal_error",
+  "internal_error",
+  "request_timeout",
+  "service_unavailable",
+]);
+
+/** Retry transport failures and transient Slack responses, but not explicit rejections. */
+export function isRetryableSlackPostError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return true;
+  }
+
+  const candidate = error as {
+    data?: { error?: unknown };
+    statusCode?: unknown;
+  };
+  if (typeof candidate.statusCode === "number") {
+    if (candidate.statusCode === 429 || candidate.statusCode >= 500) {
+      return true;
+    }
+    if (candidate.statusCode >= 400) {
+      return false;
+    }
+  }
+
+  const apiError =
+    error instanceof SlackActionError
+      ? error.apiError
+      : typeof candidate.data?.error === "string"
+        ? candidate.data.error
+        : undefined;
+  if (apiError) {
+    return TRANSIENT_SLACK_API_ERRORS.has(apiError);
+  }
+
+  if (error instanceof SlackActionError) {
+    return error.code === "rate_limited" || error.code === "internal_error";
+  }
+
+  // Without an API response, delivery is ambiguous. Recover the turn and
+  // accept the narrow possibility that Slack already accepted the message.
+  return true;
 }
 
 /** Report whether Slack rejected assistant title updates for stable auth reasons. */

@@ -187,6 +187,8 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { executeAgentRun } from "@/chat/agent";
+import { RetryableDeliveryError } from "@/chat/agent/request";
+import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   loadConversationProjection,
   loadProjection,
@@ -478,6 +480,65 @@ describe("executeAgentRun model handoff", () => {
     ).rejects.toBe(deliveryError);
     expect(observations.providerCalls).toBe(2);
     expect(observations.statuses).toContain("Checking details");
+  });
+
+  it("resumes from the last safe boundary after a retryable delivery failure", async () => {
+    observations.progressTool = true;
+    const conversationId = "local:test:assistant-message-delivery-retry";
+    const turnId = "turn-assistant-message-delivery-retry";
+    const delivered: Array<{ text: string }> = [];
+    let deliveryAttempts = 0;
+    const request = {
+      conversationId,
+      turnId,
+      input: { messageText: "Check the details." },
+      routing: {
+        destination: { platform: "local" as const, conversationId },
+        source: createLocalSource(conversationId),
+      },
+      delivery: {
+        onAssistantMessage: (message: { text: string }) => {
+          deliveryAttempts += 1;
+          if (deliveryAttempts === 1) {
+            throw new RetryableDeliveryError(new Error("Slack unavailable"));
+          }
+          delivered.push(message);
+        },
+      },
+    };
+
+    const suspended = await executeAgentRun(request);
+
+    expect(suspended).toMatchObject({
+      status: "suspended",
+      resumeVersion: expect.any(Number),
+    });
+    const suspendedRecord = await getAgentTurnSessionRecord(
+      conversationId,
+      turnId,
+    );
+    expect(suspendedRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "retry",
+      sliceId: 2,
+    });
+    expect(JSON.stringify(suspendedRecord?.piMessages)).not.toContain(
+      "Handoff model completed it.",
+    );
+    await expect(
+      getAwaitingAgentContinueRequest({ conversationId, sessionId: turnId }),
+    ).resolves.toMatchObject({
+      conversationId,
+      sessionId: turnId,
+      expectedVersion: suspendedRecord?.version,
+    });
+
+    const completed = await executeAgentRun(request);
+
+    expect(completed.status).toBe("completed");
+    expect(delivered).toEqual([{ text: "Handoff model completed it." }]);
+    expect(deliveryAttempts).toBe(2);
+    expect(observations.providerCalls).toBe(3);
   });
 
   it("preserves explicit agent reasoning across handoff", async () => {

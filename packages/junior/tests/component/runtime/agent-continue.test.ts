@@ -188,7 +188,7 @@ describe("agent continuation scheduling", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
-      resumeReason: "timeout",
+      resumeReason: "retry",
       piMessages: [],
     });
 

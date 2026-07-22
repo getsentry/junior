@@ -8,7 +8,10 @@
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import {
+  RetryableDeliveryError,
+  type AgentRunRequest,
+} from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -72,6 +75,7 @@ import {
   turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { persistWithRetry } from "@/chat/services/persist-retry";
+import { isRetryableSlackPostError } from "@/chat/slack/errors";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -552,11 +556,19 @@ export async function resumeSlackTurn(
       }
       failureCode = "delivery_failed";
       const deliveryState = await getDeliveryConversation();
-      const messageTs = await postSlackApiReplyPosts({
-        channelId: runArgs.channelId,
-        threadTs: runArgs.threadTs,
-        posts,
-      });
+      let messageTs: string | undefined;
+      try {
+        messageTs = await postSlackApiReplyPosts({
+          channelId: runArgs.channelId,
+          threadTs: runArgs.threadTs,
+          posts,
+        });
+      } catch (error) {
+        if (isRetryableSlackPostError(error)) {
+          throw new RetryableDeliveryError(error);
+        }
+        throw error;
+      }
       assistantMessageDelivered = true;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation: deliveryState.conversation,
