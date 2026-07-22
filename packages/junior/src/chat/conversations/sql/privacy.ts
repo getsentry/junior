@@ -26,16 +26,26 @@ export interface RootConversationVisibility {
   visibility: JuniorDestinationVisibility | null;
 }
 
-type ConversationEventPrivacySnapshot = RootConversationVisibility & {
+interface ConversationEventPrivacyAuthority {
+  isParticipant: boolean;
+  rootConversationId: string | null;
+  visibility: JuniorDestinationVisibility | null;
+}
+
+type ConversationEventPrivacySnapshot = ConversationEventPrivacyAuthority & {
   events: Array<typeof juniorConversationEvents.$inferSelect>;
 };
 
-function rootVisibilitySnapshotSql(conversationId: string) {
-  return sql<RootConversationVisibility>`(
+function rootVisibilitySnapshotSql(
+  conversationId: string,
+  authorizedUserEmail?: string,
+) {
+  return sql<ConversationEventPrivacyAuthority>`(
     with recursive lineage(
       conversation_id,
       parent_conversation_id,
       destination_id,
+      actor_identity_id,
       path,
       depth
     ) as (
@@ -43,6 +53,7 @@ function rootVisibilitySnapshotSql(conversationId: string) {
         requested.conversation_id,
         requested.parent_conversation_id,
         requested.destination_id,
+        requested.actor_identity_id,
         array[requested.conversation_id]::text[],
         1
       from junior_conversations requested
@@ -54,6 +65,7 @@ function rootVisibilitySnapshotSql(conversationId: string) {
         parent.conversation_id,
         parent.parent_conversation_id,
         parent.destination_id,
+        parent.actor_identity_id,
         lineage.path || parent.conversation_id,
         lineage.depth + 1
       from lineage
@@ -66,17 +78,29 @@ function rootVisibilitySnapshotSql(conversationId: string) {
       select lineage.conversation_id, lineage.destination_id
       from lineage
       where lineage.parent_conversation_id is null
-        and lineage.destination_id is not null
       limit 1
+    ),
+    participant_match as (
+      select exists (
+        select 1
+        from lineage
+        join root_candidate on true
+        join junior_identities identity
+          on identity.id = lineage.actor_identity_id
+        where identity.email_verified = true
+          and identity.email_normalized = ${authorizedUserEmail ?? null}
+      ) as is_participant
     )
     select jsonb_build_object(
-      'rootConversationId', coalesce(root.conversation_id, ${conversationId}),
+      'rootConversationId', root.conversation_id,
+      'isParticipant', participant_match.is_participant,
       'visibility', destination.visibility
     )
     from (select 1) seed
     left join root_candidate root on true
     left join junior_destinations destination
       on destination.id = root.destination_id
+    cross join participant_match
   )`;
 }
 
@@ -86,6 +110,7 @@ function rootVisibilitySnapshotSql(conversationId: string) {
 export async function readConversationEventPrivacySnapshot(
   executor: JuniorSqlDatabase,
   args: {
+    authorizedUserEmail?: string;
     conversationId: string;
     eventTypes: readonly string[];
   },
@@ -93,7 +118,10 @@ export async function readConversationEventPrivacySnapshot(
   const rows = await executor
     .db()
     .select({
-      privacy: rootVisibilitySnapshotSql(args.conversationId),
+      privacy: rootVisibilitySnapshotSql(
+        args.conversationId,
+        args.authorizedUserEmail,
+      ),
       event: {
         ...conversationEventColumns,
         // Replacement history is model context, never dashboard report data.

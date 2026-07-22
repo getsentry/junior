@@ -29,8 +29,6 @@ async function conversationRows(
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
-      identityEmailNormalized: juniorIdentities.emailNormalized,
-      identityEmailVerified: juniorIdentities.emailVerified,
       identityHandle: juniorIdentities.handle,
       identityProvider: juniorIdentities.provider,
       identitySubjectId: juniorIdentities.providerSubjectId,
@@ -125,7 +123,6 @@ export async function readConversationRecordFromSql(
       conversation: Conversation;
       durationMs: number;
       locationId?: string;
-      ownerVerifiedEmail?: string;
       usage: ConversationRow["conversation"]["usage"];
     }
   | undefined
@@ -138,8 +135,6 @@ export async function readConversationRecordFromSql(
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
-      identityEmailNormalized: juniorIdentities.emailNormalized,
-      identityEmailVerified: juniorIdentities.emailVerified,
       identityHandle: juniorIdentities.handle,
       identityProvider: juniorIdentities.provider,
       identitySubjectId: juniorIdentities.providerSubjectId,
@@ -165,9 +160,6 @@ export async function readConversationRecordFromSql(
         durationMs: row.conversation.durationMs,
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
-          : {}),
-        ...(row.identityEmailVerified && row.identityEmailNormalized
-          ? { ownerVerifiedEmail: row.identityEmailNormalized }
           : {}),
         usage: row.conversation.usage,
       }

@@ -21,6 +21,7 @@ function activeTurn(
     surface: "slack",
     displayTitle: "Conversation",
     generatedAt: "2026-01-01T00:00:10.000Z",
+    isParticipant: false,
     eventHistory: { status: "available" },
     events: [
       {

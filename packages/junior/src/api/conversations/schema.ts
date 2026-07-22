@@ -209,6 +209,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     generatedAt: z.string(),
+    isParticipant: z.boolean(),
     sentryConversationUrl: z.string().optional(),
   })
   .strict()

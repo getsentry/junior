@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createJuniorApi } from "@/api";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { Hono } from "hono";
+import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { juniorDestinations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -320,6 +326,65 @@ describe("Junior REST API", () => {
     expect(percentEmail.status).toBe(200);
     await expect(percentEmail.json()).resolves.toMatchObject({
       actor: { email: "person%tag@example.com" },
+    });
+  });
+
+  test("marks a verified participant and exposes their private transcript", async () => {
+    const conversationId = "slack:C-private:participant-rest-api";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "Participant@Example.com",
+        platform: "slack",
+        slackUserId: "U-participant",
+        teamId: "T1",
+      },
+      conversationId,
+      destination: {
+        channelId: "C-private",
+        platform: "slack",
+        teamId: "T1",
+      },
+      source: "slack",
+      visibility: "private",
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "message",
+          messageId: "private-message",
+          role: "user",
+          text: "Private participant message",
+        },
+      },
+    ]);
+
+    const redacted = await createJuniorApi().request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    await expect(redacted.json()).resolves.toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
+
+    const participantApi = new Hono<{ Variables: JuniorApiVariables }>();
+    participantApi.use("*", async (context, next) => {
+      context.set("authorizedUserEmail", "participant@example.COM");
+      await next();
+    });
+    participantApi.route("/", createJuniorApi());
+
+    const visible = await participantApi.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    await expect(visible.json()).resolves.toMatchObject({
+      eventHistory: { status: "available" },
+      events: [
+        {
+          data: { text: "Private participant message" },
+        },
+      ],
+      isParticipant: true,
     });
   });
 });

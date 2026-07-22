@@ -62,6 +62,7 @@ type DetailOptions = Omit<
   | "eventHistory"
   | "events"
   | "generatedAt"
+  | "isParticipant"
   | "lastProgressAt"
   | "lastSeenAt"
   | "startedAt"
@@ -72,6 +73,7 @@ type DetailOptions = Omit<
   displayTitle: string;
   eventHistory?: ConversationDetailReport["eventHistory"];
   events: ConversationReportEvent[];
+  isParticipant?: boolean;
   lastProgressAt?: string;
   lastSeenAt?: string;
   startedAt: string;
@@ -92,6 +94,7 @@ function detail(
     cumulativeDurationMs: options.cumulativeDurationMs ?? 0,
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
+    isParticipant: options.isParticipant ?? false,
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
     status: options.status ?? "completed",
@@ -537,6 +540,7 @@ function summaryFromConversation(
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
+    isParticipant: _isParticipant,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
     sentryConversationUrl: _sentryConversationUrl,

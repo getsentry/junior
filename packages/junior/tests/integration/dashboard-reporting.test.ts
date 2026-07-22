@@ -466,7 +466,7 @@ describe("dashboard canonical event reporting", () => {
     expect(serialized).not.toContain('"matches":2');
   });
 
-  it("exposes a private root and child only to their verified owner", async () => {
+  it("exposes a private root and child only to a verified participant", async () => {
     const rootConversationId = "slack:C-reporting:private-owner-root";
     const childConversationId = "child:reporting-private-owner";
     await recordRoot(rootConversationId, "private", {
@@ -481,42 +481,47 @@ describe("dashboard canonical event reporting", () => {
       parentConversationId: rootConversationId,
     });
 
-    expect((await requireDetail(rootConversationId)).eventHistory.status).toBe(
-      "redacted",
+    await expect(requireDetail(rootConversationId)).resolves.toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
+    expect(
+      await readConversationDetail(rootConversationId, {
+        authorizedUserEmail: "other@example.com",
+      }),
+    ).toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
+    const rootParticipantDetail = await readConversationDetail(
+      rootConversationId,
+      { authorizedUserEmail: " owner@example.COM " },
     );
-    expect(
-      (
-        await readConversationDetail(rootConversationId, {
-          verifiedViewerEmail: "other@example.com",
-        })
-      )?.eventHistory.status,
-    ).toBe("redacted");
-    expect(
-      (
-        await readConversationDetail(rootConversationId, {
-          verifiedViewerEmail: " owner@example.COM ",
-        })
-      )?.events[0]?.data,
-    ).toMatchObject({ text: "Private owner answer" });
-    expect(
-      (
-        await readConversationDetail(childConversationId, {
-          verifiedViewerEmail: "owner@example.com",
-        })
-      )?.events[0]?.data,
-    ).toMatchObject({ text: "Child answer" });
+    expect(rootParticipantDetail).toMatchObject({ isParticipant: true });
+    expect(rootParticipantDetail?.events[0]?.data).toMatchObject({
+      text: "Private owner answer",
+    });
+    const childParticipantDetail = await readConversationDetail(
+      childConversationId,
+      { authorizedUserEmail: "owner@example.com" },
+    );
+    expect(childParticipantDetail).toMatchObject({ isParticipant: true });
+    expect(childParticipantDetail?.events[0]?.data).toMatchObject({
+      text: "Child answer",
+    });
 
     await getDb()
       .update(juniorIdentities)
       .set({ emailVerified: false })
       .where(eq(juniorIdentities.providerSubjectId, "U-owner"));
     expect(
-      (
-        await readConversationDetail(rootConversationId, {
-          verifiedViewerEmail: "owner@example.com",
-        })
-      )?.eventHistory.status,
-    ).toBe("redacted");
+      await readConversationDetail(rootConversationId, {
+        authorizedUserEmail: "owner@example.com",
+      }),
+    ).toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
   });
 
   it("authorizes children from their persisted root and rejects forged or malformed lineage", async () => {
@@ -592,6 +597,32 @@ describe("dashboard canonical event reporting", () => {
     expect(JSON.stringify(privateChildDetail)).not.toContain(
       "forged-public-child-channel",
     );
+
+    const cyclicRoot = "slack:C-reporting:cyclic-private-root";
+    const cyclicChild = "child:reporting-cyclic-private";
+    await recordRoot(cyclicRoot, "private", {
+      slackUserId: "U-cyclic-owner",
+      teamId: "T-reporting",
+      email: "cyclic-owner@example.com",
+    });
+    await appendVisibleHistory(cyclicRoot, "Cyclic private answer");
+    await createChild({
+      childConversationId: cyclicChild,
+      parentConversationId: cyclicRoot,
+    });
+    await getDb()
+      .update(juniorConversations)
+      .set({ parentConversationId: cyclicChild })
+      .where(eq(juniorConversations.conversationId, cyclicRoot));
+
+    await expect(
+      readConversationDetail(cyclicRoot, {
+        authorizedUserEmail: "cyclic-owner@example.com",
+      }),
+    ).resolves.toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
   });
 
   it("lets requested-row expiry win and stamps both root and child purges", async () => {

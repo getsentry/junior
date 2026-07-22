@@ -1,7 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { createJuniorApi } from "@sentry/junior/api";
+import { createJuniorApi, type JuniorApiVariables } from "@sentry/junior/api";
 import { initSentry } from "@sentry/junior/instrumentation";
 import type {
   PluginApiRouteRequestContext,
@@ -55,7 +55,7 @@ interface DashboardPluginRoute {
   pluginName: string;
 }
 
-type Variables = {
+type Variables = JuniorApiVariables & {
   authSession: DashboardSession;
 };
 
@@ -342,6 +342,12 @@ function localAuthBypassSession(
       emailVerified: true,
     },
   };
+}
+
+function authorizedUserEmail(session: DashboardSession): string | undefined {
+  return session.user.emailVerified === true
+    ? session.user.email.trim().toLowerCase()
+    : undefined;
 }
 
 function readAssetUrl(url: URL): string {
@@ -634,12 +640,11 @@ export function createDashboardApp(
     next: Next,
   ) => {
     if (!authRequired) {
-      c.set(
-        "authSession",
-        localAuthBypassSession(
-          options.mockConversations ? "morgan@sentry.io" : undefined,
-        ),
+      const session = localAuthBypassSession(
+        options.mockConversations ? "morgan@sentry.io" : undefined,
       );
+      c.set("authSession", session);
+      c.set("authorizedUserEmail", authorizedUserEmail(session));
       await next();
       return;
     }
@@ -658,7 +663,9 @@ export function createDashboardApp(
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw);
     }
-    c.set("authSession", sanitizeDashboardSession(session));
+    const sanitizedSession = sanitizeDashboardSession(session);
+    c.set("authSession", sanitizedSession);
+    c.set("authorizedUserEmail", authorizedUserEmail(sanitizedSession));
     await next();
   };
 
@@ -687,19 +694,7 @@ export function createDashboardApp(
   if (options.mockConversations) {
     app.route("/api", createMockReportingApi());
   }
-  app.route(
-    "/",
-    createJuniorApi({
-      getVerifiedViewerEmail: (context) => {
-        const session = context.get("authSession") as
-          | DashboardSession
-          | undefined;
-        return session?.user.emailVerified === true
-          ? session.user.email.trim().toLowerCase()
-          : undefined;
-      },
-    }),
-  );
+  app.route("/", createJuniorApi());
   app.get("/api/config", () => {
     return Response.json(
       dashboardConfigSchema.parse({

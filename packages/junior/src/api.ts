@@ -1,7 +1,8 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
+import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -10,13 +11,11 @@ import {
   readSkillReports,
 } from "./reporting";
 
+export type { JuniorApiVariables };
+
 /** Create Junior's production REST API for authenticated dashboard consumers. */
-export function createJuniorApi(
-  options: {
-    getVerifiedViewerEmail?: (context: Context) => string | undefined;
-  } = {},
-): Hono {
-  const app = new Hono();
+export function createJuniorApi(): Hono<JuniorApiEnv> {
+  const app = new Hono<JuniorApiEnv>();
 
   app.get("/api/health", async () => {
     return Response.json(await readHealthReport());
@@ -34,7 +33,7 @@ export function createJuniorApi(
     return Response.json(await readPluginOperationalReportFeed());
   });
 
-  app.route("/api/conversations", createConversationRoutes(options));
+  app.route("/api/conversations", createConversationRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
 

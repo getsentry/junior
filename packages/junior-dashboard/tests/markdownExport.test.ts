@@ -32,6 +32,7 @@ function conversation(
     eventHistory: { status: "available" },
     events,
     generatedAt: "2026-01-01T00:01:00.000Z",
+    isParticipant: false,
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",

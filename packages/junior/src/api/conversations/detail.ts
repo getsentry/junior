@@ -16,7 +16,6 @@ import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
-import type { Context } from "hono";
 import type { ApiRoute } from "../route";
 import { parseParams } from "../http";
 import { conversationParamsSchema } from "../schema";
@@ -30,7 +29,7 @@ function projectConversationDetail(args: {
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   usage: ConversationDetailReport["cumulativeUsage"];
-  viewerOwnsConversation?: boolean;
+  isParticipant: boolean;
 }): ConversationDetailReport {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
@@ -44,7 +43,7 @@ function projectConversationDetail(args: {
       : {}),
   };
   const canExposePayload =
-    args.viewerOwnsConversation === true ||
+    args.isParticipant ||
     canExposeConversationPayload({
       conversationId: args.privacyConversationId ?? conversationId,
       visibility: args.effectiveVisibility,
@@ -61,6 +60,7 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     events: projectConversationReportEvents({ canExposePayload, events }),
+    isParticipant: args.isParticipant,
     ...(modelUsage.length > 0 ? { modelUsage } : {}),
     eventHistory:
       transcriptPurgedAtMs !== undefined
@@ -81,14 +81,16 @@ function projectConversationDetail(args: {
 
 async function readConversationDetailFromSql(
   conversationId: string,
-  options: { verifiedViewerEmail?: string },
+  options: { authorizedUserEmail?: string },
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
   const executor = getSqlExecutor();
+  const authorizedUserEmail = options.authorizedUserEmail?.trim().toLowerCase();
   const [snapshot, modelUsage] = await Promise.all([
     readConversationEventPrivacySnapshot(executor, {
+      ...(authorizedUserEmail ? { authorizedUserEmail } : {}),
       conversationId,
       eventTypes: conversationReportSourceEventTypes,
     }),
@@ -108,15 +110,6 @@ async function readConversationDetailFromSql(
       payload: row.payload,
     }),
   );
-  const rootRecord =
-    snapshot.rootConversationId === conversationId
-      ? record
-      : await readConversationRecordFromSql(snapshot.rootConversationId);
-  const verifiedViewerEmail = options.verifiedViewerEmail?.trim().toLowerCase();
-  const viewerOwnsConversation = Boolean(
-    verifiedViewerEmail &&
-    rootRecord?.ownerVerifiedEmail === verifiedViewerEmail,
-  );
   const effectiveVisibility =
     snapshot.visibility === "public" || snapshot.visibility === "private"
       ? snapshot.visibility
@@ -126,43 +119,39 @@ async function readConversationDetailFromSql(
     effectiveVisibility,
     events,
     modelUsage,
-    privacyConversationId: snapshot.rootConversationId,
+    ...(snapshot.rootConversationId
+      ? { privacyConversationId: snapshot.rootConversationId }
+      : {}),
     usage: record.usage ?? undefined,
-    viewerOwnsConversation,
+    isParticipant: snapshot.isParticipant,
   });
 }
 
 /** Load one conversation from its canonical event history. */
 export async function readConversationDetail(
   conversationId: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: { authorizedUserEmail?: string } = {},
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, options);
   return report ? conversationDetailReportSchema.parse(report) : undefined;
 }
 
 /** Serve one conversation detail endpoint. */
-export function createConversationDetailRoute(
-  options: {
-    getVerifiedViewerEmail?: (context: Context) => string | undefined;
-  } = {},
-): ApiRoute {
-  return {
-    method: "get",
-    path: "/:conversationId",
-    handler: async (c) => {
-      const { conversationId } = parseParams(
-        conversationParamsSchema,
-        c.req.param(),
-      );
-      const verifiedViewerEmail = options.getVerifiedViewerEmail?.(c);
-      const report = await readConversationDetail(
-        conversationId,
-        verifiedViewerEmail ? { verifiedViewerEmail } : {},
-      );
-      return report
-        ? Response.json(report)
-        : Response.json({ error: "Conversation not found." }, { status: 404 });
-    },
-  };
-}
+export default {
+  method: "get",
+  path: "/:conversationId",
+  handler: async (c) => {
+    const { conversationId } = parseParams(
+      conversationParamsSchema,
+      c.req.param(),
+    );
+    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const report = await readConversationDetail(
+      conversationId,
+      authorizedUserEmail ? { authorizedUserEmail } : {},
+    );
+    return report
+      ? Response.json(report)
+      : Response.json({ error: "Conversation not found." }, { status: 404 });
+  },
+} satisfies ApiRoute;

@@ -56,6 +56,7 @@ function transcript(
     eventHistory: { status: "available" },
     events,
     generatedAt: startedAt,
+    isParticipant: false,
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
