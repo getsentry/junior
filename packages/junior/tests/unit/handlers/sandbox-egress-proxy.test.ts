@@ -320,19 +320,11 @@ describe("sandbox egress proxy", () => {
           traceparent: "00-trace-span-01",
         },
       }),
-    ).toMatchObject({
+    ).toEqual({
       allow: {
+        "*": [],
         "sentry.io": [
           {
-            transform: [
-              {
-                headers: {
-                  "sentry-trace": "trace-span-1",
-                  baggage: "sentry-release=abc",
-                  traceparent: "00-trace-span-01",
-                },
-              },
-            ],
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
           },
         ],
