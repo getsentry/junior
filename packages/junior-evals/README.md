@@ -78,7 +78,6 @@ Harness override knobs (in `EvalOverrides`):
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: override returned reply text per call.
 - `reply_timeout_ms`: lower or set the per-reply harness timeout for a specific scenario. It cannot exceed 60 seconds.
-- `turn_timeout_ms`: force a shorter agent turn-slice deadline while leaving the overall reply timeout available for queued continuation work.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
