@@ -70,7 +70,7 @@ const TRANSIENT_SLACK_API_ERRORS = new Set([
   "service_unavailable",
 ]);
 
-/** Retry transport failures and transient Slack responses, but not explicit rejections. */
+/** Recover transient or ambiguous Slack failures, but stop on explicit rejection. */
 export function isRetryableSlackPostError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return true;

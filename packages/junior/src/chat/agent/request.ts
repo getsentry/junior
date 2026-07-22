@@ -150,10 +150,10 @@ export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
 }
 
-/** Ask the agent runtime to resume from its last durable boundary and retry delivery. */
+/** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
   constructor(cause: unknown) {
-    super("Assistant delivery should retry", { cause });
+    super("Assistant delivery was transient or ambiguous", { cause });
     this.name = "RetryableDeliveryError";
   }
 }

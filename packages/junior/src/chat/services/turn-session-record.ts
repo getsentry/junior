@@ -471,7 +471,7 @@ interface ContinuationRecordInput {
   surface?: AgentTurnSurface;
 }
 
-/** Persist a timeout or delivery-retry continuation at the last safe boundary. */
+/** Persist a timeout or delivery retry under the turn's shared slice limit. */
 export async function persistContinuationSessionRecord(
   args: ContinuationRecordInput & {
     resumeReason: "retry" | "timeout";
