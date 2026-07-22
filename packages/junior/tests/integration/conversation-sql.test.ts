@@ -93,6 +93,7 @@ ORDER BY indexname ASC
           "junior_conversations_last_activity_idx",
           "junior_conversations_origin_idx",
           "junior_conversations_pkey",
+          "junior_conversations_root_idx",
           "junior_conversations_actor_activity_idx",
           "junior_conversation_events_message_search_idx",
           "junior_destinations_pkey",

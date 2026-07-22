@@ -181,7 +181,7 @@ describe("conversation list API", () => {
     }
   });
 
-  test("excludes child conversations from the top-level feed", async () => {
+  test("excludes children from the feed and rolls their usage into the root", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
@@ -191,21 +191,35 @@ describe("conversation list API", () => {
         nowMs: 1_000,
         source: "slack",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ usage: { inputTokens: 10 } })
+        .where(eq(juniorConversations.conversationId, "slack:C1:root"));
       const childAt = new Date(2_000);
-      await fixture.sql.db().insert(juniorConversations).values({
-        conversationId: "advisor:child",
-        parentConversationId: "slack:C1:root",
-        createdAt: childAt,
-        lastActivityAt: childAt,
-        updatedAt: childAt,
-        executionStatus: "idle",
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: "advisor:child",
+          parentConversationId: "slack:C1:root",
+          rootConversationId: "slack:C1:root",
+          createdAt: childAt,
+          lastActivityAt: childAt,
+          updatedAt: childAt,
+          executionStatus: "idle",
+          usage: { outputTokens: 5 },
+        });
 
       const feed = await readConversationFeedFromSql();
 
       expect(feed.conversations.map((item) => item.conversationId)).toEqual([
         "slack:C1:root",
       ]);
+      expect(feed.conversations[0]?.cumulativeUsage).toEqual({
+        inputTokens: 10,
+        outputTokens: 5,
+      });
     } finally {
       await fixture.close();
     }

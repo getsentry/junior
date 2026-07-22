@@ -443,6 +443,64 @@ describe("dashboard canonical event reporting", () => {
     ]);
   });
 
+  it("rolls unprojected child usage into a root conversation", async () => {
+    const rootConversationId = "slack:C-reporting:tree-usage";
+    const childConversationId = "child:reporting-unprojected-usage";
+    await recordRoot(rootConversationId, "public");
+    await appendVisibleHistory(rootConversationId);
+    const { getDb } = await import("@/chat/db");
+    const childAt = new Date(3);
+    await getDb()
+      .insert(juniorConversations)
+      .values({
+        conversationId: childConversationId,
+        parentConversationId: rootConversationId,
+        rootConversationId,
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
+        usage: { totalTokens: 7, cost: { total: 0.002 } },
+      });
+    await getDb()
+      .update(juniorConversations)
+      .set({ usage: { inputTokens: 10, cost: { total: 0.001 } } })
+      .where(eq(juniorConversations.conversationId, rootConversationId));
+    await appendVisibleHistory(childConversationId, "Unprojected child answer");
+
+    const rootDetail = await requireDetail(rootConversationId);
+    expect(JSON.stringify(rootDetail.events)).not.toContain(
+      childConversationId,
+    );
+    expect(rootDetail.cumulativeUsage).toEqual({
+      totalTokens: 17,
+      cost: { total: 0.003 },
+    });
+    expect(rootDetail.modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({
+          inputTokens: 20,
+          outputTokens: 4,
+          cachedInputTokens: 6,
+          totalTokens: 30,
+        }),
+      },
+    ]);
+
+    const childDetail = await requireDetail(childConversationId);
+    expect(childDetail.cumulativeUsage).toEqual({
+      totalTokens: 7,
+      cost: { total: 0.002 },
+    });
+    expect(childDetail.modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 15 }),
+      },
+    ]);
+  });
+
   it("redacts visible content for a private root while retaining structure", async () => {
     const conversationId = "slack:C-reporting:private-detail";
     await recordRoot(conversationId, "private");

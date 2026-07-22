@@ -12,6 +12,7 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 import { participantMatchColumn } from "@/chat/conversations/participant";
 import { conversationFeedSchema } from "./schema";
 import type { ConversationFeed } from "./schema";
+import { readRootConversationUsageFromSql } from "./usage";
 import type { ApiRoute } from "../route";
 import { parseQuery } from "../http";
 import { conversationFeedQuerySchema } from "../schema";
@@ -129,6 +130,7 @@ export async function readConversationRecordFromSql(
       durationMs: number;
       locationId?: string;
       usage: ConversationRow["conversation"]["usage"];
+      rootConversationId: string | null;
     }
   | undefined
 > {
@@ -167,6 +169,7 @@ export async function readConversationRecordFromSql(
           ? { locationId: row.destinationId }
           : {}),
         usage: row.conversation.usage,
+        rootConversationId: row.conversation.rootConversationId,
       }
     : undefined;
 }
@@ -183,11 +186,16 @@ export async function readConversationFeedFromSql(
   } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
+  const db = getDb();
   const rows = await conversationRows(
-    getDb(),
+    db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.actorEmail,
     options.authorizedUserEmail,
+  );
+  const usageByRoot = await readRootConversationUsageFromSql(
+    db,
+    rows.map((row) => row.conversation.conversationId),
   );
   return {
     conversations: rows.map((row) =>
@@ -198,7 +206,7 @@ export async function readConversationFeedFromSql(
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
           : {}),
-        usage: row.conversation.usage ?? undefined,
+        usage: usageByRoot.get(row.conversation.conversationId),
       }),
     ),
     generatedAt: new Date(nowMs).toISOString(),

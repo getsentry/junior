@@ -1,7 +1,7 @@
 /** SQL reporting adapter for usage stored on assistant agent steps. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   agentTurnUsageSchema,
   hasAgentTurnUsage,
@@ -120,7 +120,7 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
  */
 export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
-  conversationId: string,
+  options: { conversationId: string; includeDescendants?: boolean },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
   const modelId = sql<string>`concat(${message}->>'provider', '/', ${message}->>'model')`;
   const inputTokens = token("input", "inputTokens");
@@ -151,9 +151,18 @@ export async function readConversationModelUsageFromSql(
       costTotal: summedCost(nonnegativeNumber(cost, "total")),
     })
     .from(juniorConversationEvents)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorConversationEvents.conversationId,
+      ),
+    )
     .where(
       and(
-        eq(juniorConversationEvents.conversationId, conversationId),
+        options.includeDescendants
+          ? eq(juniorConversations.rootConversationId, options.conversationId)
+          : eq(juniorConversationEvents.conversationId, options.conversationId),
         eq(juniorConversationEvents.type, "agent_step"),
         sql`${message}->>'role' = 'assistant'`,
         sql`jsonb_typeof(${message}->'provider') = 'string'`,

@@ -5,7 +5,7 @@ import {
 } from "@/chat/conversations/history";
 import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import type { Conversation } from "@/chat/conversations/store";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import {
@@ -14,6 +14,7 @@ import {
 } from "./events";
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
+import { readRootConversationUsageFromSql } from "./usage";
 import { normalizeAuthorizedUserEmail } from "@/chat/conversations/participant";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
@@ -91,15 +92,23 @@ async function readConversationDetailFromSql(
   const authorizedUserEmail = normalizeAuthorizedUserEmail(
     options.authorizedUserEmail,
   );
-  const [snapshot, modelUsage] = await Promise.all([
+  const includeDescendantUsage = record.rootConversationId === conversationId;
+  const [snapshot, modelUsage, usageByRoot] = await Promise.all([
     readConversationEventPrivacySnapshot(executor, {
       ...(authorizedUserEmail ? { authorizedUserEmail } : {}),
       conversationId,
       eventTypes: conversationReportSourceEventTypes,
     }),
     record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationModelUsageFromSql(executor, conversationId)
+      ? readConversationModelUsageFromSql(executor, {
+          conversationId,
+          includeDescendants: includeDescendantUsage,
+        })
       : Promise.resolve([]),
+    readRootConversationUsageFromSql(
+      getDb(),
+      includeDescendantUsage ? [conversationId] : [],
+    ),
   ]);
   if (!snapshot) return undefined;
   const events = snapshot.events.map((row) =>
@@ -125,7 +134,9 @@ async function readConversationDetailFromSql(
     ...(snapshot.rootConversationId
       ? { privacyConversationId: snapshot.rootConversationId }
       : {}),
-    usage: record.usage ?? undefined,
+    usage: includeDescendantUsage
+      ? usageByRoot.get(conversationId)
+      : (record.usage ?? undefined),
     isParticipant: snapshot.isParticipant,
   });
 }
