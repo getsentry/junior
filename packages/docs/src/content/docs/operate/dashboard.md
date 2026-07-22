@@ -89,6 +89,8 @@ The dashboard package owns these routes:
 | `/auth/login`                   | Dashboard Google login starter.         |
 | `/api/auth/*`                   | Better Auth Google login and callbacks. |
 
+When the GitHub plugin is enabled, its pull request outcome report appears on `/system`.
+
 `/health` remains the public minimal Junior runtime health response.
 
 The current authenticated product API slices are:

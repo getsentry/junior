@@ -36,6 +36,8 @@ Set on the harness host (never in skill files):
 - `GITHUB_APP_CLIENT_SECRET`
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_INSTALLATION_ID`
+- `GITHUB_APP_BOT_NAME` (Git author and committer display name)
+- `GITHUB_APP_BOT_EMAIL`
 
 Current limitation: one Junior deployment uses one GitHub App installation ID.
 That works for repositories covered by the same installation, but not for repositories that live
@@ -53,6 +55,8 @@ vercel env add GITHUB_APP_ID production
 vercel env add GITHUB_APP_CLIENT_ID production
 vercel env add GITHUB_APP_CLIENT_SECRET production
 vercel env add GITHUB_INSTALLATION_ID production
+vercel env add GITHUB_APP_BOT_NAME production
+vercel env add GITHUB_APP_BOT_EMAIL production
 vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
 ```
 
@@ -63,6 +67,32 @@ vercel env update GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-p
 ```
 
 Repeat for `preview` and `development` as needed. After env changes, redeploy so the new deployment picks up updated values.
+
+### Optional pull request webhooks and outcome reporting
+
+To report Junior-created PR outcomes, configure `GITHUB_APP_BOT_LOGIN` with the
+exact App bot login (such as `<app-slug>[bot]`) and configure
+`GITHUB_WEBHOOK_SECRET`. Set the GitHub App webhook URL to
+`https://<junior-host>/api/webhooks/github` and subscribe to Pull request
+events. The secret in GitHub must match the deployment environment.
+
+Conversation watches additionally use Check suite, Issue comment, Pull request
+review, and Pull request review comment events.
+
+```bash
+vercel env add GITHUB_APP_BOT_LOGIN production
+vercel env add GITHUB_WEBHOOK_SECRET production
+```
+
+After installing or upgrading the plugin, apply its packaged migration from the
+deployed app environment:
+
+```bash
+pnpm exec junior upgrade
+```
+
+The migration creates `junior_github_pull_requests`, which backs webhook
+ingestion and the `/system` outcome report.
 
 ### Optional permission declaration
 
@@ -189,6 +219,8 @@ jr-rpc config set github.repo getsentry/junior
    - `GITHUB_APP_CLIENT_SECRET`
    - `GITHUB_APP_PRIVATE_KEY`
    - `GITHUB_INSTALLATION_ID`
+   - `GITHUB_APP_BOT_NAME`
+   - `GITHUB_APP_BOT_EMAIL`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
 4. Exercise `github-issues` to create an issue in a safe test repo.

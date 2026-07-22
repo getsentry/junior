@@ -1,6 +1,17 @@
+import { createHmac } from "node:crypto";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { githubPlugin } from "@sentry/junior-github";
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
+import {
+  getConfigDefaults,
+  setConfigDefaults,
+} from "@/chat/configuration/defaults";
+import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -130,6 +141,95 @@ describe("resource event subscriptions", () => {
         },
       },
     });
+  });
+
+  it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
+    const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
+    const previousPlugins = getPlugins();
+    const previousConfigDefaults = getConfigDefaults();
+    const previousPluginCatalogConfig =
+      pluginCatalogRuntime.setConfig(undefined);
+    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
+    const previousDashboardOptions =
+      setDashboardConversationLinkOptions(undefined);
+    setDashboardConversationLinkOptions(previousDashboardOptions);
+
+    try {
+      process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+      const state = createMemoryState();
+      const queue = createConversationWorkQueueTestAdapter();
+      const nowMs = Date.now();
+      const subscription = await createGithubPrSubscription({
+        events: ["comment.created"],
+        expiresAtMs: nowMs + 60_000,
+        intent: "Watch the PR Junior opened for reviewer comments.",
+        nowMs,
+        state,
+      });
+      const body = JSON.stringify({
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 691,
+          pull_request: {
+            url: "https://api.github.com/repos/getsentry/junior/pulls/691",
+          },
+        },
+        comment: {
+          body: "please add regression coverage",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", "test-secret")
+        .update(body)
+        .digest("hex")}`;
+
+      const app = await createApp({
+        conversationWork: {
+          queue,
+          run: async () => ({ status: "completed" }),
+          state,
+        },
+        plugins: defineJuniorPlugins([githubPlugin()]),
+      });
+      const response = await app.fetch(
+        new Request("https://example.test/api/webhooks/github", {
+          method: "POST",
+          headers: {
+            "x-github-delivery": "delivery-bridge",
+            "x-github-event": "issue_comment",
+            "x-hub-signature-256": signature,
+          },
+          body,
+        }),
+      );
+
+      expect(response.status).toBe(202);
+      expect(queue.sentRecords()).toEqual([
+        {
+          conversationId: CONVERSATION_ID,
+          destination: SLACK_DESTINATION,
+          idempotencyKey: `resource-event:${subscription.id}:github:delivery-bridge:comment.created`,
+        },
+      ]);
+      const work = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state,
+      });
+      expect(work?.messages[0]?.input.text).toContain(
+        "please add regression coverage",
+      );
+    } finally {
+      setPlugins(previousPlugins);
+      pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
+      setConfigDefaults(previousConfigDefaults);
+      setDashboardConversationLinkOptions(previousDashboardOptions);
+      if (previousSecret === undefined) {
+        delete process.env.GITHUB_WEBHOOK_SECRET;
+      } else {
+        process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
+      }
+    }
   });
 
   it("completes subscriptions after terminal event delivery", async () => {

@@ -419,13 +419,22 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@sentry/junior-testing':
+        specifier: workspace:*
+        version: file:packages/junior-testing
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      drizzle-kit:
+        specifier: 'catalog:'
+        version: 0.31.10
       msw:
         specifier: ^2.14.6
         version: 2.14.6(@types/node@25.9.1)(typescript@6.0.3)

@@ -3,6 +3,7 @@ import type { PluginContext } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
+import type { ResourceEventPublisher } from "./resource-events";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -99,7 +100,10 @@ export type PluginRouteApp = {
   ): Promise<Response> | Response;
 };
 
-export interface RouteRegistrationHookContext extends PluginContext {}
+export interface RouteRegistrationHookContext extends PluginContext {
+  /** Core-owned delivery boundary for provider webhook events. */
+  resourceEvents: ResourceEventPublisher;
+}
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {}
 

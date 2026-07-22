@@ -7,7 +7,7 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createPluginHookRunner,
   getPluginApiRoutes,
@@ -660,11 +660,21 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          routes() {
+          routes(ctx) {
             return [
               {
                 path: "/demo",
-                handler: () => new Response("demo"),
+                async handler() {
+                  await ctx.resourceEvents.publish({
+                    eventKey: "demo:event",
+                    eventType: "demo.created",
+                    occurredAtMs: 1,
+                    provider: "agent-demo",
+                    resourceRef: "demo:resource:1",
+                    trustedSummary: "Demo created",
+                  });
+                  return new Response("demo");
+                },
               },
             ];
           },
@@ -672,7 +682,8 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const routes = getPluginRoutes();
+      const publish = vi.fn(async () => {});
+      const routes = getPluginRoutes({ resourceEvents: { publish } });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -681,6 +692,54 @@ describe("agent plugin hooks", () => {
         new Request("http://localhost/demo"),
       );
       await expect(response.text()).resolves.toBe("demo");
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({ eventKey: "demo:event" }),
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects resource events claimed for another plugin", async () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          routes(ctx) {
+            return [
+              {
+                path: "/demo",
+                async handler() {
+                  await ctx.resourceEvents.publish({
+                    eventKey: "other:event",
+                    eventType: "demo.created",
+                    occurredAtMs: 1,
+                    provider: "other",
+                    resourceRef: "other:resource:1",
+                    trustedSummary: "Demo created",
+                  });
+                  return new Response("demo");
+                },
+              },
+            ];
+          },
+        },
+      }),
+    ]);
+    try {
+      const publish = vi.fn(async () => {});
+      const [route] = getPluginRoutes({ resourceEvents: { publish } });
+
+      await expect(
+        route!.handler(new Request("http://localhost/demo")),
+      ).rejects.toThrow(
+        'Plugin "agent-demo" cannot publish resource events for provider "other"',
+      );
+      expect(publish).not.toHaveBeenCalled();
     } finally {
       setPlugins(previous);
     }
@@ -708,7 +767,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes()).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
       );
     } finally {
@@ -738,7 +801,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes()).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
       );
     } finally {
@@ -773,7 +840,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes()).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',
       );
     } finally {
@@ -884,9 +955,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(
-        getPluginOperationalReports(123),
-      ).resolves.toEqual([
+      await expect(getPluginOperationalReports(123)).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
@@ -929,9 +998,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(
-        getPluginOperationalReports(123),
-      ).resolves.toEqual([
+      await expect(getPluginOperationalReports(123)).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",

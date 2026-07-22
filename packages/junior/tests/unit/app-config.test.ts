@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import {
@@ -94,7 +95,7 @@ describe("createApp plugin config", () => {
     });
   });
 
-  it("routes GitHub webhooks through the core resource-event handler", async () => {
+  it("leaves GitHub webhook ownership to the configured plugin", async () => {
     const app = await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -106,8 +107,20 @@ describe("createApp plugin config", () => {
       }),
     );
 
-    expect(response.status).toBe(401);
-    await expect(response.text()).resolves.toBe("Unauthorized");
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Unknown platform: github");
+
+    const githubApp = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    });
+    const pluginResponse = await githubApp.fetch(
+      new Request("https://example.test/api/webhooks/github", {
+        method: "POST",
+        body: "{}",
+      }),
+    );
+    expect(pluginResponse.status).toBe(401);
+    await expect(pluginResponse.text()).resolves.toBe("Unauthorized");
   });
 
   it("fails loudly when the env plugin package fallback is malformed", async () => {

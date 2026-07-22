@@ -1,4 +1,7 @@
-import { promptMessageSchema } from "@sentry/junior-plugin-api";
+import {
+  promptMessageSchema,
+  resourceEventSchema,
+} from "@sentry/junior-plugin-api";
 import type {
   PluginReadState,
   PluginRoute,
@@ -8,6 +11,7 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
+  ResourceEventPublisher,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -513,7 +517,9 @@ function routeMethods(
 }
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
-export function getPluginRoutes(): PluginRouteRegistration[] {
+export function getPluginRoutes(options: {
+  resourceEvents: ResourceEventPublisher;
+}): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
@@ -526,6 +532,17 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      resourceEvents: {
+        async publish(event) {
+          const parsed = resourceEventSchema.parse(event);
+          if (parsed.provider !== pluginName) {
+            throw new Error(
+              `Plugin "${pluginName}" cannot publish resource events for provider "${parsed.provider}"`,
+            );
+          }
+          await options.resourceEvents.publish(parsed);
+        },
+      },
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(

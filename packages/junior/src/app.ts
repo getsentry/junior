@@ -30,6 +30,7 @@ import {
 } from "@/chat/plugins/validation";
 import type {
   PluginRegistration,
+  ResourceEventPublisher,
   PluginRouteMethod,
 } from "@sentry/junior-plugin-api";
 import {
@@ -40,7 +41,6 @@ import {
 } from "./plugins";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
-import { POST as githubWebhookPOST } from "@/handlers/github-webhook";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as retentionGET } from "@/handlers/retention";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
@@ -53,7 +53,6 @@ import {
   registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
 } from "@/chat/task-execution/vercel-callback";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import {
   createVercelPluginTaskCallback,
@@ -65,6 +64,7 @@ import {
 } from "@/chat/app/production";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
+import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 
 export { defineJuniorPlugins } from "./plugins";
 export type {
@@ -555,6 +555,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
+  const resourceEvents: ResourceEventPublisher = {
+    async publish(event) {
+      const conversationWork = getConversationWorkOptions();
+      await ingestResourceEvent(event, {
+        queue: conversationWork.queue ?? getVercelConversationWorkQueue(),
+        state: conversationWork.state,
+      });
+    },
+  };
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
@@ -572,7 +581,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes();
+    pluginRoutes = getPluginRoutes({ resourceEvents });
     validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -663,8 +672,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
-  const getResourceEventQueue = (): ConversationWorkQueue =>
-    getConversationWorkOptions().queue ?? getVercelConversationWorkQueue();
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
@@ -690,13 +697,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/webhooks/slack", (c) => {
     return slackWebhookPOST(c.req.raw, waitUntil, slackWebhookServices);
-  });
-
-  app.post("/api/webhooks/github", (c) => {
-    return githubWebhookPOST(c.req.raw, {
-      queue: getResourceEventQueue,
-      state: () => getConversationWorkOptions().state,
-    });
   });
 
   app.post("/api/webhooks/:platform", (c) => {

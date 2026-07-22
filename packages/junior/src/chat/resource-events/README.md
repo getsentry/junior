@@ -11,6 +11,8 @@ conversation.
   conversation association.
 - Provider route code validates and normalizes incoming events before calling
   the ingestion boundary.
+- Plugin-owned provider routes publish normalized events through the route-hook
+  resource event publisher; core never needs the raw provider webhook.
 - Normalized events contain stable provider/resource identity and a bounded,
   safe notification summary rather than a raw webhook payload.
 - Ingestion appends a system-authored conversation message and sends a normal
@@ -19,6 +21,6 @@ conversation.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.
 
-The plugin-facing types live in
-`packages/junior-plugin-api/src/resource-events.ts`; storage and ingestion live
-in this directory.
+The plugin-facing types and publisher contract live in
+`packages/junior-plugin-api/src/resource-events.ts`; subscription storage and
+ingestion live in this directory.

@@ -21,16 +21,26 @@ const SUGGESTED_EVENTS = [
   "state.closed_unmerged",
 ];
 
-/** Build the stable resource identity shared by GitHub PR tool results and webhooks. */
+/** Build the stable pull request identity shared by tools and webhooks. */
+export function gitHubPullRequestResource(input: {
+  number: number;
+  repo: string;
+}): Pick<SubscribableResource, "label" | "provider" | "resourceRef"> {
+  return {
+    label: `GitHub PR ${input.repo}#${input.number}`,
+    provider: "github",
+    resourceRef: `github:pull_request:${input.repo}#${input.number}`,
+  };
+}
+
+/** Describe a pull request as a resource when webhook subscriptions are enabled. */
 export function gitHubPullRequestSubscribable(input: {
   number: number;
   repo: string;
 }): SubscribableResource | undefined {
   if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
   return {
-    label: `GitHub PR ${input.repo}#${input.number}`,
-    provider: "github",
-    resourceRef: `github:pull_request:${input.repo}#${input.number}`,
+    ...gitHubPullRequestResource(input),
     suggestedEvents: SUGGESTED_EVENTS,
     supportedEvents: SUPPORTED_EVENTS,
     type: "pull_request",

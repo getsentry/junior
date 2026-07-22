@@ -1,28 +1,11 @@
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import { resourceEventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueResourceEventNotification } from "@/chat/resource-events/notification";
 import {
   deliverResourceEventSubscription,
   findMatchingResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
-
-const ingestResourceEventInputSchema = z
-  .object({
-    eventKey: z.string().min(1),
-    eventType: z.string().min(1),
-    occurredAtMs: z.number().finite(),
-    provider: z.string().min(1),
-    resourceRef: z.string().min(1),
-    terminal: z.boolean().optional(),
-    trustedSummary: z.string().min(1),
-    untrustedText: z.string().optional(),
-  })
-  .strict();
-
-export type IngestResourceEventInput = z.output<
-  typeof ingestResourceEventInputSchema
->;
 
 /** Match a normalized provider event and enqueue notifications into conversations. */
 export async function ingestResourceEvent(
@@ -33,7 +16,7 @@ export async function ingestResourceEvent(
     state?: StateAdapter;
   },
 ): Promise<{ enqueued: number }> {
-  const event = ingestResourceEventInputSchema.parse(input);
+  const event = resourceEventSchema.parse(input);
   const nowMs = options.nowMs ?? Date.now();
   const subscriptions = await findMatchingResourceEventSubscriptions({
     eventType: event.eventType,
