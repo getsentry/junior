@@ -36,7 +36,27 @@ Stop if any package lacks the target on npm.
 
 ### 3. Build release context
 
-Junior does not publish GitHub releases, tags, or a changelog. Use npm publish timestamps to summarize merged PRs between `old_version` and `target_version`:
+Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target). Prefer published notes over PR scraping.
+
+1. **GitHub releases** (preferred). Tags match package versions with no `v` prefix (for example `0.107.1`):
+
+```bash
+gh release list --repo getsentry/junior --limit 50
+gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
+```
+
+Collect bodies for every release tag in `(old_version, target_version]`.
+
+2. **`CHANGELOG.md`** when release bodies are missing or incomplete:
+
+```bash
+gh api repos/getsentry/junior/contents/CHANGELOG.md --jq .content | base64 -d
+# or: https://raw.githubusercontent.com/getsentry/junior/main/CHANGELOG.md
+```
+
+Extract each `## <version>` section in `(old_version, target_version]`.
+
+3. **PR-window scrape** only if both releases and changelog sections are unavailable:
 
 ```bash
 pnpm view @sentry/junior time --json
@@ -46,7 +66,7 @@ gh pr list --repo getsentry/junior --state merged \
   --json number,title,url,mergedAt
 ```
 
-Save total PR count, breaking PRs (`!` or `BREAKING CHANGE`), and config-relevant PRs (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking PR exists, keep the PR draft and call out manual review, but continue the update.
+From the chosen source, save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -122,7 +142,7 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release-window summary with the no-changelog disclaimer, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking PRs, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary (cite source: GitHub releases, `CHANGELOG.md`, or PR-window fallback), config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 ## Stop conditions
 
