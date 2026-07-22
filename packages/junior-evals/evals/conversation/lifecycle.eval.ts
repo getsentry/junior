@@ -1,4 +1,4 @@
-import { describeEval } from "vitest-evals";
+import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
   mention,
@@ -25,24 +25,23 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     });
   });
 
-  it("when a sandbox command is interrupted at a turn deadline, continue the task to completion", async ({
+  it("when a tool call is interrupted at a turn deadline, continue the task to completion", async ({
     run,
   }) => {
-    const command =
-      "printf 'timeout continuation completed\\n' > /tmp/timeout-continuation-result.txt && cat /tmp/timeout-continuation-result.txt";
-    await run({
+    const result = await run({
       overrides: {
-        timeout_resume: { command },
+        timeout_resume: { tool_name: "systemTime", arguments: {} },
       },
       initialEvents: [
         mention(
-          "Run the requested sandbox command and report its exact output when the work is complete.",
+          "Tell me the current UTC time. If the previous attempt was interrupted, continue and finish the request.",
         ),
       ],
+      requireSandboxReady: false,
       criteria: rubric({
         pass: [
-          "The final reply reports the exact output `timeout continuation completed`.",
-          "The assistant reconciles the interrupted command and finishes the original request.",
+          "The final reply reports the current time in UTC.",
+          "The assistant continues after the interrupted tool call and finishes the original request.",
         ],
         fail: [
           "The reply only reports that the work was interrupted or timed out.",
@@ -50,5 +49,10 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(toolCalls(result.session)).toContainEqual(
+      expect.objectContaining({ name: "systemTime", status: "ok" }),
+    );
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 });

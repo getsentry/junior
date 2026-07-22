@@ -306,7 +306,8 @@ export interface EvalOverrides {
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
   timeout_resume?: {
-    command: string;
+    arguments: Record<string, JsonValue>;
+    tool_name: string;
   };
   unset_gateway_api_key?: boolean;
 }
@@ -1709,11 +1710,9 @@ function buildRuntimeServices(
             const unknownOutcome = {
               ok: false,
               status: "error",
-              target: timeoutResume.command,
+              target: timeoutResume.tool_name,
               data: {
                 aborted: true,
-                exit_code: 130,
-                stderr: "Command aborted at the agent turn deadline.",
               },
               error: {
                 kind: "outcome_unknown",
@@ -1744,8 +1743,8 @@ function buildRuntimeServices(
                   {
                     type: "toolCall",
                     id: toolCallId,
-                    name: "bash",
-                    arguments: { command: timeoutResume.command },
+                    name: timeoutResume.tool_name,
+                    arguments: timeoutResume.arguments,
                   },
                 ],
                 stopReason: "toolUse",
@@ -1758,7 +1757,7 @@ function buildRuntimeServices(
               {
                 role: "toolResult",
                 toolCallId,
-                toolName: "bash",
+                toolName: timeoutResume.tool_name,
                 content: deadlineResult.content,
                 details: deadlineResult.details,
                 isError: deadlineResult.isError,
