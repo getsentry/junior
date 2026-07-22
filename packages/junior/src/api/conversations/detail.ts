@@ -156,9 +156,10 @@ export function createConversationDetailRoute(
         c.req.param(),
       );
       const verifiedViewerEmail = options.getVerifiedViewerEmail?.(c);
-      const report = await readConversationDetail(conversationId, {
-        ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
-      });
+      const report = await readConversationDetail(
+        conversationId,
+        verifiedViewerEmail ? { verifiedViewerEmail } : {},
+      );
       return report
         ? Response.json(report)
         : Response.json({ error: "Conversation not found." }, { status: 404 });

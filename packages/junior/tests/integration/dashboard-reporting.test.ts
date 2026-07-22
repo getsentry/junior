@@ -25,6 +25,11 @@ if (!TEST_DATABASE_URL) {
 async function recordRoot(
   conversationId: string,
   visibility: "private" | "public",
+  actor?: {
+    email: string;
+    slackUserId: string;
+    teamId: string;
+  },
 ): Promise<void> {
   const { getConversationStore } = await import("@/chat/db");
   await getConversationStore().recordActivity({
@@ -35,6 +40,7 @@ async function recordRoot(
       channelId: `C-${conversationId}`,
     },
     nowMs: 1,
+    ...(actor ? { actor: { platform: "slack" as const, ...actor } } : {}),
     source: "slack",
     title: "Canonical event report",
     visibility,
@@ -463,19 +469,12 @@ describe("dashboard canonical event reporting", () => {
   it("exposes a private root and child only to their verified owner", async () => {
     const rootConversationId = "slack:C-reporting:private-owner-root";
     const childConversationId = "child:reporting-private-owner";
-    await recordRoot(rootConversationId, "private");
-    const { getConversationStore, getDb } = await import("@/chat/db");
-    await getConversationStore().recordActivity({
-      conversationId: rootConversationId,
-      actor: {
-        platform: "slack",
-        slackUserId: "U-owner",
-        teamId: "T-reporting",
-        email: "Owner@Example.com",
-      },
-      nowMs: 2,
-      source: "slack",
+    await recordRoot(rootConversationId, "private", {
+      slackUserId: "U-owner",
+      teamId: "T-reporting",
+      email: "Owner@Example.com",
     });
+    const { getDb } = await import("@/chat/db");
     await appendVisibleHistory(rootConversationId, "Private owner answer");
     await createChild({
       childConversationId,
