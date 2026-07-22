@@ -135,7 +135,6 @@ export const plugins = defineJuniorPlugins([
   "@sentry/junior-cloudflare",
   "@sentry/junior-datadog",
   githubPlugin({
-    botLoginEnv: "GITHUB_APP_BOT_LOGIN",
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),

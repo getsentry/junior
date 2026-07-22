@@ -22,6 +22,20 @@ const pullRequestOutcomeSchema = z.object({
 });
 
 const pullRequestLifecycleActionSchema = z.object({ action: z.string() });
+const GITHUB_NOREPLY_DOMAIN = "users.noreply.github.com";
+
+/** Derive the provider login encoded in a standard GitHub noreply address. */
+function botLoginFromEmail(value: string | undefined): string | undefined {
+  const email = value?.trim();
+  if (!email) return undefined;
+  const separator = email.lastIndexOf("@");
+  if (separator <= 0) return undefined;
+  const domain = email.slice(separator + 1).toLowerCase();
+  if (domain !== GITHUB_NOREPLY_DOMAIN) return undefined;
+  const localPart = email.slice(0, separator);
+  const login = localPart.slice(localPart.indexOf("+") + 1).trim();
+  return login.toLowerCase().endsWith("[bot]") ? login : undefined;
+}
 
 /** Parse a provider timestamp, rejecting missing or invalid lifecycle values. */
 function timestamp(value: string | null | undefined): Date | undefined {
@@ -33,7 +47,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 /** Normalize only the fields required for the Junior-owned PR projection. */
 export function normalizeGitHubPullRequestOutcome(args: {
   body: unknown;
-  botLogin?: string;
+  botEmail?: string;
 }): GitHubPullRequestOutcomeInput | undefined {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
@@ -50,10 +64,10 @@ export function normalizeGitHubPullRequestOutcome(args: {
     throw new Error("GitHub pull request lifecycle timestamps are invalid");
   }
   const authorLogin = pullRequest.user.login.trim().toLowerCase();
-  const botLogin = args.botLogin?.trim().toLowerCase();
+  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
   if (parsed.action === "opened" && !botLogin) {
     throw new Error(
-      "The configured GitHub App bot login is required to classify pull request ownership",
+      "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify pull request ownership",
     );
   }
   const candidateOwned = Boolean(

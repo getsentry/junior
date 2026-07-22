@@ -159,7 +159,6 @@ describe("plugin manifest API headers", () => {
       GITHUB_APP_ID: {},
       GITHUB_APP_PRIVATE_KEY: {},
       GITHUB_INSTALLATION_ID: {},
-      GITHUB_APP_BOT_LOGIN: {},
       GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
       GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
     });

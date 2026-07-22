@@ -50,7 +50,6 @@ import { githubPlugin } from "@sentry/junior-github";
 
 export const plugins = defineJuniorPlugins([
   githubPlugin({
-    botLoginEnv: "GITHUB_APP_BOT_LOGIN",
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),

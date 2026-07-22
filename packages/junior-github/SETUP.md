@@ -70,9 +70,10 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ### Optional pull request webhooks and outcome reporting
 
-To report Junior-created PR outcomes, configure `GITHUB_APP_BOT_LOGIN` with the
-exact App bot login (such as `<app-slug>[bot]`) and configure
-`GITHUB_WEBHOOK_SECRET`. Set the GitHub App webhook URL to
+To report Junior-created PR outcomes, use the standard GitHub noreply format
+`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com` for
+`GITHUB_APP_BOT_EMAIL` and configure `GITHUB_WEBHOOK_SECRET`. Junior derives
+the App bot login from that email. Set the GitHub App webhook URL to
 `https://<junior-host>/api/webhooks/github` and subscribe to Pull request
 events. The secret in GitHub must match the deployment environment.
 
@@ -80,7 +81,6 @@ Conversation watches additionally use Check suite, Issue comment, Pull request
 review, and Pull request review comment events.
 
 ```bash
-vercel env add GITHUB_APP_BOT_LOGIN production
 vercel env add GITHUB_WEBHOOK_SECRET production
 ```
 

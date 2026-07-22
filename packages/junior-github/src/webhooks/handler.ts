@@ -33,7 +33,7 @@ function parseJson(body: string): unknown {
 
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
-  botLogin(): string | undefined;
+  botEmail(): string | undefined;
   db: GitHubDb;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -58,7 +58,7 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({
               body,
-              botLogin: args.botLogin(),
+              botEmail: args.botEmail(),
             })
           : undefined;
       if (outcome) {

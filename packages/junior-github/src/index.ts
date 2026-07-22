@@ -66,9 +66,6 @@ export interface GitHubPluginOptions {
   /** Environment variable containing Junior's Git committer name. */
   botNameEnv?: string;
 
-  /** Environment variable containing the exact GitHub App bot login. */
-  botLoginEnv?: string;
-
   /** Environment variable containing the GitHub App OAuth client id. */
   clientIdEnv?: string;
 
@@ -1727,7 +1724,6 @@ export function githubPlugin(
 ): PluginRegistration {
   const botNameEnv = options.botNameEnv ?? "GITHUB_APP_BOT_NAME";
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
-  const botLoginEnv = options.botLoginEnv ?? "GITHUB_APP_BOT_LOGIN";
   const clientIdEnv = options.clientIdEnv ?? "GITHUB_APP_CLIENT_ID";
   const clientSecretEnv = options.clientSecretEnv ?? "GITHUB_APP_CLIENT_SECRET";
   const appIdEnv = options.appIdEnv ?? GITHUB_APP_ID_ENV;
@@ -1759,7 +1755,6 @@ export function githubPlugin(
         [installationIdEnv]: {},
         [clientIdEnv]: {},
         [clientSecretEnv]: {},
-        [botLoginEnv]: {},
         [botNameEnv]: { exposeToCommandEnv: true },
         [botEmailEnv]: { exposeToCommandEnv: true },
       },
@@ -1798,7 +1793,7 @@ export function githubPlugin(
       routes(ctx) {
         return [
           createGitHubWebhookRoute({
-            botLogin: () => readEnv(botLoginEnv),
+            botEmail: () => readEnv(botEmailEnv),
             db: ctx.db as GitHubDb,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),

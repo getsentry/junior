@@ -101,16 +101,15 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 ## GitHub plugin
 
-| Variable                   | Required    | Purpose                                             |
-| -------------------------- | ----------- | --------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes         | GitHub App identity.                                |
-| `GITHUB_APP_CLIENT_ID`     | Yes         | GitHub App OAuth client ID for user-token auth.     |
-| `GITHUB_APP_CLIENT_SECRET` | Yes         | GitHub App OAuth client secret for user-token auth. |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes         | GitHub App signing key.                             |
-| `GITHUB_INSTALLATION_ID`   | Yes         | Repository/org installation target.                 |
-| `GITHUB_APP_BOT_LOGIN`     | Conditional | Exact App bot login used for outcome reporting.     |
-| `GITHUB_APP_BOT_NAME`      | Yes         | Git author and committer display name.              |
-| `GITHUB_APP_BOT_EMAIL`     | Yes         | Git author noreply email for the App bot user.      |
+| Variable                   | Required | Purpose                                                     |
+| -------------------------- | -------- | ----------------------------------------------------------- |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                        |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client ID for user-token auth.             |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.         |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                     |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository/org installation target.                         |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                      |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email for Git attribution and PR ownership. |
 
 ## Sentry plugin
 

@@ -97,10 +97,11 @@ function signedRequest(body: unknown, eventName = "pull_request"): Request {
 function webhookRoute(
   fixture: GitHubFixture,
   published: ResourceEvent[] = [],
-  botLogin: () => string | undefined = () => "sentry-junior[bot]",
+  botEmail: () => string | undefined = () =>
+    "264270552+sentry-junior[bot]@users.noreply.github.com",
 ) {
   return createGitHubWebhookRoute({
-    botLogin,
+    botEmail,
     db: fixture.db(),
     resourceEvents: {
       async publish(event) {
@@ -324,15 +325,18 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("fails an owned-opening delivery when bot identity is unavailable", async () => {
+  it.each([
+    "sentry-junior@example.com",
+    "264270552+human@users.noreply.github.com",
+  ])("fails an opening delivery for invalid bot email %s", async (botEmail) => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture, [], () => undefined);
+      const route = webhookRoute(fixture, [], () => botEmail);
 
       await expect(
         route.handler(signedRequest(pullRequestPayload())),
       ).rejects.toThrow(
-        "The configured GitHub App bot login is required to classify pull request ownership",
+        "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify pull request ownership",
       );
       await expect(
         fixture.db().select().from(juniorGitHubPullRequests),
@@ -367,13 +371,16 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("reads ownership identity from the configured bot login environment", async () => {
+  it("derives ownership identity from the configured bot email environment", async () => {
     const fixture = await createGitHubFixture();
-    vi.stubEnv("CUSTOM_GITHUB_BOT_LOGIN", "sentry-junior[bot]");
+    vi.stubEnv(
+      "CUSTOM_GITHUB_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const plugin = githubPlugin({
-        botLoginEnv: "CUSTOM_GITHUB_BOT_LOGIN",
+        botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
         db: fixture.db(),

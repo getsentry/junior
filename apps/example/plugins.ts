@@ -3,7 +3,6 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 
-process.env.GITHUB_APP_BOT_LOGIN ||= "sentry-junior[bot]";
 process.env.GITHUB_APP_BOT_NAME ||= "sentry-junior[bot]";
 process.env.GITHUB_APP_BOT_EMAIL ||=
   "264270552+sentry-junior[bot]@users.noreply.github.com";
@@ -13,7 +12,6 @@ export const plugins = defineJuniorPlugins([
   "@sentry/junior-amplitude",
   "@sentry/junior-datadog",
   githubPlugin({
-    botLoginEnv: "GITHUB_APP_BOT_LOGIN",
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
