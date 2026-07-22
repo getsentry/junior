@@ -1,6 +1,6 @@
 ---
 name: eval-oauth
-description: Use for `/eval-oauth` requests and eval-oauth account connect, reconnect, or auth-flow test requests. You must run the eval identity check before answering anything else.
+description: Use for `/eval-oauth` requests and eval-oauth account connection or auth-flow test requests. You must run the eval identity check before answering anything else.
 allowed-tools: bash
 ---
 

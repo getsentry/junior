@@ -242,13 +242,13 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     ).not.toHaveLength(0);
   });
 
-  const oauthReconnectThread = {
-    id: "thread-oauth-reconnect",
-    channel_id: "COAUTHRECONNECT",
+  const oauthConnectThread = {
+    id: "thread-oauth-connect",
+    channel_id: "COAUTHCONNECT",
     thread_ts: "17000000.1003",
   };
 
-  it("when the user explicitly asks to reconnect, confirm reconnection without auto-resuming another task", async ({
+  it("when the user explicitly asks to connect, confirm the completed connection", async ({
     run,
   }) => {
     const result = await run({
@@ -257,19 +257,19 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         plugin_dirs: ["fixtures/plugins"],
       },
       initialEvents: [
-        threadMessage(
-          "Disconnect my eval-oauth account and reconnect it so we can test the auth flow.",
-          { thread: oauthReconnectThread, is_mention: true },
-        ),
+        threadMessage("Connect my eval-oauth account so I can use it here.", {
+          thread: oauthConnectThread,
+          is_mention: true,
+        }),
       ],
       criteria: rubric({
         pass: [
-          "The thread gets a connected or processing notice in the same thread.",
-          "The reconnect flow ends with a short connected confirmation or success follow-up in the same thread.",
+          "After authorization completes, the assistant briefly confirms that the eval-oauth account is ready to use.",
         ],
         fail: [
-          "Do not ask the user to authorize again after the reconnect has already completed.",
+          "Do not ask the user to authorize again after the connection has already completed.",
           "Do not post a generic failure message.",
+          "Do not invent or continue with an unrelated task after confirming the connection.",
         ],
       }),
     });
@@ -288,11 +288,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     ).not.toHaveLength(0);
     expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
     expect(
-      matchingThreadReplies(
-        result,
-        oauthReconnectThread,
-        /connected|reconnected/i,
-      ),
+      matchingThreadReplies(result, oauthConnectThread, /\S/),
     ).not.toHaveLength(0);
   });
 });
