@@ -41,6 +41,8 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
+import { actorFromRouting } from "@/chat/agent/request";
+import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
@@ -65,6 +67,7 @@ import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -301,6 +304,9 @@ export interface EvalOverrides {
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
+  timeout_resume?: {
+    command: string;
+  };
   unset_gateway_api_key?: boolean;
 }
 
@@ -1642,6 +1648,7 @@ function buildRuntimeServices(
   }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
+  let timeoutResumeInjected = false;
 
   const services: JuniorRuntimeServiceOverrides = {
     ...(subscribedDecisions.length > 0
@@ -1692,6 +1699,84 @@ function buildRuntimeServices(
                 },
               }
             : request;
+          const timeoutResume = scenario.overrides?.timeout_resume;
+          if (timeoutResume && !timeoutResumeInjected) {
+            timeoutResumeInjected = true;
+            await runRequest.durability?.onInputCommitted?.();
+            const nowMs = Date.now();
+            const toolCallId = "eval-timeout-resume-tool-call";
+            const unknownOutcome = {
+              ok: false,
+              status: "error",
+              target: timeoutResume.command,
+              data: {
+                aborted: true,
+                exit_code: 130,
+                stderr: "Command aborted at the agent turn deadline.",
+              },
+              error: {
+                kind: "outcome_unknown",
+                message:
+                  "Command was interrupted before its outcome was confirmed.",
+                retryable: false,
+              },
+            };
+            const piMessages = [
+              {
+                role: "user",
+                content: [{ type: "text", text: runRequest.input.messageText }],
+                timestamp: nowMs,
+              },
+              {
+                role: "assistant",
+                content: [
+                  {
+                    type: "toolCall",
+                    id: toolCallId,
+                    name: "bash",
+                    arguments: { command: timeoutResume.command },
+                  },
+                ],
+                stopReason: "toolUse",
+                api: "eval-timeout-resume",
+                provider: "eval-timeout-resume",
+                model: "xai/grok-4.5",
+                timestamp: nowMs,
+                usage: { input: 0, output: 0, totalTokens: 0 },
+              },
+              {
+                role: "toolResult",
+                toolCallId,
+                toolName: "bash",
+                content: [
+                  { type: "text", text: JSON.stringify(unknownOutcome) },
+                ],
+                isError: false,
+                timestamp: nowMs,
+              },
+            ] as PiMessage[];
+            const sessionRecord = await upsertAgentTurnSessionRecord({
+              conversationId: runRequest.conversationId,
+              sessionId: runRequest.turnId,
+              sliceId: 2,
+              state: "awaiting_resume",
+              piMessages,
+              modelId: "xai/grok-4.5",
+              resumeReason: "timeout",
+              resumedFromSliceId: 1,
+              destination: runRequest.routing.destination,
+              destinationVisibility: runRequest.routing.destinationVisibility,
+              source: runRequest.routing.source,
+              surface: runRequest.routing.surface,
+              actor: actorFromRouting(runRequest.routing),
+              errorMessage: "Agent turn timed out at the eval fixture boundary",
+              turnStartMessageIndex: 0,
+            });
+            return {
+              status: "suspended",
+              resumeVersion: sessionRecord.version,
+            };
+          }
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
