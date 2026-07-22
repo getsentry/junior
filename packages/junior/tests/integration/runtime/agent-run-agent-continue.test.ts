@@ -46,16 +46,31 @@ async function waitForProviderPromptSettlement(): Promise<void> {
   throw new Error("Expected provider retry prompt to settle");
 }
 
-async function advanceUntilContinueCall(maxMs: number): Promise<void> {
-  for (let elapsed = 0; elapsed < maxMs; elapsed += 100) {
-    if (continueCalls.value > 0) {
+// Matches packages/junior/src/chat/services/provider-retry.ts first backoff.
+const PROVIDER_RETRY_FIRST_DELAY_MS = 2_000;
+
+function hasScheduledTimeout(
+  setTimeoutSpy: { mock: { calls: unknown[][] } },
+  delayMs: number,
+): boolean {
+  return setTimeoutSpy.mock.calls.some((call) => call[1] === delayMs);
+}
+
+/** Wait until production schedules a setTimeout with the given delay. */
+async function waitForScheduledTimeout(
+  setTimeoutSpy: { mock: { calls: unknown[][] } },
+  delayMs: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+    if (hasScheduledTimeout(setTimeoutSpy, delayMs)) {
       return;
     }
-    await vi.advanceTimersByTimeAsync(100);
-    await realSleep(1);
+    await realSleep(5);
   }
-  // Fake time is fully advanced; the continuation is already scheduled and
-  // only needs real event-loop turns to settle.
+  throw new Error(`Expected setTimeout(${delayMs}) to be scheduled`);
+}
+
+async function waitForContinueCall(): Promise<void> {
   for (let attempt = 0; attempt < 2_000; attempt += 1) {
     if (continueCalls.value > 0) {
       return;
@@ -516,10 +531,25 @@ describe("executeAgentRun agent continuation", () => {
     });
 
     await waitForPromptCall(1);
-    await vi.advanceTimersByTimeAsync(8_000);
-    await waitForProviderPromptSettlement();
-    await advanceUntilContinueCall(5_000);
-    await vi.advanceTimersByTimeAsync(1);
+    // Spy before settlement so a fast event loop cannot schedule the retry
+    // backoff between settlement and the wait below.
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      await vi.advanceTimersByTimeAsync(8_000);
+      await waitForProviderPromptSettlement();
+      // Provider retry sleep is scheduled only after settlement + safe-boundary
+      // persistence. Wait for that timer before advancing fake time so a slow
+      // event loop under coverage workers cannot burn the advance budget first.
+      await waitForScheduledTimeout(
+        setTimeoutSpy,
+        PROVIDER_RETRY_FIRST_DELAY_MS,
+      );
+      await vi.advanceTimersByTimeAsync(PROVIDER_RETRY_FIRST_DELAY_MS);
+      await waitForContinueCall();
+      await vi.advanceTimersByTimeAsync(1);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
     const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
