@@ -2,8 +2,9 @@
  * Slack resume execution boundary.
  *
  * Resumed turns run from persisted request context under the Slack thread lock.
- * Status notices are best effort, while final replies and auth-pause notices
- * reuse the shared Slack reply footer path when they are user-visible.
+ * Status notices are best effort, while completed assistant replies and
+ * auth-pause notices reuse the shared Slack reply footer path when they are
+ * user-visible.
  */
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
@@ -555,12 +556,16 @@ export async function resumeSlackTurn(
       }
       failureCode = "delivery_failed";
       const deliveryState = await getDeliveryConversation();
+      const footer = buildSlackReplyFooter({
+        conversationId: runArgs.conversationId,
+      });
       let messageTs: string | undefined;
       try {
         messageTs = await postSlackApiReplyPosts({
           channelId: runArgs.channelId,
           threadTs: runArgs.threadTs,
           posts,
+          footer,
         });
       } catch (error) {
         if (isRetryableSlackPostError(error)) {

@@ -136,7 +136,7 @@ Set the required environment variables:
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
 
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
-Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack surfaces that include a dashboard conversation link, such as authorization notices, use the same public origin.
+Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack reply footers and other surfaces that include a dashboard conversation link use the same public origin.
 
 ## Verify
 

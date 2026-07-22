@@ -209,11 +209,13 @@ describe("oauth resume slack integration", () => {
       }),
     });
 
-    expect(
-      getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
-      ),
-    ).toEqual(["Checking now.", "Done."]);
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls.map((call) => call.params.text)).toEqual([
+      "Checking now.",
+      "Done.",
+    ]);
+    expectBlocksIncludeConversationId(postCalls[0]!.params, conversationId);
+    expectBlocksIncludeConversationId(postCalls[1]!.params, conversationId);
     const conversation = coerceThreadConversationState(
       await getPersistedThreadState(`slack:C123:${threadTs}`),
     );
@@ -382,6 +384,16 @@ describe("oauth resume slack integration", () => {
       getSlackContinuationMarker(),
     );
     expect(postCalls[4]?.params.text).toContain("line 80");
+    // Continuations keep body blocks only; the conversation footer is final-chunk only.
+    for (const call of postCalls.slice(1, 4)) {
+      expect(JSON.stringify(call.params.blocks ?? [])).not.toContain(
+        "slack:C123:1700000000.002",
+      );
+    }
+    expectBlocksIncludeConversationId(
+      postCalls[4]!.params,
+      "slack:C123:1700000000.002",
+    );
   });
 
   it("marks resumed provider-error partial replies as interrupted", async () => {

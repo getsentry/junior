@@ -17,8 +17,9 @@ runtime orchestration.
 
 - Post each completed tool-free assistant message in the originating
   conversation context, preserving destination-visible model message
-  boundaries. Tool-bearing assistant text remains agent history; explicit
-  progress uses the status surface.
+  boundaries. Attach the compact conversation footer on the last chunk of
+  each visible assistant message. Tool-bearing assistant text remains agent
+  history; explicit progress uses the status surface.
 - Translate Junior Markdown to Slack `mrkdwn` only at the outbound boundary.
 - Continue oversized replies without splitting code fences into invalid
   fragments.

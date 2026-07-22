@@ -40,6 +40,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import {
   planSlackAssistantMessagePosts,
   postSlackApiReplyPosts,
@@ -325,10 +326,12 @@ export async function runAgentDispatchSlice(
         return;
       }
       failureCode = "delivery_failed";
+      const footer = buildSlackReplyFooter({ conversationId });
       try {
         resultMessageTs = await postSlackApiReplyPosts({
           channelId: dispatch.destination.channelId,
           posts,
+          footer,
         });
       } catch (error) {
         if (isRetryableSlackPostError(error)) {

@@ -1054,13 +1054,65 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
+          const replyFooter = buildSlackReplyFooter({ conversationId });
+          const shouldUseSlackFooter =
+            Boolean(replyFooter) &&
+            Boolean(channelId && threadTs) &&
+            (thread.adapter as { name?: string } | undefined)?.name === "slack";
           let slackTs: string | undefined;
-          for (const post of posts) {
-            const sentMessage = await postThreadReply(
-              buildSlackOutputMessage(post.text),
-              post.stage,
-            );
-            slackTs = sentMessage.id;
+          if (shouldUseSlackFooter) {
+            const slackChannelId = channelId;
+            const slackThreadTs = threadTs;
+            if (!slackChannelId || !slackThreadTs) {
+              throw new Error(
+                "Slack footer delivery requires a concrete channel and thread timestamp",
+              );
+            }
+            try {
+              slackTs = await postSlackApiReplyPosts({
+                beforePost: beforeFirstResponsePost,
+                channelId: slackChannelId,
+                threadTs: slackThreadTs,
+                posts,
+                footer: replyFooter,
+                onPostError: ({ error, messageTs, stage }) => {
+                  const eventId = logException(
+                    error,
+                    "slack_thread_post_failed",
+                    turnTraceContext,
+                    {
+                      "app.slack.reply_stage": stage,
+                      ...(messageTs
+                        ? { "messaging.message.id": messageTs }
+                        : {}),
+                      ...getSlackErrorObservabilityAttributes(error),
+                    },
+                    "Failed to post Slack thread reply",
+                  );
+                  throw new ConversationTurnBoundaryError({
+                    cause: error,
+                    ...(eventId ? { eventId } : {}),
+                    failureCode: "delivery_failed",
+                  });
+                },
+              });
+            } catch (error) {
+              if (error instanceof ConversationTurnBoundaryError) {
+                throw error;
+              }
+              if (isRetryableSlackPostError(error)) {
+                throw new RetryableDeliveryError(error);
+              }
+              throw error;
+            }
+          } else {
+            for (const post of posts) {
+              const sentMessage = await postThreadReply(
+                buildSlackOutputMessage(post.text),
+                post.stage,
+              );
+              slackTs = sentMessage.id;
+            }
           }
           assistantMessageDelivered = true;
           const recordedMessageId = recordDeliveredAssistantMessage({

@@ -180,6 +180,15 @@ function slackSource(channelId = "C123") {
   });
 }
 
+
+function expectBlocksIncludeConversationId(
+  params: Record<string, unknown>,
+  conversationId: string,
+): void {
+  expect(params.blocks).toBeDefined();
+  expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
     process.env.JUNIOR_SECRET = "dispatch-runner-secret";
@@ -223,12 +232,14 @@ describe("agent dispatch runner", () => {
       },
     );
 
-    expect(
-      getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
-      ),
-    ).toEqual(["Starting now.", "Dispatch delivered."]);
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls.map((call) => call.params.text)).toEqual([
+      "Starting now.",
+      "Dispatch delivered.",
+    ]);
     const conversationId = getDispatchConversationId(created.record);
+    expectBlocksIncludeConversationId(postCalls[0]!.params, conversationId);
+    expectBlocksIncludeConversationId(postCalls[1]!.params, conversationId);
     const conversation = coerceThreadConversationState(
       await getPersistedThreadState(conversationId),
     );
@@ -308,7 +319,8 @@ describe("agent dispatch runner", () => {
       status: "completed",
       resultMessageTs: "1700000000.000001",
     });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+    const deliveredPosts = getCapturedSlackApiCalls("chat.postMessage");
+    expect(deliveredPosts).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
@@ -316,6 +328,10 @@ describe("agent dispatch runner", () => {
         }),
       }),
     ]);
+    expectBlocksIncludeConversationId(
+      deliveredPosts[0]!.params,
+      dispatchConversationId,
+    );
     const deliveredConversation = coerceThreadConversationState(
       await getPersistedThreadState(dispatchConversationId),
     );
