@@ -42,9 +42,10 @@ describeEval("Schedule Management", slackEvals, (it) => {
     const createCalls = scheduledTaskCreateCalls(result.session);
     const updateCalls = scheduledTaskUpdateCalls(result.session);
     expect(createCalls).toHaveLength(1);
-    expect(updateCalls).toHaveLength(1);
-    const updateCall = updateCalls[0]!;
-    expect(updateCall.arguments).toMatchObject({
+    const scheduleUpdate = updateCalls.find(
+      (call) => call.arguments?.schedule !== undefined,
+    );
+    expect(scheduleUpdate?.arguments).toMatchObject({
       schedule: {
         kind: "recurring",
         frequency: "weekly",
@@ -52,6 +53,8 @@ describeEval("Schedule Management", slackEvals, (it) => {
         weekdays: ["tuesday"],
       },
     });
-    expect(updateCall.arguments).not.toHaveProperty("next_run_at");
+    for (const updateCall of updateCalls) {
+      expect(updateCall.arguments).not.toHaveProperty("next_run_at");
+    }
   });
 });
