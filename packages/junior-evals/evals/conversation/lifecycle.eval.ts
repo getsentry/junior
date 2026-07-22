@@ -35,7 +35,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "In the eval coding fixture, immediately run `bash skills/coding-workspace-fixture/project/slow-integration-test.sh` and keep working until it succeeds. Then report the exact contents of slow-test-result.txt.",
+          "In the eval coding fixture, immediately run `bash skills/coding-workspace-fixture/project/slow-integration-test.sh` with the bash tool's timeoutMs set to 120000. Do not use a shorter tool timeout or poll the command. Keep working until it succeeds, then report the exact contents of slow-test-result.txt.",
         ),
       ],
       criteria: rubric({
