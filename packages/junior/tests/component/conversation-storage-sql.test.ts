@@ -51,6 +51,14 @@ it("accepts compaction and handoff as the only live history replacements", () =>
       type: "handoff",
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
+      replacementHistory: [],
+    }).success,
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
       triggeringToolCallId: "handoff-call-1",
       replacementHistory: [],
     }).success,
@@ -61,7 +69,6 @@ it("accepts compaction and handoff as the only live history replacements", () =>
     {
       type: "handoff",
       modelProfile: "handoff",
-      modelId: "openai/gpt-5.6-sol",
       replacementHistory: [],
     },
   ]) {
@@ -208,7 +215,6 @@ it("rejects incomplete handoffs through the replacement boundary", async () => {
       data: {
         type: "handoff",
         modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
         replacementHistory: [],
       },
     } as never),
