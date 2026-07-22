@@ -10,6 +10,40 @@ const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
 let stateAdapter: StateAdapter | undefined;
 let redisStateAdapter: RedisStateAdapter | undefined;
 
+/** Lazily connect state operations, including queued-adapter lock heartbeats. */
+function createConnectingStateAdapter(base: StateAdapter): StateAdapter {
+  const connected = async <T>(operation: () => Promise<T>): Promise<T> => {
+    await base.connect();
+    return await operation();
+  };
+
+  return {
+    appendToList: (key, value, options) =>
+      connected(() => base.appendToList(key, value, options)),
+    connect: () => base.connect(),
+    disconnect: () => base.disconnect(),
+    subscribe: (threadId) => connected(() => base.subscribe(threadId)),
+    unsubscribe: (threadId) => connected(() => base.unsubscribe(threadId)),
+    isSubscribed: (threadId) => connected(() => base.isSubscribed(threadId)),
+    acquireLock: (threadId, ttlMs) =>
+      connected(() => base.acquireLock(threadId, ttlMs)),
+    releaseLock: (lock) => connected(() => base.releaseLock(lock)),
+    extendLock: (lock, ttlMs) => connected(() => base.extendLock(lock, ttlMs)),
+    forceReleaseLock: (threadId) =>
+      connected(() => base.forceReleaseLock(threadId)),
+    enqueue: (threadId, entry, maxSize) =>
+      connected(() => base.enqueue(threadId, entry, maxSize)),
+    dequeue: (threadId) => connected(() => base.dequeue(threadId)),
+    queueDepth: (threadId) => connected(() => base.queueDepth(threadId)),
+    get: (key) => connected(() => base.get(key)),
+    getList: (key) => connected(() => base.getList(key)),
+    set: (key, value, ttlMs) => connected(() => base.set(key, value, ttlMs)),
+    setIfNotExists: (key, value, ttlMs) =>
+      connected(() => base.setIfNotExists(key, value, ttlMs)),
+    delete: (key) => connected(() => base.delete(key)),
+  };
+}
+
 function createPrefixedStateAdapter(
   base: StateAdapter,
   prefix: string,
@@ -228,7 +262,9 @@ function createStateAdapter(): StateAdapter {
   if (config.state.adapter === "memory") {
     redisStateAdapter = undefined;
     return createQueuedStateAdapter(
-      withOptionalPrefix(createMemoryState(), config.state.keyPrefix),
+      createConnectingStateAdapter(
+        withOptionalPrefix(createMemoryState(), config.state.keyPrefix),
+      ),
       { activeLockMaxAgeMs },
     );
   }
@@ -242,7 +278,9 @@ function createStateAdapter(): StateAdapter {
   });
   redisStateAdapter = redisState;
   return createQueuedStateAdapter(
-    withOptionalPrefix(redisState, config.state.keyPrefix),
+    createConnectingStateAdapter(
+      withOptionalPrefix(redisState, config.state.keyPrefix),
+    ),
     { activeLockMaxAgeMs },
   );
 }

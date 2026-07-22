@@ -21,7 +21,7 @@ async function loadMemoryStateAdapter(
   return stateAdapterModule;
 }
 
-describe("state adapter lock lease", () => {
+describe("state adapter lifecycle and lock lease", () => {
   afterEach(async () => {
     await stateAdapterModule?.disconnectStateAdapter();
     stateAdapterModule = undefined;
@@ -30,13 +30,25 @@ describe("state adapter lock lease", () => {
     vi.resetModules();
   });
 
+  it("supports concurrent operations from a cold adapter", async () => {
+    const { getStateAdapter } = await loadMemoryStateAdapter();
+    const adapter = getStateAdapter();
+
+    await Promise.all([
+      adapter.set("cold-key-1", "first"),
+      adapter.set("cold-key-2", "second"),
+    ]);
+
+    await expect(adapter.get("cold-key-1")).resolves.toBe("first");
+    await expect(adapter.get("cold-key-2")).resolves.toBe("second");
+  });
+
   it("lets short locks expire at their requested ttl", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(0));
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     const lock = await adapter.acquireLock("thread-1", 30_000);
     expect(lock).not.toBeNull();
@@ -60,7 +72,6 @@ describe("state adapter lock lease", () => {
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     const lock = await adapter.acquireLock("thread-1", ACTIVE_LOCK_TTL_MS);
     expect(lock).not.toBeNull();
@@ -79,7 +90,6 @@ describe("state adapter lock lease", () => {
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     const lock = await adapter.acquireLock("thread-1", ACTIVE_LOCK_TTL_MS);
     expect(lock).not.toBeNull();
@@ -104,7 +114,6 @@ describe("state adapter lock lease", () => {
       AGENT_TURN_TIMEOUT_MS: "10000",
     });
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     const lock = await adapter.acquireLock("thread-1", ACTIVE_LOCK_TTL_MS);
     expect(lock).not.toBeNull();
@@ -127,7 +136,6 @@ describe("state adapter lock lease", () => {
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     const lock = await adapter.acquireLock("snapshot-lock", 10 * 60 * 1000);
     expect(lock).not.toBeNull();
@@ -143,7 +151,6 @@ describe("state adapter lock lease", () => {
       JUNIOR_STATE_KEY_PREFIX: "junior:test:state-adapter-lock",
     });
     const adapter = getStateAdapter();
-    await adapter.connect();
 
     await adapter.set("logical-key", "stored");
     await expect(adapter.get("logical-key")).resolves.toBe("stored");
