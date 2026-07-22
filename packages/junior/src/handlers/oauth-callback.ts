@@ -39,7 +39,11 @@ import {
   getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
-import { buildDeterministicTurnId, markTurnFailed } from "@/chat/runtime/turn";
+import {
+  buildDeterministicTurnId,
+  markTurnFailed,
+  startActiveTurn,
+} from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
@@ -570,6 +574,12 @@ async function resumePendingOAuthMessage(
       );
     },
     onSuspend: async (resumeVersion) => {
+      startActiveTurn({
+        conversation,
+        nextTurnId: turnId,
+        updateConversationStats,
+      });
+      await persistThreadStateById(threadId, { conversation });
       await scheduleAgentContinue({
         conversationId: threadId,
         destination,

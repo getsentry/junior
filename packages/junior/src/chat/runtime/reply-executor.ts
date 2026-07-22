@@ -1003,6 +1003,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           try {
             return await thread.post(payload);
           } catch (error) {
+            if (isRetryableSlackPostError(error)) {
+              throw new RetryableDeliveryError(error);
+            }
             const eventId = logException(
               error,
               "slack_thread_post_failed",
@@ -1014,9 +1017,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               "Failed to post Slack thread reply",
             );
-            if (isRetryableSlackPostError(error)) {
-              throw new RetryableDeliveryError(error);
-            }
             throw new ConversationTurnBoundaryError({
               cause: error,
               ...(eventId ? { eventId } : {}),
