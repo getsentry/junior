@@ -460,14 +460,14 @@ async function executeAgentRunInPrivacyContext(
       const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
       turnRoute = configuredTurnRoute(
         activeModelProfile,
-        policy.reasoningLevel ??
-          activeProfileConfig.reasoningLevel ??
+        activeProfileConfig.reasoningLevel ??
+          policy.reasoningLevel ??
           botConfig.reasoningLevel ??
           "medium",
-        policy.reasoningLevel
-          ? "agent_config"
-          : activeProfileConfig.reasoningLevel
-            ? "profile"
+        activeProfileConfig.reasoningLevel
+          ? "profile"
+          : policy.reasoningLevel
+            ? "agent_config"
             : "default",
       );
     }

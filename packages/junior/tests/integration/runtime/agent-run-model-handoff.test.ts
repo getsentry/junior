@@ -255,6 +255,7 @@ describe("executeAgentRun model handoff", () => {
 
   it("routes requested execution profiles through handoff before the first provider request", async () => {
     observations.routedModelProfile = "handoff";
+    observations.routedReasoningLevel = "xhigh";
     const conversationId = "local:test:router-model-handoff";
     const outcome = await executeAgentRun({
       conversationId,
@@ -425,7 +426,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.routerCalls).toBe(1);
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.afterHandoffToolNames).toContain("handoff");
-    expect(observations.reasoningLevels).toEqual(["high", "high", "medium"]);
+    expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
     expect(observations.summaryCalls).toBe(1);
   });
 
@@ -542,7 +543,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.providerCalls).toBe(3);
   });
 
-  it("preserves explicit agent reasoning across handoff", async () => {
+  it("lets a handoff profile override default-model reasoning", async () => {
     observations.requestedProfile = "handoff";
     observations.routedReasoningLevel = "low";
     const conversationId = "local:test:model-handoff-explicit-reasoning";
@@ -559,9 +560,26 @@ describe("executeAgentRun model handoff", () => {
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
-    expect(outcome.result.diagnostics.reasoningLevel).toBe("xhigh");
+    expect(outcome.result.diagnostics.reasoningLevel).toBe("high");
     expect(observations.providerCalls).toBe(2);
-    expect(observations.reasoningLevels).toEqual(["xhigh", "xhigh"]);
+    expect(observations.reasoningLevels).toEqual(["xhigh", "high"]);
+
+    const followUp = await executeAgentRun({
+      conversationId,
+      turnId: "turn-model-handoff-explicit-reasoning-follow-up",
+      input: { messageText: "Now verify the result." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      policy: { reasoningLevel: "xhigh" },
+    });
+
+    expect(followUp.status).toBe("completed");
+    if (followUp.status !== "completed") return;
+    expect(followUp.result.diagnostics.reasoningLevel).toBe("high");
+    expect(observations.providerCalls).toBe(3);
+    expect(observations.reasoningLevels).toEqual(["xhigh", "high", "high"]);
   });
 
   it("keeps handoff independent from status observer failures", async () => {

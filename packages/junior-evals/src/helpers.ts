@@ -12,10 +12,6 @@ import {
 } from "@/chat/pi/client";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
-  parseTurnReasoningLevel,
-  type TurnReasoningLevel,
-} from "@/chat/reasoning-level";
-import {
   toJsonValue,
   type Harness,
   type HarnessRun,
@@ -472,9 +468,6 @@ function toHarnessRun(result: HarnessEvalResult, totalMs: number): HarnessRun {
 
   return {
     artifacts: {
-      agent_turns: {
-        reasoning_levels: result.reasoningLevels,
-      },
       authorization_completions: authorizationArtifacts(result),
       slack_side_effects: slackSideEffectArtifacts(result),
     },
@@ -801,21 +794,6 @@ export const slackEvals = {
 export interface SlackSideEffects {
   suggestedPromptCalls: number;
   threadTitleCalls: number;
-}
-
-/** Returns the reasoning level selected for each completed agent turn. */
-export function reasoningLevels(
-  result: Pick<HarnessRun, "artifacts">,
-): TurnReasoningLevel[] {
-  const artifact = result.artifacts?.agent_turns;
-  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
-    throw new Error("Missing agent-turn artifacts.");
-  }
-  const levels = artifact.reasoning_levels;
-  if (!Array.isArray(levels)) {
-    throw new Error("Missing agent-turn reasoning levels.");
-  }
-  return levels.map(parseTurnReasoningLevel);
 }
 
 function artifactNumber(
