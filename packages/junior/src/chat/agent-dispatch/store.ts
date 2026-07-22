@@ -32,6 +32,7 @@ const nonEmptyExactStringSchema = z
   .refine(
     (value) => value === value.trim() && value.toLowerCase() !== "unknown",
   );
+const incompleteDispatchIndexSchema = z.array(nonEmptyExactStringSchema);
 const dispatchStatusSchema = z.enum([
   "pending",
   "running",
@@ -130,6 +131,13 @@ function incompleteDispatchIndexKey(): string {
 
 function incompleteDispatchIndexLockKey(): string {
   return `${DISPATCH_PREFIX}:incomplete:lock`;
+}
+
+/** Parse the persisted recovery index without hiding malformed state. */
+function parseIncompleteDispatchIndex(value: unknown): string[] {
+  return value === undefined || value === null
+    ? []
+    : incompleteDispatchIndexSchema.parse(value);
 }
 
 function dispatchLockKey(id: string): string {
@@ -248,10 +256,12 @@ async function syncIncompleteDispatchIndex(
   record: DispatchRecord,
 ): Promise<void> {
   await withIncompleteDispatchIndexLock(state, async () => {
-    const existing =
-      (await state.get<string[]>(incompleteDispatchIndexKey())) ?? [];
     const ids = [
-      ...new Set(existing.filter((id): id is string => typeof id === "string")),
+      ...new Set(
+        parseIncompleteDispatchIndex(
+          await state.get(incompleteDispatchIndexKey()),
+        ),
+      ),
     ];
     const next = isTerminalDispatchStatus(record.status)
       ? ids.filter((id) => id !== record.id)
@@ -363,8 +373,13 @@ export async function updateDispatchRecord(
 export async function listIncompleteDispatchIds(): Promise<string[]> {
   const state = getStateAdapter();
   await state.connect();
-  const ids = (await state.get<string[]>(incompleteDispatchIndexKey())) ?? [];
-  return [...new Set(ids.filter((id): id is string => typeof id === "string"))];
+  return [
+    ...new Set(
+      parseIncompleteDispatchIndex(
+        await state.get(incompleteDispatchIndexKey()),
+      ),
+    ),
+  ];
 }
 
 /** Return a plugin-scoped dispatch projection without exposing raw runtime state. */

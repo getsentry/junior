@@ -236,6 +236,13 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+const schedulerTaskIndexSchema = z.array(z.string().min(1));
+
+/** Parse the persisted scheduler task index without repairing malformed state. */
+function parseStringIndex(value: unknown): string[] {
+  return value === undefined ? [] : schedulerTaskIndexSchema.parse(value);
+}
+
 async function withLock<T>(
   state: PluginState,
   key: string,
@@ -250,9 +257,7 @@ async function addToIndex(
   taskId: string,
 ): Promise<void> {
   await withLock(state, indexLockKey(key), async () => {
-    const current = ((await state.get<string[]>(key)) ?? []).filter(
-      (value): value is string => typeof value === "string",
-    );
+    const current = unique(parseStringIndex(await state.get(key)));
     await state.set(key, unique([...current, taskId]), SCHEDULER_RECORD_TTL_MS);
   });
 }
@@ -263,11 +268,7 @@ async function removeFromIndex(
   taskId: string,
 ): Promise<void> {
   await withLock(state, indexLockKey(key), async () => {
-    const current = unique(
-      ((await state.get<string[]>(key)) ?? []).filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
+    const current = unique(parseStringIndex(await state.get(key)));
     const next = current.filter((value) => value !== taskId);
     if (next.length === current.length) {
       return;
@@ -284,10 +285,7 @@ async function getIndex(
   state: PluginReadState,
   key: string,
 ): Promise<string[]> {
-  const values = (await state.get<string[]>(key)) ?? [];
-  return unique(
-    values.filter((value): value is string => typeof value === "string"),
-  );
+  return unique(parseStringIndex(await state.get(key)));
 }
 
 async function clearActiveRun(
