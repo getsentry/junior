@@ -16,17 +16,26 @@ export const REMINDER_ONLY_FORBIDDEN_TOOLS = [
   "slackChannelListMessages",
 ] as const;
 
-export function scheduledTaskCreateCall(
+export function scheduledTaskCreateCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
-  const calls = toolCalls(session).filter(
+  return toolCalls(session).filter(
     (call) =>
       call.name === "scheduler_slackScheduleCreateTask" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
-  expect(calls).toHaveLength(1);
-  return calls[0]!;
+}
+
+export function scheduledTaskUpdateCalls(
+  session: Parameters<typeof toolCalls>[0],
+) {
+  return toolCalls(session).filter(
+    (call) =>
+      call.name === "scheduler_slackScheduleUpdateTask" &&
+      call.status === "ok" &&
+      call.result !== undefined,
+  );
 }
 
 export function expectNoToolCalls(

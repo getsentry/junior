@@ -65,8 +65,26 @@ export interface ScheduledTaskSpec {
   text: string;
 }
 
+export interface ScheduledTaskMutationSnapshot {
+  credentialMode: ScheduledTaskCredentialMode;
+  lastRunAtMs?: number;
+  nextRunAtMs?: number;
+  runNowAtMs?: number;
+  schedule: ScheduledTaskSchedule;
+  status: ScheduledTaskStatus;
+  statusReason?: string;
+  task: ScheduledTaskSpec;
+  updatedAtMs: number;
+}
+
+export interface ScheduledTaskMutationRecord {
+  fingerprint: string;
+  result: ScheduledTaskMutationSnapshot;
+}
+
 export interface ScheduledTask {
   id: string;
+  creationFingerprint?: string;
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
@@ -75,6 +93,7 @@ export interface ScheduledTask {
   destination: SlackDestination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;
+  mutationLedger?: Record<string, ScheduledTaskMutationRecord>;
   nextRunAtMs?: number;
   originalRequest?: string;
   runNowAtMs?: number;
