@@ -80,7 +80,7 @@ export const evalMemoryModel: PluginModel = {
             '{"decision":"supersedes_old","supersededIds":["existing-memory-id"]}',
             '{"decision":"distinct"}',
             '{"decision":"uncertain"}',
-            'Use camelCase keys exactly, including "supersededIds". Do not wrap it in markdown.',
+            'Use camelCase keys exactly, including "duplicateId" and "supersededIds". Do not wrap it in markdown.',
           ].join("\n"),
           timestamp: Date.now(),
         },
@@ -88,6 +88,17 @@ export const evalMemoryModel: PluginModel = {
       temperature: 0,
     });
     const parsed = JSON.parse(text) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "duplicate_id" in parsed &&
+      !("duplicateId" in parsed)
+    ) {
+      (parsed as Record<string, unknown>).duplicateId = (
+        parsed as Record<string, unknown>
+      ).duplicate_id;
+      delete (parsed as Record<string, unknown>).duplicate_id;
+    }
     if (
       parsed &&
       typeof parsed === "object" &&
