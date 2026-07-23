@@ -60,6 +60,17 @@ interface ResumeStateArgs {
   surface: AgentTurnSurface;
 }
 
+/** Auth pause could not be made durable and must remain a terminal failure. */
+export class AuthPausePersistenceError extends Error {
+  constructor(conversationId: string, turnId: string, cause: unknown) {
+    super(
+      `Failed to persist auth pause for conversation=${conversationId} turn=${turnId}`,
+      { cause },
+    );
+    this.name = "AuthPausePersistenceError";
+  }
+}
+
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
 
 function extractSliceUsage(
@@ -227,9 +238,10 @@ export function createResumeState(args: ResumeStateArgs) {
     }): Promise<AuthPauseOutcome> {
       const outcome = await persistAuthPauseOutcome(pause);
       if (!outcome) {
-        throw new Error(
-          `Failed to persist auth pause for conversation=${args.conversationId} turn=${args.turnId}`,
-          { cause: pause.error },
+        throw new AuthPausePersistenceError(
+          args.conversationId,
+          args.turnId,
+          pause.error,
         );
       }
       return outcome;
@@ -244,6 +256,9 @@ export function createResumeState(args: ResumeStateArgs) {
       error: unknown;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
+      if (error instanceof AuthPausePersistenceError) {
+        throw error;
+      }
       if (pendingYieldError && error instanceof CooperativeTurnYieldError) {
         const usage =
           ending.currentUsage ??

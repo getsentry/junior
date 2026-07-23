@@ -1243,7 +1243,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("returns a provider error when auth pause persistence fails", async () => {
+  it("does not turn failed auth pause persistence into a timeout resume", async () => {
     const turnSessionStore = await import("@/chat/state/turn-session");
     const originalUpsert = turnSessionStore.upsertAgentTurnSessionRecord;
     let authPauseWriteFailed = false;
@@ -1262,17 +1262,22 @@ describe("executeAgentRun progressive MCP loading", () => {
       return await originalUpsert(args);
     });
 
-    const reply = finalReply(
-      await executeAgentRun(
-        makeAgentRunRequest("help me", {
-          conversationId: "conversation-3",
-          threadTs: "1712345.0003",
-          turnId: "turn-3",
-        }),
+    await expect(
+      executeAgentRun(
+        makeAgentRunRequest(
+          "help me",
+          {
+            conversationId: "conversation-3",
+            threadTs: "1712345.0003",
+            turnId: "turn-3",
+          },
+          { policy: { turnDeadlineAtMs: Date.now() } },
+        ),
       ),
-    );
-
-    expect(reply.diagnostics.outcome).toBe("provider_error");
+    ).rejects.toThrow("Failed to persist auth pause");
+    await expect(
+      getAgentTurnSessionRecord("conversation-3", "turn-3"),
+    ).resolves.toBeUndefined();
   });
 
   it("falls back to the latest stored record when auth pause captures no messages", async () => {
