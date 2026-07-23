@@ -764,6 +764,73 @@ describe("plugin background tasks", () => {
     ).toBe(false);
   });
 
+  it("uses persisted public visibility for a private-origin Slack turn", async () => {
+    const teamId = "T123";
+    const channelId = "C123";
+    const slackConversationId = "slack:C123:1700000000.000900";
+    const slackSessionId = "slack-session-persisted-public";
+    const source = createSlackSource({
+      teamId,
+      channelId,
+      type: "priv",
+      messageTs: "1700000000.000901",
+      threadTs: "1700000000.000900",
+    });
+    const loadedRuns: PluginRunContext[] = [];
+    const queue = new PluginTaskQueueTestAdapter();
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-persisted-visibility-demo",
+          displayName: "Task Persisted Visibility Demo",
+          description: "Task persisted visibility demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      destinationVisibility: "public",
+      piMessages: [
+        { role: "user", content: "Post the scheduled public digest." },
+        { role: "assistant", content: "Posted." },
+      ] as PiMessage[],
+      sessionId: slackSessionId,
+      sliceId: 1,
+      source,
+      actor: {
+        platform: "slack",
+        teamId,
+        userId: "U_ALICE",
+      },
+      state: "completed",
+      surface: "scheduler",
+      turnStartMessageIndex: 0,
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: slackConversationId, sessionId: slackSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    expect(loadedRuns[0]?.visibility).toBe("public");
+  });
+
   it("lets task failures bubble to the queue retry boundary", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
