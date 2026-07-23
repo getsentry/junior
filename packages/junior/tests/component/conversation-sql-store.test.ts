@@ -1025,7 +1025,7 @@ WHERE conversation_id = $1
         conversationStore: store,
         queue,
         run: async (context) => {
-          await context.attempt.drain(async () => {});
+          await context.attempt.steer(async () => {});
           entered.resolve();
           await finish.promise;
           return { status: "completed" };

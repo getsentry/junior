@@ -83,6 +83,8 @@ export interface AgentInput {
   text: string;
 }
 
+export type InboundMessageRouting = "follow_up" | "implicit" | "steer";
+
 export interface InboundMessage {
   attemptCount?: number;
   conversationId: string;
@@ -92,6 +94,7 @@ export interface InboundMessage {
   injectedAtMs?: number;
   input: AgentInput;
   receivedAtMs: number;
+  routing?: InboundMessageRouting;
   source: Source;
 }
 
@@ -325,6 +328,10 @@ function normalizeInput(value: unknown): AgentInput | undefined {
   };
 }
 
+function normalizeInboundMessageRouting(value: unknown): InboundMessageRouting {
+  return value === "follow_up" || value === "steer" ? value : "implicit";
+}
+
 function normalizeMessage(value: unknown): InboundMessage | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -355,6 +362,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     createdAtMs,
     receivedAtMs,
     input,
+    routing: normalizeInboundMessageRouting(value.routing),
     injectedAtMs: toOptionalNumber(value.injectedAtMs),
     attemptCount: toOptionalNumber(value.attemptCount),
   };
@@ -1480,6 +1488,57 @@ export async function checkInConversationWork(args: {
       ),
     );
     return true;
+  });
+}
+
+/** Persist an explicit route for pending mailbox entries under the active lease. */
+export async function routeConversationMailboxMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  routing: Exclude<InboundMessageRouting, "implicit">;
+  state?: StateAdapter;
+}): Promise<void> {
+  if (args.inboundMessageIds.length === 0) {
+    return;
+  }
+  const routedIds = new Set(args.inboundMessageIds);
+  await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      throw new Error(
+        `Conversation lease is not held for ${args.conversationId}`,
+      );
+    }
+    const pendingIds = new Set(
+      current.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
+    );
+    for (const inboundMessageId of routedIds) {
+      if (!pendingIds.has(inboundMessageId)) {
+        throw new Error(
+          `Conversation mailbox route is not pending for ${args.conversationId}`,
+        );
+      }
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          pendingMessages: current.execution.pendingMessages.map((message) =>
+            routedIds.has(message.inboundMessageId)
+              ? { ...message, routing: args.routing }
+              : message,
+          ),
+        },
+        args.nowMs ?? now(),
+      ),
+    );
   });
 }
 

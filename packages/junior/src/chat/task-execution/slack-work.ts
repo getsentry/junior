@@ -566,6 +566,7 @@ export function createSlackResourceEventInboundMessage(
     createdAtMs: input.event.occurredAtMs,
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
+    routing: "follow_up",
     source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
@@ -837,38 +838,20 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Restore stored mailbox entries as Slack steering candidates; the
-        // runtime returns only the inbound ids it handled durably.
+        // Explicit follow-ups never enter steering. Implicit records are
+        // offered to runtime policy, while explicit steering bypasses that
+        // ambiguity through activeRequest.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
           ) => Promise<readonly string[] | void>,
         ): Promise<void> => {
-          await context.attempt.drain(async (pendingRecords) => {
-            const messages = pendingRecords.flatMap((record) => {
-              const metadata = parseSlackMetadata(record.input.metadata);
-              if (!metadata) {
-                throw new Error(
-                  "Conversation mailbox record is not Slack metadata",
-                );
-              }
-              // Provider notifications are follow-up work, not user steering.
-              // Leave them pending so the next worker slice handles them as
-              // their own subscribed turn after the active answer completes.
-              if (record.source === "resource_event") {
-                return [];
-              }
-              const message = restoreMessage({ adapter, record });
-              return [
-                {
-                  activeRequest:
-                    metadata.route === "mention" ||
-                    isSlackAssistantThreadUserMessage(message),
-                  inboundMessageId: record.inboundMessageId,
-                  message,
-                },
-              ];
-            });
+          await context.attempt.steer(async (pendingRecords) => {
+            const messages = pendingRecords.map((record) => ({
+              activeRequest: record.routing === "steer",
+              inboundMessageId: record.inboundMessageId,
+              message: restoreMessage({ adapter, record }),
+            }));
             return await accept(messages);
           });
         };
@@ -946,6 +929,11 @@ export function buildSlackInboundMessage(args: {
       args.conversationId,
       args.message.id,
     ].join(":"),
+    routing:
+      args.route === "mention" ||
+      isSlackAssistantThreadUserMessage(args.message)
+        ? "steer"
+        : "implicit",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,

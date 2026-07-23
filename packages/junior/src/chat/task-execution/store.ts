@@ -22,6 +22,7 @@ export {
   type ConversationWorkState,
   type ExecutionStatus,
   type InboundMessage,
+  type InboundMessageRouting,
   type Lease,
   type RequestConversationWorkResult,
   type Source,
@@ -359,6 +360,18 @@ export async function checkInConversationWork(args: {
   if (result) {
     await recordExecutionMetadata(args);
   }
+  return result;
+}
+
+/** Persist an explicit route for pending mailbox entries under the active lease. */
+export async function routeConversationMailboxMessages(
+  args: Parameters<typeof workState.routeConversationMailboxMessages>[0] & {
+    conversationStore?: ConversationStore;
+    state?: StateAdapter;
+  },
+) {
+  const result = await workState.routeConversationMailboxMessages(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 

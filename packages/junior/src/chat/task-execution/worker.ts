@@ -24,6 +24,7 @@ import {
   recordAttemptFailure,
   releaseConversationWork,
   requestConversationContinuation,
+  routeConversationMailboxMessages,
   startConversationWork,
   type AttemptFailure,
   type ConversationWorkState,
@@ -45,11 +46,12 @@ export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
   destination: Destination;
-  drain(
-    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
-  ): Promise<InboundMessage[]>;
+  followUp(inboundMessageIds: readonly string[]): Promise<void>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
+  steer(
+    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+  ): Promise<InboundMessage[]>;
 }
 
 export interface ConversationWorkerResult {
@@ -338,17 +340,38 @@ export async function processConversationWork(
     "Conversation work lease acquired",
   );
 
-  const drainInbox = (
+  const steer = (
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
   ) =>
     drainConversationMailbox({
       conversationId,
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
-      handle,
+      handle: async (messages) => {
+        const candidates = messages.filter(
+          (message) => message.routing !== "follow_up",
+        );
+        return (
+          (await handle(candidates)) ??
+          candidates.map((message) => message.inboundMessageId)
+        );
+      },
       nowMs: now(options),
       state: options.state,
     });
+
+  const followUp = async (
+    inboundMessageIds: readonly string[],
+  ): Promise<void> => {
+    await routeConversationMailboxMessages({
+      conversationId,
+      inboundMessageIds,
+      leaseToken: lease.leaseToken,
+      routing: "follow_up",
+      nowMs: now(options),
+      state: options.state,
+    });
+  };
 
   const ack = async (): Promise<void> => {
     const acknowledged = await ackMessages({
@@ -372,11 +395,12 @@ export async function processConversationWork(
       ack,
       conversationId,
       destination,
-      drain: drainInbox,
+      followUp,
       isFinalAttempt: attemptMessages.some((message) =>
         isFinalAttempt(message),
       ),
       messages: attemptMessages,
+      steer,
     },
     conversationId,
     destination,

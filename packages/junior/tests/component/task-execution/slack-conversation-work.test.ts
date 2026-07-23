@@ -343,9 +343,10 @@ describe("Slack conversation work execution", () => {
           ack: async () => {},
           conversationId: CONVERSATION_ID,
           destination: SLACK_DESTINATION,
-          drain: async () => [],
+          followUp: async () => {},
           isFinalAttempt: false,
           messages: [malformed],
+          steer: async () => [],
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
@@ -1007,7 +1008,10 @@ describe("Slack conversation work execution", () => {
       state,
     });
     expect(work?.execution.pendingMessages).toEqual([
-      expect.objectContaining({ source: "resource_event" }),
+      expect.objectContaining({
+        routing: "follow_up",
+        source: "resource_event",
+      }),
     ]);
   });
 
