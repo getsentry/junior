@@ -958,18 +958,13 @@ async function executeAgentRunInPrivacyContext(
                 })
               : undefined;
 
+            let result: unknown;
             try {
-              const result = await Promise.race(
+              result = await Promise.race(
                 abortPromise
                   ? [run, timeoutPromise, abortPromise]
                   : [run, timeoutPromise],
               );
-              if (pendingPiHookError) {
-                const error = pendingPiHookError;
-                pendingPiHookError = undefined;
-                throw error;
-              }
-              return result;
             } catch (error) {
               if (runResume.timedOut) {
                 logWarn(
@@ -1026,6 +1021,12 @@ async function executeAgentRunInPrivacyContext(
               }
               removeAbortListener?.();
             }
+            if (pendingPiHookError) {
+              const error = pendingPiHookError;
+              pendingPiHookError = undefined;
+              throw error;
+            }
+            return result;
           };
 
           const requestedProfile =
