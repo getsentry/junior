@@ -134,6 +134,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
+import { vercelPlugin } from "@sentry/junior-vercel";
 
 export const plugins = defineJuniorPlugins([
   createMemoryPlugin(),
@@ -151,7 +152,7 @@ export const plugins = defineJuniorPlugins([
   "@sentry/junior-notion",
   schedulerPlugin(),
   "@sentry/junior-sentry",
-  "@sentry/junior-vercel",
+  vercelPlugin(),
 ]);
 ```
 

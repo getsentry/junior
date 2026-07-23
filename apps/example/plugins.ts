@@ -2,6 +2,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
+import { vercelPlugin } from "@sentry/junior-vercel";
 
 process.env.GITHUB_APP_BOT_NAME ||= "sentry-junior[bot]";
 process.env.GITHUB_APP_BOT_EMAIL ||=
@@ -21,5 +22,5 @@ export const plugins = defineJuniorPlugins([
   "@sentry/junior-notion",
   schedulerPlugin(),
   "@sentry/junior-sentry",
-  "@sentry/junior-vercel",
+  vercelPlugin(),
 ]);

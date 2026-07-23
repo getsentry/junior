@@ -1,8 +1,8 @@
 ---
 title: Vercel Plugin
-description: Configure the Vercel CLI for read-only deployment and log investigations.
+description: Configure read-only Vercel investigations and deployment outcome webhooks.
 type: tutorial
-summary: Let Junior inspect Vercel deployments, build logs, and runtime logs from Slack.
+summary: Let Junior inspect Vercel deployments and receive signed deployment outcomes in Slack.
 prerequisites:
   - /extend/
 related:
@@ -11,9 +11,9 @@ related:
   - /operate/sandbox-snapshots/
 ---
 
-The Vercel plugin installs the Vercel CLI so Slack users can ask Junior to inspect deployments, fetch build logs, search runtime logs, and find deployments by project, environment, status, or commit metadata.
+The Vercel plugin installs the Vercel CLI so Slack users can ask Junior to inspect deployments, fetch build logs, search runtime logs, and find deployments by project, environment, status, or commit metadata. An optional signed webhook can return terminal deployment outcomes to the conversation that requested them.
 
-Junior keeps this plugin read-only. The packaged manifest installs the CLI and injects host-managed Vercel API auth, while the bundled skill limits Junior to `vercel logs`, `vercel inspect`, `vercel list`, and CLI help commands.
+Junior keeps this plugin read-only. Its runtime registration installs the CLI and injects host-managed Vercel API auth, while the bundled skill limits Junior to `vercel logs`, `vercel inspect`, `vercel list`, and CLI help commands.
 
 ## Install
 
@@ -25,12 +25,13 @@ pnpm add @sentry/junior @sentry/junior-vercel
 
 ## Runtime setup
 
-Add the plugin package to the plugin set exported from `plugins.ts`:
+Add the plugin factory to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { vercelPlugin } from "@sentry/junior-vercel";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-vercel"]);
+export const plugins = defineJuniorPlugins([vercelPlugin()]);
 ```
 
 Point `juniorNitro()` at that plugin module:
@@ -46,6 +47,41 @@ JUNIOR_VERCEL_TOKEN=...
 ```
 
 Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the projects and teams users need to inspect.
+
+## Configure deployment webhooks
+
+Webhook monitoring is optional. It uses a [Vercel account webhook](https://vercel.com/docs/webhooks#account-webhooks) scoped to the projects Junior should monitor instead of creating a Vercel webhook for each conversation. Account webhooks are available for Pro and Enterprise teams.
+
+Create the webhook from the Vercel team that owns the projects:
+
+1. Open **Team Settings**, then **Webhooks**, and create an account webhook.
+2. Select **Deployment Succeeded**, **Deployment Error**, and **Deployment Cancelled**.
+3. Select only the projects Junior should monitor.
+4. Enter `https://<your-domain>/api/webhooks/vercel` as the endpoint URL. It must be publicly reachable over HTTPS; do not place it behind interactive login or deployment protection that blocks Vercel's request.
+5. Create the webhook and copy the displayed secret. Vercel shows this secret only once.
+6. Add the secret to the Junior app's Production environment as a sensitive value, then redeploy Junior:
+
+```bash
+VERCEL_WEBHOOK_SECRET=...
+```
+
+The selected events correspond to `deployment.succeeded`, `deployment.error`, and `deployment.canceled`. Junior verifies Vercel's `x-vercel-signature` against the untouched request body before accepting a delivery.
+
+### Choose the default project ID
+
+Deployment watches match Vercel's `prj_...` project ID, not its project name or slug. Find the ID under **Project Settings → General** or by running `vercel project ls`.
+
+Set a default when most watches target one project:
+
+```bash
+VERCEL_PROJECT_ID=prj_...
+```
+
+If Junior is deployed on Vercel and monitors its own project, you can instead enable **Automatically expose System Environment Variables** under **Project Settings → Environment Variables**. Vercel then supplies `VERCEL_PROJECT_ID` at runtime. Redeploy after changing either setting.
+
+For a webhook that covers multiple projects, include the appropriate `prj_...` ID when asking Junior to create each watch. The webhook payload must also contain a deployment ID, a production or staging target (or Vercel's `null` preview target), and a full Git commit SHA. Deployments without Git commit metadata are accepted by the endpoint but cannot match a watch.
+
+Configuring the account webhook does not create a conversation watch. Ask Junior to monitor the deployment before its terminal event occurs; unmatched webhook deliveries are not replayed into subscriptions created later.
 
 ## Optional channel defaults
 
@@ -65,6 +101,7 @@ These defaults are optional fallbacks. If a user names a different project, team
 - Matching Vercel API requests from the CLI receive a host-managed `Authorization` header.
 - The sandbox receives only a non-secret placeholder `VERCEL_TOKEN` so the Vercel CLI can perform its normal auth checks before making requests.
 - Users do not connect or disconnect individual Vercel accounts from Junior App Home for this plugin.
+- `VERCEL_WEBHOOK_SECRET` verifies webhook deliveries and is independent of the API token.
 
 ## What users can do
 
@@ -74,6 +111,7 @@ These defaults are optional fallbacks. If a user names a different project, team
 - List recent deployments for a project.
 - Find deployments by status, environment, production flag, or Git commit SHA metadata.
 - Stream live logs briefly when a user explicitly asks for live output.
+- Subscribe an existing Slack conversation to the success, error, or cancellation of a deployment identified by project, target, and commit SHA.
 
 ## Verify
 
@@ -82,6 +120,14 @@ Confirm Junior can query Vercel successfully:
 1. Ask Junior a Vercel question in a channel, for example: `Show production error logs for junior-prod from the last hour.`
 2. Confirm the thread returns a bounded summary with the project, environment, time window, and filters used.
 3. Confirm Junior does not run mutation commands for requests such as deploys, rollbacks, env changes, cache purges, or domain changes.
+
+If deployment webhooks are enabled, also verify one signed delivery:
+
+1. After the final commit SHA is known, ask Junior: `Watch the production deployment for project prj_... at commit <40-character SHA> and tell me when it finishes.`
+2. Ask Junior to list the active watches in the same conversation and confirm the Vercel project ID, `production` target, commit SHA, and event types are correct.
+3. Trigger the deployment for that exact project and commit.
+4. In **Team Settings → Webhooks**, open the delivery and confirm the endpoint returned `202` with `Accepted` when the response body is shown.
+5. Confirm Junior posts the terminal outcome in the original conversation.
 
 ## Failure modes
 
@@ -92,6 +138,11 @@ Confirm Junior can query Vercel successfully:
 - Empty logs: confirm the environment, deployment, branch, and time window before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and should be stopped once enough evidence is captured.
 - Mutation requests: the plugin is read-only and the skill will decline these.
+- Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`, expose `VERCEL_PROJECT_ID` or provide a project ID, and redeploy.
+- Webhook delivery returns `401`: the Vercel account webhook secret does not match `VERCEL_WEBHOOK_SECRET`, or the request lacks `x-vercel-signature`.
+- Webhook delivery returns `202 Ignored`: the signed event is unsupported or does not contain a valid project ID, deployment ID, target, and full Git commit SHA.
+- Webhook delivery cannot reach Junior: confirm the endpoint uses the production Junior domain and is not blocked by deployment protection, login, or another access-control layer.
+- Vercel accepts the webhook but no Slack update appears: confirm the original conversation still has an active subscription for the same project, target, commit SHA, and event type.
 
 ## Next step
 

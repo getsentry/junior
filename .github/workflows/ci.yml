@@ -215,8 +215,10 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
+      - run: pnpm --filter @sentry/junior-vercel build
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-github test
+      - run: pnpm --filter @sentry/junior-vercel test
 
   dashboard-tests:
     name: test / dashboard

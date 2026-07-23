@@ -37,4 +37,4 @@ Start here:
 | `@sentry/junior-scheduler`     | Scheduler plugin package for scheduled Junior tasks                          |
 | `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |
 | `@sentry/junior-sentry`        | Sentry plugin package for issue workflows                                    |
-| `@sentry/junior-vercel`        | Vercel plugin package for deployment and log investigation workflows         |
+| `@sentry/junior-vercel`        | Vercel plugin package for deployment monitoring and log investigations       |
