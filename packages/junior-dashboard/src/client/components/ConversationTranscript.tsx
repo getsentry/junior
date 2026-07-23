@@ -475,7 +475,8 @@ function TranscriptRailEvent(props: {
       <span
         aria-hidden="true"
         className={cn(
-          "absolute -left-[1.95rem] top-1 z-[1] grid size-6 place-items-center rounded border bg-[#071012] shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]",
+          "absolute -left-[1.95rem] z-[1] grid size-6 place-items-center rounded border bg-[#071012] shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]",
+          props.kind === "resource_event" ? "top-2" : "top-1",
           marker.className,
         )}
       >
