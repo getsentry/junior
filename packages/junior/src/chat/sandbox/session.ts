@@ -26,10 +26,10 @@ import {
 } from "@/chat/sandbox/runtime-dependency-snapshots";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
-  createSandboxInstance,
+  createSandboxSession,
   type SandboxCommandResult,
   type SandboxFileSystem,
-  type SandboxInstance,
+  type SandboxSession,
 } from "@/chat/sandbox/workspace";
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
@@ -71,49 +71,7 @@ interface SandboxToolExecutors {
   fs: SandboxFileSystem;
 }
 
-/** Preserve which pinned session produced a lifecycle failure. */
-class SandboxSessionUnavailableError extends Error {
-  readonly sandboxEgressId: string;
-
-  constructor(sandboxEgressId: string, cause: unknown) {
-    super("sandbox session unavailable", { cause });
-    this.name = "SandboxSessionUnavailableError";
-    this.sandboxEgressId = sandboxEgressId;
-  }
-}
-
-/** Read the originating session identity from a wrapped unavailable error. */
-function getUnavailableSandboxEgressId(error: unknown): string | undefined {
-  const seen = new Set<unknown>();
-  let current: unknown = error;
-  while (current && !seen.has(current)) {
-    if (current instanceof SandboxSessionUnavailableError) {
-      return current.sandboxEgressId;
-    }
-    seen.add(current);
-    current =
-      typeof current === "object"
-        ? (current as { cause?: unknown }).cause
-        : undefined;
-  }
-  return undefined;
-}
-
-async function bindUnavailableErrorToSandbox<T>(
-  sandboxEgressId: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!isSandboxUnavailableError(error)) {
-      throw error;
-    }
-    throw new SandboxSessionUnavailableError(sandboxEgressId, error);
-  }
-}
-
-function createBashToolSandboxAdapter(sandbox: SandboxInstance) {
+function createBashToolSandboxAdapter(sandbox: SandboxSession) {
   return {
     async executeCommand(command: string) {
       const result = await sandbox.runCommand({
@@ -152,12 +110,10 @@ interface SandboxSessionManager {
   configureSkills(skills: SkillMetadata[]): void;
   configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
-  getSandboxEgressId(): string | undefined;
+  getSessionId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
-  createSandbox(): Promise<SandboxInstance>;
+  createSandbox(): Promise<SandboxSession>;
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
-  /** Drop unavailable live state while retaining the hint; true means the current operation must fail. */
-  invalidateIfUnavailable(error: unknown, sandboxEgressId?: string): boolean;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -213,13 +169,13 @@ export function createSandboxSessionManager(options?: {
     egressId: string,
     traceHeaders?: TracePropagationHeaders,
   ) => NetworkPolicy | undefined;
-  onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
+  onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
   }) => void | Promise<void>;
 }): SandboxSessionManager {
-  let sandbox: SandboxInstance | null = null;
+  let sandbox: SandboxSession | null = null;
   let sandboxIdHint = options?.sandboxId;
   let sandboxDependencyProfileHashHint = options?.sandboxDependencyProfileHash;
   let availableSkills: SkillMetadata[] = [];
@@ -228,7 +184,7 @@ export function createSandboxSessionManager(options?: {
   let loadingToolExecutors: Promise<SandboxToolExecutors> | undefined;
   let appliedNetworkPolicyKey: string | undefined;
   let preparedSandboxId: string | undefined;
-  let acquiringSandbox: Promise<SandboxInstance> | undefined;
+  let acquiringSandbox: Promise<SandboxSession> | undefined;
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
@@ -245,13 +201,23 @@ export function createSandboxSessionManager(options?: {
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
   /** Drop unavailable live state while retaining the persisted hint for lazy reacquisition. */
-  const invalidateSession = (): void => {
+  const invalidateSession = (sessionId?: string): void => {
+    if (sessionId && sandbox && sandbox.sessionId !== sessionId) {
+      return;
+    }
     sandbox = null;
     toolExecutors = undefined;
     loadingToolExecutors = undefined;
     appliedNetworkPolicyKey = undefined;
     preparedSandboxId = undefined;
   };
+
+  const adaptSandbox = (
+    vercelSandbox: Parameters<typeof createSandboxSession>[0],
+  ): SandboxSession =>
+    createSandboxSession(vercelSandbox, {
+      onUnavailable: invalidateSession,
+    });
 
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
@@ -264,14 +230,14 @@ export function createSandboxSessionManager(options?: {
     return options?.createNetworkPolicy?.(sandboxName);
   };
 
-  const retainSandboxHint = (nextSandbox: SandboxInstance): void => {
+  const retainSandboxHint = (nextSandbox: SandboxSession): void => {
     sandboxIdHint = nextSandbox.sandboxId;
     sandboxDependencyProfileHashHint = dependencyProfileHash;
   };
 
   const rememberSandbox = async (
-    nextSandbox: SandboxInstance,
-  ): Promise<SandboxInstance> => {
+    nextSandbox: SandboxSession,
+  ): Promise<SandboxSession> => {
     sandbox = nextSandbox;
     retainSandboxHint(nextSandbox);
     toolExecutors = undefined;
@@ -294,7 +260,7 @@ export function createSandboxSessionManager(options?: {
     throw new Error("sandbox restore failed", { cause: error });
   };
 
-  const syncSkills = async (targetSandbox: SandboxInstance): Promise<void> => {
+  const syncSkills = async (targetSandbox: SandboxSession): Promise<void> => {
     await syncSkillsToSandbox({
       sandbox: targetSandbox,
       skills: availableSkills,
@@ -304,7 +270,7 @@ export function createSandboxSessionManager(options?: {
   };
 
   const prepareSandbox = async (
-    targetSandbox: SandboxInstance,
+    targetSandbox: SandboxSession,
   ): Promise<void> => {
     if (preparedSandboxId === targetSandbox.sandboxId) {
       return;
@@ -315,11 +281,11 @@ export function createSandboxSessionManager(options?: {
   };
 
   const applyNetworkPolicy = async (
-    targetSandbox: SandboxInstance,
+    targetSandbox: SandboxSession,
     traceHeaders?: TracePropagationHeaders,
   ): Promise<void> => {
     const networkPolicy = options?.createNetworkPolicy?.(
-      targetSandbox.sandboxEgressId,
+      targetSandbox.sessionId,
       traceHeaders,
     );
     if (!networkPolicy) {
@@ -345,7 +311,7 @@ export function createSandboxSessionManager(options?: {
   };
 
   const ensureSandboxReachable = async (
-    targetSandbox: SandboxInstance,
+    targetSandbox: SandboxSession,
     source: "memory" | "id_hint",
   ): Promise<void> => {
     await withSandboxSpan(
@@ -371,14 +337,14 @@ export function createSandboxSessionManager(options?: {
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
-  ): Promise<SandboxInstance> => {
+  ): Promise<SandboxSession> => {
     const resources = getSandboxResources();
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       const sandboxName =
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
-        return createSandboxInstance(
+        return adaptSandbox(
           await Sandbox.create({
             timeout: timeoutMs,
             ...(networkPolicy
@@ -430,13 +396,13 @@ export function createSandboxSessionManager(options?: {
     snapshot: RuntimeDependencySnapshot;
     sandboxCredentials: SandboxCredentials | undefined;
     sandboxName: string;
-  }): Promise<SandboxInstance> => {
+  }): Promise<SandboxSession> => {
     const { runtime, snapshot, sandboxCredentials, sandboxName } = params;
 
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       const resources = getSandboxResources();
-      return createSandboxInstance(
+      return adaptSandbox(
         await Sandbox.create({
           timeout: timeoutMs,
           runtime,
@@ -481,12 +447,12 @@ export function createSandboxSessionManager(options?: {
     }
   };
 
-  const createFreshSandbox = async (): Promise<SandboxInstance> => {
+  const createFreshSandbox = async (): Promise<SandboxSession> => {
     const runtime = SANDBOX_RUNTIME;
     const sandboxCredentials = getVercelSandboxCredentials();
     const sandboxName = createSandboxName();
 
-    let createdSandbox: SandboxInstance;
+    let createdSandbox: SandboxSession;
     try {
       createdSandbox = await withSandboxSpan(
         "sandbox.create",
@@ -569,7 +535,7 @@ export function createSandboxSessionManager(options?: {
     sandboxDependencyProfileHashHint = undefined;
   };
 
-  const tryReuseCachedSandbox = async (): Promise<SandboxInstance | null> => {
+  const tryReuseCachedSandbox = async (): Promise<SandboxSession | null> => {
     const cachedSandbox = sandbox;
     if (!cachedSandbox) {
       return null;
@@ -582,19 +548,18 @@ export function createSandboxSessionManager(options?: {
       return cachedSandbox;
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
-        invalidateSession();
         throw error;
       }
       return failSetup(error);
     }
   };
 
-  const tryRestoreHintedSandbox = async (): Promise<SandboxInstance | null> => {
+  const tryRestoreHintedSandbox = async (): Promise<SandboxSession | null> => {
     if (!sandboxIdHint) {
       return null;
     }
 
-    let hintedSandbox: SandboxInstance | null = null;
+    let hintedSandbox: SandboxSession | null = null;
     try {
       const sandboxCredentials = getVercelSandboxCredentials();
       hintedSandbox = await withSandboxSpan(
@@ -605,7 +570,7 @@ export function createSandboxSessionManager(options?: {
           "app.sandbox.source": "id_hint",
         },
         async () =>
-          createSandboxInstance(
+          adaptSandbox(
             await Sandbox.get({
               name: sandboxIdHint as string,
               resume: true,
@@ -627,14 +592,13 @@ export function createSandboxSessionManager(options?: {
       return await rememberSandbox(hintedSandbox);
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
-        invalidateSession();
         throw error;
       }
       return failSetup(error);
     }
   };
 
-  const acquireSandbox = async (): Promise<SandboxInstance> => {
+  const acquireSandbox = async (): Promise<SandboxSession> => {
     return await withSandboxSpan(
       "sandbox.acquire",
       "sandbox.acquire",
@@ -662,7 +626,7 @@ export function createSandboxSessionManager(options?: {
     );
   };
 
-  const getOrAcquireSandbox = async (): Promise<SandboxInstance> => {
+  const getOrAcquireSandbox = async (): Promise<SandboxSession> => {
     if (acquiringSandbox) {
       return await acquiringSandbox;
     }
@@ -712,7 +676,7 @@ export function createSandboxSessionManager(options?: {
   };
 
   const extendKeepAlive = async (
-    activeSandbox: SandboxInstance,
+    activeSandbox: SandboxSession,
   ): Promise<void> => {
     const keepAliveMs = parseKeepAliveMs();
     if (keepAliveMs === 0) {
@@ -736,7 +700,7 @@ export function createSandboxSessionManager(options?: {
   };
 
   const buildToolExecutors = async (
-    sandboxInstance: SandboxInstance,
+    sandboxInstance: SandboxSession,
   ): Promise<SandboxToolExecutors> => {
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
@@ -845,14 +809,14 @@ export function createSandboxSessionManager(options?: {
     };
   };
 
-  const ensureReadySandbox = async (): Promise<SandboxInstance> => {
+  const ensureReadySandbox = async (): Promise<SandboxSession> => {
     const activeSandbox = await getOrAcquireSandbox();
     await extendKeepAlive(activeSandbox);
     return activeSandbox;
   };
 
   const loadToolExecutors = async (
-    activeSandbox: SandboxInstance,
+    activeSandbox: SandboxSession,
   ): Promise<SandboxToolExecutors> => {
     if (toolExecutors) {
       return toolExecutors;
@@ -863,32 +827,8 @@ export function createSandboxSessionManager(options?: {
 
     const nextToolExecutors = buildToolExecutors(activeSandbox).then(
       (executors) => {
-        const bind = <T>(operation: () => Promise<T>): Promise<T> =>
-          bindUnavailableErrorToSandbox(
-            activeSandbox.sandboxEgressId,
-            operation,
-          );
-        const boundExecutors: SandboxToolExecutors = {
-          bash: async (input) => await bind(async () => executors.bash(input)),
-          readFile: async (input) =>
-            await bind(async () => executors.readFile(input)),
-          writeFile: async (input) =>
-            await bind(async () => executors.writeFile(input)),
-          fs: {
-            readFile: async (filePath, options) =>
-              await bind(async () => executors.fs.readFile(filePath, options)),
-            writeFile: async (filePath, content, options) =>
-              await bind(async () =>
-                executors.fs.writeFile(filePath, content, options),
-              ),
-            readdir: async (filePath) =>
-              await bind(async () => executors.fs.readdir(filePath)),
-            stat: async (filePath) =>
-              await bind(async () => executors.fs.stat(filePath)),
-          },
-        };
-        toolExecutors = boundExecutors;
-        return boundExecutors;
+        toolExecutors = executors;
+        return executors;
       },
     );
     loadingToolExecutors = nextToolExecutors;
@@ -911,8 +851,8 @@ export function createSandboxSessionManager(options?: {
     getSandboxId() {
       return sandbox ? sandbox.sandboxId : sandboxIdHint;
     },
-    getSandboxEgressId() {
-      return sandbox?.sandboxEgressId;
+    getSessionId() {
+      return sandbox?.sessionId;
     },
     getDependencyProfileHash() {
       return dependencyProfileHash;
@@ -922,22 +862,6 @@ export function createSandboxSessionManager(options?: {
     },
     async ensureToolExecutors() {
       return await loadToolExecutors(await ensureReadySandbox());
-    },
-    invalidateIfUnavailable(error, sandboxEgressId) {
-      if (!isSandboxUnavailableError(error)) {
-        return false;
-      }
-      const unavailableEgressId =
-        getUnavailableSandboxEgressId(error) ?? sandboxEgressId;
-      if (
-        unavailableEgressId &&
-        sandbox &&
-        sandbox.sandboxEgressId !== unavailableEgressId
-      ) {
-        return true;
-      }
-      invalidateSession();
-      return true;
     },
     async refreshNetworkPolicy(traceHeaders) {
       const activeSandbox = sandbox;

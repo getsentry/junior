@@ -3,6 +3,7 @@ import {
   type NetworkPolicy,
   type Sandbox as VercelSandbox,
 } from "@vercel/sandbox";
+import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
 
 export interface SandboxCommandResult {
   exitCode: number;
@@ -45,9 +46,9 @@ export interface SandboxWorkspace {
   runCommand(input: SandboxCommandInput): Promise<SandboxCommandResult>;
 }
 
-export interface SandboxInstance extends SandboxWorkspace {
+export interface SandboxSession extends SandboxWorkspace {
   readonly sandboxId: string;
-  readonly sandboxEgressId: string;
+  readonly sessionId: string;
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
@@ -63,40 +64,75 @@ export interface SandboxInstance extends SandboxWorkspace {
   ): Promise<void>;
 }
 
-/** Adapt the Vercel SDK object once so the rest of Junior sees one sandbox contract. */
-export function createSandboxInstance(sandbox: VercelSandbox): SandboxInstance {
+/** Pin Junior's sandbox contract to one Vercel session without SDK replay. */
+export function createSandboxSession(
+  sandbox: VercelSandbox,
+  options?: {
+    onUnavailable?: (sessionId: string) => void;
+  },
+): SandboxSession {
   // Pin operations to the acquired VM session. The Sandbox convenience methods
   // may resume and replay an operation after a lifecycle failure.
   const session = sandbox.currentSession();
+  const fileSystem = new FileSystem(session);
+  const run = async <T>(operation: () => Promise<T>): Promise<T> => {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isSandboxUnavailableError(error)) {
+        options?.onUnavailable?.(session.sessionId);
+      }
+      throw error;
+    }
+  };
+  const fs: SandboxFileSystem = {
+    readFile: async (filePath, readOptions) =>
+      await run(async () => await fileSystem.readFile(filePath, readOptions)),
+    writeFile: async (filePath, content, writeOptions) =>
+      await run(
+        async () => await fileSystem.writeFile(filePath, content, writeOptions),
+      ),
+    readdir: async (filePath) =>
+      await run(async () => await fileSystem.readdir(filePath)),
+    stat: async (filePath) =>
+      await run(async () => await fileSystem.stat(filePath)),
+  };
 
   return {
     sandboxId: sandbox.name,
-    sandboxEgressId: session.sessionId,
-    fs: new FileSystem(session) as SandboxFileSystem,
+    sessionId: session.sessionId,
+    fs,
     extendTimeout(duration) {
-      return session.extendTimeout(duration);
+      return run(async () => await session.extendTimeout(duration));
     },
     mkDir(path) {
-      return session.mkDir(path);
+      return run(async () => await session.mkDir(path));
     },
     readFileToBuffer(input) {
-      return session.readFileToBuffer(input);
+      return run(async () => await session.readFileToBuffer(input));
     },
-    runCommand(input) {
-      return session.runCommand(input);
+    async runCommand(input) {
+      const result = await run(async () => await session.runCommand(input));
+      return {
+        exitCode: result.exitCode,
+        stdout: async () => await run(async () => await result.stdout()),
+        stderr: async () => await run(async () => await result.stderr()),
+      };
     },
-    async snapshot() {
-      const snapshot = await session.snapshot();
-      return { snapshotId: snapshot.snapshotId };
+    snapshot() {
+      return run(async () => {
+        const snapshot = await session.snapshot();
+        return { snapshotId: snapshot.snapshotId };
+      });
     },
     stop() {
-      return session.stop();
+      return run(async () => await session.stop());
     },
     update(params) {
-      return session.update(params);
+      return run(async () => await session.update(params));
     },
     writeFiles(files) {
-      return session.writeFiles(files);
+      return run(async () => await session.writeFiles(files));
     },
   };
 }

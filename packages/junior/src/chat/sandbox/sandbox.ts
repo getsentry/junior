@@ -23,6 +23,7 @@ import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   isSandboxCommandStreamInterruptedError,
+  isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
@@ -33,7 +34,7 @@ import {
   resolveHostDataPath,
   resolveHostSkillPath,
 } from "@/chat/sandbox/skill-sync";
-import type { SandboxInstance } from "@/chat/sandbox/workspace";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
@@ -86,12 +87,10 @@ export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
   configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
-  getSandboxEgressId(): string | undefined;
+  getSessionId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
-  createSandbox(): Promise<SandboxInstance>;
-  /** Drop unavailable live state so a later operation can reacquire the sandbox. */
-  invalidateIfUnavailable(error: unknown, sandboxEgressId?: string): boolean;
+  createSandbox(): Promise<SandboxSession>;
   execute<T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>>;
@@ -241,10 +240,12 @@ export function createSandboxExecutor(options?: {
       : undefined,
     createNetworkPolicy:
       credentialEgress || hasTracePropagationDomains
-        ? (egressId, traceHeaders) =>
+        ? (sessionId, traceHeaders) =>
             buildSandboxEgressNetworkPolicy({
               ...(credentialEgress
-                ? { credentialToken: sandboxEgressCredentialTokenFor(egressId) }
+                ? {
+                    credentialToken: sandboxEgressCredentialTokenFor(sessionId),
+                  }
                 : {}),
               traceConfig: tracePropagation,
               traceHeaders,
@@ -307,8 +308,8 @@ export function createSandboxExecutor(options?: {
       "app.sandbox.command_length": command.length,
     });
     const executeBash = (await sessionManager.ensureToolExecutors()).bash;
-    const activeEgressId = sessionManager.getSandboxEgressId();
-    await clearSandboxEgressSignals(activeEgressId);
+    const activeSessionId = sessionManager.getSessionId();
+    await clearSandboxEgressSignals(activeSessionId);
     const result = await withSandboxToolSpan(
       "bash",
       "process.exec",
@@ -359,9 +360,9 @@ export function createSandboxExecutor(options?: {
     // and `clearSandboxEgressSignals` runs before each execution to prevent
     // cross-command leakage.
     const authRequired =
-      await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
+      await consumeSandboxEgressAuthRequiredSignal(activeSessionId);
     const permissionDenied =
-      await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
+      await consumeSandboxEgressPermissionDeniedSignal(activeSessionId);
 
     return {
       result: bashToolResult({
@@ -696,7 +697,7 @@ export function createSandboxExecutor(options?: {
         return await executeWriteFileTool(rawInput);
       }
     } catch (error) {
-      if (sessionManager.invalidateIfUnavailable(error)) {
+      if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
       }
@@ -724,8 +725,8 @@ export function createSandboxExecutor(options?: {
     getSandboxId() {
       return sessionManager.getSandboxId();
     },
-    getSandboxEgressId() {
-      return sessionManager.getSandboxEgressId();
+    getSessionId() {
+      return sessionManager.getSessionId();
     },
     getDependencyProfileHash() {
       return sessionManager.getDependencyProfileHash();
@@ -735,9 +736,6 @@ export function createSandboxExecutor(options?: {
     },
     async createSandbox() {
       return await sessionManager.createSandbox();
-    },
-    invalidateIfUnavailable(error, sandboxEgressId) {
-      return sessionManager.invalidateIfUnavailable(error, sandboxEgressId);
     },
     execute,
     async dispose() {

@@ -88,7 +88,7 @@ export function isAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-/** Detect when a cached sandbox can no longer be reused and must be recreated. */
+/** Detect when the current sandbox session is unavailable and must be reacquired. */
 export function isSandboxUnavailableError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {
     if (isInvalidSandboxSessionError(candidate)) {

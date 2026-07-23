@@ -31,7 +31,7 @@ import { getSlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
-  SandboxInstance,
+  SandboxSession,
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
@@ -67,7 +67,7 @@ export interface PluginApiRouteRegistration {
 
 export interface PluginHookRunner {
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
-  prepareSandbox(sandbox: SandboxInstance): Promise<void>;
+  prepareSandbox(sandbox: SandboxSession): Promise<void>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1005,7 +1005,7 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function createSandboxCapability(sandbox: SandboxInstance): PluginSandbox {
+function createSandboxCapability(sandbox: SandboxSession): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
     juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,

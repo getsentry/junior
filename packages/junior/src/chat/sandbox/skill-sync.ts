@@ -10,7 +10,7 @@ import {
   isAlreadyExistsError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
-import type { SandboxInstance } from "@/chat/sandbox/workspace";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
 interface SkillSyncFile {
@@ -197,7 +197,7 @@ export function isHostFileMissingError(error: unknown): boolean {
 
 /** Copy the current skill set and reference files into a sandbox. */
 export async function syncSkillsToSandbox(params: {
-  sandbox: SandboxInstance;
+  sandbox: SandboxSession;
   skills: SkillMetadata[];
   referenceFiles?: string[];
   withSpan: <T>(

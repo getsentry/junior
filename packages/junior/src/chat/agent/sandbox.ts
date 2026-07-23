@@ -10,14 +10,12 @@ import {
   createSandboxUnavailableToolError,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
+import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 type LazySandboxExecutor = Pick<
   SandboxExecutor,
-  | "createSandbox"
-  | "getSandboxId"
-  | "getSandboxEgressId"
-  | "invalidateIfUnavailable"
+  "createSandbox" | "getSandboxId" | "getSessionId"
 >;
 
 /** Create a lazy-boot workspace port bound to the run's sandbox executor. */
@@ -28,7 +26,7 @@ export function createLazySandboxWorkspace(args: {
   interface SandboxBinding {
     workspace: SandboxWorkspace;
     sandboxId: string;
-    sandboxEgressId: string | undefined;
+    sessionId: string;
   }
 
   let sandboxPromise: Promise<SandboxBinding> | undefined;
@@ -47,11 +45,11 @@ export function createLazySandboxWorkspace(args: {
     cwd?: string;
   }): Promise<SandboxBinding> => {
     const currentSandboxId = args.executor.getSandboxId();
-    const currentSandboxEgressId = args.executor.getSandboxEgressId();
+    const currentSessionId = args.executor.getSessionId();
     if (
       sandboxBinding &&
       (currentSandboxId !== sandboxBinding.sandboxId ||
-        currentSandboxEgressId !== sandboxBinding.sandboxEgressId)
+        currentSessionId !== sandboxBinding.sessionId)
     ) {
       clearSandboxPromise();
     }
@@ -74,7 +72,7 @@ export function createLazySandboxWorkspace(args: {
           const binding = {
             workspace,
             sandboxId: workspace.sandboxId,
-            sandboxEgressId: workspace.sandboxEgressId,
+            sessionId: workspace.sessionId,
           };
           if (sandboxPromise === nextSandboxPromise) {
             sandboxBinding = binding;
@@ -106,9 +104,7 @@ export function createLazySandboxWorkspace(args: {
       binding = await activeSandboxPromise;
       return await operation(binding.workspace);
     } catch (error) {
-      if (
-        args.executor.invalidateIfUnavailable(error, binding?.sandboxEgressId)
-      ) {
+      if (isSandboxUnavailableError(error)) {
         clearSandboxPromise(activeSandboxPromise);
         throw createSandboxUnavailableToolError(reason.trigger, error);
       }

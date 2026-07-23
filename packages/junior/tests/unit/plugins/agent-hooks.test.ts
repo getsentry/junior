@@ -21,7 +21,7 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { SandboxInstance } from "@/chat/sandbox/workspace";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 
 const demoToolResultSchema = pluginToolResultSchema.extend({
   ok: z.literal(true),
@@ -93,10 +93,10 @@ function slackSource(channelId: string) {
 
 function fakeSandbox(
   writes: Array<{ content: string | Uint8Array; path: string }>,
-): SandboxInstance {
+): SandboxSession {
   return {
     sandboxId: "sandbox-agent-hooks",
-    sandboxEgressId: "session-agent-hooks",
+    sessionId: "session-agent-hooks",
     fs: {
       async readFile() {
         return "";
