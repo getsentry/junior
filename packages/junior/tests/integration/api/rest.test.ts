@@ -9,8 +9,13 @@ import {
   conversationDetailReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
+  healthReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
+  pluginOperationalReportFeedSchema,
+  pluginReportsSchema,
+  runtimeInfoReportSchema,
+  skillReportsSchema,
 } from "@/api/schema";
 import {
   closeDb,
@@ -25,6 +30,19 @@ describe("Junior REST API", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await closeDb();
+  });
+
+  test.each([
+    ["/api/health", healthReportSchema],
+    ["/api/runtime", runtimeInfoReportSchema],
+    ["/api/plugins", pluginReportsSchema],
+    ["/api/skills", skillReportsSchema],
+    ["/api/plugin-reports", pluginOperationalReportFeedSchema],
+  ] as const)("serves %s through its response schema", async (path, schema) => {
+    const response = await createJuniorApi().request(`http://localhost${path}`);
+
+    expect(response.status).toBe(200);
+    schema.parse(await response.json());
   });
 
   test("serves conversation and People resources from migrated SQL", async () => {
