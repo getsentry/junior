@@ -409,6 +409,10 @@ export async function buildGitHubOutcomeReport(args: {
         label: "issues closed as not planned · 30d",
         value: String(issueThirtyDays.closedNotPlanned),
       },
+      {
+        label: "median issue close time · 30d",
+        value: formatDuration(issueThirtyDays.medianCloseTimeMs),
+      },
     ],
     widgets: [
       {

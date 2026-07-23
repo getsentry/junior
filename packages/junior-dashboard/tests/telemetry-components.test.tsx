@@ -878,6 +878,32 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="30d, Merged: 3"');
   });
 
+  it("keeps chart chrome visible for empty widget data", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories: [],
+                description: "Rolling outcomes",
+                emptyText: "No outcomes yet.",
+                id: "empty-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain("Pull request outcomes");
+    expect(html).toContain("Rolling outcomes");
+    expect(html).toContain("No outcomes yet.");
+  });
+
   it("renders plugin records without declared fields safely", () => {
     const html = renderToStaticMarkup(
       <PluginReports

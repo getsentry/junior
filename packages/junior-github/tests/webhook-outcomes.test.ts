@@ -1123,6 +1123,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "issues completed · 30d", tone: "neutral", value: "0" },
         { label: "issues closed as duplicate · 30d", value: "0" },
         { label: "issues closed as not planned · 30d", value: "1" },
+        { label: "median issue close time · 30d", value: "71d" },
       ]);
       expect(report.widgets?.[0]?.categories).toEqual([
         { id: "7d", label: "7d", values: { closed: 0, created: 1, merged: 1 } },
@@ -1251,6 +1252,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "issues completed · 30d", tone: "neutral", value: "0" },
         { label: "issues closed as duplicate · 30d", value: "0" },
         { label: "issues closed as not planned · 30d", value: "0" },
+        { label: "median issue close time · 30d", value: "—" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([]);
       expect(report.recordSets?.[1]?.records).toEqual([]);
