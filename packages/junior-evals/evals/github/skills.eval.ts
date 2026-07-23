@@ -1,5 +1,5 @@
 import { describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
+import { beforeAll, expect } from "vitest";
 import {
   mention,
   resourceEventNotification,
@@ -7,8 +7,16 @@ import {
   slackEvals,
   threadMessage,
 } from "../../src/helpers";
+import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
+
+const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("GitHub Skill Workflows", slackEvals, (it) => {
+  // Keep one-time sandbox setup outside the 60-second behavior budget.
+  beforeAll(async () => {
+    await warmSandboxSnapshot();
+  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
+
   it("when subscribed PR checks fail headlessly, commit and push the fix", async ({
     run,
   }) => {
