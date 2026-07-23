@@ -52,6 +52,7 @@ const pullRequestRepositoryStatsSchema = z
 const issueStatsSchema = z
   .object({
     closedCompleted: z.number().int().nonnegative(),
+    closedDuplicate: z.number().int().nonnegative(),
     closedNotPlanned: z.number().int().nonnegative(),
     closedUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
@@ -67,6 +68,7 @@ const issueStatsSchema = z
 const issueRepositoryStatsSchema = z
   .object({
     closedCompleted: z.number().int().nonnegative(),
+    closedDuplicate: z.number().int().nonnegative(),
     closedNotPlanned: z.number().int().nonnegative(),
     closedUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
@@ -258,6 +260,12 @@ async function aggregateIssueWindows(args: {
       count(recent_issues.issue_id)
         FILTER (
           WHERE recent_issues.state = 'closed'
+            AND recent_issues.state_reason = 'duplicate'
+            AND recent_issues.closed_at >= windows.start_at
+        )::integer AS "closedDuplicate",
+      count(recent_issues.issue_id)
+        FILTER (
+          WHERE recent_issues.state = 'closed'
             AND recent_issues.state_reason = 'not_planned'
             AND recent_issues.closed_at >= windows.start_at
         )::integer AS "closedNotPlanned",
@@ -301,6 +309,11 @@ async function aggregateIssueRepositories(args: {
           AND ${table.stateReason} = 'completed'
           AND ${table.closedAt} >= ${start}
       )::integer AS "closedCompleted",
+      count(*) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'duplicate'
+          AND ${table.closedAt} >= ${start}
+      )::integer AS "closedDuplicate",
       count(*) FILTER (
         WHERE ${table.state} = 'closed'
           AND ${table.stateReason} = 'not_planned'
@@ -389,6 +402,10 @@ export async function buildGitHubOutcomeReport(args: {
         value: String(issueThirtyDays.closedCompleted),
       },
       {
+        label: "issues closed as duplicate · 30d",
+        value: String(issueThirtyDays.closedDuplicate),
+      },
+      {
         label: "issues closed as not planned · 30d",
         value: String(issueThirtyDays.closedNotPlanned),
       },
@@ -447,6 +464,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "window", label: "Window" },
           { key: "created", label: "Created" },
           { key: "completed", label: "Completed" },
+          { key: "duplicate", label: "Duplicate" },
           { key: "notPlanned", label: "Not planned" },
           { key: "unknown", label: "Unknown reason" },
           { key: "closeTime", label: "Median close time" },
@@ -457,6 +475,7 @@ export async function buildGitHubOutcomeReport(args: {
             window: `${stats.days} days`,
             created: String(stats.created),
             completed: String(stats.closedCompleted),
+            duplicate: String(stats.closedDuplicate),
             notPlanned: String(stats.closedNotPlanned),
             unknown: String(stats.closedUnknown),
             closeTime: formatDuration(stats.medianCloseTimeMs),
@@ -470,6 +489,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "repository", label: "Repository" },
           { key: "created", label: "Created" },
           { key: "completed", label: "Completed" },
+          { key: "duplicate", label: "Duplicate" },
           { key: "notPlanned", label: "Not planned" },
           { key: "unknown", label: "Unknown reason" },
         ],
@@ -479,6 +499,7 @@ export async function buildGitHubOutcomeReport(args: {
             repository,
             created: String(stats.created),
             completed: String(stats.closedCompleted),
+            duplicate: String(stats.closedDuplicate),
             notPlanned: String(stats.closedNotPlanned),
             unknown: String(stats.closedUnknown),
           },

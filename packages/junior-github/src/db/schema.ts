@@ -27,7 +27,9 @@ export type GitHubIssueState = z.output<typeof githubIssueStateSchema>;
 
 export const githubIssueStateReasonSchema = z.enum([
   "completed",
+  "duplicate",
   "not_planned",
+  "reopened",
 ]);
 
 export type GitHubIssueStateReason = z.output<

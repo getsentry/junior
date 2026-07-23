@@ -102,7 +102,7 @@ function issueLifecyclePayload(input: {
   createdAt: string;
   id: number;
   number: number;
-  stateReason?: "completed" | "not_planned";
+  stateReason?: "completed" | "duplicate" | "not_planned" | "reopened";
   updatedAt?: string;
   user?: string;
 }) {
@@ -377,6 +377,7 @@ describe("GitHub-owned issue outcomes", () => {
             createdAt: "2026-07-01T12:00:00.000Z",
             id: 3001,
             number: 970,
+            stateReason: "duplicate",
             updatedAt: "2026-07-03T12:00:00.000Z",
           }),
           "issues",
@@ -411,6 +412,7 @@ describe("GitHub-owned issue outcomes", () => {
             createdAt: "2026-07-01T12:00:00.000Z",
             id: 3001,
             number: 970,
+            stateReason: "reopened",
             updatedAt: "2026-07-02T12:00:00.000Z",
           }),
           "issues",
@@ -436,6 +438,7 @@ describe("GitHub-owned issue outcomes", () => {
           issueId: "3001",
           repositoryFullName: "getsentry/junior",
           state: "closed",
+          stateReason: "duplicate",
           updatedAt: new Date("2026-07-03T12:00:00.000Z"),
         }),
       ]);
@@ -1117,6 +1120,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "median PR merge time · 30d", value: "90d" },
         { label: "issues created · 30d", value: "2" },
         { label: "issues completed · 30d", tone: "neutral", value: "0" },
+        { label: "issues closed as duplicate · 30d", value: "0" },
         { label: "issues closed as not planned · 30d", value: "1" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([
@@ -1172,6 +1176,7 @@ describe("GitHub-owned pull request outcomes", () => {
             closeTime: "—",
             completed: "0",
             created: "1",
+            duplicate: "0",
             notPlanned: "0",
             unknown: "0",
             window: "7 days",
@@ -1183,6 +1188,7 @@ describe("GitHub-owned pull request outcomes", () => {
             closeTime: "71d",
             completed: "0",
             created: "2",
+            duplicate: "0",
             notPlanned: "1",
             unknown: "0",
             window: "30 days",
@@ -1194,6 +1200,7 @@ describe("GitHub-owned pull request outcomes", () => {
             closeTime: "71d",
             completed: "0",
             created: "3",
+            duplicate: "0",
             notPlanned: "1",
             unknown: "0",
             window: "90 days",
@@ -1203,6 +1210,7 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(report.recordSets?.[3]?.records?.[0]?.values).toEqual({
         completed: "0",
         created: "2",
+        duplicate: "0",
         notPlanned: "1",
         repository: "getsentry/junior",
         unknown: "0",
@@ -1293,6 +1301,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "median PR merge time · 30d", value: "—" },
         { label: "issues created · 30d", value: "0" },
         { label: "issues completed · 30d", tone: "neutral", value: "0" },
+        { label: "issues closed as duplicate · 30d", value: "0" },
         { label: "issues closed as not planned · 30d", value: "0" },
       ]);
       expect(report.recordSets?.[1]?.records).toEqual([]);
