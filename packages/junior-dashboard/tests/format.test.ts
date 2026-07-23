@@ -80,7 +80,7 @@ describe("dashboard conversation formatting", () => {
         outputTokens: 15,
         totalTokens: 999,
       }),
-    ).toBe("10 input · 15 output · 25 cached");
+    ).toBe("80 tokens");
     expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
   });
 
