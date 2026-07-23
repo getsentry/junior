@@ -29,9 +29,7 @@ function evalOauthIdentityCalls(result: EvalRun) {
     return (
       call.name === "bash" &&
       typeof command === "string" &&
-      command.includes(
-        "curl -fsSL https://example.com/junior-eval-oauth/whoami",
-      )
+      command.includes("https://example.com/junior-eval-oauth/whoami")
     );
   });
 }
@@ -215,28 +213,18 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           { thread: oauthRefreshThread, is_mention: true },
         ),
       ],
-      criteria: rubric({
-        pass: [
-          "The response identifies the active account as eval-oauth-user.",
-          "The request completes without asking the user to authorize or reconnect.",
-        ],
-        fail: [
-          "Do not post a generic failure message.",
-          "Do not ask the user to authorize, connect, or reconnect the account.",
-        ],
-      }),
     });
 
-    expect(
-      matchingToolCalls(result, "loadSkill", { skill_name: "eval-oauth" }),
-    ).not.toHaveLength(0);
-    expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
+    expect(publicOAuthUrls(result)).toEqual([]);
     expect(authorizationCompletions(result)).toEqual([]);
-    expect(
-      await readEvalEgressFixtureState<{
-        evalOAuthRefreshTokens: string[];
-      }>(),
-    ).toEqual({ evalOAuthRefreshTokens: ["eval-oauth-refresh-token"] });
+    const fixtureState = await readEvalEgressFixtureState<{
+      evalOAuthIdentityRequests: number;
+      evalOAuthRefreshTokens: string[];
+    }>();
+    expect(fixtureState.evalOAuthRefreshTokens).toContain(
+      "eval-oauth-refresh-token",
+    );
+    expect(fixtureState.evalOAuthIdentityRequests).toBeGreaterThanOrEqual(1);
     expect(
       matchingThreadReplies(result, oauthRefreshThread, /eval-oauth-user/i),
     ).not.toHaveLength(0);

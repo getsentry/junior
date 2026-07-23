@@ -10,11 +10,11 @@ This fixture is HTTP-backed, not MCP-backed. Do not use or mention MCP tools for
 
 Run this command before doing anything else:
 
-`curl -fsSL https://example.com/junior-eval-oauth/whoami`
+`curl -fsSL --retry 2 --retry-delay 1 --retry-max-time 5 https://example.com/junior-eval-oauth/whoami`
 
 Rules:
 
-- Use the `bash` tool for `curl -fsSL https://example.com/junior-eval-oauth/whoami`.
+- Use the `bash` tool for `curl -fsSL --retry 2 --retry-delay 1 --retry-max-time 5 https://example.com/junior-eval-oauth/whoami`.
 - Do not answer the user's question until that command succeeds.
 - If the first run does not complete, stop there. Do not summarize, apologize, or ask the user to repeat anything.
 - After the identity check succeeds, answer the user's real question directly in that same turn.

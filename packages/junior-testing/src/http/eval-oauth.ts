@@ -1,6 +1,17 @@
 const EVAL_OAUTH_HOST = "example.com";
 const EVAL_OAUTH_PATH_PREFIX = "/junior-eval-oauth";
 const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
+let authenticatedIdentityRequests = 0;
+
+/** Clear captured eval OAuth HTTP fixture state between test scenarios. */
+export function resetTestEvalOAuthHttpFixtures(): void {
+  authenticatedIdentityRequests = 0;
+}
+
+/** Return the number of identity requests authorized with the issued token. */
+export function readTestEvalOAuthIdentityRequests(): number {
+  return authenticatedIdentityRequests;
+}
 
 /** Intercept eval OAuth fixture HTTP traffic for test scenarios. */
 export async function interceptTestEvalOauthHttp(input: {
@@ -26,6 +37,7 @@ export async function interceptTestEvalOauthHttp(input: {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
+    authenticatedIdentityRequests += 1;
     return new Response("eval-oauth-user\n", {
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
