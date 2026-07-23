@@ -179,8 +179,7 @@ export function createSandboxRuntime(
   options: SandboxRuntimeOptions,
 ): SandboxRuntime {
   let activeSandbox: ActiveSandbox | null = null;
-  let sandboxIdHint = options.ref?.id;
-  let sandboxDependencyProfileHashHint = options.ref?.profileHash;
+  let sandboxRef = options.ref;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: Promise<SandboxSession> | undefined;
@@ -229,27 +228,21 @@ export function createSandboxRuntime(
     return options.createNetworkPolicy?.(sandboxName);
   };
 
-  const retainSandboxHint = (nextSandbox: SandboxSession): void => {
-    sandboxIdHint = nextSandbox.sandboxId;
-    sandboxDependencyProfileHashHint = dependencyProfileHash;
-  };
-
-  const reportSandboxHint = async (
+  const reportSandboxRef = async (
     nextSandbox: SandboxSession,
   ): Promise<void> => {
-    const previousSandboxId = sandboxIdHint;
-    const previousProfileHash = sandboxDependencyProfileHashHint;
-    retainSandboxHint(nextSandbox);
+    const nextRef: SandboxRef = {
+      id: nextSandbox.sandboxId,
+      ...(dependencyProfileHash ? { profileHash: dependencyProfileHash } : {}),
+    };
     if (
-      previousSandboxId === sandboxIdHint &&
-      previousProfileHash === sandboxDependencyProfileHashHint
+      sandboxRef?.id === nextRef.id &&
+      sandboxRef.profileHash === nextRef.profileHash
     ) {
       return;
     }
-    await options.onRefChanged?.({
-      id: nextSandbox.sandboxId,
-      ...(dependencyProfileHash ? { profileHash: dependencyProfileHash } : {}),
-    });
+    sandboxRef = nextRef;
+    await options.onRefChanged?.(nextRef);
   };
 
   const rememberSandbox = (
@@ -257,7 +250,6 @@ export function createSandboxRuntime(
     networkPolicyKey?: string,
   ): SandboxSession => {
     activeSandbox = { session: nextSandbox, networkPolicyKey };
-    retainSandboxHint(nextSandbox);
     return nextSandbox;
   };
 
@@ -483,16 +475,13 @@ export function createSandboxRuntime(
       return failSetup(error);
     }
 
-    await reportSandboxHint(createdSandbox);
+    await reportSandboxRef(createdSandbox);
 
     let networkPolicyKey: string | undefined;
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       await prepareSandbox(createdSandbox);
     } catch (error) {
-      if (isSandboxUnavailableError(error)) {
-        retainSandboxHint(createdSandbox);
-      }
       return failSetup(error);
     }
 
@@ -502,8 +491,8 @@ export function createSandboxRuntime(
   const discardHintIfProfileChanged = (): void => {
     if (
       activeSandbox ||
-      !sandboxIdHint ||
-      dependencyProfileHash === sandboxDependencyProfileHashHint
+      !sandboxRef ||
+      dependencyProfileHash === sandboxRef.profileHash
     ) {
       return;
     }
@@ -511,10 +500,9 @@ export function createSandboxRuntime(
     setSpanAttributes({
       "app.sandbox.reused": false,
       "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...(sandboxDependencyProfileHashHint
+      ...(sandboxRef.profileHash
         ? {
-            "app.sandbox.previous_profile_hash":
-              sandboxDependencyProfileHashHint,
+            "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
           }
         : {}),
       ...(dependencyProfileHash
@@ -525,10 +513,9 @@ export function createSandboxRuntime(
       "sandbox_hint_discarded_profile_mismatch",
       traceContext,
       {
-        ...(sandboxDependencyProfileHashHint
+        ...(sandboxRef.profileHash
           ? {
-              "app.sandbox.previous_profile_hash":
-                sandboxDependencyProfileHashHint,
+              "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
             }
           : {}),
         ...(dependencyProfileHash
@@ -537,8 +524,7 @@ export function createSandboxRuntime(
       },
       "Dependency profile changed; discarding sandbox hint and creating fresh session",
     );
-    sandboxIdHint = undefined;
-    sandboxDependencyProfileHashHint = undefined;
+    sandboxRef = undefined;
   };
 
   const tryReuseCachedSandbox = async (): Promise<SandboxSession | null> => {
@@ -546,7 +532,8 @@ export function createSandboxRuntime(
   };
 
   const tryRestoreHintedSandbox = async (): Promise<SandboxSession | null> => {
-    if (!sandboxIdHint) {
+    const ref = sandboxRef;
+    if (!ref) {
       return null;
     }
 
@@ -563,7 +550,7 @@ export function createSandboxRuntime(
         async () =>
           adaptSandbox(
             await Sandbox.get({
-              name: sandboxIdHint as string,
+              name: ref.id,
               resume: true,
               ...(sandboxCredentials ?? {}),
             } as Parameters<typeof Sandbox.get>[0]),
@@ -571,8 +558,7 @@ export function createSandboxRuntime(
       );
     } catch (error) {
       if (isSandboxMissingError(error)) {
-        sandboxIdHint = undefined;
-        sandboxDependencyProfileHashHint = undefined;
+        sandboxRef = undefined;
         return null;
       }
       if (isSandboxUnavailableError(error)) {
@@ -600,7 +586,7 @@ export function createSandboxRuntime(
       "sandbox.acquire",
       "sandbox.acquire",
       {
-        "app.sandbox.id_hint_present": Boolean(sandboxIdHint),
+        "app.sandbox.id_hint_present": Boolean(sandboxRef),
         "app.sandbox.timeout_ms": timeoutMs,
         "app.sandbox.runtime": SANDBOX_RUNTIME,
         "app.sandbox.skills_count": availableSkills.length,
@@ -850,16 +836,7 @@ export function createSandboxRuntime(
 
   return {
     ref() {
-      const id = activeSandbox?.session.sandboxId ?? sandboxIdHint;
-      if (!id) {
-        return undefined;
-      }
-      return {
-        id,
-        ...(sandboxDependencyProfileHashHint
-          ? { profileHash: sandboxDependencyProfileHashHint }
-          : {}),
-      };
+      return sandboxRef ? { ...sandboxRef } : undefined;
     },
     async acquire() {
       return await getOrAcquireSandbox();
