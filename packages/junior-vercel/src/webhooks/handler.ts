@@ -19,6 +19,8 @@ function verifyVercelSignature(
 ): boolean {
   if (!secret || !/^[0-9a-f]{40}$/i.test(signature)) return false;
   const actual = Buffer.from(signature.toLowerCase());
+  // Vercel mandates HMAC-SHA1 for x-vercel-signature; SHA-2 is not protocol-compatible.
+  // https://vercel.com/docs/headers/request-headers#x-vercel-signature
   const expected = Buffer.from(
     createHmac("sha1", secret).update(body).digest("hex"),
   );
