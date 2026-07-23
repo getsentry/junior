@@ -42,6 +42,7 @@ export interface JuniorDashboardOptions {
   sessionMaxAgeSeconds?: number;
   trustedOrigins?: string[];
   auth?: DashboardAuth;
+  componentGallery?: boolean;
   mockConversations?: boolean;
 }
 
@@ -140,6 +141,9 @@ function resolveDashboardOptions(
       options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
     trustedOrigins:
       options.trustedOrigins ?? readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
+    componentGallery:
+      options.componentGallery ??
+      readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
     mockConversations:
       options.mockConversations ??
       readEnvFlag("JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"),
@@ -384,8 +388,9 @@ function readDashboardAvatarHeader(): ArrayBuffer {
 
 function dashboardPagePaths(
   basePath: string,
+  options: { componentGallery?: boolean } = {},
 ): Array<{ nested?: boolean; path: string }> {
-  return [
+  const paths: Array<{ nested?: boolean; path: string }> = [
     { path: basePath },
     {
       nested: true,
@@ -401,6 +406,13 @@ function dashboardPagePaths(
     },
     { path: basePath === "/" ? "/system" : `${basePath}/system` },
   ];
+  if (options.componentGallery) {
+    paths.push({
+      nested: true,
+      path: basePath === "/" ? "/dev" : `${basePath}/dev`,
+    });
+  }
+  return paths;
 }
 
 function renderDashboard(basePath: string): Response {
@@ -628,7 +640,9 @@ export function createDashboardApp(
 
   app.use("*", requireAuth);
 
-  for (const { nested, path } of dashboardPagePaths(basePath)) {
+  for (const { nested, path } of dashboardPagePaths(basePath, {
+    componentGallery: options.componentGallery,
+  })) {
     app.get(path, () => renderDashboard(basePath));
     if (nested) {
       app.get(`${path}/*`, () => renderDashboard(basePath));
@@ -658,6 +672,7 @@ export function createDashboardApp(
         authRequired,
         authPath,
         basePath,
+        componentGallery: options.componentGallery === true,
         sentryConversationLinks: hasSentryConversationLinks(),
         timeZone: dashboardTimeZone(),
       }),

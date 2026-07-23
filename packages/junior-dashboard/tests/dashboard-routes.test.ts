@@ -19,6 +19,7 @@ const dashboardEnvNames = [
   "VERCEL_PROJECT_PRODUCTION_URL",
   "VERCEL_URL",
   "JUNIOR_DASHBOARD_AUTH_REQUIRED",
+  "JUNIOR_DASHBOARD_COMPONENT_GALLERY",
   "JUNIOR_DASHBOARD_GOOGLE_DOMAINS",
   "JUNIOR_DASHBOARD_ALLOWED_EMAILS",
   "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
@@ -507,6 +508,26 @@ describe("dashboard routes", () => {
     });
   });
 
+  it("serves the component gallery only when enabled", async () => {
+    const disabled = createDashboardApp({ authRequired: false });
+    const enabled = createDashboardApp({
+      authRequired: false,
+      componentGallery: true,
+    });
+
+    expect(
+      (await disabled.fetch(new Request("http://localhost/dev"))).status,
+    ).toBe(404);
+    expect(
+      (await enabled.fetch(new Request("http://localhost/dev"))).status,
+    ).toBe(200);
+    expect(
+      await (
+        await enabled.fetch(new Request("http://localhost/api/config"))
+      ).json(),
+    ).toMatchObject({ componentGallery: true });
+  });
+
   it("returns safe dashboard config signals", async () => {
     process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
     process.env.SENTRY_ORG_SLUG = "sentry";
@@ -528,6 +549,7 @@ describe("dashboard routes", () => {
       authRequired: true,
       authPath: "/api/auth",
       basePath: "/",
+      componentGallery: false,
       sentryConversationLinks: true,
       timeZone: "America/Los_Angeles",
     });

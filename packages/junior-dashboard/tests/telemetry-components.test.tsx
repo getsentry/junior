@@ -23,6 +23,7 @@ import {
 } from "../src/client/components/SubagentTranscriptDrawer";
 import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
+import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
@@ -80,6 +81,7 @@ function systemData(): SystemData {
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
+      componentGallery: false,
       sentryConversationLinks: false,
       timeZone: "UTC",
     },
@@ -121,6 +123,19 @@ function systemData(): SystemData {
 }
 
 describe("dashboard canonical-event components", () => {
+  it("renders transcript markdown with hard breaks and safe links", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="line">
+        <TranscriptMarkdown text={"line one\nline two\n\n[docs](https://docs.sentry.io)"} />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html.match(/<br\/>/g)).toHaveLength(1);
+    expect(html).toContain('href="https://docs.sentry.io"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain("<mark");
+  });
+
   it("keeps shared buttons out of form-submit mode", () => {
     expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
       'type="button"',
