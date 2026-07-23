@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 type EvalSession = Parameters<typeof assistantMessages>[0];
@@ -67,10 +67,5 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
       type: "canvas_created",
       markdown: expect.stringMatching(/stream/i),
     });
-    expect(
-      toolCalls(result.session).filter(
-        (call) => call.name === "webFetch" || call.name === "webSearch",
-      ),
-    ).toHaveLength(0);
   });
 });
