@@ -148,21 +148,29 @@ describe("Sentry context", () => {
     );
   });
 
-  it("applies native user identity when capturing exceptions with context", async () => {
+  it("applies bound and local context when capturing exceptions", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { logException } = await import("@/chat/logging");
+    const { logException, setTags, withLogContext } =
+      await import("@/chat/logging");
 
-    const eventId = logException(
-      new Error("boom"),
-      "turn_failed",
+    const eventId = await withLogContext(
       {
+        conversationId: "thread_123",
+        platform: "slack",
         userId: "U123",
         userName: "alice",
         userEmail: "Alice@Example.COM",
-        modelId: "openai/gpt-5.4",
       },
-      {},
-      "Turn failed",
+      async () => {
+        setTags({ assistantUserName: "junior" });
+        return logException(
+          new Error("boom"),
+          "turn_failed",
+          { modelId: "openai/gpt-5.4" },
+          {},
+          "Turn failed",
+        );
+      },
     );
 
     expect(eventId).toBe("event-id");
@@ -175,6 +183,18 @@ describe("Sentry context", () => {
     expect(sentry.scope.setTag).toHaveBeenCalledWith(
       "gen_ai.request.model",
       "openai/gpt-5.4",
+    );
+    expect(sentry.scope.setTag).toHaveBeenCalledWith(
+      "gen_ai.agent.name",
+      "junior",
+    );
+    expect(sentry.scope.setContext).toHaveBeenCalledWith(
+      "app",
+      expect.objectContaining({
+        "gen_ai.conversation.id": "thread_123",
+        "gen_ai.request.model": "openai/gpt-5.4",
+        "messaging.system": "slack",
+      }),
     );
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
   });

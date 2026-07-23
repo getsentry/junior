@@ -25,8 +25,11 @@ export interface LogContext {
   userAgent?: string;
 }
 
-/** Async context domain consumed directly by LogTape. */
+/** Async attribute domain consumed directly by LogTape. */
 export const logContextStorage = new AsyncLocalStorage<LogAttributes>();
+
+/** Typed context domain retained for consumers such as native Sentry scope fields. */
+const typedLogContextStorage = new AsyncLocalStorage<LogContext>();
 
 function definedAttributes(
   attributes: Record<string, string | undefined>,
@@ -63,7 +66,23 @@ export function logContextToAttributes(context: LogContext): LogAttributes {
   });
 }
 
-/** Run an operation with merged attributes, restoring its parent on completion. */
+/** Run an operation with merged context, restoring its parent on completion. */
+export function runWithLogContext<T>(
+  context: LogContext,
+  attributes: LogAttributes,
+  callback: () => T,
+): T {
+  return typedLogContextStorage.run(
+    { ...typedLogContextStorage.getStore(), ...context },
+    () =>
+      logContextStorage.run(
+        { ...logContextStorage.getStore(), ...attributes },
+        callback,
+      ),
+  );
+}
+
+/** Run an operation with raw attributes, restoring its parent on completion. */
 export function runWithLogAttributes<T>(
   attributes: LogAttributes,
   callback: () => T,
@@ -74,12 +93,32 @@ export function runWithLogAttributes<T>(
   );
 }
 
-/** Merge attributes into the current scoped operation. */
+/** Merge raw attributes into the current scoped operation. */
 export function updateLogAttributes(attributes: LogAttributes): void {
   const current = logContextStorage.getStore();
   if (current) {
     Object.assign(current, attributes);
   }
+}
+
+/** Merge context and attributes into the current scoped operation. */
+export function updateLogContext(
+  context: LogContext,
+  attributes: LogAttributes,
+): void {
+  const currentContext = typedLogContextStorage.getStore();
+  if (currentContext) {
+    Object.assign(currentContext, context);
+  }
+  const currentAttributes = logContextStorage.getStore();
+  if (currentAttributes) {
+    Object.assign(currentAttributes, attributes);
+  }
+}
+
+/** Read the typed context bound to the current operation. */
+export function getBoundLogContext(): LogContext {
+  return typedLogContextStorage.getStore() ?? {};
 }
 
 /** Read the attributes bound to the current operation. */

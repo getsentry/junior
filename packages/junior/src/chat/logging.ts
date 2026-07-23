@@ -16,10 +16,11 @@ import type {
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import {
   getBoundLogAttributes,
+  getBoundLogContext,
   logContextStorage,
   logContextToAttributes,
-  runWithLogAttributes,
-  updateLogAttributes,
+  runWithLogContext as runWithScopedLogContext,
+  updateLogContext,
   type LogAttributes,
   type LogContext,
 } from "@/chat/log-context";
@@ -1213,9 +1214,10 @@ export const log = {
       typeof sentryCaptureException === "function"
     ) {
       sentryWithScope((scope) => {
-        if (context) {
-          setSentryScopeContext(scope, context);
-        }
+        setSentryScopeContext(scope, {
+          ...getBoundLogContext(),
+          ...context,
+        });
         for (const [key, value] of Object.entries(
           mergeAttributes(getBoundLogAttributes(), attrs),
         )) {
@@ -1227,9 +1229,12 @@ export const log = {
     }
 
     if (typeof sentryCaptureException === "function") {
-      if (context) {
-        setSentryUser(sentryUserIdentityFromContext(context));
-      }
+      setSentryUser(
+        sentryUserIdentityFromContext({
+          ...getBoundLogContext(),
+          ...context,
+        }),
+      );
       eventId = sentryCaptureException(normalizedError);
     }
     return eventId;
@@ -1352,7 +1357,11 @@ export function withLogContext<T>(
   context: LogContext,
   callback: () => Promise<T>,
 ): Promise<T> {
-  return runWithLogAttributes(contextToAttributes(context), callback);
+  return runWithScopedLogContext(
+    context,
+    contextToAttributes(context),
+    callback,
+  );
 }
 
 export function getLogContextAttributes(): LogAttributes {
@@ -1597,7 +1606,7 @@ export function logException(
 
 /** Add context to the current operation and Sentry scope. */
 export function setTags(context: LogContext = {}): void {
-  updateLogAttributes(contextToAttributes(context));
+  updateLogContext(context, contextToAttributes(context));
   setSentryTagsFromContext(context);
   setSentryUser(sentryUserIdentityFromContext(context));
 }
