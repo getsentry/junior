@@ -234,7 +234,7 @@ function SegmentHeader(props: { conversation: ConversationTranscript }) {
           items={transcriptMeta(props.conversation)}
         />
       </div>
-      <StatusBadge status={status} />
+      {status !== "active" ? <StatusBadge status={status} /> : null}
     </div>
   );
 }

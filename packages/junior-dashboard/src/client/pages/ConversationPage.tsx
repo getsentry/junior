@@ -71,7 +71,9 @@ export function ConversationPage(props: {
               <h2 className="m-0 font-display text-2xl font-medium leading-tight tracking-[-0.03em] md:text-[1.75rem]">
                 {conversationDisplayTitle(conversation)}
               </h2>
-              <StatusBadge status={visualStatus} />
+              {visualStatus !== "active" ? (
+                <StatusBadge status={visualStatus} />
+              ) : null}
             </div>
             <div className="mt-2 break-words font-mono text-[0.68rem] leading-snug text-white/40">
               <ConversationIdentity
