@@ -884,11 +884,6 @@ describe("persistAuthPauseSessionRecord", () => {
             timestamp: 1,
           },
         ],
-        logContext: {
-          channelId: "C123",
-          actorId: "U123",
-          threadId: "slack:C123:1",
-        },
       }),
     ).rejects.toThrow("state adapter unavailable");
     expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(3);
@@ -924,7 +919,6 @@ describe("persistAuthPauseSessionRecord", () => {
       currentDurationMs: 500,
       currentUsage: { inputTokens: 5 },
       allMessages: [userMessage("done")],
-      logContext: {},
     });
 
     expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(1);
@@ -966,7 +960,6 @@ describe("persistAuthPauseSessionRecord", () => {
           timestamp: 2,
         } as PiMessage,
       ],
-      logContext: {},
       reasoningLevel: "high",
     });
 

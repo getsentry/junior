@@ -442,7 +442,6 @@ export async function runLocalAgentTurn(
         source,
         actor: localActor,
         surface: "internal",
-        logContext: {},
       });
     }
   } catch (error) {

@@ -95,6 +95,12 @@ describe("oauth resume slack integration", () => {
           }),
         },
       }),
+      commitResult: async () => {
+        expect(
+          getCapturedSlackApiCalls("assistant.threads.setStatus").at(-1)
+            ?.params,
+        ).toEqual(expect.objectContaining({ status: "" }));
+      },
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
@@ -132,6 +138,51 @@ describe("oauth resume slack integration", () => {
       }),
     ]);
   }, 10_000);
+
+  it("validates credentials before starting Slack resume UX", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const agentRunner = {
+      run: vi.fn(async () =>
+        completedAgentRun({
+          text: "should not run",
+          diagnostics: makeDiagnostics(),
+        }),
+      ),
+    };
+
+    await resumeSlackTurn({
+      messageText: "Continue the original request",
+      conversationId: "slack:C123:1700000000.011",
+      turnId: "turn-invalid-resume-actor",
+      channelId: "C123",
+      threadTs: "1700000000.011",
+      initialText: "Connected. Continuing...",
+      initialStatus: { text: "Continuing request" },
+      replyContext: {
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U456" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.011"),
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+      },
+      agentRunner,
+    });
+
+    expect(agentRunner.run).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").map(
+        (call) => call.params.text,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "I ran into an internal error while processing that. Reference: `event_id=",
+      ),
+    ]);
+  });
 
   it("posts a failure reply when resumed generation times out", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");

@@ -430,7 +430,7 @@ async function resumeOAuthSessionRecordTurn(
             },
           },
         },
-        onSuccess: async (reply: AgentRunResult) => {
+        commitResult: async (reply: AgentRunResult) => {
           logInfo(
             "oauth_callback_resume_complete",
             {},

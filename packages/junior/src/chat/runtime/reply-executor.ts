@@ -1505,13 +1505,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sliceId: 1,
                 messages: reply.piMessages,
                 modelId: reply.diagnostics.modelId,
-                logContext: {
-                  threadId,
-                  actorId: slackActorId,
-                  channelId,
-                  runId,
-                  assistantUserName: botConfig.userName,
-                },
                 actor: executionActor,
                 surface: "slack",
               });

@@ -543,12 +543,6 @@ export async function runAgentDispatchSlice(
         source: dispatch.source,
         actor: dispatch.actor,
         surface: "api",
-        logContext: {
-          threadId: conversationId,
-          channelId: dispatch.destination.channelId,
-          runId: dispatch.id,
-          assistantUserName: botConfig.userName,
-        },
       });
     }
     if (statePersisted) {

@@ -439,7 +439,7 @@ export async function continueSlackAgentRun(
               },
             },
           },
-          onSuccess: async (reply: AgentRunResult) => {
+          commitResult: async (reply: AgentRunResult) => {
             await persistCompletedReplyState({
               sessionRecord: activeSessionRecord,
               reply,

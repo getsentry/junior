@@ -407,7 +407,7 @@ async function resumeAuthorizedMcpTurn(args: {
             },
           },
         },
-        onSuccess: async (reply: AgentRunResult) => {
+        commitResult: async (reply: AgentRunResult) => {
           await persistCompletedReplyState(
             authSession.channelId!,
             authSession.threadTs!,

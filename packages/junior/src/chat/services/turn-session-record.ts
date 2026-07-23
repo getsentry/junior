@@ -233,7 +233,6 @@ export async function persistCompletedSessionRecord(args: {
   sliceId?: number;
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
-  logContext: SessionRecordLogContext;
   modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
@@ -323,7 +322,6 @@ export async function completeDeliveredTurn(args: {
   destinationVisibility?: ConversationPrivacy;
   durationMs?: number;
   loadedSkillNames?: string[];
-  logContext: SessionRecordLogContext;
   messages: PiMessage[];
   modelId: string;
   actor?: Actor;
@@ -347,7 +345,6 @@ export async function completeDeliveredTurn(args: {
     sliceId: args.sliceId,
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
-    logContext: args.logContext,
     modelId: args.modelId,
     actor: args.actor,
     reasoningLevel: args.reasoningLevel,

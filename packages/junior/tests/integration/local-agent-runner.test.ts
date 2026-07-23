@@ -108,9 +108,6 @@ async function persistCompletedSessionForFakeReply(
     sessionId,
     sliceId: 1,
     allMessages: piMessages,
-    logContext: {
-      runId: context.runId,
-    },
     surface: context.surface,
     turnStartMessageIndex: context.piMessages?.length ?? 0,
   });

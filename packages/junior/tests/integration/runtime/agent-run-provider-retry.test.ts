@@ -604,7 +604,6 @@ describe("executeAgentRun provider retry", () => {
       allMessages: reply.piMessages ?? [],
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
-      logContext: {},
     });
 
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(

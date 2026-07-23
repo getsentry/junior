@@ -217,7 +217,7 @@ describe("resumeSlackTurn", () => {
             });
           },
         },
-        onSuccess: async () => {
+        commitResult: async () => {
           throw new Error("state write failed");
         },
         onFailure,

@@ -165,7 +165,7 @@ interface ResumeSlackTurnArgs {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
-  onSuccess?: (reply: AgentRunResult) => Promise<void>;
+  commitResult?: (result: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
@@ -189,7 +189,7 @@ interface ResumePreparedTurn {
   inputMessageIds?: string[];
   initialStatus?: AssistantStatusSpec;
   replyContext: ResumeReplyContext;
-  onSuccess?: (reply: AgentRunResult) => Promise<void>;
+  commitResult?: (result: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
@@ -687,17 +687,9 @@ export async function resumeSlackTurn(
           source: replyContext.routing.source,
           actor: resumeActor,
           surface: "slack",
-          logContext: {
-            threadId: runArgs.conversationId,
-            actorId: isUserActor(replyContext.routing.actor)
-              ? replyContext.routing.actor.userId
-              : undefined,
-            channelId: runArgs.channelId,
-            assistantUserName: botConfig.userName,
-          },
         });
       }
-      await runArgs.onSuccess?.(reply);
+      await runArgs.commitResult?.(reply);
       if (reply.diagnostics.outcome === "success") {
         await turnLifecycle.complete({
           conversationId: runArgs.conversationId,
