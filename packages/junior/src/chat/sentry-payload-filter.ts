@@ -1,4 +1,5 @@
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import { consumePrivateTraceResultMarker } from "@/chat/tool-support/private-trace-result";
 import type * as Sentry from "@/chat/sentry";
 
@@ -73,10 +74,15 @@ function scrubContainer(container: AttributeContainer | undefined): void {
   scrubPayloadAttributes(container.attributes);
 }
 
-/** Remove raw private conversation payloads from Sentry error events. */
+/** Remove expected authorization pauses and raw private payloads from error events. */
 export function scrubPrivateSentryEvent(
   event: SentryErrorEvent,
+  hint?: Parameters<NonNullable<Sentry.NodeOptions["beforeSend"]>>[1],
 ): SentryErrorEvent | null {
+  if (hint?.originalException instanceof AuthorizationPauseError) {
+    return null;
+  }
+
   const eventRecord = event as AttributeContainer;
   scrubContainer(eventRecord);
   scrubContainer(event.contexts?.trace as AttributeContainer);

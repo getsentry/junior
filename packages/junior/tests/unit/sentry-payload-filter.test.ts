@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
+  scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
   scrubPrivateSentryTransaction,
 } from "@/chat/sentry-payload-filter";
 
+type SentryEvent = Parameters<typeof scrubPrivateSentryEvent>[0];
+type SentryEventHint = Parameters<typeof scrubPrivateSentryEvent>[1];
 type SentrySpan = Parameters<typeof scrubPrivateSentrySpan>[0];
 type SentryLog = Parameters<typeof scrubPrivateSentryLog>[0];
 type SentryTransaction = Parameters<typeof scrubPrivateSentryTransaction>[0];
@@ -16,6 +20,35 @@ function messageAttribute(text: string): string {
 }
 
 describe("Sentry private payload filtering", () => {
+  it.each(["mcp", "plugin"] as const)(
+    "drops expected %s authorization pause errors",
+    (kind) => {
+      const event = {} as SentryEvent;
+      const pause = new AuthorizationPauseError(
+        kind,
+        "github",
+        "GitHub",
+        "link_sent",
+      );
+
+      expect(
+        scrubPrivateSentryEvent(event, {
+          originalException: pause,
+        } as SentryEventHint),
+      ).toBeNull();
+    },
+  );
+
+  it("preserves actionable error events", () => {
+    const event = {} as SentryEvent;
+
+    expect(
+      scrubPrivateSentryEvent(event, {
+        originalException: new Error("database unavailable"),
+      } as SentryEventHint),
+    ).toBe(event);
+  });
+
   it("removes private span payload attributes", () => {
     const span = {
       attributes: {
