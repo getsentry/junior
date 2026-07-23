@@ -165,7 +165,11 @@ export function DashboardShell() {
           element={
             loading ? (
               <LoadingView label="Loading components" />
-            ) : data?.config.componentGallery ? (
+            ) : !data ? (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            ) : data.config.componentGallery ? (
               <ComponentsPage />
             ) : (
               <Navigate replace to="/" />
