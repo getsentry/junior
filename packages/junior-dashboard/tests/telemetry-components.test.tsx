@@ -242,6 +242,13 @@ describe("dashboard canonical-event components", () => {
             role: "user",
             redacted: true,
           }),
+          event(1, {
+            type: "message",
+            messageId: "resource-event",
+            role: "user",
+            eventType: "pull_request.merged",
+            redacted: true,
+          }),
         ],
         {
           eventHistory: {
@@ -251,7 +258,8 @@ describe("dashboard canonical-event components", () => {
         },
       ),
     );
-    expect(html).toContain("&lt;redacted&gt;");
+    expect(html.match(/&lt;redacted&gt;/g)).toHaveLength(2);
+    expect(html).toContain("pull_request.merged");
   });
 
   it("renders failure and context lifecycle rows", () => {

@@ -722,6 +722,9 @@ function TranscriptResourceEventView(props: {
   message: TranscriptMessageEntry["message"];
 }) {
   const text = messageRawText(props.message);
+  const redacted = props.message.parts.some(
+    (part) => part.type === "text" && part.redacted,
+  );
   const { active: searchActive } = useTranscriptSearch();
   return (
     <details
@@ -734,6 +737,10 @@ function TranscriptResourceEventView(props: {
       {text ? (
         <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-white/55">
           <HighlightText text={text} />
+        </div>
+      ) : redacted ? (
+        <div className="mt-2">
+          <RedactedMarker />
         </div>
       ) : null}
     </details>
