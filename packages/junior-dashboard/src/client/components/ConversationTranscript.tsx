@@ -58,7 +58,11 @@ import {
   transcriptEmptyClass,
   mutedTranscriptMetaClass,
 } from "./transcriptStyles";
-import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
+import {
+  entryMatchesSearch,
+  HighlightText,
+  useTranscriptSearch,
+} from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -718,14 +722,18 @@ function TranscriptResourceEventView(props: {
   message: TranscriptMessageEntry["message"];
 }) {
   const text = messageRawText(props.message);
+  const { active: searchActive } = useTranscriptSearch();
   return (
-    <details className="min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2">
+    <details
+      className="min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2"
+      open={searchActive || undefined}
+    >
       <summary className="cursor-pointer list-none font-display text-[0.88rem] font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
-        {props.message.eventType}
+        <HighlightText text={props.message.eventType ?? ""} />
       </summary>
       {text ? (
         <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-white/55">
-          {text}
+          <HighlightText text={text} />
         </div>
       ) : null}
     </details>

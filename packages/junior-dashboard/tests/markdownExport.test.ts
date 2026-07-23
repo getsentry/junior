@@ -67,6 +67,24 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown.match(/investigation complete/g)).toHaveLength(1);
   });
 
+  it("exports resource events without attributing them to the actor", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "event-1",
+          role: "user",
+          eventType: "pull_request.merged",
+          text: "event details",
+        }),
+      ]),
+    );
+
+    expect(markdown).toContain("### Event: pull_request.merged");
+    expect(markdown).toContain("event details");
+    expect(markdown).not.toContain("### alice@example.com");
+  });
+
   it("exports structural tool, context, subagent, and failure rows", () => {
     const markdown = buildConversationMarkdown(
       conversation([

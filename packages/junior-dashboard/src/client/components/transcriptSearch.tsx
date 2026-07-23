@@ -123,7 +123,10 @@ export function entryMatchesSearch(
   if (!normalizedQuery) return true;
 
   if (entry.kind === "message") {
-    return textContains(messageRawText(entry.message), normalizedQuery);
+    return (
+      textContains(entry.message.eventType, normalizedQuery) ||
+      textContains(messageRawText(entry.message), normalizedQuery)
+    );
   }
 
   if (entry.kind === "failure") {

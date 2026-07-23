@@ -105,6 +105,10 @@ describe("canonical event transcript reduction", () => {
       eventType: "pull_request.merged",
       parts: [{ type: "text", text: "line one\nline two" }],
     });
+    const [entry] = groupTranscriptMessages(message ? [message] : []);
+    expect(entry && entryMatchesSearch(entry, "pull_request.merged")).toBe(
+      true,
+    );
   });
 
   it("renders a tool start as one running invocation", () => {

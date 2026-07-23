@@ -93,7 +93,16 @@ function appendTranscriptMessages(
 ): void {
   for (const entry of groupTranscriptMessages(messages)) {
     if (entry.kind === "message") {
-      appendMessage(lines, conversationTranscript, entry.message, redacted);
+      if (entry.message.eventType) {
+        appendResourceEvent(
+          lines,
+          conversationTranscript,
+          entry.message,
+          redacted,
+        );
+      } else {
+        appendMessage(lines, conversationTranscript, entry.message, redacted);
+      }
       continue;
     }
 
@@ -164,6 +173,24 @@ function appendContextEvent(
     event.type === "handoff" ? "### Model handoff" : "### Context compacted",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
+}
+
+function appendResourceEvent(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+  message: TranscriptViewMessage,
+  redacted: boolean,
+): void {
+  lines.push("", `### Event: ${headingText(message.eventType ?? "")}`);
+  addEventMeta(lines, conversationTranscript, message.timestamp);
+
+  if (redacted) {
+    lines.push("", "- <redacted>");
+    return;
+  }
+
+  const rawText = messageRawText(message);
+  lines.push("", rawText.trim().length ? rawText : "_No content._");
 }
 
 function appendMessage(
