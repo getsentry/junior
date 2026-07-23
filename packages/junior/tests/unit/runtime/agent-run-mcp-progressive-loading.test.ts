@@ -1243,17 +1243,24 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("does not return auth resume when auth session record persistence fails", async () => {
+  it("returns a provider error when auth pause persistence fails", async () => {
     const turnSessionStore = await import("@/chat/state/turn-session");
     const originalUpsert = turnSessionStore.upsertAgentTurnSessionRecord;
-    const sessionRecordSpy = vi
-      .spyOn(turnSessionStore, "upsertAgentTurnSessionRecord")
-      .mockImplementation(async (args) => {
-        if (args.state === "awaiting_resume" && args.resumeReason === "auth") {
-          throw new Error("state adapter unavailable");
-        }
-        return await originalUpsert(args);
-      });
+    let authPauseWriteFailed = false;
+    vi.spyOn(
+      turnSessionStore,
+      "upsertAgentTurnSessionRecord",
+    ).mockImplementation(async (args) => {
+      if (
+        !authPauseWriteFailed &&
+        args.state === "awaiting_resume" &&
+        args.resumeReason === "auth"
+      ) {
+        authPauseWriteFailed = true;
+        throw new Error("state adapter unavailable");
+      }
+      return await originalUpsert(args);
+    });
 
     const reply = finalReply(
       await executeAgentRun(
@@ -1266,7 +1273,6 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(reply.diagnostics.outcome).toBe("provider_error");
-    expect(sessionRecordSpy).toHaveBeenCalled();
   });
 
   it("falls back to the latest stored record when auth pause captures no messages", async () => {

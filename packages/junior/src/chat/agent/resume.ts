@@ -60,9 +60,7 @@ interface ResumeStateArgs {
   surface: AgentTurnSurface;
 }
 
-interface ExpectedEndingTranslation {
-  outcome?: AgentRunOutcome;
-}
+type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
 
 function extractSliceUsage(
   messages: PiMessage[],
@@ -102,6 +100,34 @@ export function createResumeState(args: ResumeStateArgs) {
     actor: args.actor,
     surface: args.surface,
   });
+
+  const persistAuthPauseOutcome = async (pause: {
+    currentUsage?: AgentTurnUsage;
+    error: AuthorizationPauseError;
+  }): Promise<AuthPauseOutcome | undefined> => {
+    const usage =
+      pause.currentUsage ??
+      (resumeMessages.length > 0
+        ? extractSliceUsage(resumeMessages, beforeMessageCount)
+        : undefined);
+    await args.recordActiveMcpProviders();
+    const sessionRecord = await persistAuthPauseSessionRecord({
+      ...sessionRecordBase(),
+      currentSliceId,
+      currentDurationMs: currentDurationMs(),
+      currentUsage: usage,
+      messages: resumeMessages,
+      errorMessage: pause.error.message,
+    });
+    if (!sessionRecord) {
+      return undefined;
+    }
+    return {
+      status: "awaiting_auth",
+      providerDisplayName: pause.error.providerDisplayName,
+      ...(usage ? { usage } : {}),
+    };
+  };
 
   return {
     get inputCommitted(): boolean {
@@ -191,19 +217,33 @@ export function createResumeState(args: ResumeStateArgs) {
       );
       throw cooperativeYieldError;
     },
+    /** Persist an auth pause or fail. */
+    async requireAuthPauseOutcome(pause: {
+      currentUsage?: AgentTurnUsage;
+      error: AuthorizationPauseError;
+    }): Promise<AuthPauseOutcome> {
+      const outcome = await persistAuthPauseOutcome(pause);
+      if (!outcome) {
+        throw new Error(
+          `Failed to persist auth pause for conversation=${args.conversationId} turn=${args.turnId}`,
+          { cause: pause.error },
+        );
+      }
+      return outcome;
+    },
     /**
      * Persist the continuation for an expected run ending and translate it
      * into an outcome; returns no outcome for genuine errors so the caller's
      * error guards run.
      */
-    async translateExpectedEnding(args2: {
+    async translateExpectedEnding(ending: {
       currentUsage?: AgentTurnUsage;
       error: unknown;
-    }): Promise<ExpectedEndingTranslation> {
-      const { error } = args2;
+    }): Promise<AgentRunOutcome | undefined> {
+      const { error } = ending;
       if (cooperativeYieldError && error instanceof CooperativeTurnYieldError) {
         const usage =
-          args2.currentUsage ??
+          ending.currentUsage ??
           extractSliceUsage(resumeMessages, beforeMessageCount);
         await args.recordActiveMcpProviders();
         const sessionRecord = await persistYieldSessionRecord({
@@ -220,11 +260,9 @@ export function createResumeState(args: ResumeStateArgs) {
           );
         }
         return {
-          outcome: {
-            status: "suspended",
-            resumeVersion: sessionRecord.version,
-            ...(usage ? { usage } : {}),
-          },
+          status: "suspended",
+          resumeVersion: sessionRecord.version,
+          ...(usage ? { usage } : {}),
         };
       }
 
@@ -242,7 +280,7 @@ export function createResumeState(args: ResumeStateArgs) {
           resumeMessages = [...latestSafeBoundaryMessages];
         }
         const usage =
-          args2.currentUsage ??
+          ending.currentUsage ??
           extractSliceUsage(resumeMessages, beforeMessageCount);
         await args.recordActiveMcpProviders();
         const sessionRecord = await persistContinuationSessionRecord({
@@ -261,43 +299,22 @@ export function createResumeState(args: ResumeStateArgs) {
         }
         if (sessionRecord.state === "awaiting_resume") {
           return {
-            outcome: {
-              status: "suspended",
-              resumeVersion: sessionRecord.version,
-              ...(usage ? { usage } : {}),
-            },
+            status: "suspended",
+            resumeVersion: sessionRecord.version,
+            ...(usage ? { usage } : {}),
           };
         }
         throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
       }
 
       if (error instanceof AuthorizationPauseError) {
-        const usage =
-          args2.currentUsage ??
-          (resumeMessages.length > 0
-            ? extractSliceUsage(resumeMessages, beforeMessageCount)
-            : undefined);
-        await args.recordActiveMcpProviders();
-        const sessionRecord = await persistAuthPauseSessionRecord({
-          ...sessionRecordBase(),
-          currentSliceId,
-          currentDurationMs: currentDurationMs(),
-          currentUsage: usage,
-          messages: resumeMessages,
-          errorMessage: error.message,
+        return persistAuthPauseOutcome({
+          currentUsage: ending.currentUsage,
+          error,
         });
-        if (sessionRecord) {
-          return {
-            outcome: {
-              status: "awaiting_auth",
-              providerDisplayName: error.providerDisplayName,
-              ...(usage ? { usage } : {}),
-            },
-          };
-        }
       }
 
-      return {};
+      return undefined;
     },
   };
 }

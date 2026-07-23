@@ -994,11 +994,12 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
               }
-              if (getPendingAuthPause()) {
+              const pendingAuthPause = getPendingAuthPause();
+              if (pendingAuthPause) {
                 runResume.captureResumeSnapshot(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
-                throw getPendingAuthPause()!;
+                throw pendingAuthPause;
               }
               throw error;
             } finally {
@@ -1127,13 +1128,10 @@ async function executeAgentRunInPrivacyContext(
             }
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
-              const { outcome } = await runResume.translateExpectedEnding({
+              return runResume.requireAuthPauseOutcome({
                 currentUsage: turnUsage,
                 error,
               });
-              if (outcome) {
-                return outcome;
-              }
             }
             throw error;
           }
@@ -1209,7 +1207,7 @@ async function executeAgentRunInPrivacyContext(
         ? error.originalError
         : error;
     if (resume) {
-      const { outcome } = await resume.translateExpectedEnding({
+      const outcome = await resume.translateExpectedEnding({
         currentUsage: turnUsage,
         error: runError,
       });
