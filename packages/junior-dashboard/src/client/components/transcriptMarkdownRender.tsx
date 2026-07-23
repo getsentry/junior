@@ -5,7 +5,7 @@ import {
   findTranscriptMarkdownLinks,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
-import { HighlightText } from "./transcriptSearch";
+import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
@@ -179,7 +179,7 @@ function renderInlineMarkdown(text: string): ReactNode[] {
     }
     nodes.push(
       <TranscriptAnchor href={link.href} key={`link-${link.start}`}>
-        <HighlightText text={link.label} />
+        <SearchAwareLinkLabel href={link.href} label={link.label} />
       </TranscriptAnchor>,
     );
     cursor = link.end;
@@ -261,6 +261,26 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
     );
   }
   return nodes;
+}
+
+function SearchAwareLinkLabel(props: { href: string; label: string }) {
+  const search = useTranscriptSearch();
+  const hrefMatches =
+    search.active && props.href.toLowerCase().includes(search.normalizedQuery);
+  const labelMatches = props.label.toLowerCase().includes(search.normalizedQuery);
+
+  if (hrefMatches && !labelMatches) {
+    return (
+      <mark
+        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        title={`Matched URL: ${props.href}`}
+      >
+        {props.label}
+      </mark>
+    );
+  }
+
+  return <HighlightText text={props.label} />;
 }
 
 function TranscriptAnchor(props: { children: ReactNode; href: string }) {

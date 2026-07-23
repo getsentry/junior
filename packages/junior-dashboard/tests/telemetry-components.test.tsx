@@ -136,6 +136,20 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("<mark");
   });
 
+  it("highlights a markdown link label when search matches its URL", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="docs.sentry.io">
+        <TranscriptMarkdown text="[product docs](https://docs.sentry.io/platforms/)" />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html).toContain("<mark");
+    expect(html).toContain("product docs");
+    expect(html).toContain(
+      'title="Matched URL: https://docs.sentry.io/platforms/"',
+    );
+  });
+
   it("renders labeled event sections followed by semantic lists", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
