@@ -31,7 +31,6 @@ export function vercelPlugin(): PluginRegistration {
       domains: ["api.vercel.com"],
       envVars: {
         JUNIOR_VERCEL_TOKEN: {},
-        VERCEL_PROJECT_ID: {},
         VERCEL_WEBHOOK_SECRET: {},
       },
       name: "vercel",
@@ -52,9 +51,9 @@ export function vercelPlugin(): PluginRegistration {
           }),
         ];
       },
-      tools() {
+      tools(ctx) {
         return {
-          deploymentSource: createVercelDeploymentSourceTool(),
+          deploymentSource: createVercelDeploymentSourceTool(ctx),
         };
       },
     },

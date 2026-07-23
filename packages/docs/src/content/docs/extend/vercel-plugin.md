@@ -67,19 +67,9 @@ VERCEL_WEBHOOK_SECRET=...
 
 The selected events correspond to `deployment.succeeded`, `deployment.error`, and `deployment.canceled`. Junior verifies Vercel's `x-vercel-signature` against the untouched request body before accepting a delivery.
 
-### Choose the default project ID
+Deployment watches match Vercel's canonical `prj_...` project ID. Users can name a project or supply its ID; Junior resolves the canonical ID through Vercel's authenticated project API. Include the team slug or ID when projects with the same name may exist in more than one account.
 
-Deployment watches match Vercel's `prj_...` project ID, not its project name or slug. Find the ID under **Project Settings → General** or by running `vercel project ls`.
-
-Set a default when most watches target one project:
-
-```bash
-VERCEL_PROJECT_ID=prj_...
-```
-
-If Junior is deployed on Vercel and monitors its own project, you can instead enable **Automatically expose System Environment Variables** under **Project Settings → Environment Variables**. Vercel then supplies `VERCEL_PROJECT_ID` at runtime. Redeploy after changing either setting.
-
-For a webhook that covers multiple projects, include the appropriate `prj_...` ID when asking Junior to create each watch. The webhook payload must also contain a deployment ID, a production or staging target (or Vercel's `null` preview target), and a full Git commit SHA. Deployments without Git commit metadata are accepted by the endpoint but cannot match a watch.
+The webhook payload must contain a deployment ID, a production or staging target (or Vercel's `null` preview target), and a full Git commit SHA. Deployments without Git commit metadata are accepted by the endpoint but cannot match a watch.
 
 Configuring the account webhook does not create a conversation watch. Ask Junior to monitor the deployment before its terminal event occurs; unmatched webhook deliveries are not replayed into subscriptions created later.
 
@@ -92,13 +82,13 @@ jr-rpc config set vercel.project junior-prod
 jr-rpc config set vercel.team sentry
 ```
 
-These defaults are optional fallbacks. If a user names a different project, team, deployment, or URL in a request, Junior follows the explicit request instead.
+These defaults are optional fallbacks for both investigations and deployment watches. Junior resolves the remembered project name to its canonical ID when creating a watch. If a user names a different project, team, deployment, or URL in a request, Junior follows the explicit request instead.
 
 ## Auth model
 
 - The plugin uses a single Vercel access token configured at deploy time, not per-user OAuth.
 - Junior keeps the real `JUNIOR_VERCEL_TOKEN` value host-side.
-- Matching Vercel API requests from the CLI receive a host-managed `Authorization` header.
+- Matching Vercel API requests from the CLI and plugin tools receive a host-managed `Authorization` header.
 - The sandbox receives only a non-secret placeholder `VERCEL_TOKEN` so the Vercel CLI can perform its normal auth checks before making requests.
 - Users do not connect or disconnect individual Vercel accounts from Junior App Home for this plugin.
 - `VERCEL_WEBHOOK_SECRET` verifies webhook deliveries and is independent of the API token.
@@ -123,7 +113,7 @@ Confirm Junior can query Vercel successfully:
 
 If deployment webhooks are enabled, also verify one signed delivery:
 
-1. After the final commit SHA is known, ask Junior: `Watch the production deployment for project prj_... at commit <40-character SHA> and tell me when it finishes.`
+1. After the final commit SHA is known, ask Junior: `Watch the production deployment for junior-prod at commit <40-character SHA> and tell me when it finishes.`
 2. Ask Junior to list the active watches in the same conversation and confirm the Vercel project ID, `production` target, commit SHA, and event types are correct.
 3. Trigger the deployment for that exact project and commit.
 4. In **Team Settings → Webhooks**, open the delivery and confirm the endpoint returned `202` with `Accepted` when the response body is shown.
@@ -138,7 +128,7 @@ If deployment webhooks are enabled, also verify one signed delivery:
 - Empty logs: confirm the environment, deployment, branch, and time window before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and should be stopped once enough evidence is captured.
 - Mutation requests: the plugin is read-only and the skill will decline these.
-- Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`, expose `VERCEL_PROJECT_ID` or provide a project ID, and redeploy.
+- Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`, redeploy, and provide a project name or configure `vercel.project` for the conversation.
 - Webhook delivery returns `401`: the Vercel account webhook secret does not match `VERCEL_WEBHOOK_SECRET`, or the request lacks `x-vercel-signature`.
 - Webhook delivery returns `202 Ignored`: the signed event is unsupported or does not contain a valid project ID, deployment ID, target, and full Git commit SHA.
 - Webhook delivery cannot reach Junior: confirm the endpoint uses the production Junior domain and is not blocked by deployment protection, login, or another access-control layer.

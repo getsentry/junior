@@ -43,7 +43,7 @@ https://<junior-host>/api/webhooks/vercel
 
 The endpoint must be publicly reachable. Subscribe it to `deployment.succeeded`, `deployment.error`, and `deployment.canceled`, select the projects Junior should monitor, and save the one-time secret as a sensitive `VERCEL_WEBHOOK_SECRET` value in Junior's Production environment. Redeploy Junior after adding it.
 
-Deployment watches use Vercel's `prj_...` ID. The deployment-source tool uses `VERCEL_PROJECT_ID` when a project ID is not supplied explicitly. Set it to the default monitored project, or enable Vercel system environment variables when Junior monitors the Vercel project that hosts it. Find another project's ID under **Project Settings → General** or with `vercel project ls` and supply it explicitly when creating that watch.
+Deployment watches use Vercel's canonical `prj_...` ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
 
 Create the conversation watch before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
@@ -51,7 +51,7 @@ Create the conversation watch before the terminal deployment event. A valid webh
 
 - This package uses a deployment-level Vercel token, not per-user OAuth.
 - Junior keeps the real `JUNIOR_VERCEL_TOKEN` host-side.
-- Matching Vercel API requests from the CLI receive a host-managed `Authorization` header.
+- Matching Vercel API requests from the CLI and plugin tools receive a host-managed `Authorization` header.
 - The sandbox receives only a non-secret placeholder `VERCEL_TOKEN` so the Vercel CLI can run normally before making API requests.
 
 ## Optional channel defaults

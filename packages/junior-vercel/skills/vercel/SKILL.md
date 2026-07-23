@@ -24,7 +24,7 @@ Do not run `deploy`, `rollback`, `promote`, `remove`, `env`, `alias`, `dns`, `pr
 
 - Determine whether the user needs runtime logs, build logs, deployment status, or deployment discovery.
 - Prefer explicit deployment IDs, deployment URLs, project names, environments, branch names, commit SHAs, status filters, and time windows from the user.
-- When the user did not specify a project or team, treat `vercel.project` and `vercel.team` conversation config as optional defaults. Explicit user input always wins.
+- When the user did not specify a project or team, read `vercel.project` and `vercel.team` with `jr-rpc config get` and treat them as optional conversation defaults. Explicit user input always wins.
 - Only set or change `vercel.project` and `vercel.team` when the user explicitly asks to store a default for this conversation or channel.
 - Ask one concise follow-up only when the request cannot be bounded to a project, deployment, commit, or time window from the thread or config.
 
@@ -37,6 +37,7 @@ Do not run `deploy`, `rollback`, `promote`, `remove`, `env`, `alias`, `dns`, `pr
 - For runtime logs, prefer `vercel logs --project <project> --since <window> --limit 20 --json` plus user-provided filters such as `--environment`, `--level`, `--status-code`, `--source`, `--query`, or `--deployment`.
 - Use `vercel inspect <deployment-id-or-url> --logs` for build logs. Add `--wait` only when the user explicitly wants to wait for an active build; also bound it with `--timeout`.
 - Use `vercel list <project>` or `vercel ls <project>` to find deployments. Prefer filters such as `--status`, `--environment`, `--prod`, or `--meta githubCommitSha=<sha>` when available.
+- For a deployment watch, call the Vercel `deploymentSource` plugin tool with the project name, optional team slug or ID, deployment target, and full 40-character commit SHA. The tool resolves the canonical project ID through Vercel before Junior creates the conversation subscription.
 - Use `--follow` only when the user asks for live logs, and stop once enough evidence is captured. Do not leave a streaming command running indefinitely.
 
 3. Bound and minimize output:
