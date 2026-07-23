@@ -180,7 +180,6 @@ function slackSource(channelId = "C123") {
   });
 }
 
-
 function expectBlocksIncludeConversationId(
   params: Record<string, unknown>,
   conversationId: string,

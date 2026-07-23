@@ -23,8 +23,11 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import { sendReplyToThread, sendSlackReply } from "@/chat/slack/reply";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { sendSlackReply } from "@/chat/slack/reply";
+import {
+  buildSlackOutputMessage,
+  splitSlackReplyText,
+} from "@/chat/slack/output";
 import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
@@ -1025,10 +1028,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 threadTs,
               });
             } else {
-              slackTs = await sendReplyToThread({
-                text: assistantMessage.text,
-                thread,
-              });
+              for (const text of splitSlackReplyText(assistantMessage.text)) {
+                slackTs = (await thread.post(buildSlackOutputMessage(text))).id;
+              }
             }
           } catch (error) {
             if (isRetryableSlackPostError(error)) {

@@ -55,6 +55,7 @@ describe("sendSlackReply", () => {
     await expect(
       sendSlackReply({
         channelId: "C123",
+        conversationId: "slack:C123:1700000000.000100",
         text: "   ",
         threadTs: "1700000000.000100",
       }),
