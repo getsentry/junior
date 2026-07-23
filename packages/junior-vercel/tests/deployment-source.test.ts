@@ -24,7 +24,7 @@ describe("Vercel deployment source", () => {
   });
 
   it("resolves a channel project and returns a subscribable source", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", " webhook-secret ");
     const { fetch, tool } = toolFixture();
 
     await expect(

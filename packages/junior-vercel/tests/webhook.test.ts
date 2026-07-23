@@ -1,11 +1,16 @@
 import { createHmac } from "node:crypto";
 import type { ResourceEvent } from "@sentry/junior-plugin-api";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
 import { normalizeVercelResourceEvents } from "../src/webhooks/resource-events";
 
 const SECRET = "vercel-webhook-secret";
 const COMMIT_SHA = "abcdef0123456789abcdef0123456789abcdef01";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function webhookBody(
   type:
@@ -138,6 +143,20 @@ describe("Vercel webhook resource events", () => {
         provider: "vercel",
       }),
     ]);
+  });
+
+  it("uses the same trimmed environment secret for plugin ingress", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", ` ${SECRET} `);
+    const publish = vi.fn(async () => {});
+    const [route] =
+      vercelPlugin().hooks?.routes?.({
+        resourceEvents: { publish },
+      } as never) ?? [];
+
+    const response = await route?.handler(signedRequest(webhookBody()));
+
+    expect(response?.status).toBe(202);
+    expect(publish).toHaveBeenCalledOnce();
   });
 
   it("rejects a delivery whose signature does not match", async () => {

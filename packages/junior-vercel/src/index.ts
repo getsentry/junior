@@ -11,6 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createVercelDeploymentSourceTool } from "./tools/deployment-source.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
+import { vercelWebhookSecret } from "./webhooks/secret.js";
 
 /** Register Vercel runtime metadata, tools, and signed webhook ingress. */
 export function vercelPlugin(): PluginRegistration {
@@ -47,7 +48,7 @@ export function vercelPlugin(): PluginRegistration {
         return [
           createVercelWebhookRoute({
             resourceEvents: ctx.resourceEvents,
-            webhookSecret: () => process.env.VERCEL_WEBHOOK_SECRET,
+            webhookSecret: vercelWebhookSecret,
           }),
         ];
       },

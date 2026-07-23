@@ -7,6 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { vercelDeploymentSourceSubscribable } from "../resource-events/deployment-source.js";
+import { vercelWebhookSecret } from "../webhooks/secret.js";
 
 const projectIdSchema = z.string().regex(/^prj_[A-Za-z0-9]+$/);
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
@@ -97,7 +98,7 @@ export function createVercelDeploymentSourceTool(
         commitSha,
         projectId,
         target: input.target,
-        webhookSecret: process.env.VERCEL_WEBHOOK_SECRET,
+        webhookSecret: vercelWebhookSecret(),
       });
       const data: DeploymentSource = {
         commitSha,

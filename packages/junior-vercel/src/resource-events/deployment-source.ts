@@ -29,7 +29,7 @@ export function vercelDeploymentSourceSubscribable(input: {
   target: VercelDeploymentTarget;
   webhookSecret?: string;
 }): SubscribableResource | undefined {
-  if (!input.webhookSecret?.trim()) return undefined;
+  if (!input.webhookSecret) return undefined;
   return {
     ...vercelDeploymentSourceResource(input),
     suggestedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
