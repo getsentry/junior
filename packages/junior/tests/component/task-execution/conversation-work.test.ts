@@ -354,6 +354,45 @@ describe("conversation work execution", () => {
     expect(work?.messages[0]?.input.attachments).toEqual([{ id: "F123" }]);
   });
 
+  it("promotes duplicate mention metadata without dropping attachments", async () => {
+    await appendInboundMessage({
+      message: inboundMessage("m1", {
+        delivery: "defer",
+        input: {
+          attachments: [{ id: "F123" }],
+          authorId: "U123",
+          metadata: { platform: "slack", route: "subscribed" },
+          text: "message m1",
+        },
+      }),
+      nowMs: 1_000,
+    });
+    await expect(
+      appendInboundMessage({
+        message: inboundMessage("m1", {
+          delivery: "interrupt",
+          input: {
+            authorId: "U123",
+            metadata: { platform: "slack", route: "mention" },
+            text: "message m1",
+          },
+        }),
+        nowMs: 2_000,
+      }),
+    ).resolves.toEqual({ status: "duplicate" });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages[0]).toMatchObject({
+      delivery: "interrupt",
+      input: {
+        attachments: [{ id: "F123" }],
+        metadata: { platform: "slack", route: "mention" },
+      },
+    });
+  });
+
   it("retries transient conversation work index lock contention", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = delayIndexLockOnce(getStateAdapter());

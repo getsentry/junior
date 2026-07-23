@@ -260,14 +260,20 @@ function upgradedPendingMessage(
   stored: InboundMessage,
   duplicate: InboundMessage,
 ): InboundMessage {
-  const input =
-    inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
+  const promotesInterrupt =
+    stored.delivery === "defer" && duplicate.delivery === "interrupt";
+  const delivery = promotesInterrupt ? "interrupt" : stored.delivery;
+  const input = promotesInterrupt
+    ? {
+        ...duplicate.input,
+        ...(inputHasAttachments(duplicate.input) ||
+        !inputHasAttachments(stored.input)
+          ? {}
+          : { attachments: stored.input.attachments }),
+      }
+    : inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
       ? duplicate.input
       : stored.input;
-  const delivery =
-    stored.delivery === "defer" && duplicate.delivery === "interrupt"
-      ? "interrupt"
-      : stored.delivery;
   if (input === stored.input && delivery === stored.delivery) {
     return stored;
   }
