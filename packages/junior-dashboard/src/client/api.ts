@@ -4,6 +4,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
+  archiveConversationResponseSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
@@ -56,7 +57,11 @@ function restartDashboardSignIn(): void {
   }
 }
 
-async function mutate(path: string, body: unknown): Promise<void> {
+async function mutate<T>(
+  schema: ZodType<T>,
+  path: string,
+  body: unknown,
+): Promise<T> {
   const response = await fetch(path, {
     body: JSON.stringify(body),
     credentials: "same-origin",
@@ -65,6 +70,7 @@ async function mutate(path: string, body: unknown): Promise<void> {
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) throw new DashboardApiError(path, response.status);
+  return schema.parse(await response.json());
 }
 
 async function read<T>(schema: ZodType<T>, path: string): Promise<T> {
@@ -213,6 +219,7 @@ export function useArchiveConversation(conversationId: string) {
   return useMutation({
     mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
       mutate(
+        archiveConversationResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
         args,
       ),

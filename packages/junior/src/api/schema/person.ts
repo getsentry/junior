@@ -3,14 +3,11 @@ import {
   actorIdentitySchema,
   conversationStatsItemSchema,
   conversationSummaryReportSchema,
-} from "../conversations/schema";
+} from "./conversation";
 
-export const peopleConversationSummaryReportSchema =
-  conversationSummaryReportSchema.omit({
-    cumulativeUsage: true,
-    sentryTraceUrl: true,
-    traceId: true,
-  });
+export const personParamsSchema = z
+  .object({ email: z.string().trim().min(1) })
+  .strict();
 
 export const peopleConversationStatsItemSchema =
   conversationStatsItemSchema.omit({ costUsd: true });
@@ -73,7 +70,7 @@ export const actorProfileReportSchema = z
     activityDays: z.array(actorActivityDayReportSchema),
     generatedAt: z.string(),
     locations: z.array(peopleConversationStatsItemSchema),
-    recentConversations: z.array(peopleConversationSummaryReportSchema),
+    recentConversations: z.array(conversationSummaryReportSchema),
     actor: identifiedActorSchema,
     source: z.literal("conversation_index"),
     surfaces: z.array(peopleConversationStatsItemSchema),
@@ -85,7 +82,7 @@ export const actorProfileReportSchema = z
 
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
 export type ConversationSummaryReport = z.infer<
-  typeof peopleConversationSummaryReportSchema
+  typeof conversationSummaryReportSchema
 >;
 export type ConversationStatsItem = z.infer<
   typeof peopleConversationStatsItemSchema
@@ -100,3 +97,4 @@ export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;
 export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;
+export type PersonParams = z.infer<typeof personParamsSchema>;

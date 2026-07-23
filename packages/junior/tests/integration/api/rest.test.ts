@@ -2,6 +2,17 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
+  actorDirectoryReportSchema,
+  actorProfileReportSchema,
+  apiErrorSchema,
+  archiveConversationResponseSchema,
+  conversationDetailReportSchema,
+  conversationFeedSchema,
+  conversationStatsReportSchema,
+  locationDetailReportSchema,
+  locationDirectoryReportSchema,
+} from "@/api/schema";
+import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
@@ -95,9 +106,7 @@ describe("Junior REST API", () => {
 
     const feed = await app.request("http://localhost/api/conversations");
     expect(feed.status).toBe(200);
-    const feedReport = (await feed.json()) as {
-      conversations: Array<{ conversationId: string; locationId?: string }>;
-    };
+    const feedReport = conversationFeedSchema.parse(await feed.json());
     expect(feedReport).toMatchObject({
       conversations: expect.arrayContaining([
         expect.objectContaining({
@@ -122,14 +131,35 @@ describe("Junior REST API", () => {
       ],
     });
 
+    const activeProfile = await app.request(
+      "http://localhost/api/people/Person%40Example.com",
+    );
+    expect(activeProfile.status).toBe(200);
+    expect(
+      actorProfileReportSchema.parse(await activeProfile.json()),
+    ).toMatchObject({
+      recentConversations: [
+        expect.objectContaining({
+          conversationId,
+          cumulativeUsage: { totalTokens: 120 },
+          isParticipant: false,
+        }),
+      ],
+    });
+
     const invalidFeed = await app.request(
       "http://localhost/api/conversations?actorEmail=not-an-email",
     );
     expect(invalidFeed.status).toBe(400);
+    expect(apiErrorSchema.parse(await invalidFeed.json())).toEqual({
+      error: "Invalid query parameters.",
+    });
 
     const stats = await app.request("http://localhost/api/conversations/stats");
     expect(stats.status).toBe(200);
-    await expect(stats.json()).resolves.toMatchObject({
+    expect(
+      conversationStatsReportSchema.parse(await stats.json()),
+    ).toMatchObject({
       conversations: 4,
       durationMs: 1_500,
       tokens: 120,
@@ -144,6 +174,9 @@ describe("Junior REST API", () => {
       },
     );
     expect(invalidArchive.status).toBe(400);
+    expect(apiErrorSchema.parse(await invalidArchive.json())).toEqual({
+      error: "Invalid request body.",
+    });
 
     const archive = await app.request(
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
@@ -157,7 +190,9 @@ describe("Junior REST API", () => {
       },
     );
     expect(archive.status).toBe(200);
-    await expect(archive.json()).resolves.toEqual({ archived: true });
+    expect(
+      archiveConversationResponseSchema.parse(await archive.json()),
+    ).toEqual({ archived: true });
 
     const defaultFeedAfterArchive = await app.request(
       "http://localhost/api/conversations",
@@ -185,11 +220,9 @@ describe("Junior REST API", () => {
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
     );
     expect(detail.status).toBe(200);
-    const detailReport = (await detail.json()) as {
-      actorIdentity?: { email?: string };
-      conversationId: string;
-      locationId?: string;
-    };
+    const detailReport = conversationDetailReportSchema.parse(
+      await detail.json(),
+    );
     expect(detailReport).toMatchObject({
       actorIdentity: { email: "Person@Example.com" },
       conversationId,
@@ -202,22 +235,24 @@ describe("Junior REST API", () => {
 
     const people = await app.request("http://localhost/api/people");
     expect(people.status).toBe(200);
-    await expect(people.json()).resolves.toMatchObject({
-      people: [
-        {
-          actor: { email: "person@example.com" },
-          conversations: 1,
-          durationMs: 1_500,
-          tokens: 120,
-        },
-      ],
-    });
+    expect(actorDirectoryReportSchema.parse(await people.json())).toMatchObject(
+      {
+        people: [
+          {
+            actor: { email: "person@example.com" },
+            conversations: 1,
+            durationMs: 1_500,
+            tokens: 120,
+          },
+        ],
+      },
+    );
 
     const profile = await app.request(
       "http://localhost/api/people/Person%40Example.com",
     );
     expect(profile.status).toBe(200);
-    await expect(profile.json()).resolves.toMatchObject({
+    expect(actorProfileReportSchema.parse(await profile.json())).toMatchObject({
       actor: { email: "person@example.com" },
       recentConversations: [],
       totals: { conversations: 1, durationMs: 1_500, tokens: 120 },
@@ -225,14 +260,9 @@ describe("Junior REST API", () => {
 
     const locations = await app.request("http://localhost/api/locations");
     expect(locations.status).toBe(200);
-    const locationReport = (await locations.json()) as {
-      locations: Array<{
-        id: string;
-        label: string;
-        providerDestinationId: string;
-      }>;
-      privateActivity: { conversations: number; label: string };
-    };
+    const locationReport = locationDirectoryReportSchema.parse(
+      await locations.json(),
+    );
     expect(locationReport).toMatchObject({
       locations: [
         {
@@ -288,7 +318,9 @@ describe("Junior REST API", () => {
       `http://localhost/api/locations/${locationReport.locations[0]?.id}`,
     );
     expect(location.status).toBe(200);
-    const locationDetail = await location.json();
+    const locationDetail = locationDetailReportSchema.parse(
+      await location.json(),
+    );
     expect(locationDetail).toMatchObject({
       actors: [
         {
@@ -316,9 +348,15 @@ describe("Junior REST API", () => {
       "http://localhost/api/conversations/missing",
     );
     expect(missing.status).toBe(404);
+    expect(apiErrorSchema.parse(await missing.json())).toEqual({
+      error: "Conversation not found.",
+    });
 
     const invalidPerson = await app.request("http://localhost/api/people/%20");
     expect(invalidPerson.status).toBe(400);
+    expect(apiErrorSchema.parse(await invalidPerson.json())).toEqual({
+      error: "Invalid route parameters.",
+    });
 
     const percentEmail = await app.request(
       "http://localhost/api/people/person%25tag%40example.com",
@@ -401,7 +439,9 @@ describe("Junior REST API", () => {
     const participantProfile = await participantApi.request(
       "http://localhost/api/people/participant%40example.com",
     );
-    await expect(participantProfile.json()).resolves.toMatchObject({
+    expect(
+      actorProfileReportSchema.parse(await participantProfile.json()),
+    ).toMatchObject({
       recentConversations: [
         expect.objectContaining({
           conversationId,

@@ -13,7 +13,7 @@ import {
   conversationAggregateColumns,
   conversationRangeColumns,
 } from "../conversations/aggregate";
-import type { ActorIdentity } from "../conversations/schema";
+import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { summaryFromRow } from "../conversations/reporting";
 import { readRootConversationMetricsFromSql } from "../conversations/usage";
@@ -23,7 +23,7 @@ import type {
   LocationDetailReport,
   LocationDirectoryReport,
   LocationSummaryReport,
-} from "./schema";
+} from "../schema/location";
 
 const RECENT_LIMIT = 25;
 const ACTIVITY_DAYS = 90;

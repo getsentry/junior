@@ -13,7 +13,7 @@ import type {
   ConversationMetricDay,
   ConversationStatsItem,
   ConversationStatsReport,
-} from "./schema";
+} from "../schema/conversation";
 
 const WINDOW_DAYS = 90;
 const treeConversation = alias(juniorConversations, "stats_tree_conversation");

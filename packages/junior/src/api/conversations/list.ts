@@ -10,12 +10,12 @@ import {
 } from "@/db/schema";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
-import { conversationFeedSchema } from "./schema";
-import type { ConversationFeed } from "./schema";
+import { conversationFeedSchema } from "../schema/conversation";
+import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
-import type { ApiRoute } from "../route";
+import { defineApiRoute } from "../route";
 import { parseQuery } from "../http";
-import { conversationFeedQuerySchema } from "../schema";
+import { conversationFeedQuerySchema } from "../schema/conversation";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -222,20 +222,19 @@ export async function readConversationFeed(
 }
 
 /** Serve the conversation feed endpoint. */
-export default {
+export default defineApiRoute({
   method: "get",
   path: "/",
+  responseSchema: conversationFeedSchema,
   handler: async (c) => {
     const { actorEmail } = parseQuery(
       conversationFeedQuerySchema,
       c.req.query(),
     );
     const verifiedViewerEmail = c.get("verifiedViewerEmail");
-    return Response.json(
-      await readConversationFeed({
-        ...(actorEmail ? { actorEmail } : {}),
-        ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
-      }),
-    );
+    return readConversationFeed({
+      ...(actorEmail ? { actorEmail } : {}),
+      ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
+    });
   },
-} satisfies ApiRoute;
+});

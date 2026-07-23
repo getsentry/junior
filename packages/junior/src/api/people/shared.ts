@@ -10,7 +10,7 @@ import type {
   ActorActivityDayReport,
   ConversationStatsItem,
   ActorTotalsReport,
-} from "./schema";
+} from "../schema/person";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;

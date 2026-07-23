@@ -23,7 +23,7 @@ import type {
   ActorActivityDayReport,
   ActorIdentity,
   ActorProfileReport,
-} from "./schema";
+} from "../schema/person";
 import {
   ACTIVITY_DAYS,
   activityDays,

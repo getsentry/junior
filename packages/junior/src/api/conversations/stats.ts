@@ -1,7 +1,7 @@
 import { readConversationStatsFromSql } from "./stats.query";
-import { conversationStatsReportSchema } from "./schema";
-import type { ConversationStatsReport } from "./schema";
-import type { ApiRoute } from "../route";
+import { conversationStatsReportSchema } from "../schema/conversation";
+import type { ConversationStatsReport } from "../schema/conversation";
+import { defineApiRoute } from "../route";
 
 /** Load aggregate conversation stats directly from durable SQL records. */
 export async function readConversationStats(): Promise<ConversationStatsReport> {
@@ -11,8 +11,9 @@ export async function readConversationStats(): Promise<ConversationStatsReport> 
 }
 
 /** Serve aggregate conversation stats. */
-export default {
+export default defineApiRoute({
   method: "get",
   path: "/stats",
-  handler: async () => Response.json(await readConversationStats()),
-} satisfies ApiRoute;
+  responseSchema: conversationStatsReportSchema,
+  handler: readConversationStats,
+});

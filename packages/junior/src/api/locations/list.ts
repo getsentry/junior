@@ -1,6 +1,6 @@
-import { locationDirectoryReportSchema } from "./schema";
+import { locationDirectoryReportSchema } from "../schema/location";
 import { readLocationDirectoryFromSql } from "./query";
-import type { ApiRoute } from "../route";
+import { defineApiRoute } from "../route";
 
 /** Expose public conversation destinations as the dashboard's location index. */
 export async function readLocationDirectory() {
@@ -10,8 +10,9 @@ export async function readLocationDirectory() {
 }
 
 /** Serve the public location directory endpoint. */
-export default {
+export default defineApiRoute({
   method: "get",
   path: "/",
-  handler: async () => Response.json(await readLocationDirectory()),
-} satisfies ApiRoute;
+  responseSchema: locationDirectoryReportSchema,
+  handler: readLocationDirectory,
+});

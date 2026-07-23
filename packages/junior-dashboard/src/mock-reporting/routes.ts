@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { jsonResponse } from "@sentry/junior/api";
 import {
+  apiErrorSchema,
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   conversationDetailReportSchema,
@@ -22,57 +24,65 @@ import {
   readMockPeopleProfile,
 } from "./fixtures";
 
+function errorResponse(error: string, status: 400 | 404): Response {
+  return jsonResponse(apiErrorSchema, { error }, { status });
+}
+
 /** Create the reporting API used exclusively by local dashboard mocks. */
 export function createMockReportingApi(): Hono {
   const app = new Hono();
 
   app.get("/people", () =>
-    Response.json(actorDirectoryReportSchema.parse(readMockPeopleDirectory())),
+    jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
   app.get("/people/:email", (c) => {
-    const { email } = personParamsSchema.parse(c.req.param());
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const { email } = params.data;
     const report = readMockPeopleProfile(email);
     return report
-      ? Response.json(actorProfileReportSchema.parse(report))
-      : Response.json({ error: "Person not found." }, { status: 404 });
+      ? jsonResponse(actorProfileReportSchema, report)
+      : errorResponse("Person not found.", 404);
   });
   app.get("/locations", () =>
-    Response.json(
-      locationDirectoryReportSchema.parse(readMockLocationDirectory()),
-    ),
+    jsonResponse(locationDirectoryReportSchema, readMockLocationDirectory()),
   );
   app.get("/locations/:locationId", (c) => {
-    const { locationId } = locationParamsSchema.parse(c.req.param());
+    const params = locationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const { locationId } = params.data;
     const report = readMockLocationDetail(locationId);
     return report
-      ? Response.json(locationDetailReportSchema.parse(report))
-      : Response.json({ error: "Location not found." }, { status: 404 });
+      ? jsonResponse(locationDetailReportSchema, report)
+      : errorResponse("Location not found.", 404);
   });
   app.get("/conversations", (c) => {
     const query = conversationFeedQuerySchema.safeParse(c.req.query());
     if (!query.success) {
-      return Response.json(
-        { error: "Invalid query parameters." },
-        { status: 400 },
-      );
+      return errorResponse("Invalid query parameters.", 400);
     }
-    return Response.json(
-      conversationFeedSchema.parse(
-        readMockConversationFeed(query.data.actorEmail),
-      ),
+    return jsonResponse(
+      conversationFeedSchema,
+      readMockConversationFeed(query.data.actorEmail),
     );
   });
   app.get("/conversations/stats", () =>
-    Response.json(
-      conversationStatsReportSchema.parse(readMockConversationStats()),
-    ),
+    jsonResponse(conversationStatsReportSchema, readMockConversationStats()),
   );
   app.get("/conversations/:conversationId", (c) => {
-    const { conversationId } = conversationParamsSchema.parse(c.req.param());
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const { conversationId } = params.data;
     const report = readMockConversationDetail(conversationId);
     return report
-      ? Response.json(conversationDetailReportSchema.parse(report))
-      : Response.json({ error: "Conversation not found." }, { status: 404 });
+      ? jsonResponse(conversationDetailReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
   });
 
   return app;

@@ -15,7 +15,7 @@ import type {
   ActorIdentity,
   ActorSummaryReport,
   PeopleActivityDayReport,
-} from "./schema";
+} from "../schema/person";
 import { verifiedActorWhere } from "./shared";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;

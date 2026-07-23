@@ -1,14 +1,21 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
   conversationDetailReportSchema,
   conversationEventHistorySchema,
+  conversationFeedQuerySchema,
   conversationFeedSchema,
+  conversationParamsSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
   conversationStatsReportSchema,
-} from "./conversations/schema";
+  conversationSummaryReportSchema,
+} from "./schema/conversation";
 export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
   ActorIdentity,
   ConversationCost,
   ConversationDetailReport,
@@ -19,28 +26,32 @@ export type {
   ConversationReportStatus,
   ConversationMetricDay,
   ConversationModelUsage,
+  ConversationParams,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
-} from "./conversations/schema";
+} from "./schema/conversation";
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
-} from "./people/schema";
+  personParamsSchema,
+} from "./schema/person";
 export {
   locationActivityDayReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
-} from "./locations/schema";
+  locationParamsSchema,
+} from "./schema/location";
 export type {
   LocationActorSummaryReport,
   LocationActivityDayReport,
   LocationDetailReport,
   LocationDirectoryReport,
   LocationSummaryReport,
-} from "./locations/schema";
+  LocationParams,
+} from "./schema/location";
 export type {
   ActorActivityDayReport,
   ActorDirectoryReport,
@@ -48,7 +59,10 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   PeopleActivityDayReport,
-} from "./people/schema";
+  PersonParams,
+} from "./schema/person";
+export { apiErrorSchema } from "./schema/common";
+export type { ApiError } from "./schema/common";
 export {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
@@ -73,28 +87,3 @@ export type {
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
-import { z } from "zod";
-
-export const conversationParamsSchema = z
-  .object({ conversationId: z.string().min(1) })
-  .strict();
-export const conversationFeedQuerySchema = z
-  .object({
-    actorEmail: z
-      .string()
-      .trim()
-      .email()
-      .transform((value) => value.toLowerCase())
-      .optional(),
-  })
-  .strict();
-export const personParamsSchema = z
-  .object({ email: z.string().trim().min(1) })
-  .strict();
-export const locationParamsSchema = z
-  .object({ locationId: z.string().min(1) })
-  .strict();
-
-export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type PersonParams = z.infer<typeof personParamsSchema>;
-export type LocationParams = z.infer<typeof locationParamsSchema>;

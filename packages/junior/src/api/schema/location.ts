@@ -3,9 +3,13 @@ import {
   actorIdentitySchema,
   conversationStatsItemSchema,
   conversationSummaryReportSchema,
-} from "../conversations/schema";
+} from "./conversation";
 import { dailyConversationActivitySchema } from "../activity";
 import { juniorDestinationKindSchema } from "@/db/schema/destinations";
+
+export const locationParamsSchema = z
+  .object({ locationId: z.string().min(1) })
+  .strict();
 
 export const locationSummaryReportSchema = conversationStatsItemSchema
   .extend({
@@ -66,3 +70,4 @@ export type LocationDirectoryReport = z.infer<
   typeof locationDirectoryReportSchema
 >;
 export type LocationDetailReport = z.infer<typeof locationDetailReportSchema>;
+export type LocationParams = z.infer<typeof locationParamsSchema>;

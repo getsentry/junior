@@ -2,7 +2,10 @@ import type { StoredSlackActor } from "@/chat/actor";
 import type { juniorConversations } from "@/db/schema";
 import type { ConversationAccess } from "./access";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import type { ConversationSummaryReport, ConversationSurface } from "./schema";
+import type {
+  ConversationSummaryReport,
+  ConversationSurface,
+} from "../schema/conversation";
 
 export type ReportingConversationRow = {
   channelName: string | null;

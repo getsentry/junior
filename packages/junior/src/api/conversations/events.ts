@@ -4,7 +4,7 @@ import {
   conversationReportEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
-} from "./schema";
+} from "../schema/conversation";
 
 /** Canonical event types that can contribute to the reporting projection. */
 export const conversationReportSourceEventTypes = [

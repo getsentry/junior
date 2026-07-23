@@ -3,7 +3,7 @@ import { projectConversationReportEvents } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
   conversationReportEventSchema,
-} from "@/api/conversations/schema";
+} from "@/api/schema/conversation";
 import {
   conversationEventSchema,
   decodeStoredConversationEvent,

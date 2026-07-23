@@ -15,7 +15,7 @@ import type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
-} from "./schema";
+} from "../schema/conversation";
 import type { ConversationAccess } from "./access";
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 

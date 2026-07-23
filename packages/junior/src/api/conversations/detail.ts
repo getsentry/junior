@@ -20,11 +20,11 @@ import {
   type ConversationAccess,
 } from "./access";
 import { readRootConversationMetricsFromSql } from "./usage";
-import { conversationDetailReportSchema } from "./schema";
-import type { ConversationDetailReport } from "./schema";
-import type { ApiRoute } from "../route";
-import { parseParams } from "../http";
-import { conversationParamsSchema } from "../schema";
+import { conversationDetailReportSchema } from "../schema/conversation";
+import type { ConversationDetailReport } from "../schema/conversation";
+import { defineApiRoute } from "../route";
+import { parseParams, throwApiError } from "../http";
+import { conversationParamsSchema } from "../schema/conversation";
 
 const conversationEventColumns = getTableColumns(juniorConversationEvents);
 
@@ -163,9 +163,10 @@ export async function readConversationDetail(
 }
 
 /** Serve one conversation detail endpoint. */
-export default {
+export default defineApiRoute({
   method: "get",
   path: "/:conversationId",
+  responseSchema: conversationDetailReportSchema,
   handler: async (c) => {
     const { conversationId } = parseParams(
       conversationParamsSchema,
@@ -176,8 +177,7 @@ export default {
       conversationId,
       verifiedViewerEmail ? { verifiedViewerEmail } : {},
     );
-    return report
-      ? Response.json(report)
-      : Response.json({ error: "Conversation not found." }, { status: 404 });
+    if (!report) throwApiError(404, "Conversation not found.");
+    return report;
   },
-} satisfies ApiRoute;
+});
