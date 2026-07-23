@@ -1,8 +1,8 @@
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
-import { formatDuration } from "../../components/Duration";
-import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
+import { formatDuration } from "../Duration";
+import { Card } from "../layout/Card";
+import { Tooltip } from "../Tooltip";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 
 type Metric = "costUsd" | "durationMs" | "tokens";

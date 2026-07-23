@@ -508,6 +508,29 @@ describe("dashboard routes", () => {
     });
   });
 
+  it("preserves the enabled component gallery path through login", async () => {
+    let callbackURL: string | undefined;
+    const app = createDashboardApp({
+      allowedEmails: ["admin@example.com"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+      componentGallery: true,
+    });
+
+    const unauthenticated = await app.fetch(
+      new Request("http://localhost/dev?fixture=charts"),
+    );
+    const loginUrl = unauthenticated.headers.get("location");
+    expect(loginUrl).toBeTruthy();
+    expect(new URL(loginUrl!).searchParams.get("next")).toBe(
+      "/dev?fixture=charts",
+    );
+
+    await app.fetch(new Request(loginUrl!));
+    expect(callbackURL).toBe("http://localhost/dev?fixture=charts");
+  });
+
   it("serves the component gallery only when enabled", async () => {
     const disabled = createDashboardApp({ authRequired: false });
     const enabled = createDashboardApp({

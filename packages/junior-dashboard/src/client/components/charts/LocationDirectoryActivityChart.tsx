@@ -1,8 +1,8 @@
 import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 
-import { Card } from "../../components/layout/Card";
-import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
+import { Card } from "../layout/Card";
+import { CardHeader } from "../layout/CardHeader";
+import { Tooltip } from "../Tooltip";
 
 function shortDate(date: string): string {
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {

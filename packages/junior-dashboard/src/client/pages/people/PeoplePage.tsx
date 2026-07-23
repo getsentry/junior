@@ -15,7 +15,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatMs } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
-import { PeopleActivityChart } from "./PeopleActivityChart";
+import { PeopleActivityChart } from "../../components/charts/PeopleActivityChart";
 import {
   filterPeople,
   PeopleDirectory,

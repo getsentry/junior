@@ -25,7 +25,7 @@ import {
   peoplePath,
 } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
-import { LocationActivityChart } from "./LocationActivityChart";
+import { LocationActivityChart } from "../../components/charts/LocationActivityChart";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {

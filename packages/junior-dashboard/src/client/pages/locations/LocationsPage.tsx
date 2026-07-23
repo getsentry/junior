@@ -19,7 +19,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatMs } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
-import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
+import { LocationDirectoryActivityChart } from "../../components/charts/LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
 

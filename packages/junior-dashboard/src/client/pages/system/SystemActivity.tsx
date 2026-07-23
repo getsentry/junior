@@ -7,7 +7,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { SystemMetricCharts } from "./SystemMetricCharts";
+import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 
 /** Present selectable daily runtime and model-usage trends. */
 export function SystemActivity(props: {

@@ -100,33 +100,50 @@ export function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   for (const chunk of normalized.split(/\n{2,}/)) {
     const lines = chunk.split("\n");
-    if (lines.length === 1) {
-      const heading = matchHeading(lines[0] ?? "");
+    let index = 0;
+    while (index < lines.length) {
+      const line = lines[index] ?? "";
+      const heading = matchHeading(line);
       if (heading) {
         blocks.push(heading);
+        index += 1;
         continue;
       }
-    }
 
-    if (lines.every(isUnorderedListItem)) {
-      blocks.push({
-        items: lines.map((line) => line.replace(/^\s*[-*+]\s+/, "")),
-        ordered: false,
-        type: "list",
-      });
-      continue;
-    }
+      const ordered = isOrderedListItem(line);
+      const unordered = isUnorderedListItem(line);
+      if (ordered || unordered) {
+        const items: string[] = [];
+        while (
+          index < lines.length &&
+          (ordered
+            ? isOrderedListItem(lines[index] ?? "")
+            : isUnorderedListItem(lines[index] ?? ""))
+        ) {
+          items.push(
+            (lines[index] ?? "").replace(
+              ordered ? /^\s*\d+\.\s+/ : /^\s*[-*+]\s+/,
+              "",
+            ),
+          );
+          index += 1;
+        }
+        blocks.push({ items, ordered, type: "list" });
+        continue;
+      }
 
-    if (lines.every(isOrderedListItem)) {
-      blocks.push({
-        items: lines.map((line) => line.replace(/^\s*\d+\.\s+/, "")),
-        ordered: true,
-        type: "list",
-      });
-      continue;
+      const paragraphLines: string[] = [];
+      while (
+        index < lines.length &&
+        !matchHeading(lines[index] ?? "") &&
+        !isOrderedListItem(lines[index] ?? "") &&
+        !isUnorderedListItem(lines[index] ?? "")
+      ) {
+        paragraphLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      blocks.push({ lines: paragraphLines, type: "paragraph" });
     }
-
-    blocks.push({ lines, type: "paragraph" });
   }
 
   return blocks;

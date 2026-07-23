@@ -136,6 +136,19 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("<mark");
   });
 
+  it("renders labeled event sections followed by semantic lists", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown text={"Handling:\n- first item\n- second item"} />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html).toContain("<p");
+    expect(html).toContain("Handling:");
+    expect(html).toContain("<ul");
+    expect(html.match(/<li/g)).toHaveLength(2);
+  });
+
   it("keeps shared buttons out of form-submit mode", () => {
     expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
       'type="button"',
