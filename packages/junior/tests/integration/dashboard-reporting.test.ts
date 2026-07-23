@@ -459,12 +459,14 @@ describe("dashboard canonical event reporting", () => {
         createdAt: childAt,
         lastActivityAt: childAt,
         updatedAt: childAt,
+        durationMs: 700,
         executionStatus: "idle",
         usage: { totalTokens: 7, cost: { total: 0.002 } },
       });
     await getDb()
       .update(juniorConversations)
       .set({
+        durationMs: 300,
         usage: {
           inputTokens: 10,
           totalTokens: 999,
@@ -474,10 +476,18 @@ describe("dashboard canonical event reporting", () => {
       .where(eq(juniorConversations.conversationId, rootConversationId));
     await appendVisibleHistory(childConversationId, "Unprojected child answer");
 
+    const rootSummary = (
+      await readConversationFeedFromSql()
+    ).conversations.find(
+      (conversation) => conversation.conversationId === rootConversationId,
+    );
+    expect(rootSummary?.cumulativeDurationMs).toBe(1_000);
+
     const rootDetail = await requireDetail(rootConversationId);
     expect(JSON.stringify(rootDetail.events)).not.toContain(
       childConversationId,
     );
+    expect(rootDetail.cumulativeDurationMs).toBe(1_000);
     expect(rootDetail.cumulativeUsage).toEqual({
       totalTokens: 17,
       cost: { total: 0.003 },
@@ -495,6 +505,7 @@ describe("dashboard canonical event reporting", () => {
     ]);
 
     const childDetail = await requireDetail(childConversationId);
+    expect(childDetail.cumulativeDurationMs).toBe(700);
     expect(childDetail.cumulativeUsage).toEqual({
       totalTokens: 7,
       cost: { total: 0.002 },

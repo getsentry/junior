@@ -12,7 +12,7 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import { conversationFeedSchema } from "./schema";
 import type { ConversationFeed } from "./schema";
-import { readRootConversationUsageFromSql } from "./usage";
+import { readRootConversationMetricsFromSql } from "./usage";
 import type { ApiRoute } from "../route";
 import { parseQuery } from "../http";
 import { conversationFeedQuerySchema } from "../schema";
@@ -189,26 +189,27 @@ export async function readConversationFeedFromSql(
     options.actorEmail,
   );
   const conversationIds = rows.map((row) => row.conversation.conversationId);
-  const [accessByConversation, usageByRoot] = await Promise.all([
+  const [accessByConversation, metricsByRoot] = await Promise.all([
     readConversationAccessFromSql(
       db,
       conversationIds,
       options.verifiedViewerEmail,
     ),
-    readRootConversationUsageFromSql(db, conversationIds),
+    readRootConversationMetricsFromSql(db, conversationIds),
   ]);
   return {
-    conversations: rows.map((row) =>
-      conversationSummaryFromStoredConversation({
+    conversations: rows.map((row) => {
+      const metrics = metricsByRoot.get(row.conversation.conversationId);
+      return conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         access: accessByConversation.get(row.conversation.conversationId),
-        durationMs: row.conversation.durationMs,
+        durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
           : {}),
-        usage: usageByRoot.get(row.conversation.conversationId),
-      }),
-    ),
+        usage: metrics?.usage,
+      });
+    }),
     generatedAt: new Date(nowMs).toISOString(),
     source: "conversation_index",
   };

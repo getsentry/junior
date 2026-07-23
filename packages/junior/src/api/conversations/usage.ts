@@ -1,4 +1,4 @@
-import { and, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import {
   hasAgentTurnUsage,
   type AgentTurnCost,
@@ -30,6 +30,7 @@ function summedCostNumber(field: string): SQL<number | null> {
 
 interface UsageAggregateRow {
   rootConversationId: string | null;
+  durationMs: number;
   inputTokens: number | null;
   outputTokens: number | null;
   cachedInputTokens: number | null;
@@ -73,11 +74,16 @@ function usageFromAggregate(
   return hasAgentTurnUsage(result) ? result : undefined;
 }
 
-/** Aggregate persisted usage in PostgreSQL for selected conversation trees. */
-export async function readRootConversationUsageFromSql(
+interface RootConversationMetrics {
+  durationMs: number;
+  usage?: AgentTurnUsage;
+}
+
+/** Aggregate persisted metrics in PostgreSQL for selected conversation trees. */
+export async function readRootConversationMetricsFromSql(
   db: JuniorDatabase,
   rootConversationIds: readonly string[],
-): Promise<Map<string, AgentTurnUsage>> {
+): Promise<Map<string, RootConversationMetrics>> {
   if (rootConversationIds.length === 0) return new Map();
 
   const hasComponents = sql`coalesce(
@@ -89,6 +95,7 @@ export async function readRootConversationUsageFromSql(
   const rows: UsageAggregateRow[] = await db
     .select({
       rootConversationId: juniorConversations.rootConversationId,
+      durationMs: sql<number>`coalesce(sum(${juniorConversations.durationMs}), 0)::double precision`,
       inputTokens: summedUsageNumber("inputTokens"),
       outputTokens: summedUsageNumber("outputTokens"),
       cachedInputTokens: summedUsageNumber("cachedInputTokens"),
@@ -108,21 +115,20 @@ export async function readRootConversationUsageFromSql(
     })
     .from(juniorConversations)
     .where(
-      and(
-        inArray(juniorConversations.rootConversationId, [
-          ...rootConversationIds,
-        ]),
-        isNotNull(juniorConversations.usage),
-      ),
+      inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
     )
     .groupBy(juniorConversations.rootConversationId);
 
   return new Map(
     rows.flatMap((row) => {
-      const aggregate = usageFromAggregate(row);
-      return row.rootConversationId && aggregate
-        ? [[row.rootConversationId, aggregate]]
-        : [];
+      if (!row.rootConversationId) return [];
+      const usage = usageFromAggregate(row);
+      return [
+        [
+          row.rootConversationId,
+          { durationMs: row.durationMs, ...(usage ? { usage } : {}) },
+        ],
+      ];
     }),
   );
 }

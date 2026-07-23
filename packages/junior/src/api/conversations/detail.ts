@@ -19,7 +19,7 @@ import {
   readConversationAccessFromSql,
   type ConversationAccess,
 } from "./access";
-import { readRootConversationUsageFromSql } from "./usage";
+import { readRootConversationMetricsFromSql } from "./usage";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
 import type { ApiRoute } from "../route";
@@ -111,8 +111,8 @@ async function readConversationDetailFromSql(
   if (!record) return undefined;
 
   const executor = getSqlExecutor();
-  const includeDescendantUsage = record.rootConversationId === conversationId;
-  const [accessByConversation, eventRows, modelUsage, usageByRoot] =
+  const includeDescendantMetrics = record.rootConversationId === conversationId;
+  const [accessByConversation, eventRows, modelUsage, metricsByRoot] =
     await Promise.all([
       readConversationAccessFromSql(
         getDb(),
@@ -123,12 +123,12 @@ async function readConversationDetailFromSql(
       record.conversation.transcriptPurgedAtMs === undefined
         ? readConversationModelUsageFromSql(executor, {
             conversationId,
-            includeDescendants: includeDescendantUsage,
+            includeDescendants: includeDescendantMetrics,
           })
         : Promise.resolve([]),
-      readRootConversationUsageFromSql(
+      readRootConversationMetricsFromSql(
         getDb(),
-        includeDescendantUsage ? [conversationId] : [],
+        includeDescendantMetrics ? [conversationId] : [],
       ),
     ]);
   const events = eventRows.map((row) =>
@@ -142,14 +142,14 @@ async function readConversationDetailFromSql(
       payload: row.payload,
     }),
   );
+  const metrics = metricsByRoot.get(conversationId);
   return projectConversationDetail({
     ...record,
     access: accessByConversation.get(conversationId),
+    durationMs: metrics?.durationMs ?? record.durationMs,
     events,
     modelUsage,
-    usage: includeDescendantUsage
-      ? usageByRoot.get(conversationId)
-      : (record.usage ?? undefined),
+    usage: metrics?.usage ?? record.usage ?? undefined,
   });
 }
 
