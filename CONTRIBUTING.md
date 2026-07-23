@@ -54,6 +54,8 @@ pnpm release:check
 - `policies/` contains durable repo-wide engineering rules.
 - Package and module `README.md` files explain implemented architecture and
   non-obvious invariants near the code they describe.
+- The [database migration guide](https://junior.sentry.dev/contribute/database-migrations/)
+  explains when and how to generate schema and data migrations.
 - Code, schemas, exported types, and tests are the implementation authority.
 - `openspec/changes/` contains temporary implementation plans. Move durable
   explanation beside the code and delete a plan when its work is complete.

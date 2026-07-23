@@ -5,6 +5,7 @@ type: tutorial
 summary: Set up Junior locally, run checks, and use isolated worktrees for parallel agent or contributor tasks.
 prerequisites: []
 related:
+  - /contribute/database-migrations/
   - /contribute/testing/
   - /contribute/releasing/
   - /start-here/quickstart/
