@@ -373,19 +373,9 @@ export async function buildGitHubOutcomeReport(args: {
     generatedAt: new Date(args.nowMs).toISOString(),
     title: "GitHub work delivered",
     metrics: [
-      { label: "PRs created · 30d", value: String(thirtyDays.created) },
-      {
-        label: "PRs merged · 30d",
-        tone: thirtyDays.merged > 0 ? "good" : "neutral",
-        value: String(thirtyDays.merged),
-      },
       {
         label: "Junior-only merge rate · 30d",
         value: formatPercent(thirtyDays.juniorOnlyRate),
-      },
-      {
-        label: "PRs closed unmerged · 30d",
-        value: String(thirtyDays.closed),
       },
       {
         label: "PR merge rate · 30d",
@@ -394,20 +384,6 @@ export async function buildGitHubOutcomeReport(args: {
       {
         label: "median PR merge time · 30d",
         value: formatDuration(thirtyDays.medianMergeTimeMs),
-      },
-      { label: "issues created · 30d", value: String(issueThirtyDays.created) },
-      {
-        label: "issues completed · 30d",
-        tone: issueThirtyDays.closedCompleted > 0 ? "good" : "neutral",
-        value: String(issueThirtyDays.closedCompleted),
-      },
-      {
-        label: "issues closed as duplicate · 30d",
-        value: String(issueThirtyDays.closedDuplicate),
-      },
-      {
-        label: "issues closed as not planned · 30d",
-        value: String(issueThirtyDays.closedNotPlanned),
       },
       {
         label: "median issue close time · 30d",

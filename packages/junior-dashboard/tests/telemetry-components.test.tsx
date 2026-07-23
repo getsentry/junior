@@ -858,7 +858,7 @@ describe("dashboard canonical-event components", () => {
                   {
                     id: "30d",
                     label: "30d",
-                    values: { created: 4, merged: 3 },
+                    values: { created: 4.5, merged: -1.25 },
                   },
                 ],
                 id: "pull-request-outcomes",
@@ -875,7 +875,8 @@ describe("dashboard canonical-event components", () => {
       />,
     );
     expect(html).toContain("Pull request outcomes");
-    expect(html).toContain('aria-label="30d, Merged: 3"');
+    expect(html).toContain('aria-label="30d, Created: 4.5"');
+    expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
 
   it("keeps chart chrome visible for empty widget data", () => {

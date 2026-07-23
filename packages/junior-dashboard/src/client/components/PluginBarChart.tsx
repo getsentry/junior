@@ -1,6 +1,5 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import { formatCompactNumber } from "../format";
 import { Tooltip } from "./Tooltip";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -27,7 +26,10 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
   const values = widget.categories.flatMap((category) =>
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
-  const maximum = Math.max(Number.EPSILON, ...values);
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(0, ...values);
+  const span = Math.max(Number.EPSILON, maximum - minimum);
+  const zeroY = top + (maximum / span) * plotHeight;
 
   return (
     <div className="overflow-hidden rounded border border-white/[0.07] bg-[#09090b]">
@@ -70,10 +72,10 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >
-          {[0, 0.5, 1].map((ratio) => {
-            const y = top + ratio * plotHeight;
+          {[maximum, maximum - span / 2, minimum].map((tickValue, index) => {
+            const y = top + index * (plotHeight / 2);
             return (
-              <g key={ratio}>
+              <g key={index}>
                 <line
                   stroke="rgba(255,255,255,0.07)"
                   strokeDasharray="3 5"
@@ -90,7 +92,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
                   x={left - 6}
                   y={y + 3}
                 >
-                  {formatCompactNumber(maximum * (1 - ratio))}
+                  {formatChartNumber(tickValue)}
                 </text>
               </g>
             );
@@ -100,9 +102,9 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
               const value = category.values[series.key] ?? 0;
               const renderedHeight = Math.max(
                 value ? 2 : 0,
-                (value / maximum) * plotHeight,
+                (Math.abs(value) / span) * plotHeight,
               );
-              const formatted = formatCompactNumber(value);
+              const formatted = formatChartNumber(value);
               return (
                 <Tooltip
                   content={`${series.label}: ${formatted}`}
@@ -127,7 +129,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
                       (step - groupWidth) / 2 +
                       seriesIndex * barWidth
                     }
-                    y={top + plotHeight - renderedHeight}
+                    y={value >= 0 ? zeroY - renderedHeight : zeroY}
                   />
                 </Tooltip>
               );
@@ -150,4 +152,8 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
       )}
     </div>
   );
+}
+
+function formatChartNumber(value: number): string {
+  return String(value);
 }

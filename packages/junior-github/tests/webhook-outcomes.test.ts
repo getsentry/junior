@@ -1113,16 +1113,9 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.title).toBe("GitHub work delivered");
       expect(report.metrics).toEqual([
-        { label: "PRs created · 30d", value: "2" },
-        { label: "PRs merged · 30d", tone: "good", value: "1" },
         { label: "Junior-only merge rate · 30d", value: "100%" },
-        { label: "PRs closed unmerged · 30d", value: "1" },
         { label: "PR merge rate · 30d", value: "50%" },
         { label: "median PR merge time · 30d", value: "90d" },
-        { label: "issues created · 30d", value: "2" },
-        { label: "issues completed · 30d", tone: "neutral", value: "0" },
-        { label: "issues closed as duplicate · 30d", value: "0" },
-        { label: "issues closed as not planned · 30d", value: "1" },
         { label: "median issue close time · 30d", value: "71d" },
       ]);
       expect(report.widgets?.[0]?.categories).toEqual([
@@ -1242,16 +1235,9 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       expect(report.metrics).toEqual([
-        { label: "PRs created · 30d", value: "0" },
-        { label: "PRs merged · 30d", tone: "neutral", value: "0" },
         { label: "Junior-only merge rate · 30d", value: "—" },
-        { label: "PRs closed unmerged · 30d", value: "0" },
         { label: "PR merge rate · 30d", value: "—" },
         { label: "median PR merge time · 30d", value: "—" },
-        { label: "issues created · 30d", value: "0" },
-        { label: "issues completed · 30d", tone: "neutral", value: "0" },
-        { label: "issues closed as duplicate · 30d", value: "0" },
-        { label: "issues closed as not planned · 30d", value: "0" },
         { label: "median issue close time · 30d", value: "—" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([]);
