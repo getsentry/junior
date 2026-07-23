@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   getBoundLogAttributes,
+  getBoundLogContext,
   runWithLogAttributes,
+  runWithLogContext,
   updateLogAttributes,
 } from "@/chat/log-context";
 
@@ -37,6 +39,28 @@ describe("log context", () => {
     );
 
     expect(getBoundLogAttributes()).toEqual({});
+  });
+
+  it("inherits defined typed context through nested scopes", async () => {
+    await runWithLogContext(
+      { conversationId: "conversation", modelId: "outer-model" },
+      {},
+      async () => {
+        await runWithLogContext(
+          { modelId: undefined, runId: "inner-run" },
+          {},
+          async () => {
+            expect(getBoundLogContext()).toEqual({
+              conversationId: "conversation",
+              modelId: "outer-model",
+              runId: "inner-run",
+            });
+          },
+        );
+      },
+    );
+
+    expect(getBoundLogContext()).toEqual({});
   });
 
   it("isolates concurrent operations", async () => {

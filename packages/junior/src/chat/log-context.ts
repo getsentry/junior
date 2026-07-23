@@ -31,6 +31,12 @@ export const logContextStorage = new AsyncLocalStorage<LogAttributes>();
 /** Typed context domain retained for consumers such as native Sentry scope fields. */
 const typedLogContextStorage = new AsyncLocalStorage<LogContext>();
 
+function definedLogContext(context: LogContext): LogContext {
+  return Object.fromEntries(
+    Object.entries(context).filter(([, value]) => value !== undefined),
+  ) as LogContext;
+}
+
 function definedAttributes(
   attributes: Record<string, string | undefined>,
 ): LogAttributes {
@@ -73,7 +79,10 @@ export function runWithLogContext<T>(
   callback: () => T,
 ): T {
   return typedLogContextStorage.run(
-    { ...typedLogContextStorage.getStore(), ...context },
+    {
+      ...typedLogContextStorage.getStore(),
+      ...definedLogContext(context),
+    },
     () =>
       logContextStorage.run(
         { ...logContextStorage.getStore(), ...attributes },
@@ -108,7 +117,7 @@ export function updateLogContext(
 ): void {
   const currentContext = typedLogContextStorage.getStore();
   if (currentContext) {
-    Object.assign(currentContext, context);
+    Object.assign(currentContext, definedLogContext(context));
   }
   const currentAttributes = logContextStorage.getStore();
   if (currentAttributes) {
