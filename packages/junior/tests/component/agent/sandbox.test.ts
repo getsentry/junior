@@ -25,7 +25,7 @@ vi.mock("@/chat/discovery", () => ({
   listReferenceFiles: () => ["/tmp/reference.md"],
 }));
 
-vi.mock("@/chat/runtime/generated-artifacts", () => ({
+vi.mock("@/chat/tools/sandbox/generated-artifacts", () => ({
   writeSandboxGeneratedArtifacts: writeGeneratedArtifactsMock,
 }));
 

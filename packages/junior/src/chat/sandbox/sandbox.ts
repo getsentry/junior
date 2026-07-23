@@ -157,9 +157,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
     traceContext,
-    commandEnv: credentialEgress
-      ? async () => await resolveSandboxCommandEnvironment()
-      : undefined,
+    commandEnv: credentialEgress ? resolveSandboxCommandEnvironment : undefined,
     createNetworkPolicy:
       credentialEgress || hasTracePropagationDomains
         ? (sessionId, traceHeaders) =>
@@ -173,12 +171,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               traceHeaders,
             })
         : undefined,
-    onSandboxPrepare: async (sandbox) => {
-      await options.prepare?.(sandbox);
-    },
-    onSandboxRefChanged: async (sandboxRef) => {
-      await options.onSandboxRefChanged?.(sandboxRef);
-    },
+    onSandboxPrepare: options.prepare,
+    onSandboxRefChanged: options.onSandboxRefChanged,
   });
 
   const withSandboxSpan = <T>(

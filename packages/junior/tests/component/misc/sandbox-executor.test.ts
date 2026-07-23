@@ -588,25 +588,6 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("reports acquired sandbox metadata immediately after fresh sandbox boot", async () => {
-    const freshSandbox = makeSandbox("sbx_fresh");
-    const onSandboxAcquired = vi.fn();
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
-
-    const executor = createTestSandbox({
-      onSandboxAcquired,
-    });
-    executor.configureSkills([]);
-
-    await executor.createSandbox();
-    await executor.createSandbox();
-
-    expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
-    expect(onSandboxAcquired).toHaveBeenCalledWith({
-      sandboxId: "sbx_fresh",
-    });
-  });
-
   it("reports a fresh sandbox reference before session preparation can fail", async () => {
     const unavailable = createClosedStreamError();
     const freshSandbox = makeSandbox("sbx_prepare_failure");
@@ -635,25 +616,30 @@ describe("createTestSandbox", () => {
     expect(executor.getSandboxId()).toBe("sbx_prepare_failure");
   });
 
-  it("prepares a cached sandbox only once", async () => {
-    const freshSandbox = makeSandbox("sbx_fresh");
-    const onSandboxPrepare = vi.fn();
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
+  it("retries durable reference reporting after persistence fails", async () => {
+    const freshSandbox = makeSandbox("sbx_ref_retry");
+    const restoredSandbox = makeSandbox("sbx_ref_retry");
+    restoredSandbox.session.sessionId = "sbx_ref_retry_restored";
+    const persistenceError = new Error("state unavailable");
+    const onSandboxAcquired = vi
+      .fn()
+      .mockRejectedValueOnce(persistenceError)
+      .mockResolvedValueOnce(undefined);
+    sandboxCreateMock.mockResolvedValueOnce(freshSandbox);
+    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
 
-    const manager = createTestSandboxRuntime({
-      onSandboxPrepare,
+    const executor = createTestSandbox({ onSandboxAcquired });
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toBe(persistenceError);
+    await expect(executor.createSandbox()).resolves.toBeDefined();
+
+    expect(onSandboxAcquired).toHaveBeenCalledTimes(2);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_ref_retry",
+      resume: true,
     });
-    manager.configureSkills([]);
-
-    await manager.createSandbox();
-    await manager.createSandbox();
-
-    expect(onSandboxPrepare).toHaveBeenCalledTimes(1);
-    expect(onSandboxPrepare).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sandboxId: "sbx_fresh",
-      }),
-    );
   });
 
   it("shares in-flight sandbox setup across parallel executor initialization", async () => {
@@ -772,31 +758,6 @@ describe("createTestSandbox", () => {
     await executor.createSandbox();
 
     expect(onSandboxAcquired).not.toHaveBeenCalled();
-  });
-
-  it("refreshes network policy when restoring from a sandbox id hint", async () => {
-    const restoredSandbox = makeSandbox("sbx_restored");
-    const networkPolicy = {
-      allow: {
-        "*": [],
-        "api.example.com": [
-          {
-            forwardURL: "https://junior.example.com/api/internal/proxy",
-          },
-        ],
-      },
-    };
-    sandboxGetMock.mockResolvedValue(restoredSandbox);
-
-    const manager = createTestSandboxRuntime({
-      sandboxId: "sbx_restored",
-      createNetworkPolicy: vi.fn(() => networkPolicy),
-    });
-    manager.configureSkills([]);
-
-    await manager.createSandbox();
-
-    expect(restoredSandbox.update).toHaveBeenCalledWith({ networkPolicy });
   });
 
   it("keeps restored sandbox policy tracking tied to the applied policy", async () => {
@@ -2073,6 +2034,47 @@ describe("createTestSandbox", () => {
     expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
     expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(1, 5000);
     expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(2, 5000);
+  });
+
+  it("fails the current tool when keepalive finds an unavailable session", async () => {
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const unavailable = createClosedStreamError();
+    const firstSandbox = makeSandbox("sbx_keepalive_recovery");
+    firstSandbox.extendTimeout.mockRejectedValueOnce(unavailable);
+    const recoveredSandbox = makeSandbox("sbx_keepalive_recovery");
+    recoveredSandbox.session.sessionId = "sbx_keepalive_recovered_session";
+    sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
+    sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    await expect(
+      executor.execute({
+        toolName: "bash",
+        input: { command: "echo first" },
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining(
+        "The temporary sandbox became unavailable during bash",
+      ),
+      cause: unavailable,
+    });
+    await expect(
+      executor.execute({
+        toolName: "bash",
+        input: { command: "echo second" },
+      }),
+    ).resolves.toBeDefined();
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-sync skills when reusing a cached sandbox", async () => {

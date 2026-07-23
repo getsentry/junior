@@ -12,13 +12,13 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { listReferenceFiles } from "@/chat/discovery";
 import type { LogContext } from "@/chat/logging";
-import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
+import { writeSandboxGeneratedArtifacts } from "@/chat/tools/sandbox/generated-artifacts";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 
 export interface AgentSandboxOptions {

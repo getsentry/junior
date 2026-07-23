@@ -1,6 +1,6 @@
 import type { FileUpload } from "chat";
 import { describe, expect, it } from "vitest";
-import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
+import { writeSandboxGeneratedArtifacts } from "@/chat/tools/sandbox/generated-artifacts";
 import { SANDBOX_ARTIFACTS_DIR } from "@/chat/tools/sandbox/file-uploads";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 

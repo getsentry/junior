@@ -180,6 +180,7 @@ export function createSandboxRuntime(
 ): SandboxRuntime {
   let activeSandbox: ActiveSandbox | null = null;
   let sandboxRef = options.sandboxRef;
+  let reportedSandboxRef = options.sandboxRef;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: Promise<SandboxSession> | undefined;
@@ -235,14 +236,15 @@ export function createSandboxRuntime(
       id: nextSandbox.sandboxId,
       ...(dependencyProfileHash ? { profileHash: dependencyProfileHash } : {}),
     };
+    sandboxRef = nextRef;
     if (
-      sandboxRef?.id === nextRef.id &&
-      sandboxRef.profileHash === nextRef.profileHash
+      reportedSandboxRef?.id === nextRef.id &&
+      reportedSandboxRef.profileHash === nextRef.profileHash
     ) {
       return;
     }
-    sandboxRef = nextRef;
     await options.onSandboxRefChanged?.(nextRef);
+    reportedSandboxRef = nextRef;
   };
 
   const rememberSandbox = (
@@ -570,6 +572,7 @@ export function createSandboxRuntime(
 
     let networkPolicyKey: string | undefined;
     try {
+      await reportSandboxRef(hintedSandbox);
       networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
       return rememberSandbox(hintedSandbox, networkPolicyKey);
@@ -677,8 +680,11 @@ export function createSandboxRuntime(
           await activeSandbox.extendTimeout(keepAliveMs);
         },
       );
-    } catch {
-      // Best effort keepalive.
+    } catch (error) {
+      if (isSandboxUnavailableError(error)) {
+        throw error;
+      }
+      // Non-lifecycle keepalive failures are best effort.
     }
   };
 
