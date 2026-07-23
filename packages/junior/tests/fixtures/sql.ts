@@ -47,7 +47,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
     transaction: (callback) => fixture.transaction(callback),
     withLock: (lockName, callback) => fixture.withLock(lockName, callback),
     withMigrationLock: (migrationTable, callback) =>
-      fixture.withLock(`junior:migrate:${migrationTable}`, callback),
+      fixture.withMigrationLock(`junior:migrate:${migrationTable}`, callback),
   };
 
   return {
