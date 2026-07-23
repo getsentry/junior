@@ -630,6 +630,7 @@ describe("createApp plugin config", () => {
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
       createDashboardApp: undefined,
+      functionMaxDurationSeconds: undefined,
       dashboard: undefined,
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -781,6 +782,7 @@ describe("createApp plugin config", () => {
     );
     vi.doMock("#junior/config", () => ({
       createDashboardApp,
+      functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
         allowedGoogleDomains: ["sentry.io"],
@@ -890,6 +892,7 @@ describe("createApp plugin config", () => {
       createDashboardApp: vi.fn((_options: unknown) => ({
         fetch: () => new Response("dashboard"),
       })),
+      functionMaxDurationSeconds: undefined,
       dashboard: undefined,
       pluginSet: defineJuniorPlugins([]),
       plugins: undefined,

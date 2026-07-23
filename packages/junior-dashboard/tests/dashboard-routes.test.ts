@@ -60,6 +60,7 @@ function dashboard(session: DashboardSession | null) {
 function mockDashboardVirtualConfig() {
   vi.doMock("#junior/config", () => ({
     createDashboardApp,
+    functionMaxDurationSeconds: undefined,
     dashboard: undefined,
     pluginRuntimeRegistrations: [],
     pluginSet: undefined,

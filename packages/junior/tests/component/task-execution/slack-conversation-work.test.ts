@@ -65,6 +65,7 @@ interface ProcessQueuedSlackWorkArgs {
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
   resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
+  softYieldAfterMs?: number;
   runtime: SlackWorkerOptions["runtime"];
   state: StateAdapter;
 }
@@ -73,6 +74,7 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
   return processConversationQueueMessage(args.queue.takeMessage(), {
     nowMs: args.nowMs,
     queue: args.queue,
+    softYieldAfterMs: args.softYieldAfterMs,
     run: createSlackConversationWorker({
       getSlackAdapter: args.getSlackAdapter,
       lookupSlackUser: args.lookupSlackUser,
@@ -1862,6 +1864,7 @@ describe("Slack conversation work execution", () => {
         getSlackAdapter: () => slackAdapter,
         nowMs: () => currentNowMs,
         queue,
+        softYieldAfterMs: 240_000,
         runtime: slackRuntime,
         state,
       }),

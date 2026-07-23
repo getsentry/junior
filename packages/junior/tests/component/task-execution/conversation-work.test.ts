@@ -1608,6 +1608,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
+        softYieldAfterMs: 240_000,
         run: async (context) => {
           await context.attempt.drain(async () => {});
           currentNowMs = 242_000;
