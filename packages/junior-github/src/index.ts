@@ -30,8 +30,9 @@ import {
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
-import { buildGitHubOutcomeReport } from "./pull-request-outcomes/report.js";
-import type { GitHubDb } from "./pull-request-outcomes/store.js";
+import type { GitHubDb } from "./db/database.js";
+import { buildGitHubOutcomeReport } from "./outcomes/report.js";
+import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 
 export type { GitHubAppPermissionLevel } from "./permissions.js";
 
@@ -150,13 +151,13 @@ type InstallationCredentialOptions = InstallationCredentialBaseOptions &
   (
     | {
         loadPermissions?: never;
-        permissions?: never;
+        permissions?: GitHubAppPermissions;
         repositories: string[];
         repositoryIds?: never;
       }
     | {
         loadPermissions?: never;
-        permissions?: never;
+        permissions?: GitHubAppPermissions;
         repositories?: never;
         repositoryIds: number[];
       }
@@ -1149,9 +1150,10 @@ async function issueUserCredential(
   return credentialNeeded("Your GitHub authorization has expired.", scope);
 }
 
-async function issueInstallationCredential(
+/** Issue a bounded raw token for plugin-owned GitHub API calls. */
+async function issueInstallationToken(
   options: InstallationCredentialOptions,
-): Promise<PluginCredentialResult> {
+): Promise<{ expiresAtMs: number; token: string }> {
   const appId = requireEnv(options.appIdEnv);
   const installationIdRaw = requireEnv(options.installationIdEnv);
   const installationId = Number(installationIdRaw);
@@ -1160,17 +1162,21 @@ async function issueInstallationCredential(
   }
 
   const appJwt = createAppJwt(appId, options.privateKeyEnv);
-  const body =
-    "repositories" in options
+  const permissions =
+    "permissions" in options
+      ? options.permissions
+      : typeof options.loadPermissions === "function"
+        ? await options.loadPermissions({ appJwt, installationId })
+        : undefined;
+  const body = {
+    ...(permissions ? { permissions } : {}),
+    ...("repositories" in options
       ? { repositories: options.repositories }
-      : "repositoryIds" in options
-        ? { repository_ids: options.repositoryIds }
-        : {
-            permissions:
-              "permissions" in options
-                ? options.permissions
-                : await options.loadPermissions({ appJwt, installationId }),
-          };
+      : {}),
+    ...("repositoryIds" in options
+      ? { repository_ids: options.repositoryIds }
+      : {}),
+  };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
     `/app/installations/${installationId}/access_tokens`,
@@ -1181,14 +1187,20 @@ async function issueInstallationCredential(
     },
   );
   const parsedToken = parseInstallationTokenResponse(accessTokenResponse);
-  const expiresAtMs = Math.min(
-    parsedToken.expiresAtMs,
-    Date.now() + MAX_LEASE_MS,
-  );
+  return {
+    expiresAtMs: Math.min(parsedToken.expiresAtMs, Date.now() + MAX_LEASE_MS),
+    token: parsedToken.token,
+  };
+}
+
+async function issueInstallationCredential(
+  options: InstallationCredentialOptions,
+): Promise<PluginCredentialResult> {
+  const token = await issueInstallationToken(options);
   return createCredentialLease({
     ...(options.domains ? { domains: options.domains } : {}),
-    token: parsedToken.token,
-    expiresAtMs,
+    token: token.token,
+    expiresAtMs: token.expiresAtMs,
   });
 }
 
@@ -1794,7 +1806,35 @@ export function githubPlugin(
         return [
           createGitHubWebhookRoute({
             botEmail: () => readEnv(botEmailEnv),
+            classifyPullRequestCommits: async ({
+              number,
+              repositoryFullName,
+            }) => {
+              const [owner, name, ...extra] = repositoryFullName.split("/");
+              if (!owner || !name || extra.length > 0) {
+                throw new Error(
+                  "GitHub pull request commit classification received an invalid repository name",
+                );
+              }
+              const token = await issueInstallationToken({
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                permissions: { pull_requests: "read" },
+                repositories: [name],
+              });
+              return await classifyGitHubPullRequestCommitComposition({
+                botEmail: requireEnv(botEmailEnv),
+                loadPage: async (page, perPage) =>
+                  await githubRequest(
+                    "https://api.github.com",
+                    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${number}/commits?per_page=${perPage}&page=${page}`,
+                    { token: token.token },
+                  ),
+              });
+            },
             db: ctx.db as GitHubDb,
+            log: ctx.log,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),

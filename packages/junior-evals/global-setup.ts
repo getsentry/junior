@@ -7,6 +7,8 @@ import {
 import { mswServer } from "@junior-tests/msw/server";
 import {
   interceptTestHttp,
+  readTestEvalOAuthIdentityRequests,
+  resetTestEvalOAuthHttpFixtures,
   resetTestGitHubHttpFixtures,
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -81,10 +83,12 @@ export default async function setup(
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
+        evalOAuthIdentityRequests: readTestEvalOAuthIdentityRequests(),
         evalOAuthRefreshTokens: readEvalOAuthRefreshTokens(),
       }),
       resetFixtures: () => {
         resetEvalOAuthMockState();
+        resetTestEvalOAuthHttpFixtures();
         resetTestGitHubHttpFixtures();
       },
     });

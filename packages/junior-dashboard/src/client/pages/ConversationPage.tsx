@@ -6,7 +6,6 @@ import type { ConversationFeed } from "@sentry/junior/api/schema";
 import { useArchiveConversation, useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
-import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -67,11 +66,10 @@ export function ConversationPage(props: {
             <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
               Conversation
             </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="min-w-0">
               <h2 className="m-0 font-display text-2xl font-medium leading-tight tracking-[-0.03em] md:text-[1.75rem]">
                 {conversationDisplayTitle(conversation)}
               </h2>
-              <StatusBadge status={visualStatus} />
             </div>
             <div className="mt-2 break-words font-mono text-[0.68rem] leading-snug text-white/40">
               <ConversationIdentity

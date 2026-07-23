@@ -148,6 +148,7 @@ const runRecordSchema = z
 
 export interface SchedulerStore {
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
+  createTask(task: ScheduledTask): Promise<ScheduledTask>;
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listIncompleteRuns(): Promise<ScheduledRun[]>;
@@ -236,6 +237,13 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+const schedulerTaskIndexSchema = z.array(z.string().min(1));
+
+/** Parse the persisted scheduler task index without repairing malformed state. */
+function parseStringIndex(value: unknown): string[] {
+  return value === undefined ? [] : schedulerTaskIndexSchema.parse(value);
+}
+
 async function withLock<T>(
   state: PluginState,
   key: string,
@@ -250,9 +258,7 @@ async function addToIndex(
   taskId: string,
 ): Promise<void> {
   await withLock(state, indexLockKey(key), async () => {
-    const current = ((await state.get<string[]>(key)) ?? []).filter(
-      (value): value is string => typeof value === "string",
-    );
+    const current = unique(parseStringIndex(await state.get(key)));
     await state.set(key, unique([...current, taskId]), SCHEDULER_RECORD_TTL_MS);
   });
 }
@@ -263,11 +269,7 @@ async function removeFromIndex(
   taskId: string,
 ): Promise<void> {
   await withLock(state, indexLockKey(key), async () => {
-    const current = unique(
-      ((await state.get<string[]>(key)) ?? []).filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
+    const current = unique(parseStringIndex(await state.get(key)));
     const next = current.filter((value) => value !== taskId);
     if (next.length === current.length) {
       return;
@@ -284,10 +286,7 @@ async function getIndex(
   state: PluginReadState,
   key: string,
 ): Promise<string[]> {
-  const values = (await state.get<string[]>(key)) ?? [];
-  return unique(
-    values.filter((value): value is string => typeof value === "string"),
-  );
+  return unique(parseStringIndex(await state.get(key)));
 }
 
 async function clearActiveRun(
@@ -632,6 +631,18 @@ class PluginStateSchedulerStore implements SchedulerStore {
 
   constructor(state: PluginState) {
     this.state = state;
+  }
+
+  async createTask(task: ScheduledTask): Promise<ScheduledTask> {
+    const next = requireStoredTask(task);
+    return await withLock(this.state, taskLockKey(task.id), async () => {
+      const current = await getTaskFromState(this.state, task.id);
+      if (current) {
+        return current;
+      }
+      await this.saveTaskRecord(next, undefined);
+      return next;
+    });
   }
 
   async saveTask(task: ScheduledTask): Promise<void> {
@@ -1254,6 +1265,18 @@ async function listIncompleteRunsForTasksFromSql(
 
 class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   constructor(private readonly db: SchedulerDb) {}
+
+  async createTask(task: ScheduledTask): Promise<ScheduledTask> {
+    const next = requireStoredTask(task);
+    return await withSqlLock(this.db, taskLockKey(task.id), async (db) => {
+      const current = await getTaskFromSql(db, task.id);
+      if (current) {
+        return current;
+      }
+      await this.saveTaskRecord(db, next, undefined);
+      return next;
+    });
+  }
 
   async saveTask(task: ScheduledTask): Promise<void> {
     const next = requireStoredTask(task);

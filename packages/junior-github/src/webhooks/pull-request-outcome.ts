@@ -1,41 +1,122 @@
 import { z } from "zod";
-import { GITHUB_SESSION_FOOTER_START } from "../tools/footer.js";
-import type { GitHubPullRequestOutcomeInput } from "../pull-request-outcomes/store.js";
+import {
+  GITHUB_SESSION_FOOTER_START,
+  githubConversationIds,
+} from "../tools/footer.js";
+import type {
+  GitHubPullRequestConversationsInput,
+  GitHubPullRequestOutcomeInput,
+} from "../pull-request-outcomes/store.js";
+import { botLoginFromEmail } from "./ownership.js";
 
-const pullRequestOutcomeSchema = z.object({
-  action: z.enum(["opened", "closed", "reopened"]),
-  pull_request: z.object({
-    body: z.string().nullable().optional(),
-    closed_at: z.string().nullable().optional(),
-    created_at: z.string(),
-    id: z.number().int().positive(),
-    merged: z.boolean(),
-    merged_at: z.string().nullable().optional(),
-    number: z.number().int().positive(),
-    updated_at: z.string(),
-    user: z.object({ login: z.string().min(1) }),
-  }),
-  repository: z.object({
-    full_name: z.string().min(1),
-    id: z.number().int().positive(),
-  }),
-});
+const canonicalPullRequestOutcomeSchema = z
+  .object({
+    action: z.enum(["opened", "closed", "reopened"]),
+    pull_request: z
+      .object({
+        body: z.string().nullable().optional(),
+        closed_at: z.string().nullable().optional(),
+        created_at: z.string(),
+        id: z.number().int().positive(),
+        merged: z.boolean(),
+        merged_at: z.string().nullable().optional(),
+        number: z.number().int().positive(),
+        updated_at: z.string(),
+        user: z.object({ login: z.string().min(1) }).strict(),
+      })
+      .strict(),
+    repository: z
+      .object({
+        full_name: z.string().min(1),
+        id: z.number().int().positive(),
+      })
+      .strict(),
+  })
+  .strict();
 
-const pullRequestLifecycleActionSchema = z.object({ action: z.string() });
-const GITHUB_NOREPLY_DOMAIN = "users.noreply.github.com";
+const pullRequestOutcomeSchema = z
+  .object({
+    action: z.enum(["opened", "closed", "reopened"]),
+    pull_request: z
+      .object({
+        body: z.string().nullable().optional(),
+        closed_at: z.string().nullable().optional(),
+        created_at: z.string(),
+        id: z.number().int().positive(),
+        merged: z.boolean(),
+        merged_at: z.string().nullable().optional(),
+        number: z.number().int().positive(),
+        updated_at: z.string(),
+        user: z.object({ login: z.string().min(1) }).passthrough(),
+      })
+      .passthrough(),
+    repository: z
+      .object({
+        full_name: z.string().min(1),
+        id: z.number().int().positive(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+  .transform((provider) =>
+    canonicalPullRequestOutcomeSchema.parse({
+      action: provider.action,
+      pull_request: {
+        body: provider.pull_request.body,
+        closed_at: provider.pull_request.closed_at,
+        created_at: provider.pull_request.created_at,
+        id: provider.pull_request.id,
+        merged: provider.pull_request.merged,
+        merged_at: provider.pull_request.merged_at,
+        number: provider.pull_request.number,
+        updated_at: provider.pull_request.updated_at,
+        user: { login: provider.pull_request.user.login },
+      },
+      repository: {
+        full_name: provider.repository.full_name,
+        id: provider.repository.id,
+      },
+    }),
+  );
 
-/** Derive the provider login encoded in a standard GitHub noreply address. */
-function botLoginFromEmail(value: string | undefined): string | undefined {
-  const email = value?.trim();
-  if (!email) return undefined;
-  const separator = email.lastIndexOf("@");
-  if (separator <= 0) return undefined;
-  const domain = email.slice(separator + 1).toLowerCase();
-  if (domain !== GITHUB_NOREPLY_DOMAIN) return undefined;
-  const localPart = email.slice(0, separator);
-  const login = localPart.slice(localPart.indexOf("+") + 1).trim();
-  return login.toLowerCase().endsWith("[bot]") ? login : undefined;
-}
+const pullRequestLifecycleActionSchema = z
+  .object({ action: z.string() })
+  .passthrough();
+const canonicalPullRequestConversationSchema = z
+  .object({
+    pull_request: z
+      .object({
+        body: z.string().nullable().optional(),
+        id: z.number().int().positive(),
+        user: z.object({ login: z.string().min(1) }).strict(),
+      })
+      .strict(),
+    sender: z.object({ login: z.string().min(1) }).strict(),
+  })
+  .strict();
+
+const pullRequestConversationSchema = z
+  .object({
+    pull_request: z
+      .object({
+        body: z.string().nullable().optional(),
+        id: z.number().int().positive(),
+        user: z.object({ login: z.string().min(1) }).passthrough(),
+      })
+      .passthrough(),
+    sender: z.object({ login: z.string().min(1) }).passthrough(),
+  })
+  .passthrough()
+  .transform((provider) =>
+    canonicalPullRequestConversationSchema.parse({
+      pull_request: {
+        body: provider.pull_request.body,
+        id: provider.pull_request.id,
+        user: { login: provider.pull_request.user.login },
+      },
+      sender: { login: provider.sender.login },
+    }),
+  );
 
 /** Parse a provider timestamp, rejecting missing or invalid lifecycle values. */
 function timestamp(value: string | null | undefined): Date | undefined {
@@ -104,4 +185,27 @@ export function normalizeGitHubPullRequestOutcome(args: {
     state,
     updatedAt,
   };
+}
+
+/** Normalize native conversation ids written to a Junior-owned PR by its bot. */
+export function normalizeGitHubPullRequestConversations(args: {
+  body: unknown;
+  botEmail?: string;
+}): GitHubPullRequestConversationsInput | undefined {
+  const parsed = pullRequestConversationSchema.safeParse(args.body);
+  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
+  if (!parsed.success || !botLogin) return undefined;
+  if (
+    parsed.data.pull_request.user.login.trim().toLowerCase() !== botLogin ||
+    parsed.data.sender.login.trim().toLowerCase() !== botLogin
+  ) {
+    return undefined;
+  }
+  const conversationIds = githubConversationIds(parsed.data.pull_request.body);
+  return conversationIds.length > 0
+    ? {
+        conversationIds,
+        pullRequestId: String(parsed.data.pull_request.id),
+      }
+    : undefined;
 }

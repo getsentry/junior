@@ -8,6 +8,7 @@ import {
 import { getSlackClient } from "@/chat/slack/client";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
+  appendAndEnqueueInboundMessage,
   appendInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
@@ -150,6 +151,209 @@ describe("Slack conversation work execution", () => {
         }),
       }),
     ]);
+  });
+
+  it("delivers attachment-only Slack messages through the durable mailbox", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const message = new Message({
+      id: "1712345.0002",
+      threadId: CONVERSATION_ID,
+      text: "",
+      attachments: [
+        {
+          type: "image",
+          url: "https://example.com/attachment-only.png",
+        },
+      ],
+      metadata: { dateSent: new Date(1_000), edited: false },
+      formatted: {
+        type: "root",
+        children: [
+          {
+            type: "paragraph",
+            children: [
+              {
+                type: "link",
+                url: "https://example.com",
+                children: [{ type: "text", value: "attachment" }],
+              },
+            ],
+          },
+          {
+            type: "list",
+            children: [
+              {
+                type: "listItem",
+                children: [
+                  {
+                    type: "paragraph",
+                    children: [{ type: "text", value: "image" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      raw: {
+        channel: "C123",
+        thread_ts: "1712345.0001",
+        ts: "1712345.0002",
+        user: "U123",
+      },
+      author: {
+        userId: "U123",
+        userName: "dcramer",
+        fullName: "David Cramer",
+        isBot: false,
+        isMe: false,
+      },
+    });
+    const thread = new ThreadImpl({
+      adapter: slackAdapter,
+      stateAdapter: state,
+      id: CONVERSATION_ID,
+      channelId: "C123",
+      currentMessage: message,
+      initialMessage: message,
+      isDM: false,
+    });
+    const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
+      expect(restored.text).toBe("");
+      expect(restored.attachments).toHaveLength(1);
+      expect(restored.formatted.children).toHaveLength(2);
+      await hooks.ack?.();
+    });
+
+    await appendAndEnqueueInboundMessage({
+      message: buildSlackInboundMessage({
+        conversationId: CONVERSATION_ID,
+        installation: { teamId: "T123" },
+        message,
+        receivedAtMs: 1_100,
+        route: "mention",
+        thread,
+      }),
+      nowMs: 1_100,
+      queue,
+      state,
+    });
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        lookupSlackUser: async () => ({
+          email: "david@example.com",
+          fullName: "David Cramer",
+          userName: "dcramer",
+        }),
+        queue,
+        runtime: {
+          handleNewMention,
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(handleNewMention).toHaveBeenCalledOnce();
+  });
+
+  it("rejects malformed serialized Slack mailbox metadata", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const malformed = {
+      ...conversationQueueMessage(),
+      inboundMessageId: "malformed-slack-metadata",
+      source: "slack" as const,
+      createdAtMs: 1_000,
+      receivedAtMs: 1_100,
+      input: {
+        text: "hello",
+        authorId: "U123",
+        metadata: {
+          platform: "slack",
+          route: "mention",
+          message: {
+            _type: "chat:Message",
+            attachments: [],
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+              fullName: "David Cramer",
+              isBot: false,
+              isMe: false,
+            },
+            formatted: {
+              type: "root",
+              children: [
+                {
+                  type: "paragraph",
+                  children: [
+                    {
+                      type: "table",
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+            id: "1712345.0002",
+            metadata: {
+              dateSent: "2026-07-22T12:00:00.000Z",
+              edited: false,
+            },
+            raw: {},
+            text: "hello",
+            threadId: CONVERSATION_ID,
+          },
+          thread: {
+            _type: "chat:Thread",
+            adapterName: "slack",
+            channelId: "C123",
+            id: CONVERSATION_ID,
+            isDM: false,
+          },
+        },
+      },
+    };
+    const worker = createSlackConversationWorker({
+      getSlackAdapter: () => slackAdapter,
+      resumeAwaitingContinuation: async () => false,
+      runtime: {
+        handleNewMention: async () => {
+          throw new Error("malformed metadata must not reach the runtime");
+        },
+        handleSubscribedMessage: async () => {
+          throw new Error("malformed metadata must not reach the runtime");
+        },
+      },
+      state,
+    });
+
+    await expect(
+      worker({
+        attempt: {
+          ack: async () => {},
+          conversationId: CONVERSATION_ID,
+          destination: SLACK_DESTINATION,
+          drain: async () => [],
+          isFinalAttempt: false,
+          messages: [malformed],
+        },
+        checkIn: async () => true,
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        shouldYield: () => false,
+      }),
+    ).rejects.toThrow(
+      "Latest conversation mailbox record is not Slack metadata",
+    );
   });
 
   it("routes resource-event mailbox records without Slack actor lookup", async () => {

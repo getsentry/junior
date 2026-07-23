@@ -109,7 +109,8 @@ export function buildSandboxEgressNetworkPolicy(input?: {
     : undefined;
   const domains = new Map<string, { forward: boolean }>();
   // Provider domains are proxied for credentials; configured trace-only domains
-  // get transform-only rules so wildcard trace configs are not limited to plugins.
+  // get transform rules so wildcard trace configs are not limited to plugins.
+  // Vercel policy rules make forwarding and transforms mutually exclusive.
   if (forwardURL) {
     for (const entry of entries) {
       for (const domain of entry.domains) {
@@ -130,14 +131,11 @@ export function buildSandboxEgressNetworkPolicy(input?: {
       domain,
       input?.traceConfig,
     );
-    allow[domain] = [
-      {
-        ...(shouldPropagateTrace && hasTraceHeaders
-          ? { transform: [{ headers: traceHeaders }] }
-          : {}),
-        ...(policy.forward && forwardURL ? { forwardURL } : {}),
-      },
-    ];
+    if (policy.forward && forwardURL) {
+      allow[domain] = [{ forwardURL }];
+    } else if (shouldPropagateTrace && hasTraceHeaders) {
+      allow[domain] = [{ transform: [{ headers: traceHeaders }] }];
+    }
   }
 
   return { allow };

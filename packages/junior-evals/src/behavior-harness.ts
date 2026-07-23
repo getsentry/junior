@@ -532,22 +532,6 @@ function toEvalToolInvocation(input: {
     ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
   };
 
-  if (input.toolName.startsWith("slackSchedule")) {
-    invocation.arguments = Object.fromEntries(
-      [
-        "task_id",
-        "task",
-        "schedule",
-        "timezone",
-        "next_run_at",
-        "recurrence",
-        "status",
-      ]
-        .filter((key) => key in input.params)
-        .map((key) => [key, input.params[key]]),
-    );
-  }
-
   if (input.toolName === "bash" && typeof input.params.command === "string") {
     invocation.bash_command = input.params.command.trim();
   }

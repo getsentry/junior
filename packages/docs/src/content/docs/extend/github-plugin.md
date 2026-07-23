@@ -46,23 +46,23 @@ You can optionally declare `appPermissions` when registering the plugin. Junior 
 
 Set these values in the host environment:
 
-| Variable                   | Required | Purpose                                                          |
-| -------------------------- | -------- | ---------------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                             |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                  |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.              |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                          |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                  |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                           |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and PR ownership. |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for PR watches and outcome reporting.     |
+| Variable                   | Required | Purpose                                                            |
+| -------------------------- | -------- | ------------------------------------------------------------------ |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                               |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                    |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                            |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                    |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                             |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership. |
+| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for PR watches and outcome reporting.       |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
 `GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
 `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user id
 from `https://api.github.com/users/<app-slug>%5Bbot%5D`. Junior derives the
-App bot login after the `+` when classifying pull requests for outcome
-reporting.
+App bot login after the `+` when classifying pull requests and issues for
+outcome reporting.
 
 Vercel example:
 
@@ -86,8 +86,8 @@ from the deployed app environment:
 pnpm exec junior upgrade
 ```
 
-This creates the `junior_github_pull_requests` projection used by webhook
-ingestion and the `/system` outcome report.
+This creates the `junior_github_pull_requests` and `junior_github_issues`
+projections used by webhook ingestion and the `/system` outcome report.
 
 ## Create the GitHub App
 
@@ -103,7 +103,7 @@ Create and install a GitHub App before you verify GitHub workflows:
    - Pull requests: Read and write
    - Workflows: Write
    - Metadata: Read
-4. If Junior should watch pull requests or report their outcomes, enable webhooks and set the webhook URL to:
+4. If Junior should watch pull requests or report pull request and issue outcomes, enable webhooks and set the webhook URL to:
 
    ```text
    https://<your-domain>/api/webhooks/github
@@ -111,6 +111,7 @@ Create and install a GitHub App before you verify GitHub workflows:
 
 5. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`, then subscribe the app to these repository events:
    - Check suite
+   - Issues
    - Issue comment
    - Pull request
    - Pull request review
@@ -149,18 +150,35 @@ Supported GitHub webhook deliveries become these Junior resource events:
 
 Webhook events are delivered as normal queued conversation messages. They do not interrupt active work, bypass Slack routing, or act as user-authored commands. Junior uses the subscription intent to decide whether to reply, take a follow-up action, or stay silent.
 
-The GitHub plugin classifies a pull request as Junior-owned on its signed
-`opened` event when the author matches the bot login derived from
+The GitHub plugin classifies a pull request or issue as Junior-owned on its
+signed `opened` event when the author matches the bot login derived from
 `GITHUB_APP_BOT_EMAIL` and the opening body contains Junior's session footer.
 It keeps tracking that projection through later lifecycle events even if the
-body changes. The `/system` dashboard reports created, merged, closed-unmerged,
-merge-rate, and time-to-merge summaries for 7-, 30-, and 90-day windows, plus
-the current open count. This reporting is independent of conversation
-subscriptions and never stores pull request bodies.
+body changes. The `/system` dashboard reports pull request creation, merge,
+closure, merge-rate, and time-to-merge summaries alongside issue creation,
+closure, open-count, and time-to-close summaries for 7-, 30-, and 90-day
+windows. This reporting is independent of conversation subscriptions and never
+stores pull request or issue bodies.
+
+When a tracked pull request merges, Junior reads its commit list with the
+GitHub App installation credential. A merged pull request is `Junior-only` when
+every commit's Git author matches the configured bot login or bot email. If any
+commit has another author, the report classifies the pull request as `mixed`.
+Older records, empty commit lists, and lookups that fail remain `unknown`; the
+pull request outcome is still recorded. The headline Junior-only merge rate
+excludes unknown records. Junior stores only that classification, not commit
+SHAs, author identities, or email addresses.
+
+The pull request projection also keeps the native Junior conversation ids from
+bot-written session footers in a deduplicated `text[]`. These are opaque
+association values, not foreign keys, and later bot-authored footer updates add
+to the array without removing earlier ids. Junior does not store conversation
+content in the GitHub projection.
 
 If GitHub delivers a terminal event before its opening event, the plugin can
 establish the same ownership from the bot-and-footer marker on that terminal
-payload. A later stale opening event cannot regress the recorded outcome.
+payload. This recovery applies to both pull requests and issues. A later stale
+opening event cannot regress the recorded outcome.
 
 ## Verify
 
@@ -176,6 +194,7 @@ Then confirm:
 2. The author is the GitHub App bot, and the body includes `Requested by` attribution for the verified runtime actor.
 3. A follow-up GitHub request can update or comment on the same issue without asking the user to authorize GitHub or handle tokens manually.
 4. A pushed branch can be turned into a draft PR with `github_createPullRequest` using explicit `repo`, `head`, and `base` values.
+5. After that PR merges, `/system` reports it as a Junior-only or mixed merge.
 
 For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch. The App installation requires `Contents: write`; grant it `Workflows: write` when Junior may change files under `.github/workflows`. Creating the PR after the branch exists is a separate pull-request write operation, but it uses the same repository-scoped write credential.
 
@@ -190,7 +209,7 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 - The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET`.
-- Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request outcome projection.
+- Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request and issue outcome projections.
 - Resource-event turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
 - The write boundary is the App installation scope, the single-repository token scope, and Junior's endpoint allowlist. `appPermissions` declarations do not narrow write tokens.
 

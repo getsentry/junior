@@ -781,6 +781,14 @@ describe("plugin heartbeat", () => {
     );
   });
 
+  it("rejects a malformed persisted dispatch recovery index", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set("junior:agent_dispatch:incomplete", { invalid: true });
+
+    await expect(listIncompleteDispatchIds()).rejects.toThrow("expected array");
+  });
+
   it("does not fail an active leased dispatch that reached max attempts", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",

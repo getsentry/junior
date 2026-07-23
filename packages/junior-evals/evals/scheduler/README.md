@@ -3,6 +3,7 @@
 Scheduler evals cover agent-facing scheduled task behavior:
 
 - creating clear one-off reminders without confirmation
+- emitting structured schedule intent while the scheduler owns exact timestamps
 - preserving executable future work in scheduled task text
 - creating clear recurring work without confirmation
 - enabling creator credentials only after explicit authorization

@@ -9,8 +9,17 @@ Junior's durable agent runtime.
   prompt text, timezone-aware schedule, recurrence, credential mode, status, and
   next-run state.
 - SQL schemas and migrations are authoritative for persistence.
-- Schedule parsing normalizes calendar intent before storage; execution does not
+- Model-facing tools accept structured schedule intent. The scheduler resolves
+  relative delays and calendar fields against its server clock and timezone,
+  computes `nextRunAtMs`, and stores the canonical schedule. Execution does not
   reinterpret the original natural-language request.
+- Relative delays are elapsed durations. Calendar schedules use local wall-clock
+  time: nonexistent recurring times are skipped, nonexistent one-off times are
+  rejected, and repeated times use their first instant.
+- Multi-week recurrences use Monday-based calendar weeks; `startDate` is the
+  lower bound and its containing week is the first active week.
+- Create tool-call identities produce stable task ids so retrying one committed
+  tool invocation returns the existing task instead of duplicating it.
 - Updates and deletion invalidate obsolete pending run times.
 
 ## Dispatch

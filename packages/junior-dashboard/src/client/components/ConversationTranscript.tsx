@@ -29,7 +29,6 @@ import type {
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
-import { StatusBadge } from "./StatusBadge";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -224,17 +223,12 @@ function TranscriptMessageHeader(props: {
 }
 
 function SegmentHeader(props: { conversation: ConversationTranscript }) {
-  const status = visualStatusForSummary(props.conversation);
-
   return (
-    <div className="flex items-start justify-between gap-3 max-md:flex-col">
-      <div className="min-w-0">
-        <MetricList
-          className={mutedTranscriptMetaClass()}
-          items={transcriptMeta(props.conversation)}
-        />
-      </div>
-      <StatusBadge status={status} />
+    <div className="min-w-0">
+      <MetricList
+        className={mutedTranscriptMetaClass()}
+        items={transcriptMeta(props.conversation)}
+      />
     </div>
   );
 }

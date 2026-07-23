@@ -310,16 +310,17 @@ function normalizeInput(value: unknown): AgentInput | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const text = toOptionalString(value.text);
-  if (!text) {
+  const text = typeof value.text === "string" ? value.text : undefined;
+  const attachments = Array.isArray(value.attachments)
+    ? [...value.attachments]
+    : undefined;
+  if (text === undefined || (!text.trim() && !attachments?.length)) {
     return undefined;
   }
   return {
     text,
     authorId: toOptionalString(value.authorId),
-    attachments: Array.isArray(value.attachments)
-      ? [...value.attachments]
-      : undefined,
+    attachments,
     metadata: normalizeMetadata(value.metadata),
   };
 }
