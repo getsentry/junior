@@ -150,6 +150,19 @@ describe("dashboard canonical-event components", () => {
     );
   });
 
+  it("preserves snake_case identifiers while rendering emphasis", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown text="some_var_name and *italic text*" />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html).toContain("some_var_name");
+    expect(html).not.toContain("some<em");
+    expect(html).toContain("<em");
+    expect(html).toContain("italic text");
+  });
+
   it("renders labeled event sections followed by semantic lists", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">

@@ -227,7 +227,7 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
   if (!text) return [];
 
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*|__)(.+?)\1|(\*|_)([^*_]+?)\3/g;
+  const pattern = /(\*\*|__)(.+?)\1|\*([^*]+?)\*/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
   let part = 0;
@@ -248,7 +248,7 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
         </strong>
       ) : (
         <em className="italic text-white/95" key={`${keyBase}-i-${part++}`}>
-          <HighlightText text={match[4] ?? ""} />
+          <HighlightText text={match[3] ?? ""} />
         </em>
       ),
     );
