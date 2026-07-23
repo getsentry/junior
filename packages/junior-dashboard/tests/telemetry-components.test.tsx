@@ -941,6 +941,43 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('width="2"');
   });
 
+  it("renders daily chart ranges using the default 30-day bucket view", () => {
+    const categories = Array.from({ length: 90 }, (_, index) => {
+      const date = new Date("2026-05-03T00:00:00.000Z");
+      date.setUTCDate(date.getUTCDate() + index);
+      const label = date.toISOString().slice(0, 10);
+      return {
+        id: label,
+        label,
+        values: { created: index },
+      };
+    });
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories,
+                id: "daily-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                timeRangeDays: [7, 30, 90],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('aria-label="2026-07-31, Created: 89"');
+    expect(html).not.toContain('aria-label="2026-05-03, Created: 0"');
+    expect(html).toContain("7d");
+    expect(html).toContain("30d");
+    expect(html).toContain("90d");
+  });
+
   it("renders an all-zero chart with a stable zero scale", () => {
     const html = renderToStaticMarkup(
       <PluginReports

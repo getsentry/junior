@@ -897,6 +897,12 @@ function sanitizeOperationalReport(args: {
       if (emptyText) {
         sanitizedWidget.emptyText = emptyText;
       }
+      const timeRangeDays = widget.timeRangeDays?.filter(
+        (days): days is 7 | 30 | 90 => days === 7 || days === 30 || days === 90,
+      );
+      if (timeRangeDays?.length) {
+        sanitizedWidget.timeRangeDays = [...new Set(timeRangeDays)];
+      }
       return sanitizedWidget;
     })
     .filter((widget): widget is NonNullable<typeof widget> => Boolean(widget));

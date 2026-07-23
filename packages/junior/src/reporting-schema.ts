@@ -116,6 +116,11 @@ const pluginOperationalBarChartWidgetSchema = z
       )
       .min(1)
       .max(8),
+    timeRangeDays: z
+      .array(z.union([z.literal(7), z.literal(30), z.literal(90)]))
+      .min(1)
+      .max(3)
+      .optional(),
     title: z.string().min(1),
     type: z.literal("bar_chart"),
   })

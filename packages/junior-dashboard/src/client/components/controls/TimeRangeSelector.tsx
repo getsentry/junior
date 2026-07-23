@@ -5,6 +5,7 @@ export type TimeRangeDays = 7 | 30 | 90;
 /** Select a fixed reporting window without hiding the active range. */
 export function TimeRangeSelector(props: {
   onChange(value: TimeRangeDays): void;
+  options?: TimeRangeDays[];
   value: TimeRangeDays;
 }) {
   return (
@@ -13,7 +14,7 @@ export function TimeRangeSelector(props: {
       className="flex items-center gap-1"
       role="group"
     >
-      {([7, 30, 90] as const).map((days) => (
+      {(props.options ?? [7, 30, 90]).map((days) => (
         <button
           aria-pressed={props.value === days}
           className={cn(

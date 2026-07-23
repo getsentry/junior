@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
+import { TimeRangeSelector } from "./controls/TimeRangeSelector";
 import { Tooltip } from "./Tooltip";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -14,16 +16,24 @@ const toneColors = {
 
 /** Render a validated plugin-owned categorical bar chart. */
 export function PluginBarChart({ widget }: { widget: Widget }) {
+  const availableRanges = widget.timeRangeDays;
+  const defaultRange = availableRanges?.includes(30)
+    ? 30
+    : (availableRanges?.[0] ?? 30);
+  const [range, setRange] = useState<7 | 30 | 90>(defaultRange);
+  const categories = availableRanges
+    ? widget.categories.slice(-range)
+    : widget.categories;
   const width = 520;
   const height = 250;
   const left = 42;
   const top = 16;
   const bottom = 36;
   const plotHeight = height - top - bottom;
-  const step = (width - left - 12) / widget.categories.length;
+  const step = (width - left - 12) / categories.length;
   const groupWidth = Math.min(72, step * 0.72);
   const barWidth = groupWidth / widget.series.length;
-  const values = widget.categories.flatMap((category) =>
+  const values = categories.flatMap((category) =>
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
   const minimum = Math.min(0, ...values);
@@ -35,9 +45,18 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
   return (
     <div className="overflow-hidden rounded border border-white/[0.07] bg-[#09090b]">
       <div className="border-b border-white/[0.06] px-4 py-3">
-        <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-          {widget.title}
-        </h4>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
+            {widget.title}
+          </h4>
+          {availableRanges ? (
+            <TimeRangeSelector
+              onChange={setRange}
+              options={availableRanges}
+              value={range}
+            />
+          ) : null}
+        </div>
         {widget.description ? (
           <p className="mt-1 mb-0 font-mono text-[0.62rem] text-white/30">
             {widget.description}
@@ -62,7 +81,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
           ))}
         </div>
       </div>
-      {widget.categories.length === 0 ? (
+      {categories.length === 0 ? (
         <p className="m-0 p-4 font-mono text-[0.68rem] text-white/30">
           {widget.emptyText ?? "No chart data."}
         </p>
@@ -98,7 +117,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
               </g>
             );
           })}
-          {widget.categories.flatMap((category, categoryIndex) =>
+          {categories.flatMap((category, categoryIndex) =>
             widget.series.map((series, seriesIndex) => {
               const value = category.values[series.key] ?? 0;
               const renderedHeight = Math.max(
@@ -136,23 +155,42 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
               );
             }),
           )}
-          {widget.categories.map((category, index) => (
-            <text
-              fill="rgba(255,255,255,0.4)"
-              fontFamily="ui-monospace, monospace"
-              fontSize="9"
-              key={category.id}
-              textAnchor="middle"
-              x={left + index * step + step / 2}
-              y={height - 9}
-            >
-              {category.label}
-            </text>
-          ))}
+          {chartLabelIndexes(categories.length).map((index) => {
+            const category = categories[index]!;
+            return (
+              <text
+                fill="rgba(255,255,255,0.4)"
+                fontFamily="ui-monospace, monospace"
+                fontSize="9"
+                key={category.id}
+                textAnchor="middle"
+                x={left + index * step + step / 2}
+                y={height - 9}
+              >
+                {formatCategoryLabel(category.label)}
+              </text>
+            );
+          })}
         </svg>
       )}
     </div>
   );
+}
+
+function chartLabelIndexes(length: number): number[] {
+  return [0, Math.floor((length - 1) / 2), length - 1].filter(
+    (index, position, indexes) =>
+      index >= 0 && indexes.indexOf(index) === position,
+  );
+}
+
+function formatCategoryLabel(label: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
+  return new Date(`${label}T00:00:00.000Z`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function formatChartNumber(value: number): string {

@@ -973,7 +973,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("reports open, merged, and unmerged outcomes across 7/30/90 days", async () => {
+  it("reports daily outcomes with 7/30/90-day chart ranges", async () => {
     const fixture = await createGitHubFixture();
     try {
       const route = webhookRoute(
@@ -1118,19 +1118,18 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "median PR merge time · 30d", value: "90d" },
         { label: "median issue close time · 30d", value: "71d" },
       ]);
-      expect(report.widgets?.[0]?.categories).toEqual([
-        { id: "7d", label: "7d", values: { closed: 0, created: 1, merged: 1 } },
-        {
-          id: "30d",
-          label: "30d",
-          values: { closed: 1, created: 2, merged: 1 },
-        },
-        {
-          id: "90d",
-          label: "90d",
-          values: { closed: 1, created: 3, merged: 1 },
-        },
-      ]);
+      expect(report.widgets?.[0]?.timeRangeDays).toEqual([7, 30, 90]);
+      expect(report.widgets?.[0]?.categories).toHaveLength(90);
+      expect(report.widgets?.[0]?.categories.at(-3)).toEqual({
+        id: "2026-07-29",
+        label: "2026-07-29",
+        values: { closed: 0, created: 1, merged: 0 },
+      });
+      expect(report.widgets?.[0]?.categories.at(-2)).toEqual({
+        id: "2026-07-30",
+        label: "2026-07-30",
+        values: { closed: 0, created: 0, merged: 1 },
+      });
       expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
         closed: "1",
         commitComposition: "1 Junior-only · 0 mixed · 0 unknown",
@@ -1139,12 +1138,14 @@ describe("GitHub-owned pull request outcomes", () => {
         mergeRate: "50%",
         repository: "getsentry/junior",
       });
-      expect(report.widgets?.[1]?.categories?.[1]).toEqual({
-        id: "30d",
-        label: "30d",
+      expect(report.widgets?.[1]?.timeRangeDays).toEqual([7, 30, 90]);
+      expect(report.widgets?.[1]?.categories).toHaveLength(90);
+      expect(report.widgets?.[1]?.categories.at(-12)).toEqual({
+        id: "2026-07-20",
+        label: "2026-07-20",
         values: {
           completed: 0,
-          created: 2,
+          created: 0,
           duplicate: 0,
           notPlanned: 1,
           unknown: 0,

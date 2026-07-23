@@ -65,6 +65,26 @@ const issueStatsSchema = z
     medianCloseTimeMs: row.medianCloseTimeMs ?? undefined,
   }));
 
+const pullRequestDaySchema = z
+  .object({
+    closed: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+    date: z.string().date(),
+    merged: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const issueDaySchema = z
+  .object({
+    closedCompleted: z.number().int().nonnegative(),
+    closedDuplicate: z.number().int().nonnegative(),
+    closedNotPlanned: z.number().int().nonnegative(),
+    closedUnknown: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+    date: z.string().date(),
+  })
+  .strict();
+
 const issueRepositoryStatsSchema = z
   .object({
     closedCompleted: z.number().int().nonnegative(),
@@ -82,6 +102,8 @@ type PullRequestRepositoryStats = z.output<
 >;
 type IssueStats = z.output<typeof issueStatsSchema>;
 type IssueRepositoryStats = z.output<typeof issueRepositoryStatsSchema>;
+type PullRequestDay = z.output<typeof pullRequestDaySchema>;
+type IssueDay = z.output<typeof issueDaySchema>;
 
 function queryRows(result: unknown): unknown[] {
   if (
@@ -174,6 +196,45 @@ async function aggregatePullRequestWindows(args: {
     ORDER BY windows.days
   `);
   return z.array(pullRequestStatsSchema).parse(queryRows(result));
+}
+
+async function aggregatePullRequestDays(args: {
+  db: GitHubDb;
+  nowMs: number;
+}): Promise<PullRequestDay[]> {
+  const end = new Date(args.nowMs);
+  const start = new Date(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
+  const table = juniorGitHubPullRequests;
+  const result = await args.db.execute(sql`
+    WITH days AS (
+      SELECT generate_series(
+        date_trunc('day', ${start}::timestamptz AT TIME ZONE 'UTC'),
+        date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
+        interval '1 day'
+      ) AS day
+    )
+    SELECT
+      to_char(days.day, 'YYYY-MM-DD') AS "date",
+      count(${table.pullRequestId}) FILTER (
+        WHERE (${table.openedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "created",
+      count(${table.pullRequestId}) FILTER (
+        WHERE ${table.state} = 'merged'
+          AND (${table.mergedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "merged",
+      count(${table.pullRequestId}) FILTER (
+        WHERE ${table.state} = 'closed_unmerged'
+          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "closed"
+    FROM days
+    LEFT JOIN ${table} ON
+      ${table.openedAt} >= ${start}
+      OR ${table.mergedAt} >= ${start}
+      OR ${table.closedAt} >= ${start}
+    GROUP BY days.day
+    ORDER BY days.day
+  `);
+  return z.array(pullRequestDaySchema).parse(queryRows(result));
 }
 
 async function aggregatePullRequestRepositories(args: {
@@ -293,6 +354,56 @@ async function aggregateIssueWindows(args: {
   return z.array(issueStatsSchema).parse(queryRows(result));
 }
 
+async function aggregateIssueDays(args: {
+  db: GitHubDb;
+  nowMs: number;
+}): Promise<IssueDay[]> {
+  const end = new Date(args.nowMs);
+  const start = new Date(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
+  const table = juniorGitHubIssues;
+  const result = await args.db.execute(sql`
+    WITH days AS (
+      SELECT generate_series(
+        date_trunc('day', ${start}::timestamptz AT TIME ZONE 'UTC'),
+        date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
+        interval '1 day'
+      ) AS day
+    )
+    SELECT
+      to_char(days.day, 'YYYY-MM-DD') AS "date",
+      count(${table.issueId}) FILTER (
+        WHERE (${table.openedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "created",
+      count(${table.issueId}) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'completed'
+          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "closedCompleted",
+      count(${table.issueId}) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'duplicate'
+          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "closedDuplicate",
+      count(${table.issueId}) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'not_planned'
+          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "closedNotPlanned",
+      count(${table.issueId}) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} IS NULL
+          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
+      )::integer AS "closedUnknown"
+    FROM days
+    LEFT JOIN ${table} ON
+      ${table.openedAt} >= ${start}
+      OR ${table.closedAt} >= ${start}
+    GROUP BY days.day
+    ORDER BY days.day
+  `);
+  return z.array(issueDaySchema).parse(queryRows(result));
+}
+
 async function aggregateIssueRepositories(args: {
   db: GitHubDb;
   nowMs: number;
@@ -359,13 +470,21 @@ export async function buildGitHubOutcomeReport(args: {
   db: GitHubDb;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
-  const [windows, repositories, issueWindows, issueRepositories] =
-    await Promise.all([
-      aggregatePullRequestWindows(args),
-      aggregatePullRequestRepositories(args),
-      aggregateIssueWindows(args),
-      aggregateIssueRepositories(args),
-    ]);
+  const [
+    windows,
+    pullRequestDays,
+    repositories,
+    issueWindows,
+    issueDays,
+    issueRepositories,
+  ] = await Promise.all([
+    aggregatePullRequestWindows(args),
+    aggregatePullRequestDays(args),
+    aggregatePullRequestRepositories(args),
+    aggregateIssueWindows(args),
+    aggregateIssueDays(args),
+    aggregateIssueRepositories(args),
+  ]);
   const thirtyDays = windows.find((window) => window.days === 30)!;
   const issueThirtyDays = issueWindows.find((window) => window.days === 30)!;
 
@@ -395,15 +514,16 @@ export async function buildGitHubOutcomeReport(args: {
         id: "pull-request-outcomes",
         type: "bar_chart",
         title: "Pull request outcomes",
-        description: "Cumulative outcomes across rolling windows",
+        description: "Daily outcomes",
+        timeRangeDays: [...WINDOWS],
         series: [
           { key: "created", label: "Created" },
           { key: "merged", label: "Merged", tone: "good" },
           { key: "closed", label: "Closed unmerged", tone: "danger" },
         ],
-        categories: windows.map((stats) => ({
-          id: `${stats.days}d`,
-          label: `${stats.days}d`,
+        categories: pullRequestDays.map((stats) => ({
+          id: stats.date,
+          label: stats.date,
           values: {
             created: stats.created,
             merged: stats.merged,
@@ -415,7 +535,8 @@ export async function buildGitHubOutcomeReport(args: {
         id: "issue-outcomes",
         type: "bar_chart",
         title: "Issue outcomes",
-        description: "Cumulative outcomes across rolling windows",
+        description: "Daily outcomes",
+        timeRangeDays: [...WINDOWS],
         series: [
           { key: "created", label: "Created" },
           { key: "completed", label: "Completed", tone: "good" },
@@ -423,9 +544,9 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "notPlanned", label: "Not planned", tone: "danger" },
           { key: "unknown", label: "Unknown" },
         ],
-        categories: issueWindows.map((stats) => ({
-          id: `${stats.days}d`,
-          label: `${stats.days}d`,
+        categories: issueDays.map((stats) => ({
+          id: stats.date,
+          label: stats.date,
           values: {
             created: stats.created,
             completed: stats.closedCompleted,
