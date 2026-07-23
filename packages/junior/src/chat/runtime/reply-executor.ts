@@ -583,16 +583,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             providerDisplayName,
           );
           try {
+            await beforeFirstResponsePost();
             if (channelId && threadTs) {
               await sendSlackReply({
-                beforePost: beforeFirstResponsePost,
                 channelId,
                 conversationId,
                 text,
                 threadTs,
               });
             } else {
-              await beforeFirstResponsePost();
               await thread.post(buildSlackOutputMessage(text));
             }
           } catch (error) {
@@ -1014,10 +1013,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           boundaryFailureCode = "delivery_failed";
           let slackTs: string | undefined;
+          // Prep runs outside the post try/catch so non-Slack failures are not
+          // classified as retryable delivery errors.
+          await beforeFirstResponsePost();
           try {
             if (channelId && threadTs && thread.adapter.name === "slack") {
               slackTs = await sendSlackReply({
-                beforePost: beforeFirstResponsePost,
                 channelId,
                 conversationId,
                 text: assistantMessage.text,
@@ -1025,7 +1026,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             } else {
               slackTs = await sendReplyToThread({
-                beforePost: beforeFirstResponsePost,
                 text: assistantMessage.text,
                 thread,
               });

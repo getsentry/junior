@@ -17,7 +17,6 @@ import {
 } from "@/chat/slack/output";
 
 type SendSlackReplyOptions = {
-  beforePost?: () => Promise<void>;
   channelId: string;
   conversationId?: string;
   text: string;
@@ -29,6 +28,8 @@ type SendSlackReplyOptions = {
  *
  * Chunks oversized text, builds the conversation footer from
  * `conversationId`, and posts through the shared Slack outbound boundary.
+ * Callers should run pre-post side effects before invoking this helper so
+ * those failures are not classified as Slack delivery errors.
  */
 export async function sendSlackReply(
   options: SendSlackReplyOptions,
@@ -40,7 +41,6 @@ export async function sendSlackReply(
   let lastPostedMessageTs: string | undefined;
 
   for (const [index, text] of chunks.entries()) {
-    await options.beforePost?.();
     const blocks = buildSlackReplyBlocks(
       text,
       index === chunks.length - 1 ? footer : undefined,
@@ -59,14 +59,12 @@ export async function sendSlackReply(
 
 /** Send a reply through the Chat SDK thread. */
 export async function sendReplyToThread(options: {
-  beforePost?: () => Promise<void>;
   text: string;
   thread: Thread;
 }): Promise<string | undefined> {
   let lastPostedMessageTs: string | undefined;
 
   for (const text of splitSlackReplyText(options.text)) {
-    await options.beforePost?.();
     const sentMessage = await options.thread.post(
       buildSlackOutputMessage(text),
     );
