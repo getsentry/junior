@@ -6,6 +6,9 @@ import {
   type MigrationContextV1,
   type MigrationStateV1,
 } from "@sentry/junior-migrations";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import type { StateAdapter } from "chat";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { createJiti } from "jiti";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -92,6 +95,54 @@ afterEach(async () => {
 });
 
 describe("mixed migration runner database contract", () => {
+  it("provides the host Redis capability to plugin data migrations", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const folder = await createMigrationFolder({
+      source: `
+export default {
+  apiVersion: 1,
+  async up(context) {
+    return {
+      response: await context.redis.sendCommand(["PING"]),
+    };
+  },
+};
+`,
+      tag: "0000_plugin_redis",
+      when: 2_026_071_600_000,
+    });
+    const sendCommand = vi.fn(async () => "PONG");
+
+    try {
+      await expect(
+        migratePluginSchemas(
+          fixture.sql,
+          [{ dir: folder, pluginName: "redis-test" }],
+          {
+            getStateContext: async () => ({
+              redisStateAdapter: {
+                getClient: () => ({ sendCommand }),
+              } as unknown as RedisStateAdapter,
+              stateAdapter: {} as StateAdapter,
+            }),
+            loadTypeScript: async (migrationPath) =>
+              await migrationLoader.import<Record<string, unknown>>(
+                migrationPath,
+              ),
+            mode: "all",
+          },
+        ),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 1,
+        scanned: 1,
+      });
+      expect(sendCommand).toHaveBeenCalledWith(["PING"]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists failed progress and resumes a TypeScript migration", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const folder = await createMigrationFolder({

@@ -234,7 +234,12 @@ async function runTypeScriptMigration(args: {
   const qualified = qualifiedTable(args.table);
   const sourceChanged =
     args.row !== undefined && args.row.hash !== args.migration.hash;
-  if (args.row && sourceChanged && args.row.status !== "failed") {
+  if (
+    args.row &&
+    sourceChanged &&
+    args.row.status !== "failed" &&
+    args.row.status !== "running"
+  ) {
     throw new Error(`Migration ${args.migration.tag} changed after it started`);
   }
   if (args.row) {
@@ -354,7 +359,10 @@ export async function runMigrationJournal(
         if (
           row &&
           row.hash !== migration.hash &&
-          !(migration.kind === "typescript" && row.status === "failed")
+          !(
+            migration.kind === "typescript" &&
+            (row.status === "failed" || row.status === "running")
+          )
         ) {
           throw new Error(
             `Migration ${migration.tag} changed after it started`,

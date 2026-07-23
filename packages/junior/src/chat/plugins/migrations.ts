@@ -7,6 +7,7 @@ import {
   type TypeScriptMigrationLoader,
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { createPluginMigrationStateV1 } from "@/chat/plugins/migration-state";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
@@ -26,7 +27,10 @@ type PluginMigrationResult = {
 type PluginMigrationOptions =
   | { mode: "schema-bootstrap" }
   | {
-      getStateAdapter: () => Promise<StateAdapter>;
+      getStateContext: () => Promise<{
+        redisStateAdapter?: RedisStateAdapter;
+        stateAdapter: StateAdapter;
+      }>;
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
       mode: "all";
@@ -165,15 +169,29 @@ export async function migratePluginSchemas(
     const pluginResult = runAll
       ? await runMigrationJournal({
           ...baseOptions,
-          createContext: async ({ progress }): Promise<MigrationContextV1> => ({
-            database: executor,
-            log: options.log ?? (() => {}),
-            progress,
-            state: createPluginMigrationStateV1(
-              root.pluginName,
-              await options.getStateAdapter(),
-            ),
-          }),
+          createContext: async ({ progress }): Promise<MigrationContextV1> => {
+            const { redisStateAdapter, stateAdapter } =
+              await options.getStateContext();
+            return {
+              database: executor,
+              log: options.log ?? (() => {}),
+              progress,
+              ...(redisStateAdapter
+                ? {
+                    redis: {
+                      sendCommand: async <T>(args: readonly string[]) =>
+                        await redisStateAdapter
+                          .getClient()
+                          .sendCommand<T>([...args]),
+                    },
+                  }
+                : {}),
+              state: createPluginMigrationStateV1(
+                root.pluginName,
+                stateAdapter,
+              ),
+            };
+          },
           loadTypeScript: options.loadTypeScript,
           mode: "all",
         })
