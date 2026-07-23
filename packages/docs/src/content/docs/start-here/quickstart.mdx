@@ -10,12 +10,13 @@ related:
   - /extend/
 ---
 
+import CopyPrompt from "@sentry/starlight-theme/components/CopyPrompt.astro";
+
 Start here when you want a new Junior app that follows the supported Hono, Nitro, and Vercel shape.
 
 Want an AI coding agent to handle the setup? Copy the runbook below into Cursor, Claude Code, Copilot, or another agent with terminal access. It scaffolds and deploys the app, then pauses for the steps that require your Vercel and Slack accounts. Credentials stay in those services and should never be pasted into the agent chat.
 
-<details>
-<summary>Instructions for your Agent <button title="Copy to clipboard" aria-label="Copy agent instructions" onclick="event.stopPropagation();var c=this.closest('details').querySelector('code');navigator.clipboard.writeText(c.textContent).then(function(){var s=this.querySelector('svg');s.style.stroke='var(--sl-color-green,#16a34a)';setTimeout(function(){s.style.stroke=''},2000)}.bind(this))" style="display:inline-flex;align-items:center;justify-content:center;padding:3px;margin-left:6px;border:none;background:transparent;cursor:pointer;border-radius:4px;vertical-align:middle;opacity:0.75;color:inherit"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16" aria-hidden="true"><path d="M3 19a2 2 0 0 1-1-2V2a2 2 0 0 1 1-1h13a2 2 0 0 1 2 1"/><rect x="6" y="5" width="16" height="18" rx="1.5" ry="1.5"/></svg></button></summary>
+<CopyPrompt copyLabel="Copy agent instructions">
 
 ```text
 # Junior production setup — agent runbook
@@ -204,7 +205,7 @@ Report only non-secret results:
 - any optional setup left undone
 ```
 
-</details>
+</CopyPrompt>
 
 For production setup, complete [Deploy to Vercel](/start-here/deploy-to-vercel/) and [Slack App Setup](/start-here/slack-app-setup/). Keep the manual Slack app creation step between the first live deployment and the deployment that adds Slack credentials.
 
