@@ -1,5 +1,5 @@
 import { createTestDestination } from "../../fixtures/slack-harness";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
@@ -12,6 +12,9 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
+import { queueSlackApiError } from "../../msw/handlers/slack-api";
+import { RetryableDeliveryError } from "@/chat/agent/request";
+import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -64,7 +67,10 @@ function createEditedMentionRequest(args: {
   });
 }
 
-async function createEditedDmBot(args: { agentRunner: AgentRunner }) {
+async function createEditedDmBot(args: {
+  agentRunner: AgentRunner;
+  scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
+}) {
   const state = createMemoryState();
   await state.connect();
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
@@ -83,6 +89,9 @@ async function createEditedDmBot(args: { agentRunner: AgentRunner }) {
     services: {
       replyExecutor: {
         agentRunner: args.agentRunner,
+        ...(args.scheduleAgentContinue
+          ? { scheduleAgentContinue: args.scheduleAgentContinue }
+          : {}),
       },
     },
   });
@@ -178,6 +187,52 @@ describe("Slack contract: edited-message reply delivery", () => {
           thread_ts: "1700000100.000101",
         }),
       }),
+    );
+  });
+
+  it("suspends the turn when Slack reply delivery fails transiently", async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      queueSlackApiError("chat.postMessage", {
+        error: "internal_error",
+        status: 503,
+      });
+    }
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    let deliveryError: unknown;
+    const bot = await createEditedDmBot({
+      agentRunner: {
+        run: async (request) => {
+          try {
+            await deliverAssistantMessagesForTest(request, [
+              { text: "Hello world" },
+            ]);
+          } catch (error) {
+            deliveryError = error;
+            return { status: "suspended", resumeVersion: 2 };
+          }
+          throw new Error("Expected Slack reply delivery to fail");
+        },
+      },
+      scheduleAgentContinue,
+    });
+    const waitUntil = slackWebhookClient.waitUntil();
+
+    const response = await handleChatSdkPlatformWebhook(
+      createEditedMentionRequest({
+        messageTs: "1700000100.000102",
+        newText: `<@${BOT_USER_ID}> hello there`,
+        prevText: "hello there",
+      }),
+      "slack",
+      waitUntil.fn,
+      bot,
+    );
+    await waitUntil.flush();
+
+    expect(response.status).toBe(200);
+    expect(deliveryError).toBeInstanceOf(RetryableDeliveryError);
+    expect(scheduleAgentContinue).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 2 }),
     );
   });
 });

@@ -6,7 +6,7 @@
  * queued messages, compaction, status updates, and Slack posting meet; agent
  * internals stay behind the runner seam.
  */
-import type { Message, SentMessage, Thread } from "chat";
+import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
@@ -24,9 +24,9 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  planSlackReplyChunks,
+  postSlackAssistantReplyToThread,
   sendSlackReply,
-  type SlackReplyChunkStage,
+  type SlackAssistantReplyDelivery,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
@@ -399,6 +399,7 @@ export interface ReplyExecutorServices {
 }
 
 interface ReplyExecutorDeps {
+  deliverAssistantReply: SlackAssistantReplyDelivery;
   getSlackAdapter: () => SlackAdapter;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
@@ -988,35 +989,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const compactingStatus: AssistantStatusSpec = {
           text: "Compacting context",
         };
-        const postThreadReply = async (
-          payload: Parameters<typeof thread.post>[0],
-          stage: SlackReplyChunkStage,
-        ): Promise<SentMessage> => {
-          await beforeFirstResponsePost();
-          try {
-            return await thread.post(payload);
-          } catch (error) {
-            if (isRetryableSlackPostError(error)) {
-              throw new RetryableDeliveryError(error);
-            }
-            const eventId = logException(
-              error,
-              "slack_thread_post_failed",
-              turnTraceContext,
-              {
-                "app.slack.reply_stage": stage,
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                ...getSlackErrorObservabilityAttributes(error),
-              },
-              "Failed to post Slack thread reply",
-            );
-            throw new ConversationTurnBoundaryError({
-              cause: error,
-              ...(eventId ? { eventId } : {}),
-              failureCode: "delivery_failed",
-            });
-          }
-        };
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
         // Once model output is settled, later commit errors must not trigger a
@@ -1046,60 +1018,46 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
-          // Production Slack adapters expose name "slack". Harness threads use
-          // the Chat SDK thread.post path even when channel/thread ids parse
-          // from the synthetic thread id.
-          const canSendViaSlackApi =
-            Boolean(channelId && threadTs) &&
-            (thread.adapter as { name?: string } | undefined)?.name === "slack";
           let slackTs: string | undefined;
-          if (canSendViaSlackApi && channelId && threadTs) {
-            try {
-              slackTs = await sendSlackReply({
-                beforePost: beforeFirstResponsePost,
-                channelId,
-                conversationId,
-                threadTs,
-                text: assistantMessage.text,
-                onPostError: ({ error, messageTs, stage }) => {
-                  const eventId = logException(
-                    error,
-                    "slack_thread_post_failed",
-                    turnTraceContext,
-                    {
-                      "app.slack.reply_stage": stage,
-                      ...(messageTs
-                        ? { "messaging.message.id": messageTs }
-                        : {}),
-                      ...getSlackErrorObservabilityAttributes(error),
-                    },
-                    "Failed to post Slack thread reply",
-                  );
-                  throw new ConversationTurnBoundaryError({
-                    cause: error,
-                    ...(eventId ? { eventId } : {}),
-                    failureCode: "delivery_failed",
-                  });
-                },
-              });
-            } catch (error) {
-              if (error instanceof ConversationTurnBoundaryError) {
-                throw error;
-              }
-              if (isRetryableSlackPostError(error)) {
-                throw new RetryableDeliveryError(error);
-              }
-              throw error;
+          let deliveryEventId: string | undefined;
+          try {
+            const deliverAssistantReply =
+              channelId && threadTs
+                ? deps.deliverAssistantReply
+                : postSlackAssistantReplyToThread;
+            slackTs = await deliverAssistantReply({
+              beforePost: beforeFirstResponsePost,
+              channelId: channelId ?? thread.channelId,
+              conversationId,
+              text: assistantMessage.text,
+              thread,
+              threadTs,
+              onPostError: ({ error, messageTs, stage }) => {
+                if (isRetryableSlackPostError(error)) {
+                  return;
+                }
+                deliveryEventId = logException(
+                  error,
+                  "slack_thread_post_failed",
+                  turnTraceContext,
+                  {
+                    "app.slack.reply_stage": stage,
+                    ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                    ...getSlackErrorObservabilityAttributes(error),
+                  },
+                  "Failed to post Slack thread reply",
+                );
+              },
+            });
+          } catch (error) {
+            if (isRetryableSlackPostError(error)) {
+              throw new RetryableDeliveryError(error);
             }
-          } else {
-            const chunks = planSlackReplyChunks(assistantMessage.text);
-            for (const chunk of chunks) {
-              const sentMessage = await postThreadReply(
-                buildSlackOutputMessage(chunk.text),
-                chunk.stage,
-              );
-              slackTs = sentMessage.id;
-            }
+            throw new ConversationTurnBoundaryError({
+              cause: error,
+              ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
+              failureCode: "delivery_failed",
+            });
           }
           assistantMessageDelivered = true;
           const recordedMessageId = recordDeliveredAssistantMessage({

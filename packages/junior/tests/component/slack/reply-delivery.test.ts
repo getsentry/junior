@@ -1,20 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  planSlackReplyChunks,
-  sendSlackReply,
-} from "@/chat/slack/reply";
+import { sendSlackReply } from "@/chat/slack/reply";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
-
-describe("planSlackReplyChunks", () => {
-  it("marks the first chunk as thread_reply", () => {
-    expect(planSlackReplyChunks("hello")).toEqual([
-      { stage: "thread_reply", text: "hello" },
-    ]);
-  });
-});
 
 describe("sendSlackReply", () => {
   beforeEach(() => {
@@ -62,7 +51,7 @@ describe("sendSlackReply", () => {
     ]);
   });
 
-  it("returns undefined for empty text", async () => {
+  it("does not post empty text", async () => {
     await expect(
       sendSlackReply({
         channelId: "C123",
