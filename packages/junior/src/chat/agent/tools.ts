@@ -9,9 +9,8 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
-import { listReferenceFiles } from "@/chat/discovery";
-import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { createAgentSandbox } from "@/chat/agent/sandbox";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import {
@@ -30,8 +29,6 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
-import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
@@ -41,7 +38,7 @@ import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
-import { isUserActor, type Actor } from "@/chat/actor";
+import type { Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
@@ -55,7 +52,6 @@ import {
 } from "@/chat/agent/request";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
-import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 
 interface ToolWiringArgs {
@@ -120,52 +116,20 @@ export async function wireAgentTools(
     actor: args.currentActor,
     actors: args.currentActors,
   });
-  const sandbox = createSandbox({
+  const sandbox = createAgentSandbox({
     ref: args.state.sandbox,
     skills: args.availableSkills,
-    referenceFiles: listReferenceFiles(),
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
     credentialEgress: args.routing.credentialContext,
-    prepare: async (workspace) => {
-      await pluginHooks.prepareSandbox(workspace);
-    },
-    onRefChanged: async (ref) => {
-      args.onSandboxRefChanged(ref);
-      await args.durability.onSandboxRefChanged?.(ref);
-    },
+    actor: args.currentActor,
+    channelConfiguration: args.policy.channelConfiguration,
+    configurationValues: args.configurationValues,
+    getActiveSkill: () => args.skillSandbox.getActiveSkill(),
+    prepareSandbox: pluginHooks.prepareSandbox,
+    onRefChanged: args.onSandboxRefChanged,
+    persistRef: args.durability.onSandboxRefChanged,
   });
-  const sandboxTools: SandboxTools = {
-    supports: sandbox.tools.supports,
-    async execute(params) {
-      const command =
-        params.toolName === "bash"
-          ? String(
-              (params.input as { command?: unknown })?.command ?? "",
-            ).trim()
-          : undefined;
-      if (command) {
-        const result = await maybeExecuteJrRpcCustomCommand(command, {
-          activeSkill: args.skillSandbox.getActiveSkill(),
-          channelConfiguration: args.policy.channelConfiguration,
-          actorId: isUserActor(args.currentActor)
-            ? args.currentActor.userId
-            : undefined,
-          onConfigurationValueChanged: (key, value) => {
-            if (value === undefined) {
-              delete args.configurationValues[key];
-              return;
-            }
-            args.configurationValues[key] = value;
-          },
-        });
-        if (result.handled) {
-          return formatSandboxCommandResult(result.result);
-        }
-      }
-      return await sandbox.tools.execute(params);
-    },
-  };
 
   const slackDestination =
     args.routing.destination.platform === "slack"
@@ -290,10 +254,7 @@ export async function wireAgentTools(
     loadableSkills,
     {
       writeGeneratedArtifacts: async (files) => {
-        const refs = await writeSandboxGeneratedArtifacts(
-          sandbox.workspace,
-          files,
-        );
+        const refs = await sandbox.writeGeneratedArtifacts(files);
         args.generatedFiles.push(...files);
         return refs;
       },
@@ -430,7 +391,7 @@ export async function wireAgentTools(
     args.skillSandbox,
     args.spanContext,
     args.observers.onStatus,
-    sandboxTools,
+    sandbox.tools,
     pluginAuth,
     onToolCall,
     pluginHooks,

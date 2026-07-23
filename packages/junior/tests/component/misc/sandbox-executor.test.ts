@@ -135,7 +135,6 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 }));
 
 import { createSandbox } from "@/chat/sandbox/sandbox";
-import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
@@ -167,10 +166,6 @@ interface SandboxFixtureOptions {
   }) => void | Promise<void>;
   createNetworkPolicy?: (...args: any[]) => any;
   commandEnv?: () => Promise<Record<string, string>>;
-  runBashCustomCommand?: (command: string) => Promise<{
-    handled: boolean;
-    result?: Parameters<typeof formatSandboxCommandResult>[0];
-  }>;
 }
 
 function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
@@ -275,18 +270,6 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
       input: unknown;
       signal?: AbortSignal;
     }): Promise<{ result: T }> => {
-      const command =
-        params.toolName === "bash"
-          ? String(
-              (params.input as { command?: unknown })?.command ?? "",
-            ).trim()
-          : undefined;
-      if (command && options.runBashCustomCommand) {
-        const custom = await options.runBashCustomCommand(command);
-        if (custom.handled && custom.result) {
-          return { result: formatSandboxCommandResult(custom.result) as T };
-        }
-      }
       return { result: (await getAccess().tools.execute(params)) as T };
     },
   };
@@ -2032,58 +2015,6 @@ describe("createTestSandbox", () => {
       message: expect.stringContaining(
         "The sandbox command stream was interrupted during writeFile",
       ),
-    });
-  });
-
-  it("routes matching bash commands through custom command handler", async () => {
-    const sandbox = makeSandbox("sbx_custom");
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-    const runBashCustomCommand = vi.fn(async (command: string) =>
-      command === "jr-rpc config get github.repo"
-        ? {
-            handled: true,
-            result: {
-              ok: true,
-              command,
-              cwd: "/",
-              exit_code: 0,
-              signal: null,
-              timed_out: false,
-              stdout: "credential_enabled\n",
-              stderr: "",
-              stdout_truncated: false,
-              stderr_truncated: false,
-            },
-          }
-        : { handled: false },
-    );
-
-    const executor = createTestSandbox({
-      sandboxId: "sbx_custom",
-      runBashCustomCommand,
-    });
-    executor.configureSkills([]);
-
-    const response = await executor.execute<StructuredSandboxResult>({
-      toolName: "bash",
-      input: {
-        command: "jr-rpc config get github.repo",
-      },
-    });
-
-    expect(runBashCustomCommand).toHaveBeenCalledWith(
-      "jr-rpc config get github.repo",
-    );
-    expect(sandbox.runCommand).not.toHaveBeenCalled();
-    expect(response.result.details).toMatchObject({
-      ok: true,
-      exit_code: 0,
     });
   });
 
