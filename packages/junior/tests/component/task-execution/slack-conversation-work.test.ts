@@ -999,7 +999,7 @@ describe("Slack conversation work execution", () => {
         runtime,
         state,
       }),
-    ).resolves.toEqual({ status: "completed" });
+    ).resolves.toEqual({ status: "pending_requeued" });
 
     expect(observed).toEqual([[]]);
     const work = await getConversationWorkState({
