@@ -99,6 +99,8 @@ export function createTestMessage(args: {
 // ── Fake Slack Adapter ───────────────────────────────────────────────
 
 export class FakeSlackAdapter {
+  readonly name = "slack";
+
   // Providing a bot user id opts this fixture into single-workspace install
   // mode: runWithSlackInstallation requires defaultBotTokenProvider (and a
   // resolved bot user id) before it runs worker-claimed Slack turns. Leaving

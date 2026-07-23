@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createTestThread } from "../../fixtures/slack-harness";
+import {
+  createTestThread,
+  FakeSlackAdapter,
+} from "../../fixtures/slack-harness";
 
 describe("slack harness fixture", () => {
+  it("identifies its fake adapter as Slack", () => {
+    expect(new FakeSlackAdapter().name).toBe("slack");
+  });
+
   it("uses explicit channelId when provided", () => {
     const thread = createTestThread({ id: "thread-3", channelId: "C-3" });
 
