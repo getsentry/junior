@@ -95,21 +95,11 @@ const agentInputSchema = z
 export type AgentInput = z.output<typeof agentInputSchema>;
 
 /** Durable delivery modes for pending inbound mailbox work. */
-export const inboundMessageDeliverySchema = z.enum([
-  "auto",
-  "defer",
-  "interrupt",
-]);
+export const inboundMessageDeliverySchema = z.enum(["defer", "interrupt"]);
 
 export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
-
-/** Mailbox ids to remove or retain as deferred in one lease-bound drain. */
-export interface MailboxDrainResult {
-  ack: readonly string[];
-  defer: readonly string[];
-}
 
 /** Canonical durable mailbox entry owned by task execution. */
 export const inboundMessageSchema = z
@@ -275,7 +265,7 @@ function upgradedPendingMessage(
       ? duplicate.input
       : stored.input;
   const delivery =
-    stored.delivery === "auto" && duplicate.delivery === "interrupt"
+    stored.delivery === "defer" && duplicate.delivery === "interrupt"
       ? "interrupt"
       : stored.delivery;
   if (input === stored.input && delivery === stored.delivery) {
@@ -330,10 +320,13 @@ function normalizeMessage(
   value: unknown,
   schemaVersion: 1 | 2,
 ): InboundMessage | undefined {
-  // TODO(v0.110.0): Remove schema-v1 mailbox delivery migration after old records expire.
+  // TODO(v0.110.0): Remove schema-v1 mailbox migration after old records expire.
   const candidate =
     schemaVersion === 1 && isRecord(value) && value.delivery === undefined
-      ? { ...value, delivery: "auto" }
+      ? {
+          ...value,
+          delivery: "defer",
+        }
       : value;
   const parsed = inboundMessageSchema.safeParse(candidate);
   return parsed.success ? parsed.data : undefined;
@@ -1481,12 +1474,12 @@ export async function checkInConversationWork(args: {
 /**
  * Resolve pending mailbox entries after the caller accepts responsibility.
  *
- * Acknowledged entries are removed while deferred entries remain for the next
- * turn. Returning nothing acknowledges every entry passed to the handler.
+ * Returning ids acknowledges only that subset; returning nothing acknowledges
+ * every pending entry passed to the handler.
  */
 export async function drainConversationMailbox(args: {
   conversationId: string;
-  handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>;
+  handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1510,24 +1503,16 @@ export async function drainConversationMailbox(args: {
     pending.map((message) => message.inboundMessageId),
   );
   const acknowledgedIds = new Set(
-    result?.ack ?? pending.map((message) => message.inboundMessageId),
+    result ?? pending.map((message) => message.inboundMessageId),
   );
-  const deferredIds = new Set(result?.defer ?? []);
-  for (const inboundMessageId of [...acknowledgedIds, ...deferredIds]) {
+  for (const inboundMessageId of acknowledgedIds) {
     if (!pendingIds.has(inboundMessageId)) {
       throw new Error(
         `Conversation mailbox drain result is not pending for ${args.conversationId}`,
       );
     }
   }
-  for (const inboundMessageId of deferredIds) {
-    if (acknowledgedIds.has(inboundMessageId)) {
-      throw new Error(
-        `Conversation mailbox drain result overlaps for ${args.conversationId}`,
-      );
-    }
-  }
-  if (acknowledgedIds.size === 0 && deferredIds.size === 0) {
+  if (acknowledgedIds.size === 0) {
     return { changed: false, messages: [] };
   }
 
@@ -1538,13 +1523,9 @@ export async function drainConversationMailbox(args: {
         `Conversation lease is not held for ${args.conversationId}`,
       );
     }
-    const pendingMessages = current.execution.pendingMessages
-      .filter((message) => !acknowledgedIds.has(message.inboundMessageId))
-      .map((message) =>
-        deferredIds.has(message.inboundMessageId)
-          ? { ...message, delivery: "defer" as const }
-          : message,
-      );
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !acknowledgedIds.has(message.inboundMessageId),
+    );
     await writeConversation(
       state,
       lock,

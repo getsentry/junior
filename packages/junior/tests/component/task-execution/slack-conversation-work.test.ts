@@ -271,7 +271,7 @@ describe("Slack conversation work execution", () => {
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
-      delivery: "auto" as const,
+      delivery: "defer" as const,
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
@@ -673,7 +673,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("keeps restored thread context aligned with promoted mention routing", async () => {
+  it("processes an interrupt before a queued deferred follow-up", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -734,8 +734,14 @@ describe("Slack conversation work execution", () => {
           skipped: hooks.messageContext?.skipped ?? [],
         });
       },
-      handleSubscribedMessage: async () => {
-        throw new Error("mixed mention batches should promote to mention");
+      handleSubscribedMessage: async (thread, message, hooks) => {
+        await hooks.ack?.();
+        subscribedValues.push(await thread.isSubscribed());
+        calls.push({
+          thread,
+          message,
+          skipped: hooks.messageContext?.skipped ?? [],
+        });
       },
     };
     await expect(
@@ -745,14 +751,25 @@ describe("Slack conversation work execution", () => {
         runtime,
         state,
       }),
-    ).resolves.toEqual({ status: "completed" });
+    ).resolves.toEqual({ status: "pending_requeued" });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.message.id).toBe("1712345.0002");
-    expect(calls[0]?.skipped.map((message) => message.id)).toEqual([
-      "1712345.0001",
-    ]);
+    expect(calls[0]?.message.id).toBe("1712345.0001");
+    expect(calls[0]?.skipped).toEqual([]);
     expect(subscribedValues).toEqual([false]);
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.message.id).toBe("1712345.0002");
+    expect(calls[1]?.skipped).toEqual([]);
+    expect(subscribedValues).toEqual([false, true]);
     await expectRemainingQueuedSlackWorkIsNoop({
       getSlackAdapter: () => slackAdapter,
       queue,
@@ -905,10 +922,7 @@ describe("Slack conversation work execution", () => {
         });
         await hooks.drainSteeringMessages?.(async (steering) => {
           injected.push(steering.map((candidate) => candidate.message.id));
-          return {
-            deferred: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
-          };
+          return steering.map((candidate) => candidate.inboundMessageId);
         });
       },
       handleSubscribedMessage: async () => {
@@ -988,10 +1002,7 @@ describe("Slack conversation work execution", () => {
         });
         await hooks.drainSteeringMessages?.(async (steering) => {
           observed.push(steering.map((candidate) => candidate.message.id));
-          return {
-            deferred: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
-          };
+          return steering.map((candidate) => candidate.inboundMessageId);
         });
       },
       handleSubscribedMessage: async () => {
@@ -1021,7 +1032,7 @@ describe("Slack conversation work execution", () => {
     ]);
   });
 
-  it("treats Slack assistant-thread user messages as active steering", async () => {
+  it("defers Slack assistant-thread messages without a mention", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -1048,9 +1059,7 @@ describe("Slack conversation work execution", () => {
       services: ingressServices,
     });
 
-    const observed: Array<
-      Array<{ delivery: "auto" | "interrupt"; id: string }>
-    > = [];
+    const observed: string[][] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
@@ -1098,16 +1107,8 @@ describe("Slack conversation work execution", () => {
           state,
         });
         await hooks.drainSteeringMessages?.(async (steering) => {
-          observed.push(
-            steering.map((candidate) => ({
-              delivery: candidate.delivery,
-              id: candidate.message.id,
-            })),
-          );
-          return {
-            deferred: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
-          };
+          observed.push(steering.map((candidate) => candidate.message.id));
+          return steering.map((candidate) => candidate.inboundMessageId);
         });
       },
       handleSubscribedMessage: async () => {
@@ -1122,9 +1123,16 @@ describe("Slack conversation work execution", () => {
         runtime,
         state,
       }),
-    ).resolves.toEqual({ status: "completed" });
+    ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(observed).toEqual([[{ delivery: "interrupt", id: "1712345.1002" }]]);
+    expect(observed).toEqual([]);
+    const work = await getConversationWorkState({ conversationId, state });
+    expect(work?.execution.pendingMessages).toEqual([
+      expect.objectContaining({
+        delivery: "defer",
+        inboundMessageId: expect.stringContaining("1712345.1002"),
+      }),
+    ]);
   });
 
   it("does not replay injected Slack mailbox records after lease recovery", async () => {

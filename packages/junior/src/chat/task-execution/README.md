@@ -7,7 +7,7 @@ source of truth.
 ## State Model
 
 - A conversation mailbox contains normalized pending work with a durable
-  delivery mode: `interrupt`, `defer`, or `auto` when runtime policy must decide.
+  delivery mode: `interrupt` or `defer`.
 - A queue payload identifies the conversation to wake; persisted conversation
   work owns destination and delivery.
 - A lease grants one worker temporary execution ownership.
@@ -15,8 +15,8 @@ source of truth.
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
-Schema-v1 mailbox entries without `delivery` migrate to `auto`. Schema-v2
-entries require a valid delivery mode and reject invalid pending work.
+Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
+require a valid delivery value and reject invalid pending work.
 
 `state.ts`, `store.ts`, and their runtime schemas define the persisted shapes.
 
@@ -34,15 +34,15 @@ entries require a valid delivery mode and reject invalid pending work.
 6. Terminal delivery or intentional no-reply completion records the delivered
    turn before acknowledging work.
 
-New messages that arrive during a run remain durable. Explicit `interrupt` work
-is eligible at the next safe boundary, explicit `defer` work waits for the next
-turn, and `auto` work is classified by runtime policy.
+New messages that arrive during a run remain durable. `interrupt` work is
+eligible at the next safe boundary, while `defer` work follows normal ordering
+and waits for the next turn.
 
-Slack mentions and assistant-thread user messages use `interrupt`, subscribed
-resource events use `defer`, and other subscribed messages use `auto`.
+Slack `@` mentions use `interrupt` delivery; all other inbound messages use
+`defer`.
 
-One lease-bound drain removes disjoint `ack` ids and retains disjoint `defer`
-ids with `delivery: "defer"`.
+An active turn drains only `interrupt` messages. When a new turn starts,
+interrupt messages are handled before queued deferred work.
 
 ## Queue And Lease Rules
 

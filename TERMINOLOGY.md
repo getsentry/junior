@@ -13,13 +13,13 @@ Canonical words used across Junior's code and documentation.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.
 - **Steering message**: a user message that interrupts the active turn at the
-  next safe boundary and starts a new turn. Messages arriving together may be
-  batched into that turn.
+  next safe boundary and joins that turn. Messages arriving together may be
+  batched into the same turn.
 - **Follow-up message**: a user message that waits for the active turn to finish
   before starting the next turn.
 - **Mailbox delivery**: the durable instruction for an inbound message:
-  `interrupt` is eligible at the next safe boundary, `defer` waits for the
-  active turn to finish, and `auto` asks runtime policy to choose between them.
+  `interrupt` is eligible at the next safe boundary, while `defer` follows
+  normal ordering and waits when a turn is already active.
 - **Turn**: one request-to-final-response cycle. It may span multiple runs and
   execution slices; one model invocation is not a turn.
 - **Run**: one bounded attempt to advance a turn. A later run may resume the

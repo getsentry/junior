@@ -28,7 +28,6 @@ import {
   type AttemptFailure,
   type ConversationWorkState,
   type InboundMessage,
-  type MailboxDrainResult,
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
@@ -47,7 +46,7 @@ export interface InboxAttempt {
   conversationId: string;
   destination: Destination;
   drain(
-    handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>,
+    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
   ): Promise<InboundMessage[]>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
@@ -80,6 +79,14 @@ export interface ProcessConversationWorkOptions {
 
 function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
+}
+
+/** Prioritize the interrupt batch; otherwise process the deferred batch. */
+function selectAttemptMessages(messages: InboundMessage[]): InboundMessage[] {
+  const interrupts = messages.filter(
+    (message) => message.delivery === "interrupt",
+  );
+  return interrupts.length > 0 ? interrupts : messages;
 }
 
 function nudgeIdempotencyKey(
@@ -315,7 +322,9 @@ export async function processConversationWork(
     conversationId,
     state: options.state,
   });
-  const attemptMessages = leasedWork?.messages ?? initial.messages;
+  const attemptMessages = selectAttemptMessages(
+    leasedWork?.messages ?? initial.messages,
+  );
   const attemptMessageIds = attemptMessages.map(
     (message) => message.inboundMessageId,
   );
@@ -340,7 +349,7 @@ export async function processConversationWork(
   );
 
   const drain = (
-    handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>,
+    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
   ) =>
     drainConversationMailbox({
       conversationId,
@@ -348,16 +357,14 @@ export async function processConversationWork(
       conversationStore: options.conversationStore,
       handle: async (messages) => {
         const candidates = messages.filter(
-          (message) => message.delivery !== "defer",
+          (message) => message.delivery === "interrupt",
         );
         if (candidates.length === 0) {
-          return { ack: [], defer: [] };
+          return [];
         }
         return (
-          (await handle(candidates)) ?? {
-            ack: candidates.map((message) => message.inboundMessageId),
-            defer: [],
-          }
+          (await handle(candidates)) ??
+          candidates.map((message) => message.inboundMessageId)
         );
       },
       nowMs: now(options),

@@ -197,7 +197,7 @@ export function inboundMessage(
     conversationId: CONVERSATION_ID,
     inboundMessageId,
     destination: SLACK_DESTINATION,
-    delivery: "auto",
+    delivery: "interrupt",
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,

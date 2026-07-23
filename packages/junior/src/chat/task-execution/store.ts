@@ -24,7 +24,6 @@ export {
   type InboundMessage,
   type InboundMessageDelivery,
   type Lease,
-  type MailboxDrainResult,
   type RequestConversationWorkResult,
   type Source,
   type StartConversationWorkAcquired,

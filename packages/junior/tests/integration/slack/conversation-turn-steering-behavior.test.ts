@@ -241,7 +241,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
   });
 
-  it("interrupts explicit follow-ups and defers passive follow-ups during an active turn", async () => {
+  it("interrupts explicit follow-ups and queues deferred follow-ups", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
     let blockingCallReleased = false;
@@ -428,29 +428,18 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work?.execution.inboundMessageIds).toHaveLength(5);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
     expect(work?.needsRun).toBe(false);
-    const persistedState = await getPersistedThreadState(conversationId);
-    const conversation = coerceThreadConversationState(persistedState);
-    await hydrateConversationMessages({ conversation, conversationId });
-    expect(conversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          text: "thanks folks",
-          meta: expect.objectContaining({
-            replied: false,
-            skippedReason: "side_conversation:passive side conversation",
-          }),
-        }),
-      ]),
-    );
-
     const expectedReactionTargets = (name: string) =>
-      [THREAD_TS, "1712345.000200", "1712345.000300", "1712345.000400"].map(
-        (timestamp) => ({
-          channel: CHANNEL_ID,
-          name,
-          timestamp,
-        }),
-      );
+      [
+        THREAD_TS,
+        "1712345.000200",
+        "1712345.000250",
+        "1712345.000300",
+        "1712345.000400",
+      ].map((timestamp) => ({
+        channel: CHANNEL_ID,
+        name,
+        timestamp,
+      }));
     const expectedProcessingReactions = expectedReactionTargets("eyes");
     const expectedCompletedReactions =
       expectedReactionTargets("white_check_mark");
@@ -537,7 +526,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
-  it("applies opt-out decisions from drained steering messages without reacting to them", async () => {
+  it("applies queued opt-out decisions on the next turn", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
     const drainedTexts: string[] = [];
@@ -559,25 +548,26 @@ describe("Slack behavior: durable turn steering", () => {
         diagnostics: makeDiagnostics(),
       });
     };
-    const { conversationId, runNextQueuedWork, services } = createTurnHarness({
-      completeObject: completeObjectWithDecision((prompt) =>
-        prompt.includes("stop watching")
-          ? {
-              should_reply: false,
-              should_unsubscribe: true,
-              confidence: 1,
-              reason: "explicit stop instruction",
-            }
-          : {
-              should_reply: true,
-              should_unsubscribe: false,
-              confidence: 1,
-              reason: "active steering follow-up",
-            },
-      ),
-      agentRunner: { run: executeAgentRun },
-      state,
-    });
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        completeObject: completeObjectWithDecision((prompt) =>
+          prompt.includes("stop watching")
+            ? {
+                should_reply: false,
+                should_unsubscribe: true,
+                confidence: 1,
+                reason: "explicit stop instruction",
+              }
+            : {
+                should_reply: true,
+                should_unsubscribe: false,
+                confidence: 1,
+                reason: "active steering follow-up",
+              },
+        ),
+        agentRunner: { run: executeAgentRun },
+        state,
+      });
     await createResourceEventSubscription(
       {
         conversationId,
@@ -636,6 +626,10 @@ describe("Slack behavior: durable turn steering", () => {
 
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
+    expect(await state.isSubscribed(conversationId)).toBe(true);
+    while (queue.hasQueuedMessages()) {
+      await runNextQueuedWork();
+    }
     expect(await state.isSubscribed(conversationId)).toBe(false);
     await expect(
       listResourceEventSubscriptions({ conversationId, state }),
@@ -662,17 +656,10 @@ describe("Slack behavior: durable turn steering", () => {
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          text: "stop watching this thread",
-          meta: expect.objectContaining({
-            replied: false,
-            skippedReason: "thread_opt_out:explicit stop instruction",
-          }),
-        }),
-        expect.objectContaining({
           text: "also add the rollout timeline",
           meta: expect.objectContaining({
             replied: false,
-            skippedReason: "thread_opt_out:batch opt-out",
+            skippedReason: "thread_opt_out:explicit stop instruction",
           }),
         }),
       ]),

@@ -231,7 +231,7 @@ describe("conversation work execution", () => {
     );
   });
 
-  it("migrates schema-v1 mailbox messages without delivery as auto", async () => {
+  it("migrates schema-v1 Slack mailbox messages for classification", async () => {
     const state = getStateAdapter();
     await state.connect();
     await appendInboundMessage({
@@ -255,14 +255,14 @@ describe("conversation work execution", () => {
           observed.push(
             ...context.attempt.messages.map((message) => message.delivery),
           );
-          await context.attempt.drain(async () => {});
+          await context.attempt.ack();
           return { status: "completed" };
         },
         state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(observed).toEqual(["auto"]);
+    expect(observed).toEqual(["defer"]);
   });
 
   it("rejects unknown mailbox delivery without dropping pending work", async () => {
@@ -287,7 +287,10 @@ describe("conversation work execution", () => {
 
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    await appendInboundMessage({
+      message: inboundMessage("m1", { delivery: "defer" }),
+      nowMs: 1_000,
+    });
 
     await expect(
       appendAndEnqueueInboundMessage({
@@ -1181,10 +1184,7 @@ describe("conversation work execution", () => {
         run: async (context) => {
           await context.attempt.drain(async (messages) => {
             injected.push(messages.map((message) => message.inboundMessageId));
-            return {
-              ack: ["m1"],
-              defer: [],
-            };
+            return ["m1"];
           });
           return { status: "completed" };
         },
@@ -1201,12 +1201,13 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("keeps deferred messages separate from interruptions", async () => {
+  it("drains interrupts while deferred messages stay queued", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     await appendInboundMessage({
       message: inboundMessage("m2", {
         createdAtMs: 2_000,
+        delivery: "defer",
         receivedAtMs: 2_100,
       }),
       nowMs: 2_100,
@@ -1219,17 +1220,14 @@ describe("conversation work execution", () => {
         run: async (context) => {
           await context.attempt.drain(async (messages) => {
             drained.push(messages.map((message) => message.inboundMessageId));
-            return {
-              ack: ["m1"],
-              defer: ["m2"],
-            };
+            return messages.map((message) => message.inboundMessageId);
           });
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(drained).toEqual([["m1", "m2"]]);
+    expect(drained).toEqual([["m1"]]);
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -1282,7 +1280,7 @@ describe("conversation work execution", () => {
       drainConversationMailbox({
         conversationId: CONVERSATION_ID,
         conversationStore,
-        handle: async () => ({ ack: [], defer: [] }),
+        handle: async () => [],
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
         state,
@@ -1307,10 +1305,7 @@ describe("conversation work execution", () => {
         queue,
         run: async (context) => {
           try {
-            await context.attempt.drain(async () => ({
-              ack: ["different-message"],
-              defer: [],
-            }));
+            await context.attempt.drain(async () => ["different-message"]);
           } catch (error) {
             drainError = error;
             throw error;

@@ -11,7 +11,6 @@ import { z } from "zod";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
-  SteeringDrainResult,
 } from "@/chat/runtime/slack-runtime";
 import {
   isCooperativeTurnYieldError,
@@ -629,18 +628,6 @@ function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
     : "subscribed";
 }
 
-function isSlackAssistantThreadUserMessage(message: Message): boolean {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return (
-    raw?.channel_type === "im" &&
-    typeof raw.thread_ts === "string" &&
-    raw.thread_ts.trim().length > 0
-  );
-}
-
 function isResourceEventNotificationMessage(message: Message): boolean {
   const raw =
     message.raw && typeof message.raw === "object"
@@ -839,32 +826,20 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Explicitly deferred records never enter steering. Auto-delivered
-        // records are offered to runtime policy, while interrupts bypass it.
+        // Only explicit interruptions enter the active turn. Deferred work
+        // stays pending for a normal turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
-          ) => Promise<SteeringDrainResult>,
+          ) => Promise<readonly string[]>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const result = await accept(
-              pendingRecords.map((record) => {
-                if (record.delivery === "defer") {
-                  throw new Error(
-                    "Deferred mailbox message reached Slack steering",
-                  );
-                }
-                return {
-                  delivery: record.delivery,
-                  inboundMessageId: record.inboundMessageId,
-                  message: restoreMessage({ adapter, record }),
-                };
-              }),
+            return await accept(
+              pendingRecords.map((record) => ({
+                inboundMessageId: record.inboundMessageId,
+                message: restoreMessage({ adapter, record }),
+              })),
             );
-            return {
-              ack: result.handled,
-              defer: result.deferred,
-            };
           });
         };
 
@@ -941,11 +916,7 @@ export function buildSlackInboundMessage(args: {
       args.conversationId,
       args.message.id,
     ].join(":"),
-    delivery:
-      args.route === "mention" ||
-      isSlackAssistantThreadUserMessage(args.message)
-        ? "interrupt"
-        : "auto",
+    delivery: args.route === "mention" ? "interrupt" : "defer",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,
