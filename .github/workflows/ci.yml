@@ -74,6 +74,7 @@ jobs:
               - packages/junior-agent-browser/**
               - packages/junior-amplitude/**
               - packages/junior-cloudflare/**
+              - packages/junior-conversation-classification/**
               - packages/junior-datadog/**
               - packages/junior-github/**
               - packages/junior-hex/**
