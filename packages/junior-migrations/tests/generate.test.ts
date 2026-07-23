@@ -120,3 +120,33 @@ it("does not invoke Drizzle when an existing journal is invalid", async () => {
     }),
   ).rejects.toThrow("Unsupported Drizzle journal");
 });
+
+it("forwards the requested output folder to Drizzle Kit", async () => {
+  const relativeRoot = `.tmp-migration-output-${Date.now()}`;
+  const root = join(process.cwd(), relativeRoot);
+  temporaryDirectories.push(root);
+  await mkdir(root);
+  await writeFile(
+    join(root, "schema.ts"),
+    'import { pgTable, text } from "drizzle-orm/pg-core";\nexport const users = pgTable("users", { id: text("id").primaryKey() });\n',
+  );
+  await writeFile(
+    join(root, "drizzle.config.ts"),
+    `import { defineConfig } from "drizzle-kit";\nexport default defineConfig({ dialect: "postgresql", schema: "./${relativeRoot}/schema.ts", out: "./${relativeRoot}/configured-migrations" });\n`,
+  );
+
+  const typescriptPath = await generateTypeScriptMigration({
+    configPath: `${relativeRoot}/drizzle.config.ts`,
+    cwd: process.cwd(),
+    migrationsFolder: `${relativeRoot}/requested-migrations`,
+    name: "backfill",
+  });
+
+  expect(typescriptPath).toBe(
+    join(root, "requested-migrations", "0000_backfill.ts"),
+  );
+  await expect(access(typescriptPath)).resolves.toBeUndefined();
+  await expect(access(join(root, "configured-migrations"))).rejects.toThrow(
+    "ENOENT",
+  );
+});

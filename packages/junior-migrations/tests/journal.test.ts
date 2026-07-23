@@ -86,6 +86,33 @@ describe("resolveMigrations", () => {
     ]);
   });
 
+  it("allows import syntax in comments and strings", async () => {
+    const folder = await migrationFolder(["0000_documented"]);
+    await writeFile(
+      join(folder, "0000_documented.ts"),
+      `// Never call import("@/db") from a migration.
+const guidance = "require(\\"@/db\\") is unsupported";
+export default { apiVersion: 1, async up() { void guidance; } };
+`,
+    );
+
+    await expect(resolveMigrations(folder)).resolves.toMatchObject([
+      { kind: "typescript", tag: "0000_documented" },
+    ]);
+  });
+
+  it("still rejects executable dynamic imports", async () => {
+    const folder = await migrationFolder(["0000_dynamic"]);
+    await writeFile(
+      join(folder, "0000_dynamic.ts"),
+      'export default { apiVersion: 1, async up() { await import("@/db"); } };\n',
+    );
+
+    await expect(resolveMigrations(folder)).rejects.toThrow(
+      "cannot load runtime modules",
+    );
+  });
+
   it("rejects runtime re-exports of Junior internals", async () => {
     const folder = await migrationFolder(["0000_reexport"]);
     await writeFile(

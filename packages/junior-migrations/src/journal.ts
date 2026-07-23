@@ -106,9 +106,13 @@ function validateTypeScriptSource(tag: string, source: string): void {
     }
     validateRuntimeSpecifier(match[2]);
   }
+  const executableSource = source.replace(
+    /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/g,
+    (match) => match.replace(/[^\r\n]/g, " "),
+  );
   if (
     /^\s*import\s*["']/m.test(source) ||
-    /\b(?:import\s*\(|require\s*\()/.test(source)
+    /\b(?:import\s*\(|require\s*\()/.test(executableSource)
   ) {
     throw new Error(`TypeScript migration ${tag} cannot load runtime modules`);
   }

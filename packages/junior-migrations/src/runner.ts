@@ -232,16 +232,28 @@ async function runTypeScriptMigration(args: {
   table: string;
 }): Promise<void> {
   const qualified = qualifiedTable(args.table);
-  if (args.row && args.row.hash !== args.migration.hash) {
+  const sourceChanged =
+    args.row !== undefined && args.row.hash !== args.migration.hash;
+  if (args.row && sourceChanged && args.row.status !== "failed") {
     throw new Error(`Migration ${args.migration.tag} changed after it started`);
   }
   if (args.row) {
-    await args.executor.execute(
-      `UPDATE ${qualified}
-       SET name = $1, kind = 'typescript', status = 'running', started_at = NOW()
-       WHERE created_at = $2`,
-      [args.migration.tag, args.migration.when],
-    );
+    if (sourceChanged) {
+      await args.executor.execute(
+        `UPDATE ${qualified}
+         SET hash = $1, name = $2, kind = 'typescript', status = 'running',
+             progress = NULL, result = NULL, started_at = NOW(), completed_at = NULL
+         WHERE created_at = $3`,
+        [args.migration.hash, args.migration.tag, args.migration.when],
+      );
+    } else {
+      await args.executor.execute(
+        `UPDATE ${qualified}
+         SET name = $1, kind = 'typescript', status = 'running', started_at = NOW()
+         WHERE created_at = $2`,
+        [args.migration.tag, args.migration.when],
+      );
+    }
   } else {
     await args.executor.execute(
       `INSERT INTO ${qualified}
@@ -339,7 +351,11 @@ export async function runMigrationJournal(
       };
       for (const migration of migrations) {
         const row = rows.get(migration.when);
-        if (row && row.hash !== migration.hash) {
+        if (
+          row &&
+          row.hash !== migration.hash &&
+          !(migration.kind === "typescript" && row.status === "failed")
+        ) {
           throw new Error(
             `Migration ${migration.tag} changed after it started`,
           );

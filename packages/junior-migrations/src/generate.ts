@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import { readMigrationJournal } from "./journal";
 
 /** Drizzle Kit inputs used to create one TypeScript migration entry. */
@@ -36,6 +36,49 @@ function isMissingJournal(error: unknown): boolean {
   );
 }
 
+async function runDrizzleGenerate(
+  options: GenerateTypeScriptMigrationOptions,
+  cwd: string,
+  folder: string,
+): Promise<void> {
+  const configDirectory = await mkdtemp(
+    resolve(cwd, ".junior-migrations-config-"),
+  );
+  try {
+    const configPath = resolve(cwd, options.configPath);
+    const relativeConfigPath = relative(configDirectory, configPath)
+      .split(sep)
+      .join("/");
+    const configSpecifier = relativeConfigPath.startsWith(".")
+      ? relativeConfigPath
+      : `./${relativeConfigPath}`;
+    const relativeOutputPath = relative(cwd, folder).split(sep).join("/");
+    const configOutputPath = relativeOutputPath.startsWith(".")
+      ? relativeOutputPath
+      : `./${relativeOutputPath}`;
+    const overrideConfigPath = resolve(configDirectory, "drizzle.config.ts");
+    await writeFile(
+      overrideConfigPath,
+      `import config from ${JSON.stringify(configSpecifier)};\nexport default { ...config, out: ${JSON.stringify(configOutputPath)} };\n`,
+      "utf8",
+    );
+    await run(
+      "drizzle-kit",
+      [
+        "generate",
+        "--custom",
+        "--config",
+        overrideConfigPath,
+        "--name",
+        options.name,
+      ],
+      cwd,
+    );
+  } finally {
+    await rm(configDirectory, { recursive: true, force: true });
+  }
+}
+
 /** Create a journaled TypeScript migration through Drizzle Kit's custom generator. */
 export async function generateTypeScriptMigration(
   options: GenerateTypeScriptMigrationOptions,
@@ -49,18 +92,7 @@ export async function generateTypeScriptMigration(
     if (!isMissingJournal(error)) throw error;
     before = [];
   }
-  await run(
-    "drizzle-kit",
-    [
-      "generate",
-      "--custom",
-      "--config",
-      options.configPath,
-      "--name",
-      options.name,
-    ],
-    cwd,
-  );
+  await runDrizzleGenerate(options, cwd, folder);
   const after = await readMigrationJournal(folder);
   if (after.length !== before.length + 1) {
     throw new Error("Drizzle Kit did not create exactly one migration entry");

@@ -51,6 +51,12 @@ class FakeExecutor implements MigrationDatabaseAdapter {
       if (normalized.includes("progress = $1")) {
         row.progress = parameters[0];
       }
+      if (normalized.includes("hash = $1")) {
+        row.hash = String(parameters[0]);
+      }
+      if (normalized.includes("progress = NULL")) {
+        row.progress = undefined;
+      }
       if (normalized.includes("status = 'running'")) {
         row.status = "running";
       } else if (normalized.includes("status = 'completed'")) {
@@ -296,6 +302,95 @@ describe("runMigrationJournal", () => {
       "SELECT 'schema-zero';",
       "SELECT 'schema-two';",
     ]);
+  });
+
+  it("restarts a failed TypeScript migration after its source changes", async () => {
+    const folder = await mixedFolder();
+    const executor = new FakeExecutor();
+    let attempts = 0;
+    let resumedProgress: unknown;
+    const migration: MigrationV1 = {
+      apiVersion: 1,
+      async up(context) {
+        attempts += 1;
+        if (attempts === 1) {
+          await context.progress.save({ cursor: 1 });
+          throw new Error("needs a source fix");
+        }
+        resumedProgress = await context.progress.load();
+      },
+    };
+    const options = {
+      executor,
+      migrationsFolder: folder,
+      migrationsTable: "__drizzle_test",
+      loadTypeScript: async () => ({ default: migration }),
+      createContext: ({
+        progress,
+      }: {
+        progress: MigrationContextV1["progress"];
+      }) => ({
+        database: executor,
+        log: () => {},
+        progress,
+        state: fakeMigrationState(),
+      }),
+    };
+
+    await expect(runMigrationJournal(options)).rejects.toThrow(
+      "needs a source fix",
+    );
+    const failedHash = executor.rows.get(2_001)?.hash;
+    await writeFile(
+      join(folder, "0001_data.ts"),
+      "export default { apiVersion: 1, async up() { return { fixed: true }; } };\n",
+    );
+
+    await expect(runMigrationJournal(options)).resolves.toEqual({
+      existing: 1,
+      migrated: 2,
+      scanned: 3,
+      skipped: 0,
+    });
+    expect(resumedProgress).toBeUndefined();
+    expect(executor.rows.get(2_001)).toMatchObject({
+      status: "completed",
+    });
+    expect(executor.rows.get(2_001)?.hash).not.toBe(failedHash);
+  });
+
+  it("rejects source changes after a TypeScript migration completes", async () => {
+    const folder = await mixedFolder();
+    const executor = new FakeExecutor();
+    const migration: MigrationV1 = {
+      apiVersion: 1,
+      async up() {},
+    };
+    const options = {
+      executor,
+      migrationsFolder: folder,
+      migrationsTable: "__drizzle_test",
+      loadTypeScript: async () => ({ default: migration }),
+      createContext: ({
+        progress,
+      }: {
+        progress: MigrationContextV1["progress"];
+      }) => ({
+        database: executor,
+        log: () => {},
+        progress,
+        state: fakeMigrationState(),
+      }),
+    };
+    await runMigrationJournal(options);
+    await writeFile(
+      join(folder, "0001_data.ts"),
+      "export default { apiVersion: 1, async up() { return { changed: true }; } };\n",
+    );
+
+    await expect(runMigrationJournal(options)).rejects.toThrow(
+      "changed after it started",
+    );
   });
 
   it("rejects non-JSON migration results before completing the ledger row", async () => {
