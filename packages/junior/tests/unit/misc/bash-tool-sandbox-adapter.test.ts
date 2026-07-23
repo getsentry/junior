@@ -15,7 +15,7 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   getRuntimeDependencyProfileHash: () => "current-profile",
 }));
 
-import { createSandboxSessionManager } from "@/chat/sandbox/session";
+import { createSandboxRuntime } from "@/chat/sandbox/session";
 
 function makeSandbox() {
   const mkDir = vi.fn(async () => {});
@@ -72,12 +72,16 @@ describe("bash-tool sandbox adapter", () => {
   it("lets real bash-tool initialize against Vercel Sandbox v2 shape", async () => {
     const sandbox = makeSandbox();
     sandboxGetMock.mockResolvedValue(sandbox);
-    const manager = createSandboxSessionManager({
-      sandboxId: "sbx_adapter_contract",
-      sandboxDependencyProfileHash: "current-profile",
+    const manager = createSandboxRuntime({
+      ref: {
+        id: "sbx_adapter_contract",
+        profileHash: "current-profile",
+      },
+      skills: [],
+      referenceFiles: [],
     });
 
-    const executors = await manager.ensureToolExecutors();
+    const executors = await manager.tools();
 
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",

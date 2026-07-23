@@ -130,9 +130,10 @@ function createSandbox(files: Record<string, Buffer> = {}): SandboxWorkspace {
     readFileToBuffer: async ({ path }) => files[path] ?? null,
     runCommand: async () => ({
       exitCode: 0,
-      stdout: async () => "text/plain\n",
-      stderr: async () => "",
+      stdout: "text/plain\n",
+      stderr: "",
     }),
+    writeFiles: async () => undefined,
   };
 }
 

@@ -11,17 +11,12 @@ import {
 } from "@/chat/state/artifacts";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 
 export interface ThreadStatePatch {
   artifacts?: ThreadArtifactsState;
   conversation?: ThreadConversationState;
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
-}
-
-export interface PersistedSandboxState {
-  sandboxDependencyProfileHash?: string;
-  sandboxId?: string;
+  sandbox?: SandboxRef | null;
 }
 
 function threadStateKey(threadId: string): string {
@@ -42,12 +37,14 @@ function buildThreadStatePayload(
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
-  if (patch.sandboxId !== undefined) {
-    payload.app_sandbox_id = patch.sandboxId;
-  }
-  if (patch.sandboxDependencyProfileHash !== undefined) {
-    payload.app_sandbox_dependency_profile_hash =
-      patch.sandboxDependencyProfileHash;
+  if (patch.sandbox === null) {
+    payload.app_sandbox_id = "";
+    payload.app_sandbox_dependency_profile_hash = "";
+  } else if (patch.sandbox) {
+    payload.app_sandbox_id = patch.sandbox.id;
+    if (patch.sandbox.profileHash !== undefined) {
+      payload.app_sandbox_dependency_profile_hash = patch.sandbox.profileHash;
+    }
   }
   return payload;
 }
@@ -73,12 +70,17 @@ export function mergeArtifactsState(
 /** Extract persisted sandbox metadata from thread state payload. */
 export function getPersistedSandboxState(
   state: Record<string, unknown>,
-): PersistedSandboxState {
+): SandboxRef | undefined {
+  const id = toOptionalString(state.app_sandbox_id);
+  if (!id) {
+    return undefined;
+  }
+  const profileHash = toOptionalString(
+    state.app_sandbox_dependency_profile_hash,
+  );
   return {
-    sandboxId: toOptionalString(state.app_sandbox_id),
-    sandboxDependencyProfileHash: toOptionalString(
-      state.app_sandbox_dependency_profile_hash,
-    ),
+    id,
+    ...(profileHash ? { profileHash } : {}),
   };
 }
 

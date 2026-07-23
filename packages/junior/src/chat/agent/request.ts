@@ -17,7 +17,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
-import type { SandboxAcquiredState } from "@/chat/sandbox/sandbox";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -120,10 +120,7 @@ export interface AgentRunState {
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
   /** Persisted sandbox reuse state from prior slices of this conversation. */
-  sandbox?: {
-    sandboxId?: string;
-    sandboxDependencyProfileHash?: string;
-  };
+  sandbox?: SandboxRef;
 }
 
 /**
@@ -169,7 +166,7 @@ export interface AgentRunDurability {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
-  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
+  onSandboxRefChanged?: (sandbox: SandboxRef) => void | Promise<void>;
   onArtifactStateUpdated?: (
     artifactState: ThreadArtifactsState,
   ) => void | Promise<void>;

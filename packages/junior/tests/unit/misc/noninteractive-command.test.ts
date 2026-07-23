@@ -32,8 +32,8 @@ describe("non-interactive shell commands", () => {
   it("wraps argv commands in a non-interactive bash invocation", async () => {
     const runCommand = vi.fn(async () => ({
       exitCode: 0,
-      stdout: async () => "ok",
-      stderr: async () => "",
+      stdout: "ok",
+      stderr: "",
     }));
 
     await runNonInteractiveCommand(

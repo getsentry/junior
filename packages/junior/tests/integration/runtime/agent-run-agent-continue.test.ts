@@ -240,24 +240,23 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => ({
+  createSandbox: () => ({
+    workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
         stdout: "",
         stderr: "",
         exitCode: 0,
       }),
-    }),
-    canExecute: () => false,
-    execute: async () => {
-      throw new Error("sandbox executor should not execute in this test");
+      writeFiles: async () => undefined,
     },
-    getSandboxId: () => undefined,
-    getDependencyProfileHash: () => undefined,
-    dispose: async () => undefined,
+    tools: {
+      supports: () => false,
+      execute: async () => {
+        throw new Error("sandbox executor should not execute in this test");
+      },
+    },
+    ref: () => undefined,
   }),
 }));
 

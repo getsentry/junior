@@ -2,14 +2,8 @@ import { describe, expect, it } from "vitest";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 describe("normalizeToolResult", () => {
-  it("unwraps sandbox envelope", () => {
-    const result = normalizeToolResult({ result: "hello" }, true);
-    expect(result.details).toBe("hello");
-    expect(result.content).toEqual([{ type: "text", text: "hello" }]);
-  });
-
-  it("does not unwrap non-sandbox result", () => {
-    const result = normalizeToolResult({ result: "hello" }, false);
+  it("keeps ordinary object results intact", () => {
+    const result = normalizeToolResult({ result: "hello" });
     expect(result.details).toEqual({ result: "hello" });
   });
 
@@ -18,33 +12,21 @@ describe("normalizeToolResult", () => {
       content: [{ type: "text" as const, text: "ok" }],
       details: { foo: 1 },
     };
-    const result = normalizeToolResult(structured, false);
-    expect(result).toBe(structured);
-  });
-
-  it("passes through structured result from sandbox envelope", () => {
-    const structured = {
-      content: [{ type: "text" as const, text: "ok" }],
-      details: { foo: 1 },
-    };
-    const result = normalizeToolResult({ result: structured }, true);
+    const result = normalizeToolResult(structured);
     expect(result).toBe(structured);
   });
 
   it("normalizes native content results with generic success details", () => {
-    const result = normalizeToolResult(
-      {
-        content: [
-          { type: "text" as const, text: "image generated" },
-          {
-            type: "image" as const,
-            data: "base64-image",
-            mimeType: "image/png",
-          },
-        ],
-      },
-      false,
-    );
+    const result = normalizeToolResult({
+      content: [
+        { type: "text" as const, text: "image generated" },
+        {
+          type: "image" as const,
+          data: "base64-image",
+          mimeType: "image/png",
+        },
+      ],
+    });
 
     expect(result).toEqual({
       content: [
@@ -65,7 +47,6 @@ describe("normalizeToolResult", () => {
         {
           content: [{ type: "text" as const, text: "native content" }],
         },
-        false,
         { requireStructuredResult: true },
       ),
     ).toThrow(
@@ -78,7 +59,7 @@ describe("normalizeToolResult", () => {
       content: [{ type: "text" as const, text: "ok" }],
       details: { ok: true, status: "success" },
     };
-    const result = normalizeToolResult({ result: structured }, true, {
+    const result = normalizeToolResult(structured, {
       requireStructuredResult: true,
     });
     expect(result.details).toEqual({ ok: true, status: "success" });
@@ -90,14 +71,14 @@ describe("normalizeToolResult", () => {
       details: { ok: true },
     };
     expect(() =>
-      normalizeToolResult({ result: structured }, true, {
+      normalizeToolResult(structured, {
         requireStructuredResult: true,
       }),
     ).toThrow("Invalid option");
   });
 
   it("serializes object to JSON text", () => {
-    const result = normalizeToolResult({ key: "value" }, false);
+    const result = normalizeToolResult({ key: "value" });
     expect(result.content[0]).toEqual({
       type: "text",
       text: '{"key":"value"}',
@@ -116,7 +97,6 @@ describe("normalizeToolResult", () => {
           reason: "more content",
         },
       },
-      false,
       { toolName: "renamedReadFile" },
     );
 
@@ -168,7 +148,7 @@ describe("normalizeToolResult", () => {
       },
     };
 
-    const result = normalizeToolResult({ result: details }, true);
+    const result = normalizeToolResult(details);
 
     expect(result.details).toBe(details);
     expect(result.content[0]).toMatchObject({
@@ -225,12 +205,9 @@ describe("normalizeToolResult", () => {
     };
     const result = normalizeToolResult(
       {
-        result: {
-          content: [{ type: "text", text: JSON.stringify(details) }],
-          details,
-        },
+        content: [{ type: "text", text: JSON.stringify(details) }],
+        details,
       },
-      true,
       { requireStructuredResult: true },
     );
 
@@ -247,12 +224,12 @@ describe("normalizeToolResult", () => {
   });
 
   it("handles string result directly", () => {
-    const result = normalizeToolResult("plain text", false);
+    const result = normalizeToolResult("plain text");
     expect(result.content[0]).toEqual({ type: "text", text: "plain text" });
   });
 
   it("handles null result", () => {
-    const result = normalizeToolResult(null, false);
+    const result = normalizeToolResult(null);
     expect(result.content[0]).toEqual({ type: "text", text: "null" });
   });
 });

@@ -108,6 +108,20 @@ export function isSandboxUnavailableError(error: unknown): boolean {
   });
 }
 
+/** Detect a durable sandbox reference that can no longer be restored. */
+export function isSandboxMissingError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    const details = getSandboxErrorDetails(candidate);
+    const searchable =
+      `${details.searchableText} ${details.summary}`.toLowerCase();
+    return (
+      searchable.includes("status=404") ||
+      searchable.includes("status code 404") ||
+      searchable.includes("snapshot_not_found")
+    );
+  });
+}
+
 /** Detect transient snapshot boot races so sandbox creation can retry. */
 export function isSnapshottingError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {

@@ -19,7 +19,7 @@ import {
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
+import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
@@ -48,7 +48,7 @@ export function createPiAgentTools(
   sandbox: SkillSandbox,
   spanContext: LogContext,
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
-  sandboxExecutor?: SandboxExecutor,
+  sandboxTools?: SandboxTools,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (
     toolCallId: string,
@@ -151,9 +151,9 @@ export function createPiAgentTools(
     const toolInput = beforeTool.input;
     await onToolCall?.(toolCallId, toolName, toolInput);
     const sandboxInput = buildSandboxInput(toolName, toolInput);
-    const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
+    const isSandbox = Boolean(sandboxTools?.supports(toolName));
     const result = isSandbox
-      ? await sandboxExecutor!.execute({
+      ? await sandboxTools!.execute({
           toolName,
           input: sandboxInput,
           ...(signal ? { signal } : {}),
@@ -165,7 +165,7 @@ export function createPiAgentTools(
           toolCallId,
         });
 
-    const normalized = normalizeToolResult(result, isSandbox, {
+    const normalized = normalizeToolResult(result, {
       requireStructuredResult: Boolean(toolDef.outputSchema),
       toolName,
     });

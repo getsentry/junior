@@ -43,7 +43,7 @@ export async function writeSandboxGeneratedArtifacts(
   });
   if (mkdir.exitCode !== 0) {
     throw new Error(
-      `failed to create generated artifact directory: ${await mkdir.stderr()}`,
+      `failed to create generated artifact directory: ${mkdir.stderr}`,
     );
   }
 

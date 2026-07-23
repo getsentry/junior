@@ -117,12 +117,8 @@ function fakeSandbox(
     async runCommand() {
       return {
         exitCode: 0,
-        async stdout() {
-          return "";
-        },
-        async stderr() {
-          return "";
-        },
+        stdout: "",
+        stderr: "",
       };
     },
     async snapshot() {

@@ -15,6 +15,7 @@ import type {
 import { toOptionalString } from "@/chat/coerce";
 import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState,
@@ -52,8 +53,7 @@ export interface PreparedTurnState {
   channelConfiguration?: ChannelConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
+  sandbox?: SandboxRef;
   userMessageAlreadyReplied?: boolean;
   userMessageId?: string;
 }
@@ -275,8 +275,14 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       configuration,
       channelConfiguration,
       conversation,
-      sandboxId: existingSandboxId,
-      sandboxDependencyProfileHash: existingSandboxDependencyProfileHash,
+      sandbox: existingSandboxId
+        ? {
+            id: existingSandboxId,
+            ...(existingSandboxDependencyProfileHash
+              ? { profileHash: existingSandboxDependencyProfileHash }
+              : {}),
+          }
+        : undefined,
       conversationContext,
       userMessageAlreadyReplied,
       userMessageId,

@@ -280,74 +280,68 @@ vi.mock("@/chat/skills", () => {
 });
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: (options?: {
-    onSandboxAcquired?: (sandbox: {
-      sandboxId: string;
-      sandboxDependencyProfileHash?: string;
+  createSandbox: (options: {
+    onRefChanged?: (sandbox: {
+      id: string;
+      profileHash?: string;
     }) => void | Promise<void>;
   }) => {
+    const acquire = async () => {
+      createSandboxCallCount.value += 1;
+      await options.onRefChanged?.({
+        id:
+          activeSandboxVersion.value === 1
+            ? "sandbox-test"
+            : `sandbox-test-${activeSandboxVersion.value}`,
+        profileHash: "hash-test",
+      });
+    };
     return {
-      configureSkills: () => undefined,
-      configureReferenceFiles: () => undefined,
-      createSandbox: async () => {
-        createSandboxCallCount.value += 1;
-        await options?.onSandboxAcquired?.({
-          sandboxId:
-            activeSandboxVersion.value === 1
-              ? "sandbox-test"
-              : `sandbox-test-${activeSandboxVersion.value}`,
-          sandboxDependencyProfileHash: "hash-test",
-        });
-        return {
-          sandboxId:
-            activeSandboxVersion.value === 1
-              ? "sandbox-test"
-              : `sandbox-test-${activeSandboxVersion.value}`,
-          readFileToBuffer: async () => {
-            return Buffer.from(
-              [
-                "---",
-                "name: demo-skill",
-                "description: Demo skill",
-                "---",
-                "",
-                "Skill instructions",
-              ].join("\n"),
-              "utf8",
-            );
-          },
-          runCommand: async () => ({
+      workspace: {
+        readFileToBuffer: async () => {
+          await acquire();
+          return Buffer.from(
+            [
+              "---",
+              "name: demo-skill",
+              "description: Demo skill",
+              "---",
+              "",
+              "Skill instructions",
+            ].join("\n"),
+            "utf8",
+          );
+        },
+        runCommand: async () => {
+          await acquire();
+          return {
             exitCode: 0,
-            stdout: async () => "text/plain\n",
-            stderr: async () => "",
-          }),
-        };
+            stdout: "text/plain\n",
+            stderr: "",
+          };
+        },
+        writeFiles: async () => {
+          await acquire();
+        },
       },
-      canExecute: (toolName: string) =>
-        agentMode.value === "bashThenError" && toolName === "bash",
-      execute: async ({ toolName }: { toolName: string; input: unknown }) => {
-        if (toolName !== "bash") {
-          throw new Error(
-            "sandbox executor should not handle tools in this test",
-          );
-        }
+      tools: {
+        supports: (toolName: string) =>
+          agentMode.value === "bashThenError" && toolName === "bash",
+        execute: async ({ toolName }: { toolName: string; input: unknown }) => {
+          if (toolName !== "bash") {
+            throw new Error(
+              "sandbox executor should not handle tools in this test",
+            );
+          }
 
-        if (agentMode.value !== "bashThenError") {
-          throw new Error(
-            "sandbox executor should not handle tools in this test",
-          );
-        }
+          if (agentMode.value !== "bashThenError") {
+            throw new Error(
+              "sandbox executor should not handle tools in this test",
+            );
+          }
 
-        createSandboxCallCount.value += 1;
-        await options?.onSandboxAcquired?.({
-          sandboxId:
-            activeSandboxVersion.value === 1
-              ? "sandbox-test"
-              : `sandbox-test-${activeSandboxVersion.value}`,
-          sandboxDependencyProfileHash: "hash-test",
-        });
-        return {
-          result: {
+          await acquire();
+          return {
             ok: true,
             status: "success",
             command: "pwd",
@@ -359,17 +353,19 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
             stderr: "",
             stdout_truncated: false,
             stderr_truncated: false,
-          },
-        };
+          };
+        },
       },
-      getSandboxId: () =>
+      ref: () =>
         createSandboxCallCount.value > 0
-          ? activeSandboxVersion.value === 1
-            ? "sandbox-test"
-            : `sandbox-test-${activeSandboxVersion.value}`
+          ? {
+              id:
+                activeSandboxVersion.value === 1
+                  ? "sandbox-test"
+                  : `sandbox-test-${activeSandboxVersion.value}`,
+              profileHash: "hash-test",
+            }
           : undefined,
-      getDependencyProfileHash: () => "hash-test",
-      dispose: async () => undefined,
     };
   },
 }));
@@ -422,7 +418,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(reply.sandboxId).toBeUndefined();
+    expect(reply.sandbox).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
     expect(selectedThinkingLevels.value).toEqual(["off"]);
   });
@@ -434,7 +430,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(reply.sandboxId).toBeUndefined();
+    expect(reply.sandbox).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
     expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
@@ -509,27 +505,29 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(reply.text).toBe("");
     expect(reply.diagnostics.errorMessage).toContain("agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
-    expect(reply.sandboxId).toBe("sandbox-test");
-    expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
+    expect(reply.sandbox).toEqual({
+      id: "sandbox-test",
+      profileHash: "hash-test",
+    });
   });
 
   it("reports sandbox metadata as soon as lazy boot succeeds on error turns", async () => {
     agentMode.value = "bashThenError";
-    const onSandboxAcquired = vi.fn();
+    const onSandboxRefChanged = vi.fn();
 
     const reply = await generateLocalReply("run pwd", {
       durability: {
-        onSandboxAcquired,
+        onSandboxRefChanged,
       },
     });
 
     // Raw exception text stays in diagnostics; it is never reply text.
     expect(reply.text).toBe("");
     expect(reply.diagnostics.errorMessage).toContain("agent exploded");
-    expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
-    expect(onSandboxAcquired).toHaveBeenCalledWith({
-      sandboxId: "sandbox-test",
-      sandboxDependencyProfileHash: "hash-test",
+    expect(onSandboxRefChanged).toHaveBeenCalledTimes(1);
+    expect(onSandboxRefChanged).toHaveBeenCalledWith({
+      id: "sandbox-test",
+      profileHash: "hash-test",
     });
   });
 });

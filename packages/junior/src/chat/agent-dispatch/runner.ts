@@ -35,10 +35,12 @@ import {
 } from "@/chat/state/artifacts";
 import {
   getChannelConfigurationServiceById,
+  getPersistedSandboxState,
   getPersistedThreadState,
   mergeArtifactsState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
@@ -110,15 +112,13 @@ function upsertDispatchUserMessage(args: {
 async function persistRuntimePatch(args: {
   artifacts?: ThreadArtifactsState;
   conversation: ThreadConversationState;
-  sandboxDependencyProfileHash?: string;
-  sandboxId?: string;
+  sandbox?: SandboxRef;
   threadId: string;
 }): Promise<void> {
   await persistThreadStateById(args.threadId, {
     artifacts: args.artifacts,
     conversation: args.conversation,
-    sandboxId: args.sandboxId,
-    sandboxDependencyProfileHash: args.sandboxDependencyProfileHash,
+    sandbox: args.sandbox,
   });
 }
 
@@ -281,14 +281,7 @@ export async function runAgentDispatchSlice(
     }
 
     let artifacts = coerceThreadArtifactsState(persisted);
-    let sandboxId =
-      typeof persisted.app_sandbox_id === "string"
-        ? persisted.app_sandbox_id
-        : undefined;
-    let sandboxDependencyProfileHash =
-      typeof persisted.app_sandbox_dependency_profile_hash === "string"
-        ? persisted.app_sandbox_dependency_profile_hash
-        : undefined;
+    let sandbox = getPersistedSandboxState(persisted);
     const channelConfiguration = getChannelConfigurationServiceById(
       dispatch.destination.channelId,
     );
@@ -401,24 +394,19 @@ export async function runAgentDispatchSlice(
       },
       state: {
         artifactState: artifacts,
-        sandbox: {
-          sandboxId,
-          sandboxDependencyProfileHash,
-        },
+        sandbox,
       },
       delivery: {
         onAssistantMessage: deliverAssistantMessage,
       },
       durability: {
-        onSandboxAcquired: async (sandbox) => {
-          sandboxId = sandbox.sandboxId;
-          sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
+        onSandboxRefChanged: async (nextSandbox) => {
+          sandbox = nextSandbox;
           await persistRuntimePatch({
             threadId: conversationId,
             conversation,
             artifacts,
-            sandboxId,
-            sandboxDependencyProfileHash,
+            sandbox,
           });
         },
         onArtifactStateUpdated: async (nextArtifacts) => {
@@ -427,8 +415,7 @@ export async function runAgentDispatchSlice(
             threadId: conversationId,
             conversation,
             artifacts,
-            sandboxId,
-            sandboxDependencyProfileHash,
+            sandbox,
           });
         },
       },
@@ -503,9 +490,7 @@ export async function runAgentDispatchSlice(
           threadId: conversationId,
           conversation,
           artifacts: nextArtifacts,
-          sandboxId: reply.sandboxId ?? sandboxId,
-          sandboxDependencyProfileHash:
-            reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+          sandbox: reply.sandbox ?? sandbox,
         });
       });
       statePersisted = true;

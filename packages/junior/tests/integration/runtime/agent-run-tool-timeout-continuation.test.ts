@@ -136,26 +136,25 @@ vi.mock("@/chat/pi/traced-stream", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => ({
+  createSandbox: () => ({
+    workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-    }),
-    canExecute: (toolName: string) => toolName === "bash",
-    execute: async ({
-      input,
-      signal,
-    }: {
-      input: { command?: string };
-      signal?: AbortSignal;
-    }) => {
-      const command = input.command ?? "";
-      observations.toolExecutions.push(command);
-      if (observations.toolExecutions.length > 1) {
-        return {
-          result: {
+      writeFiles: async () => undefined,
+    },
+    tools: {
+      supports: (toolName: string) => toolName === "bash",
+      execute: async ({
+        input,
+        signal,
+      }: {
+        input: { command?: string };
+        signal?: AbortSignal;
+      }) => {
+        const command = input.command ?? "";
+        observations.toolExecutions.push(command);
+        if (observations.toolExecutions.length > 1) {
+          return {
             content: [
               {
                 type: "text",
@@ -175,49 +174,46 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               stdout: "targeted Cloudflare test passed",
               exit_code: 0,
             },
-          },
-        };
-      }
-      observations.toolStarted = true;
-      await new Promise<void>((resolve) => {
-        const abort = () => {
-          observations.toolAborted = true;
-          resolve();
-        };
-        if (signal?.aborted) {
-          abort();
-          return;
+          };
         }
-        signal?.addEventListener("abort", abort, { once: true });
-      });
-      const details = {
-        ok: false,
-        status: "error",
-        target: "run-the-targeted-cloudflare-test",
-        data: {
+        observations.toolStarted = true;
+        await new Promise<void>((resolve) => {
+          const abort = () => {
+            observations.toolAborted = true;
+            resolve();
+          };
+          if (signal?.aborted) {
+            abort();
+            return;
+          }
+          signal?.addEventListener("abort", abort, { once: true });
+        });
+        const details = {
+          ok: false,
+          status: "error",
+          target: "run-the-targeted-cloudflare-test",
+          data: {
+            aborted: true,
+            exit_code: 130,
+            stderr: "Command aborted because the agent turn was cancelled.",
+          },
+          error: {
+            kind: "outcome_unknown",
+            message:
+              "Command was interrupted before its outcome was confirmed.",
+            retryable: false,
+          },
           aborted: true,
           exit_code: 130,
           stderr: "Command aborted because the agent turn was cancelled.",
-        },
-        error: {
-          kind: "outcome_unknown",
-          message: "Command was interrupted before its outcome was confirmed.",
-          retryable: false,
-        },
-        aborted: true,
-        exit_code: 130,
-        stderr: "Command aborted because the agent turn was cancelled.",
-      };
-      return {
-        result: {
+        };
+        return {
           content: [{ type: "text", text: JSON.stringify(details) }],
           details,
-        },
-      };
+        };
+      },
     },
-    getSandboxId: () => undefined,
-    getDependencyProfileHash: () => undefined,
-    dispose: async () => undefined,
+    ref: () => undefined,
   }),
 }));
 

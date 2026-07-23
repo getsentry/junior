@@ -5,6 +5,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnRoute } from "@/chat/services/turn-router";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   extractAssistantText,
   getTerminalAssistantMessages,
@@ -113,8 +114,7 @@ export interface AgentRunResult {
   /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
   text: string;
   artifactStatePatch?: Partial<ThreadArtifactsState>;
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
+  sandbox?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
 }
@@ -124,8 +124,7 @@ export interface TurnResultInput {
   userInput: string;
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
+  sandbox?: SandboxRef;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
@@ -188,8 +187,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     newMessages,
     artifactStatePatch,
     toolCalls,
-    sandboxId,
-    sandboxDependencyProfileHash,
+    sandbox,
     durationMs,
     shouldTrace,
     spanContext,
@@ -342,8 +340,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       Object.keys(artifactStatePatch).length > 0
         ? artifactStatePatch
         : undefined,
-    sandboxId,
-    sandboxDependencyProfileHash,
+    sandbox,
     piMessages: input.piMessages,
     diagnostics: resolvedDiagnostics,
   };

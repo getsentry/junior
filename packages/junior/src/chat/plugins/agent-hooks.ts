@@ -31,7 +31,7 @@ import { getSlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
-  SandboxSession,
+  SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
@@ -67,7 +67,7 @@ export interface PluginApiRouteRegistration {
 
 export interface PluginHookRunner {
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
-  prepareSandbox(sandbox: SandboxSession): Promise<void>;
+  prepareSandbox(sandbox: SandboxWorkspace): Promise<void>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1005,7 +1005,7 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function createSandboxCapability(sandbox: SandboxSession): PluginSandbox {
+function createSandboxCapability(sandbox: SandboxWorkspace): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
     juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
@@ -1014,14 +1014,10 @@ function createSandboxCapability(sandbox: SandboxSession): PluginSandbox {
     },
     async run(input: SandboxCommandInput) {
       const result = await sandbox.runCommand(input);
-      const [stdout, stderr] = await Promise.all([
-        result.stdout(),
-        result.stderr(),
-      ]);
       return {
         exitCode: result.exitCode,
-        stdout,
-        stderr,
+        stdout: result.stdout,
+        stderr: result.stderr,
       };
     },
     async writeFile(input) {

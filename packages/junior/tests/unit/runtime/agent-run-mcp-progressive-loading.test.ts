@@ -427,10 +427,8 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => ({
+  createSandbox: () => ({
+    workspace: {
       readFileToBuffer: async () =>
         Buffer.from(
           [
@@ -443,14 +441,16 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
           ].join("\n"),
           "utf8",
         ),
-    }),
-    canExecute: () => false,
-    execute: async () => {
-      throw new Error("sandbox executor should not handle mocked tools");
+      runCommand: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+      writeFiles: async () => undefined,
     },
-    getSandboxId: () => "sandbox-test",
-    getDependencyProfileHash: () => "hash-test",
-    dispose: async () => undefined,
+    tools: {
+      supports: () => false,
+      execute: async () => {
+        throw new Error("sandbox executor should not handle mocked tools");
+      },
+    },
+    ref: () => ({ id: "sandbox-test", profileHash: "hash-test" }),
   }),
 }));
 

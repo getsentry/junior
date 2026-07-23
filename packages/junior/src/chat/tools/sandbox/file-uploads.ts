@@ -170,7 +170,7 @@ async function detectMimeType(
     if (result.exitCode !== 0) {
       return undefined;
     }
-    const value = (await result.stdout()).trim();
+    const value = result.stdout.trim();
     return value || undefined;
   } catch {
     return undefined;

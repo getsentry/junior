@@ -173,11 +173,9 @@ export async function runLocalAgentTurn(
     conversationId: input.conversationId,
   });
   let artifacts = coerceThreadArtifactsState(persisted);
-  let { sandboxId, sandboxDependencyProfileHash } =
-    getPersistedSandboxState(persisted);
+  let sandbox = getPersistedSandboxState(persisted);
   const initialArtifacts = artifacts;
-  const initialSandboxId = sandboxId;
-  const initialSandboxDependencyProfileHash = sandboxDependencyProfileHash;
+  const initialSandbox = sandbox;
 
   const turnId = localTurnId();
   const userMessageId = `${turnId}:user`;
@@ -293,10 +291,7 @@ export async function runLocalAgentTurn(
       },
       state: {
         artifactState: artifacts,
-        sandbox: {
-          sandboxId,
-          sandboxDependencyProfileHash,
-        },
+        sandbox,
       },
       observers: {
         onStatus: async (status) => {
@@ -318,18 +313,15 @@ export async function runLocalAgentTurn(
           await persistThreadStateById(input.conversationId, {
             artifacts,
             conversation,
-            sandboxId,
-            sandboxDependencyProfileHash,
+            sandbox,
           });
         },
-        onSandboxAcquired: async (sandbox) => {
-          sandboxId = sandbox.sandboxId;
-          sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
+        onSandboxRefChanged: async (nextSandbox) => {
+          sandbox = nextSandbox;
           await persistThreadStateById(input.conversationId, {
             artifacts,
             conversation,
-            sandboxId,
-            sandboxDependencyProfileHash,
+            sandbox,
           });
         },
       },
@@ -384,8 +376,7 @@ export async function runLocalAgentTurn(
       await persistThreadStateById(input.conversationId, {
         artifacts: initialArtifacts,
         conversation,
-        sandboxId: initialSandboxId ?? "",
-        sandboxDependencyProfileHash: initialSandboxDependencyProfileHash ?? "",
+        sandbox: initialSandbox ?? null,
       });
     } catch (persistenceError) {
       const persistenceEventId = captureLocalBoundaryFailure({
@@ -421,9 +412,7 @@ export async function runLocalAgentTurn(
     await persistThreadStateById(input.conversationId, {
       artifacts: completedState.artifacts ?? artifacts,
       conversation: completedState.conversation,
-      sandboxId: reply.sandboxId ?? sandboxId,
-      sandboxDependencyProfileHash:
-        reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+      sandbox: reply.sandbox ?? sandbox,
     });
     if (reply.piMessages?.length) {
       // Destination acceptance is the completion boundary: this first commits

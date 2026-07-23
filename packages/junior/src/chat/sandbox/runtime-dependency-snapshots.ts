@@ -220,8 +220,8 @@ async function runOrThrow(
     return;
   }
 
-  const stderr = (await result.stderr()).trim();
-  const stdout = (await result.stdout()).trim();
+  const stderr = result.stderr.trim();
+  const stdout = result.stdout.trim();
   const detail = stderr || stdout || "command failed";
   throw new Error(`${label} failed: ${detail}`);
 }
@@ -239,8 +239,8 @@ async function tryRun(
     return { ok: true };
   }
 
-  const stderr = (await result.stderr()).trim();
-  const stdout = (await result.stdout()).trim();
+  const stderr = result.stderr.trim();
+  const stdout = result.stdout.trim();
   return { ok: false, detail: stderr || stdout || "command failed" };
 }
 
@@ -355,8 +355,8 @@ async function installRuntimeDependencies(
               cmd: "sha256sum",
               args: [rpmPath],
             });
-            const checksumStdout = (await checksumResult.stdout()).trim();
-            const checksumStderr = (await checksumResult.stderr()).trim();
+            const checksumStdout = checksumResult.stdout.trim();
+            const checksumStderr = checksumResult.stderr.trim();
             if (checksumResult.exitCode !== 0) {
               throw new Error(
                 `sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`,
@@ -458,8 +458,8 @@ async function runRuntimePostinstall(
           continue;
         }
 
-        const stderr = (await result.stderr()).trim();
-        const stdout = (await result.stdout()).trim();
+        const stderr = result.stderr.trim();
+        const stdout = result.stdout.trim();
         const detail = stderr || stdout || "command failed";
         throw new Error(`runtime-postinstall ${command.cmd} failed: ${detail}`);
       }

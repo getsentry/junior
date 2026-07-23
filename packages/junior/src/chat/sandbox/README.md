@@ -8,10 +8,21 @@ traffic through verified host egress.
 
 - Sandboxes are ephemeral execution environments associated with a durable
   conversation or run.
-- Persist only the sandbox identifier and durable artifact metadata needed to
-  resume work; do not treat the sandbox filesystem as product storage.
+- Runtime state persists only an opaque `SandboxRef` (`id` and dependency
+  profile hash). The provider adapter maps that reference to Vercel's named
+  sandbox API; callers do not depend on provider names or VM session ids.
+- Each agent run creates lazy sandbox access from the persisted reference.
+  `workspace` serves non-sandbox tools and generated artifacts, while `tools`
+  serves the Pi sandbox tool adapter. The live provider session stays private
+  to this module.
 - An unavailable session fails the current operation without replay, retains
   its sandbox identifier, and reacquires a session only on a later operation.
+- New or replacement references are persisted before session preparation can
+  perform further asynchronous work. Reacquiring a VM session for the same
+  reference does not rewrite durable state.
+- Agent runs do not stop sandboxes when they finish. Explicit temporary owners,
+  such as dependency snapshot creation, own their own stop lifecycle.
+- Do not treat the sandbox filesystem as product storage.
 - Commands are non-interactive and bounded by runtime deadlines.
 - Generated files become shareable only after artifact validation and
   destination-aware delivery planning.

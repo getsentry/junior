@@ -9,8 +9,8 @@ const GENERATED_IMAGE_PATH = `${SANDBOX_ARTIFACTS_DIR}/generated.png`;
 function commandResult(overrides: Partial<SandboxCommandResult> = {}) {
   return {
     exitCode: 0,
-    stdout: async () => "",
-    stderr: async () => "",
+    stdout: "",
+    stderr: "",
     ...overrides,
   } satisfies SandboxCommandResult;
 }
@@ -85,7 +85,7 @@ describe("writeSandboxGeneratedArtifacts", () => {
       runCommand: async () =>
         commandResult({
           exitCode: 1,
-          stderr: async () => "permission denied",
+          stderr: "permission denied",
         }),
       writeFiles: async () => {
         throw new Error("writeFiles should not run");

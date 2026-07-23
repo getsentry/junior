@@ -37,19 +37,28 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
   );
   return {
     ...actual,
-    createSandboxExecutor: () => ({
-      configureReferenceFiles() {},
-      configureSkills() {},
-      getDependencyProfileHash: () => undefined,
-      getSandboxId: () => undefined,
-      canExecute: (toolName: string) => toolName === "bash",
-      createSandbox: async () => {
-        throw new Error("sandbox should not be acquired for auth signal test");
+    createSandbox: () => ({
+      workspace: {
+        readFileToBuffer: async () => {
+          throw new Error(
+            "sandbox should not be acquired for auth signal test",
+          );
+        },
+        runCommand: async () => {
+          throw new Error(
+            "sandbox should not be acquired for auth signal test",
+          );
+        },
+        writeFiles: async () => {
+          throw new Error(
+            "sandbox should not be acquired for auth signal test",
+          );
+        },
       },
-      dispose: async () => undefined,
-      execute: async () => {
-        return {
-          result: {
+      tools: {
+        supports: (toolName: string) => toolName === "bash",
+        execute: async () => {
+          return {
             ok: false,
             status: "error",
             auth_required: {
@@ -71,9 +80,10 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
             exit_code: 1,
             stderr: "auth required",
             stdout: "",
-          },
-        };
+          };
+        },
       },
+      ref: () => undefined,
     }),
   };
 });

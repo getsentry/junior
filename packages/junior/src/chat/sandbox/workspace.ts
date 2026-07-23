@@ -7,8 +7,8 @@ import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
 
 export interface SandboxCommandResult {
   exitCode: number;
-  stderr(): Promise<string>;
-  stdout(): Promise<string>;
+  stderr: string;
+  stdout: string;
 }
 
 export interface SandboxCommandInput {
@@ -44,6 +44,13 @@ export interface SandboxWorkspace {
     path: string;
   }): Promise<Buffer | null | undefined>;
   runCommand(input: SandboxCommandInput): Promise<SandboxCommandResult>;
+  writeFiles(
+    files: Array<{
+      content: string | Uint8Array;
+      mode?: number;
+      path: string;
+    }>,
+  ): Promise<void>;
 }
 
 export interface SandboxSession extends SandboxWorkspace {
@@ -55,13 +62,6 @@ export interface SandboxSession extends SandboxWorkspace {
   snapshot(): Promise<{ snapshotId: string }>;
   stop(): Promise<unknown>;
   update(params: { networkPolicy?: NetworkPolicy }): Promise<void>;
-  writeFiles(
-    files: Array<{
-      content: string | Uint8Array;
-      mode?: number;
-      path: string;
-    }>,
-  ): Promise<void>;
 }
 
 /** Pin Junior's sandbox contract to one Vercel session without SDK replay. */
@@ -113,10 +113,14 @@ export function createSandboxSession(
     },
     async runCommand(input) {
       const result = await run(async () => await session.runCommand(input));
+      const [stdout, stderr] = await Promise.all([
+        run(async () => await result.stdout()),
+        run(async () => await result.stderr()),
+      ]);
       return {
         exitCode: result.exitCode,
-        stdout: async () => await run(async () => await result.stdout()),
-        stderr: async () => await run(async () => await result.stderr()),
+        stdout,
+        stderr,
       };
     },
     snapshot() {

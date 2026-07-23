@@ -265,9 +265,7 @@ async function executeAgentRunInPrivacyContext(
   const turnTimeoutBudgetMs = Math.max(0, turnDeadlineAtMs - replyStartedAtMs);
 
   let resume: ResumeState | undefined;
-  let lastKnownSandboxId: string | undefined = state.sandbox?.sandboxId;
-  let lastKnownSandboxDependencyProfileHash: string | undefined =
-    state.sandbox?.sandboxDependencyProfileHash;
+  let lastKnownSandboxRef = state.sandbox;
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
@@ -327,10 +325,7 @@ async function executeAgentRunInPrivacyContext(
       await recordConnectedMcpProvider(provider);
     }
   };
-  const getSandboxMetadata = () => ({
-    sandboxId: lastKnownSandboxId,
-    sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
-  });
+  const getSandboxMetadata = () => ({ sandbox: lastKnownSandboxRef });
 
   try {
     const projection = await openConversationProjection({ conversationId });
@@ -648,10 +643,8 @@ async function executeAgentRunInPrivacyContext(
       generatedFiles,
       invokedSkill,
       observers,
-      onSandboxMetadataChanged: (sandbox) => {
-        lastKnownSandboxId = sandbox.sandboxId;
-        lastKnownSandboxDependencyProfileHash =
-          sandbox.sandboxDependencyProfileHash;
+      onSandboxRefChanged: (sandbox) => {
+        lastKnownSandboxRef = sandbox;
       },
       policy,
       preAgentPromptMessages,
@@ -671,7 +664,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
     });
     mcpToolManager = wiring.mcpToolManager;
-    const sandboxExecutor = wiring.sandboxExecutor;
+    const getSandboxRef = wiring.getSandboxRef;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools;
 
@@ -1195,8 +1188,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
       artifactStatePatch,
       toolCalls,
-      sandboxId: sandboxExecutor.getSandboxId(),
-      sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
+      sandbox: getSandboxRef(),
       piMessages: [...agent.state.messages],
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,

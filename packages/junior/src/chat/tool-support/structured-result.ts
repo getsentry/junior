@@ -87,7 +87,7 @@ export function injectContinuationToolName(
   });
 }
 
-interface JuniorTextToolResultEnvelope<
+export interface JuniorTextToolResultEnvelope<
   TDetails extends JuniorToolResult = JuniorToolResult,
 > {
   content: [TextContent];

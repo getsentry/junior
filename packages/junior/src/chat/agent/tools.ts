@@ -2,7 +2,7 @@
  * Run tool wiring.
  *
  * Builds everything the agent can act through for one run slice: the sandbox
- * executor and lazy workspace, MCP and plugin auth orchestration, MCP
+ * access, MCP and plugin auth orchestration, MCP
  * provider restoration from durable history, and the Pi-facing tool surfaces
  * (main-agent tools plus runtime control tools). Auth pauses raised while
  * restoring providers are thrown here so the run parks before prompting.
@@ -30,10 +30,9 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import {
-  createSandboxExecutor,
-  type SandboxExecutor,
-} from "@/chat/sandbox/sandbox";
+import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
+import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -54,7 +53,6 @@ import {
   type AgentRunRouting,
   type AgentRunState,
 } from "@/chat/agent/request";
-import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
@@ -75,10 +73,7 @@ interface ToolWiringArgs {
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
   observers: AgentRunObservers;
-  onSandboxMetadataChanged: (sandbox: {
-    sandboxId?: string;
-    sandboxDependencyProfileHash?: string;
-  }) => void;
+  onSandboxRefChanged: (sandbox: SandboxRef) => void;
   policy: AgentRunPolicy;
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
@@ -103,7 +98,7 @@ export interface ToolWiring {
   getPendingAuthPause: () => AuthorizationPauseError | undefined;
   mcpToolManager: McpToolManager;
   pluginHooks: PluginHookRunner;
-  sandboxExecutor: SandboxExecutor;
+  getSandboxRef: () => SandboxRef | undefined;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -125,47 +120,52 @@ export async function wireAgentTools(
     actor: args.currentActor,
     actors: args.currentActors,
   });
-  const sandboxExecutor = createSandboxExecutor({
-    sandboxId: args.state.sandbox?.sandboxId,
-    sandboxDependencyProfileHash:
-      args.state.sandbox?.sandboxDependencyProfileHash,
+  const sandbox = createSandbox({
+    ref: args.state.sandbox,
+    skills: args.availableSkills,
+    referenceFiles: listReferenceFiles(),
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
     credentialEgress: args.routing.credentialContext,
-    agentHooks: pluginHooks,
-    onSandboxAcquired: async (sandbox) => {
-      args.onSandboxMetadataChanged({
-        sandboxId: sandbox.sandboxId,
-        sandboxDependencyProfileHash: sandbox.sandboxDependencyProfileHash,
-      });
-      await args.durability.onSandboxAcquired?.(sandbox);
+    prepare: async (workspace) => {
+      await pluginHooks.prepareSandbox(workspace);
     },
-    runBashCustomCommand: async (command) => {
-      const result = await maybeExecuteJrRpcCustomCommand(command, {
-        activeSkill: args.skillSandbox.getActiveSkill(),
-        channelConfiguration: args.policy.channelConfiguration,
-        actorId: isUserActor(args.currentActor)
-          ? args.currentActor.userId
-          : undefined,
-        onConfigurationValueChanged: (key, value) => {
-          if (value === undefined) {
-            delete args.configurationValues[key];
-            return;
-          }
-          args.configurationValues[key] = value;
-        },
-      });
-      return result.handled
-        ? { handled: true, result: result.result }
-        : { handled: false };
+    onRefChanged: async (ref) => {
+      args.onSandboxRefChanged(ref);
+      await args.durability.onSandboxRefChanged?.(ref);
     },
   });
-  sandboxExecutor.configureSkills(args.availableSkills);
-  sandboxExecutor.configureReferenceFiles(listReferenceFiles());
-  const sandbox = createLazySandboxWorkspace({
-    executor: sandboxExecutor,
-    spanContext: args.spanContext,
-  });
+  const sandboxTools: SandboxTools = {
+    supports: sandbox.tools.supports,
+    async execute(params) {
+      const command =
+        params.toolName === "bash"
+          ? String(
+              (params.input as { command?: unknown })?.command ?? "",
+            ).trim()
+          : undefined;
+      if (command) {
+        const result = await maybeExecuteJrRpcCustomCommand(command, {
+          activeSkill: args.skillSandbox.getActiveSkill(),
+          channelConfiguration: args.policy.channelConfiguration,
+          actorId: isUserActor(args.currentActor)
+            ? args.currentActor.userId
+            : undefined,
+          onConfigurationValueChanged: (key, value) => {
+            if (value === undefined) {
+              delete args.configurationValues[key];
+              return;
+            }
+            args.configurationValues[key] = value;
+          },
+        });
+        if (result.handled) {
+          return formatSandboxCommandResult(result.result);
+        }
+      }
+      return await sandbox.tools.execute(params);
+    },
+  };
 
   const slackDestination =
     args.routing.destination.platform === "slack"
@@ -256,7 +256,7 @@ export async function wireAgentTools(
       },
     }),
     mcpToolManager,
-    sandbox,
+    sandbox: sandbox.workspace,
     surface: args.surface,
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
@@ -291,7 +291,7 @@ export async function wireAgentTools(
     {
       writeGeneratedArtifacts: async (files) => {
         const refs = await writeSandboxGeneratedArtifacts(
-          await sandboxExecutor.createSandbox(),
+          sandbox.workspace,
           files,
         );
         args.generatedFiles.push(...files);
@@ -430,7 +430,7 @@ export async function wireAgentTools(
     args.skillSandbox,
     args.spanContext,
     args.observers.onStatus,
-    sandboxExecutor,
+    sandboxTools,
     pluginAuth,
     onToolCall,
     pluginHooks,
@@ -450,7 +450,7 @@ export async function wireAgentTools(
     getPendingAuthPause,
     mcpToolManager,
     pluginHooks,
-    sandboxExecutor,
+    getSandboxRef: sandbox.ref,
     toolGuidance,
     toolRuntimeContext,
   };

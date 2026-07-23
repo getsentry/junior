@@ -1130,9 +1130,9 @@ describe("local agent runner", () => {
         lastCanvasId: "canvas-undelivered",
         lastCanvasUrl: "https://example.invalid/canvas",
       });
-      await context.onSandboxAcquired?.({
-        sandboxDependencyProfileHash: "profile-undelivered",
-        sandboxId: "sandbox-undelivered",
+      await context.onSandboxRefChanged?.({
+        id: "sandbox-undelivered",
+        profileHash: "profile-undelivered",
       });
       await deliverAssistantText(request, "not delivered");
       return completedAgentRun(successReply("not delivered"));
@@ -1159,7 +1159,7 @@ describe("local agent runner", () => {
     );
     const state = await getPersistedThreadState(conversationId!);
     expect(coerceThreadArtifactsState(state).lastCanvasId).toBeUndefined();
-    expect(getPersistedSandboxState(state)).toEqual({});
+    expect(getPersistedSandboxState(state)).toBeUndefined();
     const visible = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation: visible,

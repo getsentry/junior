@@ -46,7 +46,6 @@ export function buildDeliveredTurnStatePatch(args: {
   return {
     artifacts,
     conversation,
-    sandboxId: args.reply.sandboxId,
-    sandboxDependencyProfileHash: args.reply.sandboxDependencyProfileHash,
+    sandbox: args.reply.sandbox,
   };
 }

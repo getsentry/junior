@@ -179,15 +179,6 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
   ].join("\n");
 }
 
-function unwrapSandboxResult(result: unknown, isSandboxResult: boolean) {
-  return isSandboxResult &&
-    result &&
-    typeof result === "object" &&
-    "result" in result
-    ? (result as { result: unknown }).result
-    : result;
-}
-
 function normalizeDetails(
   details: unknown,
   options: { requireStructuredResult?: boolean; toolName?: string },
@@ -209,13 +200,12 @@ function normalizeDetails(
   };
 }
 
-/** Unwrap sandbox envelope and detect structured results. */
+/** Normalize raw tool output into Pi content and structured details. */
 export function normalizeToolResult(
   result: unknown,
-  isSandboxResult: boolean,
   options: { requireStructuredResult?: boolean; toolName?: string } = {},
 ): { content: Array<TextContent | ImageContent>; details: unknown } {
-  const unwrapped = unwrapSandboxResult(result, isSandboxResult);
+  const unwrapped = result;
 
   if (isStructuredToolExecutionResult(unwrapped)) {
     const normalized = normalizeDetails(unwrapped.details, options);

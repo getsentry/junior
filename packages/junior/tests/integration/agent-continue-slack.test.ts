@@ -61,9 +61,10 @@ function createSandbox(files: Record<string, Buffer>): SandboxWorkspace {
     readFileToBuffer: async ({ path }) => files[path] ?? null,
     runCommand: async () => ({
       exitCode: 0,
-      stdout: async () => "image/png\n",
-      stderr: async () => "",
+      stdout: "image/png\n",
+      stderr: "",
     }),
+    writeFiles: async () => undefined,
   };
 }
 
@@ -294,10 +295,7 @@ describe("agent continuation Slack integration", () => {
           toolChannelId: "C999",
         }),
         state: expect.objectContaining({
-          sandbox: expect.objectContaining({
-            sandboxId: undefined,
-            sandboxDependencyProfileHash: undefined,
-          }),
+          sandbox: undefined,
         }),
       }),
     );

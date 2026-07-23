@@ -91,20 +91,18 @@ describe("Pi tool adapter", () => {
   it("executes sandbox bash without host credential injection", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
+      supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
-        result: {
-          ok: true,
-          command: (input as Record<string, unknown>).command,
-          cwd: "/vercel/sandbox",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "ok",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
+        ok: true,
+        command: (input as Record<string, unknown>).command,
+        cwd: "/vercel/sandbox",
+        exit_code: 0,
+        signal: null,
+        timed_out: false,
+        stdout: "ok",
+        stderr: "",
+        stdout_truncated: false,
+        stderr_truncated: false,
       })),
     } as any;
 
@@ -142,20 +140,18 @@ describe("Pi tool adapter", () => {
     const sandbox = new SkillSandbox([], []);
     const abortController = new AbortController();
     const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
+      supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async () => ({
-        result: {
-          ok: true,
-          command: "sleep 60",
-          cwd: "/vercel/sandbox",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
+        ok: true,
+        command: "sleep 60",
+        cwd: "/vercel/sandbox",
+        exit_code: 0,
+        signal: null,
+        timed_out: false,
+        stdout: "",
+        stderr: "",
+        stdout_truncated: false,
+        stderr_truncated: false,
       })),
     } as any;
 
@@ -371,21 +367,19 @@ describe("Pi tool adapter", () => {
       createdAtMs: Date.now(),
     };
     const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
+      supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async () => ({
-        result: {
-          ok: false,
-          command: "gh issue view 123",
-          cwd: "/vercel/sandbox",
-          exit_code: 1,
-          signal: null,
-          timed_out: false,
-          stdout: "",
-          stderr: "bad credentials",
-          stdout_truncated: false,
-          stderr_truncated: false,
-          auth_required: authRequired,
-        },
+        ok: false,
+        command: "gh issue view 123",
+        cwd: "/vercel/sandbox",
+        exit_code: 1,
+        signal: null,
+        timed_out: false,
+        stdout: "",
+        stderr: "bad credentials",
+        stdout_truncated: false,
+        stderr_truncated: false,
+        auth_required: authRequired,
       })),
     } as any;
 
@@ -425,20 +419,18 @@ describe("Pi tool adapter", () => {
       }),
     } as any;
     const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
+      supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async () => ({
-        result: {
-          ok: false,
-          command: "gh issue view 123",
-          cwd: "/vercel/sandbox",
-          exit_code: 1,
-          signal: null,
-          timed_out: false,
-          stdout: "",
-          stderr: "bad credentials",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
+        ok: false,
+        command: "gh issue view 123",
+        cwd: "/vercel/sandbox",
+        exit_code: 1,
+        signal: null,
+        timed_out: false,
+        stdout: "",
+        stderr: "bad credentials",
+        stdout_truncated: false,
+        stderr_truncated: false,
       })),
     } as any;
 
