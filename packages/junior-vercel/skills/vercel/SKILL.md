@@ -1,7 +1,6 @@
 ---
 name: vercel
 description: Query Vercel deployments, build logs, runtime logs, and deployment status through the Vercel CLI. Use when users ask to debug Vercel deployments, inspect failed builds, fetch production or preview runtime logs, find a deployment for a project or commit SHA, or investigate Vercel-hosted app errors. Do not use it for deploying, rolling back, changing project settings, domains, env vars, caches, storage, or any other Vercel mutation.
-allowed-tools: bash
 ---
 
 # Vercel Operations
