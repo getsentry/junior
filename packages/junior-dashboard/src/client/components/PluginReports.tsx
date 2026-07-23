@@ -4,11 +4,13 @@ import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 import { formatTime } from "../format";
 import { cn } from "../styles";
 import { PluginBarChart } from "./PluginBarChart";
+import type { TimeRangeDays } from "./controls/TimeRangeSelector";
 import { Card } from "./layout/Card";
 
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
+  range?: TimeRangeDays;
   reports: PluginOperationalReport[];
 }) {
   if (props.reports.length === 0 && !props.emptyText) return null;
@@ -48,13 +50,20 @@ export function PluginReports(props: {
         </div>
       </div>
       {props.reports.map((report) => (
-        <PluginReportView key={report.pluginName} report={report} />
+        <PluginReportView
+          key={report.pluginName}
+          range={props.range}
+          report={report}
+        />
       ))}
     </div>
   );
 }
 
-function PluginReportView(props: { report: PluginOperationalReport }) {
+function PluginReportView(props: {
+  range?: TimeRangeDays;
+  report: PluginOperationalReport;
+}) {
   const title = props.report.title ?? props.report.pluginName;
   return (
     <Card>
@@ -96,7 +105,11 @@ function PluginReportView(props: { report: PluginOperationalReport }) {
       {props.report.widgets?.length ? (
         <div className="grid gap-3 border-t border-white/[0.06] bg-black/15 p-3 lg:grid-cols-2">
           {props.report.widgets.map((widget) => (
-            <PluginBarChart key={widget.id} widget={widget} />
+            <PluginBarChart
+              key={widget.id}
+              range={props.range}
+              widget={widget}
+            />
           ))}
         </div>
       ) : null}

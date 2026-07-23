@@ -1,11 +1,7 @@
-import { useState } from "react";
 import type { ConversationStatsReport } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { SystemMetricCharts } from "./SystemMetricCharts";
 
@@ -13,10 +9,9 @@ import { SystemMetricCharts } from "./SystemMetricCharts";
 export function SystemActivity(props: {
   error: boolean;
   loading: boolean;
+  range: TimeRangeDays;
   stats: ConversationStatsReport | undefined;
 }) {
-  const [range, setRange] = useState<TimeRangeDays>(30);
-
   if (!props.stats) {
     return (
       <Card padding="sm">
@@ -31,7 +26,7 @@ export function SystemActivity(props: {
     );
   }
 
-  const days = props.stats.metricDays.slice(-range);
+  const days = props.stats.metricDays.slice(-props.range);
   return (
     <section className="grid gap-4" aria-labelledby="system-metrics-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -51,7 +46,6 @@ export function SystemActivity(props: {
             </p>
           ) : null}
         </div>
-        <TimeRangeSelector onChange={setRange} value={range} />
       </div>
       <SystemMetricCharts days={days} />
     </section>

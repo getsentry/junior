@@ -203,7 +203,7 @@ async function aggregatePullRequestDays(args: {
   nowMs: number;
 }): Promise<PullRequestDay[]> {
   const end = new Date(args.nowMs);
-  const start = new Date(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
+  const start = startOfUtcDay(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
   const table = juniorGitHubPullRequests;
   const result = await args.db.execute(sql`
     WITH days AS (
@@ -359,7 +359,7 @@ async function aggregateIssueDays(args: {
   nowMs: number;
 }): Promise<IssueDay[]> {
   const end = new Date(args.nowMs);
-  const start = new Date(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
+  const start = startOfUtcDay(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
   const table = juniorGitHubIssues;
   const result = await args.db.execute(sql`
     WITH days AS (
@@ -463,6 +463,12 @@ function formatCommitComposition(stats: {
   mixed: number;
 }): string {
   return `${stats.juniorOnly} Junior-only · ${stats.mixed} mixed · ${stats.compositionUnknown} unknown`;
+}
+
+function startOfUtcDay(timestampMs: number): Date {
+  const date = new Date(timestampMs);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
 }
 
 /** Build the generic dashboard report for Junior-owned GitHub work outcomes. */

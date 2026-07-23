@@ -1,3 +1,9 @@
+import { useState } from "react";
+
+import {
+  TimeRangeSelector,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { SystemData } from "../../types";
@@ -6,6 +12,7 @@ import { SystemCapabilities } from "./SystemCapabilities";
 
 /** Render aggregate system activity with plugin inventory and reports. */
 export function SystemPage(props: { data: SystemData }) {
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const reports = props.data.pluginReports?.reports ?? [];
   const reportsPending =
     props.data.pluginReportsLoading && reports.length === 0;
@@ -18,6 +25,7 @@ export function SystemPage(props: { data: SystemData }) {
       )}
     >
       <PageHeader
+        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description="A live read on Junior's runtime, model usage, loaded capabilities, and the systems keeping work moving."
         eyebrow="Junior's engine room"
         title="System"
@@ -25,6 +33,7 @@ export function SystemPage(props: { data: SystemData }) {
 
       <SystemActivity
         error={props.data.conversationStatsError}
+        range={range}
         loading={props.data.conversationStatsLoading}
         stats={props.data.conversationStats}
       />
@@ -33,6 +42,7 @@ export function SystemPage(props: { data: SystemData }) {
         loadingReports={reportsPending}
         pluginReportsError={props.data.pluginReportsError}
         plugins={props.data.plugins}
+        range={range}
         reports={reports}
         skills={props.data.skills}
       />

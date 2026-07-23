@@ -7,6 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { PluginReports } from "../../components/PluginReports";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { cn } from "../../styles";
 import { PluginInventory } from "./PluginInventory";
@@ -19,6 +20,7 @@ export function SystemCapabilities(props: {
   loadingReports: boolean;
   pluginReportsError: boolean;
   plugins: PluginReport[];
+  range: TimeRangeDays;
   reports: PluginOperationalReport[];
   skills: SkillReport[];
 }) {
@@ -34,10 +36,7 @@ export function SystemCapabilities(props: {
   return (
     <section aria-label="Capabilities" className="grid gap-4 sm:gap-6">
       {props.pluginReportsError ? (
-        <Card
-          className="border-amber-300/10 bg-amber-300/[0.025]"
-          padding="sm"
-        >
+        <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
           <div className="flex items-center gap-3">
             <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
               <TriangleAlert aria-hidden="true" size={15} />
@@ -55,7 +54,11 @@ export function SystemCapabilities(props: {
           </div>
         </Card>
       ) : null}
-      <PluginReports emptyText={reportEmptyText} reports={props.reports} />
+      <PluginReports
+        emptyText={reportEmptyText}
+        range={props.range}
+        reports={props.reports}
+      />
 
       <div>
         <div

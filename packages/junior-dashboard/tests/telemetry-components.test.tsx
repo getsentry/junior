@@ -832,6 +832,9 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
+    expect(
+      systemHtml.match(/aria-label="Reporting period"/g) ?? [],
+    ).toHaveLength(1);
     expect(systemHtml).toContain('role="tablist"');
     expect(systemHtml).toContain('aria-selected="true"');
     expect(systemHtml).toContain(">Plugins<");
@@ -941,7 +944,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('width="2"');
   });
 
-  it("renders daily chart ranges using the default 30-day bucket view", () => {
+  it("renders daily chart ranges from the shared page selection", () => {
     const categories = Array.from({ length: 90 }, (_, index) => {
       const date = new Date("2026-05-03T00:00:00.000Z");
       date.setUTCDate(date.getUTCDate() + index);
@@ -954,6 +957,7 @@ describe("dashboard canonical-event components", () => {
     });
     const html = renderToStaticMarkup(
       <PluginReports
+        range={7}
         reports={[
           {
             pluginName: "github",
@@ -972,10 +976,9 @@ describe("dashboard canonical-event components", () => {
       />,
     );
     expect(html).toContain('aria-label="2026-07-31, Created: 89"');
-    expect(html).not.toContain('aria-label="2026-05-03, Created: 0"');
-    expect(html).toContain("7d");
-    expect(html).toContain("30d");
-    expect(html).toContain("90d");
+    expect(html).toContain('aria-label="2026-07-25, Created: 83"');
+    expect(html).not.toContain('aria-label="2026-07-24, Created: 82"');
+    expect(html).not.toContain('aria-label="Reporting period"');
   });
 
   it("renders an all-zero chart with a stable zero scale", () => {

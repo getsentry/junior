@@ -1,7 +1,6 @@
-import { useState } from "react";
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import { TimeRangeSelector } from "./controls/TimeRangeSelector";
+import type { TimeRangeDays } from "./controls/TimeRangeSelector";
 import { Tooltip } from "./Tooltip";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -15,14 +14,13 @@ const toneColors = {
 } as const;
 
 /** Render a validated plugin-owned categorical bar chart. */
-export function PluginBarChart({ widget }: { widget: Widget }) {
-  const availableRanges = widget.timeRangeDays;
-  const defaultRange = availableRanges?.includes(30)
-    ? 30
-    : (availableRanges?.[0] ?? 30);
-  const [range, setRange] = useState<7 | 30 | 90>(defaultRange);
-  const categories = availableRanges
-    ? widget.categories.slice(-range)
+export function PluginBarChart(props: {
+  range?: TimeRangeDays;
+  widget: Widget;
+}) {
+  const { widget } = props;
+  const categories = widget.timeRangeDays
+    ? widget.categories.slice(-supportedRange(widget, props.range))
     : widget.categories;
   const width = 520;
   const height = 250;
@@ -49,13 +47,6 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
           <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
             {widget.title}
           </h4>
-          {availableRanges ? (
-            <TimeRangeSelector
-              onChange={setRange}
-              options={availableRanges}
-              value={range}
-            />
-          ) : null}
         </div>
         {widget.description ? (
           <p className="mt-1 mb-0 font-mono text-[0.62rem] text-white/30">
@@ -141,7 +132,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
                     height={renderedHeight}
                     opacity={value ? 0.82 : 0.1}
                     rx="1.5"
-                    tabIndex={0}
+                    tabIndex={value ? 0 : -1}
                     width={barWidth * 0.75}
                     x={
                       left +
@@ -175,6 +166,12 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
       )}
     </div>
   );
+}
+
+function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
+  const availableRanges = widget.timeRangeDays ?? [];
+  if (range && availableRanges.includes(range)) return range;
+  return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
 
 function chartLabelIndexes(length: number): number[] {
