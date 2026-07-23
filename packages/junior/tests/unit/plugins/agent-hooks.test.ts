@@ -949,6 +949,24 @@ describe("agent plugin hooks", () => {
             return {
               title: "Agent Demo",
               metrics: [{ label: "active", value: "1" }],
+              widgets: [
+                {
+                  categories: [
+                    {
+                      id: " 30d ",
+                      label: " 30 days ",
+                      values: { created: 4, ignored: 99 },
+                    },
+                  ],
+                  description: " Rolling activity ",
+                  id: " activity ",
+                  series: [
+                    { key: "created", label: " Created ", tone: "good" },
+                  ],
+                  title: " Activity ",
+                  type: "bar_chart",
+                },
+              ],
             };
           },
         },
@@ -960,6 +978,22 @@ describe("agent plugin hooks", () => {
           pluginName: "agent-demo",
           title: "Agent Demo",
           metrics: [{ label: "active", value: "1" }],
+          widgets: [
+            {
+              categories: [
+                {
+                  id: "30d",
+                  label: "30 days",
+                  values: { created: 4 },
+                },
+              ],
+              description: "Rolling activity",
+              id: "activity",
+              series: [{ key: "created", label: "Created", tone: "good" }],
+              title: "Activity",
+              type: "bar_chart",
+            },
+          ],
         },
       ]);
     } finally {
