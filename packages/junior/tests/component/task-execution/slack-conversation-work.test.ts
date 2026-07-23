@@ -939,6 +939,78 @@ describe("Slack conversation work execution", () => {
     });
   });
 
+  it("leaves resource events queued as follow-up work during an active turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const ingressServices = {
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime: createNoopSlackWebhookRuntime(),
+      state,
+    };
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+          ts: "1712345.0001",
+        }),
+      ),
+      services: ingressServices,
+    });
+
+    const observed: string[][] = [];
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (_thread, _message, hooks) => {
+        await hooks.ack?.();
+        await appendInboundMessage({
+          message: createSlackResourceEventInboundMessage({
+            event: {
+              eventKey: "check-suite-1",
+              eventType: "check_suite.completed",
+              occurredAtMs: 2_000,
+              provider: "github",
+              resourceRef: "github:pull_request:getsentry/junior#1010",
+            },
+            subscription: {
+              conversationId: CONVERSATION_ID,
+              destination: SLACK_DESTINATION,
+              id: "sub-1",
+            },
+            text: "CI failed.",
+          }),
+          state,
+        });
+        await hooks.drainSteeringMessages?.(async (steering) => {
+          observed.push(steering.map((candidate) => candidate.message.id));
+          return steering.map((candidate) => candidate.inboundMessageId);
+        });
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("resource event should remain queued for follow-up");
+      },
+    };
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(observed).toEqual([[]]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.execution.pendingMessages).toEqual([
+      expect.objectContaining({ source: "resource_event" }),
+    ]);
+  });
+
   it("treats Slack assistant-thread user messages as active steering", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();

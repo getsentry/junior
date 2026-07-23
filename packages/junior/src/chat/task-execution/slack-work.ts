@@ -845,21 +845,29 @@ export function createSlackConversationWorker(
           ) => Promise<readonly string[] | void>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const messages = pendingRecords.map((record) => {
+            const messages = pendingRecords.flatMap((record) => {
               const metadata = parseSlackMetadata(record.input.metadata);
               if (!metadata) {
                 throw new Error(
                   "Conversation mailbox record is not Slack metadata",
                 );
               }
+              // Provider notifications are follow-up work, not user steering.
+              // Leave them pending so the next worker slice handles them as
+              // their own subscribed turn after the active answer completes.
+              if (record.source === "resource_event") {
+                return [];
+              }
               const message = restoreMessage({ adapter, record });
-              return {
-                activeRequest:
-                  metadata.route === "mention" ||
-                  isSlackAssistantThreadUserMessage(message),
-                inboundMessageId: record.inboundMessageId,
-                message,
-              };
+              return [
+                {
+                  activeRequest:
+                    metadata.route === "mention" ||
+                    isSlackAssistantThreadUserMessage(message),
+                  inboundMessageId: record.inboundMessageId,
+                  message,
+                },
+              ];
             });
             return await accept(messages);
           });
