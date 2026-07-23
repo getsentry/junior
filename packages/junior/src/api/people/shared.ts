@@ -1,5 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -12,20 +11,9 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "./schema";
-import { participantMatchColumn } from "@/chat/conversations/participant";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
-
-const privacyRoot = alias(juniorConversations, "people_privacy_root");
-const privacyRootIdentity = alias(
-  juniorIdentities,
-  "people_privacy_root_identity",
-);
-const privacyRootDestination = alias(
-  juniorDestinations,
-  "people_privacy_root_destination",
-);
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {
@@ -101,27 +89,19 @@ export function verifiedActorWhere(email?: string) {
 }
 
 /** Read only the recent conversation rows required by a People profile. */
-export async function recentActorRows(
-  email: string,
-  authorizedUserEmail?: string,
-) {
+export async function recentActorRows(email: string) {
   return getDb()
     .select({
       channelName: juniorConversations.channelName,
       conversationId: juniorConversations.conversationId,
       createdAt: juniorConversations.createdAt,
       destinationId: juniorDestinations.id,
-      destinationVisibility: privacyRootDestination.visibility,
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
       executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
-      isParticipant: participantMatchColumn(authorizedUserEmail, {
-        emailNormalized: privacyRootIdentity.emailNormalized,
-        emailVerified: privacyRootIdentity.emailVerified,
-      }),
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: juniorIdentities.providerSubjectId,
       source: juniorConversations.source,
@@ -130,34 +110,11 @@ export async function recentActorRows(
       usage: juniorConversations.usage,
     })
     .from(juniorConversations)
-    .leftJoin(
-      privacyRoot,
-      and(
-        eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
-        eq(privacyRoot.rootConversationId, privacyRoot.conversationId),
-        isNull(privacyRoot.parentConversationId),
-        or(
-          isNotNull(juniorConversations.parentConversationId),
-          eq(
-            juniorConversations.rootConversationId,
-            juniorConversations.conversationId,
-          ),
-        ),
-      ),
-    )
-    .leftJoin(
-      privacyRootIdentity,
-      eq(privacyRootIdentity.id, privacyRoot.actorIdentityId),
-    )
     .innerJoin(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .leftJoin(
-      privacyRootDestination,
-      eq(privacyRootDestination.id, privacyRoot.destinationId),
-    )
     .leftJoin(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),

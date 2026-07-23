@@ -121,14 +121,20 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
       const childAt = new Date("2026-06-15T11:55:00.000Z");
-      await fixture.sql.db().insert(juniorConversations).values({
-        conversationId: "advisor:child",
-        parentConversationId: "slack:C1:recent",
-        createdAt: childAt,
-        lastActivityAt: childAt,
-        updatedAt: childAt,
-        executionStatus: "idle",
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: "advisor:child",
+          parentConversationId: "slack:C1:recent",
+          rootConversationId: "slack:C1:recent",
+          durationMs: 4,
+          usage: { totalTokens: 7 },
+          createdAt: childAt,
+          lastActivityAt: childAt,
+          updatedAt: childAt,
+          executionStatus: "idle",
+        });
 
       const report = await readConversationStatsFromSql();
 
@@ -136,9 +142,9 @@ describe("conversation stats API", () => {
         active: 1,
         conversations: 3,
         costUsd: 0.0045,
-        durationMs: 2_000,
+        durationMs: 2_004,
         failed: 1,
-        tokens: 150,
+        tokens: 157,
         source: "conversation_index",
       });
       expect(report.actors).toEqual(
@@ -146,9 +152,9 @@ describe("conversation stats API", () => {
           expect.objectContaining({
             conversations: 1,
             costUsd: 0.003,
-            durationMs: 1_500,
+            durationMs: 1_504,
             label: "alice@example.com",
-            tokens: 120,
+            tokens: 127,
           }),
           expect.objectContaining({
             conversations: 1,

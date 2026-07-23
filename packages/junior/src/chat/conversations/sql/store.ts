@@ -760,18 +760,12 @@ export class SqlStore implements ConversationStore {
       : undefined;
     const rootConversationId = conversation.lineage
       ? sql<string | null>`(
-          select coalesce(
-            parent.root_conversation_id,
-            case
-              when parent.parent_conversation_id is null
-              then parent.conversation_id
-            end
-          )
+          select parent.root_conversation_id
           from junior_conversations parent
           where parent.conversation_id = ${conversation.lineage.parentConversationId}
         )`
       : conversation.conversationId;
-    await this.executor
+    const rows = await this.executor
       .db()
       .insert(juniorConversations)
       .values({
@@ -833,7 +827,13 @@ export class SqlStore implements ConversationStore {
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
         },
+      })
+      .returning({
+        rootConversationId: juniorConversations.rootConversationId,
       });
+    if (!rows[0]?.rootConversationId) {
+      throw new Error("Conversation parent is missing its persisted root");
+    }
   }
 
   private async upsertDestination(

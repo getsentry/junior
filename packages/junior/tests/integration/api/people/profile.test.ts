@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { readPeopleListFromSql } from "@/api/people/list.query";
 import { readPeopleProfileFromSql } from "@/api/people/profile.query";
+import { readConversationDetail } from "@/api/conversations/detail";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations, juniorIdentities } from "@/db/schema";
@@ -49,7 +50,7 @@ describe("people profile API", () => {
           platform: "slack",
           teamId: "T1",
         },
-        title: "Child title must stay private",
+        title: "Child participant title",
         visibility: "public",
       });
       await fixture.sql
@@ -62,17 +63,21 @@ describe("people profile API", () => {
         .where(eq(juniorConversations.conversationId, childConversationId));
 
       const report = await readPeopleProfileFromSql("child@example.com", {
-        authorizedUserEmail: "OWNER@example.com",
+        verifiedViewerEmail: "OWNER@example.com",
       });
 
       expect(report.recentConversations).toEqual([
         expect.objectContaining({
           conversationId: childConversationId,
-          displayTitle: "Private Conversation",
+          displayTitle: "Child participant title",
           isParticipant: true,
         }),
       ]);
       expect(report.recentConversations[0]).not.toHaveProperty("locationId");
+      const detail = await readConversationDetail(childConversationId, {
+        verifiedViewerEmail: "owner@example.com",
+      });
+      expect(detail).toMatchObject(report.recentConversations[0] ?? {});
 
       const malformedConversationId = "slack:C-public:malformed-root";
       await store.recordActivity({
@@ -99,7 +104,7 @@ describe("people profile API", () => {
 
       const malformed = await readPeopleProfileFromSql(
         "malformed@example.com",
-        { authorizedUserEmail: "owner@example.com" },
+        { verifiedViewerEmail: "owner@example.com" },
       );
       expect(malformed.recentConversations).toEqual([
         expect.objectContaining({

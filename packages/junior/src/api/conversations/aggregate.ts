@@ -1,59 +1,75 @@
 import { sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { juniorConversations } from "@/db/schema";
 
-function tokenValue() {
+interface ConversationAggregateSource {
+  conversationId: AnyPgColumn;
+  durationMs: AnyPgColumn;
+  executionStatus: AnyPgColumn;
+  usage: AnyPgColumn;
+}
+
+function tokenValue(source: ConversationAggregateSource) {
   return sql<number | null>`
     CASE
-      WHEN ${juniorConversations.usage}->>'totalTokens' IS NOT NULL
-        THEN (${juniorConversations.usage}->>'totalTokens')::double precision
+      WHEN ${source.usage}->>'totalTokens' IS NOT NULL
+        THEN (${source.usage}->>'totalTokens')::double precision
       WHEN COALESCE(
-        ${juniorConversations.usage}->>'inputTokens',
-        ${juniorConversations.usage}->>'outputTokens',
-        ${juniorConversations.usage}->>'cachedInputTokens',
-        ${juniorConversations.usage}->>'cacheCreationTokens'
+        ${source.usage}->>'inputTokens',
+        ${source.usage}->>'outputTokens',
+        ${source.usage}->>'cachedInputTokens',
+        ${source.usage}->>'cacheCreationTokens'
       ) IS NOT NULL
-        THEN COALESCE((${juniorConversations.usage}->>'inputTokens')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->>'outputTokens')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->>'cachedInputTokens')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->>'cacheCreationTokens')::double precision, 0)
+        THEN COALESCE((${source.usage}->>'inputTokens')::double precision, 0)
+          + COALESCE((${source.usage}->>'outputTokens')::double precision, 0)
+          + COALESCE((${source.usage}->>'cachedInputTokens')::double precision, 0)
+          + COALESCE((${source.usage}->>'cacheCreationTokens')::double precision, 0)
       ELSE NULL
     END
   `;
 }
 
-function costValue() {
+function costValue(source: ConversationAggregateSource) {
   return sql<number | null>`
     CASE
-      WHEN ${juniorConversations.usage}->'cost'->>'total' IS NOT NULL
-        THEN (${juniorConversations.usage}->'cost'->>'total')::double precision
+      WHEN ${source.usage}->'cost'->>'total' IS NOT NULL
+        THEN (${source.usage}->'cost'->>'total')::double precision
       WHEN COALESCE(
-        ${juniorConversations.usage}->'cost'->>'input',
-        ${juniorConversations.usage}->'cost'->>'output',
-        ${juniorConversations.usage}->'cost'->>'cacheRead',
-        ${juniorConversations.usage}->'cost'->>'cacheWrite'
+        ${source.usage}->'cost'->>'input',
+        ${source.usage}->'cost'->>'output',
+        ${source.usage}->'cost'->>'cacheRead',
+        ${source.usage}->'cost'->>'cacheWrite'
       ) IS NOT NULL
-        THEN COALESCE((${juniorConversations.usage}->'cost'->>'input')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->'cost'->>'output')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->'cost'->>'cacheRead')::double precision, 0)
-          + COALESCE((${juniorConversations.usage}->'cost'->>'cacheWrite')::double precision, 0)
+        THEN COALESCE((${source.usage}->'cost'->>'input')::double precision, 0)
+          + COALESCE((${source.usage}->'cost'->>'output')::double precision, 0)
+          + COALESCE((${source.usage}->'cost'->>'cacheRead')::double precision, 0)
+          + COALESCE((${source.usage}->'cost'->>'cacheWrite')::double precision, 0)
       ELSE NULL
     END
   `;
 }
 
 /** Select complete conversation metrics inside the database instead of materializing source rows. */
-export function conversationAggregateColumns() {
+export function conversationAggregateColumns(sources?: {
+  metrics: ConversationAggregateSource;
+  roots: ConversationAggregateSource;
+}) {
+  const metrics = sources?.metrics ?? juniorConversations;
+  const roots = sources?.roots ?? juniorConversations;
+  const conversationCount = sources
+    ? sql`COUNT(DISTINCT ${roots.conversationId})`
+    : sql`COUNT(*)`;
   return {
-    active: sql<number>`COUNT(*) FILTER (
-      WHERE ${juniorConversations.executionStatus} NOT IN ('idle', 'failed')
+    active: sql<number>`${conversationCount} FILTER (
+      WHERE ${roots.executionStatus} NOT IN ('idle', 'failed')
     )::integer`,
-    conversations: sql<number>`COUNT(*)::integer`,
-    costUsd: sql<number | null>`SUM(${costValue()})::double precision`,
-    durationMs: sql<number>`COALESCE(SUM(${juniorConversations.durationMs}), 0)::double precision`,
-    failed: sql<number>`COUNT(*) FILTER (
-      WHERE ${juniorConversations.executionStatus} = 'failed'
+    conversations: sql<number>`${conversationCount}::integer`,
+    costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
+    durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
+    failed: sql<number>`${conversationCount} FILTER (
+      WHERE ${roots.executionStatus} = 'failed'
     )::integer`,
-    tokens: sql<number | null>`SUM(${tokenValue()})::double precision`,
+    tokens: sql<number | null>`SUM(${tokenValue(metrics)})::double precision`,
   };
 }
 

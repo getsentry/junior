@@ -87,12 +87,19 @@ they are created. `parent_conversation_id` remains the tree-navigation edge,
 while REST authorization joins directly through the indexed root relation.
 Missing or structurally invalid root metadata fails closed.
 
+REST endpoints resolve access for their bounded conversation IDs and pass the
+result through one shared summary projection. The same conversation therefore
+has the same participant, visibility, title, and channel fields whether it
+appears in the feed, detail, People, or Location response.
+
 Top-level REST summaries and details roll persisted usage across every row with
 the same root, including descendants absent from the current event projection.
 Feed aggregation is limited to the already selected root IDs, and detail
 aggregation selects one root through `root_conversation_id`; both use the root
 index. Per-model detail usage joins those same tree rows to their indexed
-events. A child resource still reports its own usage when fetched directly.
+events. System and Location aggregates count roots while summing metrics across
+their persisted tree rows. A child resource still reports its own usage when
+fetched directly.
 
 Follow `../../../../../policies/data-redaction.md` and
 `../../../../../policies/runtime-boundary-schemas.md`.

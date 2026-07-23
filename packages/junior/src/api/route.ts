@@ -2,7 +2,7 @@ import type { Handler } from "hono";
 
 /** Authenticated viewer fields made available to Junior API route handlers. */
 export type JuniorApiVariables = {
-  authorizedUserEmail?: string;
+  verifiedViewerEmail?: string;
 };
 
 /** Carry authenticated viewer state through Junior REST route handlers. */

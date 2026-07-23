@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
-import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -552,7 +551,7 @@ describe("dashboard canonical event reporting", () => {
     });
     expect(
       await readConversationDetail(rootConversationId, {
-        authorizedUserEmail: "other@example.com",
+        verifiedViewerEmail: "other@example.com",
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -560,15 +559,27 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantDetail = await readConversationDetail(
       rootConversationId,
-      { authorizedUserEmail: " owner@example.COM " },
+      { verifiedViewerEmail: " owner@example.COM " },
     );
-    expect(rootParticipantDetail).toMatchObject({ isParticipant: true });
+    expect(rootParticipantDetail).toMatchObject({
+      displayTitle: "Canonical event report",
+      isParticipant: true,
+    });
     expect(rootParticipantDetail?.events[0]?.data).toMatchObject({
       text: "Private owner answer",
     });
+    const rootParticipantSummary = (
+      await readConversationFeedFromSql({
+        verifiedViewerEmail: "owner@example.com",
+      })
+    ).conversations.find(
+      (conversation) => conversation.conversationId === rootConversationId,
+    );
+    expect(rootParticipantSummary).toBeDefined();
+    expect(rootParticipantDetail).toMatchObject(rootParticipantSummary ?? {});
     const childParticipantDetail = await readConversationDetail(
       childConversationId,
-      { authorizedUserEmail: "owner@example.com" },
+      { verifiedViewerEmail: "owner@example.com" },
     );
     expect(childParticipantDetail).toMatchObject({ isParticipant: true });
     expect(childParticipantDetail?.events[0]?.data).toMatchObject({
@@ -581,7 +592,7 @@ describe("dashboard canonical event reporting", () => {
       .where(eq(juniorIdentities.providerSubjectId, "U-owner"));
     expect(
       await readConversationDetail(rootConversationId, {
-        authorizedUserEmail: "owner@example.com",
+        verifiedViewerEmail: "owner@example.com",
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -600,8 +611,7 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb, getSqlExecutor } =
-      await import("@/chat/db");
+    const { getConversationStore, getDb } = await import("@/chat/db");
     const [rootRow] = await getDb()
       .select({ destinationId: juniorConversations.destinationId })
       .from(juniorConversations)
@@ -611,20 +621,6 @@ describe("dashboard canonical event reporting", () => {
       .update(juniorDestinations)
       .set({ visibility: "private" })
       .where(eq(juniorDestinations.id, rootRow.destinationId));
-    const privateSnapshot = await readConversationEventPrivacySnapshot(
-      getSqlExecutor(),
-      {
-        conversationId: publicChild,
-        eventTypes: ["message"],
-      },
-    );
-    expect(privateSnapshot).toMatchObject({
-      rootConversationId: publicRoot,
-      visibility: "private",
-    });
-    expect(privateSnapshot?.events.map((event) => event.type)).toEqual([
-      "message",
-    ]);
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
     );
@@ -682,7 +678,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(cyclicRoot, {
-        authorizedUserEmail: "cyclic-owner@example.com",
+        verifiedViewerEmail: "cyclic-owner@example.com",
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -706,11 +702,22 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(destinationlessRoot, {
-        authorizedUserEmail: "destinationless-owner@example.com",
+        verifiedViewerEmail: "destinationless-owner@example.com",
       }),
     ).resolves.toMatchObject({
-      eventHistory: { status: "redacted" },
-      isParticipant: false,
+      eventHistory: { status: "available" },
+      isParticipant: true,
+    });
+    const destinationlessSummary = (
+      await readConversationFeedFromSql({
+        verifiedViewerEmail: "destinationless-owner@example.com",
+      })
+    ).conversations.find(
+      (conversation) => conversation.conversationId === destinationlessRoot,
+    );
+    expect(destinationlessSummary).toMatchObject({
+      displayTitle: "Canonical event report",
+      isParticipant: true,
     });
 
     const foreignRoot = "slack:C-reporting:foreign-private-root";
@@ -729,7 +736,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(malformedTopLevel, {
-        authorizedUserEmail: "foreign-owner@example.com",
+        verifiedViewerEmail: "foreign-owner@example.com",
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -737,7 +744,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const malformedSummary = (
       await readConversationFeedFromSql({
-        authorizedUserEmail: "foreign-owner@example.com",
+        verifiedViewerEmail: "foreign-owner@example.com",
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === malformedTopLevel,

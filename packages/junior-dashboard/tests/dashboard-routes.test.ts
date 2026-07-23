@@ -806,10 +806,10 @@ describe("dashboard routes", () => {
 
   it("does not authorize a synthetic participant when auth is disabled", async () => {
     const pluginApp = new Hono<{
-      Variables: { authorizedUserEmail?: string };
+      Variables: { verifiedViewerEmail?: string };
     }>();
     pluginApp.get("/viewer", (c) =>
-      c.json({ authorizedUserEmail: c.get("authorizedUserEmail") ?? null }),
+      c.json({ verifiedViewerEmail: c.get("verifiedViewerEmail") ?? null }),
     );
     const app = createDashboardApp({
       authRequired: false,
@@ -822,7 +822,7 @@ describe("dashboard routes", () => {
     );
 
     await expect(response.json()).resolves.toEqual({
-      authorizedUserEmail: null,
+      verifiedViewerEmail: null,
     });
   });
 

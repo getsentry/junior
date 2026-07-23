@@ -160,7 +160,7 @@ describe("conversation list API", () => {
 
       const feed = await readConversationFeedFromSql({
         actorEmail: "morgan@example.com",
-        authorizedUserEmail: "MORGAN@example.com",
+        verifiedViewerEmail: "MORGAN@example.com",
         limit: 1,
       });
 

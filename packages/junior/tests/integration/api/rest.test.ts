@@ -381,7 +381,7 @@ describe("Junior REST API", () => {
 
     const participantApi = new Hono<{ Variables: JuniorApiVariables }>();
     participantApi.use("*", async (context, next) => {
-      context.set("authorizedUserEmail", "participant@example.COM");
+      context.set("verifiedViewerEmail", "participant@example.COM");
       await next();
     });
     participantApi.route("/", createJuniorApi());

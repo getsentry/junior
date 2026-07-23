@@ -15,6 +15,7 @@ import {
   summaryFromRow,
   surfaceLabel,
 } from "../conversations/reporting";
+import { readConversationAccessFromSql } from "../conversations/access";
 import type {
   ConversationStatsItem,
   ActorActivityDayReport,
@@ -109,7 +110,7 @@ function locationLabel(row: {
 /** Load one complete person profile while bounding only its recent-conversation list. */
 export async function readPeopleProfileFromSql(
   email: string,
-  options: { authorizedUserEmail?: string } = {},
+  options: { verifiedViewerEmail?: string } = {},
 ): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
@@ -196,7 +197,7 @@ export async function readPeopleProfileFromSql(
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
         .where(where)
         .groupBy(surface),
-      recentActorRows(normalizedEmail, options.authorizedUserEmail),
+      recentActorRows(normalizedEmail),
     ]);
 
   const totalsRow = totalsRows[0];
@@ -233,12 +234,19 @@ export async function readPeopleProfileFromSql(
       row,
     );
   }
+  const accessByConversation = await readConversationAccessFromSql(
+    getDb(),
+    recentRows.map((row) => row.conversationId),
+    options.verifiedViewerEmail,
+  );
 
   return {
     activityDays: activityDays(days, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
-    recentConversations: recentRows.map(summaryFromRow),
+    recentConversations: recentRows.map((row) =>
+      summaryFromRow(row, accessByConversation.get(row.conversationId)),
+    ),
     actor,
     source: "conversation_index",
     surfaces: statsItems(surfaces),

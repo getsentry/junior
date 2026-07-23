@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -9,7 +9,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import { participantMatchColumn } from "@/chat/conversations/participant";
+import { readConversationAccessFromSql } from "./access";
 import { conversationFeedSchema } from "./schema";
 import type { ConversationFeed } from "./schema";
 import { readRootConversationUsageFromSql } from "./usage";
@@ -23,7 +23,6 @@ async function conversationRows(
   db: JuniorDatabase,
   limit: number,
   actorEmail?: string,
-  authorizedUserEmail?: string,
 ) {
   return db
     .select({
@@ -37,11 +36,6 @@ async function conversationRows(
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
       userDisplayName: juniorUsers.displayName,
-      isParticipant: sql<boolean>`COALESCE(
-        ${juniorConversations.rootConversationId} = ${juniorConversations.conversationId}
-          AND ${participantMatchColumn(authorizedUserEmail)},
-        false
-      )`,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -75,9 +69,7 @@ async function conversationRows(
 type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
-function conversationFromRow(
-  row: Omit<ConversationRow, "isParticipant">,
-): Conversation {
+function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
   const actorFullName = row.userDisplayName?.trim()
     ? row.userDisplayName
@@ -185,8 +177,8 @@ export async function readConversationRecordFromSql(
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
-    authorizedUserEmail?: string;
     limit?: number;
+    verifiedViewerEmail?: string;
   } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
@@ -195,18 +187,22 @@ export async function readConversationFeedFromSql(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.actorEmail,
-    options.authorizedUserEmail,
   );
-  const usageByRoot = await readRootConversationUsageFromSql(
-    db,
-    rows.map((row) => row.conversation.conversationId),
-  );
+  const conversationIds = rows.map((row) => row.conversation.conversationId);
+  const [accessByConversation, usageByRoot] = await Promise.all([
+    readConversationAccessFromSql(
+      db,
+      conversationIds,
+      options.verifiedViewerEmail,
+    ),
+    readRootConversationUsageFromSql(db, conversationIds),
+  ]);
   return {
     conversations: rows.map((row) =>
       conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
+        access: accessByConversation.get(row.conversation.conversationId),
         durationMs: row.conversation.durationMs,
-        isParticipant: row.isParticipant,
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
           : {}),
@@ -223,7 +219,7 @@ export async function readConversationFeedFromSql(
  * filter. This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: { actorEmail?: string; authorizedUserEmail?: string } = {},
+  options: { actorEmail?: string; verifiedViewerEmail?: string } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
     await readConversationFeedFromSql(options),
@@ -239,11 +235,11 @@ export default {
       conversationFeedQuerySchema,
       c.req.query(),
     );
-    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const verifiedViewerEmail = c.get("verifiedViewerEmail");
     return Response.json(
       await readConversationFeed({
         ...(actorEmail ? { actorEmail } : {}),
-        ...(authorizedUserEmail ? { authorizedUserEmail } : {}),
+        ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
       }),
     );
   },

@@ -8,7 +8,7 @@ import { personParamsSchema } from "../schema";
 /** Load one person profile from verified user identities in SQL. */
 export async function readPeopleProfile(
   email: string,
-  options: { authorizedUserEmail?: string } = {},
+  options: { verifiedViewerEmail?: string } = {},
 ): Promise<ActorProfileReport> {
   return actorProfileReportSchema.parse(
     await readPeopleProfileFromSql(email, options),
@@ -21,11 +21,11 @@ export default {
   path: "/:email",
   handler: async (c) => {
     const { email } = parseParams(personParamsSchema, c.req.param());
-    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const verifiedViewerEmail = c.get("verifiedViewerEmail");
     return Response.json(
       await readPeopleProfile(
         email,
-        authorizedUserEmail ? { authorizedUserEmail } : {},
+        verifiedViewerEmail ? { verifiedViewerEmail } : {},
       ),
     );
   },

@@ -1,4 +1,5 @@
 import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -15,6 +16,11 @@ import type {
 } from "./schema";
 
 const WINDOW_DAYS = 90;
+const treeConversation = alias(juniorConversations, "stats_tree_conversation");
+const treeAggregateColumns = conversationAggregateColumns({
+  metrics: treeConversation,
+  roots: juniorConversations,
+});
 
 function emptyStatsItem(label: string): ConversationStatsItem {
   return {
@@ -176,8 +182,15 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   )`;
   const [totalsRows, actorRows, locationRows, metricRows] = await Promise.all([
     db
-      .select(conversationAggregateColumns())
+      .select(treeAggregateColumns)
       .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
       .where(where),
     db
       .select({
@@ -187,9 +200,16 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
         identitySubjectId: juniorIdentities.providerSubjectId,
         userDisplayName: juniorUsers.displayName,
         userEmail: juniorUsers.primaryEmailNormalized,
-        ...conversationAggregateColumns(),
+        ...treeAggregateColumns,
       })
       .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
       .leftJoin(
         juniorIdentities,
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
@@ -212,9 +232,16 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
         destinationProvider: juniorDestinations.provider,
         destinationVisibility: juniorDestinations.visibility,
         source: juniorConversations.source,
-        ...conversationAggregateColumns(),
+        ...treeAggregateColumns,
       })
       .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
       .leftJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
@@ -230,12 +257,19 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
-        costUsd: conversationAggregateColumns().costUsd,
+        costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
-        durationMs: conversationAggregateColumns().durationMs,
-        tokens: conversationAggregateColumns().tokens,
+        durationMs: treeAggregateColumns.durationMs,
+        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
       .where(where)
       .groupBy(activityDate),
   ]);

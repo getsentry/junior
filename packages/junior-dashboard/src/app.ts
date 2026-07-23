@@ -344,7 +344,7 @@ function localAuthBypassSession(
   };
 }
 
-function authorizedUserEmail(session: DashboardSession): string | undefined {
+function verifiedViewerEmail(session: DashboardSession): string | undefined {
   return session.user.emailVerified === true
     ? session.user.email.trim().toLowerCase()
     : undefined;
@@ -664,7 +664,7 @@ export function createDashboardApp(
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
-    c.set("authorizedUserEmail", authorizedUserEmail(sanitizedSession));
+    c.set("verifiedViewerEmail", verifiedViewerEmail(sanitizedSession));
     await next();
   };
 

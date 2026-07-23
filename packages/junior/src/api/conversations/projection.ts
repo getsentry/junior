@@ -1,4 +1,3 @@
-import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
@@ -17,7 +16,22 @@ import type {
   ConversationSurface,
   ConversationUsage,
 } from "./schema";
+import type { ConversationAccess } from "./access";
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
+
+type ConversationProjectionSource = Pick<
+  StoredConversation,
+  | "actor"
+  | "archivedAtMs"
+  | "channelName"
+  | "conversationId"
+  | "createdAtMs"
+  | "execution"
+  | "lastActivityAtMs"
+  | "source"
+  | "title"
+  | "updatedAtMs"
+>;
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -70,7 +84,7 @@ function actorIdentityReport(
 }
 
 function statusFromConversation(
-  conversation: StoredConversation,
+  conversation: ConversationProjectionSource,
 ): ConversationReportStatus {
   if (conversation.execution.status === "idle") {
     return "completed";
@@ -81,9 +95,9 @@ function statusFromConversation(
   return "active";
 }
 
-/** Build the privacy-safe title shared by summary and detail reports. */
-export function titleFromConversation(args: {
-  conversation: StoredConversation;
+function titleFromConversation(args: {
+  canViewPrivateContent: boolean;
+  conversation: ConversationProjectionSource;
   surface: ConversationSurface;
 }): string {
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
@@ -92,13 +106,9 @@ export function titleFromConversation(args: {
     threadId: args.conversation.conversationId,
     channelName: effectiveChannelName,
   });
-  const privateLabel =
-    resolveConversationPrivacy({
-      conversationId: args.conversation.conversationId,
-      visibility: args.conversation.visibility,
-    }) !== "public"
-      ? privateConversationLabel(slackConversation)
-      : undefined;
+  const privateLabel = args.canViewPrivateContent
+    ? undefined
+    : privateConversationLabel(slackConversation);
   return (
     privateLabel ??
     args.conversation.title ??
@@ -111,7 +121,8 @@ export function titleFromConversation(args: {
 }
 
 function channelNameFromConversation(
-  conversation: StoredConversation,
+  conversation: ConversationProjectionSource,
+  canViewPrivateContent: boolean,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
   const slackThread = parseSlackThreadId(conversation.conversationId);
@@ -122,55 +133,57 @@ function channelNameFromConversation(
     threadId: conversation.conversationId,
     channelName: effectiveChannelName,
   });
-  if (
-    resolveConversationPrivacy({
-      conversationId: conversation.conversationId,
-      visibility: conversation.visibility,
-    }) !== "public"
-  ) {
+  if (!canViewPrivateContent) {
     return privateConversationLabel(slackConversation);
   }
   return effectiveChannelName;
 }
 
 function channelNameRedactedFromConversation(
-  conversation: StoredConversation,
+  conversation: ConversationProjectionSource,
+  canViewPrivateContent: boolean,
 ): boolean {
   const effectiveChannelName = conversation.channelName;
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return false;
   }
-  return (
-    resolveConversationPrivacy({
-      conversationId: conversation.conversationId,
-      visibility: conversation.visibility,
-    }) !== "public"
-  );
+  return !canViewPrivateContent;
 }
 
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
-  conversation: StoredConversation;
+  access?: ConversationAccess;
+  conversation: ConversationProjectionSource;
   durationMs: number;
-  isParticipant: boolean;
   locationId?: string;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
+  const canViewPrivateContent = args.access?.canViewPrivateContent ?? false;
   const surface = surfaceFromSource(
     conversation.source,
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
   const slackThread = parseSlackThreadId(conversation.conversationId);
-  const channelName = channelNameFromConversation(conversation);
-  const channelNameRedacted = channelNameRedactedFromConversation(conversation);
+  const channelName = channelNameFromConversation(
+    conversation,
+    canViewPrivateContent,
+  );
+  const channelNameRedacted = channelNameRedactedFromConversation(
+    conversation,
+    canViewPrivateContent,
+  );
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
-    displayTitle: titleFromConversation({ conversation, surface }),
-    isParticipant: args.isParticipant,
+    displayTitle: titleFromConversation({
+      canViewPrivateContent,
+      conversation,
+      surface,
+    }),
+    isParticipant: args.access?.isParticipant ?? false,
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),

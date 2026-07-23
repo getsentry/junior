@@ -7,7 +7,7 @@ import { locationParamsSchema } from "../schema";
 /** Expose operational detail for one persisted public conversation location. */
 export async function readLocationDetail(
   locationId: string,
-  options: { authorizedUserEmail?: string } = {},
+  options: { verifiedViewerEmail?: string } = {},
 ) {
   const report = await readLocationDetailFromSql(locationId, options);
   return report ? locationDetailReportSchema.parse(report) : undefined;
@@ -19,10 +19,10 @@ export default {
   path: "/:locationId",
   handler: async (c) => {
     const { locationId } = parseParams(locationParamsSchema, c.req.param());
-    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const verifiedViewerEmail = c.get("verifiedViewerEmail");
     const report = await readLocationDetail(
       locationId,
-      authorizedUserEmail ? { authorizedUserEmail } : {},
+      verifiedViewerEmail ? { verifiedViewerEmail } : {},
     );
     return report
       ? Response.json(report)

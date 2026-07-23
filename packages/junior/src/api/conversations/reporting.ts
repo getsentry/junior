@@ -1,28 +1,20 @@
-import type { juniorConversations, juniorDestinations } from "@/db/schema";
-import type {
-  ActorIdentity,
-  ConversationReportStatus,
-  ConversationSummaryReport,
-  ConversationSurface,
-} from "./schema";
-
-const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
+import type { StoredSlackActor } from "@/chat/actor";
+import type { juniorConversations } from "@/db/schema";
+import type { ConversationAccess } from "./access";
+import { conversationSummaryFromStoredConversation } from "./projection";
+import type { ConversationSummaryReport, ConversationSurface } from "./schema";
 
 export type ReportingConversationRow = {
   channelName: string | null;
   conversationId: string;
   createdAt: Date;
   destinationId: string | null;
-  destinationVisibility:
-    | (typeof juniorDestinations.$inferSelect)["visibility"]
-    | null;
   durationMs: number;
   email: string | null;
   executionStatus: (typeof juniorConversations.$inferSelect)["executionStatus"];
   executionUpdatedAt: Date | null;
   fullName: string | null;
   handle: string | null;
-  isParticipant: boolean;
   lastActivityAt: Date;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
@@ -43,33 +35,6 @@ export function reportDate(value: string): string | undefined {
   return time === undefined
     ? undefined
     : new Date(time).toISOString().slice(0, 10);
-}
-
-function channelFromConversationId(conversationId: string): string | undefined {
-  const [provider, channel] = conversationId.split(":");
-  return provider === "slack" && channel ? channel : undefined;
-}
-
-function surfaceFromRow(row: ReportingConversationRow): ConversationSurface {
-  if (
-    row.source === "api" ||
-    row.source === "scheduler" ||
-    row.source === "slack"
-  ) {
-    return row.source;
-  }
-  if (row.conversationId.startsWith("slack:")) return "slack";
-  if (row.conversationId.startsWith("scheduler:")) return "scheduler";
-  if (row.conversationId.startsWith("api:")) return "api";
-  return "internal";
-}
-
-function statusFromRow(
-  row: ReportingConversationRow,
-): ConversationReportStatus {
-  if (row.executionStatus === "failed") return "failed";
-  if (row.executionStatus === "idle") return "completed";
-  return "active";
 }
 
 /** Return the dashboard label for a conversation surface. */
@@ -101,34 +66,9 @@ export function slackLocationLabel(args: {
   return name || channelId;
 }
 
-function channelNameFromRow(row: ReportingConversationRow): string | undefined {
-  if (row.destinationVisibility !== "public") {
-    return PRIVATE_CONVERSATION_LABEL;
-  }
-  return row.channelName ?? undefined;
-}
-
-function titleFromRow(
-  row: ReportingConversationRow,
-  surface: ConversationSurface,
-): string {
-  if (row.destinationVisibility !== "public") {
-    return PRIVATE_CONVERSATION_LABEL;
-  }
-  const channel = channelFromConversationId(row.conversationId);
-  return (
-    row.title ??
-    slackLocationLabel({
-      channel,
-      channelName: row.channelName ?? undefined,
-    }) ??
-    surfaceLabel(surface)
-  );
-}
-
 function actorFromRow(
   row: ReportingConversationRow,
-): ActorIdentity | undefined {
+): StoredSlackActor | undefined {
   const actor = {
     ...(row.email ? { email: row.email } : {}),
     ...(row.fullName ? { fullName: row.fullName } : {}),
@@ -141,32 +81,37 @@ function actorFromRow(
 /** Project one SQL conversation row into a privacy-safe API summary. */
 export function summaryFromRow(
   row: ReportingConversationRow,
+  access?: ConversationAccess,
 ): ConversationSummaryReport {
-  const surface = surfaceFromRow(row);
-  const channel = channelFromConversationId(row.conversationId);
-  const channelName = channelNameFromRow(row);
-  const channelNameRedacted = row.destinationVisibility !== "public";
-  const actorIdentity = actorFromRow(row);
-  return {
+  const actor = actorFromRow(row);
+  const conversation = {
     conversationId: row.conversationId,
-    cumulativeDurationMs: row.durationMs,
-    displayTitle: titleFromRow(row, surface),
-    isParticipant: row.isParticipant,
-    lastProgressAt: new Date(
-      row.executionUpdatedAt ?? row.updatedAt,
-    ).toISOString(),
-    lastSeenAt: row.lastActivityAt.toISOString(),
-    startedAt: row.createdAt.toISOString(),
-    status: statusFromRow(row),
-    surface,
-    ...(actorIdentity ? { actorIdentity } : {}),
-    ...(channel ? { channel } : {}),
-    ...(channelName ? { channelName } : {}),
-    ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
-    ...(row.destinationVisibility === "public" && row.destinationId
-      ? { locationId: row.destinationId }
+    createdAtMs: row.createdAt.getTime(),
+    lastActivityAtMs: row.lastActivityAt.getTime(),
+    updatedAtMs: row.updatedAt.getTime(),
+    execution: {
+      status: row.executionStatus,
+      ...(row.executionUpdatedAt
+        ? { updatedAtMs: row.executionUpdatedAt.getTime() }
+        : {}),
+    },
+    ...(actor ? { actor } : {}),
+    ...(row.channelName ? { channelName: row.channelName } : {}),
+    ...(row.source ? { source: row.source } : {}),
+    ...(row.title ? { title: row.title } : {}),
+    ...(access?.visibility === "public" || access?.visibility === "private"
+      ? { visibility: access.visibility }
       : {}),
   };
+  return conversationSummaryFromStoredConversation({
+    access,
+    conversation,
+    durationMs: row.durationMs,
+    ...(access?.visibility === "public" && row.destinationId
+      ? { locationId: row.destinationId }
+      : {}),
+    usage: row.usage ?? undefined,
+  });
 }
 
 /** Collapse persisted conversation usage into the dashboard token total. */

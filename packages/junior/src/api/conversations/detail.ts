@@ -1,19 +1,24 @@
-import { canExposeConversationPayload } from "@/chat/conversation-privacy";
+import { and, asc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import {
   decodeStoredConversationEvent,
   type ConversationEvent,
 } from "@/chat/conversations/history";
-import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorConversationEvents } from "@/db/schema";
 import {
   conversationReportSourceEventTypes,
   projectConversationReportEvents,
 } from "./events";
 import { readConversationRecordFromSql } from "./list";
 import { conversationSummaryFromStoredConversation } from "./projection";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "./access";
 import { readRootConversationUsageFromSql } from "./usage";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
@@ -21,43 +26,61 @@ import type { ApiRoute } from "../route";
 import { parseParams } from "../http";
 import { conversationParamsSchema } from "../schema";
 
+const conversationEventColumns = getTableColumns(juniorConversationEvents);
+
+async function readConversationReportEventRows(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+) {
+  return executor
+    .db()
+    .select({
+      ...conversationEventColumns,
+      // Replacement history is model context, never dashboard report data.
+      payload: sql<Record<string, unknown>>`case
+        when ${juniorConversationEvents.type} in ('compaction', 'handoff')
+        then jsonb_set(
+          ${juniorConversationEvents.payload},
+          '{replacementHistory}',
+          '[]'::jsonb
+        )
+        else ${juniorConversationEvents.payload}
+      end`,
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        inArray(juniorConversationEvents.type, [
+          ...conversationReportSourceEventTypes,
+        ]),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+}
+
 function projectConversationDetail(args: {
+  access?: ConversationAccess;
   conversation: Conversation;
   durationMs: number;
-  effectiveVisibility?: Conversation["visibility"];
   events: ConversationEvent[];
-  privacyConversationId?: string;
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   usage: ConversationDetailReport["cumulativeUsage"];
-  isParticipant: boolean;
 }): ConversationDetailReport {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
   const transcriptPurgedAtMs = conversation.transcriptPurgedAtMs;
-  const { visibility: _storedVisibility, ...conversationWithoutVisibility } =
-    conversation;
-  const authorizedConversation: Conversation = {
-    ...conversationWithoutVisibility,
-    ...(args.effectiveVisibility
-      ? { visibility: args.effectiveVisibility }
-      : {}),
-  };
-  const canExposePayload =
-    args.isParticipant ||
-    canExposeConversationPayload({
-      conversationId: args.privacyConversationId ?? conversationId,
-      visibility: args.effectiveVisibility,
-    });
+  const canExposePayload = args.access?.canViewPrivateContent ?? false;
   const events = transcriptPurgedAtMs === undefined ? args.events : [];
   const modelUsage = transcriptPurgedAtMs === undefined ? args.modelUsage : [];
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
   return {
     ...conversationSummaryFromStoredConversation({
-      conversation: authorizedConversation,
+      access: args.access,
+      conversation,
       durationMs: args.durationMs,
-      isParticipant: args.isParticipant,
       ...(args.locationId ? { locationId: args.locationId } : {}),
       usage: args.usage,
     }),
@@ -82,34 +105,33 @@ function projectConversationDetail(args: {
 
 async function readConversationDetailFromSql(
   conversationId: string,
-  options: { authorizedUserEmail?: string },
+  options: { verifiedViewerEmail?: string },
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
   const executor = getSqlExecutor();
   const includeDescendantUsage = record.rootConversationId === conversationId;
-  const [snapshot, modelUsage, usageByRoot] = await Promise.all([
-    readConversationEventPrivacySnapshot(executor, {
-      ...(options.authorizedUserEmail
-        ? { authorizedUserEmail: options.authorizedUserEmail }
-        : {}),
-      conversationId,
-      eventTypes: conversationReportSourceEventTypes,
-    }),
-    record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationModelUsageFromSql(executor, {
-          conversationId,
-          includeDescendants: includeDescendantUsage,
-        })
-      : Promise.resolve([]),
-    readRootConversationUsageFromSql(
-      getDb(),
-      includeDescendantUsage ? [conversationId] : [],
-    ),
-  ]);
-  if (!snapshot) return undefined;
-  const events = snapshot.events.map((row) =>
+  const [accessByConversation, eventRows, modelUsage, usageByRoot] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        getDb(),
+        [conversationId],
+        options.verifiedViewerEmail,
+      ),
+      readConversationReportEventRows(executor, conversationId),
+      record.conversation.transcriptPurgedAtMs === undefined
+        ? readConversationModelUsageFromSql(executor, {
+            conversationId,
+            includeDescendants: includeDescendantUsage,
+          })
+        : Promise.resolve([]),
+      readRootConversationUsageFromSql(
+        getDb(),
+        includeDescendantUsage ? [conversationId] : [],
+      ),
+    ]);
+  const events = eventRows.map((row) =>
     decodeStoredConversationEvent({
       schemaVersion: row.schemaVersion,
       seq: row.seq,
@@ -120,29 +142,21 @@ async function readConversationDetailFromSql(
       payload: row.payload,
     }),
   );
-  const effectiveVisibility =
-    snapshot.visibility === "public" || snapshot.visibility === "private"
-      ? snapshot.visibility
-      : undefined;
   return projectConversationDetail({
     ...record,
-    effectiveVisibility,
+    access: accessByConversation.get(conversationId),
     events,
     modelUsage,
-    ...(snapshot.rootConversationId
-      ? { privacyConversationId: snapshot.rootConversationId }
-      : {}),
     usage: includeDescendantUsage
       ? usageByRoot.get(conversationId)
       : (record.usage ?? undefined),
-    isParticipant: snapshot.isParticipant,
   });
 }
 
 /** Load one conversation from its canonical event history. */
 export async function readConversationDetail(
   conversationId: string,
-  options: { authorizedUserEmail?: string } = {},
+  options: { verifiedViewerEmail?: string } = {},
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, options);
   return report ? conversationDetailReportSchema.parse(report) : undefined;
@@ -157,10 +171,10 @@ export default {
       conversationParamsSchema,
       c.req.param(),
     );
-    const authorizedUserEmail = c.get("authorizedUserEmail");
+    const verifiedViewerEmail = c.get("verifiedViewerEmail");
     const report = await readConversationDetail(
       conversationId,
-      authorizedUserEmail ? { authorizedUserEmail } : {},
+      verifiedViewerEmail ? { verifiedViewerEmail } : {},
     );
     return report
       ? Response.json(report)
