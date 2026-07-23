@@ -31,6 +31,29 @@ afterEach(() => {
 });
 
 describe("Sentry context", () => {
+  it("extends only the active sanitized log context", async () => {
+    const { getLogContextAttributes, setTags, withLogContext } =
+      await import("@/chat/logging");
+
+    setTags({ runId: "outside" });
+    expect(getLogContextAttributes()).toEqual({});
+
+    await withLogContext({ conversationId: "conversation" }, async () => {
+      setTags({
+        destinationName: "Bearer abcdefghijklmnopqrstuvwxyz",
+        runId: "run",
+      });
+
+      expect(getLogContextAttributes()).toEqual({
+        "app.run.id": "run",
+        "gen_ai.conversation.id": "conversation",
+        "messaging.destination.name": "Bearer abcd...wxyz",
+      });
+    });
+
+    expect(getLogContextAttributes()).toEqual({});
+  });
+
   it("uses native user identity and a small tag allowlist", async () => {
     const { setTags } = await import("@/chat/logging");
 

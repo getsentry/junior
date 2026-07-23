@@ -224,7 +224,6 @@ function getResumeLogContext(
     userId: isUserActor(actor) ? actor.userId : undefined,
     userName: isUserActor(actor) ? actor.userName : undefined,
     destinationName: args.channelId,
-    runId: routing?.correlation?.runId,
     assistantUserName: botConfig.userName,
     modelId: standardModelId(botConfig),
   };

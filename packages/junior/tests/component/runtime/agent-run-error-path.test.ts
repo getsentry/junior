@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
+import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 
 const originalAiModel = process.env.AI_MODEL;
 
@@ -55,6 +56,45 @@ describe("executeAgentRun error path", () => {
     expect(reply!.diagnostics.outcome).toBe("provider_error");
     expect(reply!.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(reply!.diagnostics.reasoningLevel).toBeUndefined();
+  });
+
+  it("binds authoritative request context before startup failures", async () => {
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => records.push(record));
+
+    try {
+      await executeAgentRun({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        turnId: "turn-context-failure",
+        runId: "run-context-failure",
+        input: { messageText: "hello" },
+        routing: {
+          actor: {
+            platform: "local",
+            userId: "local-user",
+            userName: "alice",
+          },
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
+        },
+      });
+    } finally {
+      unregister();
+    }
+
+    const failure = records.find(
+      (record) => record.eventName === "assistant_reply_generation_failed",
+    );
+    expect(failure?.attributes).toMatchObject({
+      "app.platform": "local",
+      "app.run.id": "run-context-failure",
+      "enduser.id": "local-user",
+      "enduser.pseudo.id": "alice",
+      "gen_ai.conversation.id": LOCAL_DESTINATION.conversationId,
+      "messaging.destination.name": LOCAL_DESTINATION.conversationId,
+      "messaging.message.conversation_id": LOCAL_DESTINATION.conversationId,
+      "messaging.system": "local",
+    });
   });
 
   it("preserves configured reasoning in failure diagnostics", async () => {
