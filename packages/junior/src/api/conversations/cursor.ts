@@ -7,9 +7,6 @@ const conversationCursorPayloadSchema = z
   .object({
     conversationId: z.string().min(1),
     kind: z.enum(["after", "before"]),
-    openSubagents: z.array(
-      z.tuple([z.string().min(1), z.number().int().nonnegative()]),
-    ),
     seq: z.number().int().nonnegative(),
     version: z.literal(1),
   })
@@ -33,7 +30,7 @@ function signature(payload: string): string {
     .digest("base64url");
 }
 
-/** Encode authenticated, conversation-bound reporting state for an API cursor. */
+/** Encode an authenticated, conversation-bound event position for an API cursor. */
 export function encodeConversationCursor(
   payload: Omit<ConversationCursorPayload, "version">,
 ): string {

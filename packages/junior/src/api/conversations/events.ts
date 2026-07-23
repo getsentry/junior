@@ -206,12 +206,14 @@ function reportEventData(args: {
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
-  openSubagents?: ReadonlyArray<readonly [string, number]>;
-}): {
-  events: ConversationReportEvent[];
-  openSubagents: Array<[string, number]>;
-} {
-  const subagentStarts = new Map<string, number>(args.openSubagents);
+  subagentStartEvents?: ConversationEvent[];
+}): ConversationReportEvent[] {
+  const subagentStarts = new Map<string, number>();
+  for (const event of args.subagentStartEvents ?? []) {
+    if (event.data.type === "subagent_started") {
+      subagentStarts.set(event.data.subagentInvocationId, event.seq);
+    }
+  }
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
@@ -277,7 +279,7 @@ export function projectConversationReportEventPage(args: {
     );
   }
 
-  return { events: projected, openSubagents: [...subagentStarts] };
+  return projected;
 }
 
 /** Project a complete canonical event history into reporting events. */
@@ -285,5 +287,5 @@ export function projectConversationReportEvents(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
 }): ConversationReportEvent[] {
-  return projectConversationReportEventPage(args).events;
+  return projectConversationReportEventPage(args);
 }

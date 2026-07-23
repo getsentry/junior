@@ -46,7 +46,7 @@ export async function readConversationUpdates(
       includeDescendantMetrics ? [conversationId] : [],
     ),
   ]);
-  const canonicalEvents = rows.map((row) =>
+  const decodeEventRow = (row: (typeof rows)[number]) =>
     decodeStoredConversationEvent({
       schemaVersion: row.schemaVersion,
       seq: row.seq,
@@ -55,8 +55,25 @@ export async function readConversationUpdates(
       createdAtMs: row.createdAt.getTime(),
       type: row.type,
       payload: row.payload,
-    }),
+    });
+  const canonicalEvents = rows.map(decodeEventRow);
+  const endedInvocationIds = canonicalEvents.flatMap((event) =>
+    event.data.type === "subagent_ended"
+      ? [event.data.subagentInvocationId]
+      : [],
   );
+  const subagentStartRows =
+    endedInvocationIds.length === 0
+      ? []
+      : await readConversationReportEventRows(
+          getSqlExecutor(),
+          conversationId,
+          {
+            subagentInvocationIds: endedInvocationIds,
+            types: ["subagent_started"],
+          },
+        );
+  const subagentStartEvents = subagentStartRows.map(decodeEventRow);
   const access = accessByConversation.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
   const projected = projectConversationReportEventPage({
@@ -65,7 +82,7 @@ export async function readConversationUpdates(
       record.conversation.transcriptPurgedAtMs === undefined
         ? canonicalEvents
         : [],
-    openSubagents: cursor.openSubagents,
+    subagentStartEvents,
   });
   const maxSeq = canonicalEvents.at(-1)?.seq ?? cursor.seq;
   const metrics = metricsByRoot.get(conversationId);
@@ -79,11 +96,10 @@ export async function readConversationUpdates(
       ...(record.locationId ? { locationId: record.locationId } : {}),
       usage: metrics?.usage ?? record.usage ?? undefined,
     }),
-    events: projected.events,
+    events: projected,
     eventCursor: encodeConversationCursor({
       conversationId,
       kind: "after",
-      openSubagents: projected.openSubagents,
       seq: maxSeq,
     }),
     eventHistory:

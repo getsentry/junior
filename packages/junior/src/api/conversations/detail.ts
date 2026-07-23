@@ -1,4 +1,13 @@
-import { and, asc, eq, getTableColumns, gt, lt, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  getTableColumns,
+  gt,
+  inArray,
+  lt,
+  sql,
+} from "drizzle-orm";
 import {
   decodeStoredConversationEvent,
   type ConversationEvent,
@@ -32,7 +41,12 @@ const conversationEventColumns = getTableColumns(juniorConversationEvents);
 export async function readConversationReportEventRows(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  bounds: { afterSeq?: number; beforeSeq?: number } = {},
+  bounds: {
+    afterSeq?: number;
+    beforeSeq?: number;
+    subagentInvocationIds?: string[];
+    types?: ConversationEvent["data"]["type"][];
+  } = {},
 ) {
   return executor
     .db()
@@ -59,6 +73,15 @@ export async function readConversationReportEventRows(
         bounds.beforeSeq === undefined
           ? undefined
           : lt(juniorConversationEvents.seq, bounds.beforeSeq),
+        bounds.types === undefined
+          ? undefined
+          : inArray(juniorConversationEvents.type, bounds.types),
+        bounds.subagentInvocationIds === undefined
+          ? undefined
+          : inArray(
+              sql<string>`${juniorConversationEvents.payload}->>'subagentInvocationId'`,
+              bounds.subagentInvocationIds,
+            ),
       ),
     )
     .orderBy(asc(juniorConversationEvents.seq));
@@ -84,7 +107,7 @@ function projectConversationDetail(args: {
     canExposePayload,
     events: canonicalEvents,
   });
-  const events = projected.events.slice(-args.limit);
+  const events = projected.slice(-args.limit);
   const maxSeq = canonicalEvents.at(-1)?.seq ?? 0;
   const firstSeq = events[0]?.seq;
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
@@ -101,15 +124,13 @@ function projectConversationDetail(args: {
     eventCursor: encodeConversationCursor({
       conversationId,
       kind: "after",
-      openSubagents: projected.openSubagents,
       seq: maxSeq,
     }),
-    ...(firstSeq !== undefined && projected.events.length > events.length
+    ...(firstSeq !== undefined && projected.length > events.length
       ? {
           previousCursor: encodeConversationCursor({
             conversationId,
             kind: "before",
-            openSubagents: [],
             seq: firstSeq,
           }),
         }
