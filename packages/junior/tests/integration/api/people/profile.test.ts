@@ -18,6 +18,7 @@ describe("people profile API", () => {
     const store = createSqlStore(fixture.sql);
     const rootConversationId = "slack:G-private:root";
     const childConversationId = "slack:C-public:child";
+    const ownerChildConversationId = "slack:C-public:owner-child";
 
     try {
       await migrateSchema(fixture.sql);
@@ -53,6 +54,22 @@ describe("people profile API", () => {
         title: "Child participant title",
         visibility: "public",
       });
+      await store.recordActivity({
+        conversationId: ownerChildConversationId,
+        actor: {
+          email: "owner@example.com",
+          platform: "slack",
+          slackUserId: "U-owner",
+          teamId: "T1",
+        },
+        destination: {
+          channelId: "C-public",
+          platform: "slack",
+          teamId: "T1",
+        },
+        title: "Owner child title",
+        visibility: "public",
+      });
       await fixture.sql
         .db()
         .update(juniorConversations)
@@ -64,6 +81,16 @@ describe("people profile API", () => {
       await fixture.sql
         .db()
         .update(juniorConversations)
+        .set({
+          parentConversationId: rootConversationId,
+          rootConversationId,
+        })
+        .where(
+          eq(juniorConversations.conversationId, ownerChildConversationId),
+        );
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
         .set({ durationMs: 300, usage: { totalTokens: 3 } })
         .where(eq(juniorConversations.conversationId, rootConversationId));
       await fixture.sql
@@ -71,28 +98,55 @@ describe("people profile API", () => {
         .update(juniorConversations)
         .set({ durationMs: 700, usage: { totalTokens: 7 } })
         .where(eq(juniorConversations.conversationId, childConversationId));
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ durationMs: 500, usage: { totalTokens: 5 } })
+        .where(
+          eq(juniorConversations.conversationId, ownerChildConversationId),
+        );
 
       const rootReport = await readPeopleProfileFromSql("owner@example.com", {
         verifiedViewerEmail: "owner@example.com",
       });
-      expect(rootReport.recentConversations).toEqual([
-        expect.objectContaining({
-          conversationId: rootConversationId,
-          cumulativeDurationMs: 1_000,
-          cumulativeUsage: { totalTokens: 10 },
-        }),
-      ]);
+      expect(rootReport.recentConversations).toHaveLength(2);
+      expect(rootReport.recentConversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conversationId: rootConversationId,
+            cumulativeDurationMs: 1_500,
+            cumulativeUsage: { totalTokens: 15 },
+          }),
+          expect.objectContaining({
+            conversationId: ownerChildConversationId,
+            cumulativeDurationMs: 500,
+            cumulativeUsage: { totalTokens: 5 },
+          }),
+        ]),
+      );
       expect(rootReport).toMatchObject({
-        locations: [expect.objectContaining({ durationMs: 1_000, tokens: 10 })],
-        surfaces: [expect.objectContaining({ durationMs: 1_000, tokens: 10 })],
+        locations: expect.arrayContaining([
+          expect.objectContaining({ durationMs: 1_500, tokens: 15 }),
+        ]),
+        surfaces: [
+          expect.objectContaining({
+            conversations: 2,
+            durationMs: 1_500,
+            tokens: 15,
+          }),
+        ],
         totals: {
-          conversations: 1,
-          durationMs: 1_000,
-          tokens: 10,
+          conversations: 2,
+          durationMs: 1_500,
+          tokens: 15,
         },
       });
       expect(rootReport.activityDays).toContainEqual(
-        expect.objectContaining({ durationMs: 1_000, tokens: 10 }),
+        expect.objectContaining({
+          conversations: 2,
+          durationMs: 1_500,
+          tokens: 15,
+        }),
       );
 
       const report = await readPeopleProfileFromSql("child@example.com", {
