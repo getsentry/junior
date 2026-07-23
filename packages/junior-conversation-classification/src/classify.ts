@@ -20,7 +20,11 @@ const PRIVATE_KEY_RE =
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 const SECRET_PATTERNS = [
   /\bsk-[A-Za-z0-9_-]{20,}\b/g,
+  /\b(?:ghp|ghs|github_pat)_[A-Za-z0-9_]{20,}\b/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+  /\bAIza[0-9A-Za-z\-_]{30,}\b/g,
+  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
   /\bBearer\s+[A-Za-z0-9._\-+=]{20,}\b/gi,
   /\b[A-Z0-9_]+(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\s*[=:]\s*[^\s"']{8,}/gi,
 ];

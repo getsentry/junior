@@ -334,6 +334,14 @@ describe("conversation classification", () => {
   });
 
   it("redacts common credentials before model processing", async () => {
+    const credentials = {
+      awsAccessKey: ["AK", "IA", "ABCDEFGHIJKLMNOP"].join(""),
+      bearer: ["Bearer ", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
+      github: ["gh", "p_", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
+      google: ["AI", "za", "abcdefghijklmnopqrstuvwxyz1234567890"].join(""),
+      jwt: ["eyJabcdefghijk", "abcdefghijklmnop", "abcdefghijklmnop"].join("."),
+      openAi: ["sk", "-", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
+    };
     const { completeObject, context } = taskContext({
       db,
       response: { categoryId: "security_review", confidence: 0.9 },
@@ -341,7 +349,15 @@ describe("conversation classification", () => {
         {
           type: "message",
           role: "user",
-          text: "Check sk-abcdefghijklmnopqrstuvwxyz123456 and Bearer abcdefghijklmnopqrstuvwxyz123456.",
+          text: [
+            "Check",
+            credentials.openAi,
+            credentials.github,
+            credentials.awsAccessKey,
+            credentials.google,
+            credentials.jwt,
+            credentials.bearer,
+          ].join(" "),
           provenance: { authority: "instruction" },
           isRunActor: true,
         },
@@ -351,8 +367,9 @@ describe("conversation classification", () => {
     await classifyTurn(context, classificationConfig());
 
     const prompt = completeObject.mock.calls[0]?.[0].prompt ?? "";
-    expect(prompt).not.toMatch(/sk-abcdefghijklmnopqrstuvwxyz/);
-    expect(prompt).not.toMatch(/Bearer abcdefghijklmnopqrstuvwxyz/);
+    for (const credential of Object.values(credentials)) {
+      expect(prompt).not.toContain(credential);
+    }
     expect(prompt).toContain("[secret redacted]");
   });
 
