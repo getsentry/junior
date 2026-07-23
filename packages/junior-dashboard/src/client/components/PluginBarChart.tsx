@@ -27,8 +27,9 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
   const minimum = Math.min(0, ...values);
-  const maximum = Math.max(0, ...values);
-  const span = Math.max(Number.EPSILON, maximum - minimum);
+  const dataMaximum = Math.max(0, ...values);
+  const maximum = dataMaximum === minimum ? minimum + 1 : dataMaximum;
+  const span = maximum - minimum;
   const zeroY = top + (maximum / span) * plotHeight;
 
   return (

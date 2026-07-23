@@ -879,6 +879,33 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
 
+  it("renders an all-zero chart with a stable zero scale", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories: [
+                  { id: "7d", label: "7d", values: { created: 0 } },
+                  { id: "30d", label: "30d", values: { created: 0 } },
+                ],
+                id: "zero-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain(">1</text>");
+    expect(html).toContain(">0.5</text>");
+    expect(html).toContain(">0</text>");
+  });
+
   it("keeps chart chrome visible for empty widget data", () => {
     const html = renderToStaticMarkup(
       <PluginReports
