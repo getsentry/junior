@@ -37,14 +37,10 @@ function buildThreadStatePayload(
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
-  if (patch.sandbox === null) {
-    payload.app_sandbox_id = "";
-    payload.app_sandbox_dependency_profile_hash = "";
-  } else if (patch.sandbox) {
-    payload.app_sandbox_id = patch.sandbox.id;
-    if (patch.sandbox.profileHash !== undefined) {
-      payload.app_sandbox_dependency_profile_hash = patch.sandbox.profileHash;
-    }
+  if (patch.sandbox !== undefined) {
+    payload.app_sandbox_id = patch.sandbox?.id ?? "";
+    payload.app_sandbox_dependency_profile_hash =
+      patch.sandbox?.profileHash ?? "";
   }
   return payload;
 }
