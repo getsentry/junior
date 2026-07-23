@@ -955,13 +955,13 @@ describe("agent plugin hooks", () => {
                     {
                       id: " 30d ",
                       label: " 30 days ",
-                      values: { created: 4, ignored: 99 },
+                      values: { " created ": 4, ignored: 99 },
                     },
                   ],
                   description: " Rolling activity ",
                   id: " activity ",
                   series: [
-                    { key: "created", label: " Created ", tone: "good" },
+                    { key: " created ", label: " Created ", tone: "good" },
                   ],
                   title: " Activity ",
                   type: "bar_chart",

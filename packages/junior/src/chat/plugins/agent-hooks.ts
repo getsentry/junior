@@ -824,7 +824,7 @@ function sanitizeOperationalReport(args: {
       if (!title) {
         return undefined;
       }
-      const series = widget.series
+      const seriesEntries = widget.series
         .slice(0, OPERATIONAL_REPORT_MAX_CHART_SERIES)
         .map((item) => {
           const key = operationalReportText(
@@ -845,12 +845,13 @@ function sanitizeOperationalReport(args: {
           if (tone) {
             sanitizedSeries.tone = tone;
           }
-          return sanitizedSeries;
+          return { sanitizedSeries, sourceKey: item.key };
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
-      if (!series.length) {
+      if (!seriesEntries.length) {
         return undefined;
       }
+      const series = seriesEntries.map((item) => item.sanitizedSeries);
       const categories = widget.categories
         .slice(0, OPERATIONAL_REPORT_MAX_CHART_CATEGORIES)
         .map((category, categoryIndex) => ({
@@ -865,10 +866,10 @@ function sanitizeOperationalReport(args: {
               OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
             ) ?? String(categoryIndex + 1),
           values: Object.fromEntries(
-            series.map((item) => [
-              item.key,
-              Number.isFinite(category.values[item.key])
-                ? category.values[item.key]
+            seriesEntries.map(({ sanitizedSeries, sourceKey }) => [
+              sanitizedSeries.key,
+              Number.isFinite(category.values[sourceKey])
+                ? category.values[sourceKey]
                 : 0,
             ]),
           ),
