@@ -21,7 +21,7 @@ describe("people profile API", () => {
     const ownerChildConversationId = "slack:C-public:owner-child";
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordActivity({
         conversationId: rootConversationId,
         actor: {

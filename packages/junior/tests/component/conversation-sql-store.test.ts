@@ -36,7 +36,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const at = new Date(1);
       await fixture.sql.db().insert(juniorConversations).values({
         conversationId: "parent-without-root",
