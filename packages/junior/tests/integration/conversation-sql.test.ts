@@ -94,7 +94,6 @@ ORDER BY indexname ASC
           "junior_conversations_origin_idx",
           "junior_conversations_pkey",
           "junior_conversations_root_idx",
-          "junior_conversations_actor_activity_idx",
           "junior_conversation_events_message_search_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
@@ -144,9 +143,16 @@ ORDER BY table_name ASC, constraint_name ASC
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      for (let index = 0; index < 6; index += 1) {
-        await applyCoreMigration(fixture.sql, index);
-      }
+      await fixture.sql.execute(`
+CREATE TABLE junior_conversations (
+  conversation_id text PRIMARY KEY,
+  parent_conversation_id text,
+  created_at timestamptz NOT NULL,
+  last_activity_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  execution_status text NOT NULL
+)
+`);
       await fixture.sql.execute(`
 INSERT INTO junior_conversations (
   conversation_id,
@@ -166,7 +172,15 @@ INSERT INTO junior_conversations (
         "UPDATE junior_conversations SET parent_conversation_id = 'cycle-b' WHERE conversation_id = 'cycle-a'",
       );
 
-      await applyCoreMigration(fixture.sql, 6);
+      const rootMigration = coreMigrations.find((migration) =>
+        migration.sql.some((statement) =>
+          statement.includes('ADD COLUMN "root_conversation_id"'),
+        ),
+      );
+      if (!rootMigration) throw new Error("Root migration not found");
+      for (const statement of rootMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
 
       const rows = await fixture.sql.query<{
         conversationId: string;

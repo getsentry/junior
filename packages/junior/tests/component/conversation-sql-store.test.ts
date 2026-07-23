@@ -31,7 +31,7 @@ import {
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
-  it("rejects a child whose parent has no persisted root", async () => {
+  it("rejects updates to a child whose parent has no persisted root", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -45,21 +45,28 @@ describe("conversation SQL store", () => {
         updatedAt: at,
         executionStatus: "idle",
       });
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "child:missing-parent",
+        parentConversationId: "parent-without-root",
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle",
+      });
 
       await expect(
-        store.backfillConversation({
-          schemaVersion: 1,
+        store.recordActivity({
           conversationId: "child:missing-parent",
-          createdAtMs: 1,
-          lastActivityAtMs: 1,
-          updatedAtMs: 1,
-          execution: { status: "idle", updatedAtMs: 1 },
-          lineage: { parentConversationId: "parent-without-root" },
+          nowMs: 2,
         }),
       ).rejects.toThrow("Conversation parent is missing its persisted root");
       await expect(
         store.get({ conversationId: "child:missing-parent" }),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({
+        conversationId: "child:missing-parent",
+        lastActivityAtMs: 1,
+        lineage: { parentConversationId: "parent-without-root" },
+      });
     } finally {
       await fixture.close();
     }
