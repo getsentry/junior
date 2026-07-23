@@ -347,7 +347,7 @@ export async function continueSlackAgentRun(
         const conversationContext = buildConversationContext(conversation, {
           excludeMessageId: userMessage.id,
         });
-        const sandbox = getPersistedSandboxState(currentState);
+        const sandboxRef = getPersistedSandboxState(currentState);
         const destination = requireSlackDestination(
           payload.destination,
           "Slack continuation",
@@ -428,7 +428,7 @@ export async function continueSlackAgentRun(
             state: {
               artifactState: artifacts,
               pendingAuth: conversation.processing.pendingAuth,
-              sandbox,
+              sandboxRef,
             },
             durability: {
               recordPendingAuth: async (nextPendingAuth) => {

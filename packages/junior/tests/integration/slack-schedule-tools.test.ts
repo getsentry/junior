@@ -1400,7 +1400,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
             return new Response("ok");
           },
         },
-        sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
 
       expect(tools).toHaveProperty("scheduler_slackScheduleCreateTask");

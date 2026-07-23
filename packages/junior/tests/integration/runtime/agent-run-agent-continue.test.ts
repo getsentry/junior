@@ -256,7 +256,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         throw new Error("sandbox executor should not execute in this test");
       },
     },
-    ref: () => undefined,
+    sandboxRef: () => undefined,
   }),
 }));
 

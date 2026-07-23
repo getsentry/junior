@@ -265,7 +265,7 @@ async function executeAgentRunInPrivacyContext(
   const turnTimeoutBudgetMs = Math.max(0, turnDeadlineAtMs - replyStartedAtMs);
 
   let resume: ResumeState | undefined;
-  let lastKnownSandboxRef = state.sandbox;
+  let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
@@ -325,8 +325,6 @@ async function executeAgentRunInPrivacyContext(
       await recordConnectedMcpProvider(provider);
     }
   };
-  const getSandboxMetadata = () => ({ sandbox: lastKnownSandboxRef });
-
   try {
     const projection = await openConversationProjection({ conversationId });
     activeModelProfile = projection.modelProfile;
@@ -643,8 +641,8 @@ async function executeAgentRunInPrivacyContext(
       generatedFiles,
       invokedSkill,
       observers,
-      onSandboxRefChanged: (sandbox) => {
-        lastKnownSandboxRef = sandbox;
+      onSandboxRefChanged: (sandboxRef) => {
+        lastKnownSandboxRef = sandboxRef;
       },
       policy,
       preAgentPromptMessages,
@@ -664,7 +662,6 @@ async function executeAgentRunInPrivacyContext(
       userInput,
     });
     mcpToolManager = wiring.mcpToolManager;
-    const getSandboxRef = wiring.getSandboxRef;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools;
 
@@ -1188,7 +1185,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
       artifactStatePatch,
       toolCalls,
-      sandbox: getSandboxRef(),
+      sandboxRef: wiring.getSandboxRef(),
       piMessages: [...agent.state.messages],
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
@@ -1267,7 +1264,7 @@ async function executeAgentRunInPrivacyContext(
       status: "completed",
       result: {
         text: "",
-        ...getSandboxMetadata(),
+        sandboxRef: lastKnownSandboxRef,
         diagnostics: {
           outcome: "provider_error",
           modelId: activeModelId,

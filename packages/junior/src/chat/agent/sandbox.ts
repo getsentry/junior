@@ -22,7 +22,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 
 export interface AgentSandboxOptions {
-  ref?: SandboxRef;
+  sandboxRef?: SandboxRef;
   skills: SkillMetadata[];
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -32,14 +32,14 @@ export interface AgentSandboxOptions {
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
-  onRefChanged(ref: SandboxRef): void;
-  persistRef?(ref: SandboxRef): void | Promise<void>;
+  onSandboxRefChanged(sandboxRef: SandboxRef): void;
+  persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
 
 export interface AgentSandbox {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
-  ref(): SandboxRef | undefined;
+  sandboxRef(): SandboxRef | undefined;
   writeGeneratedArtifacts(
     files: FileUpload[],
   ): Promise<GeneratedArtifactFileRef[]>;
@@ -58,22 +58,22 @@ function bashCommand(input: unknown): string | undefined {
 /** Create run-scoped sandbox capabilities adapted to the current agent context. */
 export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   const sandbox = createSandbox({
-    ref: options.ref,
+    sandboxRef: options.sandboxRef,
     skills: options.skills,
     referenceFiles: listReferenceFiles(),
     traceContext: options.traceContext,
     tracePropagation: options.tracePropagation,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
-    onRefChanged: async (ref) => {
-      options.onRefChanged(ref);
-      await options.persistRef?.(ref);
+    onSandboxRefChanged: async (sandboxRef) => {
+      options.onSandboxRefChanged(sandboxRef);
+      await options.persistSandboxRef?.(sandboxRef);
     },
   });
 
   return {
     workspace: sandbox.workspace,
-    ref: sandbox.ref,
+    sandboxRef: sandbox.sandboxRef,
     tools: {
       supports: sandbox.tools.supports,
       async execute(params) {

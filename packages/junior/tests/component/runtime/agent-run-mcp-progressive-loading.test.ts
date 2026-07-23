@@ -450,7 +450,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         throw new Error("sandbox executor should not handle mocked tools");
       },
     },
-    ref: () => ({ id: "sandbox-test", profileHash: "hash-test" }),
+    sandboxRef: () => ({ id: "sandbox-test", profileHash: "hash-test" }),
   }),
 }));
 

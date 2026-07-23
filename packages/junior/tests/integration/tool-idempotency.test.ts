@@ -94,7 +94,7 @@ const LOCAL_CONTEXT = {
     platform: "local",
     conversationId: "local:test:tool-idempotency",
   },
-  sandbox: noopSandbox,
+  workspace: noopSandbox,
 } as const;
 
 async function executeTool<TInput>(tool: any, input: TInput) {

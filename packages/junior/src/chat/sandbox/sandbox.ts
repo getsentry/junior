@@ -65,14 +65,14 @@ export interface SandboxTools {
   execute(params: SandboxToolCall): Promise<unknown>;
 }
 
-export interface Sandbox {
+export interface SandboxAccess {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
-  ref(): SandboxRef | undefined;
+  sandboxRef(): SandboxRef | undefined;
 }
 
 export interface SandboxOptions {
-  ref?: SandboxRef;
+  sandboxRef?: SandboxRef;
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
@@ -80,7 +80,7 @@ export interface SandboxOptions {
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
-  onRefChanged?: (ref: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -117,7 +117,7 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 /** Create lazy run-scoped access to a conversation's durable sandbox. */
-export function createSandbox(options: SandboxOptions): Sandbox {
+export function createSandbox(options: SandboxOptions): SandboxAccess {
   const traceContext = options.traceContext ?? {};
   const tracePropagation = options.tracePropagation;
   const hasTracePropagationDomains =
@@ -152,7 +152,7 @@ export function createSandbox(options: SandboxOptions): Sandbox {
     return token;
   };
   const runtime = createSandboxRuntime({
-    ref: options.ref,
+    sandboxRef: options.sandboxRef,
     skills: options.skills,
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
@@ -176,8 +176,8 @@ export function createSandbox(options: SandboxOptions): Sandbox {
     onSandboxPrepare: async (sandbox) => {
       await options.prepare?.(sandbox);
     },
-    onRefChanged: async (ref) => {
-      await options.onRefChanged?.(ref);
+    onSandboxRefChanged: async (sandboxRef) => {
+      await options.onSandboxRefChanged?.(sandboxRef);
     },
   });
 
@@ -204,7 +204,7 @@ export function createSandbox(options: SandboxOptions): Sandbox {
     trigger: string,
     details: Record<string, string | number> = {},
   ): void => {
-    if (runtime.ref()) {
+    if (runtime.sandboxRef()) {
       return;
     }
 
@@ -313,7 +313,7 @@ export function createSandbox(options: SandboxOptions): Sandbox {
     const offset = positiveInteger(rawInput.offset);
     const limit = positiveInteger(rawInput.limit);
 
-    if (!runtime.ref()) {
+    if (!runtime.sandboxRef()) {
       const hostPath =
         resolveHostSkillPath(options.skills, filePath) ??
         resolveHostDataPath(options.referenceFiles, filePath);
@@ -654,8 +654,8 @@ export function createSandbox(options: SandboxOptions): Sandbox {
       },
       execute,
     },
-    ref() {
-      return runtime.ref();
+    sandboxRef() {
+      return runtime.sandboxRef();
     },
   };
 }

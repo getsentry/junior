@@ -157,7 +157,7 @@ interface SandboxFixtureOptions {
   credentialEgress?: any;
   agentHooks?: {
     beforeToolExecute: ReturnType<typeof vi.fn>;
-    prepareSandbox(sandbox: SandboxWorkspace): Promise<void>;
+    prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   };
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
@@ -174,7 +174,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
   let runtime: ReturnType<typeof createSandboxRuntime> | undefined;
   const getRuntime = () =>
     (runtime ??= createSandboxRuntime({
-      ref: options.sandboxId
+      sandboxRef: options.sandboxId
         ? {
             id: options.sandboxId,
             ...(options.sandboxDependencyProfileHash
@@ -189,7 +189,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
       commandEnv: options.commandEnv,
       createNetworkPolicy: options.createNetworkPolicy,
       onSandboxPrepare: options.onSandboxPrepare,
-      onRefChanged: async (ref) => {
+      onSandboxRefChanged: async (ref) => {
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -205,8 +205,8 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
     configureReferenceFiles(nextFiles: string[]) {
       referenceFiles = [...nextFiles];
     },
-    getSandboxId: () => getRuntime().ref()?.id,
-    getDependencyProfileHash: () => getRuntime().ref()?.profileHash,
+    getSandboxId: () => getRuntime().sandboxRef()?.id,
+    getDependencyProfileHash: () => getRuntime().sandboxRef()?.profileHash,
     createSandbox: async () => await getRuntime().acquire(),
     ensureToolExecutors: async () => await getRuntime().tools(),
     refreshNetworkPolicy: async (
@@ -223,7 +223,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
   let access: ReturnType<typeof createSandbox> | undefined;
   const getAccess = () =>
     (access ??= createSandbox({
-      ref: options.sandboxId
+      sandboxRef: options.sandboxId
         ? {
             id: options.sandboxId,
             ...(options.sandboxDependencyProfileHash
@@ -241,7 +241,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
         ? async (workspace) =>
             await options.agentHooks?.prepareSandbox(workspace)
         : undefined,
-      onRefChanged: async (ref) => {
+      onSandboxRefChanged: async (ref) => {
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -257,8 +257,8 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
     configureReferenceFiles(nextFiles: string[]) {
       referenceFiles = [...nextFiles];
     },
-    getSandboxId: () => getAccess().ref()?.id,
-    getDependencyProfileHash: () => getAccess().ref()?.profileHash,
+    getSandboxId: () => getAccess().sandboxRef()?.id,
+    getDependencyProfileHash: () => getAccess().sandboxRef()?.profileHash,
     canExecute: (toolName: string) => getAccess().tools.supports(toolName),
     createSandbox: async () => {
       const sandbox = getAccess();
@@ -496,12 +496,12 @@ describe("createTestSandbox", () => {
   it("preserves an unopened sandbox reference without rewriting its profile", () => {
     getRuntimeDependencyProfileHashMock.mockReturnValue("current-profile");
     const sandbox = createSandbox({
-      ref: { id: "sbx_existing", profileHash: "persisted-profile" },
+      sandboxRef: { id: "sbx_existing", profileHash: "persisted-profile" },
       skills: [],
       referenceFiles: [],
     });
 
-    expect(sandbox.ref()).toEqual({
+    expect(sandbox.sandboxRef()).toEqual({
       id: "sbx_existing",
       profileHash: "persisted-profile",
     });

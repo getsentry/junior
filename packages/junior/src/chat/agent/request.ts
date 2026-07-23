@@ -120,7 +120,7 @@ export interface AgentRunState {
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
   /** Persisted sandbox reuse state from prior slices of this conversation. */
-  sandbox?: SandboxRef;
+  sandboxRef?: SandboxRef;
 }
 
 /**
@@ -166,7 +166,7 @@ export interface AgentRunDurability {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
-  onSandboxRefChanged?: (sandbox: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
   onArtifactStateUpdated?: (
     artifactState: ThreadArtifactsState,
   ) => void | Promise<void>;

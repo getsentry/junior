@@ -114,7 +114,7 @@ export interface AgentRunResult {
   /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
   text: string;
   artifactStatePatch?: Partial<ThreadArtifactsState>;
-  sandbox?: SandboxRef;
+  sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
 }
@@ -124,7 +124,7 @@ export interface TurnResultInput {
   userInput: string;
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
-  sandbox?: SandboxRef;
+  sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
@@ -187,7 +187,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     newMessages,
     artifactStatePatch,
     toolCalls,
-    sandbox,
+    sandboxRef,
     durationMs,
     shouldTrace,
     spanContext,
@@ -340,7 +340,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       Object.keys(artifactStatePatch).length > 0
         ? artifactStatePatch
         : undefined,
-    sandbox,
+    sandboxRef,
     piMessages: input.piMessages,
     diagnostics: resolvedDiagnostics,
   };

@@ -40,7 +40,7 @@ function runtimeContext() {
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
-    sandbox: {} as any,
+    workspace: {} as any,
   };
 }
 

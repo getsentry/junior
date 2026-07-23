@@ -21,7 +21,7 @@ function createGeneratedArtifactSandbox() {
   return {
     commands,
     files,
-    sandbox: {
+    workspace: {
       runCommand: async (input: { args?: string[]; cmd: string }) => {
         commands.push(input);
         return commandResult();
@@ -58,7 +58,7 @@ describe("writeSandboxGeneratedArtifacts", () => {
     ];
 
     const refs = await writeSandboxGeneratedArtifacts(
-      fixture.sandbox,
+      fixture.workspace,
       generated,
     );
 
@@ -81,7 +81,7 @@ describe("writeSandboxGeneratedArtifacts", () => {
   });
 
   it("fails before returning refs when the artifact directory cannot be created", async () => {
-    const sandbox = {
+    const workspace = {
       runCommand: async () =>
         commandResult({
           exitCode: 1,
@@ -93,7 +93,7 @@ describe("writeSandboxGeneratedArtifacts", () => {
     };
 
     await expect(
-      writeSandboxGeneratedArtifacts(sandbox, [
+      writeSandboxGeneratedArtifacts(workspace, [
         {
           data: Buffer.from("image-bytes"),
           filename: "generated.png",

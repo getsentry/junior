@@ -112,13 +112,13 @@ function upsertDispatchUserMessage(args: {
 async function persistRuntimePatch(args: {
   artifacts?: ThreadArtifactsState;
   conversation: ThreadConversationState;
-  sandbox?: SandboxRef;
+  sandboxRef?: SandboxRef;
   threadId: string;
 }): Promise<void> {
   await persistThreadStateById(args.threadId, {
     artifacts: args.artifacts,
     conversation: args.conversation,
-    sandbox: args.sandbox,
+    sandboxRef: args.sandboxRef,
   });
 }
 
@@ -281,7 +281,7 @@ export async function runAgentDispatchSlice(
     }
 
     let artifacts = coerceThreadArtifactsState(persisted);
-    let sandbox = getPersistedSandboxState(persisted);
+    let sandboxRef = getPersistedSandboxState(persisted);
     const channelConfiguration = getChannelConfigurationServiceById(
       dispatch.destination.channelId,
     );
@@ -394,19 +394,19 @@ export async function runAgentDispatchSlice(
       },
       state: {
         artifactState: artifacts,
-        sandbox,
+        sandboxRef,
       },
       delivery: {
         onAssistantMessage: deliverAssistantMessage,
       },
       durability: {
-        onSandboxRefChanged: async (nextSandbox) => {
-          sandbox = nextSandbox;
+        onSandboxRefChanged: async (nextSandboxRef) => {
+          sandboxRef = nextSandboxRef;
           await persistRuntimePatch({
             threadId: conversationId,
             conversation,
             artifacts,
-            sandbox,
+            sandboxRef,
           });
         },
         onArtifactStateUpdated: async (nextArtifacts) => {
@@ -415,7 +415,7 @@ export async function runAgentDispatchSlice(
             threadId: conversationId,
             conversation,
             artifacts,
-            sandbox,
+            sandboxRef,
           });
         },
       },
@@ -490,7 +490,7 @@ export async function runAgentDispatchSlice(
           threadId: conversationId,
           conversation,
           artifacts: nextArtifacts,
-          sandbox: reply.sandbox ?? sandbox,
+          sandboxRef: reply.sandboxRef ?? sandboxRef,
         });
       });
       statePersisted = true;

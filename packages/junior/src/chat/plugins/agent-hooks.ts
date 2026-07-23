@@ -67,7 +67,7 @@ export interface PluginApiRouteRegistration {
 
 export interface PluginHookRunner {
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
-  prepareSandbox(sandbox: SandboxWorkspace): Promise<void>;
+  prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1005,15 +1005,15 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function createSandboxCapability(sandbox: SandboxWorkspace): PluginSandbox {
+function createSandboxCapability(workspace: SandboxWorkspace): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
     juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
     async readFile(filePath) {
-      return (await sandbox.readFileToBuffer({ path: filePath })) ?? null;
+      return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
     },
     async run(input: SandboxCommandInput) {
-      const result = await sandbox.runCommand(input);
+      const result = await workspace.runCommand(input);
       return {
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -1021,7 +1021,7 @@ function createSandboxCapability(sandbox: SandboxWorkspace): PluginSandbox {
       };
     },
     async writeFile(input) {
-      await sandbox.writeFiles([
+      await workspace.writeFiles([
         {
           path: input.path,
           content: input.content,

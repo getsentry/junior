@@ -91,7 +91,7 @@ interface BaseToolRuntimeContext {
   configuration?: Record<string, unknown>;
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
-  sandbox: SandboxWorkspace;
+  workspace: SandboxWorkspace;
 }
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {

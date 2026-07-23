@@ -73,7 +73,7 @@ describe("bash-tool sandbox adapter", () => {
     const sandbox = makeSandbox();
     sandboxGetMock.mockResolvedValue(sandbox);
     const manager = createSandboxRuntime({
-      ref: {
+      sandboxRef: {
         id: "sbx_adapter_contract",
         profileHash: "current-profile",
       },

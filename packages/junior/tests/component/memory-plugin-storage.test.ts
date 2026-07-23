@@ -316,7 +316,7 @@ WHERE table_name = 'junior_memory_memories'
           },
         },
         actor,
-        sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
         source,
         userText: "remember memory plugin facts",
       });

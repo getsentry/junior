@@ -83,7 +83,7 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
           };
         },
       },
-      ref: () => undefined,
+      sandboxRef: () => undefined,
     }),
   };
 });

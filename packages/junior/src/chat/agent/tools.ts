@@ -69,7 +69,7 @@ interface ToolWiringArgs {
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
   observers: AgentRunObservers;
-  onSandboxRefChanged: (sandbox: SandboxRef) => void;
+  onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   policy: AgentRunPolicy;
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
@@ -116,8 +116,8 @@ export async function wireAgentTools(
     actor: args.currentActor,
     actors: args.currentActors,
   });
-  const sandbox = createAgentSandbox({
-    ref: args.state.sandbox,
+  const agentSandbox = createAgentSandbox({
+    sandboxRef: args.state.sandboxRef,
     skills: args.availableSkills,
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
@@ -127,8 +127,8 @@ export async function wireAgentTools(
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
-    onRefChanged: args.onSandboxRefChanged,
-    persistRef: args.durability.onSandboxRefChanged,
+    onSandboxRefChanged: args.onSandboxRefChanged,
+    persistSandboxRef: args.durability.onSandboxRefChanged,
   });
 
   const slackDestination =
@@ -220,7 +220,7 @@ export async function wireAgentTools(
       },
     }),
     mcpToolManager,
-    sandbox: sandbox.workspace,
+    workspace: agentSandbox.workspace,
     surface: args.surface,
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
@@ -254,7 +254,7 @@ export async function wireAgentTools(
     loadableSkills,
     {
       writeGeneratedArtifacts: async (files) => {
-        const refs = await sandbox.writeGeneratedArtifacts(files);
+        const refs = await agentSandbox.writeGeneratedArtifacts(files);
         args.generatedFiles.push(...files);
         return refs;
       },
@@ -391,7 +391,7 @@ export async function wireAgentTools(
     args.skillSandbox,
     args.spanContext,
     args.observers.onStatus,
-    sandbox.tools,
+    agentSandbox.tools,
     pluginAuth,
     onToolCall,
     pluginHooks,
@@ -411,7 +411,7 @@ export async function wireAgentTools(
     getPendingAuthPause,
     mcpToolManager,
     pluginHooks,
-    getSandboxRef: sandbox.ref,
+    getSandboxRef: agentSandbox.sandboxRef,
     toolGuidance,
     toolRuntimeContext,
   };

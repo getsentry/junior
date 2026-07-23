@@ -16,7 +16,7 @@ import type { SandboxRef } from "@/chat/sandbox/ref";
 export interface ThreadStatePatch {
   artifacts?: ThreadArtifactsState;
   conversation?: ThreadConversationState;
-  sandbox?: SandboxRef | null;
+  sandboxRef?: SandboxRef | null;
 }
 
 function threadStateKey(threadId: string): string {
@@ -37,10 +37,10 @@ function buildThreadStatePayload(
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
-  if (patch.sandbox !== undefined) {
-    payload.app_sandbox_id = patch.sandbox?.id ?? "";
+  if (patch.sandboxRef !== undefined) {
+    payload.app_sandbox_id = patch.sandboxRef?.id ?? "";
     payload.app_sandbox_dependency_profile_hash =
-      patch.sandbox?.profileHash ?? "";
+      patch.sandboxRef?.profileHash ?? "";
   }
   return payload;
 }

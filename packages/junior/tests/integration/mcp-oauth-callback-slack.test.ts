@@ -213,7 +213,7 @@ describe("mcp oauth callback slack integration", () => {
         artifactStatePatch: {
           lastCanvasUrl: "https://example.com/canvas",
         },
-        sandbox: { id: "sandbox-1", profileHash: "hash-1" },
+        sandboxRef: { id: "sandbox-1", profileHash: "hash-1" },
         diagnostics: makeDiagnostics(),
       });
     });

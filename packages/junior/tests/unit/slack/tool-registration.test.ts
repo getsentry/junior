@@ -38,7 +38,7 @@ function ctx(
       },
       egress: noopEgress,
       source: createLocalSource("local:test:tool-registration"),
-      sandbox: noopSandbox,
+      workspace: noopSandbox,
     };
   }
 
@@ -56,7 +56,7 @@ function ctx(
       type: sourceType ?? (channelId.startsWith("C") ? "pub" : "priv"),
     }),
     egress: noopEgress,
-    sandbox: noopSandbox,
+    workspace: noopSandbox,
   };
 }
 
@@ -228,7 +228,7 @@ describe("Slack tool registration", () => {
         },
         egress: noopEgress,
         source: createLocalSource("local:test:run-test"),
-        sandbox: noopSandbox,
+        workspace: noopSandbox,
       },
     );
 

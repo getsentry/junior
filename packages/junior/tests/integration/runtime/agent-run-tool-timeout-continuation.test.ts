@@ -213,7 +213,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         };
       },
     },
-    ref: () => undefined,
+    sandboxRef: () => undefined,
   }),
 }));
 

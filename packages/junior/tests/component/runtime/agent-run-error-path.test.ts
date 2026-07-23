@@ -37,7 +37,7 @@ describe("executeAgentRun error path", () => {
       input: { messageText: "hello" },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
       state: {
-        sandbox: {
+        sandboxRef: {
           id: "sb-123",
           profileHash: "hash-abc",
         },
@@ -51,7 +51,10 @@ describe("executeAgentRun error path", () => {
     expect(reply!.text).toBe("");
     expect(reply!.diagnostics.errorMessage).toBe("discover failed");
     expect(reply!.diagnostics.assistantMessageCount).toBe(0);
-    expect(reply!.sandbox).toEqual({ id: "sb-123", profileHash: "hash-abc" });
+    expect(reply!.sandboxRef).toEqual({
+      id: "sb-123",
+      profileHash: "hash-abc",
+    });
     expect(reply!.diagnostics.outcome).toBe("provider_error");
     expect(reply!.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(reply!.diagnostics.reasoningLevel).toBeUndefined();

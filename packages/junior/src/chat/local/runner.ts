@@ -173,9 +173,9 @@ export async function runLocalAgentTurn(
     conversationId: input.conversationId,
   });
   let artifacts = coerceThreadArtifactsState(persisted);
-  let sandbox = getPersistedSandboxState(persisted);
+  let sandboxRef = getPersistedSandboxState(persisted);
   const initialArtifacts = artifacts;
-  const initialSandbox = sandbox;
+  const initialSandboxRef = sandboxRef;
 
   const turnId = localTurnId();
   const userMessageId = `${turnId}:user`;
@@ -291,7 +291,7 @@ export async function runLocalAgentTurn(
       },
       state: {
         artifactState: artifacts,
-        sandbox,
+        sandboxRef,
       },
       observers: {
         onStatus: async (status) => {
@@ -313,15 +313,15 @@ export async function runLocalAgentTurn(
           await persistThreadStateById(input.conversationId, {
             artifacts,
             conversation,
-            sandbox,
+            sandboxRef,
           });
         },
-        onSandboxRefChanged: async (nextSandbox) => {
-          sandbox = nextSandbox;
+        onSandboxRefChanged: async (nextSandboxRef) => {
+          sandboxRef = nextSandboxRef;
           await persistThreadStateById(input.conversationId, {
             artifacts,
             conversation,
-            sandbox,
+            sandboxRef,
           });
         },
       },
@@ -376,7 +376,7 @@ export async function runLocalAgentTurn(
       await persistThreadStateById(input.conversationId, {
         artifacts: initialArtifacts,
         conversation,
-        sandbox: initialSandbox ?? null,
+        sandboxRef: initialSandboxRef ?? null,
       });
     } catch (persistenceError) {
       const persistenceEventId = captureLocalBoundaryFailure({
@@ -412,7 +412,7 @@ export async function runLocalAgentTurn(
     await persistThreadStateById(input.conversationId, {
       artifacts: completedState.artifacts ?? artifacts,
       conversation: completedState.conversation,
-      sandbox: reply.sandbox ?? sandbox,
+      sandboxRef: reply.sandboxRef ?? sandboxRef,
     });
     if (reply.piMessages?.length) {
       // Destination acceptance is the completion boundary: this first commits

@@ -26,11 +26,11 @@ describe("thread sandbox state", () => {
   it("clears a stale profile hash when the replacement reference omits one", async () => {
     const conversationId = "local:test:thread-sandbox-state";
     await persistThreadStateById(conversationId, {
-      sandbox: { id: "sandbox-old", profileHash: "profile-old" },
+      sandboxRef: { id: "sandbox-old", profileHash: "profile-old" },
     });
 
     await persistThreadStateById(conversationId, {
-      sandbox: { id: "sandbox-new" },
+      sandboxRef: { id: "sandbox-new" },
     });
 
     const state = await getPersistedThreadState(conversationId);
@@ -44,10 +44,10 @@ describe("thread sandbox state", () => {
   it("clears both fields when the sandbox reference is removed", async () => {
     const conversationId = "local:test:thread-sandbox-clear";
     await persistThreadStateById(conversationId, {
-      sandbox: { id: "sandbox-old", profileHash: "profile-old" },
+      sandboxRef: { id: "sandbox-old", profileHash: "profile-old" },
     });
 
-    await persistThreadStateById(conversationId, { sandbox: null });
+    await persistThreadStateById(conversationId, { sandboxRef: null });
 
     const state = await getPersistedThreadState(conversationId);
     expect(state).toMatchObject({

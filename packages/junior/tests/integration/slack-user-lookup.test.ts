@@ -359,7 +359,7 @@ describe("slackUserLookup", () => {
               return new Response("ok");
             },
           },
-          sandbox: {} as any,
+          workspace: {} as any,
         },
       );
 

@@ -49,7 +49,7 @@ function options(
     configurationValues: {},
     getActiveSkill: () => null,
     prepareSandbox: vi.fn(),
-    onRefChanged: vi.fn(),
+    onSandboxRefChanged: vi.fn(),
     ...overrides,
   };
 }
@@ -63,7 +63,7 @@ describe("createAgentSandbox", () => {
       capturedOptions = input;
       return {
         workspace,
-        ref: () => input.ref,
+        sandboxRef: () => input.sandboxRef,
         tools: {
           supports: () => true,
           execute: executeSandboxToolMock,
@@ -77,16 +77,16 @@ describe("createAgentSandbox", () => {
     const callOrder: string[] = [];
     createAgentSandbox(
       options({
-        onRefChanged: () => {
+        onSandboxRefChanged: () => {
           callOrder.push("run");
         },
-        persistRef: async () => {
+        persistSandboxRef: async () => {
           callOrder.push("durable");
         },
       }),
     );
 
-    await capturedOptions.onRefChanged?.({ id: "sandbox-1" });
+    await capturedOptions.onSandboxRefChanged?.({ id: "sandbox-1" });
 
     expect(callOrder).toEqual(["run", "durable"]);
     expect(capturedOptions.referenceFiles).toEqual(["/tmp/reference.md"]);

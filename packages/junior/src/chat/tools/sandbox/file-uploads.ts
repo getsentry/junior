@@ -159,11 +159,11 @@ export function inferMimeType(
 }
 
 async function detectMimeType(
-  sandbox: SandboxWorkspace,
+  workspace: SandboxWorkspace,
   targetPath: string,
 ): Promise<string | undefined> {
   try {
-    const result = await runNonInteractiveCommand(sandbox, {
+    const result = await runNonInteractiveCommand(workspace, {
       cmd: "file",
       args: ["--mime-type", "-b", targetPath],
     });
@@ -179,11 +179,11 @@ async function detectMimeType(
 
 /** Read and validate one sandbox file for Slack/file reply upload. */
 export async function readSandboxFileUpload(
-  sandbox: SandboxWorkspace,
+  workspace: SandboxWorkspace,
   input: SandboxFileMaterializationInput,
 ): Promise<SandboxFileUpload> {
   const targetPath = normalizeSandboxPath(input.path);
-  const fileBuffer = await sandbox.readFileToBuffer({ path: targetPath });
+  const fileBuffer = await workspace.readFileToBuffer({ path: targetPath });
   if (!fileBuffer) {
     throw new SandboxFileNotFoundError(targetPath);
   }
@@ -199,7 +199,7 @@ export async function readSandboxFileUpload(
   }
 
   const resolvedFilename = sanitizeFilename(input.filename, targetPath);
-  const detectedMimeType = await detectMimeType(sandbox, targetPath);
+  const detectedMimeType = await detectMimeType(workspace, targetPath);
   const resolvedMimeType = inferMimeType(
     resolvedFilename,
     input.mimeType ?? detectedMimeType,

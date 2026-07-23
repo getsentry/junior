@@ -189,7 +189,7 @@ export function createTools(
 
     if (rawChannelCapabilities.canSendFiles) {
       tools.sendFiles = createSendFilesTool(slackContext, state, (input) =>
-        readSandboxFileUpload(context.sandbox, input),
+        readSandboxFileUpload(context.workspace, input),
       );
     }
 

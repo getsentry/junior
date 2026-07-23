@@ -106,7 +106,7 @@ function createBashToolSandboxAdapter(sandbox: SandboxSession) {
 }
 
 interface SandboxRuntime {
-  ref(): SandboxRef | undefined;
+  sandboxRef(): SandboxRef | undefined;
   acquire(): Promise<SandboxSession>;
   tools(): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
@@ -120,7 +120,7 @@ interface ActiveSandbox {
 }
 
 interface SandboxRuntimeOptions {
-  ref?: SandboxRef;
+  sandboxRef?: SandboxRef;
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
@@ -131,7 +131,7 @@ interface SandboxRuntimeOptions {
     traceHeaders?: TracePropagationHeaders,
   ) => NetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
-  onRefChanged?: (ref: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
 function truncateOutput(
@@ -179,7 +179,7 @@ export function createSandboxRuntime(
   options: SandboxRuntimeOptions,
 ): SandboxRuntime {
   let activeSandbox: ActiveSandbox | null = null;
-  let sandboxRef = options.ref;
+  let sandboxRef = options.sandboxRef;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: Promise<SandboxSession> | undefined;
@@ -242,7 +242,7 @@ export function createSandboxRuntime(
       return;
     }
     sandboxRef = nextRef;
-    await options.onRefChanged?.(nextRef);
+    await options.onSandboxRefChanged?.(nextRef);
   };
 
   const rememberSandbox = (
@@ -835,7 +835,7 @@ export function createSandboxRuntime(
   };
 
   return {
-    ref() {
+    sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
     async acquire() {

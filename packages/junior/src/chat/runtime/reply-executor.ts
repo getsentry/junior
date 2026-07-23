@@ -1313,7 +1313,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             state: {
               artifactState: preparedState.artifacts,
               pendingAuth: preparedState.conversation.processing.pendingAuth,
-              sandbox: preparedState.sandbox,
+              sandboxRef: preparedState.sandboxRef,
             },
             observers: {
               onStatus: (nextStatus) => status.update(nextStatus),
@@ -1326,9 +1326,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
-              onSandboxRefChanged: async (sandbox) => {
+              onSandboxRefChanged: async (sandboxRef) => {
                 await persistThreadState(thread, {
-                  sandbox,
+                  sandboxRef,
                 });
               },
               onArtifactStateUpdated: async (artifacts) => {

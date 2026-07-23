@@ -55,7 +55,7 @@ export interface PreparedTurnState {
   channelConfiguration?: ChannelConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
-  sandbox?: SandboxRef;
+  sandboxRef?: SandboxRef;
   userMessageAlreadyReplied?: boolean;
   userMessageId?: string;
 }
@@ -179,7 +179,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
     const existingState = await args.thread.state;
-    const sandbox = getPersistedSandboxState(existingState ?? {});
+    const sandboxRef = getPersistedSandboxState(existingState ?? {});
     const artifacts = coerceThreadArtifactsState(existingState);
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
@@ -267,7 +267,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       configuration,
       channelConfiguration,
       conversation,
-      sandbox,
+      sandboxRef,
       conversationContext,
       userMessageAlreadyReplied,
       userMessageId,

@@ -281,14 +281,14 @@ vi.mock("@/chat/skills", () => {
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: (options: {
-    onRefChanged?: (sandbox: {
+    onSandboxRefChanged?: (sandboxRef: {
       id: string;
       profileHash?: string;
     }) => void | Promise<void>;
   }) => {
     const acquire = async () => {
       createSandboxCallCount.value += 1;
-      await options.onRefChanged?.({
+      await options.onSandboxRefChanged?.({
         id:
           activeSandboxVersion.value === 1
             ? "sandbox-test"
@@ -356,7 +356,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
           };
         },
       },
-      ref: () =>
+      sandboxRef: () =>
         createSandboxCallCount.value > 0
           ? {
               id:
@@ -418,7 +418,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(reply.sandbox).toBeUndefined();
+    expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
     expect(selectedThinkingLevels.value).toEqual(["off"]);
   });
@@ -430,7 +430,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(reply.sandbox).toBeUndefined();
+    expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
     expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
@@ -510,7 +510,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(reply.text).toBe("");
     expect(reply.diagnostics.errorMessage).toContain("agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
-    expect(reply.sandbox).toEqual({
+    expect(reply.sandboxRef).toEqual({
       id: "sandbox-test",
       profileHash: "hash-test",
     });

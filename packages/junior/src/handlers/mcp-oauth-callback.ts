@@ -396,7 +396,7 @@ async function resumeAuthorizedMcpTurn(args: {
           state: {
             artifactState: lockedArtifacts,
             pendingAuth: lockedPendingAuth,
-            sandbox: getPersistedSandboxState(lockedState),
+            sandboxRef: getPersistedSandboxState(lockedState),
           },
           durability: {
             recordPendingAuth: async (nextPendingAuth) => {

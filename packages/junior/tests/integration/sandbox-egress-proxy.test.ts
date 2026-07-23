@@ -753,7 +753,9 @@ describe("sandbox egress proxy integration", () => {
             handleAuthRequired: vi.fn(),
           },
         }),
-        sandbox: {} as Parameters<typeof toolsModule.createTools>[2]["sandbox"],
+        workspace: {} as Parameters<
+          typeof toolsModule.createTools
+        >[2]["workspace"],
         source: createLocalSource(conversationId),
       },
     );
