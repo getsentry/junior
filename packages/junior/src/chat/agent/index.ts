@@ -867,7 +867,6 @@ async function executeAgentRunInPrivacyContext(
     });
 
     let newMessages: PiMessage[] = [];
-    let authPauseOutcome: AgentRunOutcome | undefined;
     try {
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
@@ -884,7 +883,7 @@ async function executeAgentRunInPrivacyContext(
         runResume.setTurnStartMessageIndex(agent.state.messages.length);
       }
 
-      await withSpan(
+      const authPauseOutcome = await withSpan(
         `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
@@ -1044,105 +1043,99 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           }
           let retryUsage: AgentTurnUsage | undefined;
-          for (let attempt = 0; ; attempt += 1) {
-            try {
+          try {
+            for (let attempt = 0; ; attempt += 1) {
               await runAgentStep(run);
-            } catch (error) {
-              if (error instanceof AuthorizationPauseError) {
-                const { outcome } = await runResume.translateExpectedEnding({
-                  currentUsage: turnUsage,
-                  error,
-                });
-                if (outcome) {
-                  authPauseOutcome = outcome;
-                  return;
-                }
+              if (assistantMessageDeliveryError) {
+                throw assistantMessageDeliveryError;
               }
-              throw error;
-            }
-            if (assistantMessageDeliveryError) {
-              throw assistantMessageDeliveryError;
-            }
-            signal?.throwIfAborted();
-            if (runResume.cooperativeYieldError) {
-              throw runResume.cooperativeYieldError;
-            }
+              signal?.throwIfAborted();
+              if (runResume.cooperativeYieldError) {
+                throw runResume.cooperativeYieldError;
+              }
 
-            newMessages = agent!.state.messages.slice(
-              runResume.beforeMessageCount,
-            );
-            const outputMessages = newMessages.filter(isAssistantMessage);
-            const outputMessagesAttribute = serializeGenAiAttribute(
-              conversationPrivacy === "public"
-                ? outputMessages.map(toCanonicalOutputMessage)
-                : undefined,
-            );
-            const lastAssistant = outputMessages.at(-1);
-            const usageSummary = extractGenAiUsageSummary(...outputMessages);
-            const currentUsage = hasAgentTurnUsage(usageSummary)
-              ? usageSummary
-              : undefined;
-            const currentPhaseUsage = addAgentTurnUsage(
-              retryUsage,
-              currentUsage,
-            );
-            turnUsage = addAgentTurnUsage(handoffPhaseUsage, currentPhaseUsage);
-            setSpanAttributes({
-              ...(outputMessagesAttribute
-                ? { "gen_ai.output.messages": outputMessagesAttribute }
-                : {}),
-              ...toGenAiMessagesTraceAttributes(
-                "gen_ai.output",
-                outputMessages,
-              ),
-              ...(lastAssistant
-                ? {
-                    "gen_ai.response.finish_reasons": [
-                      normalizeGenAiFinishReason(lastAssistant.stopReason),
-                    ],
-                  }
-                : {}),
-              ...extractGenAiUsageAttributes(usageSummary),
-            });
-            const pendingAuthPause = getPendingAuthPause();
-            if (pendingAuthPause) {
-              runResume.captureResumeSnapshot(
-                runResume.getResumeSnapshot(currentAgentMessages()),
+              newMessages = agent!.state.messages.slice(
+                runResume.beforeMessageCount,
               );
+              const outputMessages = newMessages.filter(isAssistantMessage);
+              const outputMessagesAttribute = serializeGenAiAttribute(
+                conversationPrivacy === "public"
+                  ? outputMessages.map(toCanonicalOutputMessage)
+                  : undefined,
+              );
+              const lastAssistant = outputMessages.at(-1);
+              const usageSummary = extractGenAiUsageSummary(...outputMessages);
+              const currentUsage = hasAgentTurnUsage(usageSummary)
+                ? usageSummary
+                : undefined;
+              const currentPhaseUsage = addAgentTurnUsage(
+                retryUsage,
+                currentUsage,
+              );
+              turnUsage = addAgentTurnUsage(
+                handoffPhaseUsage,
+                currentPhaseUsage,
+              );
+              setSpanAttributes({
+                ...(outputMessagesAttribute
+                  ? { "gen_ai.output.messages": outputMessagesAttribute }
+                  : {}),
+                ...toGenAiMessagesTraceAttributes(
+                  "gen_ai.output",
+                  outputMessages,
+                ),
+                ...(lastAssistant
+                  ? {
+                      "gen_ai.response.finish_reasons": [
+                        normalizeGenAiFinishReason(lastAssistant.stopReason),
+                      ],
+                    }
+                  : {}),
+                ...extractGenAiUsageAttributes(usageSummary),
+              });
+              const pendingAuthPause = getPendingAuthPause();
+              if (pendingAuthPause) {
+                runResume.captureResumeSnapshot(
+                  runResume.getResumeSnapshot(currentAgentMessages()),
+                );
+                throw pendingAuthPause;
+              }
+
+              const providerRetry = nextProviderRetry({
+                attempt,
+                messages: agent!.state.messages,
+                retryableFailure:
+                  lastAssistant !== undefined &&
+                  isRetryableAssistantError(lastAssistant),
+              });
+              if (!providerRetry) {
+                break;
+              }
+
+              retryUsage = currentPhaseUsage;
+              agent!.state.messages = providerRetry.messages;
+              await runResume.persistSafeBoundary(providerRetry.messages);
+              logWarn(
+                "agent_turn_provider_retry",
+                spanContext,
+                {},
+                "Retrying transient provider failure",
+              );
+              await sleep(providerRetry.delayMs, signal);
+              signal?.throwIfAborted();
+              run = agent!.continue();
+            }
+          } catch (error) {
+            if (error instanceof AuthorizationPauseError) {
               const { outcome } = await runResume.translateExpectedEnding({
                 currentUsage: turnUsage,
-                error: pendingAuthPause,
+                error,
               });
               if (outcome) {
-                authPauseOutcome = outcome;
-                return;
+                return outcome;
               }
-              throw pendingAuthPause;
             }
-
-            const providerRetry = nextProviderRetry({
-              attempt,
-              messages: agent!.state.messages,
-              retryableFailure:
-                lastAssistant !== undefined &&
-                isRetryableAssistantError(lastAssistant),
-            });
-            if (!providerRetry) {
-              break;
-            }
-
-            retryUsage = currentPhaseUsage;
-            agent!.state.messages = providerRetry.messages;
-            await runResume.persistSafeBoundary(providerRetry.messages);
-            logWarn(
-              "agent_turn_provider_retry",
-              spanContext,
-              {},
-              "Retrying transient provider failure",
-            );
-            await sleep(providerRetry.delayMs, signal);
-            signal?.throwIfAborted();
-            run = agent!.continue();
+            throw error;
           }
         },
         {
