@@ -16,6 +16,7 @@ import {
   surfaceLabel,
 } from "../conversations/reporting";
 import { readConversationAccessFromSql } from "../conversations/access";
+import { readRootConversationMetricsFromSql } from "../conversations/usage";
 import type {
   ConversationStatsItem,
   ActorActivityDayReport,
@@ -234,18 +235,26 @@ export async function readPeopleProfileFromSql(
       row,
     );
   }
-  const accessByConversation = await readConversationAccessFromSql(
-    getDb(),
-    recentRows.map((row) => row.conversationId),
-    options.verifiedViewerEmail,
-  );
+  const recentConversationIds = recentRows.map((row) => row.conversationId);
+  const [accessByConversation, metricsByRoot] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      recentConversationIds,
+      options.verifiedViewerEmail,
+    ),
+    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
+  ]);
 
   return {
     activityDays: activityDays(days, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
     recentConversations: recentRows.map((row) =>
-      summaryFromRow(row, accessByConversation.get(row.conversationId)),
+      summaryFromRow(
+        row,
+        accessByConversation.get(row.conversationId),
+        metricsByRoot.get(row.conversationId),
+      ),
     ),
     actor,
     source: "conversation_index",

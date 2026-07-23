@@ -16,6 +16,7 @@ import {
 import type { ActorIdentity } from "../conversations/schema";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { summaryFromRow } from "../conversations/reporting";
+import { readRootConversationMetricsFromSql } from "../conversations/usage";
 import type {
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -485,11 +486,15 @@ export async function readLocationDetailFromSql(
   }
 
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
-  const accessByConversation = await readConversationAccessFromSql(
-    getDb(),
-    recentRows.map((row) => row.conversationId),
-    options.verifiedViewerEmail,
-  );
+  const recentConversationIds = recentRows.map((row) => row.conversationId);
+  const [accessByConversation, metricsByRoot] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      recentConversationIds,
+      options.verifiedViewerEmail,
+    ),
+    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
+  ]);
   return {
     ...location,
     activityDays: activity,
@@ -500,7 +505,11 @@ export async function readLocationDetailFromSql(
     ),
     generatedAt: new Date(nowMs).toISOString(),
     recentConversations: recentRows.map((row) =>
-      summaryFromRow(row, accessByConversation.get(row.conversationId)),
+      summaryFromRow(
+        row,
+        accessByConversation.get(row.conversationId),
+        metricsByRoot.get(row.conversationId),
+      ),
     ),
     source: "conversation_index",
     windowEnd: end.toISOString(),

@@ -82,6 +82,10 @@ function actorFromRow(
 export function summaryFromRow(
   row: ReportingConversationRow,
   access?: ConversationAccess,
+  metrics?: {
+    durationMs: number;
+    usage?: NonNullable<ReportingConversationRow["usage"]>;
+  },
 ): ConversationSummaryReport {
   const actor = actorFromRow(row);
   const conversation = {
@@ -106,11 +110,11 @@ export function summaryFromRow(
   return conversationSummaryFromStoredConversation({
     access,
     conversation,
-    durationMs: row.durationMs,
+    durationMs: metrics?.durationMs ?? row.durationMs,
     ...(access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
       : {}),
-    usage: row.usage ?? undefined,
+    usage: metrics?.usage ?? row.usage ?? undefined,
   });
 }
 

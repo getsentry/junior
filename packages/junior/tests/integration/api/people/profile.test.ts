@@ -61,6 +61,27 @@ describe("people profile API", () => {
           rootConversationId,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ durationMs: 300, usage: { totalTokens: 3 } })
+        .where(eq(juniorConversations.conversationId, rootConversationId));
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ durationMs: 700, usage: { totalTokens: 7 } })
+        .where(eq(juniorConversations.conversationId, childConversationId));
+
+      const rootReport = await readPeopleProfileFromSql("owner@example.com", {
+        verifiedViewerEmail: "owner@example.com",
+      });
+      expect(rootReport.recentConversations).toEqual([
+        expect.objectContaining({
+          conversationId: rootConversationId,
+          cumulativeDurationMs: 1_000,
+          cumulativeUsage: { totalTokens: 10 },
+        }),
+      ]);
 
       const report = await readPeopleProfileFromSql("child@example.com", {
         verifiedViewerEmail: "OWNER@example.com",

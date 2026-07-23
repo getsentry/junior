@@ -40,14 +40,15 @@ describe("locations API", () => {
       expect(destination).toBeDefined();
 
       const now = new Date(nowMs);
+      const aggregateNow = new Date(nowMs - 1_000);
       const aggregateConversations = Array.from({ length: 5_000 }, (_, index) =>
         buildJuniorSqlConversation({
           conversationId: `slack:C1:aggregate:${index}`,
           destinationId: destination?.id,
           durationMs: 2,
-          createdAt: now,
-          lastActivityAt: now,
-          updatedAt: now,
+          createdAt: aggregateNow,
+          lastActivityAt: aggregateNow,
+          updatedAt: aggregateNow,
           usage: { totalTokens: 3 },
         }),
       );
@@ -118,6 +119,11 @@ describe("locations API", () => {
         tokens: 15_007,
       });
       expect(detail?.recentConversations).toHaveLength(25);
+      expect(detail?.recentConversations[0]).toMatchObject({
+        conversationId: "slack:C1:seed",
+        cumulativeDurationMs: 4,
+        cumulativeUsage: { totalTokens: 7 },
+      });
       expect(detail?.activityDays).toHaveLength(90);
       expect(
         detail?.activityDays.find((day) => day.date === "2026-06-15"),
