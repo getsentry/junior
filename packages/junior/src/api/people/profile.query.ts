@@ -1,5 +1,4 @@
-import { and, eq, gte, isNull, notExists, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -7,10 +6,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import {
-  conversationActiveDaysColumn,
-  conversationAggregateColumns,
-} from "../conversations/aggregate";
+import { conversationActiveDaysColumn } from "../conversations/aggregate";
 import {
   slackLocationLabel,
   summaryFromRow,
@@ -29,62 +25,13 @@ import {
   activityDays,
   emptyTotals,
   normalizeEmail,
+  peopleTreeAggregateColumns,
+  peopleTreeConversation,
+  peopleTreeMetricsJoin,
   recentActorRows,
   statsItems,
   verifiedActorWhere,
 } from "./shared";
-
-const treeConversation = alias(juniorConversations, "people_tree_conversation");
-const rootConversation = alias(juniorConversations, "people_root_conversation");
-const rootIdentity = alias(juniorIdentities, "people_root_identity");
-const treeAggregateColumns = conversationAggregateColumns({
-  metrics: treeConversation,
-  roots: juniorConversations,
-});
-
-// Roots contribute their complete tree. A same-actor child remains countable
-// through the left join but must not contribute its metrics a second time.
-function treeMetricsJoin(actorEmail: string) {
-  const rootOwnedByActor = getDb()
-    .select({ conversationId: rootConversation.conversationId })
-    .from(rootConversation)
-    .innerJoin(
-      rootIdentity,
-      eq(rootIdentity.id, rootConversation.actorIdentityId),
-    )
-    .where(
-      and(
-        eq(
-          rootConversation.conversationId,
-          juniorConversations.rootConversationId,
-        ),
-        isNull(rootConversation.parentConversationId),
-        eq(
-          rootConversation.rootConversationId,
-          rootConversation.conversationId,
-        ),
-        eq(rootIdentity.emailNormalized, actorEmail),
-        eq(rootIdentity.emailVerified, true),
-      ),
-    );
-
-  return and(
-    eq(
-      treeConversation.rootConversationId,
-      juniorConversations.rootConversationId,
-    ),
-    or(
-      eq(
-        juniorConversations.rootConversationId,
-        juniorConversations.conversationId,
-      ),
-      and(
-        eq(treeConversation.conversationId, juniorConversations.conversationId),
-        notExists(rootOwnedByActor),
-      ),
-    ),
-  );
-}
 
 type AggregateRow = {
   active: number;
@@ -175,7 +122,7 @@ export async function readPeopleProfileFromSql(
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
   const where = verifiedActorWhere(normalizedEmail);
-  const metricsJoin = treeMetricsJoin(normalizedEmail);
+  const metricsJoin = peopleTreeMetricsJoin();
   const surface = surfaceExpression();
   const activityDate = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
@@ -194,29 +141,29 @@ export async function readPeopleProfileFromSql(
           >`MAX(${juniorIdentities.providerSubjectId})`,
           slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
           activeDays: conversationActiveDaysColumn(),
-          ...treeAggregateColumns,
+          ...peopleTreeAggregateColumns,
         })
         .from(juniorConversations)
-        .leftJoin(treeConversation, metricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(peopleTreeConversation, metricsJoin)
         .where(where)
         .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
       getDb()
         .select({
           date: activityDate,
-          ...treeAggregateColumns,
+          ...peopleTreeAggregateColumns,
         })
         .from(juniorConversations)
-        .leftJoin(treeConversation, metricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(peopleTreeConversation, metricsJoin)
         .where(and(where, gte(juniorConversations.lastActivityAt, start)))
         .groupBy(activityDate),
       getDb()
@@ -225,15 +172,15 @@ export async function readPeopleProfileFromSql(
           channelName: juniorConversations.channelName,
           destinationVisibility: juniorDestinations.visibility,
           surface,
-          ...treeAggregateColumns,
+          ...peopleTreeAggregateColumns,
         })
         .from(juniorConversations)
-        .leftJoin(treeConversation, metricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(peopleTreeConversation, metricsJoin)
         .leftJoin(
           juniorDestinations,
           eq(juniorDestinations.id, juniorConversations.destinationId),
@@ -246,14 +193,14 @@ export async function readPeopleProfileFromSql(
           surface,
         ),
       getDb()
-        .select({ surface, ...treeAggregateColumns })
+        .select({ surface, ...peopleTreeAggregateColumns })
         .from(juniorConversations)
-        .leftJoin(treeConversation, metricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(peopleTreeConversation, metricsJoin)
         .where(where)
         .groupBy(surface),
       recentActorRows(normalizedEmail),

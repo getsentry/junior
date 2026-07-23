@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -6,6 +7,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationAggregateColumns } from "../conversations/aggregate";
 import type {
   ActorActivityDayReport,
   ConversationStatsItem,
@@ -14,6 +16,75 @@ import type {
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
+
+export const peopleTreeConversation = alias(
+  juniorConversations,
+  "people_tree_conversation",
+);
+const peopleRootConversation = alias(
+  juniorConversations,
+  "people_root_conversation",
+);
+const peopleRootIdentity = alias(juniorIdentities, "people_root_identity");
+
+export const peopleTreeAggregateColumns = conversationAggregateColumns({
+  metrics: peopleTreeConversation,
+  roots: juniorConversations,
+});
+
+/**
+ * Roll metrics through roots without counting a same-actor child twice.
+ *
+ * A child contributes its own metrics only when its owning root belongs to a
+ * different actor.
+ */
+export function peopleTreeMetricsJoin() {
+  const rootOwnedByActor = getDb()
+    .select({ conversationId: peopleRootConversation.conversationId })
+    .from(peopleRootConversation)
+    .innerJoin(
+      peopleRootIdentity,
+      eq(peopleRootIdentity.id, peopleRootConversation.actorIdentityId),
+    )
+    .where(
+      and(
+        eq(
+          peopleRootConversation.conversationId,
+          juniorConversations.rootConversationId,
+        ),
+        isNull(peopleRootConversation.parentConversationId),
+        eq(
+          peopleRootConversation.rootConversationId,
+          peopleRootConversation.conversationId,
+        ),
+        eq(
+          peopleRootIdentity.emailNormalized,
+          juniorUsers.primaryEmailNormalized,
+        ),
+        eq(peopleRootIdentity.emailVerified, true),
+      ),
+    );
+
+  return and(
+    eq(
+      peopleTreeConversation.rootConversationId,
+      juniorConversations.rootConversationId,
+    ),
+    or(
+      eq(
+        juniorConversations.rootConversationId,
+        juniorConversations.conversationId,
+      ),
+      and(
+        eq(
+          peopleTreeConversation.conversationId,
+          juniorConversations.conversationId,
+        ),
+        notExists(rootOwnedByActor),
+      ),
+    ),
+  );
+}
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {

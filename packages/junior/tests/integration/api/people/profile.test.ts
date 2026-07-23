@@ -148,6 +148,16 @@ describe("people profile API", () => {
           tokens: 15,
         }),
       );
+      const directory = await readPeopleListFromSql();
+      expect(
+        directory.people.find(
+          (person) => person.actor.email === "owner@example.com",
+        ),
+      ).toMatchObject({
+        conversations: 2,
+        durationMs: 1_500,
+        tokens: 15,
+      });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
         verifiedViewerEmail: "OWNER@example.com",

@@ -7,7 +7,6 @@ import {
 } from "@/db/schema";
 import {
   conversationActiveDaysColumn,
-  conversationAggregateColumns,
   conversationRangeColumns,
 } from "../conversations/aggregate";
 import type {
@@ -16,7 +15,12 @@ import type {
   ActorSummaryReport,
   PeopleActivityDayReport,
 } from "../schema/person";
-import { verifiedActorWhere } from "./shared";
+import {
+  peopleTreeAggregateColumns,
+  peopleTreeConversation,
+  peopleTreeMetricsJoin,
+  verifiedActorWhere,
+} from "./shared";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;
 
@@ -64,7 +68,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         >`MAX(${juniorIdentities.providerSubjectId})`,
         slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
         activeDays: conversationActiveDaysColumn(),
-        ...conversationAggregateColumns(),
+        ...peopleTreeAggregateColumns,
         ...conversationRangeColumns(),
       })
       .from(juniorConversations)
@@ -73,6 +77,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(peopleTreeConversation, peopleTreeMetricsJoin())
       .where(verifiedActorWhere())
       .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
     getDb()
