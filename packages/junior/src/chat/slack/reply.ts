@@ -24,11 +24,6 @@ type SendSlackReplyOptions = {
   threadTs?: string;
 };
 
-/** Send one completed reply for an active Chat SDK thread. */
-export type SendReply = (
-  options: SendSlackReplyOptions & { thread: Thread },
-) => Promise<string | undefined>;
-
 /**
  * Send one destination-visible Slack reply.
  *
@@ -63,7 +58,11 @@ export async function sendSlackReply(
 }
 
 /** Send a reply through the Chat SDK thread. */
-export const sendReplyToThread: SendReply = async (options) => {
+export async function sendReplyToThread(options: {
+  beforePost?: () => Promise<void>;
+  text: string;
+  thread: Thread;
+}): Promise<string | undefined> {
   let lastPostedMessageTs: string | undefined;
 
   for (const text of splitSlackReplyText(options.text)) {
@@ -75,4 +74,4 @@ export const sendReplyToThread: SendReply = async (options) => {
   }
 
   return lastPostedMessageTs;
-};
+}

@@ -42,12 +42,9 @@ import {
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
-import { sendSlackReply, type SendReply } from "@/chat/slack/reply";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
 
 export interface CreateSlackRuntimeOptions {
-  /** Sends completed replies; defaults to Slack's Web API boundary. */
-  sendReply?: SendReply;
   getSlackAdapter: () => SlackAdapter;
   now?: () => number;
   services?: JuniorRuntimeServiceOverrides;
@@ -113,7 +110,6 @@ export function createSlackRuntime(
       services.visionContext.hydrateConversationVisionContext,
   });
   const replyToThread = createReplyToThread({
-    sendReply: options.sendReply ?? sendSlackReply,
     getSlackAdapter: options.getSlackAdapter,
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,

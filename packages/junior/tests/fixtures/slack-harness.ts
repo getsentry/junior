@@ -188,7 +188,7 @@ export function createTestThread(args: {
   let subscribeCalls = 0;
   let subscribed = false;
 
-  const stubAdapter = {} as Adapter;
+  const stubAdapter = { name: "test" } as Adapter;
   const channelRef = args.channelStateRef ?? { value: {} };
 
   const channel: Channel = {

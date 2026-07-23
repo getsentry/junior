@@ -23,11 +23,7 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import {
-  sendReplyToThread,
-  sendSlackReply,
-  type SendReply,
-} from "@/chat/slack/reply";
+import { sendReplyToThread, sendSlackReply } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
   getSlackErrorObservabilityAttributes,
@@ -399,7 +395,6 @@ export interface ReplyExecutorServices {
 }
 
 interface ReplyExecutorDeps {
-  sendReply: SendReply;
   getSlackAdapter: () => SlackAdapter;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
@@ -1020,16 +1015,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           boundaryFailureCode = "delivery_failed";
           let slackTs: string | undefined;
           try {
-            const sendReply =
-              channelId && threadTs ? deps.sendReply : sendReplyToThread;
-            slackTs = await sendReply({
-              beforePost: beforeFirstResponsePost,
-              channelId: channelId ?? thread.channelId,
-              conversationId,
-              text: assistantMessage.text,
-              thread,
-              threadTs,
-            });
+            if (channelId && threadTs && thread.adapter.name === "slack") {
+              slackTs = await sendSlackReply({
+                beforePost: beforeFirstResponsePost,
+                channelId,
+                conversationId,
+                text: assistantMessage.text,
+                threadTs,
+              });
+            } else {
+              slackTs = await sendReplyToThread({
+                beforePost: beforeFirstResponsePost,
+                text: assistantMessage.text,
+                thread,
+              });
+            }
           } catch (error) {
             if (isRetryableSlackPostError(error)) {
               throw new RetryableDeliveryError(error);
