@@ -1,0 +1,184 @@
+# Junior production setup — agent runbook
+
+Set up a current Junior app on Vercel. Work phase by phase, verify each success
+condition, and stop at every human gate. Never ask the human to paste a secret
+or token into chat, and never print secret values.
+
+Inputs:
+  APP_NAME="<replace-me>"    # Vercel-safe project name, for example team-junior
+  VERCEL_SCOPE=""            # Optional: --scope <team-slug>
+
+Authoritative references:
+  https://junior.sentry.dev/cli/init/
+  https://junior.sentry.dev/start-here/deploy-to-vercel/
+  https://junior.sentry.dev/start-here/slack-app-setup/
+  https://junior.sentry.dev/reference/config-and-env/
+  https://junior.sentry.dev/start-here/verify-and-troubleshoot/
+
+Rules:
+- Stop on a non-zero exit. Report the phase, command, output, and exit code.
+- Use the linked Junior docs and each CLI's current --help output. Do not guess
+  flags, Marketplace product slugs, generated files, or environment names.
+- Do not edit the scaffold unless a documented check shows that it is needed.
+- Do not expose credentials in command output, shell tracing, files, or chat.
+- Do not continue past a HUMAN GATE until the human confirms it is complete.
+
+## Phase 0 — Preflight
+
+Goal: verify the local tools, Vercel login, and app name.
+
+  node --version
+  pnpm --version
+  pnpm dlx vercel@latest whoami $VERCEL_SCOPE
+  test -n "$APP_NAME" && test "$APP_NAME" != "<replace-me>"
+
+Success:
+- Node.js is version 24 or newer and pnpm runs.
+- Vercel reports the intended account or team.
+- APP_NAME is set to a real name.
+
+## Phase 1 — Scaffold
+
+  pnpm dlx @sentry/junior@latest init "$APP_NAME"
+  cd "$APP_NAME"
+  pnpm install
+  test -f vercel.json
+  test -f nitro.config.ts
+  test -f server.ts
+  test -f plugins.ts
+  test -f .env.example
+  pnpm typecheck
+
+Success:
+- The current initializer creates the project and expected files.
+- Dependencies install and TypeScript passes.
+
+## Phase 2 — Link the Vercel project
+
+  pnpm dlx vercel@latest link --yes $VERCEL_SCOPE
+  cat .vercel/project.json
+
+Success:
+- The linked project name and organization are correct.
+
+## Phase 3 — HUMAN GATE: storage and Vercel project settings
+
+Junior requires Postgres and Redis. The default memory plugin requires Postgres
+with pgvector support. Snapshot warmup requires REDIS_URL during the build and
+Vercel OIDC enabled. Do not guess Marketplace CLI product slugs.
+
+Stop and ask the human to open the linked Vercel project and complete:
+1. Storage: create or connect a Postgres database with pgvector support, such as
+   Neon, and expose DATABASE_URL to Production, Preview, and Development.
+2. Storage: create or connect Redis and expose REDIS_URL to those environments.
+3. Project Settings: enable Vercel OIDC so VERCEL_OIDC_TOKEN is available to
+   builds and runtime.
+4. Confirm the project has access to an AI model. Add AI_GATEWAY_API_KEY only if
+   that Vercel setup requires it.
+5. Reply only with confirmation. Do not send connection strings or credentials.
+
+After confirmation, verify names only:
+
+  pnpm dlx vercel@latest env ls production $VERCEL_SCOPE
+  pnpm dlx vercel@latest env ls preview $VERCEL_SCOPE
+  pnpm dlx vercel@latest env ls development $VERCEL_SCOPE
+
+Success:
+- DATABASE_URL and REDIS_URL are listed in all three environments.
+- The human confirms OIDC and model access are enabled.
+
+## Phase 4 — Add runtime secrets
+
+Generate stable, independent secrets without printing them, and add them to each
+Vercel environment. If Vercel reports an existing value, stop rather than
+silently replacing it.
+
+  JUNIOR_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
+  CRON_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
+  for ENV in production preview development; do
+    printf '%s' "$JUNIOR_SECRET" | pnpm dlx vercel@latest env add JUNIOR_SECRET "$ENV" $VERCEL_SCOPE
+    printf '%s' "$CRON_SECRET" | pnpm dlx vercel@latest env add CRON_SECRET "$ENV" $VERCEL_SCOPE
+    printf '%s' '900000' | pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS "$ENV" $VERCEL_SCOPE
+  done
+  unset JUNIOR_SECRET CRON_SECRET
+
+Success:
+- JUNIOR_SECRET, CRON_SECRET, and VERCEL_SANDBOX_KEEPALIVE_MS are listed in all
+  three environments. Their values were never printed.
+
+## Phase 5 — First production deploy
+
+Deploy without Slack credentials so the app has a stable public URL. The
+scaffolded Vercel build runs Junior's database upgrade before the app build.
+
+  pnpm dlx vercel@latest --prod $VERCEL_SCOPE
+
+Record the production domain shown by Vercel as:
+  STABLE_URL="<production-domain-without-trailing-slash>"
+
+Then verify:
+  curl -fsS "$STABLE_URL/health"
+
+Success:
+- The build, database upgrade, and deployment succeed.
+- The health response contains status "ok".
+- The URL is public and has no deployment-protection interstitial.
+
+## Phase 6 — HUMAN GATE: create the Slack app and store credentials
+
+Stop and send the human:
+
+  The first Junior deploy is live at <STABLE_URL>.
+
+  Create the Slack app using:
+  https://junior.sentry.dev/start-here/slack-app-setup/
+
+  Before configuring Event Subscriptions, Interactivity, or the slash command:
+  1. Configure the required bot scopes and install the app to the workspace.
+  2. In Vercel, add SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN to Production,
+     Preview, and Development for this project.
+  3. Reply only with confirmation. Do not paste either credential here.
+
+Do not continue until the human confirms. Then verify that both variable names
+are listed, without reading their values:
+
+  pnpm dlx vercel@latest env ls production $VERCEL_SCOPE
+  pnpm dlx vercel@latest env ls preview $VERCEL_SCOPE
+  pnpm dlx vercel@latest env ls development $VERCEL_SCOPE
+
+Success:
+- SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN are listed in all environments.
+
+## Phase 7 — Redeploy with Slack credentials
+
+  pnpm dlx vercel@latest --prod $VERCEL_SCOPE
+  curl -fsS "$STABLE_URL/health"
+
+Success:
+- The second production deployment succeeds and health remains ok.
+
+## Phase 8 — HUMAN GATE: connect and verify Slack
+
+Stop and ask the human to finish the Slack setup guide using this request URL
+for Event Subscriptions, Interactivity, and the configured slash command:
+
+  <STABLE_URL>/api/webhooks/slack
+
+Ask the human to reinstall the app if scopes changed, enable App Home, invite the
+bot to a test channel, mention it, and confirm that it reacts and replies in the
+same thread. If URL validation or delivery fails, use:
+  https://junior.sentry.dev/start-here/verify-and-troubleshoot/
+
+Also verify the Vercel deployment contains:
+- the /api/internal/heartbeat cron
+- Queue triggers for /api/internal/agent/continue and /api/internal/plugin/tasks
+
+## Done
+
+Report only non-secret results:
+- local app directory
+- linked Vercel project and production URL
+- health result
+- heartbeat and Queue trigger result
+- Slack reply result
+- any optional setup left undone
