@@ -17,7 +17,6 @@ const pullRequestStatsSchema = z
     medianMergeTimeMs: z.number().nonnegative().nullable(),
     merged: z.number().int().nonnegative(),
     mixed: z.number().int().nonnegative(),
-    open: z.number().int().nonnegative(),
   })
   .strict()
   .transform((row) => {
@@ -39,7 +38,6 @@ const pullRequestRepositoryStatsSchema = z
     juniorOnly: z.number().int().nonnegative(),
     merged: z.number().int().nonnegative(),
     mixed: z.number().int().nonnegative(),
-    open: z.number().int().nonnegative(),
     repository: z.string().min(1),
   })
   .strict()
@@ -53,11 +51,12 @@ const pullRequestRepositoryStatsSchema = z
 
 const issueStatsSchema = z
   .object({
-    closed: z.number().int().nonnegative(),
+    closedCompleted: z.number().int().nonnegative(),
+    closedNotPlanned: z.number().int().nonnegative(),
+    closedUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     days: z.number().int().positive(),
     medianCloseTimeMs: z.number().nonnegative().nullable(),
-    open: z.number().int().nonnegative(),
   })
   .strict()
   .transform((row) => ({
@@ -67,9 +66,10 @@ const issueStatsSchema = z
 
 const issueRepositoryStatsSchema = z
   .object({
-    closed: z.number().int().nonnegative(),
+    closedCompleted: z.number().int().nonnegative(),
+    closedNotPlanned: z.number().int().nonnegative(),
+    closedUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
-    open: z.number().int().nonnegative(),
     repository: z.string().min(1),
   })
   .strict();
@@ -117,8 +117,7 @@ async function aggregatePullRequestWindows(args: {
         ${table.mergedAt},
         ${table.closedAt}
       FROM ${table}
-      WHERE ${table.state} = 'open'
-        OR ${table.openedAt} >= ${oldestStart}
+      WHERE ${table.openedAt} >= ${oldestStart}
         OR ${table.mergedAt} >= ${oldestStart}
         OR ${table.closedAt} >= ${oldestStart}
     )
@@ -137,8 +136,6 @@ async function aggregatePullRequestWindows(args: {
           WHERE recent_pull_requests.state = 'closed_unmerged'
             AND recent_pull_requests.closed_at >= windows.start_at
         )::integer AS "closed",
-      count(recent_pull_requests.pull_request_id)
-        FILTER (WHERE recent_pull_requests.state = 'open')::integer AS "open",
       count(recent_pull_requests.pull_request_id)
         FILTER (
           WHERE recent_pull_requests.state = 'merged'
@@ -195,7 +192,6 @@ async function aggregatePullRequestRepositories(args: {
         WHERE ${table.state} = 'closed_unmerged'
           AND ${table.closedAt} >= ${start}
       )::integer AS "closed",
-      count(*) FILTER (WHERE ${table.state} = 'open')::integer AS "open",
       count(*) FILTER (
         WHERE ${table.state} = 'merged'
           AND ${table.mergedAt} >= ${start}
@@ -212,8 +208,7 @@ async function aggregatePullRequestRepositories(args: {
           AND ${table.commitComposition} IS NULL
       )::integer AS "compositionUnknown"
     FROM ${table}
-    WHERE ${table.state} = 'open'
-      OR ${table.openedAt} >= ${start}
+    WHERE ${table.openedAt} >= ${start}
       OR ${table.mergedAt} >= ${start}
       OR ${table.closedAt} >= ${start}
     GROUP BY ${table.repositoryFullName}
@@ -242,11 +237,11 @@ async function aggregateIssueWindows(args: {
       SELECT
         ${table.issueId},
         ${table.state},
+        ${table.stateReason},
         ${table.openedAt},
         ${table.closedAt}
       FROM ${table}
-      WHERE ${table.state} = 'open'
-        OR ${table.openedAt} >= ${oldestStart}
+      WHERE ${table.openedAt} >= ${oldestStart}
         OR ${table.closedAt} >= ${oldestStart}
     )
     SELECT
@@ -257,10 +252,21 @@ async function aggregateIssueWindows(args: {
       count(recent_issues.issue_id)
         FILTER (
           WHERE recent_issues.state = 'closed'
+            AND recent_issues.state_reason = 'completed'
             AND recent_issues.closed_at >= windows.start_at
-        )::integer AS "closed",
+        )::integer AS "closedCompleted",
       count(recent_issues.issue_id)
-        FILTER (WHERE recent_issues.state = 'open')::integer AS "open",
+        FILTER (
+          WHERE recent_issues.state = 'closed'
+            AND recent_issues.state_reason = 'not_planned'
+            AND recent_issues.closed_at >= windows.start_at
+        )::integer AS "closedNotPlanned",
+      count(recent_issues.issue_id)
+        FILTER (
+          WHERE recent_issues.state = 'closed'
+            AND recent_issues.state_reason IS NULL
+            AND recent_issues.closed_at >= windows.start_at
+        )::integer AS "closedUnknown",
       (
         percentile_cont(0.5) WITHIN GROUP (
           ORDER BY extract(
@@ -291,15 +297,25 @@ async function aggregateIssueRepositories(args: {
       count(*) FILTER (WHERE ${table.openedAt} >= ${start})::integer
         AS "created",
       count(*) FILTER (
-        WHERE ${table.state} = 'closed' AND ${table.closedAt} >= ${start}
-      )::integer AS "closed",
-      count(*) FILTER (WHERE ${table.state} = 'open')::integer AS "open"
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'completed'
+          AND ${table.closedAt} >= ${start}
+      )::integer AS "closedCompleted",
+      count(*) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} = 'not_planned'
+          AND ${table.closedAt} >= ${start}
+      )::integer AS "closedNotPlanned",
+      count(*) FILTER (
+        WHERE ${table.state} = 'closed'
+          AND ${table.stateReason} IS NULL
+          AND ${table.closedAt} >= ${start}
+      )::integer AS "closedUnknown"
     FROM ${table}
-    WHERE ${table.state} = 'open'
-      OR ${table.openedAt} >= ${start}
+    WHERE ${table.openedAt} >= ${start}
       OR ${table.closedAt} >= ${start}
     GROUP BY ${table.repositoryFullName}
-    ORDER BY "created" DESC, "closed" DESC, "repository" ASC
+    ORDER BY "created" DESC, "closedCompleted" DESC, "repository" ASC
     LIMIT 25
   `);
   return z.array(issueRepositoryStatsSchema).parse(queryRows(result));
@@ -354,7 +370,10 @@ export async function buildGitHubOutcomeReport(args: {
         label: "Junior-only merge rate · 30d",
         value: formatPercent(thirtyDays.juniorOnlyRate),
       },
-      { label: "PRs open now", value: String(thirtyDays.open) },
+      {
+        label: "PRs closed unmerged · 30d",
+        value: String(thirtyDays.closed),
+      },
       {
         label: "PR merge rate · 30d",
         value: formatPercent(thirtyDays.mergeRate),
@@ -364,7 +383,15 @@ export async function buildGitHubOutcomeReport(args: {
         value: formatDuration(thirtyDays.medianMergeTimeMs),
       },
       { label: "issues created · 30d", value: String(issueThirtyDays.created) },
-      { label: "issues open now", value: String(issueThirtyDays.open) },
+      {
+        label: "issues completed · 30d",
+        tone: issueThirtyDays.closedCompleted > 0 ? "good" : "neutral",
+        value: String(issueThirtyDays.closedCompleted),
+      },
+      {
+        label: "issues closed as not planned · 30d",
+        value: String(issueThirtyDays.closedNotPlanned),
+      },
     ],
     recordSets: [
       {
@@ -399,7 +426,6 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "created", label: "Created" },
           { key: "merged", label: "Merged" },
           { key: "closed", label: "Closed unmerged" },
-          { key: "open", label: "Open now" },
           { key: "commitComposition", label: "Merged commit composition" },
           { key: "mergeRate", label: "Merge rate" },
         ],
@@ -410,7 +436,6 @@ export async function buildGitHubOutcomeReport(args: {
             created: String(stats.created),
             merged: String(stats.merged),
             closed: String(stats.closed),
-            open: String(stats.open),
             commitComposition: formatCommitComposition(stats),
             mergeRate: formatPercent(stats.mergeRate),
           },
@@ -421,8 +446,9 @@ export async function buildGitHubOutcomeReport(args: {
         fields: [
           { key: "window", label: "Window" },
           { key: "created", label: "Created" },
-          { key: "closed", label: "Closed" },
-          { key: "open", label: "Open now" },
+          { key: "completed", label: "Completed" },
+          { key: "notPlanned", label: "Not planned" },
+          { key: "unknown", label: "Unknown reason" },
           { key: "closeTime", label: "Median close time" },
         ],
         records: issueWindows.map((stats) => ({
@@ -430,8 +456,9 @@ export async function buildGitHubOutcomeReport(args: {
           values: {
             window: `${stats.days} days`,
             created: String(stats.created),
-            closed: String(stats.closed),
-            open: String(stats.open),
+            completed: String(stats.closedCompleted),
+            notPlanned: String(stats.closedNotPlanned),
+            unknown: String(stats.closedUnknown),
             closeTime: formatDuration(stats.medianCloseTimeMs),
           },
         })),
@@ -442,16 +469,18 @@ export async function buildGitHubOutcomeReport(args: {
         fields: [
           { key: "repository", label: "Repository" },
           { key: "created", label: "Created" },
-          { key: "closed", label: "Closed" },
-          { key: "open", label: "Open now" },
+          { key: "completed", label: "Completed" },
+          { key: "notPlanned", label: "Not planned" },
+          { key: "unknown", label: "Unknown reason" },
         ],
         records: issueRepositories.map(({ repository, ...stats }) => ({
           id: repository,
           values: {
             repository,
             created: String(stats.created),
-            closed: String(stats.closed),
-            open: String(stats.open),
+            completed: String(stats.closedCompleted),
+            notPlanned: String(stats.closedNotPlanned),
+            unknown: String(stats.closedUnknown),
           },
         })),
       },

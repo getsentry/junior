@@ -32,6 +32,7 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
     "0001_issue_outcomes.sql",
     "0002_pull_request_commit_composition.sql",
     "0003_pull_request_conversations.sql",
+    "0004_marvelous_toad_men.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
@@ -101,6 +102,7 @@ function issueLifecyclePayload(input: {
   createdAt: string;
   id: number;
   number: number;
+  stateReason?: "completed" | "not_planned";
   updatedAt?: string;
   user?: string;
 }) {
@@ -114,6 +116,7 @@ function issueLifecyclePayload(input: {
       created_at: input.createdAt,
       id: input.id,
       number: input.number,
+      state_reason: input.stateReason ?? null,
       updated_at: input.updatedAt ?? input.createdAt,
       user: { login: input.user ?? "sentry-junior[bot]" },
     },
@@ -1063,6 +1066,7 @@ describe("GitHub-owned pull request outcomes", () => {
             createdAt: "2026-05-10T12:00:00.000Z",
             id: 3101,
             number: 971,
+            stateReason: "not_planned",
             updatedAt: "2026-07-20T12:00:00.000Z",
           }),
           "issues",
@@ -1108,11 +1112,12 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "PRs created · 30d", value: "2" },
         { label: "PRs merged · 30d", tone: "good", value: "1" },
         { label: "Junior-only merge rate · 30d", value: "100%" },
-        { label: "PRs open now", value: "4" },
+        { label: "PRs closed unmerged · 30d", value: "1" },
         { label: "PR merge rate · 30d", value: "50%" },
         { label: "median PR merge time · 30d", value: "90d" },
         { label: "issues created · 30d", value: "2" },
-        { label: "issues open now", value: "2" },
+        { label: "issues completed · 30d", tone: "neutral", value: "0" },
+        { label: "issues closed as not planned · 30d", value: "1" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([
         {
@@ -1158,7 +1163,6 @@ describe("GitHub-owned pull request outcomes", () => {
         created: "2",
         merged: "1",
         mergeRate: "50%",
-        open: "4",
         repository: "getsentry/junior",
       });
       expect(report.recordSets?.[2]?.records).toEqual([
@@ -1166,9 +1170,10 @@ describe("GitHub-owned pull request outcomes", () => {
           id: "7d",
           values: {
             closeTime: "—",
-            closed: "0",
+            completed: "0",
             created: "1",
-            open: "2",
+            notPlanned: "0",
+            unknown: "0",
             window: "7 days",
           },
         },
@@ -1176,9 +1181,10 @@ describe("GitHub-owned pull request outcomes", () => {
           id: "30d",
           values: {
             closeTime: "71d",
-            closed: "1",
+            completed: "0",
             created: "2",
-            open: "2",
+            notPlanned: "1",
+            unknown: "0",
             window: "30 days",
           },
         },
@@ -1186,18 +1192,20 @@ describe("GitHub-owned pull request outcomes", () => {
           id: "90d",
           values: {
             closeTime: "71d",
-            closed: "1",
+            completed: "0",
             created: "3",
-            open: "2",
+            notPlanned: "1",
+            unknown: "0",
             window: "90 days",
           },
         },
       ]);
       expect(report.recordSets?.[3]?.records?.[0]?.values).toEqual({
-        closed: "1",
+        completed: "0",
         created: "2",
-        open: "2",
+        notPlanned: "1",
         repository: "getsentry/junior",
+        unknown: "0",
       });
     } finally {
       await fixture.close();
@@ -1280,11 +1288,12 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "PRs created · 30d", value: "0" },
         { label: "PRs merged · 30d", tone: "neutral", value: "0" },
         { label: "Junior-only merge rate · 30d", value: "—" },
-        { label: "PRs open now", value: "0" },
+        { label: "PRs closed unmerged · 30d", value: "0" },
         { label: "PR merge rate · 30d", value: "—" },
         { label: "median PR merge time · 30d", value: "—" },
         { label: "issues created · 30d", value: "0" },
-        { label: "issues open now", value: "0" },
+        { label: "issues completed · 30d", tone: "neutral", value: "0" },
+        { label: "issues closed as not planned · 30d", value: "0" },
       ]);
       expect(report.recordSets?.[1]?.records).toEqual([]);
       expect(report.recordSets?.[3]?.records).toEqual([]);

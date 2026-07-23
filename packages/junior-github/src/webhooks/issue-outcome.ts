@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { githubIssueStateReasonSchema } from "../db/schema.js";
 import type { GitHubIssueOutcomeInput } from "../issue-outcomes/store.js";
 import { GITHUB_SESSION_FOOTER_START } from "../tools/footer.js";
 import { botLoginFromEmail } from "./ownership.js";
@@ -13,6 +14,7 @@ const canonicalIssueOutcomeSchema = z
         created_at: z.string(),
         id: z.number().int().positive(),
         number: z.number().int().positive(),
+        state_reason: githubIssueStateReasonSchema.nullable().optional(),
         updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).strict(),
       })
@@ -36,6 +38,7 @@ const issueOutcomeSchema = z
         created_at: z.string(),
         id: z.number().int().positive(),
         number: z.number().int().positive(),
+        state_reason: githubIssueStateReasonSchema.nullable().optional(),
         updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
@@ -57,6 +60,7 @@ const issueOutcomeSchema = z
         created_at: provider.issue.created_at,
         id: provider.issue.id,
         number: provider.issue.number,
+        state_reason: provider.issue.state_reason,
         updated_at: provider.issue.updated_at,
         user: { login: provider.issue.user.login },
       },
@@ -125,6 +129,10 @@ export function normalizeGitHubIssueOutcome(args: {
     repositoryFullName: parsed.repository.full_name,
     repositoryId: String(parsed.repository.id),
     state: parsed.action === "closed" ? "closed" : "open",
+    stateReason:
+      parsed.action === "closed"
+        ? (issue.state_reason ?? "completed")
+        : undefined,
     updatedAt,
   };
 }

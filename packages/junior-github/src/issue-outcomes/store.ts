@@ -1,7 +1,11 @@
 import { and, eq, lte } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { githubIssueStateSchema, juniorGitHubIssues } from "../db/schema.js";
+import {
+  githubIssueStateReasonSchema,
+  githubIssueStateSchema,
+  juniorGitHubIssues,
+} from "../db/schema.js";
 
 const githubIssueOutcomeInputSchema = z
   .object({
@@ -13,6 +17,7 @@ const githubIssueOutcomeInputSchema = z
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
     state: githubIssueStateSchema,
+    stateReason: githubIssueStateReasonSchema.optional(),
     updatedAt: z.date(),
   })
   .strict();
@@ -30,6 +35,7 @@ function projectionValues(input: GitHubIssueOutcomeInput) {
     repositoryFullName: input.repositoryFullName,
     repositoryId: input.repositoryId,
     state: input.state,
+    stateReason: input.stateReason ?? null,
     updatedAt: input.updatedAt,
   };
 }

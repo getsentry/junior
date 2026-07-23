@@ -25,6 +25,15 @@ export const githubIssueStateSchema = z.enum(["closed", "open"]);
 
 export type GitHubIssueState = z.output<typeof githubIssueStateSchema>;
 
+export const githubIssueStateReasonSchema = z.enum([
+  "completed",
+  "not_planned",
+]);
+
+export type GitHubIssueStateReason = z.output<
+  typeof githubIssueStateReasonSchema
+>;
+
 /** Current provider projection for issues classified as Junior-owned. */
 export const juniorGitHubIssues = pgTable(
   "junior_github_issues",
@@ -34,6 +43,7 @@ export const juniorGitHubIssues = pgTable(
     repositoryFullName: text("repository_full_name").notNull(),
     number: integer("number").notNull(),
     state: text("state").$type<GitHubIssueState>().notNull(),
+    stateReason: text("state_reason").$type<GitHubIssueStateReason>(),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
