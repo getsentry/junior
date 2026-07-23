@@ -87,7 +87,10 @@ import {
   hasAgentTurnUsage,
   type AgentTurnUsage,
 } from "@/chat/usage";
-import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import {
+  AuthorizationFlowDisabledError,
+  AuthorizationPauseError,
+} from "@/chat/services/auth-pause";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -864,6 +867,7 @@ async function executeAgentRunInPrivacyContext(
     });
 
     let newMessages: PiMessage[] = [];
+    let authPauseOutcome: AgentRunOutcome | undefined;
     try {
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
@@ -1041,7 +1045,21 @@ async function executeAgentRunInPrivacyContext(
           }
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
-            await runAgentStep(run);
+            try {
+              await runAgentStep(run);
+            } catch (error) {
+              if (error instanceof AuthorizationPauseError) {
+                const { outcome } = await runResume.translateExpectedEnding({
+                  currentUsage: turnUsage,
+                  error,
+                });
+                if (outcome) {
+                  authPauseOutcome = outcome;
+                  return;
+                }
+              }
+              throw error;
+            }
             if (assistantMessageDeliveryError) {
               throw assistantMessageDeliveryError;
             }
@@ -1086,11 +1104,20 @@ async function executeAgentRunInPrivacyContext(
                 : {}),
               ...extractGenAiUsageAttributes(usageSummary),
             });
-            if (getPendingAuthPause()) {
+            const pendingAuthPause = getPendingAuthPause();
+            if (pendingAuthPause) {
               runResume.captureResumeSnapshot(
                 runResume.getResumeSnapshot(currentAgentMessages()),
               );
-              throw getPendingAuthPause()!;
+              const { outcome } = await runResume.translateExpectedEnding({
+                currentUsage: turnUsage,
+                error: pendingAuthPause,
+              });
+              if (outcome) {
+                authPauseOutcome = outcome;
+                return;
+              }
+              throw pendingAuthPause;
             }
 
             const providerRetry = nextProviderRetry({
@@ -1142,6 +1169,9 @@ async function executeAgentRunInPrivacyContext(
             : {}),
         },
       );
+      if (authPauseOutcome) {
+        return authPauseOutcome;
+      }
     } finally {
       unsubscribe();
     }
