@@ -34,6 +34,17 @@ export class AuthorizationPauseError extends Error {
   }
 }
 
+/** Error indicating an authorization pause could not be made durable. */
+export class AuthPausePersistenceError extends Error {
+  constructor(conversationId: string, turnId: string, cause?: unknown) {
+    super(
+      `Failed to persist auth pause for conversation=${conversationId} turn=${turnId}`,
+      cause === undefined ? undefined : { cause },
+    );
+    this.name = "AuthPausePersistenceError";
+  }
+}
+
 /** Error indicating this turn cannot start an external authorization flow. */
 export class AuthorizationFlowDisabledError extends Error {
   readonly kind: AuthorizationPauseKind;

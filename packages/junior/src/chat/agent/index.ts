@@ -91,6 +91,7 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 import {
+  AuthPausePersistenceError,
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
@@ -802,8 +803,9 @@ async function executeAgentRunInPrivacyContext(
     };
 
     const apiKeyOverride = getPiGatewayApiKey();
-    // Pi converts hook exceptions into error turns. Keep that compatibility
-    // state local so the resume API only exposes runtime domain operations.
+    // Pi converts prepareNextTurn exceptions into error turns instead of
+    // rejecting. Preserve Junior's yield so runAgentStep can restore it after
+    // the Pi run settles without leaking Pi mechanics into the resume API.
     let pendingPiHookError: CooperativeTurnYieldError | undefined;
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
@@ -1141,13 +1143,9 @@ async function executeAgentRunInPrivacyContext(
             }
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
-              const outcome = await runResume.translateExpectedEnding({
-                currentUsage: turnUsage,
-                error,
-              });
-              if (outcome) {
-                return outcome;
-              }
+              // A durable auth pause is a successful span outcome. Persistence
+              // failures throw and remain terminal at the outer boundary.
+              return await runResume.parkForAuth(error, turnUsage);
             }
             throw error;
           }
@@ -1222,8 +1220,16 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
+    if (runError instanceof AuthPausePersistenceError) {
+      throw runError;
+    }
+    if (resume && runError instanceof AuthorizationPauseError) {
+      // Eager provider restoration can request auth before the agent span
+      // exists; use the same durable parking operation as the in-span path.
+      return await resume.parkForAuth(runError, turnUsage);
+    }
     if (resume) {
-      const outcome = await resume.translateExpectedEnding({
+      const outcome = await resume.translateSuspension({
         currentUsage: turnUsage,
         error: runError,
       });

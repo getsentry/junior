@@ -25,7 +25,10 @@ import {
   persistRunningSessionRecord,
   persistYieldSessionRecord,
 } from "@/chat/services/turn-session-record";
-import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import {
+  AuthPausePersistenceError,
+  type AuthorizationPauseError,
+} from "@/chat/services/auth-pause";
 import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { isAssistantMessage } from "@/chat/pi/transcript";
@@ -58,17 +61,6 @@ interface ResumeStateArgs {
   sessionRecordState: LoadedSessionRecordState;
   startedAtMs: number;
   surface: AgentTurnSurface;
-}
-
-/** Auth pause could not be made durable and must remain a terminal failure. */
-class AuthPausePersistenceError extends Error {
-  constructor(conversationId: string, turnId: string, cause: unknown) {
-    super(
-      `Failed to persist auth pause for conversation=${conversationId} turn=${turnId}`,
-      { cause },
-    );
-    this.name = "AuthPausePersistenceError";
-  }
 }
 
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
@@ -110,38 +102,6 @@ export function createResumeState(args: ResumeStateArgs) {
     actor: args.actor,
     surface: args.surface,
   });
-
-  const persistAuthPause = async (pause: {
-    currentUsage?: AgentTurnUsage;
-    error: AuthorizationPauseError;
-  }): Promise<AuthPauseOutcome> => {
-    const usage =
-      pause.currentUsage ??
-      (resumeMessages.length > 0
-        ? extractSliceUsage(resumeMessages, beforeMessageCount)
-        : undefined);
-    await args.recordActiveMcpProviders();
-    const sessionRecord = await persistAuthPauseSessionRecord({
-      ...sessionRecordBase(),
-      currentSliceId,
-      currentDurationMs: currentDurationMs(),
-      currentUsage: usage,
-      messages: resumeMessages,
-      errorMessage: pause.error.message,
-    });
-    if (!sessionRecord) {
-      throw new AuthPausePersistenceError(
-        args.conversationId,
-        args.turnId,
-        pause.error,
-      );
-    }
-    return {
-      status: "awaiting_auth",
-      providerDisplayName: pause.error.providerDisplayName,
-      ...(usage ? { usage } : {}),
-    };
-  };
 
   return {
     get inputCommitted(): boolean {
@@ -230,19 +190,51 @@ export function createResumeState(args: ResumeStateArgs) {
         `Agent turn yielded at a safe boundary after ${currentDurationMs()}ms`,
       );
     },
-    /**
-     * Persist the continuation for an expected run ending and translate it
-     * into an outcome; returns no outcome for genuine errors so the caller's
-     * error guards run.
-     */
-    async translateExpectedEnding(ending: {
+    /** Persist an auth pause; only a durable pause may return `awaiting_auth`. */
+    async parkForAuth(
+      pause: AuthorizationPauseError,
+      currentUsage?: AgentTurnUsage,
+    ): Promise<AuthPauseOutcome> {
+      const usage =
+        currentUsage ??
+        (resumeMessages.length > 0
+          ? extractSliceUsage(resumeMessages, beforeMessageCount)
+          : undefined);
+      try {
+        await args.recordActiveMcpProviders();
+        const sessionRecord = await persistAuthPauseSessionRecord({
+          ...sessionRecordBase(),
+          currentSliceId,
+          currentDurationMs: currentDurationMs(),
+          currentUsage: usage,
+          messages: resumeMessages,
+          errorMessage: pause.message,
+        });
+        if (!sessionRecord) {
+          throw new AuthPausePersistenceError(args.conversationId, args.turnId);
+        }
+        return {
+          status: "awaiting_auth",
+          providerDisplayName: pause.providerDisplayName,
+          ...(usage ? { usage } : {}),
+        };
+      } catch (error) {
+        if (error instanceof AuthPausePersistenceError) {
+          throw error;
+        }
+        throw new AuthPausePersistenceError(
+          args.conversationId,
+          args.turnId,
+          error,
+        );
+      }
+    },
+    /** Persist a yield, retry, or timeout as a suspended run. */
+    async translateSuspension(ending: {
       currentUsage?: AgentTurnUsage;
       error: unknown;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
-      if (error instanceof AuthPausePersistenceError) {
-        throw error;
-      }
       if (error instanceof CooperativeTurnYieldError) {
         const usage =
           ending.currentUsage ??
@@ -307,13 +299,6 @@ export function createResumeState(args: ResumeStateArgs) {
           };
         }
         throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
-      }
-
-      if (error instanceof AuthorizationPauseError) {
-        return persistAuthPause({
-          currentUsage: ending.currentUsage,
-          error,
-        });
       }
 
       return undefined;

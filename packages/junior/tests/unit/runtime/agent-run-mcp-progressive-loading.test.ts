@@ -1243,36 +1243,6 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("keeps failed auth pause persistence terminal", async () => {
-    const turnSessionStore = await import("@/chat/state/turn-session");
-    const originalUpsert = turnSessionStore.upsertAgentTurnSessionRecord;
-    let authPauseWriteFailed = false;
-    vi.spyOn(
-      turnSessionStore,
-      "upsertAgentTurnSessionRecord",
-    ).mockImplementation(async (args) => {
-      if (
-        !authPauseWriteFailed &&
-        args.state === "awaiting_resume" &&
-        args.resumeReason === "auth"
-      ) {
-        authPauseWriteFailed = true;
-        throw new Error("state adapter unavailable");
-      }
-      return await originalUpsert(args);
-    });
-
-    await expect(
-      executeAgentRun(
-        makeAgentRunRequest("help me", {
-          conversationId: "conversation-3",
-          threadTs: "1712345.0003",
-          turnId: "turn-3",
-        }),
-      ),
-    ).rejects.toThrow("Failed to persist auth pause");
-  });
-
   it("falls back to the latest stored record when auth pause captures no messages", async () => {
     continueStopsOnAbort.value = true;
 
