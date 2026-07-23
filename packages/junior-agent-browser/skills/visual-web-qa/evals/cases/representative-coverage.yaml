@@ -1,0 +1,9 @@
+behavior: representative-coverage
+prompt: |
+  A shared navigation and theme update affects the local pages in site/. Verify it across representative pages, desktop and mobile, and light and dark modes. Use the browser, save evidence under artifacts/, and collect useful coverage without exhaustively testing every page in every combination.
+fixture: visual-site
+setup: mkdir -p artifacts
+checks:
+  - shell: test "$(find artifacts -type f -name '*.png' -size +1k | wc -l | tr -d ' ')" -ge 2
+  - judge: The report demonstrates a bounded representative sample of no more than four pages, names the captured page or state and viewport-theme evidence, gives the observed result, and acknowledges that it did not test every page in every combination.
+timeout: 600

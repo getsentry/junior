@@ -1,5 +1,0 @@
-behavior: workflow-boundary
-prompt: |
-  Open the vendor directory, collect each company's name and website into a structured list, and follow pagination until there are no more results. I am not asking for a visual review.
-checks:
-  - judge: The response treats this as general browser navigation and extraction rather than visual QA, and it does not impose screenshot, video, theme, viewport, or pass/issues/blocked evidence requirements that are unrelated to the request.

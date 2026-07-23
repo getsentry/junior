@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loading - Visual QA Fixture</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Junior Docs</strong>
+      <nav aria-label="Primary navigation">
+        <a href="index.html">Overview</a>
+        <a href="guide.html">Guide</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </header>
+    <main>
+      <section id="loading" class="panel skeleton" aria-label="Loading content">
+        <span></span>
+        <span></span>
+        <span></span>
+      </section>
+      <section id="content" class="panel hidden">
+        <h1>Loaded documentation</h1>
+        <button id="menu-toggle" type="button" aria-expanded="false">
+          Open menu
+        </button>
+        <div id="menu" class="menu hidden" role="menu">
+          <a href="guide.html" role="menuitem">Read the guide</a>
+        </div>
+      </section>
+    </main>
+    <script>
+      window.setTimeout(() => {
+        document.querySelector("#loading").classList.add("hidden");
+        document.querySelector("#content").classList.remove("hidden");
+      }, 900);
+
+      document
+        .querySelector("#menu-toggle")
+        .addEventListener("click", (event) => {
+          const button = event.currentTarget;
+          const menu = document.querySelector("#menu");
+          const expanded = button.getAttribute("aria-expanded") === "true";
+          button.setAttribute("aria-expanded", String(!expanded));
+          button.textContent = expanded ? "Open menu" : "Close menu";
+          menu.classList.toggle("hidden", expanded);
+        });
+    </script>
+  </body>
+</html>

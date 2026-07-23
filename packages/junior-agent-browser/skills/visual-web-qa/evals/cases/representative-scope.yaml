@@ -1,5 +1,0 @@
-behavior: representative-scope
-prompt: |
-  A shared docs navigation and theme update affects about forty pages. We support desktop and mobile in light and dark mode, but I want a useful confidence check rather than an exhaustive test matrix. Propose the visual QA scope.
-checks:
-  - judge: The response selects a small representative set of pages or states and the viewport-theme combinations most likely to expose regressions, normally one to four surfaces, instead of proposing every page in every combination.

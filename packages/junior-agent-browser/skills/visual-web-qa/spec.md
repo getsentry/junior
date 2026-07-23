@@ -2,104 +2,67 @@
 
 ## Intent
 
-This skill makes the agent verify user-visible web changes with browser evidence instead of inferring visual correctness from code. It chooses evidence that fits the behavior under test, keeps coverage representative, protects sensitive data, and reports only what the captured evidence supports.
+This skill makes the agent verify user-visible web changes by opening the rendered surface in a real browser, collecting evidence appropriate to the behavior, and reporting only what that evidence supports. It keeps coverage representative, avoids unsafe targets or sensitive capture, and distinguishes visual QA from general browser automation.
 
 ## Triggers
 
 - **SHOULD** apply when a user asks whether frontend, docs, CSS, layout, theme, responsive, navigation, loading, animation, or interaction changes look correct.
-- **SHOULD** apply when a visual change needs screenshot or video evidence across relevant states, viewports, or themes.
+- **SHOULD** apply when a visual change needs browser evidence across relevant states, viewports, or themes.
 - **SHOULD NOT** apply to backend-only, CLI, library-internal, test-only, or non-rendered configuration changes.
-- **SHOULD NOT** apply to general browser navigation, extraction, or form automation that is not specifically visual verification; use the general `agent-browser` workflow instead.
+- **SHOULD NOT** apply to general browser navigation, extraction, or form automation without a visual correctness question; use the general `agent-browser` workflow instead.
 - **SHOULD NOT** apply when the user explicitly opts out of browser verification.
 
 ## Behaviors
 
-### Behavior: Evidence selection
+### Behavior: Static visual verification
 
-The agent SHALL choose screenshots for stable rendered states, short videos for temporal behavior, and DOM or text checks only when they resolve ambiguity or verify an exact state.
+The agent SHALL open stable rendered states in a browser, capture screenshots as primary evidence, and report the exact target, covered states, result, findings, and limitations.
 
-#### Scenario: Static theme and spacing change
+#### Scenario: Verify a responsive card layout
 
-- **WHEN** a user asks to verify updated colors, spacing, typography, or layout
-- **THEN** the agent uses screenshots as primary evidence and does not record video unless timing or motion is also relevant
+- **WHEN** a user asks to verify static spacing and typography on a local page at desktop and mobile widths
+- **THEN** the agent opens the page in a browser, captures desktop and mobile screenshots without unnecessary video, and reports what those screenshots establish
 
-#### Scenario: Loading or animation change
+### Behavior: Temporal visual verification
 
-- **WHEN** a user asks to verify a loading state, transition, animation, or interaction sequence
-- **THEN** the agent uses a short video as primary evidence and adds a screenshot only when it answers a distinct static question
+The agent SHALL use short video for loading, animation, transition, or interaction sequences; start initial-load recording before navigation; refresh element references after recording reloads or DOM changes; use meaningful waits; and stop recording when the target behavior is captured.
 
-### Behavior: Representative scope
+#### Scenario: Verify loading and menu behavior
 
-The agent SHALL choose a small representative set of pages, states, viewports, and themes that can expose the requested issue instead of creating an exhaustive matrix by default.
+- **WHEN** a local page has an initial skeleton followed by an interactive menu transition
+- **THEN** the agent records the initial load before navigation, obtains fresh references for the interaction, captures the menu sequence, stops recording, and reports the temporal evidence
 
-#### Scenario: Responsive theme verification
+### Behavior: Representative coverage
 
-- **WHEN** a user asks to verify a responsive light and dark theme change without requesting exhaustive coverage
-- **THEN** the agent selects the few pages or states and viewport-theme combinations most likely to expose regressions, normally one to four
+The agent SHALL use the browser to verify a small representative set of pages, states, viewports, and themes most likely to expose the requested regression rather than creating an exhaustive matrix by default.
+
+#### Scenario: Verify a shared docs theme
+
+- **WHEN** a shared navigation and theme change affects several local docs pages across desktop, mobile, light, and dark modes
+- **THEN** the agent opens and captures one to four representative surfaces and relevant combinations, then reports both the covered evidence and any combinations not checked
 
 ### Behavior: Target resolution
 
-The agent SHALL verify changed code against a user-provided, local, or preview target, use production only as an explicitly requested or read-only baseline, and report blocked when no valid target is reachable.
+The agent SHALL use a user-provided, local, or preview target for changed code, use production only as an explicitly requested or read-only baseline, and report blocked when no valid target is reachable.
 
-#### Scenario: Unmerged change without a preview
+#### Scenario: Unmerged change has no runnable target
 
-- **WHEN** a user asks to verify an unmerged frontend change but provides no URL and no local or preview server is reachable
-- **THEN** the agent reports the missing target as a blocker instead of checking production and claiming the change is present
-
-### Behavior: Reliable browser state
-
-The agent SHALL wait for meaningful route, text, network, or animation state; refresh element references after navigation or recording-context reloads; and stop every recording before the run ends.
-
-#### Scenario: Capture an initial loading state
-
-- **WHEN** a user asks to record an initial loading state and then interact with the loaded page
-- **THEN** the agent starts recording before the first navigation, obtains fresh element references after recording starts, uses meaningful waits, and stops recording after the target behavior is captured
-
-### Behavior: Artifact delivery
-
-The agent SHALL share requested artifacts with `sendFiles`, claim they were shared only after a successful tool result, and otherwise report the saved path and delivery error.
-
-#### Scenario: File delivery fails
-
-- **WHEN** screenshots or video were captured but `sendFiles` is unavailable or returns an error
-- **THEN** the agent states that sharing failed and provides the saved artifact paths without claiming an attachment succeeded
-
-### Behavior: Scoped report
-
-The agent SHALL report the exact target, chosen evidence, pass or issues found or blocked result, specific findings, and limitations of the performed coverage.
-
-#### Scenario: Partial verification
-
-- **WHEN** the agent verifies only a subset of requested pages, states, viewports, or themes
-- **THEN** the report names the exact target and covered evidence, identifies the result, and explicitly states what remains unverified
-
-### Behavior: Sensitive data handling
-
-The agent SHALL avoid capturing or sharing credentials, session tokens, customer data, or unrelated sensitive UI state during visual verification.
-
-#### Scenario: Authenticated page requires credential entry
-
-- **WHEN** reaching the requested page would require recording or screenshotting credential entry or sensitive customer data
-- **THEN** the agent avoids capturing the sensitive flow and reports the authentication or safe-session requirement as a limitation or blocker
-
-### Behavior: Workflow boundary
-
-The agent SHALL keep visual QA focused on evidence-driven visual verification and use the general `agent-browser` workflow for browser navigation, extraction, or form automation without a visual correctness question.
-
-#### Scenario: General page extraction
-
-- **WHEN** a user asks to browse a site and extract structured information without asking whether the rendered interface looks correct
-- **THEN** the agent uses the general browser workflow instead of applying visual QA evidence and reporting requirements
+- **WHEN** a user asks to verify an unmerged frontend change but the workspace has no runnable page, local server, or preview deployment
+- **THEN** the agent investigates enough to confirm the missing target and reports blocked instead of checking production and claiming the change is present
 
 ## Constraints
 
 ### Constraint: Evidence required
 
-The agent MUST NOT claim that a rendered change looks correct without opening a browser and collecting evidence that supports the claim.
+The agent MUST NOT claim that a rendered change looks correct from code inspection alone or without browser evidence that supports the claim.
+
+### Constraint: Artifact delivery claims
+
+The agent MUST NOT claim a screenshot or video was shared unless `sendFiles` succeeded; when delivery is unavailable or fails, it must report the saved path and limitation.
 
 ### Constraint: Production claims
 
-The agent MUST NOT imply that unmerged code is visible on production unless the user explicitly asks about production and the verified target actually contains that code.
+The agent MUST NOT imply that unmerged code is visible on production unless the verified production target actually contains that code.
 
 ### Constraint: Recording lifecycle
 

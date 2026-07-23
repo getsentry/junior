@@ -1,5 +1,0 @@
-behavior: reliable-browser-state
-prompt: |
-  I need evidence of the initial skeleton screen and then the menu interaction after the page finishes loading. Outline the browser capture sequence you would use.
-checks:
-  - judge: The sequence starts video recording with the target URL before the first navigation, waits for meaningful loaded state, obtains fresh interactive references after recording starts or the DOM changes, performs the interaction, and stops recording promptly after capturing the behavior.

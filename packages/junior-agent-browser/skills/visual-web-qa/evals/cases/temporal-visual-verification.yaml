@@ -1,0 +1,9 @@
+behavior: temporal-visual-verification
+prompt: |
+  Verify the initial skeleton loading state and the menu open/close interaction in site/loading.html. Actually run the local page in a browser, save the evidence under artifacts/, and capture the sequence rather than only describing a plan.
+fixture: visual-site
+setup: mkdir -p artifacts
+checks:
+  - shell: test "$(find artifacts -type f -name '*.webm' -size +1k | wc -l | tr -d ' ')" -ge 1 && find artifacts -type f -name '*.webm' -exec file {} \; | grep -q WebM
+  - judge: The report identifies the saved video evidence, describes the initial skeleton, loaded state, menu-open state, and menu-closed state, gives the observed result, and does not falsely claim artifact delivery.
+timeout: 600

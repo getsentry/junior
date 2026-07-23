@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Guide - Visual QA Fixture</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Junior Docs</strong>
+      <nav aria-label="Primary navigation">
+        <a href="index.html">Overview</a>
+        <a href="guide.html">Guide</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+      <button id="theme-toggle" type="button">Toggle theme</button>
+    </header>
+    <main>
+      <h1>Visual verification guide</h1>
+      <section class="panel">
+        <h2>Choose representative evidence</h2>
+        <p>Match screenshots and recordings to the behavior being verified.</p>
+      </section>
+    </main>
+    <script>
+      document.querySelector("#theme-toggle").addEventListener("click", () => {
+        document.documentElement.dataset.theme =
+          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      });
+    </script>
+  </body>
+</html>

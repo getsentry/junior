@@ -1,7 +1,7 @@
 ---
 name: visual-web-qa
 description: Verifies user-visible web changes with scoped browser evidence and reports only what the captured screenshots, videos, or state checks support. Use when frontend, docs, CSS, layout, theme, responsive, navigation, loading, animation, or interaction changes need visual validation; use agent-browser for general automation that is not specifically visual QA.
-spec_hash: b6b690eb8438
+spec_hash: 7dd651f9311c
 allowed-tools: bash sendFiles
 ---
 
