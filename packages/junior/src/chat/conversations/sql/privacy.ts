@@ -57,6 +57,7 @@ export async function readConversationEventPrivacySnapshot(
       requestedParentConversationId: juniorConversations.parentConversationId,
       requestedRootConversationId: juniorConversations.rootConversationId,
       rootConversationId: privacyRoot.conversationId,
+      rootDestinationId: privacyRoot.destinationId,
       rootParentConversationId: privacyRoot.parentConversationId,
       rootRootConversationId: privacyRoot.rootConversationId,
       visibility: privacyRootDestination.visibility,
@@ -108,6 +109,7 @@ export async function readConversationEventPrivacySnapshot(
     (first.requestedParentConversationId !== null ||
       first.requestedRootConversationId === first.requestedConversationId) &&
     first.rootConversationId === first.requestedRootConversationId &&
+    first.rootDestinationId !== null &&
     first.rootParentConversationId === null &&
     first.rootRootConversationId === first.rootConversationId;
 

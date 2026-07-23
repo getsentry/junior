@@ -689,6 +689,30 @@ describe("dashboard canonical event reporting", () => {
       isParticipant: false,
     });
 
+    const destinationlessRoot = "slack:C-reporting:destinationless-root";
+    await recordRoot(destinationlessRoot, "private", {
+      slackUserId: "U-destinationless-owner",
+      teamId: "T-reporting",
+      email: "destinationless-owner@example.com",
+    });
+    await appendVisibleHistory(
+      destinationlessRoot,
+      "Destinationless private answer",
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({ destinationId: null })
+      .where(eq(juniorConversations.conversationId, destinationlessRoot));
+
+    await expect(
+      readConversationDetail(destinationlessRoot, {
+        authorizedUserEmail: "destinationless-owner@example.com",
+      }),
+    ).resolves.toMatchObject({
+      eventHistory: { status: "redacted" },
+      isParticipant: false,
+    });
+
     const foreignRoot = "slack:C-reporting:foreign-private-root";
     const malformedTopLevel = "slack:C-reporting:malformed-top-level";
     await recordRoot(foreignRoot, "private", {
