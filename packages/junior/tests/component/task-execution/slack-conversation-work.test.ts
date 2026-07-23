@@ -269,6 +269,7 @@ describe("Slack conversation work execution", () => {
     const slackAdapter = createSlackAdapterFixture();
     const malformed = {
       ...conversationQueueMessage(),
+      destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
       source: "slack" as const,
       createdAtMs: 1_000,

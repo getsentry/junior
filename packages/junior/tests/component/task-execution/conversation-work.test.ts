@@ -172,7 +172,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: "m1",
       },
     ]);
@@ -250,7 +249,6 @@ describe("conversation work execution", () => {
     expect(queue.sendAttempts()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `duplicate:${CONVERSATION_ID}:m1:62000`,
       },
     ]);
@@ -417,7 +415,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
@@ -662,28 +659,25 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: "m2",
       },
     ]);
   });
 
-  it("rejects queue messages whose destination does not match persisted work", async () => {
+  it("loads queue routing from persisted conversation work", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const run = vi.fn(async () => ({ status: "completed" as const }));
+    const run = vi.fn(async (context) => {
+      expect(context.destination).toEqual(SLACK_DESTINATION);
+      await context.attempt.ack();
+      return { status: "completed" as const };
+    });
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(
-        conversationQueueMessage({ destination: OTHER_SLACK_DESTINATION }),
-        {
-          queue,
-          run,
-        },
-      ),
-    ).rejects.toThrow("Conversation work queue destination changed");
+      processConversationWork(conversationQueueMessage(), { queue, run }),
+    ).resolves.toEqual({ status: "completed" });
 
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledOnce();
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -797,7 +791,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
       },
     ]);
@@ -852,7 +845,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
       },
     ]);
@@ -963,7 +955,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
       },
     ]);
@@ -1085,7 +1076,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `lost_lease:${CONVERSATION_ID}:2000`,
       },
     ]);
@@ -1516,7 +1506,6 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
@@ -1697,19 +1686,16 @@ describe("conversation work execution", () => {
     expect(queue.sendAttempts()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: "m1",
       },
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: "m1",
       },
     ]);
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: "m1",
       },
     ]);
@@ -1746,7 +1732,7 @@ describe("conversation work execution", () => {
         message: expect.objectContaining({
           conversationId: CONVERSATION_ID,
           signature: expect.any(String),
-          signatureVersion: "v1",
+          signatureVersion: "v2",
           signedAtMs: expect.any(Number),
         }),
         options: {
@@ -1769,7 +1755,6 @@ describe("conversation work execution", () => {
 
     expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
       conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
     });
     expect(
       verifySignedConversationQueueMessage(
@@ -1797,27 +1782,6 @@ describe("conversation work execution", () => {
     ).toBeUndefined();
   });
 
-  it("signs queue destinations by identity rather than object key order", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
-    const signedAtMs = 12_345;
-    const signed = signConversationQueueMessage(
-      {
-        conversationId: CONVERSATION_ID,
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        },
-      },
-      signedAtMs,
-    );
-
-    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-    });
-  });
-
   it("keeps queue signatures valid across default visibility redelivery", () => {
     process.env.JUNIOR_SECRET = "conversation-work-secret";
     const signedAtMs = 12_345;
@@ -1830,7 +1794,6 @@ describe("conversation work execution", () => {
       verifySignedConversationQueueMessage(signed, signedAtMs + 330_000),
     ).toEqual({
       conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
     });
   });
 
@@ -1864,6 +1827,6 @@ describe("conversation work execution", () => {
           run: async () => ({ status: "completed" }),
         },
       ),
-    ).rejects.toThrow("missing destination context");
+    ).rejects.toThrow("Conversation queue message is malformed");
   });
 });

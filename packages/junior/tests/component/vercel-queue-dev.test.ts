@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -203,7 +204,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
   });
 
-  it("absorbs rejected conversation queue messages before retry", async () => {
+  it("handles rejected and versioned conversation queue messages", async () => {
     const routeHandler = vi.fn();
     const handleCallback = vi.fn(() => routeHandler);
 
@@ -216,7 +217,10 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
 
-    const run = vi.fn(async () => ({ status: "completed" as const }));
+    const run = vi.fn(async (context: ConversationWorkerContext) => {
+      await context.attempt.ack();
+      return { status: "completed" as const };
+    });
     expect(
       createVercelConversationWorkCallback({
         run,
@@ -298,25 +302,28 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       handler(
         signConversationQueueMessage({
           conversationId: "slack:C123:1712345.0001",
-          destination: {
-            channelId: "C456",
-            platform: "slack",
-            teamId: "T123",
-          },
         }),
         metadata,
       ),
     ).resolves.toBeUndefined();
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        },
+      }),
+    );
 
     delete process.env.JUNIOR_SECRET;
     let missingSecretError: unknown;
     await handler(
       {
         conversationId: "slack:C123:1712345.0001",
-        destination: { channelId: "C123", platform: "slack", teamId: "T123" },
         signature: "signature",
-        signatureVersion: "v1",
+        signatureVersion: "v2",
         signedAtMs: 1_000,
       },
       metadata,

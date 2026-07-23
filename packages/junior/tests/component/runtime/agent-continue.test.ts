@@ -61,7 +61,6 @@ describe("agent continuation scheduling", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `agent-continue:${conversationId}:turn_msg_1:3:1000`,
       },
     ]);

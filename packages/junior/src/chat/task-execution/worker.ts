@@ -1,6 +1,5 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { sameDestination } from "@/chat/destination";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
@@ -260,13 +259,10 @@ export async function processConversationWork(
     }
     return { status: "no_work" };
   }
-  if (
-    !initial.destination ||
-    !sameDestination(initial.destination, message.destination)
-  ) {
+  if (!initial.destination) {
     throw new ConversationQueueMessageRejectedError(
-      "destination_mismatch",
-      `Conversation work queue destination changed for ${conversationId}`,
+      "invalid_record",
+      `Conversation work is missing destination context for ${conversationId}`,
       { conversationId },
     );
   }

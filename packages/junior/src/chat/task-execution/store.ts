@@ -180,7 +180,6 @@ export async function ensureConversationWake(args: {
   const queueResult = await args.queue.send(
     {
       conversationId: args.conversationId,
-      destination: conversation.destination,
     },
     {
       delayMs: args.delayMs,

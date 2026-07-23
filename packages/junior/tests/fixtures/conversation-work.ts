@@ -25,7 +25,6 @@ export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
 export interface ConversationQueueSendRecord {
   conversationId: string;
-  destination: Destination;
   delayMs?: number;
   idempotencyKey?: string;
 }
@@ -95,7 +94,6 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     }
     const record: ConversationQueueSendRecord = {
       conversationId: message.conversationId,
-      destination: message.destination,
     };
     if (options?.delayMs !== undefined) {
       record.delayMs = options.delayMs;
@@ -216,7 +214,6 @@ export function conversationQueueMessage(
 ): ConversationQueueMessage {
   return {
     conversationId: CONVERSATION_ID,
-    destination: SLACK_DESTINATION,
     ...overrides,
   };
 }

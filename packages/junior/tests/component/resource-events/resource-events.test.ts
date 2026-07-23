@@ -111,7 +111,6 @@ describe("resource event subscriptions", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `resource-event:${subscription.id}:delivery-1:check-suite-1`,
       },
     ]);
@@ -209,7 +208,6 @@ describe("resource event subscriptions", () => {
       expect(queue.sentRecords()).toEqual([
         {
           conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
           idempotencyKey: `resource-event:${subscription.id}:github:delivery-bridge:comment.created`,
         },
       ]);
@@ -287,7 +285,6 @@ describe("resource event subscriptions", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `resource-event:${subscription.id}:delivery-3:check-suite-1`,
       },
     ]);

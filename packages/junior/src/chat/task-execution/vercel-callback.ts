@@ -6,12 +6,12 @@ import {
 } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
-import { parseDestination } from "@/chat/destination";
 import { logWarn } from "@/chat/logging";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
+  conversationQueueMessageSchema,
   ConversationQueueMessageRejectedError,
   isConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
@@ -48,28 +48,15 @@ export interface VercelConversationWorkCallbackOptions extends ProcessConversati
   visibilityTimeoutSeconds?: number;
 }
 
+/** Parse the signed callback body before conversation work reaches the worker. */
 function parseConversationQueueMessage(
   message: unknown,
 ): ConversationQueueMessage {
-  const destination = parseDestination(
-    (message as { destination?: unknown } | undefined)?.destination,
-  );
-  if (
-    !message ||
-    typeof message !== "object" ||
-    typeof (message as { conversationId?: unknown }).conversationId !==
-      "string" ||
-    !(message as { conversationId: string }).conversationId.trim() ||
-    !destination
-  ) {
-    throw new Error(
-      "Conversation queue message is missing destination context",
-    );
+  const parsed = conversationQueueMessageSchema.safeParse(message);
+  if (!parsed.success) {
+    throw new Error("Conversation queue message is malformed");
   }
-  return {
-    conversationId: (message as { conversationId: string }).conversationId,
-    destination,
-  };
+  return parsed.data;
 }
 
 /** Resolve queue visibility so redelivery waits past the host timeout boundary. */

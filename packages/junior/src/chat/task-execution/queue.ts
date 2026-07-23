@@ -1,12 +1,18 @@
-import type { Destination } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 
-export interface ConversationQueueMessage {
-  conversationId: string;
-  destination: Destination;
-}
+/** Validate the conversation work hint sent through Vercel Queue. */
+export const conversationQueueMessageSchema = z
+  .object({
+    conversationId: z.string().trim().min(1),
+  })
+  .strict();
+
+/** Conversation work hint accepted by the queue callback and worker. */
+export type ConversationQueueMessage = z.output<
+  typeof conversationQueueMessageSchema
+>;
 
 export type ConversationQueueMessageRejectReason =
-  | "destination_mismatch"
   | "expired"
   | "invalid_record"
   | "malformed"
@@ -28,7 +34,7 @@ export class ConversationQueueMessageRejectedError extends Error {
   }
 }
 
-/** Return whether a queue payload was permanently rejected at the message boundary. */
+/** Return whether an error means the queue message was permanently rejected. */
 export function isConversationQueueMessageRejectedError(
   error: unknown,
 ): error is ConversationQueueMessageRejectedError {

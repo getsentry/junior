@@ -218,22 +218,15 @@ describe("Slack behavior: durable turn steering", () => {
     ).resolves.toMatchObject({ status: 200 });
 
     const inboundMessageId = `slack:T123:${conversationId}:${THREAD_TS}`;
-    const destination = {
-      platform: "slack",
-      teamId: "T123",
-      channelId: CHANNEL_ID,
-    };
     expect(queue.sendAttempts()).toEqual([
       {
         conversationId,
-        destination,
         idempotencyKey: inboundMessageId,
       },
     ]);
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination,
         idempotencyKey: inboundMessageId,
       },
     ]);

@@ -295,7 +295,6 @@ describe("plugin heartbeat", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${conversationId}:${TEST_NOW_MS}`,
       },
     ]);
@@ -356,7 +355,6 @@ describe("plugin heartbeat", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${conversationId}:${TEST_NOW_MS}`,
       },
     ]);

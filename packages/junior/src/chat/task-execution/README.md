@@ -7,8 +7,8 @@ source of truth.
 ## State Model
 
 - A conversation mailbox contains normalized pending user work.
-- A queue payload identifies the conversation and destination needed to resume
-  processing; it does not carry authoritative conversation content.
+- A queue payload identifies the conversation to wake; persisted conversation
+  work owns destination and routing.
 - A lease grants one worker temporary execution ownership.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.

@@ -731,7 +731,6 @@ describe("agent continuation Slack integration", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `agent-continue:${conversationId}:${sessionId}:`,
         ),
@@ -1194,7 +1193,6 @@ describe("agent continuation Slack integration", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `agent-continue:${conversationId}:${sessionId}:`,
         ),

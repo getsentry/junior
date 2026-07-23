@@ -1,17 +1,26 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { destinationKey, parseDestination } from "@/chat/destination";
-import type { ConversationQueueMessage } from "./queue";
+import { z } from "zod";
+import {
+  conversationQueueMessageSchema,
+  type ConversationQueueMessage,
+} from "./queue";
 
 const CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT =
-  "junior.conversation_work_queue.v1";
-const CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION = "v1";
+  "junior.conversation_work_queue.v2";
+const CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION = "v2";
 export const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 60 * 60 * 1000;
 
-interface SignedConversationQueueMessage extends ConversationQueueMessage {
-  signature: string;
-  signatureVersion: typeof CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION;
-  signedAtMs: number;
-}
+const signedConversationQueueMessageSchema = conversationQueueMessageSchema
+  .extend({
+    signature: z.string().trim().min(1),
+    signatureVersion: z.literal(CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION),
+    signedAtMs: z.number().finite(),
+  })
+  .strict();
+
+type SignedConversationQueueMessage = z.output<
+  typeof signedConversationQueueMessageSchema
+>;
 
 export type ConversationQueueMessageVerificationResult =
   | {
@@ -31,26 +40,20 @@ function getConversationWorkQueueSecret(): string | undefined {
   return process.env.JUNIOR_SECRET?.trim() || undefined;
 }
 
+/** Build the canonical signature input for one conversation wake. */
 function buildSignedPayload(
   message: ConversationQueueMessage,
   signedAtMs: number,
-) {
+): string {
   return [
     CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT,
     signedAtMs,
     message.conversationId,
-    destinationKey(message.destination),
   ].join(":");
 }
 
-function signPayload(
-  message: ConversationQueueMessage,
-  signedAtMs: number,
-  secret: string,
-): string {
-  return createHmac("sha256", secret)
-    .update(buildSignedPayload(message, signedAtMs))
-    .digest("hex");
+function signPayload(payload: string, secret: string): string {
+  return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 function timingSafeMatch(expected: string, actual: string): boolean {
@@ -62,34 +65,12 @@ function timingSafeMatch(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
+/** Parse only the signed conversation queue wire format owned by this module. */
 function parseSignedConversationQueueMessage(
   value: unknown,
 ): SignedConversationQueueMessage | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const destination = parseDestination(record.destination);
-  if (
-    typeof record.conversationId !== "string" ||
-    !record.conversationId.trim() ||
-    !destination ||
-    record.signatureVersion !== CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION ||
-    typeof record.signedAtMs !== "number" ||
-    !Number.isFinite(record.signedAtMs) ||
-    typeof record.signature !== "string" ||
-    !record.signature.trim()
-  ) {
-    return undefined;
-  }
-
-  return {
-    conversationId: record.conversationId,
-    destination,
-    signature: record.signature,
-    signatureVersion: CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION,
-    signedAtMs: record.signedAtMs,
-  };
+  const parsed = signedConversationQueueMessageSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Sign a conversation queue payload before it crosses the public callback route. */
@@ -107,11 +88,11 @@ export function signConversationQueueMessage(
     ...message,
     signedAtMs: nowMs,
     signatureVersion: CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION,
-    signature: signPayload(message, nowMs, secret),
+    signature: signPayload(buildSignedPayload(message, nowMs), secret),
   };
 }
 
-/** Explain whether a queue payload is verified, rejected, or temporarily unverifiable. */
+/** Explain whether a queue payload is verified, rejected, or unavailable. */
 export function verifyConversationQueueMessage(
   value: unknown,
   nowMs = Date.now(),
@@ -134,17 +115,17 @@ export function verifyConversationQueueMessage(
     return { status: "rejected", reason: "expired" };
   }
 
-  const expected = signPayload(message, message.signedAtMs, secret);
+  const expected = signPayload(
+    buildSignedPayload(message, message.signedAtMs),
+    secret,
+  );
   if (!timingSafeMatch(expected, message.signature)) {
     return { status: "rejected", reason: "signature_mismatch" };
   }
 
   return {
     status: "verified",
-    message: {
-      conversationId: message.conversationId,
-      destination: message.destination,
-    },
+    message: { conversationId: message.conversationId },
   };
 }
 
