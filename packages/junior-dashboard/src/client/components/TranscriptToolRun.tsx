@@ -5,7 +5,7 @@ import { useTranscriptSearch } from "./transcriptSearch";
 
 const TOOL_RUN_REVEAL_THRESHOLD = 4;
 
-/** Collapse dense consecutive tool-start rows while keeping search results open. */
+/** Collapse dense consecutive tool rows while keeping search results open. */
 export function TranscriptToolRun(props: {
   autoCollapse: boolean;
   entries: RenderedToolEntry[];

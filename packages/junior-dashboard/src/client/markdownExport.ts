@@ -5,6 +5,7 @@ import {
   formatUsageTotal,
   actorLabel,
   slackLocationLabel,
+  stringifyPartValue,
   transcriptRoleKind,
   unavailableTranscriptLabel,
 } from "./format";
@@ -201,7 +202,39 @@ function appendTool(
 ): void {
   lines.push("", `### Tool: ${headingText(part.name)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  addMetaLine(lines, "Status", "started");
+  addMetaLine(lines, "Status", part.status);
+  addMetaLine(lines, "Result timestamp", eventTimestamp(part.resultTimestamp));
+  addMetaLine(lines, "Duration", toolDuration(timestamp, part.resultTimestamp));
+  if (part.input !== undefined) {
+    lines.push(
+      "",
+      "#### Arguments",
+      "",
+      fencedBlock(stringifyPartValue(part.input), "json"),
+    );
+  }
+  if (part.output !== undefined) {
+    lines.push(
+      "",
+      "#### Result",
+      "",
+      fencedBlock(stringifyPartValue(part.output), "json"),
+    );
+  }
+}
+
+function toolDuration(
+  startedAt: number | undefined,
+  endedAt: number | undefined,
+): string | undefined {
+  if (
+    typeof startedAt !== "number" ||
+    typeof endedAt !== "number" ||
+    endedAt < startedAt
+  ) {
+    return undefined;
+  }
+  return formatMs(endedAt - startedAt);
 }
 
 function addEventMeta(
@@ -293,6 +326,15 @@ function headingText(value: string): string {
 function inlineCode(value: string): string {
   const fence = value.includes("`") ? "``" : "`";
   return `${fence}${value}${fence}`;
+}
+
+function fencedBlock(value: string, language: string): string {
+  const longestBacktickRun = [...value.matchAll(/`+/g)].reduce(
+    (longest, match) => Math.max(longest, match[0].length),
+    0,
+  );
+  const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+  return `${fence}${language}\n${value}\n${fence}`;
 }
 
 function finishMarkdown(lines: string[]): string {

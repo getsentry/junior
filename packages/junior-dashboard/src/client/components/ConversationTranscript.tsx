@@ -335,6 +335,7 @@ function VisibleTranscriptEntries(props: {
           key={`${props.conversation.conversationId}:${index}`}
           part={entry.part}
           timestamp={entry.timestamp}
+          view={props.view}
         />
       )}
     />

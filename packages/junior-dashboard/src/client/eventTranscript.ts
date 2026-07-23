@@ -43,18 +43,26 @@ function subagentOutcomes(
   return outcomes;
 }
 
-function specialToolStarts(events: ConversationReportEvent[]): Set<number> {
-  const starts = new Set<number>();
+function specialToolIds(events: ConversationReportEvent[]): Set<string> {
+  const startsBySeq = new Map<number, string>();
+  for (const event of events) {
+    if (event.data.type === "tool_started") {
+      startsBySeq.set(event.seq, event.data.toolCallId);
+    }
+  }
+
+  const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
     if (
       (data.type === "handoff" || data.type === "subagent_started") &&
       data.toolStartedSeq !== undefined
     ) {
-      starts.add(data.toolStartedSeq);
+      const id = startsBySeq.get(data.toolStartedSeq);
+      if (id) ids.add(id);
     }
   }
-  return starts;
+  return ids;
 }
 
 function subagentPart(
@@ -80,8 +88,31 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
 ): TranscriptViewMessage[] {
   const outcomes = subagentOutcomes(conversation.events);
-  const replacedToolStarts = specialToolStarts(conversation.events);
+  const replacedToolIds = specialToolIds(conversation.events);
+  const tools = new Map<
+    string,
+    Extract<TranscriptViewPart, { type: "tool_call" }>
+  >();
   const messages: TranscriptViewMessage[] = [];
+
+  const ensureTool = (
+    event: ConversationReportEvent,
+    toolCallId: string,
+    name: string,
+  ): Extract<TranscriptViewPart, { type: "tool_call" }> | undefined => {
+    if (replacedToolIds.has(toolCallId)) return undefined;
+    const existing = tools.get(toolCallId);
+    if (existing) return existing;
+    const part = {
+      type: "tool_call" as const,
+      id: toolCallId,
+      name,
+      status: "running" as const,
+    };
+    tools.set(toolCallId, part);
+    messages.push(eventMessage(event, "tool", [part]));
+    return part;
+  };
 
   // API sequence is the only ordering authority. Do not sort by timestamps:
   // producers may preserve ingestion order while clocks are skewed.
@@ -99,14 +130,25 @@ export function conversationTranscriptMessages(
     }
 
     if (data.type === "tool_started") {
-      if (replacedToolStarts.has(event.seq)) continue;
-      messages.push(
-        eventMessage(event, "tool", [
-          // Reporting intentionally has no completion state. This is a neutral
-          // structural start row, not a claim that the tool is still running.
-          { type: "tool_call", name: data.name },
-        ]),
-      );
+      ensureTool(event, data.toolCallId, data.name);
+      continue;
+    }
+
+    if (data.type === "tool_calls") {
+      for (const call of data.calls) {
+        const part = ensureTool(event, call.toolCallId, call.name);
+        if (part && call.input !== undefined) part.input = call.input;
+      }
+      continue;
+    }
+
+    if (data.type === "tool_result") {
+      const part = tools.get(data.toolCallId);
+      if (part) {
+        part.status = data.outcome;
+        part.resultTimestamp = eventTimestamp(event);
+        if (data.output !== undefined) part.output = data.output;
+      }
       continue;
     }
 

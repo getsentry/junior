@@ -142,7 +142,11 @@ describe("dashboard conversation formatting", () => {
           role: "user",
           text: "run search",
         }),
-        event(1, { type: "tool_started", name: "search" }),
+        event(1, {
+          type: "tool_started",
+          toolCallId: "search-1",
+          name: "search",
+        }),
         event(2, {
           type: "subagent_started",
           childConversationId: "child-1",

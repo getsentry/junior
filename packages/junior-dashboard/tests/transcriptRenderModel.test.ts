@@ -88,18 +88,67 @@ describe("canonical event transcript reduction", () => {
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
   });
 
-  it("renders tool starts as neutral structural events", () => {
+  it("renders a tool start as one running invocation", () => {
     const [message] = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
           type: "tool_started",
+          toolCallId: "search-1",
           name: "search",
         }),
       ]),
     );
 
-    expect(message?.parts).toEqual([{ type: "tool_call", name: "search" }]);
-    expect(message?.parts[0]).not.toHaveProperty("status");
+    expect(message?.parts).toEqual([
+      {
+        type: "tool_call",
+        id: "search-1",
+        name: "search",
+        status: "running",
+      },
+    ]);
+  });
+
+  it("enriches one tool row in place when call details and a result arrive", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(0, "2026-01-01T00:00:00.000Z", {
+          type: "tool_started",
+          toolCallId: "search-1",
+          name: "search",
+        }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              input: { query: "regression" },
+            },
+          ],
+        }),
+        event(2, "2026-01-01T00:00:03.000Z", {
+          type: "tool_result",
+          toolCallId: "search-1",
+          name: "search",
+          outcome: "completed",
+          output: { matches: 2 },
+        }),
+      ]),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "tool_call",
+        id: "search-1",
+        input: { query: "regression" },
+        name: "search",
+        output: { matches: 2 },
+        resultTimestamp: Date.parse("2026-01-01T00:00:03.000Z"),
+        status: "completed",
+      },
+    ]);
   });
 
   it("replaces only correlated tool starts with special lifecycle rows", () => {
@@ -108,6 +157,7 @@ describe("canonical event transcript reduction", () => {
         conversation([
           event(0, "2026-01-01T00:00:00.000Z", {
             type: "tool_started",
+            toolCallId: "advisor-correlated",
             name: "advisor",
           }),
           event(1, "2026-01-01T00:00:01.000Z", {
@@ -123,10 +173,12 @@ describe("canonical event transcript reduction", () => {
           }),
           event(3, "2026-01-01T00:00:03.000Z", {
             type: "tool_started",
+            toolCallId: "advisor-visible",
             name: "advisor",
           }),
           event(4, "2026-01-01T00:00:04.000Z", {
             type: "tool_started",
+            toolCallId: "handoff-correlated",
             name: "handoff",
           }),
           event(5, "2026-01-01T00:00:05.000Z", {
@@ -140,6 +192,35 @@ describe("canonical event transcript reduction", () => {
           }),
           event(7, "2026-01-01T00:00:07.000Z", {
             type: "handoff",
+          }),
+          event(8, "2026-01-01T00:00:08.000Z", {
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "advisor-correlated",
+                name: "advisor",
+                input: { task: "review" },
+              },
+              {
+                toolCallId: "handoff-correlated",
+                name: "handoff",
+                input: { profile: "fast" },
+              },
+            ],
+          }),
+          event(9, "2026-01-01T00:00:09.000Z", {
+            type: "tool_result",
+            toolCallId: "advisor-correlated",
+            name: "advisor",
+            outcome: "completed",
+            output: { ok: true },
+          }),
+          event(10, "2026-01-01T00:00:10.000Z", {
+            type: "tool_result",
+            toolCallId: "handoff-correlated",
+            name: "handoff",
+            outcome: "completed",
+            output: { ok: true },
           }),
         ]),
       ),
@@ -241,23 +322,41 @@ describe("canonical event transcript reduction", () => {
         conversation([
           event(0, "2026-01-01T00:00:00.000Z", {
             type: "tool_started",
+            toolCallId: "search-1",
             name: "sentry.search",
           }),
           event(1, "2026-01-01T00:00:01.000Z", {
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "search-1",
+                name: "sentry.search",
+                input: { project: "checkout-project" },
+              },
+            ],
+          }),
+          event(2, "2026-01-01T00:00:02.000Z", {
+            type: "tool_result",
+            toolCallId: "search-1",
+            name: "sentry.search",
+            outcome: "completed",
+            output: { culprit: "payments-v42" },
+          }),
+          event(3, "2026-01-01T00:00:03.000Z", {
             type: "subagent_started",
             childConversationId: "child-1",
             subagentKind: "advisor",
           }),
-          event(2, "2026-01-01T00:00:02.000Z", {
+          event(4, "2026-01-01T00:00:04.000Z", {
             type: "compaction",
           }),
-          event(3, "2026-01-01T00:00:03.000Z", {
+          event(5, "2026-01-01T00:00:05.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-1",
             state: "failed",
             failureKind: "agent",
           }),
-          event(4, "2026-01-01T00:00:04.000Z", {
+          event(6, "2026-01-01T00:00:06.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-2",
             state: "failed",
@@ -269,8 +368,10 @@ describe("canonical event transcript reduction", () => {
 
     for (const query of [
       "sentry.search",
+      "checkout-project",
+      "payments-v42",
       "advisor",
-      "running",
+      "completed",
       "compacted",
       "failed",
       "delivery failed",

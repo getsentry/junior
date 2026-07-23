@@ -14,6 +14,9 @@ state.
 - Conversation detail exposes one ordered, privacy-safe event log. The
   dashboard owns the event-to-view reduction and never merges a duplicate
   transcript, activity stream, or provider runtime state.
+- Reporting projects only tool calls and model-visible results from agent
+  steps. The dashboard correlates their start, call, and result facts by tool
+  call id into one row without exposing the rest of model history.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure;

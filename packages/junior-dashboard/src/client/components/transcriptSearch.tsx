@@ -5,6 +5,7 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
+import { stringifyPartValue } from "../format";
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -135,7 +136,12 @@ export function entryMatchesSearch(
   }
 
   if (entry.kind === "tool") {
-    return textContains(entry.part.name, normalizedQuery);
+    return [
+      entry.part.name,
+      entry.part.status,
+      stringifyPartValue(entry.part.input),
+      stringifyPartValue(entry.part.output),
+    ].some((value) => textContains(value, normalizedQuery));
   }
 
   if (entry.kind === "subagent") {

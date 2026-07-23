@@ -70,14 +70,35 @@ describe("dashboard canonical-event Markdown export", () => {
   it("exports structural tool, context, subagent, and failure rows", () => {
     const markdown = buildConversationMarkdown(
       conversation([
-        event(0, { type: "tool_started", name: "search" }),
+        event(0, {
+          type: "tool_started",
+          toolCallId: "search-1",
+          name: "search",
+        }),
         event(1, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              input: { query: "release regression" },
+            },
+          ],
+        }),
+        event(2, {
+          type: "tool_result",
+          toolCallId: "search-1",
+          name: "search",
+          outcome: "completed",
+          output: { matches: 3 },
+        }),
+        event(3, {
           type: "subagent_started",
           childConversationId: "child-1",
           subagentKind: "advisor",
         }),
-        event(2, { type: "compaction" }),
-        event(3, {
+        event(4, { type: "compaction" }),
+        event(5, {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
@@ -87,7 +108,10 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("### Tool: search");
-    expect(markdown).toContain("- Status: started");
+    expect(markdown).toContain("- Status: completed");
+    expect(markdown.match(/### Tool: search/g)).toHaveLength(1);
+    expect(markdown).toContain("release regression");
+    expect(markdown).toContain('"matches": 3');
     expect(markdown).toContain("### Subagent: advisor");
     expect(markdown).toContain("### Context compacted");
     expect(markdown).toContain("### Agent response failed");
@@ -115,18 +139,27 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).not.toContain("Agent response failed");
   });
 
-  it("labels redacted structural tool starts neutrally", () => {
+  it("labels redacted in-progress tools without inventing a completion", () => {
     const markdown = buildConversationMarkdown(
-      conversation([event(0, { type: "tool_started", name: "search" })], {
-        eventHistory: {
-          status: "redacted",
-          reason: "non_public_conversation",
+      conversation(
+        [
+          event(0, {
+            type: "tool_started",
+            toolCallId: "search-1",
+            name: "search",
+          }),
+        ],
+        {
+          eventHistory: {
+            status: "redacted",
+            reason: "non_public_conversation",
+          },
         },
-      }),
+      ),
     );
 
     expect(markdown).toContain("### Tool: search");
-    expect(markdown).toContain("- Status: started");
+    expect(markdown).toContain("- Status: running");
     expect(markdown).not.toContain("missing result");
   });
 

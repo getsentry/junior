@@ -46,7 +46,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("keeps canonical sequence order and sources display text only from visible messages", () => {
+  it("keeps canonical sequence order and projects only tool facts from agent steps", () => {
     const events = [
       event(
         10,
@@ -69,6 +69,7 @@ describe("conversation report event projection", () => {
               { type: "thinking", thinking: "private chain of thought" },
               {
                 type: "toolCall",
+                id: "private-tool-call-id",
                 name: "search",
                 arguments: { query: "private query" },
               },
@@ -105,9 +106,27 @@ describe("conversation report event projection", () => {
         },
       },
       {
+        seq: 11,
+        createdAt: "1970-01-01T00:00:10.000Z",
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "private-tool-call-id",
+              name: "search",
+              input: { query: "private query" },
+            },
+          ],
+        },
+      },
+      {
         seq: 12,
         createdAt: "1970-01-01T00:00:05.000Z",
-        data: { type: "tool_started", name: "search" },
+        data: {
+          type: "tool_started",
+          toolCallId: "private-tool-call-id",
+          name: "search",
+        },
       },
       {
         seq: 13,
@@ -118,10 +137,109 @@ describe("conversation report event projection", () => {
         },
       },
     ]);
-    expect(projected.map(({ seq }) => seq)).toEqual([10, 12, 13]);
+    expect(projected.map(({ seq }) => seq)).toEqual([10, 11, 12, 13]);
     expect(
       JSON.stringify(projected).match(/one user-facing answer/g),
     ).toHaveLength(1);
+    expect(JSON.stringify(projected)).not.toContain("private chain of thought");
+  });
+
+  it("projects parallel calls, structured outcomes, and safe native content", () => {
+    const projected = projectConversationReportEvents({
+      canExposePayload: true,
+      events: [
+        event(1, {
+          type: "agent_step",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "call-1",
+                name: "search",
+                arguments: { query: "first" },
+              },
+              {
+                type: "toolCall",
+                id: "call-2",
+                name: "fetch",
+                arguments: { url: "https://example.com" },
+              },
+            ],
+          } as ConversationAgentStepPayload,
+        }),
+        event(2, {
+          type: "agent_step",
+          message: {
+            role: "toolResult",
+            toolCallId: "call-1",
+            toolName: "search",
+            content: [{ type: "text", text: "model-visible error summary" }],
+            details: {
+              ok: false,
+              status: "error",
+              error: { kind: "not_found", message: "No matches" },
+              providerSecret: "must stay host-only",
+            },
+            isError: false,
+          } as ConversationAgentStepPayload,
+        }),
+        event(3, {
+          type: "agent_step",
+          message: {
+            role: "toolResult",
+            toolCallId: "call-2",
+            toolName: "fetch",
+            content: [
+              { type: "text", text: "native result" },
+              { type: "image", mimeType: "image/png", data: "AAAA" },
+            ],
+            details: { ok: true, status: "success" },
+            rawProviderResponse: "must not escape",
+            isError: false,
+          } as ConversationAgentStepPayload,
+        }),
+      ],
+    });
+
+    expect(projected.map(({ data }) => data)).toEqual([
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "call-1",
+            name: "search",
+            input: { query: "first" },
+          },
+          {
+            toolCallId: "call-2",
+            name: "fetch",
+            input: { url: "https://example.com" },
+          },
+        ],
+      },
+      {
+        type: "tool_result",
+        toolCallId: "call-1",
+        name: "search",
+        outcome: "error",
+        output: "model-visible error summary",
+      },
+      {
+        type: "tool_result",
+        toolCallId: "call-2",
+        name: "fetch",
+        outcome: "completed",
+        output: [
+          { type: "text", text: "native result" },
+          { type: "image", mimeType: "image/png" },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(projected)).not.toContain("must not escape");
+    expect(JSON.stringify(projected)).not.toContain("must stay host-only");
+    expect(JSON.stringify(projected)).not.toContain("No matches");
+    expect(JSON.stringify(projected)).not.toContain("AAAA");
   });
 
   it("keeps projected prefixes byte-equivalent when later facts arrive", () => {
@@ -169,7 +287,7 @@ describe("conversation report event projection", () => {
           type: "agent_step",
           message: {
             role: "toolResult",
-            name: "private-tool-name",
+            toolName: "safe_tool_name",
             toolCallId: "private-tool-call-id",
             isError: true,
             content: [{ type: "text", text: "private tool result" }],
@@ -217,16 +335,23 @@ describe("conversation report event projection", () => {
       redacted: true,
     });
     expect(projected[1]?.data).toEqual({
-      type: "tool_started",
+      type: "tool_result",
+      toolCallId: "private-tool-call-id",
       name: "safe_tool_name",
+      outcome: "error",
     });
     expect(projected[2]?.data).toEqual({
+      type: "tool_started",
+      toolCallId: "private-tool-call-id",
+      name: "safe_tool_name",
+    });
+    expect(projected[3]?.data).toEqual({
       type: "turn_lifecycle",
       turnId: "turn-1",
       state: "failed",
       failureKind: "agent",
     });
-    expect(projected[3]?.data).toEqual({
+    expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
       turnId: "turn-delivery-1",
       state: "failed",
@@ -241,8 +366,6 @@ describe("conversation report event projection", () => {
       "private-actor-id",
       "private arbitrary metadata",
       "private-authorization-id",
-      "private-tool-name",
-      "private-tool-call-id",
       "private tool result",
       "private provider error",
       "model_execution_failed",
@@ -345,7 +468,11 @@ describe("conversation report event projection", () => {
     expect(projected.map(({ data }) => data)).toEqual([
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
       { type: "compaction" },
-      { type: "tool_started", name: "handoff" },
+      {
+        type: "tool_started",
+        toolCallId: "private-handoff-tool-call-id",
+        name: "handoff",
+      },
       { type: "handoff", toolStartedSeq: 3 },
       {
         type: "turn_lifecycle",
@@ -353,7 +480,11 @@ describe("conversation report event projection", () => {
         state: "failed",
         failureKind: "delivery",
       },
-      { type: "tool_started", name: "advisor" },
+      {
+        type: "tool_started",
+        toolCallId: "private-parent-tool-id",
+        name: "advisor",
+      },
       {
         type: "subagent_started",
         childConversationId: "child-conversation-1",
@@ -377,11 +508,9 @@ describe("conversation report event projection", () => {
       "private-input-id",
       "private-model-id",
       "private-handoff-model-id",
-      "private-handoff-tool-call-id",
       "private-rollback-model-id",
       "subagent-invocation-1",
       "private-child-model-id",
-      "private-parent-tool-id",
       "private-reasoning-level",
       "private-child-error-code",
       "legacy-subagent-invocation",
@@ -579,6 +708,53 @@ describe("conversation report event projection", () => {
     expect(
       conversationDetailReportSchema.safeParse({
         ...summary,
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+        events: [
+          {
+            seq: 1,
+            createdAt: summary.generatedAt,
+            data: {
+              type: "tool_calls",
+              calls: [
+                {
+                  toolCallId: "private-call",
+                  name: "search",
+                  input: { query: "must not be exposed" },
+                },
+              ],
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+        events: [
+          {
+            seq: 1,
+            createdAt: summary.generatedAt,
+            data: {
+              type: "tool_result",
+              toolCallId: "private-call",
+              name: "search",
+              outcome: "completed",
+              output: { matches: "must not be exposed" },
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
         eventHistory: { status: "available" },
         events: [visibleEvent({ redacted: true })],
       }).success,
@@ -599,6 +775,35 @@ describe("conversation report event projection", () => {
           reason: "non_public_conversation",
         },
         events: [visibleEvent({ redacted: true })],
+      }).success,
+    ).toBe(true);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+        events: [
+          {
+            seq: 1,
+            createdAt: summary.generatedAt,
+            data: {
+              type: "tool_calls",
+              calls: [{ toolCallId: "private-call", name: "search" }],
+            },
+          },
+          {
+            seq: 2,
+            createdAt: summary.generatedAt,
+            data: {
+              type: "tool_result",
+              toolCallId: "private-call",
+              name: "search",
+              outcome: "completed",
+            },
+          },
+        ],
       }).success,
     ).toBe(true);
     expect(

@@ -89,6 +89,61 @@ async function appendVisibleHistory(
     },
     {
       data: {
+        type: "agent_step",
+        message: {
+          role: "assistant",
+          api: "responses",
+          provider: "openai",
+          model: "gpt-5",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: `${conversationId}:tool-call`,
+              name: "search",
+              arguments: { query: "visible tool query" },
+            },
+          ],
+          timestamp: 12,
+        } as PiMessage,
+      },
+      createdAtMs: 12,
+    },
+    {
+      data: {
+        type: "agent_step",
+        message: {
+          role: "toolResult",
+          toolCallId: `${conversationId}:tool-call`,
+          toolName: "search",
+          content: [{ type: "text", text: "model-visible result" }],
+          details: {
+            ok: true,
+            status: "success",
+            data: { matches: 2 },
+          },
+          isError: false,
+          timestamp: 13,
+        } as PiMessage,
+      },
+      createdAtMs: 13,
+    },
+    {
+      data: {
         type: "turn_started",
         turnId: `${conversationId}:turn`,
         inputMessageIds: [`${conversationId}:visible`],
@@ -261,7 +316,28 @@ describe("dashboard canonical event reporting", () => {
         role: "assistant",
         text: "Visible answer",
       },
-      { type: "tool_started", name: "search" },
+      {
+        type: "tool_started",
+        toolCallId: `${conversationId}:tool-call`,
+        name: "search",
+      },
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `${conversationId}:tool-call`,
+            name: "search",
+            input: { query: "visible tool query" },
+          },
+        ],
+      },
+      {
+        type: "tool_result",
+        toolCallId: `${conversationId}:tool-call`,
+        name: "search",
+        outcome: "completed",
+        output: "model-visible result",
+      },
       {
         type: "turn_lifecycle",
         turnId: `${conversationId}:turn`,
@@ -279,7 +355,7 @@ describe("dashboard canonical event reporting", () => {
       },
       {
         type: "subagent_ended",
-        startedSeq: 5,
+        startedSeq: 7,
         outcome: "success",
       },
       { type: "compaction" },
@@ -371,9 +447,14 @@ describe("dashboard canonical event reporting", () => {
     });
     expect(detail.events[1]?.data).toEqual({
       type: "tool_started",
+      toolCallId: `${conversationId}:tool-call`,
       name: "search",
     });
-    expect(JSON.stringify(detail)).not.toContain("Visible answer");
+    const serialized = JSON.stringify(detail);
+    expect(serialized).not.toContain("Visible answer");
+    expect(serialized).not.toContain("visible tool query");
+    expect(serialized).not.toContain("model-visible result");
+    expect(serialized).not.toContain('"matches":2');
   });
 
   it("authorizes children from their persisted root and rejects forged or malformed lineage", async () => {

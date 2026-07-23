@@ -16,7 +16,12 @@ export type TranscriptViewTextPart =
   | { redacted: true; text?: never; type: "text" };
 
 export type TranscriptViewToolCallPart = {
+  id: string;
+  input?: unknown;
   name: string;
+  output?: unknown;
+  resultTimestamp?: number;
+  status: "completed" | "error" | "running";
   type: "tool_call";
 };
 

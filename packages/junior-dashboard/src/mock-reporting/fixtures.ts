@@ -129,6 +129,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(2, iso(Date.parse(startedAt), 8_000), {
         type: "tool_started",
+        toolCallId: "active-search",
         name: "datacat.search_logs",
       }),
     ],
@@ -154,33 +155,51 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(1, iso(Date.parse(startedAt), 2_000), {
         type: "tool_started",
+        toolCallId: "qa-advisor",
         name: "advisor",
       }),
       reportEvent(2, iso(Date.parse(startedAt), 3_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "qa-advisor",
+            name: "advisor",
+            input: { task: "Review the dashboard plan" },
+          },
+        ],
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 4_000), {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_PLAN_ID,
         subagentKind: "advisor",
         toolStartedSeq: 1,
       }),
-      reportEvent(3, iso(Date.parse(startedAt), 20_000), {
+      reportEvent(4, iso(Date.parse(startedAt), 20_000), {
         type: "subagent_ended",
-        startedSeq: 2,
+        startedSeq: 3,
         outcome: "success",
       }),
-      reportEvent(4, iso(Date.parse(startedAt), 25_000), {
+      reportEvent(5, iso(Date.parse(startedAt), 21_000), {
+        type: "tool_result",
+        toolCallId: "qa-advisor",
+        name: "advisor",
+        outcome: "completed",
+        output: { ok: true, status: "success" },
+      }),
+      reportEvent(6, iso(Date.parse(startedAt), 25_000), {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_REVIEW_ID,
         subagentKind: "advisor",
       }),
-      reportEvent(5, iso(Date.parse(startedAt), 44_000), {
+      reportEvent(7, iso(Date.parse(startedAt), 44_000), {
         type: "subagent_ended",
-        startedSeq: 4,
+        startedSeq: 6,
         outcome: "success",
       }),
-      reportEvent(6, iso(Date.parse(startedAt), 50_000), {
+      reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "compaction",
       }),
-      reportEvent(7, iso(Date.parse(startedAt), 55_000), {
+      reportEvent(9, iso(Date.parse(startedAt), 55_000), {
         type: "message",
         messageId: "qa-assistant",
         role: "assistant",
@@ -241,6 +260,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         iso(Date.parse(startedAt), 2_000 + index * 4_000),
         {
           type: "tool_started",
+          toolCallId: `release-bash-${index}`,
           name: "bash",
         },
       ),
@@ -319,9 +339,31 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(1, iso(Date.parse(startedAt), 12_000), {
         type: "tool_started",
+        toolCallId: "incident-issue",
         name: "sentry.get_issue",
       }),
-      reportEvent(2, iso(Date.parse(startedAt), 35_000), {
+      reportEvent(2, iso(Date.parse(startedAt), 13_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "incident-issue",
+            name: "sentry.get_issue",
+            input: { issueId: "PAYMENTS-42" },
+          },
+        ],
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 28_000), {
+        type: "tool_result",
+        toolCallId: "incident-issue",
+        name: "sentry.get_issue",
+        outcome: "completed",
+        output: {
+          ok: true,
+          status: "success",
+          data: { culprit: "payments-v42", eventCount: 418 },
+        },
+      }),
+      reportEvent(4, iso(Date.parse(startedAt), 35_000), {
         type: "message",
         messageId: "incident-assistant",
         role: "assistant",
@@ -355,9 +397,20 @@ function privateConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(1, iso(Date.parse(startedAt), 10_000), {
         type: "tool_started",
+        toolCallId: "private-search",
         name: "sentry.search",
       }),
-      reportEvent(2, iso(Date.parse(startedAt), 30_000), {
+      reportEvent(2, iso(Date.parse(startedAt), 11_000), {
+        type: "tool_calls",
+        calls: [{ toolCallId: "private-search", name: "sentry.search" }],
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 25_000), {
+        type: "tool_result",
+        toolCallId: "private-search",
+        name: "sentry.search",
+        outcome: "completed",
+      }),
+      reportEvent(4, iso(Date.parse(startedAt), 30_000), {
         type: "message",
         messageId: "private-assistant",
         role: "assistant",

@@ -264,7 +264,17 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.redacted ? "redacted" : "",
     ].join(":");
   }
-  if (part.type === "tool_call") return `${part.type}:${part.name}`;
+  if (part.type === "tool_call") {
+    return [
+      part.type,
+      part.id,
+      part.name,
+      part.status,
+      part.input === undefined ? "" : "input",
+      part.output === undefined ? "" : "output",
+      part.resultTimestamp ?? "",
+    ].join(":");
+  }
   if (part.type === "subagent") {
     return [
       part.type,

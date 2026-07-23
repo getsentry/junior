@@ -77,7 +77,33 @@ const conversationReportMessageHandledEventDataSchema = z
 const conversationReportToolStartedEventDataSchema = z
   .object({
     type: z.literal("tool_started"),
+    toolCallId: z.string().min(1),
     name: z.string().min(1),
+  })
+  .strict();
+
+const conversationReportToolCallSchema = z
+  .object({
+    toolCallId: z.string().min(1),
+    name: z.string().min(1),
+    input: z.unknown().optional(),
+  })
+  .strict();
+
+const conversationReportToolCallsEventDataSchema = z
+  .object({
+    type: z.literal("tool_calls"),
+    calls: z.array(conversationReportToolCallSchema).min(1),
+  })
+  .strict();
+
+const conversationReportToolResultEventDataSchema = z
+  .object({
+    type: z.literal("tool_result"),
+    toolCallId: z.string().min(1),
+    name: z.string().min(1),
+    outcome: z.enum(["completed", "error"]),
+    output: z.unknown().optional(),
   })
   .strict();
 
@@ -135,6 +161,8 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportMessageEventDataSchema,
   conversationReportMessageHandledEventDataSchema,
   conversationReportToolStartedEventDataSchema,
+  conversationReportToolCallsEventDataSchema,
+  conversationReportToolResultEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,
@@ -202,25 +230,48 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
       }
     }
     for (const [index, event] of report.events.entries()) {
-      if (event.data.type !== "message") continue;
+      if (event.data.type === "message") {
+        if (
+          report.eventHistory.status === "redacted" &&
+          event.data.redacted !== true
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["events", index, "data"],
+            message: "redacted event history must redact messages",
+          });
+        }
+        if (
+          report.eventHistory.status === "available" &&
+          event.data.redacted === true
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["events", index, "data"],
+            message: "available event history must expose messages",
+          });
+        }
+      }
       if (
         report.eventHistory.status === "redacted" &&
-        event.data.redacted !== true
+        event.data.type === "tool_calls" &&
+        event.data.calls.some((call) => call.input !== undefined)
       ) {
         context.addIssue({
           code: "custom",
           path: ["events", index, "data"],
-          message: "redacted event history must redact messages",
+          message: "redacted event history must redact tool inputs",
         });
       }
       if (
-        report.eventHistory.status === "available" &&
-        event.data.redacted === true
+        report.eventHistory.status === "redacted" &&
+        event.data.type === "tool_result" &&
+        event.data.output !== undefined
       ) {
         context.addIssue({
           code: "custom",
           path: ["events", index, "data"],
-          message: "available event history must expose messages",
+          message: "redacted event history must redact tool outputs",
         });
       }
     }

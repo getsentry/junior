@@ -79,6 +79,39 @@ describe("transcript bottom pinning", () => {
     expect(after).not.toBe(before);
   });
 
+  it("changes the tail version when a running tool receives its result", () => {
+    const started = {
+      seq: 0,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      data: {
+        type: "tool_started" as const,
+        toolCallId: "search-1",
+        name: "search",
+      },
+    };
+    const before = transcriptBottomVersion(activeTurn({ events: [started] }));
+    const after = transcriptBottomVersion(
+      activeTurn({
+        events: [
+          started,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "tool_result",
+              toolCallId: "search-1",
+              name: "search",
+              outcome: "completed",
+              output: { matches: 2 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(after).not.toBe(before);
+  });
+
   it("keeps the tail version stable when only polling timestamps change", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(

@@ -290,19 +290,89 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Agent response failed");
   });
 
-  it("renders redacted tool starts as started rather than missing", () => {
+  it("renders one in-progress row for a tool start", () => {
     const html = renderTranscript(
-      conversation([event(0, { type: "tool_started", name: "search" })], {
-        eventHistory: {
-          status: "redacted",
-          reason: "non_public_conversation",
+      conversation(
+        [
+          event(0, {
+            type: "tool_started",
+            toolCallId: "search-1",
+            name: "search",
+          }),
+        ],
+        {
+          eventHistory: {
+            status: "redacted",
+            reason: "non_public_conversation",
+          },
         },
-      }),
+      ),
     );
     expect(html).toContain("search");
-    expect(html).toContain("started");
-    expect(html).not.toContain("running");
+    expect(html).toContain("running");
+    expect(html).not.toContain("started");
     expect(html).not.toContain("missing result");
+  });
+
+  it("replaces the running treatment with details on the same completed row", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "tool_started",
+          toolCallId: "search-1",
+          name: "search",
+        }),
+        event(1, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              input: { query: "regression" },
+            },
+          ],
+        }),
+        event(2, {
+          type: "tool_result",
+          toolCallId: "search-1",
+          name: "search",
+          outcome: "completed",
+          output: { matches: 2 },
+        }),
+      ]),
+    );
+
+    expect(html).toContain("arguments");
+    expect(html).toContain("result");
+    expect(html).toContain("regression");
+    expect(html).toContain("matches");
+    expect(html).not.toContain("running");
+    expect(html).not.toContain("completed");
+  });
+
+  it("renders a terminal tool error with its result details", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "tool_started",
+          toolCallId: "search-1",
+          name: "search",
+        }),
+        event(1, {
+          type: "tool_result",
+          toolCallId: "search-1",
+          name: "search",
+          outcome: "error",
+          output: { error: "timed out" },
+        }),
+      ]),
+    );
+
+    expect(html).toContain("search");
+    expect(html).toContain("error");
+    expect(html).toContain("result");
+    expect(html).toContain("timed out");
+    expect(html).not.toContain("running");
   });
 
   it.each([
