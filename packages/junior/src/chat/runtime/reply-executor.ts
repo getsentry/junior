@@ -1032,10 +1032,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               text: assistantMessage.text,
               thread,
               threadTs,
-              onPostError: ({ error, messageTs, stage }) => {
+              onPostError: ({ error, stage }) => {
                 if (isRetryableSlackPostError(error)) {
                   return;
                 }
+                // Keep the inbound user-message id; callback messageTs is post-result only.
                 deliveryEventId = logException(
                   error,
                   "slack_thread_post_failed",
