@@ -198,19 +198,13 @@ describe("Slack contract: edited-message reply delivery", () => {
       });
     }
     const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
-    let deliveryError: unknown;
     const bot = await createEditedDmBot({
       agentRunner: {
         run: async (request) => {
-          try {
-            await deliverAssistantMessagesForTest(request, [
-              { text: "Hello world" },
-            ]);
-          } catch (error) {
-            deliveryError = error;
-            return { status: "suspended", resumeVersion: 2 };
-          }
-          throw new Error("Expected Slack reply delivery to fail");
+          await expect(
+            deliverAssistantMessagesForTest(request, [{ text: "Hello world" }]),
+          ).rejects.toBeInstanceOf(RetryableDeliveryError);
+          return { status: "suspended", resumeVersion: 2 };
         },
       },
       scheduleAgentContinue,
@@ -230,7 +224,6 @@ describe("Slack contract: edited-message reply delivery", () => {
     await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    expect(deliveryError).toBeInstanceOf(RetryableDeliveryError);
     expect(scheduleAgentContinue).toHaveBeenCalledWith(
       expect.objectContaining({ expectedVersion: 2 }),
     );

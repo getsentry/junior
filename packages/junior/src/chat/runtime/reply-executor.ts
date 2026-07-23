@@ -1019,7 +1019,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           boundaryFailureCode = "delivery_failed";
           let slackTs: string | undefined;
-          let deliveryEventId: string | undefined;
           try {
             const deliverAssistantReply =
               channelId && threadTs
@@ -1032,30 +1031,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               text: assistantMessage.text,
               thread,
               threadTs,
-              onPostError: ({ error, messageTs, stage }) => {
-                if (isRetryableSlackPostError(error)) {
-                  return;
-                }
-                deliveryEventId = logException(
-                  error,
-                  "slack_thread_post_failed",
-                  turnTraceContext,
-                  {
-                    "app.slack.reply_stage": stage,
-                    ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                    ...getSlackErrorObservabilityAttributes(error),
-                  },
-                  "Failed to post Slack thread reply",
-                );
-              },
             });
           } catch (error) {
             if (isRetryableSlackPostError(error)) {
               throw new RetryableDeliveryError(error);
             }
+            const eventId = logException(
+              error,
+              "slack_thread_post_failed",
+              turnTraceContext,
+              {
+                "app.slack.reply_stage": "thread_reply",
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...getSlackErrorObservabilityAttributes(error),
+              },
+              "Failed to post Slack thread reply",
+            );
             throw new ConversationTurnBoundaryError({
               cause: error,
-              ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
+              ...(eventId ? { eventId } : {}),
               failureCode: "delivery_failed",
             });
           }
