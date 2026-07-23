@@ -23,7 +23,7 @@ Out of scope:
 - Run `scripts/upload.sh` once per local file.
 - Return image markdown or a bare video URL.
 - Surface per-file failures exactly enough for the user to act.
-- Use the GitHub plugin's repository-scoped installation credential injection; do not retrieve tokens in the script.
+- Use the GitHub plugin's requesting-user OAuth credential injection; do not retrieve tokens in the script.
 
 ## Reference Architecture
 
@@ -40,7 +40,7 @@ Out of scope:
 ## Known Limitations
 
 - GitHub's user-attachment endpoint is not part of the documented public REST API.
-- A real upload requires GitHub to accept the repository-scoped installation credential for the target repository.
+- A real upload requires the requesting user to authorize the GitHub App.
 
 ## Maintenance Notes
 

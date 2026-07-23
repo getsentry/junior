@@ -142,7 +142,6 @@ interface UserCredentialOptions {
 
 interface InstallationCredentialBaseOptions {
   appIdEnv: string;
-  domains?: string[];
   installationIdEnv: string;
   privateKeyEnv: string;
 }
@@ -153,25 +152,16 @@ type InstallationCredentialOptions = InstallationCredentialBaseOptions &
         loadPermissions?: never;
         permissions?: GitHubAppPermissions;
         repositories: string[];
-        repositoryIds?: never;
-      }
-    | {
-        loadPermissions?: never;
-        permissions?: GitHubAppPermissions;
-        repositories?: never;
-        repositoryIds: number[];
       }
     | {
         loadPermissions?: never;
         permissions: GitHubAppPermissions;
         repositories?: never;
-        repositoryIds?: never;
       }
     | {
         loadPermissions: LoadInstallationReadPermissions;
         permissions?: never;
         repositories?: never;
-        repositoryIds?: never;
       }
   );
 
@@ -908,33 +898,6 @@ function githubRepositoryFromLeaseScope(
   return { owner: match[1], name: match[2] };
 }
 
-function githubRepositoryIdFromUploadUrl(upstreamUrl: URL): number {
-  const repositoryId = Number(upstreamUrl.searchParams.get("repository_id"));
-  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
-    throw new EgressPolicyDenied(
-      "GitHub asset upload request is missing a valid repository_id.",
-    );
-  }
-  return repositoryId;
-}
-
-function githubRepositoryIdLeaseScope(repositoryId: number): string {
-  return `repository-id:${repositoryId}`;
-}
-
-function githubRepositoryIdFromLeaseScope(
-  leaseScope: string | undefined,
-): number {
-  const match = /^repository-id:(\d+)$/.exec(leaseScope ?? "");
-  const repositoryId = Number(match?.[1]);
-  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
-    throw new GitHubPluginSetupError(
-      "GitHub asset upload grant is missing a repository id lease scope.",
-    );
-  }
-  return repositoryId;
-}
-
 async function resolveUserAccount(
   tokens: PluginStoredTokens,
 ): Promise<PluginProviderAccount> {
@@ -1173,9 +1136,6 @@ async function issueInstallationToken(
     ...("repositories" in options
       ? { repositories: options.repositories }
       : {}),
-    ...("repositoryIds" in options
-      ? { repository_ids: options.repositoryIds }
-      : {}),
   };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
@@ -1198,7 +1158,6 @@ async function issueInstallationCredential(
 ): Promise<PluginCredentialResult> {
   const token = await issueInstallationToken(options);
   return createCredentialLease({
-    ...(options.domains ? { domains: options.domains } : {}),
     token: token.token,
     expiresAtMs: token.expiresAtMs,
   });
@@ -1660,13 +1619,7 @@ async function githubGrantForEgress(
     upstreamUrl,
   });
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
-    const repositoryId = githubRepositoryIdFromUploadUrl(upstreamUrl);
-    return grantForAccess(
-      "write",
-      "github.asset-upload",
-      "installation-write",
-      githubRepositoryIdLeaseScope(repositoryId),
-    );
+    return grantForAccess("write", "github.asset-upload", "user-write");
   }
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
@@ -1919,18 +1872,6 @@ export function githubPlugin(
             });
           }
           if (ctx.grant.name === "installation-write") {
-            if (ctx.grant.reason === "github.asset-upload") {
-              const repositoryId = githubRepositoryIdFromLeaseScope(
-                ctx.grant.leaseScope,
-              );
-              return await issueInstallationCredential({
-                appIdEnv,
-                domains: GITHUB_ASSET_UPLOAD_CREDENTIAL_DOMAINS,
-                privateKeyEnv,
-                installationIdEnv,
-                repositoryIds: [repositoryId],
-              });
-            }
             const repository = githubRepositoryFromLeaseScope(
               ctx.grant.leaseScope,
             );
