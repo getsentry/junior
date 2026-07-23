@@ -481,6 +481,7 @@ describe("GitHub-owned issue outcomes", () => {
         expect.objectContaining({
           issueId: "3010",
           state: "closed",
+          stateReason: null,
           updatedAt: new Date("2026-07-03T12:00:00.000Z"),
         }),
       ]);

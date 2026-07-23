@@ -130,9 +130,7 @@ export function normalizeGitHubIssueOutcome(args: {
     repositoryId: String(parsed.repository.id),
     state: parsed.action === "closed" ? "closed" : "open",
     stateReason:
-      parsed.action === "closed"
-        ? (issue.state_reason ?? "completed")
-        : undefined,
+      parsed.action === "closed" ? (issue.state_reason ?? undefined) : undefined,
     updatedAt,
   };
 }
