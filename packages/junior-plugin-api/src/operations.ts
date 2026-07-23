@@ -18,18 +18,6 @@ export interface HeartbeatResult {
   dispatchCount?: number;
 }
 
-export interface StorageMigrationResult {
-  existing: number;
-  migrated: number;
-  missing: number;
-  scanned: number;
-  skipped?: number;
-}
-
-export interface StorageMigrationContext extends PluginContext {
-  state: PluginState;
-}
-
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";
 
 export interface PluginOperationalMetric {

@@ -1,5 +1,4 @@
 import {
-  pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
   slackActorSchema,
@@ -112,13 +111,6 @@ const taskRecordSchema = z
   .object({
     ...taskRecordFields,
     credentialMode: scheduledTaskCredentialModeSchema,
-  })
-  .strict();
-// TODO(v0.101.0): Remove parsing for scheduler task records without credentialMode.
-const legacyTaskRecordSchema = z
-  .object({
-    ...taskRecordFields,
-    credentialSubject: pluginCredentialSubjectSchema.optional(),
   })
   .strict();
 const runRecordSchema = z
@@ -490,25 +482,6 @@ function canFinishRun(
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
   return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
-}
-
-/** Decode pre-credential-mode tasks only for the state-to-SQL migration. */
-function parseLegacyStoredTaskForMigration(
-  value: unknown,
-): ScheduledTask | undefined {
-  const parsed = legacyTaskRecordSchema.safeParse(parseJsonRecord(value));
-  if (!parsed.success) {
-    return undefined;
-  }
-  const {
-    credentialSubject: _credentialSubject,
-    version: _version,
-    ...task
-  } = parsed.data;
-  return {
-    ...task,
-    credentialMode: "system",
-  };
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */
@@ -1714,59 +1687,4 @@ export function createSchedulerOperationalSqlStore(
   db: SchedulerDb,
 ): SchedulerOperationalStore {
   return new SqlSchedulerStore(db);
-}
-
-/** Copy retained scheduler plugin-state records into the scheduler SQL tables. */
-export async function migrateSchedulerStateToSql(args: {
-  db: SchedulerDb;
-  state: PluginState;
-}): Promise<{
-  existing: number;
-  migrated: number;
-  missing: number;
-  scanned: number;
-}> {
-  const store = createSchedulerSqlStore(args.db);
-  const ids = await getIndex(args.state, globalTaskIndexKey());
-  let existing = 0;
-  let migrated = 0;
-  let missing = 0;
-  const migratedTasks: ScheduledTask[] = [];
-
-  for (const id of ids) {
-    const rawTask = await args.state.get(taskKey(id));
-    const task =
-      parseStoredTask(rawTask) ?? parseLegacyStoredTaskForMigration(rawTask);
-    if (!task) {
-      missing += 1;
-      continue;
-    }
-    migratedTasks.push(task);
-    if (await store.getTask(task.id)) {
-      existing += 1;
-      continue;
-    }
-    await store.saveTask(task);
-    migrated += 1;
-  }
-
-  const runs = await listIncompleteRunsForTasksFromState(
-    args.state,
-    migratedTasks,
-  );
-  for (const run of runs) {
-    if (await store.getRun(run.id)) {
-      existing += 1;
-      continue;
-    }
-    await upsertSqlRun(args.db, run);
-    migrated += 1;
-  }
-
-  return {
-    existing,
-    migrated,
-    missing,
-    scanned: ids.length + runs.length,
-  };
 }

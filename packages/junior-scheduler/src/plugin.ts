@@ -13,7 +13,6 @@ import {
 import {
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
-  migrateSchedulerStateToSql,
   type SchedulerDb,
   type SchedulerOperationalStore,
   type SchedulerStore,
@@ -580,12 +579,6 @@ export function createSchedulerPlugin() {
         return buildSchedulerOperationalReport({
           nowMs: ctx.nowMs,
           store: schedulerOperationalStore(ctx),
-        });
-      },
-      async migrateStorage(ctx) {
-        return await migrateSchedulerStateToSql({
-          db: ctx.db as SchedulerDb,
-          state: ctx.state,
         });
       },
     },

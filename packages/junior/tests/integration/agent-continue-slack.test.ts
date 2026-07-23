@@ -1492,9 +1492,6 @@ describe("agent continuation Slack integration", () => {
     expect(JSON.stringify(projection)).toContain("Handoff recovery completed.");
     expect(JSON.stringify(projection)).not.toContain(staleText);
     expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
-    const history =
-      await getConversationEventStore().loadHistory(conversationId);
-    expect(history.some((event) => event.data.type === "rollback")).toBe(false);
   });
 
   it("terminally fails a stranded running session with no resumable boundary", async () => {

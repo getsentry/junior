@@ -72,10 +72,8 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
-// Read-only compatibility for histories written before automatic rollback was
-// removed. Live writers cannot create this event through replaceHistory().
-// TODO(v0.107.0): Remove legacy rollback decoding after retained checkpoint
-// histories have been normalized by the upgrade migration.
+// Read-only compatibility for rollback histories persisted by the 0.107.1
+// bridge. Live writers cannot create this event through replaceHistory().
 const legacyRollbackEventDataSchema = z
   .object({
     type: z.literal("rollback"),

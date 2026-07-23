@@ -1,54 +1,18 @@
 import path from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { createMemoryState } from "@chat-adapter/state-memory";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { describe, expect, it, vi } from "vitest";
 import {
   createSchedulerSqlStore,
   schedulerPlugin,
   type SchedulerDb,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
-import { createSchedulerStore } from "../../../junior-scheduler/src/store";
 import { defineJuniorPlugins } from "@/plugins";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
-import { createPluginState } from "@/chat/plugins/state";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { runPluginStorageMigrations } from "@/cli/upgrade/migrations/plugin-storage";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
-
-const NEON = vi.hoisted(() => ({
-  originalDatabaseUrl: process.env.DATABASE_URL,
-  sql: undefined as
-    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
-    | undefined,
-}));
-
-vi.hoisted(() => {
-  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-});
-
-vi.mock("@/db/executor", () => ({
-  createJuniorSqlExecutor: vi.fn(() => {
-    if (!NEON.sql) {
-      throw new Error("Missing test SQL executor");
-    }
-    return {
-      db: NEON.sql.db.bind(NEON.sql),
-      execute: NEON.sql.execute.bind(NEON.sql),
-      query: NEON.sql.query.bind(NEON.sql),
-      migrate: NEON.sql.migrate.bind(NEON.sql),
-      transaction: NEON.sql.transaction.bind(NEON.sql),
-      withLock: NEON.sql.withLock.bind(NEON.sql),
-      withMigrationLock: NEON.sql.withMigrationLock.bind(NEON.sql),
-      close: async () => {},
-    };
-  }),
-}));
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -101,19 +65,6 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
 }
 
 describe("scheduler SQL plugin storage", () => {
-  afterAll(() => {
-    if (NEON.originalDatabaseUrl === undefined) {
-      delete process.env.DATABASE_URL;
-    } else {
-      process.env.DATABASE_URL = NEON.originalDatabaseUrl;
-    }
-  });
-
-  afterEach(async () => {
-    NEON.sql = undefined;
-    await disconnectStateAdapter();
-  });
-
   it("adopts deployed scheduler schema state into its Drizzle journal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -255,13 +206,19 @@ WHERE schemaname = 'drizzle'
 ORDER BY tablename
 `);
       expect(migrationTables).toHaveLength(2);
+      const migrationLock = vi.spyOn(fixture.sql, "withMigrationLock");
+      const summaries: string[] = [];
       await expect(
-        migratePluginSchemas(fixture.sql, [...roots].reverse()),
+        migratePluginSchemas(fixture.sql, [...roots].reverse(), {
+          onPluginMigration: ({ pluginName }) => summaries.push(pluginName),
+        }),
       ).resolves.toEqual({
         existing: migrationCount,
         migrated: 0,
         scanned: migrationCount,
       });
+      expect(migrationLock).not.toHaveBeenCalled();
+      expect(summaries).toEqual(["memory", "scheduler"]);
     } finally {
       await fixture.close();
     }
@@ -499,219 +456,37 @@ ORDER BY tablename
     }
   }, 15_000);
 
-  it("migrates existing scheduler plugin state into SQL idempotently", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchedulerSchema(fixture);
-      const db = fixture.sql.db() as unknown as SchedulerDb;
-      const stateStore = createSchedulerStore(
-        createPluginState("scheduler", stateAdapter),
-      );
-      const task = createTask({ id: "sched_state_sql" });
-      await stateStore.saveTask(task);
-      const run = await stateStore.claimDueRun({ nowMs: TEST_NOW_MS });
-      expect(run).toBeDefined();
-
-      const context = {
-        db,
-        io: { info: () => {} },
-        pluginSet: defineJuniorPlugins([schedulerPlugin()]),
-        stateAdapter,
-      };
-
-      await expect(runPluginStorageMigrations(context)).resolves.toEqual({
-        existing: 0,
-        migrated: 2,
-        missing: 0,
-        scanned: 2,
-      });
-      await expect(runPluginStorageMigrations(context)).resolves.toEqual({
-        existing: 2,
-        migrated: 0,
-        missing: 0,
-        scanned: 2,
-      });
-
-      const sqlStore = createSchedulerSqlStore(db);
-      await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
-        id: task.id,
-      });
-      await expect(sqlStore.getRun(run!.id)).resolves.toMatchObject({
-        id: run!.id,
-        taskId: task.id,
-      });
-    } finally {
-      await stateAdapter.disconnect();
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("skips malformed scheduler state records during SQL storage migration", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchedulerSchema(fixture);
-      const db = fixture.sql.db() as unknown as SchedulerDb;
-      const state = createPluginState("scheduler", stateAdapter);
-      const task = createTask({ id: "sched_state_sql_valid_after_bad" });
-      const { credentialMode: _credentialMode, ...legacyTask } = task;
-      const badRunId = `${task.id}:${TEST_RUN_AT_MS}`;
-      await state.set(
-        "junior:scheduler:tasks",
-        ["sched_state_sql_bad", task.id],
-        5 * 60 * 1000,
-      );
-      await state.set(
-        `junior:scheduler:task:${task.id}`,
-        {
-          ...legacyTask,
-          credentialSubject: {
-            type: "user",
-            userId: "U123",
-            allowedWhen: "private-direct-conversation",
-          },
-        },
-        5 * 60 * 1000,
-      );
-      await state.set(
-        "junior:scheduler:task:sched_state_sql_bad",
-        {
-          ...task,
-          id: "sched_state_sql_bad",
-          task: { text: 123 },
-        },
-        5 * 60 * 1000,
-      );
-      await state.set(
-        `junior:scheduler:active:${task.id}`,
-        {
-          claimedAtMs: TEST_NOW_MS,
-          runId: badRunId,
-          scheduledForMs: TEST_RUN_AT_MS,
-        },
-        5 * 60 * 1000,
-      );
-      await state.set(
-        `junior:scheduler:run:${badRunId}`,
-        { id: badRunId },
-        5 * 60 * 1000,
-      );
-
-      await expect(
-        runPluginStorageMigrations({
-          db,
-          io: { info: () => {} },
-          pluginSet: defineJuniorPlugins([schedulerPlugin()]),
-          stateAdapter,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 1,
-        missing: 1,
-        scanned: 2,
-      });
-
-      const sqlStore = createSchedulerSqlStore(db);
-      await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
-        credentialMode: "system",
-        id: task.id,
-      });
-      await expect(sqlStore.getTask("sched_state_sql_bad")).resolves.toBe(
-        undefined,
-      );
-      await expect(sqlStore.getRun(badRunId)).resolves.toBe(undefined);
-    } finally {
-      await stateAdapter.disconnect();
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("does not load scheduler storage migration from package-only plugin set", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchedulerSchema(fixture);
-      const db = fixture.sql.db() as unknown as SchedulerDb;
-      const stateStore = createSchedulerStore(
-        createPluginState("scheduler", stateAdapter),
-      );
-      const task = createTask({ id: "sched_package_config" });
-      await stateStore.saveTask(task);
-      const run = await stateStore.claimDueRun({ nowMs: TEST_NOW_MS });
-      expect(run).toBeDefined();
-
-      await expect(
-        runPluginStorageMigrations({
-          db,
-          io: { info: () => {} },
-          pluginSet: defineJuniorPlugins(["@sentry/junior-scheduler"]),
-          stateAdapter,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 0,
-      });
-
-      const sqlStore = createSchedulerSqlStore(db);
-      await expect(sqlStore.getTask(task.id)).resolves.toBe(undefined);
-      await expect(sqlStore.getRun(run!.id)).resolves.toBe(undefined);
-    } finally {
-      await stateAdapter.disconnect();
-      await fixture.close();
-    }
-  }, 15_000);
-
   it("does not apply scheduler SQL migrations from package-only config", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    NEON.sql = fixture.sql;
 
     try {
       await expect(
         migratePluginsToSql({
-          io: { info: () => {} },
           pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
-          stateAdapter,
+          sqlExecutor: fixture.sql,
         }),
       ).resolves.toEqual({
         existing: 0,
         migrated: 0,
-        missing: 0,
         scanned: 0,
       });
     } finally {
-      await stateAdapter.disconnect();
       await fixture.close();
     }
   });
 
   it("applies scheduler SQL migrations from registration-only config", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    NEON.sql = fixture.sql;
 
     try {
       await expect(
         migratePluginsToSql({
-          io: { info: () => {} },
           pluginSet: defineJuniorPlugins([schedulerPlugin()]),
-          stateAdapter,
+          sqlExecutor: fixture.sql,
         }),
       ).resolves.toEqual({
         existing: 0,
         migrated: 2,
-        missing: 0,
         scanned: 2,
       });
 
@@ -723,35 +498,28 @@ ORDER BY tablename
         id: task.id,
       });
     } finally {
-      await stateAdapter.disconnect();
       await fixture.close();
     }
   });
 
   it("does not duplicate scheduler SQL migrations for explicit registrations", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    NEON.sql = fixture.sql;
 
     try {
       await expect(
         migratePluginsToSql({
-          io: { info: () => {} },
           pluginSet: defineJuniorPlugins([
             "@sentry/junior-scheduler",
             schedulerPlugin(),
           ]),
-          stateAdapter,
+          sqlExecutor: fixture.sql,
         }),
       ).resolves.toEqual({
         existing: 0,
         migrated: 2,
-        missing: 0,
         scanned: 2,
       });
     } finally {
-      await stateAdapter.disconnect();
       await fixture.close();
     }
   });
@@ -857,52 +625,6 @@ INSERT INTO junior_scheduler_runs (
         id: `${task.id}:${TEST_RUN_AT_MS}`,
         taskId: task.id,
       });
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("passes database access to plugin storage migrations", async () => {
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      const db = fixture.sql.db() as unknown as SchedulerDb;
-      let receivedDb: unknown;
-      const plugin = defineJuniorPlugin({
-        manifest: {
-          name: "stateless",
-          displayName: "Stateless",
-          description: "Storage migration with database access",
-        },
-        hooks: {
-          migrateStorage(ctx) {
-            receivedDb = ctx.db;
-            return {
-              existing: 0,
-              migrated: 0,
-              missing: 0,
-              scanned: 1,
-            };
-          },
-        },
-      });
-
-      await expect(
-        runPluginStorageMigrations({
-          db,
-          io: { info: () => {} },
-          pluginSet: defineJuniorPlugins([plugin]),
-          stateAdapter,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 1,
-      });
-      expect(receivedDb).toBe(db);
     } finally {
       await fixture.close();
     }

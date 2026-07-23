@@ -6,21 +6,15 @@ import {
   defineJuniorPlugins,
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
-  type JuniorPluginSet,
 } from "@/plugins";
-import type { MigrationContext } from "../types";
-
-interface ResolvedUpgradePlugins {
-  pluginCatalogConfig?: PluginCatalogConfig;
-  pluginSet?: JuniorPluginSet;
-}
+import type { UpgradeContext } from "../types";
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
 function baseCatalogConfig(
-  context: MigrationContext,
+  context: UpgradeContext,
 ): PluginCatalogConfig | undefined {
   return (
     context.pluginCatalogConfig ??
@@ -75,7 +69,7 @@ function mergeCatalogConfig(
 }
 
 function packageNamesFromContext(
-  context: MigrationContext,
+  context: UpgradeContext,
   catalog: PluginCatalogConfig | undefined,
 ): string[] {
   return unique([
@@ -84,10 +78,10 @@ function packageNamesFromContext(
   ]);
 }
 
-/** Resolve one effective plugin set and catalog for all upgrade migrations. */
-export async function resolveUpgradePlugins(
-  context: MigrationContext,
-): Promise<ResolvedUpgradePlugins> {
+/** Resolve the plugin catalog used by SQL upgrade migrations. */
+export async function resolveUpgradePluginCatalog(
+  context: UpgradeContext,
+): Promise<PluginCatalogConfig | undefined> {
   const catalog = baseCatalogConfig(context);
   const packageNames = packageNamesFromContext(context, catalog);
   const registrations = context.pluginSet?.registrations ?? [];
@@ -106,11 +100,8 @@ export async function resolveUpgradePlugins(
         )
       : undefined;
 
-  return {
-    pluginCatalogConfig: mergeCatalogConfig(
-      catalog,
-      pluginCatalogConfigFromPluginSet(pluginSet),
-    ),
-    ...(pluginSet ? { pluginSet } : {}),
-  };
+  return mergeCatalogConfig(
+    catalog,
+    pluginCatalogConfigFromPluginSet(pluginSet),
+  );
 }

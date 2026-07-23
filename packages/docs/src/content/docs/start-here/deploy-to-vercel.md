@@ -54,15 +54,21 @@ The scaffolded `package.json` includes the production build script:
 }
 ```
 
-Keep the Vercel build command limited to snapshot preparation and the app build:
+Run database migrations before the app build:
 
 ```bash
-pnpm build
+pnpm exec junior upgrade && pnpm build
 ```
 
-`junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. Run `junior upgrade` separately from the build. For an incompatible state cutover, first block new ingress and enqueueing, let the previous deployment drain existing work, verify no resumable turns remain, and then stop its workers, queue consumers, and heartbeats before running the upgrade. A Vercel build can overlap the active deployment, so it cannot enforce that sequence.
+`junior upgrade` applies the idempotent core and plugin SQL migrations, while
+`junior snapshot create` inside `pnpm build` prepares sandbox runtime
+dependencies declared by enabled plugins. Existing pre-Drizzle deployments
+must complete the bridge-release procedure below before this build command can
+succeed.
 
-For an existing deployment, follow the full drain, upgrade, verification, and restart procedure in [junior upgrade](/cli/upgrade/) before promoting the new release.
+For an existing pre-Drizzle deployment, follow the bridge-release drain,
+upgrade, verification, and restart procedure in
+[junior upgrade](/cli/upgrade/) before promoting the new release.
 
 ## Enable Junior's Nitro deployment module
 

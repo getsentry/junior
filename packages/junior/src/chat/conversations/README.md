@@ -37,11 +37,8 @@ Normal execution appends `agent_step` events. `compaction` and `handoff` are
 the only live events that replace active agent history. Each stores the exact
 replacement history; later `agent_step` events append to it. The internal
 `history_version` column makes loading that active history efficient. There is
-no initial-history event.
-
-`rollback` is not a live operation. The reader recognizes the legacy event
-only so conversations written by older deployed code remain recoverable during
-the migration window.
+no initial-history event. Rollback events written by the required `0.107.1`
+bridge remain read-compatible but are never written by the current runtime.
 
 Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
 session record. It is removed before SQL history is written and restored for an
@@ -89,12 +86,13 @@ Follow `../../../../../policies/data-redaction.md` and
 
 ## Deployment Safety
 
-- Stop old workers before the event-table hard cutover.
-- Run `junior upgrade` before serving retained pre-cutover conversations.
-- Drain running or resumable turns before resequencing migrated events.
-- Legacy Redis and pre-cutover SQL records are migration inputs only; live
-  workers restore history exclusively from conversation events.
-- Purge and migration jobs operate in bounded, retry-safe batches.
+- Existing pre-Drizzle deployments must drain work, stop old workers, and
+  complete the `0.107.1` bridge upgrade before installing a later release.
+- Keep old workers stopped between the bridge upgrade and the later deployment
+  so they cannot write legacy state after it has been imported.
+- Current `junior upgrade` runs only core and enabled-plugin Drizzle SQL
+  migrations. Live workers restore history exclusively from conversation
+  events.
 
 Representative coverage lives in the conversation storage component tests and
 `packages/junior/tests/integration/conversation-sql.test.ts`.

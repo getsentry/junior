@@ -30,7 +30,7 @@ safe.
 ## Hooks
 
 Plugins may contribute tools, prompt messages, lifecycle work, operational
-reports, migrations, and other typed hook surfaces exported by this package.
+reports, and other typed hook surfaces exported by this package.
 
 - Hook context carries the active source, actor, conversation, plugin metadata,
   database, logging, and only the host capabilities required by that hook.

@@ -173,6 +173,33 @@ describe("projectConversationEvents", () => {
     expect(projection.seqs).toEqual([4, 10, 11]);
   });
 
+  it("projects rollback history persisted by the bridge release", () => {
+    const retained = {
+      role: "user",
+      content: [{ type: "text", text: "Retained bridge history" }],
+      timestamp: 2_000,
+    };
+    const rollback = decodeStoredConversationEvent({
+      schemaVersion: 1,
+      seq: 12,
+      historyVersion: 2,
+      createdAtMs: 1_012,
+      type: "rollback",
+      payload: {
+        modelProfile: "coding",
+        modelId: "openai/gpt-5.4",
+        replacementHistory: [{ message: retained, sourceEventSeq: 4 }],
+      },
+    });
+
+    expect(projectConversationEvents([rollback])).toMatchObject({
+      messages: [retained],
+      modelId: "openai/gpt-5.4",
+      modelProfile: "coding",
+      seqs: [4],
+    });
+  });
+
   it("validates opaque durable messages only at the Pi boundary", () => {
     const invalid = {
       schemaVersion: 1,

@@ -434,12 +434,6 @@ describe("conversation report event projection", () => {
           triggeringToolCallId: "private-handoff-tool-call-id",
           replacementHistory: [],
         }),
-        event(6, {
-          type: "rollback",
-          modelProfile: "standard",
-          modelId: "private-rollback-model-id",
-          replacementHistory: [],
-        }),
         event(7, {
           type: "turn_failed",
           turnId: "turn-1",
@@ -534,7 +528,6 @@ describe("conversation report event projection", () => {
       "private-input-id",
       "private-model-id",
       "private-handoff-model-id",
-      "private-rollback-model-id",
       "subagent-invocation-1",
       "private-child-model-id",
       "private-reasoning-level",

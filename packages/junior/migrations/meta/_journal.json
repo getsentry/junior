@@ -43,6 +43,13 @@
       "when": 1784137322421,
       "tag": "0005_conversation_events",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784780915306,
+      "tag": "0006_drop_legacy_conversation_messages",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 
 interface PluginMigrationRoot {
   /** Absolute path to the plugin's Drizzle migrations directory. */
@@ -12,6 +13,14 @@ interface PluginMigrationResult {
   existing: number;
   migrated: number;
   scanned: number;
+}
+
+export interface PluginMigrationSummary extends PluginMigrationResult {
+  pluginName: string;
+}
+
+interface PluginMigrationOptions {
+  onPluginMigration?: (summary: PluginMigrationSummary) => void;
 }
 
 const LEGACY_SCHEDULER_BASELINE_HASH =
@@ -34,22 +43,22 @@ async function appliedMigrationTime(
   executor: JuniorSqlMigrationExecutor,
   table: string,
 ): Promise<number | undefined> {
-  const [exists] = await executor.query<{ tableName: string | null }>(
-    `SELECT to_regclass($1)::text AS "tableName"`,
-    [`drizzle.${table}`],
-  );
-  if (!exists?.tableName) {
-    return undefined;
+  try {
+    const [row] = await executor.query<{ createdAt: string | null }>(
+      `SELECT created_at::text AS "createdAt"
+       FROM drizzle.${table}
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    );
+    return row?.createdAt === null || row?.createdAt === undefined
+      ? undefined
+      : Number(row.createdAt);
+  } catch (error) {
+    if (isPostgresErrorCode(error, "42P01")) {
+      return undefined;
+    }
+    throw error;
   }
-  const [row] = await executor.query<{ createdAt: string | null }>(
-    `SELECT created_at::text AS "createdAt"
-     FROM drizzle.${table}
-     ORDER BY created_at DESC
-     LIMIT 1`,
-  );
-  return row?.createdAt === null || row?.createdAt === undefined
-    ? undefined
-    : Number(row.createdAt);
 }
 
 async function legacyMigrationHashes(
@@ -143,6 +152,7 @@ function appliedCount(
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
   roots: readonly PluginMigrationRoot[],
+  options: PluginMigrationOptions = {},
 ): Promise<PluginMigrationResult> {
   const result: PluginMigrationResult = {
     existing: 0,
@@ -154,8 +164,25 @@ export async function migratePluginSchemas(
   );
   for (const root of orderedRoots) {
     const migrations = readMigrationFiles({ migrationsFolder: root.dir });
+    if (migrations.length === 0) {
+      continue;
+    }
     const table = migrationTable(root.pluginName);
-    await executor.withMigrationLock(table, async () => {
+    const initialTime = await appliedMigrationTime(executor, table);
+    const initialExisting = appliedCount(migrations, initialTime);
+    if (initialExisting === migrations.length) {
+      const summary = {
+        existing: initialExisting,
+        migrated: 0,
+        pluginName: root.pluginName,
+        scanned: migrations.length,
+      };
+      result.scanned += summary.scanned;
+      result.existing += summary.existing;
+      options.onPluginMigration?.(summary);
+      continue;
+    }
+    const summary = await executor.withMigrationLock(table, async () => {
       const currentTime =
         (await appliedMigrationTime(executor, table)) ??
         (await adoptLegacyMigrationState({
@@ -165,14 +192,23 @@ export async function migratePluginSchemas(
           table,
         }));
       const existing = appliedCount(migrations, currentTime);
-      await executor.migrate({
-        migrationsFolder: root.dir,
-        migrationsTable: table,
-      });
-      result.scanned += migrations.length;
-      result.existing += existing;
-      result.migrated += migrations.length - existing;
+      if (existing < migrations.length) {
+        await executor.migrate({
+          migrationsFolder: root.dir,
+          migrationsTable: table,
+        });
+      }
+      return {
+        existing,
+        migrated: migrations.length - existing,
+        pluginName: root.pluginName,
+        scanned: migrations.length,
+      };
     });
+    result.scanned += summary.scanned;
+    result.existing += summary.existing;
+    result.migrated += summary.migrated;
+    options.onPluginMigration?.(summary);
   }
   return result;
 }
