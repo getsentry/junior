@@ -239,20 +239,16 @@ function ConversationStats(props: {
           key: "location",
         }
       : undefined,
-    !props.detail || turnSummary
+    durationLabel !== "none"
       ? {
           content: (
-            <TurnsMetric loading={!props.detail} summary={turnSummary} />
+            <DurationMetric
+              endedAt={props.conversation.lastSeenAt}
+              label={durationLabel}
+              startedAt={props.conversation.startedAt}
+            />
           ),
-          key: "turns",
-        }
-      : undefined,
-    !props.detail || (toolSummary && toolSummary.total > 0)
-      ? {
-          content: (
-            <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
-          ),
-          key: "tools",
+          key: "duration",
         }
       : undefined,
     tokenSummary
@@ -277,16 +273,20 @@ function ConversationStats(props: {
           key: "cost",
         }
       : undefined,
-    durationLabel !== "none"
+    !props.detail || turnSummary
       ? {
           content: (
-            <DurationMetric
-              endedAt={props.conversation.lastSeenAt}
-              label={durationLabel}
-              startedAt={props.conversation.startedAt}
-            />
+            <TurnsMetric loading={!props.detail} summary={turnSummary} />
           ),
-          key: "duration",
+          key: "turns",
+        }
+      : undefined,
+    !props.detail || (toolSummary && toolSummary.total > 0)
+      ? {
+          content: (
+            <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
+          ),
+          key: "tools",
         }
       : undefined,
   ];
