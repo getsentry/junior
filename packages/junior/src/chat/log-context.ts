@@ -29,16 +29,11 @@ export interface LogContext {
 export const logContextStorage = new AsyncLocalStorage<LogAttributes>();
 
 function definedAttributes(
-  attributes: Record<string, unknown>,
+  attributes: Record<string, string | undefined>,
 ): LogAttributes {
   return Object.fromEntries(
     Object.entries(attributes).filter(
-      (entry): entry is [string, LogAttributeValue] =>
-        typeof entry[1] === "string" ||
-        typeof entry[1] === "number" ||
-        typeof entry[1] === "boolean" ||
-        (Array.isArray(entry[1]) &&
-          entry[1].every((value) => typeof value === "string")),
+      (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
 }

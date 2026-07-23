@@ -189,44 +189,48 @@ export async function executeAgentRun(
   const credentialActor = request.routing.credentialContext?.actor;
   const actor = actorFromRouting(request.routing);
   const userActor = actor && "userId" in actor ? actor : undefined;
-  return withLogContext(
-    {
-      conversationId: request.conversationId,
-      platform: request.routing.source.platform,
-      messageConversationId:
-        request.routing.source.platform === "slack"
-          ? request.conversationId
-          : request.routing.source.conversationId,
-      destinationName:
-        request.routing.destination.platform === "slack"
-          ? request.routing.destination.channelId
-          : request.routing.destination.conversationId,
-      userId: userActor?.userId,
-      userName: userActor?.userName,
-      userEmail: userActor?.email,
-      runId: request.runId,
-      actorType: credentialActor
-        ? "type" in credentialActor
-          ? credentialActor.type
-          : "system"
-        : undefined,
-      actorId: credentialActor
-        ? "type" in credentialActor
-          ? credentialActor.userId
-          : credentialActor.name
-        : undefined,
-      assistantUserName: botConfig.userName,
-    },
-    () =>
-      runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
-        executeAgentRunInPrivacyContext(request, conversationPrivacy),
+  const runLogContext: LogContext = {
+    conversationId: request.conversationId,
+    platform: request.routing.source.platform,
+    messageConversationId:
+      request.routing.source.platform === "slack"
+        ? request.conversationId
+        : request.routing.source.conversationId,
+    destinationName:
+      request.routing.destination.platform === "slack"
+        ? request.routing.destination.channelId
+        : request.routing.destination.conversationId,
+    userId: userActor?.userId,
+    userName: userActor?.userName,
+    userEmail: userActor?.email,
+    runId: request.runId,
+    actorType: credentialActor
+      ? "type" in credentialActor
+        ? credentialActor.type
+        : "system"
+      : undefined,
+    actorId: credentialActor
+      ? "type" in credentialActor
+        ? credentialActor.userId
+        : credentialActor.name
+      : undefined,
+    assistantUserName: botConfig.userName,
+  };
+  return withLogContext(runLogContext, () =>
+    runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
+      executeAgentRunInPrivacyContext(
+        request,
+        conversationPrivacy,
+        runLogContext,
       ),
+    ),
   );
 }
 
 async function executeAgentRunInPrivacyContext(
   request: AgentRunRequest,
   conversationPrivacy: ConversationPrivacy | undefined,
+  runLogContext: LogContext,
 ): Promise<AgentRunOutcome> {
   const { conversationId, input, routing, runId, turnId } = request;
   const policy = request.policy ?? {};
@@ -617,22 +621,7 @@ async function executeAgentRunInPrivacyContext(
     };
 
     setTags({
-      conversationId,
-      platform: runSource.platform,
-      messageConversationId:
-        runSource.platform === "slack"
-          ? conversationId
-          : runSource.conversationId,
-      destinationName:
-        routing.destination.platform === "slack"
-          ? routing.destination.channelId
-          : routing.destination.conversationId,
-      userId: actor && "userId" in actor ? actor.userId : undefined,
-      userName: actor && "userId" in actor ? actor.userName : undefined,
-      userEmail: actor && "userId" in actor ? actor.email : undefined,
-      runId,
-      ...credentialActorLogContext,
-      assistantUserName: botConfig.userName,
+      ...runLogContext,
       modelId: activeModelId,
     });
 
