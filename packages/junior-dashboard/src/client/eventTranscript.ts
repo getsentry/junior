@@ -164,7 +164,11 @@ export function conversationTranscriptMessages(
                 ? {
                     type: data.type,
                     createdAt: event.createdAt,
+                    modelId: data.modelId,
                     modelProfile: data.modelProfile,
+                    ...(data.reasoningLevel
+                      ? { reasoningLevel: data.reasoningLevel }
+                      : {}),
                   }
                 : { type: data.type, createdAt: event.createdAt },
           },

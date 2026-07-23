@@ -551,13 +551,14 @@ async function executeAgentRunInPrivacyContext(
         ? standardPhaseUsage
         : undefined;
       const selectedProfile = profileConfig(botConfig, args.profile);
+      const handoffReasoningLevel =
+        selectedProfile.reasoningLevel ?? turnRoute!.reasoningLevel;
       const target = {
         modelId: selectedProfile.modelId,
         modelProfile: args.profile,
+        reasoningLevel: handoffReasoningLevel,
       };
       const handoffModel = resolveGatewayModel(target.modelId);
-      const handoffReasoningLevel =
-        selectedProfile.reasoningLevel ?? turnRoute!.reasoningLevel;
       const handoffThinkingLevel = toPiReasoningLevel(handoffReasoningLevel);
       void (async () => {
         await observers.onStatus?.({ text: "Switching models" });

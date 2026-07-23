@@ -493,6 +493,8 @@ describe("conversation report event projection", () => {
       {
         type: "handoff",
         modelProfile: "fast",
+        modelId: "private-handoff-model-id",
+        reasoningLevel: "high",
         triggeringToolCallId: "private-handoff-tool-call-id",
       },
       {

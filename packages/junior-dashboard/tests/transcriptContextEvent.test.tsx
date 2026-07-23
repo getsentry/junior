@@ -43,7 +43,9 @@ describe("transcript context events", () => {
             event: {
               type: "handoff",
               createdAt: "2026-01-01T00:00:04.000Z",
+              modelId: "openai/gpt-5.4",
               modelProfile: "coding",
+              reasoningLevel: "high",
             },
           }}
         />,
@@ -51,6 +53,8 @@ describe("transcript context events", () => {
     );
 
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Execution continued with the coding profile.");
+    expect(html).toContain(
+      "Execution continued with the coding profile (openai/gpt-5.4, high).",
+    );
   });
 });

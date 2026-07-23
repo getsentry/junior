@@ -197,6 +197,7 @@ describe("canonical event transcript reduction", () => {
           event(5, "2026-01-01T00:00:05.000Z", {
             type: "handoff",
             modelProfile: "fast",
+            modelId: "openai/gpt-5-mini",
             triggeringToolCallId: "handoff-correlated",
           }),
           event(6, "2026-01-01T00:00:06.000Z", {
@@ -207,6 +208,7 @@ describe("canonical event transcript reduction", () => {
           event(7, "2026-01-01T00:00:07.000Z", {
             type: "handoff",
             modelProfile: "fast",
+            modelId: "openai/gpt-5-mini",
           }),
           event(8, "2026-01-01T00:00:08.000Z", {
             type: "tool_calls",
@@ -263,6 +265,7 @@ describe("canonical event transcript reduction", () => {
         event(1, "2026-01-01T00:00:01.000Z", {
           type: "handoff",
           modelProfile: "fast",
+          modelId: "openai/gpt-5-mini",
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "subagent_started",

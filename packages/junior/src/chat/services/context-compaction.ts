@@ -89,6 +89,7 @@ interface HandoffContextArgs {
   target: {
     modelId: string;
     modelProfile: ModelProfile;
+    reasoningLevel?: string;
   };
 }
 
@@ -537,6 +538,9 @@ export async function compactContextForHandoff(
       type: "handoff",
       modelProfile: args.target.modelProfile,
       modelId: args.target.modelId,
+      ...(args.target.reasoningLevel
+        ? { reasoningLevel: args.target.reasoningLevel }
+        : {}),
       ...(args.triggeringToolCallId
         ? { triggeringToolCallId: args.triggeringToolCallId }
         : {}),

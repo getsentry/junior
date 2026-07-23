@@ -324,7 +324,11 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
-        event(1, { type: "handoff", modelProfile: "fast" }),
+        event(1, {
+          type: "handoff",
+          modelProfile: "fast",
+          modelId: "openai/gpt-5-mini",
+        }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",

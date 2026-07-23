@@ -374,6 +374,8 @@ describe("dashboard canonical event reporting", () => {
       {
         type: "handoff",
         modelProfile: "fast",
+        modelId: "private-handoff-model-id",
+        reasoningLevel: "high",
         triggeringToolCallId: `${conversationId}:handoff-tool-call`,
       },
     ]);
@@ -383,7 +385,7 @@ describe("dashboard canonical event reporting", () => {
       "private model-only duplicate",
     );
     expect(JSON.stringify(detail)).not.toContain("private-model-id");
-    expect(JSON.stringify(detail)).not.toContain("private-handoff-model-id");
+    expect(JSON.stringify(detail)).toContain("private-handoff-model-id");
     for (const removed of [
       "activity",
       "contextEvents",
