@@ -15,6 +15,9 @@ source of truth.
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
+Schema-v1 mailbox entries without `delivery` migrate to `auto`. Schema-v2
+entries require a valid delivery mode and reject invalid pending work.
+
 `state.ts`, `store.ts`, and their runtime schemas define the persisted shapes.
 
 ## Execution
@@ -34,6 +37,12 @@ source of truth.
 New messages that arrive during a run remain durable. Explicit `interrupt` work
 is eligible at the next safe boundary, explicit `defer` work waits for the next
 turn, and `auto` work is classified by runtime policy.
+
+Slack mentions and assistant-thread user messages use `interrupt`, subscribed
+resource events use `defer`, and other subscribed messages use `auto`.
+
+One lease-bound drain removes disjoint `ack` ids and retains disjoint `defer`
+ids with `delivery: "defer"`.
 
 ## Queue And Lease Rules
 

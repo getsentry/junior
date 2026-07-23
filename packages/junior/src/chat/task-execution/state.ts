@@ -9,7 +9,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
@@ -21,7 +22,7 @@ import {
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 const CONVERSATION_PREFIX = "junior:conversation";
-const CONVERSATION_SCHEMA_VERSION = 1;
+const CONVERSATION_SCHEMA_VERSION = 2;
 const CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_INDEX_LOCK_TTL_MS = 10_000;
 const CONVERSATION_INDEX_LOCK_WAIT_MS = 2_000;
@@ -60,14 +61,17 @@ export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 export const CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS = 5;
 
-export type Source =
-  | "api"
-  | "internal"
-  | "local"
-  | "plugin"
-  | "resource_event"
-  | "scheduler"
-  | "slack";
+const inboundMessageSourceSchema = z.enum([
+  "api",
+  "internal",
+  "local",
+  "plugin",
+  "resource_event",
+  "scheduler",
+  "slack",
+]);
+
+export type Source = z.output<typeof inboundMessageSourceSchema>;
 
 export type ExecutionStatus =
   | "awaiting_resume"
@@ -76,32 +80,54 @@ export type ExecutionStatus =
   | "pending"
   | "running";
 
-export interface AgentInput {
-  attachments?: unknown[];
-  authorId?: string;
-  metadata?: Record<string, unknown>;
-  text: string;
-}
+const agentInputSchema = z
+  .object({
+    attachments: z.array(z.unknown()).optional(),
+    authorId: z.string().min(1).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    text: z.string(),
+  })
+  .strict()
+  .refine((input) => input.text.trim() || input.attachments?.length, {
+    message: "agent input requires text or attachments",
+  });
 
-export type InboundMessageDelivery = "auto" | "defer" | "interrupt";
+export type AgentInput = z.output<typeof agentInputSchema>;
 
+/** Durable delivery modes for pending inbound mailbox work. */
+export const inboundMessageDeliverySchema = z.enum([
+  "auto",
+  "defer",
+  "interrupt",
+]);
+
+export type InboundMessageDelivery = z.output<
+  typeof inboundMessageDeliverySchema
+>;
+
+/** Mailbox ids to remove or retain as deferred in one lease-bound drain. */
 export interface MailboxDrainResult {
   ack: readonly string[];
   defer: readonly string[];
 }
 
-export interface InboundMessage {
-  attemptCount?: number;
-  conversationId: string;
-  createdAtMs: number;
-  destination: Destination;
-  inboundMessageId: string;
-  injectedAtMs?: number;
-  input: AgentInput;
-  receivedAtMs: number;
-  delivery: InboundMessageDelivery;
-  source: Source;
-}
+/** Canonical durable mailbox entry owned by task execution. */
+export const inboundMessageSchema = z
+  .object({
+    attemptCount: z.number().finite().optional(),
+    conversationId: z.string().refine((value) => value.trim().length > 0),
+    createdAtMs: z.number().finite(),
+    delivery: inboundMessageDeliverySchema,
+    destination: destinationSchema,
+    inboundMessageId: z.string().refine((value) => value.trim().length > 0),
+    injectedAtMs: z.number().finite().optional(),
+    input: agentInputSchema,
+    receivedAtMs: z.number().finite(),
+    source: inboundMessageSourceSchema,
+  })
+  .strict();
+
+export type InboundMessage = z.output<typeof inboundMessageSchema>;
 
 export interface Lease {
   acquiredAtMs: number;
@@ -130,7 +156,7 @@ export interface Conversation {
   execution: ConversationExecution;
   lastActivityAtMs: number;
   actor?: StoredSlackActor;
-  schemaVersion: 1;
+  schemaVersion: 2;
   source?: Source;
   title?: string;
   updatedAtMs: number;
@@ -244,13 +270,18 @@ function upgradedPendingMessage(
   stored: InboundMessage,
   duplicate: InboundMessage,
 ): InboundMessage {
-  if (
-    !inputHasAttachments(duplicate.input) ||
-    inputHasAttachments(stored.input)
-  ) {
+  const input =
+    inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
+      ? duplicate.input
+      : stored.input;
+  const delivery =
+    stored.delivery === "auto" && duplicate.delivery === "interrupt"
+      ? "interrupt"
+      : stored.delivery;
+  if (input === stored.input && delivery === stored.delivery) {
     return stored;
   }
-  return { ...stored, input: duplicate.input };
+  return { ...stored, delivery, input };
 }
 
 function compareIndexDescending(
@@ -278,18 +309,8 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function normalizeSource(value: unknown): Source | undefined {
-  if (
-    value === "api" ||
-    value === "internal" ||
-    value === "local" ||
-    value === "plugin" ||
-    value === "resource_event" ||
-    value === "scheduler" ||
-    value === "slack"
-  ) {
-    return value;
-  }
-  return undefined;
+  const parsed = inboundMessageSourceSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
@@ -305,81 +326,17 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
   return undefined;
 }
 
-function normalizeMetadata(
+function normalizeMessage(
   value: unknown,
-): Record<string, unknown> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  return value;
-}
-
-function normalizeInput(value: unknown): AgentInput | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const text = typeof value.text === "string" ? value.text : undefined;
-  const attachments = Array.isArray(value.attachments)
-    ? [...value.attachments]
-    : undefined;
-  if (text === undefined || (!text.trim() && !attachments?.length)) {
-    return undefined;
-  }
-  return {
-    text,
-    authorId: toOptionalString(value.authorId),
-    attachments,
-    metadata: normalizeMetadata(value.metadata),
-  };
-}
-
-function normalizeInboundMessageDelivery(
-  value: unknown,
-): InboundMessageDelivery | undefined {
-  if (value === undefined) {
-    return "auto";
-  }
-  return value === "auto" || value === "defer" || value === "interrupt"
-    ? value
-    : undefined;
-}
-
-function normalizeMessage(value: unknown): InboundMessage | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const conversationId = toOptionalString(value.conversationId);
-  const inboundMessageId = toOptionalString(value.inboundMessageId);
-  const source = normalizeSource(value.source);
-  const destination = parseDestination(value.destination);
-  const createdAtMs = toOptionalNumber(value.createdAtMs);
-  const receivedAtMs = toOptionalNumber(value.receivedAtMs);
-  const input = normalizeInput(value.input);
-  const delivery = normalizeInboundMessageDelivery(value.delivery);
-  if (
-    !conversationId ||
-    !destination ||
-    !inboundMessageId ||
-    !source ||
-    typeof createdAtMs !== "number" ||
-    typeof receivedAtMs !== "number" ||
-    !input ||
-    !delivery
-  ) {
-    return undefined;
-  }
-  return {
-    conversationId,
-    destination,
-    inboundMessageId,
-    source,
-    createdAtMs,
-    receivedAtMs,
-    input,
-    delivery,
-    injectedAtMs: toOptionalNumber(value.injectedAtMs),
-    attemptCount: toOptionalNumber(value.attemptCount),
-  };
+  schemaVersion: 1 | 2,
+): InboundMessage | undefined {
+  // TODO(v0.110.0): Remove schema-v1 mailbox delivery migration after old records expire.
+  const candidate =
+    schemaVersion === 1 && isRecord(value) && value.delivery === undefined
+      ? { ...value, delivery: "auto" }
+      : value;
+  const parsed = inboundMessageSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Whether this is the final attempt before an unacked message is dead-lettered. */
@@ -428,6 +385,7 @@ function normalizeLease(value: unknown): Lease | undefined {
 function normalizeExecution(
   conversationId: string,
   value: unknown,
+  schemaVersion: 1 | 2,
 ): ConversationExecution | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -436,14 +394,21 @@ function normalizeExecution(
   if (!status) {
     return undefined;
   }
-  const pendingMessages = Array.isArray(value.pendingMessages)
-    ? value.pendingMessages
-        .map(normalizeMessage)
-        .filter((message): message is InboundMessage => Boolean(message))
-        .filter((message) => message.conversationId === conversationId)
-        .filter((message) => message.injectedAtMs === undefined)
-        .sort(compareMessages)
-    : [];
+  const pendingMessages: InboundMessage[] = [];
+  if (Array.isArray(value.pendingMessages)) {
+    for (const rawMessage of value.pendingMessages) {
+      const message = normalizeMessage(rawMessage, schemaVersion);
+      if (
+        !message ||
+        message.conversationId !== conversationId ||
+        message.injectedAtMs !== undefined
+      ) {
+        return undefined;
+      }
+      pendingMessages.push(message);
+    }
+    pendingMessages.sort(compareMessages);
+  }
   const inboundMessageIds = Array.isArray(value.inboundMessageIds)
     ? uniqueStrings(
         value.inboundMessageIds
@@ -477,21 +442,29 @@ function normalizeExecution(
 }
 
 /**
- * Decode schema-v1 conversation records and reject runnable mailbox state whose
- * pending entries do not belong to the conversation destination.
+ * Decode current conversation records and migrate schema-v1 mailbox delivery.
  */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): Conversation | undefined {
-  if (!isRecord(value) || value.schemaVersion !== CONVERSATION_SCHEMA_VERSION) {
+  if (
+    !isRecord(value) ||
+    (value.schemaVersion !== 1 &&
+      value.schemaVersion !== CONVERSATION_SCHEMA_VERSION)
+  ) {
     return undefined;
   }
+  const schemaVersion = value.schemaVersion;
   const storedConversationId = toOptionalString(value.conversationId);
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const lastActivityAtMs = toOptionalNumber(value.lastActivityAtMs);
   const updatedAtMs = toOptionalNumber(value.updatedAtMs);
-  const execution = normalizeExecution(conversationId, value.execution);
+  const execution = normalizeExecution(
+    conversationId,
+    value.execution,
+    schemaVersion,
+  );
   const destination =
     value.destination === undefined
       ? undefined
@@ -1517,7 +1490,7 @@ export async function drainConversationMailbox(args: {
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<InboundMessage[]> {
+}): Promise<{ changed: boolean; messages: InboundMessage[] }> {
   const nowMs = args.nowMs ?? now();
   const pending = await withConversationMutation(args, async (state) => {
     const current = await readConversation(state, args.conversationId);
@@ -1529,7 +1502,7 @@ export async function drainConversationMailbox(args: {
     return pendingMessages(current);
   });
   if (pending.length === 0) {
-    return [];
+    return { changed: false, messages: [] };
   }
 
   const result = await args.handle(pending);
@@ -1553,6 +1526,9 @@ export async function drainConversationMailbox(args: {
         `Conversation mailbox drain result overlaps for ${args.conversationId}`,
       );
     }
+  }
+  if (acknowledgedIds.size === 0 && deferredIds.size === 0) {
+    return { changed: false, messages: [] };
   }
 
   await withConversationMutation(args, async (state, lock) => {
@@ -1587,9 +1563,12 @@ export async function drainConversationMailbox(args: {
       ),
     );
   });
-  return pending.filter((message) =>
-    acknowledgedIds.has(message.inboundMessageId),
-  );
+  return {
+    changed: true,
+    messages: pending.filter((message) =>
+      acknowledgedIds.has(message.inboundMessageId),
+    ),
+  };
 }
 
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */

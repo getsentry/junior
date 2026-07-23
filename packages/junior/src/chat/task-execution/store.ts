@@ -371,21 +371,11 @@ export async function drainConversationMailbox(
     state?: StateAdapter;
   },
 ) {
-  let changed = false;
-  const result = await workState.drainConversationMailbox({
-    ...args,
-    handle: async (messages) => {
-      const result = await args.handle(messages);
-      changed = result
-        ? result.ack.length > 0 || result.defer.length > 0
-        : messages.length > 0;
-      return result;
-    },
-  });
-  if (changed) {
+  const result = await workState.drainConversationMailbox(args);
+  if (result.changed) {
     await recordExecutionMetadata(args);
   }
-  return result;
+  return result.messages;
 }
 
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */

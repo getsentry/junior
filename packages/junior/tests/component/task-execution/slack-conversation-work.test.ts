@@ -906,8 +906,8 @@ describe("Slack conversation work execution", () => {
         await hooks.drainSteeringMessages?.(async (steering) => {
           injected.push(steering.map((candidate) => candidate.message.id));
           return {
-            ack: steering.map((candidate) => candidate.inboundMessageId),
-            defer: [],
+            deferred: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
           };
         });
       },
@@ -989,8 +989,8 @@ describe("Slack conversation work execution", () => {
         await hooks.drainSteeringMessages?.(async (steering) => {
           observed.push(steering.map((candidate) => candidate.message.id));
           return {
-            ack: steering.map((candidate) => candidate.inboundMessageId),
-            defer: [],
+            deferred: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
           };
         });
       },
@@ -1048,7 +1048,9 @@ describe("Slack conversation work execution", () => {
       services: ingressServices,
     });
 
-    const observed: Array<Array<{ activeRequest: boolean; id: string }>> = [];
+    const observed: Array<
+      Array<{ delivery: "auto" | "interrupt"; id: string }>
+    > = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
@@ -1098,13 +1100,13 @@ describe("Slack conversation work execution", () => {
         await hooks.drainSteeringMessages?.(async (steering) => {
           observed.push(
             steering.map((candidate) => ({
-              activeRequest: candidate.activeRequest,
+              delivery: candidate.delivery,
               id: candidate.message.id,
             })),
           );
           return {
-            ack: steering.map((candidate) => candidate.inboundMessageId),
-            defer: [],
+            deferred: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
           };
         });
       },
@@ -1122,7 +1124,7 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(observed).toEqual([[{ activeRequest: true, id: "1712345.1002" }]]);
+    expect(observed).toEqual([[{ delivery: "interrupt", id: "1712345.1002" }]]);
   });
 
   it("does not replay injected Slack mailbox records after lease recovery", async () => {

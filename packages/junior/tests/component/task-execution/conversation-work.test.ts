@@ -231,6 +231,60 @@ describe("conversation work execution", () => {
     );
   });
 
+  it("migrates schema-v1 mailbox messages without delivery as auto", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("legacy-delivery"),
+      nowMs: 1_000,
+      state,
+    });
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+      schemaVersion: number;
+    };
+    raw.schemaVersion = 1;
+    delete raw.execution.pendingMessages[0]?.delivery;
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
+    const observed: string[] = [];
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue: createConversationWorkQueueTestAdapter(),
+        run: async (context) => {
+          observed.push(
+            ...context.attempt.messages.map((message) => message.delivery),
+          );
+          await context.attempt.drain(async () => {});
+          return { status: "completed" };
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(observed).toEqual(["auto"]);
+  });
+
+  it("rejects unknown mailbox delivery without dropping pending work", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("unknown-delivery"),
+      nowMs: 1_000,
+      state,
+    });
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    raw.execution.pendingMessages[0]!.delivery = "future-mode";
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
+    await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(raw);
+  });
+
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -259,6 +313,7 @@ describe("conversation work execution", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     const twinWithFiles = inboundMessage("m1", {
+      delivery: "interrupt",
       receivedAtMs: 2_000,
       input: {
         text: "message m1",
@@ -276,6 +331,7 @@ describe("conversation work execution", () => {
     });
     expect(work?.messages).toEqual([
       expect.objectContaining({
+        delivery: "interrupt",
         inboundMessageId: "m1",
         receivedAtMs: 1_100,
         input: expect.objectContaining({
@@ -1183,6 +1239,62 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("does not rewrite mailbox state for an empty drain result", async () => {
+    const events: string[] = [];
+    const conversationStore = metadataEventsStore(events);
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      conversationStore,
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      conversationStore,
+      nowMs: 2_000,
+      state,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      throw new Error("Expected conversation work lease");
+    }
+    await appendInboundMessage({
+      conversationStore,
+      message: inboundMessage("m2", {
+        createdAtMs: 2_100,
+        delivery: "defer",
+        receivedAtMs: 2_100,
+      }),
+      nowMs: 2_100,
+      state,
+    });
+    const before = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    const metadataCount = events.length;
+
+    await expect(
+      drainConversationMailbox({
+        conversationId: CONVERSATION_ID,
+        conversationStore,
+        handle: async () => ({ ack: [], defer: [] }),
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        state,
+      }),
+    ).resolves.toEqual([]);
+
+    const after = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(after?.execution.updatedAtMs).toBe(before?.execution.updatedAtMs);
+    expect(events).toHaveLength(metadataCount);
   });
 
   it("rejects mailbox acknowledgements outside the pending set", async () => {

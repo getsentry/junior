@@ -848,13 +848,23 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const result = await accept(
-              pendingRecords.map((record) => ({
-                activeRequest: record.delivery === "interrupt",
-                inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({ adapter, record }),
-              })),
+              pendingRecords.map((record) => {
+                if (record.delivery === "defer") {
+                  throw new Error(
+                    "Deferred mailbox message reached Slack steering",
+                  );
+                }
+                return {
+                  delivery: record.delivery,
+                  inboundMessageId: record.inboundMessageId,
+                  message: restoreMessage({ adapter, record }),
+                };
+              }),
             );
-            return result;
+            return {
+              ack: result.handled,
+              defer: result.deferred,
+            };
           });
         };
 

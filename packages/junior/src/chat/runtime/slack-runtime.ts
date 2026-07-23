@@ -59,14 +59,15 @@ export interface AssistantLifecycleEvent {
 type SteeringMode = "defer" | "interrupt";
 
 export interface SteeringCandidateMessage {
-  activeRequest: boolean;
+  delivery: "auto" | "interrupt";
   inboundMessageId: string;
   message: Message;
 }
 
+/** Runtime-owned handling result for drained Slack steering candidates. */
 export interface SteeringDrainResult {
-  ack: readonly string[];
-  defer: readonly string[];
+  deferred: readonly string[];
+  handled: readonly string[];
 }
 
 export interface ReplyHooks {
@@ -309,10 +310,10 @@ function createAcceptedSteeringDrain(
       interruptedMessages = interrupted;
       await options.onAcceptedForProcessing?.(interrupted);
       return {
-        defer: selection.accepted
+        deferred: selection.accepted
           .filter((accepted) => accepted.mode === "defer")
           .map((accepted) => accepted.inboundMessageId),
-        ack: [
+        handled: [
           ...selection.accepted
             .filter((accepted) => accepted.mode === "interrupt")
             .map((accepted) => accepted.inboundMessageId),
@@ -552,7 +553,7 @@ export function createSlackTurnRuntime<
       userText: appendSlackLegacyAttachmentText(strippedUserText, message.raw),
     };
     const isActiveRequest =
-      candidate.activeRequest || Boolean(message.isMention);
+      candidate.delivery === "interrupt" || Boolean(message.isMention);
 
     const decision = await deps.decideSubscribedReply({
       rawText: text.rawText,
