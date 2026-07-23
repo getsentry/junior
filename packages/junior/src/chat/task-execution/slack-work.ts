@@ -567,7 +567,7 @@ export function createSlackResourceEventInboundMessage(
     createdAtMs: input.event.occurredAtMs,
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
-    routing: "defer",
+    delivery: "defer",
     source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
@@ -839,8 +839,8 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Explicitly deferred records never enter steering. Auto-routed records
-        // are offered to runtime policy, while interrupts bypass that decision.
+        // Explicitly deferred records never enter steering. Auto-delivered
+        // records are offered to runtime policy, while interrupts bypass it.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -849,7 +849,7 @@ export function createSlackConversationWorker(
           await context.attempt.drain(async (pendingRecords) => {
             const result = await accept(
               pendingRecords.map((record) => ({
-                activeRequest: record.routing === "interrupt",
+                activeRequest: record.delivery === "interrupt",
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({ adapter, record }),
               })),
@@ -931,7 +931,7 @@ export function buildSlackInboundMessage(args: {
       args.conversationId,
       args.message.id,
     ].join(":"),
-    routing:
+    delivery:
       args.route === "mention" ||
       isSlackAssistantThreadUserMessage(args.message)
         ? "interrupt"

@@ -17,7 +17,7 @@ Canonical words used across Junior's code and documentation.
   batched into that turn.
 - **Follow-up message**: a user message that waits for the active turn to finish
   before starting the next turn.
-- **Message routing**: the durable mailbox instruction for an inbound message:
+- **Mailbox delivery**: the durable instruction for an inbound message:
   `interrupt` is eligible at the next safe boundary, `defer` waits for the
   active turn to finish, and `auto` asks runtime policy to choose between them.
 - **Turn**: one request-to-final-response cycle. It may span multiple runs and

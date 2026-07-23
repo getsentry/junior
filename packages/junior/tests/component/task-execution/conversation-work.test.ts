@@ -1180,7 +1180,7 @@ describe("conversation work execution", () => {
     expect(state?.messages).toEqual([
       expect.objectContaining({
         inboundMessageId: "m2",
-        routing: "defer",
+        delivery: "defer",
       }),
     ]);
   });

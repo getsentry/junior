@@ -83,7 +83,7 @@ export interface AgentInput {
   text: string;
 }
 
-export type InboundMessageRouting = "auto" | "defer" | "interrupt";
+export type InboundMessageDelivery = "auto" | "defer" | "interrupt";
 
 export interface MailboxDrainResult {
   ack: readonly string[];
@@ -99,7 +99,7 @@ export interface InboundMessage {
   injectedAtMs?: number;
   input: AgentInput;
   receivedAtMs: number;
-  routing: InboundMessageRouting;
+  delivery: InboundMessageDelivery;
   source: Source;
 }
 
@@ -333,9 +333,9 @@ function normalizeInput(value: unknown): AgentInput | undefined {
   };
 }
 
-function normalizeInboundMessageRouting(
+function normalizeInboundMessageDelivery(
   value: unknown,
-): InboundMessageRouting | undefined {
+): InboundMessageDelivery | undefined {
   if (value === undefined) {
     return "auto";
   }
@@ -355,7 +355,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const receivedAtMs = toOptionalNumber(value.receivedAtMs);
   const input = normalizeInput(value.input);
-  const routing = normalizeInboundMessageRouting(value.routing);
+  const delivery = normalizeInboundMessageDelivery(value.delivery);
   if (
     !conversationId ||
     !destination ||
@@ -364,7 +364,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     typeof createdAtMs !== "number" ||
     typeof receivedAtMs !== "number" ||
     !input ||
-    !routing
+    !delivery
   ) {
     return undefined;
   }
@@ -376,7 +376,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     createdAtMs,
     receivedAtMs,
     input,
-    routing,
+    delivery,
     injectedAtMs: toOptionalNumber(value.injectedAtMs),
     attemptCount: toOptionalNumber(value.attemptCount),
   };
@@ -1566,7 +1566,7 @@ export async function drainConversationMailbox(args: {
       .filter((message) => !acknowledgedIds.has(message.inboundMessageId))
       .map((message) =>
         deferredIds.has(message.inboundMessageId)
-          ? { ...message, routing: "defer" as const }
+          ? { ...message, delivery: "defer" as const }
           : message,
       );
     await writeConversation(

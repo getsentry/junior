@@ -348,7 +348,7 @@ export async function processConversationWork(
       conversationStore: options.conversationStore,
       handle: async (messages) => {
         const candidates = messages.filter(
-          (message) => message.routing !== "defer",
+          (message) => message.delivery !== "defer",
         );
         if (candidates.length === 0) {
           return { ack: [], defer: [] };

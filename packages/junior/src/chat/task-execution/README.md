@@ -6,10 +6,10 @@ source of truth.
 
 ## State Model
 
-- A conversation mailbox contains normalized pending work with a durable routing
-  mode: `interrupt`, `defer`, or `auto` when runtime policy must decide.
+- A conversation mailbox contains normalized pending work with a durable
+  delivery mode: `interrupt`, `defer`, or `auto` when runtime policy must decide.
 - A queue payload identifies the conversation to wake; persisted conversation
-  work owns destination and routing.
+  work owns destination and delivery.
 - A lease grants one worker temporary execution ownership.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.

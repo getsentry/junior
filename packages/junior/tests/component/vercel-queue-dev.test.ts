@@ -283,7 +283,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       message: {
         conversationId: "slack:C123:1712345.0001",
         inboundMessageId: "m1",
-        routing: "auto",
+        delivery: "auto",
         destination: {
           channelId: "C123",
           platform: "slack",

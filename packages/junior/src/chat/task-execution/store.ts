@@ -22,7 +22,7 @@ export {
   type ConversationWorkState,
   type ExecutionStatus,
   type InboundMessage,
-  type InboundMessageRouting,
+  type InboundMessageDelivery,
   type Lease,
   type MailboxDrainResult,
   type RequestConversationWorkResult,

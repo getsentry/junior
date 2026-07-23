@@ -271,7 +271,7 @@ describe("Slack conversation work execution", () => {
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
-      routing: "auto" as const,
+      delivery: "auto" as const,
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
@@ -1015,7 +1015,7 @@ describe("Slack conversation work execution", () => {
     });
     expect(work?.execution.pendingMessages).toEqual([
       expect.objectContaining({
-        routing: "defer",
+        delivery: "defer",
         source: "resource_event",
       }),
     ]);
