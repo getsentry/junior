@@ -21,7 +21,8 @@ Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh 
 - Read applicable `AGENTS.md` files before editing. Narrower repo/task instructions win.
 - Preserve unrelated work. Never force-push, delete refs, or perform destructive merges.
 - Base conclusions on repository evidence. Do not claim a check ran unless it did.
-- Supported App-owned writes use an automatically injected repository-scoped credential. Try the operation before requesting remediation; ask for no user token.
+- For Junior-owned pull requests, push the branch before creating the PR. The runtime supplies repository-scoped GitHub App credentials for both; try the operations before requesting remediation and never ask for a user token.
+- A tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.
 - Stop for ambiguous targets, missing access, destructive operations, or unresolved upstream permission failures.
 
 ## Workflow
@@ -36,9 +37,7 @@ For edits, choose the smallest credible validation path before changing files. C
 
 ### 2. Investigate
 
-Establish where the behavior lives, current versus requested behavior, root cause or gap, and the smallest proof of correctness. Read linked issues, PRs, specs, and failing output when provided. If the request is investigation-only, report evidence without editing.
-
-For non-trivial architecture, API, security, concurrency, migration, or broad cross-file work, use the available advisor after gathering evidence and before editing. Resolve material concerns in the plan.
+Establish where the behavior lives, current versus requested behavior, root cause or gap, and the smallest proof of correctness. Read linked issues, PRs, specs, and failing output when provided. For pull requests, inspect conversation comments, inline review comments, reviews, the diff, and checks. If the request is investigation-only, report evidence without editing.
 
 ### 3. Edit
 
@@ -55,8 +54,6 @@ Do not install or repair the GitHub plugin runtime itself; that is manifest-owne
 ### 4. Verify and review
 
 Run targeted changed-file/package checks before broad suites. Separate regressions from baseline failures. For instruction-only changes, run available structural checks and perform a content-consistency review.
-
-For non-trivial work, review the final diff and initial results with the available advisor before packaging. Address material correctness, regression, and testing concerns, then rerun affected checks.
 
 ### 5. Package every completed edit
 
@@ -77,11 +74,3 @@ If PR creation is blocked, report the exact failed command/tool call and leave t
 When PR creation returns a subscribable resource hint, subscribe to suggested review/CI events. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
 
 Return: repo, branch, PR URL/number, checks and results, pre-existing failures, and anything not run with the reason.
-
-## Operation notes
-
-- **Clone/history:** clone shallowly by default; deepen before any operation that relies on omitted ancestry.
-- **PR inspection:** read conversation comments, inline review comments, reviews, diff, and checks.
-- **PR mutation:** push before create; use only supported endpoints in the API reference.
-- **Workflow dispatch:** `gh workflow run` is supported only for workflows declaring `workflow_dispatch`.
-- **Permissions:** a tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.
