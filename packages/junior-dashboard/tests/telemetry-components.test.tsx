@@ -127,7 +127,9 @@ describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="line">
-        <TranscriptMarkdown text={"line one\nline two\n\n[docs](https://docs.sentry.io)"} />
+        <TranscriptMarkdown
+          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+        />
       </TranscriptSearchProvider>,
     );
 
@@ -856,7 +858,8 @@ describe("dashboard canonical-event components", () => {
         <SystemPage data={loading} />
       </MemoryRouter>,
     );
-    expect(loadingHtml).toContain("Loading plugin stats.");
+    expect(loadingHtml).not.toContain("Loading plugin stats.");
+    expect(loadingHtml).toContain(">github<");
 
     const stale = systemData();
     stale.pluginReportsError = true;
@@ -898,6 +901,10 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain(">Plugins<");
     expect(systemHtml).toContain(">Skills<");
     expect(systemHtml).toContain(">github<");
+    expect(systemHtml).not.toContain(">loaded<");
+    expect(systemHtml).not.toContain(">quiet<");
+    expect(systemHtml).not.toContain(">metrics<");
+    expect(systemHtml).not.toContain(">datasets<");
     expect(systemHtml).not.toContain(">triage<");
 
     const skillsHtml = renderToStaticMarkup(

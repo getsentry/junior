@@ -17,7 +17,6 @@ type CapabilityTab = "plugins" | "skills";
 
 /** Render the System capability inventories as an accessible tab set. */
 export function SystemCapabilities(props: {
-  loadingReports: boolean;
   pluginReportsError: boolean;
   plugins: PluginReport[];
   range: TimeRangeDays;
@@ -27,12 +26,6 @@ export function SystemCapabilities(props: {
   const [activeTab, setActiveTab] = useState<CapabilityTab>("plugins");
   const pluginTabRef = useRef<HTMLButtonElement>(null);
   const skillTabRef = useRef<HTMLButtonElement>(null);
-  const reportEmptyText = props.pluginReportsError
-    ? undefined
-    : props.loadingReports
-      ? "Loading plugin stats."
-      : "No plugins have been reported yet.";
-
   return (
     <section aria-label="Capabilities" className="grid gap-4 sm:gap-6">
       {props.pluginReportsError ? (
@@ -54,11 +47,7 @@ export function SystemCapabilities(props: {
           </div>
         </Card>
       ) : null}
-      <PluginReports
-        emptyText={reportEmptyText}
-        range={props.range}
-        reports={props.reports}
-      />
+      <PluginReports range={props.range} reports={props.reports} />
 
       <div>
         <div
@@ -95,11 +84,7 @@ export function SystemCapabilities(props: {
           id="plugins-panel"
           role="tabpanel"
         >
-          <PluginInventory
-            loadingReports={props.loadingReports}
-            plugins={props.plugins}
-            reports={props.reports}
-          />
+          <PluginInventory plugins={props.plugins} reports={props.reports} />
         </div>
         <div
           aria-labelledby="skills-tab"

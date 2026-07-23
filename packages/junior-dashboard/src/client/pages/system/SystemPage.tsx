@@ -14,8 +14,6 @@ import { SystemCapabilities } from "./SystemCapabilities";
 export function SystemPage(props: { data: SystemData }) {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const reports = props.data.pluginReports?.reports ?? [];
-  const reportsPending =
-    props.data.pluginReportsLoading && reports.length === 0;
 
   return (
     <div
@@ -39,7 +37,6 @@ export function SystemPage(props: { data: SystemData }) {
       />
 
       <SystemCapabilities
-        loadingReports={reportsPending}
         pluginReportsError={props.data.pluginReportsError}
         plugins={props.data.plugins}
         range={range}
