@@ -161,9 +161,11 @@ async function readConversationDetailFromSql(
         [conversationId],
         options.verifiedViewerEmail,
       ),
-      readConversationReportEventRows(executor, conversationId, {
-        ...(before ? { beforeSeq: before.seq } : {}),
-      }),
+      readConversationReportEventRows(
+        executor,
+        conversationId,
+        before ? { beforeSeq: before.seq } : {},
+      ),
       record.conversation.transcriptPurgedAtMs === undefined
         ? readConversationModelUsageFromSql(executor, {
             conversationId,

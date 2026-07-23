@@ -542,6 +542,7 @@ function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
   const {
+    eventCursor: _eventCursor,
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,

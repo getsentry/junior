@@ -113,9 +113,11 @@ export default defineApiRoute({
       c.req.query(),
     );
     const verifiedViewerEmail = c.get("verifiedViewerEmail");
-    const report = await readConversationUpdates(conversationId, cursor, {
-      ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
-    });
+    const report = await readConversationUpdates(
+      conversationId,
+      cursor,
+      verifiedViewerEmail ? { verifiedViewerEmail } : {},
+    );
     if (!report) throwApiError(404, "Conversation not found.");
     return report;
   },
