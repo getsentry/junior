@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
   roots: readonly PluginMigrationRoot[],
-  options: PluginMigrationOptions,
+  options: PluginMigrationOptions = { mode: "schema-bootstrap" },
 ): Promise<PluginMigrationResult> {
   const result: PluginMigrationResult = {
     existing: 0,

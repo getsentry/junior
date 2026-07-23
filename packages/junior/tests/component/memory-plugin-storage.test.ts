@@ -1,7 +1,5 @@
 import path from "node:path";
 import { readdirSync } from "node:fs";
-import { createMemoryState } from "@chat-adapter/state-memory";
-import { resolveMigrations } from "@sentry/junior-migrations";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   createMemoryPlugin,
@@ -10,13 +8,15 @@ import {
 } from "@sentry/junior-memory";
 import {
   createSlackSource,
+  defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
-import { migratePluginJournals } from "@/cli/upgrade/migrations/plugin-journal";
+import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
@@ -86,7 +86,7 @@ function memoryMigrationFiles(): string[] {
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await bootstrapPluginSchemas(fixture.sql, [
+  await migratePluginSchemas(fixture.sql, [
     {
       dir: memoryMigrationsDir(),
       pluginName: "memory",
@@ -97,7 +97,9 @@ async function migrateMemorySchema(
 describe("memory plugin host wiring", () => {
   it("adopts exact legacy migration hashes without replaying them", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const migrations = await resolveMigrations(memoryMigrationsDir());
+    const migrations = readMigrationFiles({
+      migrationsFolder: memoryMigrationsDir(),
+    });
     const migrationFiles = memoryMigrationFiles();
     expect(migrationFiles).toHaveLength(migrations.length);
 
@@ -128,7 +130,7 @@ CREATE TABLE junior_schema_migrations (
       }
 
       await expect(
-        bootstrapPluginSchemas(fixture.sql, [
+        migratePluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -146,8 +148,9 @@ CREATE TABLE junior_schema_migrations (
 
   it("does not adopt an unknown memory legacy checksum", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const migrationCount = (await resolveMigrations(memoryMigrationsDir()))
-      .length;
+    const migrationCount = readMigrationFiles({
+      migrationsFolder: memoryMigrationsDir(),
+    }).length;
     const [baselineFile] = memoryMigrationFiles();
     expect(baselineFile).toBeDefined();
 
@@ -165,7 +168,7 @@ CREATE TABLE junior_schema_migrations (
       );
 
       await expect(
-        bootstrapPluginSchemas(fixture.sql, [
+        migratePluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -181,40 +184,51 @@ CREATE TABLE junior_schema_migrations (
     }
   });
 
-  it("applies packaged migrations through plugin discovery", async () => {
-    const stateAdapter = createMemoryState();
-    await stateAdapter.connect();
+  it("reports core and nonempty plugin migration journals", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
-      const migrationCount = (await resolveMigrations(memoryMigrationsDir()))
-        .length;
-      await expect(
-        migratePluginJournals({
-          io: { info: () => {} },
-          pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
-          stateAdapter,
+      const coreMigrationCount = readMigrationFiles({
+        migrationsFolder: path.resolve(process.cwd(), "migrations"),
+      }).length;
+      const memoryMigrationCount = readMigrationFiles({
+        migrationsFolder: memoryMigrationsDir(),
+      }).length;
+      const lines: string[] = [];
+      const pluginSet = defineJuniorPlugins([
+        createMemoryPlugin(),
+        defineJuniorPlugin({
+          manifest: {
+            description: "Plugin without SQL migrations",
+            displayName: "Empty",
+            name: "empty",
+          },
         }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        missing: 0,
-        scanned: migrationCount,
-      });
+      ]);
 
-      await expect(
-        fixture.sql.query<{ table_name: string }>(
-          `
-SELECT table_name
-FROM information_schema.tables
-WHERE table_name = 'junior_memory_memories'
-`,
-        ),
-      ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
+      await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
+      expect(lines).toEqual([
+        "Running Junior upgrade migrations...",
+        "Running migration core-migrations...",
+        `Finished migration core-migrations: scanned=${coreMigrationCount} migrated=${coreMigrationCount} existing=0 missing=0 skipped=0`,
+        "Running migration plugin-migrations...",
+        `Finished migration plugin-migrations: scanned=${memoryMigrationCount} migrated=${memoryMigrationCount} existing=0 missing=0`,
+        "Junior upgrade complete.",
+      ]);
+
+      lines.length = 0;
+      await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
+      expect(lines).toEqual([
+        "Running Junior upgrade migrations...",
+        "Running migration core-migrations...",
+        `Finished migration core-migrations: scanned=${coreMigrationCount} migrated=0 existing=${coreMigrationCount} missing=0 skipped=0`,
+        "Running migration plugin-migrations...",
+        `Finished migration plugin-migrations: scanned=${memoryMigrationCount} migrated=0 existing=${memoryMigrationCount} missing=0`,
+        "Junior upgrade complete.",
+      ]);
     } finally {
       NEON.sql = undefined;
-      await stateAdapter.disconnect();
       await fixture.close();
     }
   }, 15_000);

@@ -6,7 +6,6 @@ import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { migrateCoreJournal } from "./upgrade/migrations/core-journal";
 import { migratePluginJournals } from "./upgrade/migrations/plugin-journal";
-import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import type {
   MigrationContext,
   MigrationResult,
@@ -69,16 +68,14 @@ function formatMigrationResult(result: MigrationResult): string {
 export async function runUpgradeMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult[]> {
-  const plugins = await resolveUpgradePlugins(context);
-  const migrationContext = { ...context, ...plugins };
   const results: MigrationResult[] = [];
   const run = async (
     name: string,
     migrate: (context: MigrationContext) => Promise<MigrationResult>,
   ): Promise<void> => {
-    migrationContext.io.info(`Running migration ${name}...`);
-    const result = await migrate(migrationContext);
-    migrationContext.io.info(
+    context.io.info(`Running migration ${name}...`);
+    const result = await migrate(context);
+    context.io.info(
       `Finished migration ${name}: ${formatMigrationResult(result)}`,
     );
     results.push(result);

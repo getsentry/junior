@@ -32,7 +32,8 @@ schema snapshot while preserving the mixed journal order.
 Drizzle Kit remains the supported authoring tool. Drizzle ORM's stock
 `migrate()` function is not a supported executor for mixed journals because it
 requires every entry to have a SQL file. Call `runMigrationJournal` instead and
-provide the host database adapter, state adapter, and TypeScript loader. The
+provide the host database adapter and, for TypeScript entries, a context and
+loader. The
 same database adapter drives the journal ledger and is exposed as
 `context.database`, so migration files never own connection or driver setup.
 
@@ -44,8 +45,8 @@ so it must not be used to upgrade an existing installation.
 
 The runner rejects runtime imports of application source, relative modules,
 and unversioned `@sentry/junior` modules. Migrations may import the append-only
-`@sentry/junior/migration-helpers/v1` surface for parsing primitives, adapters,
-stores, and key resolution. One-off migration decisions and data transforms
+`@sentry/junior/migration-helpers/v1` surface for stable parsing primitives and
+other reusable infrastructure. One-off migration decisions and data transforms
 must still remain in the journal entry. Add a new helper or capability version
 rather than changing an existing contract.
 

@@ -1,4 +1,4 @@
-# SQL migrations
+# Migrations
 
 `src/db/schema.ts` is the Drizzle schema entrypoint. This directory is the
 append-only history used to bring an existing database to that schema. It
@@ -33,21 +33,20 @@ TypeScript migrations target the versioned migration capability API and must
 not import Junior runtime internals or current feature schemas. Their complete
 implementation remains in the migration file and uses only the stable
 database, state, Redis, and progress capabilities supplied by the runner. The
-host database adapter owns connections, drivers, transactions, and locks so
-those infrastructure modules are not frozen into every migration.
+host database adapter owns connections, drivers, transactions, and locks.
 
 Reusable infrastructure belongs in the append-only
-`@sentry/junior/migration-helpers/v1` export. It may provide stable parsers,
-stores, adapter projections, and key resolution, but must not implement a
-specific data migration. The journal entry remains the only owner of one-off
-record transformations.
+`@sentry/junior/migration-helpers/v1` export. It may provide stable parsing and
+other reusable infrastructure, but must not implement a specific data
+migration. The journal entry remains the only owner of one-off record
+transformations.
 
 The `0000_initial.sql` baseline represents the schema already deployed by the
-pre-Drizzle Junior migration runner. During upgrade, existing installations
-adopt that baseline once; new installations execute it normally. All later
-migrations are applied by Junior in journal order. Drizzle ORM's stock
-`migrate()` function is not compatible with TypeScript entries in this folder.
+pre-Drizzle Junior migration runner. Existing databases without core Drizzle
+history must first run the documented bridge release; current upgrades do not
+infer or adopt legacy state. Fresh databases execute the complete journal
+normally. Drizzle ORM's stock `migrate()` function is not compatible with
+TypeScript entries in this folder.
 
-Migration loading, locking, and legacy baseline adoption live in
-`src/chat/conversations/sql/migrations.ts`. Their integration coverage lives in
-`tests/integration/conversation-sql.test.ts`.
+Migration loading, locking, and the bridge-release guard live in
+`src/chat/conversations/sql/migrations.ts`.

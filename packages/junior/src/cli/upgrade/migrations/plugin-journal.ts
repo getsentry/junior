@@ -3,7 +3,7 @@ import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import { createJiti } from "jiti";
-import { resolveUpgradePlugins } from "./upgrade-plugins";
+import { resolveUpgradePluginCatalog } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const migrationLoader = createJiti(import.meta.url, { moduleCache: false });
@@ -13,7 +13,7 @@ export async function migratePluginJournals(
   context: MigrationContext,
 ): Promise<MigrationResult> {
   const { sql } = getChatConfig();
-  const { pluginCatalogConfig } = await resolveUpgradePlugins(context);
+  const pluginCatalogConfig = await resolveUpgradePluginCatalog(context);
   const previousConfig = pluginCatalogRuntime.setConfig(pluginCatalogConfig);
   const executor = createJuniorSqlExecutor({
     connectionString: sql.databaseUrl,
