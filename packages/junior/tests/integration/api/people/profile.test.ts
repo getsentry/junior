@@ -82,6 +82,18 @@ describe("people profile API", () => {
           cumulativeUsage: { totalTokens: 10 },
         }),
       ]);
+      expect(rootReport).toMatchObject({
+        locations: [expect.objectContaining({ durationMs: 1_000, tokens: 10 })],
+        surfaces: [expect.objectContaining({ durationMs: 1_000, tokens: 10 })],
+        totals: {
+          conversations: 1,
+          durationMs: 1_000,
+          tokens: 10,
+        },
+      });
+      expect(rootReport.activityDays).toContainEqual(
+        expect.objectContaining({ durationMs: 1_000, tokens: 10 }),
+      );
 
       const report = await readPeopleProfileFromSql("child@example.com", {
         verifiedViewerEmail: "OWNER@example.com",
@@ -94,6 +106,11 @@ describe("people profile API", () => {
           isParticipant: true,
         }),
       ]);
+      expect(report.totals).toMatchObject({
+        conversations: 1,
+        durationMs: 700,
+        tokens: 7,
+      });
       expect(report.recentConversations[0]).not.toHaveProperty("locationId");
       const detail = await readConversationDetail(childConversationId, {
         verifiedViewerEmail: "owner@example.com",

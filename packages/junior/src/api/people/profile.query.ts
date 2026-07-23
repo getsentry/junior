@@ -1,4 +1,5 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -32,6 +33,26 @@ import {
   statsItems,
   verifiedActorWhere,
 } from "./shared";
+
+const treeConversation = alias(juniorConversations, "people_tree_conversation");
+const treeAggregateColumns = conversationAggregateColumns({
+  metrics: treeConversation,
+  roots: juniorConversations,
+});
+// Roots aggregate their complete tree; direct child rows aggregate themselves.
+const treeMetricsJoin = and(
+  eq(
+    treeConversation.rootConversationId,
+    juniorConversations.rootConversationId,
+  ),
+  or(
+    eq(
+      juniorConversations.rootConversationId,
+      juniorConversations.conversationId,
+    ),
+    eq(treeConversation.conversationId, juniorConversations.conversationId),
+  ),
+);
 
 type AggregateRow = {
   active: number;
@@ -140,9 +161,10 @@ export async function readPeopleProfileFromSql(
           >`MAX(${juniorIdentities.providerSubjectId})`,
           slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
           activeDays: conversationActiveDaysColumn(),
-          ...conversationAggregateColumns(),
+          ...treeAggregateColumns,
         })
         .from(juniorConversations)
+        .innerJoin(treeConversation, treeMetricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
@@ -153,9 +175,10 @@ export async function readPeopleProfileFromSql(
       getDb()
         .select({
           date: activityDate,
-          ...conversationAggregateColumns(),
+          ...treeAggregateColumns,
         })
         .from(juniorConversations)
+        .innerJoin(treeConversation, treeMetricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
@@ -169,9 +192,10 @@ export async function readPeopleProfileFromSql(
           channelName: juniorConversations.channelName,
           destinationVisibility: juniorDestinations.visibility,
           surface,
-          ...conversationAggregateColumns(),
+          ...treeAggregateColumns,
         })
         .from(juniorConversations)
+        .innerJoin(treeConversation, treeMetricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),
@@ -189,8 +213,9 @@ export async function readPeopleProfileFromSql(
           surface,
         ),
       getDb()
-        .select({ surface, ...conversationAggregateColumns() })
+        .select({ surface, ...treeAggregateColumns })
         .from(juniorConversations)
+        .innerJoin(treeConversation, treeMetricsJoin)
         .innerJoin(
           juniorIdentities,
           eq(juniorIdentities.id, juniorConversations.actorIdentityId),

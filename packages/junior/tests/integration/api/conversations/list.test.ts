@@ -57,6 +57,13 @@ describe("conversation list API", () => {
         nowMs: 3_000,
         source: "slack",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ rootConversationId: null, usage: { totalTokens: 9 } })
+        .where(
+          eq(juniorConversations.conversationId, "slack:C1:provider-name"),
+        );
 
       const feed = await readConversationFeedFromSql();
 
@@ -69,6 +76,7 @@ describe("conversation list API", () => {
             slackUserName: "workspace-alice",
           },
           conversationId: "slack:C1:provider-name",
+          cumulativeUsage: { totalTokens: 9 },
         }),
       );
       expect(feed.conversations).toContainEqual(

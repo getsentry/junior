@@ -207,7 +207,7 @@ export async function readConversationFeedFromSql(
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }
           : {}),
-        usage: metrics?.usage,
+        usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });
     }),
     generatedAt: new Date(nowMs).toISOString(),
