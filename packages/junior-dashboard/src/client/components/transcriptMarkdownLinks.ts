@@ -1,5 +1,3 @@
-import type { DecorationItem } from "shiki/bundle/web";
-
 export const TRANSCRIPT_ANCHOR_CLASS =
   "font-medium text-cyan-100 underline decoration-cyan-300/35 underline-offset-2 transition-colors hover:text-white hover:decoration-white";
 
@@ -28,28 +26,6 @@ export function findTranscriptMarkdownLinks(
   return [...markdownLinks, ...findBareLinks(text, bareRanges)].sort(
     (left, right) => left.start - right.start || left.end - right.end,
   );
-}
-
-/** Build Shiki decorations for safe transcript markdown and bare links. */
-export function buildTranscriptMarkdownDecorations(
-  links: TranscriptMarkdownLink[],
-): DecorationItem[] {
-  return links.map((link) => {
-    const opensNewTab = /^https?:/i.test(link.href);
-    return {
-      end: link.end,
-      properties: {
-        class: TRANSCRIPT_ANCHOR_CLASS,
-        href: link.href,
-        ...(opensNewTab ? { rel: "noreferrer", target: "_blank" } : {}),
-      },
-      start: link.start,
-      tagName: "a",
-      transform(element) {
-        element.children = [{ type: "text", value: link.label }];
-      },
-    };
-  });
 }
 
 function findMarkdownLinks(

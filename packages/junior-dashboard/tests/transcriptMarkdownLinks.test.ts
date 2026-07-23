@@ -1,10 +1,6 @@
-import { codeToHtml } from "shiki/bundle/web";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildTranscriptMarkdownDecorations,
-  findTranscriptMarkdownLinks,
-} from "../src/client/components/transcriptMarkdownLinks";
+import { findTranscriptMarkdownLinks } from "../src/client/components/transcriptMarkdownLinks";
 
 describe("transcript markdown links", () => {
   it("finds safe markdown links, bare links, and skips unsafe destinations", () => {
@@ -82,38 +78,6 @@ describe("transcript markdown links", () => {
         label: "real",
       },
     ]);
-  });
-
-  it("builds Shiki anchor decorations without losing markdown highlighting", async () => {
-    const text =
-      "## Trace summary\n- `span.op` is in [the trace](https://sentry.example/trace/abc).\n- `[literal](https://literal.example)` and \\[escaped](https://escaped.example).\n- [broken [real](https://nested.example/ok).\n- [local](/api/me) and [bad](javascript:alert).";
-    const links = findTranscriptMarkdownLinks(text);
-    const highlighted = await codeToHtml(text, {
-      decorations: buildTranscriptMarkdownDecorations(links),
-      lang: "markdown",
-      theme: "github-dark",
-    });
-
-    expect(highlighted).toContain('style="color:#79B8FF;font-weight:bold"');
-    expect(highlighted).toContain('href="https://sentry.example/trace/abc"');
-    expect(highlighted).toContain('target="_blank"');
-    expect(highlighted).toContain('rel="noreferrer"');
-    expect(highlighted).toContain(">the trace</a>");
-    expect(highlighted).not.toContain(
-      "[the trace](https://sentry.example/trace/abc)",
-    );
-    expect(highlighted).toContain('href="https://nested.example/ok"');
-    expect(highlighted).toContain(">real</a>");
-    expect(highlighted).not.toContain(">broken [real</a>");
-    expect(highlighted).toContain("https://literal.example");
-    expect(highlighted).toContain("https://escaped.example");
-    expect(highlighted).not.toContain('href="https://literal.example"');
-    expect(highlighted).not.toContain('href="https://escaped.example"');
-    expect(highlighted).toContain("local");
-    expect(highlighted).toContain("/api/me");
-    expect(highlighted).toContain("javascript:alert");
-    expect(highlighted).not.toContain('href="/api/me"');
-    expect(highlighted).not.toContain('href="javascript:alert"');
   });
 
   it("does not autolink bare URLs inside ignored markdown destinations", () => {
