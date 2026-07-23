@@ -123,7 +123,7 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
                     opacity={value ? 0.82 : 0.1}
                     rx="1.5"
                     tabIndex={0}
-                    width={Math.max(2, barWidth - 2)}
+                    width={barWidth * 0.75}
                     x={
                       left +
                       categoryIndex * step +
@@ -156,5 +156,5 @@ export function PluginBarChart({ widget }: { widget: Widget }) {
 }
 
 function formatChartNumber(value: number): string {
-  return String(value);
+  return String(Number(value.toPrecision(12)));
 }

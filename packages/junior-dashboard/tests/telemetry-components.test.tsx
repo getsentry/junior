@@ -879,6 +879,68 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
 
+  it("formats fractional chart ticks without floating-point noise", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories: [
+                  { id: "7d", label: "7d", values: { created: 0.1 } },
+                  { id: "30d", label: "30d", values: { created: 0.2 } },
+                ],
+                id: "fractional-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain(">0.1</text>");
+    expect(html).not.toContain("0.10000000000000002");
+  });
+
+  it("keeps dense chart bars within their allocated slots", () => {
+    const categories = Array.from({ length: 24 }, (_, index) => ({
+      id: String(index),
+      label: String(index),
+      values: Object.fromEntries(
+        Array.from({ length: 8 }, (__, seriesIndex) => [
+          `series-${seriesIndex}`,
+          seriesIndex + 1,
+        ]),
+      ),
+    }));
+    const series = Array.from({ length: 8 }, (_, index) => ({
+      key: `series-${index}`,
+      label: `Series ${index}`,
+    }));
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories,
+                id: "dense-outcomes",
+                series,
+                title: "Dense outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).not.toContain('width="2"');
+  });
+
   it("renders an all-zero chart with a stable zero scale", () => {
     const html = renderToStaticMarkup(
       <PluginReports
