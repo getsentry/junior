@@ -2,6 +2,7 @@
 title: Agent Browser Plugin
 description: Configure browser automation workflows with agent-browser in Junior.
 type: tutorial
+summary: Install browser automation and evidence-driven visual QA workflows for Junior.
 prerequisites:
   - /extend/
 related:
@@ -10,7 +11,7 @@ related:
   - /operate/security-hardening/
 ---
 
-The Agent Browser plugin adds a browser automation skill backed by the `agent-browser` CLI.
+The Agent Browser plugin adds browser automation and visual QA skills backed by the `agent-browser` CLI.
 
 ## Install
 
@@ -39,21 +40,29 @@ No environment variables are required for this plugin.
 This plugin provisions browser automation as part of the sandbox snapshot:
 
 - Plugin manifest: `agent-browser`
-- Skill: `/agent-browser`
+- General automation skill: `/agent-browser`
+- Visual verification skill: `/visual-web-qa`
 - Runtime dependency: `agent-browser` npm package installed in the snapshot
 - Runtime postinstall: `agent-browser install` to provision browser binaries in the snapshot
 
-Use the skill in a thread:
+Use `/agent-browser` for general browser interaction:
 
 ```text
 /agent-browser Open https://example.com, capture a screenshot, and summarize what is on the page.
 ```
 
+Use `/visual-web-qa` when a frontend or docs change needs scoped browser evidence:
+
+```text
+/visual-web-qa Verify the updated docs navigation in light and dark themes, then share the evidence.
+```
+
 ## Verify
 
 1. Run `/agent-browser` with a simple open-and-snapshot request.
-2. Confirm the turn can execute `agent-browser` commands successfully.
-3. Confirm the output includes concrete page evidence such as the final URL or screenshot references.
+2. Run `/visual-web-qa` against a reachable local or preview page.
+3. Confirm both turns can execute `agent-browser` commands successfully.
+4. Confirm visual QA reports the exact target, scoped result, and successfully shared screenshot or video evidence.
 
 ## Failure modes
 
@@ -61,6 +70,7 @@ Use the skill in a thread:
 - Browser launch fails during the turn: browser binaries were not provisioned successfully. Rebuild the snapshot so `agent-browser install` runs again.
 - Stale element references like `@e*`: the DOM changed after the snapshot was taken. Run a fresh `snapshot -i` after navigation or UI updates.
 - Page appears incomplete: the page had not finished loading before the next action. Wait explicitly with `agent-browser wait --load networkidle` before interacting.
+- Visual QA is blocked: no local server or preview URL is reachable. Start the repo-native development server or provide a preview URL, then retry.
 
 ## Next step
 

@@ -1,8 +1,10 @@
-import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
+import { describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Skill Invocation Control", slackEvals, (it) => {
   const skillDirs = ["fixtures/skills"];
+  const browserSkillDirs = ["../junior-agent-browser/skills"];
 
   it("does not auto-select a user-callable skill even when contextually relevant", async ({
     run,
@@ -65,5 +67,27 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
         ],
       }),
     });
+  });
+
+  it("auto-selects visual web QA for frontend verification", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: { skill_dirs: browserSkillDirs },
+      initialEvents: [
+        mention(
+          "I changed the docs site's responsive navigation and dark theme. Before I send the preview URL, choose the relevant workflow and outline the browser evidence you will collect. Do not start the browser yet.",
+        ),
+      ],
+    });
+
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "loadSkill",
+          arguments: expect.objectContaining({ skill_name: "visual-web-qa" }),
+        }),
+      ]),
+    );
   });
 });

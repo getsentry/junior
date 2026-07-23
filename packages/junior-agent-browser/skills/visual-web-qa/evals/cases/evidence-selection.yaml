@@ -1,0 +1,5 @@
+behavior: evidence-selection
+prompt: |
+  We changed the documentation site's card spacing, type scale, and neutral colors. There are no animations or loading-state changes. Before I send the preview URL, tell me what browser evidence you would collect to decide whether the update looks right.
+checks:
+  - judge: The response chooses screenshots as the primary evidence for these stable visual changes, may use targeted DOM or style checks only as support, and does not default to recording video when no temporal behavior is involved.
