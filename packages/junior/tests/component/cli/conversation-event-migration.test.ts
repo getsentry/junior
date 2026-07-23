@@ -270,9 +270,7 @@ describe("conversation event migration", () => {
       });
       expect(visible.events.map((event) => event.seq)).toEqual([502]);
       expect(
-        projectConversationMessages(visible.events, {
-          historyFromSeq: 502,
-        }).map((message) => message.id),
+        projectConversationMessages(visible).map((message) => message.id),
       ).toEqual(["live"]);
       expect(
         JSON.stringify(await store.loadHistory(conversationId)),

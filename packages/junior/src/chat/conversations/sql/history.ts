@@ -19,6 +19,8 @@ import {
   type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
+  type MessageHistory,
+  type MessagesSummarizedEvent,
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
@@ -71,6 +73,19 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     type: row.type,
     payload: row.payload,
   });
+}
+
+/** Decode the summary row that defines a readable message-history suffix. */
+function messagesSummarizedEventFromRow(
+  row: ConversationEventRow,
+): MessagesSummarizedEvent {
+  const event = eventFromRow(row);
+  if (event.schemaVersion !== 1 || event.data.type !== "messages_summarized") {
+    throw new Error(
+      "Message compaction row did not decode as messages_summarized",
+    );
+  }
+  return { ...event, schemaVersion: 1, data: event.data };
 }
 
 class SqlConversationEventStore implements ConversationEventStore {
@@ -240,10 +255,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
-  async loadMessageHistory(conversationId: string): Promise<{
-    events: ConversationEvent[];
-    compaction: ConversationEvent | undefined;
-  }> {
+  async loadMessageHistory(conversationId: string): Promise<MessageHistory> {
     const [compactionRow] = await this.executor
       .db()
       .select()
@@ -256,11 +268,10 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .orderBy(desc(juniorConversationEvents.seq))
       .limit(1);
-    const compaction = compactionRow ? eventFromRow(compactionRow) : undefined;
-    const historyFromSeq =
-      compaction?.data.type === "messages_summarized"
-        ? compaction.data.historyFromSeq
-        : 0;
+    const compaction = compactionRow
+      ? messagesSummarizedEventFromRow(compactionRow)
+      : undefined;
+    const historyFromSeq = compaction?.data.historyFromSeq ?? 0;
     const rows = await this.executor
       .db()
       .select()
@@ -273,7 +284,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
-    return { events: rows.map(eventFromRow), compaction };
+    return { events: rows.map(eventFromRow), compaction, historyFromSeq };
   }
 
   async loadHistory(conversationId: string): Promise<ConversationEvent[]> {

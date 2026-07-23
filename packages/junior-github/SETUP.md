@@ -68,14 +68,14 @@ vercel env update GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-p
 
 Repeat for `preview` and `development` as needed. After env changes, redeploy so the new deployment picks up updated values.
 
-### Optional pull request webhooks and outcome reporting
+### Optional GitHub webhooks and outcome reporting
 
-To report Junior-created PR outcomes, use the standard GitHub noreply format
-`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com` for
+To report Junior-created pull request and issue outcomes, use the standard
+GitHub noreply format `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com` for
 `GITHUB_APP_BOT_EMAIL` and configure `GITHUB_WEBHOOK_SECRET`. Junior derives
 the App bot login from that email. Set the GitHub App webhook URL to
 `https://<junior-host>/api/webhooks/github` and subscribe to Pull request
-events. The secret in GitHub must match the deployment environment.
+and Issues events. The secret in GitHub must match the deployment environment.
 
 Conversation watches additionally use Check suite, Issue comment, Pull request
 review, and Pull request review comment events.
@@ -91,8 +91,13 @@ deployed app environment:
 pnpm exec junior upgrade
 ```
 
-The migration creates `junior_github_pull_requests`, which backs webhook
-ingestion and the `/system` outcome report.
+The migrations create `junior_github_pull_requests` and
+`junior_github_issues`, which back webhook ingestion and the `/system` outcome
+report. When a tracked pull request merges, Junior also reads its commit list
+and records whether every Git author was Junior's configured bot or whether the
+pull request contained non-Junior-authored commits.
+The pull request projection also stores associated native Junior conversation
+ids as an opaque, deduplicated `text[]` without a foreign key.
 
 ### Optional permission declaration
 

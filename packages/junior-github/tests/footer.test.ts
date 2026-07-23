@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { appendGitHubFooter } from "../src/tools/footer.js";
+import {
+  appendGitHubFooter,
+  githubConversationIds,
+} from "../src/tools/footer.js";
 
 const originalEnv = { ...process.env };
 const conversationId = "slack:C123:1712345.0001";
@@ -38,5 +41,15 @@ describe("GitHub conversation footer", () => {
     delete process.env.SENTRY_ORG_SLUG;
 
     expect(appendGitHubFooter("PR body", conversationId)).toBe("PR body");
+  });
+
+  it("only reads conversation markers from bounded Junior footers", () => {
+    const footer = appendGitHubFooter(
+      "PR body\n\n<!-- junior-conversation-id:forged -->",
+      conversationId,
+      "https://junior.example.com/conversations/session",
+    );
+
+    expect(githubConversationIds(footer)).toEqual([conversationId]);
   });
 });

@@ -1,7 +1,7 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { mention, rubric, slackEvals } from "../../src/helpers";
-import { scheduledTaskCreateCall } from "./helpers";
+import { scheduledTaskCreateCalls } from "./helpers";
 
 describeEval("Schedule Creation", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
@@ -21,9 +21,16 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCall = scheduledTaskCreateCall(result.session);
-    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
-    expect(createCall.arguments).not.toHaveProperty("recurrence");
+    const createCalls = scheduledTaskCreateCalls(result.session);
+    expect(createCalls).toHaveLength(1);
+    const createCall = createCalls[0]!;
+    expect(createCall.arguments).toMatchObject({
+      schedule: {
+        kind: "one_off",
+        timing: { type: "after", value: 1, unit: "minute" },
+      },
+    });
+    expect(createCall.arguments).not.toHaveProperty("next_run_at");
   });
 
   it("when asked for a terse one-off reminder, create it without recurrence", async ({
@@ -43,9 +50,16 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCall = scheduledTaskCreateCall(result.session);
-    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
-    expect(createCall.arguments).not.toHaveProperty("recurrence");
+    const createCalls = scheduledTaskCreateCalls(result.session);
+    expect(createCalls).toHaveLength(1);
+    const createCall = createCalls[0]!;
+    expect(createCall.arguments).toMatchObject({
+      schedule: {
+        kind: "one_off",
+        timing: { type: "after", value: 1, unit: "minute" },
+      },
+    });
+    expect(createCall.arguments).not.toHaveProperty("next_run_at");
   });
 
   it("when asked for a specific one-off reminder, preserve the future work in the schedule", async ({
@@ -59,17 +73,25 @@ describeEval("Schedule Creation", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The observed scheduler_slackScheduleCreateTask task is the reminder work to perform later, not instructions for how to create or manage a schedule.",
+          "The reply confirms that the channel reminder was scheduled for two minutes from now.",
         ],
         fail: [
-          "Do not store task text that tells Junior to schedule a reminder later.",
           "Do not ask the user to confirm before creating this clear reminder.",
         ],
       }),
     });
-    const createCall = scheduledTaskCreateCall(result.session);
-    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
-    expect(createCall.arguments).not.toHaveProperty("recurrence");
+    const createCalls = scheduledTaskCreateCalls(result.session);
+    expect(createCalls).toHaveLength(1);
+    const createCall = createCalls[0]!;
+    expect(createCall.arguments).toMatchObject({
+      schedule: {
+        kind: "one_off",
+        timing: { type: "after", value: 2, unit: "minute" },
+      },
+    });
+    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(createCall.arguments?.task).toMatch(/standup moved/i);
+    expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
   });
 
   it("when asked to schedule clear recurring work, create it without confirmation", async ({
@@ -93,9 +115,15 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    expect(scheduledTaskCreateCall(result.session).arguments).toMatchObject({
-      schedule_kind: "recurring",
-      recurrence: "weekly",
+    const createCalls = scheduledTaskCreateCalls(result.session);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]!.arguments).toMatchObject({
+      schedule: {
+        kind: "recurring",
+        frequency: "weekly",
+        time: "09:00",
+        weekdays: ["monday"],
+      },
     });
   });
 });

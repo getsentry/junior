@@ -4,6 +4,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   PluginToolInputError,
   type PluginToolDefinition,
+  type PluginToolExecuteOptions,
   type PluginToolResult,
 } from "@sentry/junior-plugin-api";
 import {
@@ -34,6 +35,7 @@ vi.hoisted(() => {
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
 let currentFixture: LocalJuniorSqlFixture | undefined;
 let currentSchedulerStore: SchedulerToolContext["store"] | undefined;
+let toolCallSequence = 0;
 
 function schedulerMigrationsDir(): string {
   return path.resolve(process.cwd(), "../junior-scheduler/migrations");
@@ -80,6 +82,7 @@ function createContext(
       userName: "dcramer",
       fullName: "David Cramer",
     },
+    now: () => Date.parse("2026-05-24T12:00:00.000Z"),
     userText: "schedule this weekly",
     store: schedulerStore(),
     ...contextOverrides,
@@ -90,23 +93,31 @@ function createContext(
 async function executeTool<TInput, TOutput extends PluginToolResult>(
   tool: PluginToolDefinition<TInput, TOutput>,
   input: TInput,
+  options: PluginToolExecuteOptions = {},
 ): Promise<TOutput> {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
-  return await tool.execute(input, {});
+  const prepared = tool.prepareArguments?.(input) ?? input;
+  return await tool.execute(prepared as TInput, {
+    toolCallId: `test-scheduler-call-${toolCallSequence++}`,
+    ...options,
+  });
 }
 
 async function executeRegisteredTool<TDetails>(
   tool: {
     execute?: (input: unknown, options: {}) => Promise<unknown> | unknown;
+    prepareArguments?: (input: unknown) => unknown;
   },
   input: unknown,
 ): Promise<TDetails> {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
-  return (await tool.execute(input, {})) as TDetails;
+  return (await tool.execute(tool.prepareArguments?.(input) ?? input, {
+    toolCallId: `test-scheduler-call-${toolCallSequence++}`,
+  })) as TDetails;
 }
 
 function schedulerStore() {
@@ -135,11 +146,13 @@ async function createTask(
   const tool = createSlackScheduleCreateTaskTool(context);
   return await executeTool(tool, {
     task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
-    schedule: "Every Monday at 9am",
-    schedule_kind: "recurring",
-    timezone: "America/Los_Angeles",
-    next_run_at: "2026-05-25T16:00:00.000Z",
-    recurrence: "weekly",
+    schedule: {
+      kind: "recurring",
+      frequency: "weekly",
+      time: "09:00",
+      weekdays: ["monday"],
+      timezone: "America/Los_Angeles",
+    },
     ...overrides,
   });
 }
@@ -158,40 +171,36 @@ describe("Slack schedule tools", () => {
     await disconnectStateAdapter();
   });
 
-  it("exposes schedule kind as a required create schema field", async () => {
+  it("exposes a required structured schedule without model-computed timestamps", async () => {
     const schema = createSlackScheduleCreateTaskTool(createContext())
       .inputSchema as {
-      properties?: Record<
-        string,
-        {
-          enum?: unknown[];
-          oneOf?: Array<{ const?: unknown }>;
-        }
-      >;
+      properties?: Record<string, unknown>;
       required?: string[];
     };
-    const scheduleKind = schema.properties?.schedule_kind;
-    const options = (scheduleKind?.enum ??
-      scheduleKind?.oneOf?.map((option) => option.const) ??
-      []) as unknown[];
 
-    expect(schema.required).toContain("schedule_kind");
-    expect([...options].sort()).toEqual(["one_off", "recurring"]);
+    expect(schema.required).toContain("schedule");
+    expect(schema.properties).not.toHaveProperty("next_run_at");
+    expect(schema.properties).not.toHaveProperty("schedule_kind");
   });
 
-  it("accepts null recurrence in the create schema", async () => {
+  it("accepts a structured relative one-off schedule", async () => {
     const tool = createSlackScheduleCreateTaskTool(createContext());
 
     expect(
       tool.prepareArguments?.({
         task: "Remind Greg to drink water.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-28T02:18:48.005Z",
-        recurrence: null,
+        schedule: {
+          kind: "one_off",
+          timezone: null,
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
       }),
     ).toMatchObject({
-      recurrence: null,
+      schedule: {
+        kind: "one_off",
+        timezone: null,
+        timing: { type: "after" },
+      },
     });
   });
 
@@ -225,7 +234,7 @@ describe("Slack schedule tools", () => {
       tasks: [
         {
           task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
-          schedule: "Every Monday at 9am",
+          schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
     });
@@ -239,7 +248,7 @@ describe("Slack schedule tools", () => {
       tasks: [
         {
           task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
-          schedule: "Every Monday at 9am",
+          schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
     });
@@ -250,18 +259,20 @@ describe("Slack schedule tools", () => {
       createSlackScheduleCreateTaskTool(createContext()),
       {
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
-        schedule: "Every Monday at 9am",
-        schedule_kind: "recurring",
-        timezone: "America/Los_Angeles",
-        next_run_at: "2026-05-25T16:00:00.000Z",
-        recurrence: "weekly",
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          time: "09:00",
+          weekdays: ["monday"],
+          timezone: "America/Los_Angeles",
+        },
       },
     );
 
     expect(result).toMatchObject({
       ok: true,
       task: {
-        schedule: "Every Monday at 9am",
+        schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         status: "active",
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
       },
@@ -274,6 +285,63 @@ describe("Slack schedule tools", () => {
         status: "active",
       },
     ]);
+  });
+
+  it("returns the existing task when a create tool call is replayed", async () => {
+    let nowCalls = 0;
+    const context = createContext({
+      now: () => Date.parse("2026-05-24T12:00:00.000Z") + nowCalls++ * 1_000,
+    });
+    const tool = createSlackScheduleCreateTaskTool(context);
+    const input = {
+      task: "Post the scheduler reminder.",
+      schedule: {
+        kind: "one_off" as const,
+        timing: {
+          type: "after" as const,
+          value: 1,
+          unit: "minute" as const,
+        },
+      },
+    };
+
+    const [first, replay] = await Promise.all([
+      executeTool(tool, input, { toolCallId: "call-create-1" }),
+      executeTool(tool, input, { toolCallId: "call-create-1" }),
+    ]);
+
+    expect(replay.task.id).toBe(first.task.id);
+    expect(replay.task.next_run_at).toBe(first.task.next_run_at);
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("allows separate create calls to make equivalent tasks", async () => {
+    const tool = createSlackScheduleCreateTaskTool(createContext());
+    const input = {
+      task: "Post the reminder.",
+      schedule: {
+        kind: "one_off" as const,
+        timing: {
+          type: "after" as const,
+          value: 1,
+          unit: "minute" as const,
+        },
+      },
+    };
+
+    const first = await executeTool(tool, input, {
+      toolCallId: "call-create-first",
+    });
+    const second = await executeTool(tool, input, {
+      toolCallId: "call-create-second",
+    });
+
+    expect(second.task.id).not.toBe(first.task.id);
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toHaveLength(2);
   });
 
   it("does not store Slack ids as creator display identity", async () => {
@@ -325,9 +393,10 @@ describe("Slack schedule tools", () => {
       createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),
       {
         task: "Reminder: Remind David to wash his hands.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-27T00:25:23.000Z",
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
       },
     );
 
@@ -408,7 +477,7 @@ describe("Slack schedule tools", () => {
     );
   });
 
-  it("creates explicit one-off reminders without a second confirmation", async () => {
+  it("computes relative one-off runs from the trusted clock", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
 
@@ -416,14 +485,16 @@ describe("Slack schedule tools", () => {
       createSlackScheduleCreateTaskTool(
         createContext({
           channelId: "D123",
+          now: () => Date.now(),
           userText: "remind me in 1 minute to wash my hands",
         }),
       ),
       {
         task: "Wash hands reminder: Remind David to wash his hands.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-27T00:25:23.000Z",
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
         credential_mode: null,
       },
     );
@@ -453,206 +524,83 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
-  it("creates short imperative one-off reminders without channel confirmation", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
-
-    const result = await executeTool(
-      createSlackScheduleCreateTaskTool(
-        createContext({
-          userText: "drink water in 1 minute in this conversation",
-        }),
-      ),
-      {
-        task: "Drink water reminder: Remind David to drink water.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-27T00:25:23.000Z",
-      },
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-      task: {
-        next_run_at: "2026-05-27T00:25:23.000Z",
-        schedule: "In 1 minute",
-        status: "active",
-        task: "Drink water reminder: Remind David to drink water.",
-      },
-    });
+  it("rejects malformed local dates", async () => {
     await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toMatchObject([
-      {
-        destination: { channelId: "C123" },
-        nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
-        status: "active",
-      },
-    ]);
-  });
-
-  it("creates one-off reminders by omitting recurrence", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-28T02:17:48.005Z"));
-
-    const result = await executeTool(
-      createSlackScheduleCreateTaskTool(
-        createContext({
-          userText: "remind greg to drink water in 1m",
-        }),
-      ),
-      {
-        task: "Remind Greg to drink water.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-28T02:18:48.005Z",
-      },
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-      task: {
-        next_run_at: "2026-05-28T02:18:48.005Z",
-        recurrence: null,
-        schedule: "In 1 minute",
-        status: "active",
-        task: "Remind Greg to drink water.",
-      },
-    });
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toMatchObject([
-      {
-        nextRunAtMs: Date.parse("2026-05-28T02:18:48.005Z"),
+      createTask(createContext(), {
         schedule: {
           kind: "one_off",
+          timing: { type: "at", date: "05/25/2026", time: "09:00" },
         },
-        status: "active",
-      },
-    ]);
-  });
-
-  it("creates one-off reminders with null recurrence", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-28T02:17:48.005Z"));
-
-    const result = await executeTool(
-      createSlackScheduleCreateTaskTool(
-        createContext({
-          userText: "remind greg to drink water in 1m",
-        }),
-      ),
-      {
-        task: "Remind Greg to drink water.",
-        schedule: "In 1 minute",
-        schedule_kind: "one_off",
-        next_run_at: "2026-05-28T02:18:48.005Z",
-        recurrence: null,
-      },
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-      task: {
-        next_run_at: "2026-05-28T02:18:48.005Z",
-        recurrence: null,
-        schedule: "In 1 minute",
-        status: "active",
-        task: "Remind Greg to drink water.",
-      },
-    });
+      }),
+    ).rejects.toThrow("Use a local date in YYYY-MM-DD format.");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toMatchObject([
-      {
-        nextRunAtMs: Date.parse("2026-05-28T02:18:48.005Z"),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects missing structured schedules with a tool error", async () => {
+    await expect(
+      createTask(createContext(), {
+        schedule: undefined,
+      }),
+    ).rejects.toThrow("schedule");
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects unsupported recurring frequencies", async () => {
+    await expect(
+      createTask(createContext(), {
         schedule: {
-          kind: "one_off",
+          kind: "recurring",
+          frequency: "hourly",
+          time: "09:00",
         },
-        status: "active",
-      },
-    ]);
-  });
-
-  it("rejects parseable non-ISO next run timestamps", async () => {
-    await expect(
-      createTask(createContext(), {
-        next_run_at: "05/25/2026 09:00",
       }),
-    ).rejects.toThrow("Provide next_run_at as a valid ISO timestamp.");
+    ).rejects.toThrow("Invalid tool arguments: schedule");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
-  it("rejects missing next run timestamps with a tool error", async () => {
+  it("rejects removed top-level scheduling fields", async () => {
     await expect(
       createTask(createContext(), {
-        next_run_at: undefined,
+        next_run_at: "2026-05-25T16:00:00.000Z",
       }),
-    ).rejects.toThrow("Provide next_run_at as a valid ISO timestamp.");
+    ).rejects.toThrow("Unrecognized key");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
-  it("rejects recurring schedules that can run more than once per day", async () => {
+  it("rejects weekly schedules without weekdays", async () => {
     await expect(
       createTask(createContext(), {
-        schedule: "Every hour",
-        recurrence: "hourly",
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          time: "09:00",
+        },
       }),
-    ).rejects.toThrow(
-      "Recurring scheduled tasks can run at most once per day.",
-    );
+    ).rejects.toThrow("Weekly schedules require weekdays.");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
-  it("rejects create calls that omit schedule kind", async () => {
+  it("rejects recurring fields that contradict the selected frequency", async () => {
     await expect(
       createTask(createContext(), {
-        schedule_kind: undefined,
+        schedule: {
+          kind: "recurring",
+          frequency: "daily",
+          time: "09:00",
+          weekdays: ["monday"],
+        },
       }),
-    ).rejects.toThrow("Provide schedule_kind as one_off or recurring.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
-  });
-
-  it("rejects one-off create calls that include recurrence", async () => {
-    await expect(
-      createTask(createContext(), {
-        schedule: "In 30 seconds",
-        schedule_kind: "one_off",
-        recurrence: "daily",
-      }),
-    ).rejects.toThrow("Omit recurrence when schedule_kind is one_off.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
-  });
-
-  it("rejects recurring create calls that omit recurrence", async () => {
-    await expect(
-      createTask(createContext(), {
-        schedule_kind: "recurring",
-        recurrence: undefined,
-      }),
-    ).rejects.toThrow("Provide recurrence when schedule_kind is recurring.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
-  });
-
-  it("rejects recurring create calls with null recurrence", async () => {
-    await expect(
-      createTask(createContext(), {
-        schedule_kind: "recurring",
-        recurrence: null,
-      }),
-    ).rejects.toThrow("Provide recurrence when schedule_kind is recurring.");
+    ).rejects.toThrow("weekdays applies only to weekly schedules.");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
@@ -669,17 +617,32 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(context),
       {
         task_id: taskId,
-        task: "Daily scheduler digest: Summarize open scheduler issues.",
-        schedule: "Every day at 9am",
-        recurrence: "daily",
+        task: "Tuesday scheduler digest: Summarize open scheduler issues.",
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          time: "10:00",
+          weekdays: ["tuesday"],
+        },
       },
     );
     expect(updated).toMatchObject({
       ok: true,
       task: {
         id: taskId,
-        task: "Daily scheduler digest: Summarize open scheduler issues.",
-        schedule: "Every day at 9am",
+        next_run_at: "2026-05-26T17:00:00.000Z",
+        task: "Tuesday scheduler digest: Summarize open scheduler issues.",
+        schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
+      },
+    });
+    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+      nextRunAtMs: Date.parse("2026-05-26T17:00:00.000Z"),
+      schedule: {
+        recurrence: {
+          frequency: "weekly",
+          time: { hour: 10, minute: 0 },
+          weekdays: [2],
+        },
       },
     });
 
@@ -704,7 +667,45 @@ describe("Slack schedule tools", () => {
     expect(listed).toMatchObject({ ok: true, tasks: [] });
   });
 
-  it("rejects edits that make a recurring task run more than once per day", async () => {
+  it("treats a null update schedule as omitted", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as {
+      task: { id: string; next_run_at: string };
+    };
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(context),
+      { task_id: created.task.id, schedule: null, status: "paused" },
+    );
+
+    expect(updated).toMatchObject({
+      task: {
+        id: created.task.id,
+        next_run_at: created.task.next_run_at,
+        status: "paused",
+      },
+    });
+  });
+
+  it("rejects removed top-level rescheduling fields", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as { task: { id: string } };
+    const tool = createSlackScheduleUpdateTaskTool(context);
+
+    await expect(
+      executeTool(tool, {
+        task_id: created.task.id,
+        next_run_at: "2026-06-01T16:00:00.000Z",
+      } as unknown as Parameters<NonNullable<typeof tool.execute>>[0]),
+    ).rejects.toThrow("Unrecognized key");
+    await expect(
+      schedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({
+      nextRunAtMs: Date.parse("2026-05-25T16:00:00.000Z"),
+    });
+  });
+
+  it("rejects edits with an unsupported recurring frequency", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
@@ -714,22 +715,23 @@ describe("Slack schedule tools", () => {
     await expect(
       executeTool(updateTool, {
         task_id: created.task.id,
-        schedule: "Every hour",
-        recurrence: "hourly",
+        schedule: {
+          kind: "recurring",
+          frequency: "hourly",
+          time: "09:00",
+        },
       } as unknown as Parameters<NonNullable<typeof updateTool.execute>>[0]),
-    ).rejects.toThrow(
-      "Recurring scheduled tasks can run at most once per day.",
-    );
+    ).rejects.toThrow("Invalid tool arguments: schedule");
     await expect(
       schedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
       schedule: {
-        description: "Every Monday at 9am",
+        description: "Every week on Monday at 09:00 (America/Los_Angeles)",
       },
     });
   });
 
-  it("converts recurring tasks to one-off tasks with recurrence null", async () => {
+  it("converts recurring tasks to one-off tasks with a full schedule replacement", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
@@ -739,9 +741,10 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(context),
       {
         task_id: created.task.id,
-        schedule: "On June 1 at 9am",
-        next_run_at: "2026-06-01T16:00:00.000Z",
-        recurrence: null,
+        schedule: {
+          kind: "one_off",
+          timing: { type: "at", date: "2026-06-01", time: "09:00" },
+        },
       },
     );
 
@@ -751,7 +754,7 @@ describe("Slack schedule tools", () => {
         id: created.task.id,
         next_run_at: "2026-06-01T16:00:00.000Z",
         recurrence: null,
-        schedule: "On June 1 at 9am",
+        schedule: "Once on 2026-06-01 at 09:00 (America/Los_Angeles)",
       },
     });
     await expect(
@@ -927,7 +930,13 @@ describe("Slack schedule tools", () => {
 
     await executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
       task_id: created.task.id,
-      schedule: "Every Tuesday at 9am",
+      schedule: {
+        kind: "recurring",
+        frequency: "weekly",
+        time: "09:00",
+        weekdays: ["tuesday"],
+        timezone: "America/Los_Angeles",
+      },
       credential_mode: null,
     });
     await expect(
@@ -1046,10 +1055,10 @@ describe("Slack schedule tools", () => {
           },
         },
         {
-          schedule: "In 1 minute",
-          schedule_kind: "one_off",
-          next_run_at: "2026-05-27T00:25:23.000Z",
-          recurrence: undefined,
+          schedule: {
+            kind: "one_off",
+            timing: { type: "after", value: 1, unit: "minute" },
+          },
         },
       ),
     ).rejects.toThrow("Active Slack conversation channel is invalid.");
@@ -1060,10 +1069,10 @@ describe("Slack schedule tools", () => {
 
   it("stores canonical Slack destinations directly", async () => {
     const result = await createTask(createContext({ channelId: "D123" }), {
-      schedule: "In 1 minute",
-      schedule_kind: "one_off",
-      next_run_at: "2026-05-27T00:25:23.000Z",
-      recurrence: undefined,
+      schedule: {
+        kind: "one_off",
+        timing: { type: "after", value: 1, unit: "minute" },
+      },
     });
 
     expect(result).toMatchObject({
@@ -1084,16 +1093,15 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
-  it("creates one-off tasks with an exact timestamp using the default Pacific timezone", async () => {
+  it("computes one-off timestamps from local time in the default Pacific timezone", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      schedule: "On May 26 at 9am",
-      schedule_kind: "one_off",
-      next_run_at: "2026-05-26T16:00:00.000Z",
-      recurrence: undefined,
-      timezone: undefined,
+      schedule: {
+        kind: "one_off",
+        timing: { type: "at", date: "2026-05-26", time: "09:00" },
+      },
     });
 
     expect(created).toMatchObject({
@@ -1112,11 +1120,10 @@ describe("Slack schedule tools", () => {
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      schedule: "On May 26 at 9am",
-      schedule_kind: "one_off",
-      next_run_at: "2026-05-26T13:00:00.000Z",
-      recurrence: undefined,
-      timezone: undefined,
+      schedule: {
+        kind: "one_off",
+        timing: { type: "at", date: "2026-05-26", time: "09:00" },
+      },
     });
 
     expect(created).toMatchObject({
@@ -1134,7 +1141,10 @@ describe("Slack schedule tools", () => {
 
     await expect(
       createTask(createContext(), {
-        timezone: undefined,
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
       }),
     ).rejects.toThrow("timezone must be a valid IANA time zone.");
     await expect(
@@ -1144,9 +1154,7 @@ describe("Slack schedule tools", () => {
 
   it("preserves a recurring task calendar anchor on content-only edits", async () => {
     const context = createContext();
-    const created = (await createTask(context, {
-      recurrence: "weekly",
-    })) as {
+    const created = (await createTask(context)) as {
       task: { id: string };
     };
     const store = schedulerStore();
@@ -1403,11 +1411,14 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         task: { id: string };
       }>(tools.scheduler_slackScheduleCreateTask, {
         task: "Wiring test: post a weekly digest.",
-        schedule: "Every Monday at 9am",
-        schedule_kind: "recurring",
-        timezone: "America/Los_Angeles",
-        next_run_at: "2026-06-09T16:00:00.000Z",
-        recurrence: "weekly",
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          time: "09:00",
+          weekdays: ["monday"],
+          start_date: "2026-06-09",
+          timezone: "America/Los_Angeles",
+        },
       });
 
       expect(result).toMatchObject({ ok: true });

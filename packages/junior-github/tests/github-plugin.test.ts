@@ -726,6 +726,7 @@ describe("github plugin", () => {
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: `<!-- junior-session-footer:start -->
+<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->
 
 --
 
@@ -1171,6 +1172,7 @@ Conversation: \`local:test:old-conversation\`
       body: `PR body
 
 <!-- junior-session-footer:start -->
+<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->
 
 --
 

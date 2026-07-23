@@ -74,6 +74,7 @@ import {
   isProviderRetryError,
   nextProviderRetry,
 } from "@/chat/services/provider-retry";
+import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -792,6 +793,10 @@ async function executeAgentRunInPrivacyContext(
         }
         return undefined;
       },
+      afterToolCall: async ({ result }, signal) =>
+        runResume.timedOut && signal?.aborted
+          ? annotateTurnDeadlineToolResult(result)
+          : undefined,
       prepareNextTurn: async () => {
         const update = applyPendingHandoff();
         await drainSteeringMessages();

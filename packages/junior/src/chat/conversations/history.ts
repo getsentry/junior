@@ -362,6 +362,21 @@ export const conversationEventSchema = z.union([
 /** One versioned event read from the durable conversation log. */
 export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
+/** A decoded message-summary event and its readable history boundary. */
+export type MessagesSummarizedEvent = Omit<
+  Extract<ConversationEvent, { schemaVersion: 1 }>,
+  "data"
+> & {
+  data: Extract<ConversationEventData, { type: "messages_summarized" }>;
+};
+
+/** Projection-ready message events paired with their authoritative boundary. */
+export interface MessageHistory {
+  events: ConversationEvent[];
+  compaction: MessagesSummarizedEvent | undefined;
+  historyFromSeq: number;
+}
+
 const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
   type: z.string().min(1),
   payload: z.unknown(),
@@ -421,11 +436,8 @@ export interface ConversationEventStore {
     seq: number,
     throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined>;
-  /** Current source/destination messages and their latest summary snapshot. */
-  loadMessageHistory(conversationId: string): Promise<{
-    events: ConversationEvent[];
-    compaction: ConversationEvent | undefined;
-  }>;
+  /** Projection-ready message suffix, summary snapshot, and readable boundary. */
+  loadMessageHistory(conversationId: string): Promise<MessageHistory>;
   /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
 }

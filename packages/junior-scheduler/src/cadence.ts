@@ -1,51 +1,8 @@
 import type {
-  ScheduledCalendarFrequency,
   ScheduledLocalTime,
   ScheduledTask,
   ScheduledTaskRecurrence,
 } from "./types";
-
-/** Parse an ISO timestamp into a finite Unix timestamp in milliseconds. */
-export function parseScheduleTimestamp(value: string): number | undefined {
-  const trimmed = value.trim();
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/.exec(
-      trimmed,
-    );
-  if (!match) {
-    return undefined;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = match[6] ? Number(match[6]) : 0;
-  if (
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(day) ||
-    !Number.isInteger(hour) ||
-    !Number.isInteger(minute) ||
-    !Number.isInteger(second) ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > daysInMonth(year, month) ||
-    hour < 0 ||
-    hour > 23 ||
-    minute < 0 ||
-    minute > 59 ||
-    second < 0 ||
-    second > 59
-  ) {
-    return undefined;
-  }
-
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 export interface ZonedDateTimeParts {
   day: number;
@@ -93,6 +50,10 @@ function getLocalDateWeekday(date: LocalDate): number {
   return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
 }
 
+function getWeekStart(date: LocalDate): LocalDate {
+  return addDays(date, -((getLocalDateWeekday(date) + 6) % 7));
+}
+
 /** Resolve a UTC timestamp into calendar parts for a named time zone. */
 export function getZonedDateTimeParts(
   timestampMs: number,
@@ -136,7 +97,7 @@ function localDateTimeToTimestampMs(args: {
   date: LocalDate;
   time: ScheduledLocalTime;
   timezone: string;
-}): number {
+}): number | undefined {
   const localAsUtcMs = Date.UTC(
     args.date.year,
     args.date.month - 1,
@@ -145,18 +106,222 @@ function localDateTimeToTimestampMs(args: {
     args.time.minute,
     0,
   );
-  let timestampMs =
-    localAsUtcMs - getTimeZoneOffsetMs(localAsUtcMs, args.timezone);
-
-  for (let index = 0; index < 3; index += 1) {
-    const next = localAsUtcMs - getTimeZoneOffsetMs(timestampMs, args.timezone);
-    if (next === timestampMs) {
-      break;
-    }
-    timestampMs = next;
+  const offsets = new Set<number>();
+  for (const probeDeltaMs of [
+    -36 * 60 * 60 * 1000,
+    -12 * 60 * 60 * 1000,
+    0,
+    12 * 60 * 60 * 1000,
+    36 * 60 * 60 * 1000,
+  ]) {
+    offsets.add(
+      getTimeZoneOffsetMs(localAsUtcMs + probeDeltaMs, args.timezone),
+    );
   }
 
-  return timestampMs;
+  const matches = [...offsets]
+    .map((offsetMs) => localAsUtcMs - offsetMs)
+    .filter((timestampMs) => {
+      const parts = getZonedDateTimeParts(timestampMs, args.timezone);
+      return (
+        parts.year === args.date.year &&
+        parts.month === args.date.month &&
+        parts.day === args.date.day &&
+        parts.hour === args.time.hour &&
+        parts.minute === args.time.minute
+      );
+    });
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+  return Math.min(...matches);
+}
+
+/** Resolve local time, rejecting DST gaps and choosing the earlier instant in a fold. */
+export function resolveLocalScheduleAtMs(args: {
+  date: string;
+  time: ScheduledLocalTime;
+  timezone: string;
+}): number | undefined {
+  const date = parseLocalDate(args.date);
+  if (!date) {
+    return undefined;
+  }
+  return localDateTimeToTimestampMs({
+    date,
+    time: args.time,
+    timezone: args.timezone,
+  });
+}
+
+function daysBetween(left: LocalDate, right: LocalDate): number {
+  return Math.floor(
+    (Date.UTC(right.year, right.month - 1, right.day) -
+      Date.UTC(left.year, left.month - 1, left.day)) /
+      (24 * 60 * 60 * 1000),
+  );
+}
+
+function monthsBetween(left: LocalDate, right: LocalDate): number {
+  return right.year * 12 + right.month - (left.year * 12 + left.month);
+}
+
+function weeklyRecurrenceMatchesDate(
+  date: LocalDate,
+  start: LocalDate,
+  recurrence: ScheduledTaskRecurrence,
+): boolean {
+  if (compareDate(date, start) < 0) {
+    return false;
+  }
+  return (
+    normalizeWeekdays(recurrence.weekdays).includes(
+      getLocalDateWeekday(date),
+    ) &&
+    Math.floor(daysBetween(getWeekStart(start), getWeekStart(date)) / 7) %
+      recurrence.interval ===
+      0
+  );
+}
+
+function greatestCommonDivisor(left: number, right: number): number {
+  let a = Math.abs(left);
+  let b = Math.abs(right);
+  while (b !== 0) {
+    [a, b] = [b, a % b];
+  }
+  return a;
+}
+
+function findNextRunAtMs(args: {
+  afterMs: number;
+  recurrence: ScheduledTaskRecurrence;
+  searchFrom: LocalDate;
+  timezone: string;
+}): number | undefined {
+  const start = parseLocalDate(args.recurrence.startDate);
+  const interval = args.recurrence.interval;
+  if (!start || !Number.isInteger(interval) || interval <= 0) {
+    return undefined;
+  }
+
+  const searchFrom =
+    compareDate(args.searchFrom, start) < 0 ? start : args.searchFrom;
+  if (args.recurrence.frequency === "daily") {
+    const offsetDays = daysBetween(start, searchFrom);
+    let candidateDate = addDays(
+      start,
+      Math.ceil(offsetDays / interval) * interval,
+    );
+    const gregorianCycleDays = 146_097;
+    const candidateCount =
+      gregorianCycleDays / greatestCommonDivisor(gregorianCycleDays, interval);
+    for (let attempts = 0; attempts < candidateCount; attempts += 1) {
+      const candidate = buildCandidate({
+        date: candidateDate,
+        recurrence: args.recurrence,
+        timezone: args.timezone,
+      });
+      if (candidate !== undefined && candidate > args.afterMs) {
+        return candidate;
+      }
+      candidateDate = addDays(candidateDate, interval);
+    }
+    return undefined;
+  }
+
+  if (args.recurrence.frequency === "weekly") {
+    if (normalizeWeekdays(args.recurrence.weekdays).length === 0) {
+      return undefined;
+    }
+    let candidateDate = searchFrom;
+    const gregorianCycleDays = 146_097;
+    const cadenceDays = interval * 7;
+    const searchDays =
+      (gregorianCycleDays * cadenceDays) /
+      greatestCommonDivisor(gregorianCycleDays, cadenceDays);
+    for (let attempts = 0; attempts < searchDays; attempts += 1) {
+      if (weeklyRecurrenceMatchesDate(candidateDate, start, args.recurrence)) {
+        const candidate = buildCandidate({
+          date: candidateDate,
+          recurrence: args.recurrence,
+          timezone: args.timezone,
+        });
+        if (candidate !== undefined && candidate > args.afterMs) {
+          return candidate;
+        }
+      }
+      candidateDate = addDays(candidateDate, 1);
+    }
+    return undefined;
+  }
+
+  if (args.recurrence.frequency === "monthly") {
+    const startMonth = start.year * 12 + start.month - 1;
+    const searchMonth = searchFrom.year * 12 + searchFrom.month - 1;
+    let candidateMonth =
+      startMonth + Math.ceil((searchMonth - startMonth) / interval) * interval;
+    const gregorianCycleMonths = 4_800;
+    const candidateCount =
+      gregorianCycleMonths /
+      greatestCommonDivisor(gregorianCycleMonths, interval);
+    for (let attempts = 0; attempts < candidateCount; attempts += 1) {
+      const candidateDate = {
+        year: Math.floor(candidateMonth / 12),
+        month: (candidateMonth % 12) + 1,
+        day: args.recurrence.dayOfMonth ?? 0,
+      };
+      if (compareDate(candidateDate, searchFrom) >= 0) {
+        const candidate = buildCandidate({
+          date: candidateDate,
+          recurrence: args.recurrence,
+          timezone: args.timezone,
+        });
+        if (candidate !== undefined && candidate > args.afterMs) {
+          return candidate;
+        }
+      }
+      candidateMonth += interval;
+    }
+    return undefined;
+  }
+
+  let candidateYear =
+    start.year +
+    Math.ceil((searchFrom.year - start.year) / interval) * interval;
+  const candidateCount = 400 / greatestCommonDivisor(400, interval);
+  for (let attempts = 0; attempts < candidateCount; attempts += 1) {
+    const candidateDate = {
+      year: candidateYear,
+      month: args.recurrence.month ?? 0,
+      day: args.recurrence.dayOfMonth ?? 0,
+    };
+    if (compareDate(candidateDate, searchFrom) >= 0) {
+      const candidate = buildCandidate({
+        date: candidateDate,
+        recurrence: args.recurrence,
+        timezone: args.timezone,
+      });
+      if (candidate !== undefined && candidate > args.afterMs) {
+        return candidate;
+      }
+    }
+    candidateYear += interval;
+  }
+  return undefined;
+}
+
+/** Compute the first recurring calendar occurrence strictly after a timestamp. */
+export function getFirstRunAtMs(args: {
+  afterMs: number;
+  recurrence: ScheduledTaskRecurrence;
+  timezone: string;
+}): number | undefined {
+  return findNextRunAtMs({
+    ...args,
+    searchFrom: getLocalDate(args.afterMs, args.timezone),
+  });
 }
 
 function compareDate(left: LocalDate, right: LocalDate): number {
@@ -203,14 +368,6 @@ function parseLocalDate(value: string): LocalDate | undefined {
   return { year, month, day };
 }
 
-function formatLocalDate(date: LocalDate): string {
-  return [
-    String(date.year).padStart(4, "0"),
-    String(date.month).padStart(2, "0"),
-    String(date.day).padStart(2, "0"),
-  ].join("-");
-}
-
 function getLocalDate(timestampMs: number, timezone: string): LocalDate {
   const parts = getZonedDateTimeParts(timestampMs, timezone);
   return { year: parts.year, month: parts.month, day: parts.day };
@@ -226,224 +383,12 @@ function buildCandidate(args: {
   date: LocalDate;
   recurrence: ScheduledTaskRecurrence;
   timezone: string;
-}): number {
+}): number | undefined {
   return localDateTimeToTimestampMs({
     date: args.date,
     time: args.recurrence.time,
     timezone: args.timezone,
   });
-}
-
-function getDailyNextRunAtMs(args: {
-  afterMs: number;
-  recurrence: ScheduledTaskRecurrence;
-  scheduledForMs: number;
-  timezone: string;
-}): number | undefined {
-  const start = parseLocalDate(args.recurrence.startDate);
-  if (!start) {
-    return undefined;
-  }
-
-  let candidateDate = addDays(
-    getLocalDate(args.scheduledForMs, args.timezone),
-    args.recurrence.interval,
-  );
-  if (compareDate(candidateDate, start) < 0) {
-    candidateDate = start;
-  }
-
-  let candidate = buildCandidate({
-    date: candidateDate,
-    recurrence: args.recurrence,
-    timezone: args.timezone,
-  });
-  while (candidate <= args.afterMs) {
-    candidateDate = addDays(candidateDate, args.recurrence.interval);
-    candidate = buildCandidate({
-      date: candidateDate,
-      recurrence: args.recurrence,
-      timezone: args.timezone,
-    });
-  }
-  return candidate;
-}
-
-function getWeeklyNextRunAtMs(args: {
-  afterMs: number;
-  recurrence: ScheduledTaskRecurrence;
-  scheduledForMs: number;
-  timezone: string;
-}): number | undefined {
-  const start = parseLocalDate(args.recurrence.startDate);
-  if (!start) {
-    return undefined;
-  }
-
-  const weekdays = normalizeWeekdays(args.recurrence.weekdays);
-  if (weekdays.length === 0) {
-    return undefined;
-  }
-
-  let candidateDate = addDays(
-    getLocalDate(args.scheduledForMs, args.timezone),
-    1,
-  );
-  for (let attempts = 0; attempts < 3660; attempts += 1) {
-    const weeksSinceStart = Math.floor(
-      (Date.UTC(
-        candidateDate.year,
-        candidateDate.month - 1,
-        candidateDate.day,
-      ) -
-        Date.UTC(start.year, start.month - 1, start.day)) /
-        (7 * 24 * 60 * 60 * 1000),
-    );
-    const isInCycle =
-      weeksSinceStart >= 0 && weeksSinceStart % args.recurrence.interval === 0;
-    if (isInCycle && weekdays.includes(getLocalDateWeekday(candidateDate))) {
-      const candidate = buildCandidate({
-        date: candidateDate,
-        recurrence: args.recurrence,
-        timezone: args.timezone,
-      });
-      if (candidate > args.afterMs) {
-        return candidate;
-      }
-    }
-    candidateDate = addDays(candidateDate, 1);
-  }
-
-  return undefined;
-}
-
-function getMonthlyNextRunAtMs(args: {
-  afterMs: number;
-  recurrence: ScheduledTaskRecurrence;
-  scheduledForMs: number;
-  timezone: string;
-}): number | undefined {
-  const start = parseLocalDate(args.recurrence.startDate);
-  const dayOfMonth = args.recurrence.dayOfMonth;
-  if (!start || !dayOfMonth) {
-    return undefined;
-  }
-
-  const scheduledDate = getLocalDate(args.scheduledForMs, args.timezone);
-  let monthIndex = scheduledDate.year * 12 + scheduledDate.month - 1;
-  const startMonthIndex = start.year * 12 + start.month - 1;
-
-  for (let attempts = 0; attempts < 1200; attempts += 1) {
-    monthIndex += args.recurrence.interval;
-    if (monthIndex < startMonthIndex) {
-      monthIndex = startMonthIndex;
-    }
-    const year = Math.floor(monthIndex / 12);
-    const month = (monthIndex % 12) + 1;
-    if (dayOfMonth > daysInMonth(year, month)) {
-      continue;
-    }
-    const candidate = buildCandidate({
-      date: { year, month, day: dayOfMonth },
-      recurrence: args.recurrence,
-      timezone: args.timezone,
-    });
-    if (candidate > args.afterMs) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-function getYearlyNextRunAtMs(args: {
-  afterMs: number;
-  recurrence: ScheduledTaskRecurrence;
-  scheduledForMs: number;
-  timezone: string;
-}): number | undefined {
-  const start = parseLocalDate(args.recurrence.startDate);
-  const month = args.recurrence.month;
-  const dayOfMonth = args.recurrence.dayOfMonth;
-  if (!start || !month || !dayOfMonth) {
-    return undefined;
-  }
-
-  const scheduledDate = getLocalDate(args.scheduledForMs, args.timezone);
-  let year = scheduledDate.year;
-
-  for (let attempts = 0; attempts < 100; attempts += 1) {
-    year += args.recurrence.interval;
-    if (year < start.year) {
-      year = start.year;
-    }
-    if (dayOfMonth > daysInMonth(year, month)) {
-      continue;
-    }
-    const candidate = buildCandidate({
-      date: { year, month, day: dayOfMonth },
-      recurrence: args.recurrence,
-      timezone: args.timezone,
-    });
-    if (candidate > args.afterMs) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-/** Build a calendar recurrence anchored to an exact first run timestamp. */
-export function buildCalendarRecurrence(args: {
-  frequency: ScheduledCalendarFrequency;
-  interval?: number;
-  nextRunAtMs: number;
-  timezone: string;
-  weekdays?: number[];
-}): ScheduledTaskRecurrence {
-  const interval = args.interval && args.interval > 0 ? args.interval : 1;
-  const parts = getZonedDateTimeParts(args.nextRunAtMs, args.timezone);
-  const time = { hour: parts.hour, minute: parts.minute };
-  const startDate = formatLocalDate(parts);
-
-  if (args.frequency === "weekly") {
-    const weekdays = normalizeWeekdays(args.weekdays);
-    return {
-      frequency: args.frequency,
-      interval,
-      startDate,
-      time,
-      weekdays: weekdays.length > 0 ? weekdays : [parts.weekday],
-    };
-  }
-
-  if (args.frequency === "monthly") {
-    return {
-      dayOfMonth: parts.day,
-      frequency: args.frequency,
-      interval,
-      startDate,
-      time,
-    };
-  }
-
-  if (args.frequency === "yearly") {
-    return {
-      dayOfMonth: parts.day,
-      frequency: args.frequency,
-      interval,
-      month: parts.month,
-      startDate,
-      time,
-    };
-  }
-
-  return {
-    frequency: args.frequency,
-    interval,
-    startDate,
-    time,
-  };
 }
 
 /** Return the next fire time after a completed run, when the task recurs. */
@@ -465,37 +410,16 @@ export function getNextRunAtMs(
     return undefined;
   }
 
-  if (recurrence.frequency === "daily") {
-    return getDailyNextRunAtMs({
-      recurrence,
-      timezone: task.schedule.timezone,
-      scheduledForMs,
-      afterMs,
-    });
-  }
-
-  if (recurrence.frequency === "weekly") {
-    return getWeeklyNextRunAtMs({
-      recurrence,
-      timezone: task.schedule.timezone,
-      scheduledForMs,
-      afterMs,
-    });
-  }
-
-  if (recurrence.frequency === "monthly") {
-    return getMonthlyNextRunAtMs({
-      recurrence,
-      timezone: task.schedule.timezone,
-      scheduledForMs,
-      afterMs,
-    });
-  }
-
-  return getYearlyNextRunAtMs({
-    recurrence,
-    timezone: task.schedule.timezone,
-    scheduledForMs,
+  const timezone = task.schedule.timezone;
+  const afterDate = getLocalDate(afterMs, timezone);
+  const nextScheduledDate = addDays(getLocalDate(scheduledForMs, timezone), 1);
+  return findNextRunAtMs({
     afterMs,
+    recurrence,
+    searchFrom:
+      compareDate(afterDate, nextScheduledDate) < 0
+        ? nextScheduledDate
+        : afterDate,
+    timezone,
   });
 }

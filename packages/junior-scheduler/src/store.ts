@@ -148,6 +148,7 @@ const runRecordSchema = z
 
 export interface SchedulerStore {
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
+  createTask(task: ScheduledTask): Promise<ScheduledTask>;
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listIncompleteRuns(): Promise<ScheduledRun[]>;
@@ -632,6 +633,18 @@ class PluginStateSchedulerStore implements SchedulerStore {
 
   constructor(state: PluginState) {
     this.state = state;
+  }
+
+  async createTask(task: ScheduledTask): Promise<ScheduledTask> {
+    const next = requireStoredTask(task);
+    return await withLock(this.state, taskLockKey(task.id), async () => {
+      const current = await getTaskFromState(this.state, task.id);
+      if (current) {
+        return current;
+      }
+      await this.saveTaskRecord(next, undefined);
+      return next;
+    });
   }
 
   async saveTask(task: ScheduledTask): Promise<void> {
@@ -1254,6 +1267,18 @@ async function listIncompleteRunsForTasksFromSql(
 
 class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   constructor(private readonly db: SchedulerDb) {}
+
+  async createTask(task: ScheduledTask): Promise<ScheduledTask> {
+    const next = requireStoredTask(task);
+    return await withSqlLock(this.db, taskLockKey(task.id), async (db) => {
+      const current = await getTaskFromSql(db, task.id);
+      if (current) {
+        return current;
+      }
+      await this.saveTaskRecord(db, next, undefined);
+      return next;
+    });
+  }
 
   async saveTask(task: ScheduledTask): Promise<void> {
     const next = requireStoredTask(task);

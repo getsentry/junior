@@ -6,6 +6,7 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorUsers,
 } from "@/db/schema";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationFeedSchema } from "./schema";
@@ -32,6 +33,7 @@ async function conversationRows(
       identityProvider: juniorIdentities.provider,
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
+      userDisplayName: juniorUsers.displayName,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -42,6 +44,7 @@ async function conversationRows(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
@@ -63,16 +66,18 @@ async function conversationRows(
 
 type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 
+/** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
+  const actorFullName = row.userDisplayName?.trim()
+    ? row.userDisplayName
+    : row.identityDisplayName;
   const actor =
     row.identityProvider === "slack"
       ? {
           platform: "slack" as const,
           ...(row.identityEmail ? { email: row.identityEmail } : {}),
-          ...(row.identityDisplayName
-            ? { fullName: row.identityDisplayName }
-            : {}),
+          ...(actorFullName ? { fullName: actorFullName } : {}),
           ...(row.identitySubjectId
             ? { slackUserId: row.identitySubjectId }
             : {}),
@@ -134,6 +139,7 @@ export async function readConversationRecordFromSql(
       identityProvider: juniorIdentities.provider,
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
+      userDisplayName: juniorUsers.displayName,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -144,6 +150,7 @@ export async function readConversationRecordFromSql(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
   const row = rows[0];

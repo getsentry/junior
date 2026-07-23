@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StateAdapter } from "chat";
 import {
   SLACK_BOT_USER_ID,
+  SLACK_DESTINATION,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -27,6 +28,10 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import {
+  createResourceEventSubscription,
+  listResourceEventSubscriptions,
+} from "@/chat/resource-events/store";
 import {
   deliverAssistantMessagesForTest,
   flattenAgentRunRequestForTest,
@@ -392,9 +397,7 @@ describe("Slack behavior: durable turn steering", () => {
       expect.objectContaining({
         channel: CHANNEL_ID,
         thread_ts: THREAD_TS,
-        text: expect.stringContaining(
-          "Steered: include the rollback owner",
-        ),
+        text: expect.stringContaining("Steered: include the rollback owner"),
       }),
     );
 
@@ -420,9 +423,7 @@ describe("Slack behavior: durable turn steering", () => {
     ]);
     const deliveredMessages = slackApiOutbox.messages();
     expect(deliveredMessages).toHaveLength(2);
-    expect(
-      deliveredMessages.map((message) => message.params.text),
-    ).toEqual([
+    expect(deliveredMessages.map((message) => message.params.text)).toEqual([
       "Handled initial: start the incident summary\n\nSteered: include the rollback owner",
       `Handled initial: ${agentCalls[1]?.prompt}\n\nSteered:`,
     ]);
@@ -584,6 +585,20 @@ describe("Slack behavior: durable turn steering", () => {
       agentRunner: { run: executeAgentRun },
       state,
     });
+    await createResourceEventSubscription(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        events: ["checks.failed"],
+        expiresAtMs: Date.now() + 60_000,
+        intent: "Watch CI while this turn is active.",
+        label: "Pull request checks",
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#steering",
+        resourceType: "pull_request",
+      },
+      { state },
+    );
 
     await expect(
       handleSlackWebhookAndFlush({
@@ -629,6 +644,9 @@ describe("Slack behavior: durable turn steering", () => {
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
     expect(await state.isSubscribed(conversationId)).toBe(false);
+    await expect(
+      listResourceEventSubscriptions({ conversationId, state }),
+    ).resolves.toEqual([]);
     expect(drainedTexts).toEqual([]);
 
     expect(reactionTargetsByName("eyes")).toEqual([

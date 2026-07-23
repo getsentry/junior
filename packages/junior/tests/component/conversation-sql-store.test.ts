@@ -186,19 +186,6 @@ describe("conversation SQL store", () => {
         1_000,
       );
 
-      await upsertIdentity(
-        fixture.sql,
-        {
-          kind: "user",
-          provider: "slack",
-          providerTenantId: "T123",
-          providerSubjectId: "U123",
-          email: "alice@example.com",
-          emailVerified: true,
-          displayName: "Changed Name",
-        },
-        2_000,
-      );
       const secondIdentity = await upsertIdentity(
         fixture.sql,
         {
@@ -209,6 +196,7 @@ describe("conversation SQL store", () => {
           email: "ALICE@example.com",
           emailVerified: true,
           displayName: "Alice Other Device",
+          handle: "alice-other",
         },
         2_500,
       );
@@ -218,7 +206,7 @@ describe("conversation SQL store", () => {
         destination: inboundMessage("identity").destination,
         actor: {
           platform: "slack",
-          slackUserId: "U123",
+          slackUserId: "U456",
           teamId: "T123",
         },
         source: "slack",
@@ -251,11 +239,72 @@ describe("conversation SQL store", () => {
           actor: {
             email: "alice@example.com",
             fullName: "Alice Example",
-            slackUserId: "U123",
-            slackUserName: "alice",
+            slackUserId: "U456",
+            slackUserName: "alice-other",
           },
         },
       ]);
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        actor: {
+          email: "alice@example.com",
+          fullName: "Alice Example",
+          slackUserId: "U456",
+          slackUserName: "alice-other",
+        },
+      });
+      await fixture.sql
+        .db()
+        .update(juniorUsers)
+        .set({ displayName: "" })
+        .where(eq(juniorUsers.primaryEmailNormalized, "alice@example.com"));
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        actor: {
+          fullName: "Alice Other Device",
+          slackUserId: "U456",
+          slackUserName: "alice-other",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("falls back to the provider name when an actor has no linked user", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        actor: {
+          fullName: "Unlinked User",
+          platform: "slack",
+          slackUserId: "U123",
+          slackUserName: "unlinked",
+          teamId: "T123",
+        },
+        source: "slack",
+        nowMs: 1_000,
+      });
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        actor: {
+          fullName: "Unlinked User",
+          slackUserId: "U123",
+          slackUserName: "unlinked",
+        },
+      });
+      await expect(
+        fixture.sql.db().select().from(juniorUsers),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

@@ -41,12 +41,7 @@ export async function persistConversationMessageSummaries(args: {
   )?.seq;
   const nextHistoryFromSeq =
     historyFromSeq ??
-    Math.max(
-      history.compaction?.data.type === "messages_summarized"
-        ? history.compaction.data.historyFromSeq
-        : 0,
-      (history.events.at(-1)?.seq ?? -1) + 1,
-    );
+    Math.max(history.historyFromSeq, (history.events.at(-1)?.seq ?? -1) + 1);
   await eventStore.append(args.conversationId, [
     {
       data: {

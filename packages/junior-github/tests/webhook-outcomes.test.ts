@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,32 +7,46 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { githubSqlSchema, juniorGitHubPullRequests } from "../src/db/schema";
+import {
+  githubSqlSchema,
+  type GitHubPullRequestCommitComposition,
+  juniorGitHubIssues,
+  juniorGitHubPullRequests,
+} from "../src/db/schema";
+import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
-import { buildGitHubOutcomeReport } from "../src/pull-request-outcomes/report";
-import type { GitHubDb } from "../src/pull-request-outcomes/store";
+import { buildGitHubOutcomeReport } from "../src/outcomes/report";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import { normalizeGitHubResourceEvents } from "../src/webhooks/resource-events";
+import { mswServer } from "./msw";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 type GitHubFixture = LocalPgliteFixture<GitHubDb>;
 
 async function createGitHubFixture(): Promise<GitHubFixture> {
   const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
-  const migration = await readFile(
-    resolve(__dirname, "../migrations/0000_pull_request_outcomes.sql"),
-    "utf8",
-  );
-  await fixture.execute(migration);
+  for (const migrationFile of [
+    "0000_pull_request_outcomes.sql",
+    "0001_issue_outcomes.sql",
+    "0002_pull_request_commit_composition.sql",
+    "0003_pull_request_conversations.sql",
+  ]) {
+    await fixture.execute(await migrationSql(migrationFile));
+  }
   return fixture;
+}
+
+async function migrationSql(name: string): Promise<string> {
+  return await readFile(resolve(__dirname, `../migrations/${name}`), "utf8");
 }
 
 function pullRequestPayload(overrides: Record<string, unknown> = {}) {
   return {
     action: "opened",
     pull_request: {
-      body: "Implemented by Junior\n\n<!-- junior-session-footer:start -->",
+      body: "Implemented by Junior\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-session-footer:end -->",
       closed_at: null,
       created_at: "2026-07-01T12:00:00.000Z",
       id: 1001,
@@ -43,6 +57,7 @@ function pullRequestPayload(overrides: Record<string, unknown> = {}) {
       user: { login: "sentry-junior[bot]" },
     },
     repository: { full_name: "getsentry/junior", id: 2001 },
+    sender: { login: "sentry-junior[bot]" },
     ...overrides,
   };
 }
@@ -64,12 +79,40 @@ function lifecyclePayload(input: {
     pull_request: {
       body:
         input.body ??
-        "Implemented by Junior\n\n<!-- junior-session-footer:start -->",
+        "Implemented by Junior\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-session-footer:end -->",
       closed_at: input.closedAt ?? null,
       created_at: input.createdAt,
       id: input.id,
       merged: input.merged ?? false,
       merged_at: input.mergedAt ?? null,
+      number: input.number,
+      updated_at: input.updatedAt ?? input.createdAt,
+      user: { login: input.user ?? "sentry-junior[bot]" },
+    },
+    repository: { full_name: "getsentry/junior", id: 2001 },
+    sender: { login: "sentry-junior[bot]" },
+  };
+}
+
+function issueLifecyclePayload(input: {
+  action?: "closed" | "opened" | "reopened";
+  body?: string;
+  closedAt?: string | null;
+  createdAt: string;
+  id: number;
+  number: number;
+  updatedAt?: string;
+  user?: string;
+}) {
+  return {
+    action: input.action ?? "opened",
+    issue: {
+      body:
+        input.body ??
+        "Created by Junior\n\n<!-- junior-session-footer:start -->",
+      closed_at: input.closedAt ?? null,
+      created_at: input.createdAt,
+      id: input.id,
       number: input.number,
       updated_at: input.updatedAt ?? input.createdAt,
       user: { login: input.user ?? "sentry-junior[bot]" },
@@ -99,10 +142,19 @@ function webhookRoute(
   published: ResourceEvent[] = [],
   botEmail: () => string | undefined = () =>
     "264270552+sentry-junior[bot]@users.noreply.github.com",
+  classifyPullRequestCommits?: () => Promise<
+    GitHubPullRequestCommitComposition | undefined
+  >,
+  error: (
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) => void = () => {},
 ) {
   return createGitHubWebhookRoute({
     botEmail,
+    classifyPullRequestCommits,
     db: fixture.db(),
+    log: { error },
     resourceEvents: {
       async publish(event) {
         published.push(event);
@@ -303,7 +355,183 @@ describe("GitHub webhook resource events", () => {
   });
 });
 
+describe("GitHub-owned issue outcomes", () => {
+  it("tracks the newest lifecycle for Junior-owned issues without adopting human issues", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      const opened = issueLifecyclePayload({
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 3001,
+        number: 970,
+      });
+      await route.handler(signedRequest(opened, "issues"));
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "closed",
+            closedAt: "2026-07-03T12:00:00.000Z",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3001,
+            number: 970,
+            updatedAt: "2026-07-03T12:00:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            body: "bot issue without a Junior footer",
+            createdAt: "2026-07-02T13:00:00.000Z",
+            id: 3003,
+            number: 972,
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-02T14:00:00.000Z",
+            id: 3004,
+            number: 973,
+            user: "human",
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "reopened",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3001,
+            number: 970,
+            updatedAt: "2026-07-02T12:00:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            body: "ordinary human issue",
+            createdAt: "2026-07-02T12:00:00.000Z",
+            id: 3002,
+            number: 971,
+            user: "human",
+          }),
+          "issues",
+        ),
+      );
+
+      await expect(
+        fixture.db().select().from(juniorGitHubIssues),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          issueId: "3001",
+          repositoryFullName: "getsentry/junior",
+          state: "closed",
+          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps a terminal issue when its opening delivery arrives late", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "closed",
+            closedAt: "2026-07-03T12:00:00.000Z",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3010,
+            number: 980,
+            updatedAt: "2026-07-03T12:00:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3010,
+            number: 980,
+          }),
+          "issues",
+        ),
+      );
+
+      await expect(
+        fixture.db().select().from(juniorGitHubIssues),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          issueId: "3010",
+          state: "closed",
+          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
 describe("GitHub-owned pull request outcomes", () => {
+  it("upgrades existing pull requests with nullable composition and empty conversations", async () => {
+    const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
+    try {
+      await fixture.execute(
+        await migrationSql("0000_pull_request_outcomes.sql"),
+      );
+      await fixture.execute(`
+        INSERT INTO junior_github_pull_requests (
+          pull_request_id,
+          repository_id,
+          repository_full_name,
+          number,
+          state,
+          opened_at,
+          updated_at
+        ) VALUES (
+          'legacy-pr',
+          '2001',
+          'getsentry/junior',
+          900,
+          'open',
+          '2026-06-01T12:00:00.000Z',
+          '2026-06-01T12:00:00.000Z'
+        )
+      `);
+      for (const migration of [
+        "0001_issue_outcomes.sql",
+        "0002_pull_request_commit_composition.sql",
+        "0003_pull_request_conversations.sql",
+      ]) {
+        await fixture.execute(await migrationSql(migration));
+      }
+
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          commitComposition: null,
+          conversationIds: [],
+          pullRequestId: "legacy-pr",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects unsigned deliveries before touching storage", async () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEvent[] = [];
@@ -402,14 +630,132 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("classifies commits through repository-scoped production plugin wiring", async () => {
+    const fixture = await createGitHubFixture();
+    const tokenBodies: unknown[] = [];
+    const commitRequests: Request[] = [];
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        async ({ request }) => {
+          tokenBodies.push(await request.json());
+          return HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
+        ({ request }) => {
+          commitRequests.push(request);
+          return HttpResponse.json([
+            {
+              author: { login: "sentry-junior[bot]" },
+              commit: { author: { email: "unrelated@example.com" } },
+            },
+          ]);
+        },
+      ),
+    );
+
+    try {
+      const plugin = githubPlugin();
+      const [route] = plugin.hooks!.routes!({
+        db: fixture.db(),
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        resourceEvents: { async publish() {} },
+      });
+      const opened = pullRequestPayload();
+      await route!.handler(signedRequest(opened));
+      await route!.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "closed",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              closed_at: "2026-07-03T12:00:00.000Z",
+              merged: true,
+              merged_at: "2026-07-03T12:00:00.000Z",
+              updated_at: "2026-07-03T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
+
+      expect(tokenBodies).toEqual([
+        {
+          permissions: { pull_requests: "read" },
+          repositories: ["junior"],
+        },
+      ]);
+      expect(commitRequests).toHaveLength(1);
+      expect(commitRequests[0]?.headers.get("authorization")).toBe(
+        "Bearer installation-token",
+      );
+      const commitUrl = new URL(commitRequests[0]!.url);
+      expect(commitUrl.searchParams.get("page")).toBe("1");
+      expect(commitUrl.searchParams.get("per_page")).toBe("100");
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({ commitComposition: "junior_only" }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEvent[] = [];
     try {
-      const route = webhookRoute(fixture, published);
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        async () => "mixed",
+      );
       const opened = pullRequestPayload();
       expect((await route.handler(signedRequest(opened))).status).toBe(202);
       expect((await route.handler(signedRequest(opened))).status).toBe(202);
+
+      const associatedConversation = pullRequestPayload({
+        action: "edited",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC456%3A1719999.0002 -->\n<!-- junior-session-footer:end -->",
+          updated_at: "2026-07-02T06:00:00.000Z",
+        },
+      });
+      expect(
+        (await route.handler(signedRequest(associatedConversation))).status,
+      ).toBe(202);
+
+      const humanEditedConversation = pullRequestPayload({
+        action: "edited",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:forged -->\n<!-- junior-session-footer:end -->",
+          updated_at: "2026-07-02T07:00:00.000Z",
+        },
+        sender: { login: "human" },
+      });
+      expect(
+        (await route.handler(signedRequest(humanEditedConversation))).status,
+      ).toBe(202);
 
       const merged = pullRequestPayload({
         action: "closed",
@@ -440,6 +786,8 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(rows[0]).toMatchObject({
         pullRequestId: "1001",
         repositoryFullName: "getsentry/junior",
+        commitComposition: "mixed",
+        conversationIds: ["slack:C123:1712345.0001", "slack:C456:1719999.0002"],
         state: "merged",
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
@@ -451,10 +799,140 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("keeps a terminal outcome when commit classification fails", async () => {
+    const fixture = await createGitHubFixture();
+    const error = vi.fn();
+    const classifyPullRequestCommits = vi.fn(async () => {
+      throw new Error("commit lookup failed");
+    });
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        classifyPullRequestCommits,
+        error,
+      );
+      const opened = pullRequestPayload();
+      const merged = pullRequestPayload({
+        action: "closed",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          closed_at: "2026-07-03T12:00:00.000Z",
+          merged: true,
+          merged_at: "2026-07-03T12:00:00.000Z",
+          updated_at: "2026-07-03T12:00:00.000Z",
+        },
+      });
+      await route.handler(signedRequest(opened));
+      await route.handler(signedRequest(merged));
+      await route.handler(signedRequest(merged));
+
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          commitComposition: null,
+          pullRequestId: "1001",
+          state: "merged",
+        }),
+      ]);
+      expect(error).toHaveBeenCalledWith(
+        "GitHub PR commit classification failed",
+        expect.objectContaining({
+          deliveryId: "delivery-1",
+          errorType: "Error",
+        }),
+      );
+      expect(classifyPullRequestCommits).toHaveBeenCalledTimes(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not reclassify an already-classified duplicate merge", async () => {
+    const fixture = await createGitHubFixture();
+    const classifyPullRequestCommits = vi.fn(async () => "mixed" as const);
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        classifyPullRequestCommits,
+      );
+      const opened = pullRequestPayload();
+      const merged = pullRequestPayload({
+        action: "closed",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          closed_at: "2026-07-03T12:00:00.000Z",
+          merged: true,
+          merged_at: "2026-07-03T12:00:00.000Z",
+          updated_at: "2026-07-03T12:00:00.000Z",
+        },
+      });
+      await route.handler(signedRequest(opened));
+      await route.handler(signedRequest(merged));
+      await route.handler(signedRequest(merged));
+
+      expect(classifyPullRequestCommits).toHaveBeenCalledTimes(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not classify commits for an unmerged pull request", async () => {
+    const fixture = await createGitHubFixture();
+    const classifyPullRequestCommits = vi.fn(
+      async () => "junior_only" as const,
+    );
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        classifyPullRequestCommits,
+      );
+      const opened = pullRequestPayload();
+      await route.handler(signedRequest(opened));
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "closed",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              closed_at: "2026-07-03T12:00:00.000Z",
+              merged: false,
+              merged_at: null,
+              updated_at: "2026-07-03T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
+
+      expect(classifyPullRequestCommits).not.toHaveBeenCalled();
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          commitComposition: null,
+          state: "closed_unmerged",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps a terminal outcome when its opening delivery arrives late", async () => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture);
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        async () => "junior_only",
+      );
       const opened = lifecyclePayload({
         createdAt: "2026-07-01T12:00:00.000Z",
         id: 1051,
@@ -491,7 +969,12 @@ describe("GitHub-owned pull request outcomes", () => {
   it("reports open, merged, and unmerged outcomes across 7/30/90 days", async () => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture);
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        async () => "junior_only",
+      );
       const mergedOpen = lifecyclePayload({
         createdAt: "2026-05-01T12:00:00.000Z",
         id: 1101,
@@ -544,6 +1027,49 @@ describe("GitHub-owned pull request outcomes", () => {
       );
       await route.handler(
         signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-05-10T12:00:00.000Z",
+            id: 3101,
+            number: 971,
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-10T12:00:00.000Z",
+            id: 3102,
+            number: 972,
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-29T12:00:00.000Z",
+            id: 3103,
+            number: 973,
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "closed",
+            closedAt: "2026-07-20T12:00:00.000Z",
+            createdAt: "2026-05-10T12:00:00.000Z",
+            id: 3101,
+            number: 971,
+            updatedAt: "2026-07-20T12:00:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      await route.handler(
+        signedRequest(
           lifecyclePayload({
             action: "closed",
             closedAt: "2026-07-15T12:00:00.000Z",
@@ -579,18 +1105,21 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.title).toBe("GitHub work delivered");
       expect(report.metrics).toEqual([
-        { label: "created · 30d", value: "2" },
-        { label: "merged · 30d", tone: "good", value: "1" },
-        { label: "closed unmerged · 30d", value: "1" },
-        { label: "open now", value: "4" },
-        { label: "merge rate · 30d", value: "50%" },
-        { label: "median merge time · 30d", value: "90d" },
+        { label: "PRs created · 30d", value: "2" },
+        { label: "PRs merged · 30d", tone: "good", value: "1" },
+        { label: "Junior-only merge rate · 30d", value: "100%" },
+        { label: "PRs open now", value: "4" },
+        { label: "PR merge rate · 30d", value: "50%" },
+        { label: "median PR merge time · 30d", value: "90d" },
+        { label: "issues created · 30d", value: "2" },
+        { label: "issues open now", value: "2" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([
         {
           id: "7d",
           values: {
             closed: "0",
+            commitComposition: "1 Junior-only · 0 mixed · 0 unknown",
             created: "1",
             merged: "1",
             mergeRate: "100%",
@@ -602,6 +1131,7 @@ describe("GitHub-owned pull request outcomes", () => {
           id: "30d",
           values: {
             closed: "1",
+            commitComposition: "1 Junior-only · 0 mixed · 0 unknown",
             created: "2",
             merged: "1",
             mergeRate: "50%",
@@ -613,6 +1143,7 @@ describe("GitHub-owned pull request outcomes", () => {
           id: "90d",
           values: {
             closed: "1",
+            commitComposition: "1 Junior-only · 0 mixed · 0 unknown",
             created: "3",
             merged: "1",
             mergeRate: "50%",
@@ -623,12 +1154,115 @@ describe("GitHub-owned pull request outcomes", () => {
       ]);
       expect(report.recordSets?.[1]?.records?.[0]?.values).toEqual({
         closed: "1",
+        commitComposition: "1 Junior-only · 0 mixed · 0 unknown",
         created: "2",
         merged: "1",
         mergeRate: "50%",
         open: "4",
         repository: "getsentry/junior",
       });
+      expect(report.recordSets?.[2]?.records).toEqual([
+        {
+          id: "7d",
+          values: {
+            closeTime: "—",
+            closed: "0",
+            created: "1",
+            open: "2",
+            window: "7 days",
+          },
+        },
+        {
+          id: "30d",
+          values: {
+            closeTime: "71d",
+            closed: "1",
+            created: "2",
+            open: "2",
+            window: "30 days",
+          },
+        },
+        {
+          id: "90d",
+          values: {
+            closeTime: "71d",
+            closed: "1",
+            created: "3",
+            open: "2",
+            window: "90 days",
+          },
+        },
+      ]);
+      expect(report.recordSets?.[3]?.records?.[0]?.values).toEqual({
+        closed: "1",
+        created: "2",
+        open: "2",
+        repository: "getsentry/junior",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("excludes unknown compositions from the Junior-only merge rate", async () => {
+    const fixture = await createGitHubFixture();
+    const openedAt = new Date("2026-07-10T12:00:00.000Z");
+    const mergedAt = new Date("2026-07-11T12:00:00.000Z");
+    try {
+      await fixture
+        .db()
+        .insert(juniorGitHubPullRequests)
+        .values([
+          {
+            commitComposition: "junior_only",
+            mergedAt,
+            number: 981,
+            openedAt,
+            pullRequestId: "composition-junior",
+            repositoryFullName: "getsentry/junior",
+            repositoryId: "2001",
+            state: "merged",
+            updatedAt: mergedAt,
+          },
+          {
+            commitComposition: "mixed",
+            mergedAt,
+            number: 982,
+            openedAt,
+            pullRequestId: "composition-mixed",
+            repositoryFullName: "getsentry/junior",
+            repositoryId: "2001",
+            state: "merged",
+            updatedAt: mergedAt,
+          },
+          {
+            mergedAt,
+            number: 983,
+            openedAt,
+            pullRequestId: "composition-unknown",
+            repositoryFullName: "getsentry/junior",
+            repositoryId: "2001",
+            state: "merged",
+            updatedAt: mergedAt,
+          },
+        ]);
+
+      const report = await buildGitHubOutcomeReport({
+        db: fixture.db(),
+        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
+      });
+      expect(
+        report.metrics.find(
+          (metric) => metric.label === "Junior-only merge rate · 30d",
+        ),
+      ).toEqual({
+        label: "Junior-only merge rate · 30d",
+        value: "50%",
+      });
+      expect(
+        report.recordSets?.[0]?.records?.find((record) => record.id === "30d")
+          ?.values.commitComposition,
+      ).toBe("1 Junior-only · 1 mixed · 1 unknown");
     } finally {
       await fixture.close();
     }
@@ -643,14 +1277,17 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       expect(report.metrics).toEqual([
-        { label: "created · 30d", value: "0" },
-        { label: "merged · 30d", tone: "neutral", value: "0" },
-        { label: "closed unmerged · 30d", value: "0" },
-        { label: "open now", value: "0" },
-        { label: "merge rate · 30d", value: "—" },
-        { label: "median merge time · 30d", value: "—" },
+        { label: "PRs created · 30d", value: "0" },
+        { label: "PRs merged · 30d", tone: "neutral", value: "0" },
+        { label: "Junior-only merge rate · 30d", value: "—" },
+        { label: "PRs open now", value: "0" },
+        { label: "PR merge rate · 30d", value: "—" },
+        { label: "median PR merge time · 30d", value: "—" },
+        { label: "issues created · 30d", value: "0" },
+        { label: "issues open now", value: "0" },
       ]);
       expect(report.recordSets?.[1]?.records).toEqual([]);
+      expect(report.recordSets?.[3]?.records).toEqual([]);
     } finally {
       await fixture.close();
     }

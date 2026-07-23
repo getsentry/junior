@@ -79,6 +79,7 @@ Harness override knobs (in `EvalOverrides`):
 - `reply_texts`: override returned reply text per call.
 - `reply_timeout_ms`: lower or set the per-reply harness timeout for a specific scenario. It cannot exceed 60 seconds.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
+- `timeout_resume`: seeds a durable timeout continuation boundary with an unknown tool outcome before the real model runs. Use it to evaluate continuation behavior without wall-clock sleeps.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
 

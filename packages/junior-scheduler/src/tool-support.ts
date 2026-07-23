@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   PluginToolInputError,
   pluginToolResultSchema,
@@ -8,20 +8,18 @@ import {
   type SlackSource,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { type SchedulerStore } from "./store";
 import type {
-  ScheduledCalendarFrequency,
   ScheduledTask,
   ScheduledTaskConversationAccess,
   ScheduledTaskPrincipal,
-  ScheduledTaskRecurrence,
   ScheduledTaskStatus,
 } from "./types";
 
 export interface SchedulerToolContext {
   actor?: SlackActor;
+  now?: () => number;
   source?: SlackSource;
   store: SchedulerStore;
   userText?: string;
@@ -277,9 +275,29 @@ export function scheduleListToolResult(args: {
   } as const;
 }
 
-/** Prefix generated scheduler ids so tool results are distinguishable from provider ids. */
-export function buildTaskId(): string {
-  return `${TASK_ID_PREFIX}_${randomUUID()}`;
+/** Build a retry-stable scheduler id scoped to the creating actor and destination. */
+export function buildTaskId(args: {
+  actor: ScheduledTaskPrincipal;
+  destination: SlackDestination;
+  toolCallId: string | undefined;
+}): string {
+  const toolCallId = args.toolCallId?.trim();
+  if (!toolCallId) {
+    throw new Error("Scheduler task creation requires a tool-call identity.");
+  }
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        actor: args.actor.slackUserId,
+        channel: args.destination.channelId,
+        operation: toolCallId,
+        platform: args.destination.platform,
+        team: args.destination.teamId,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 32);
+  return `${TASK_ID_PREFIX}_${digest}`;
 }
 
 /** Keep concrete scheduler tools coupled to the injected store, not global state. */
@@ -297,143 +315,7 @@ export function normalizeStatus(
   return undefined;
 }
 
-function normalizeFrequency(
-  value: unknown,
-): ScheduledCalendarFrequency | undefined {
-  if (
-    value === "daily" ||
-    value === "weekly" ||
-    value === "monthly" ||
-    value === "yearly"
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-/** Rebuild recurrence only from validated daily-or-slower schedule requests. */
-export function buildRecurrence(args: {
-  existing?: ScheduledTaskRecurrence;
-  input: {
-    recurrence?: unknown;
-  };
-  nextRunAtMs: number | undefined;
-  timezone: string;
-}): ScheduledTaskRecurrence | undefined {
-  if (args.input.recurrence === null) {
-    return undefined;
-  }
-
-  const frequency =
-    normalizeFrequency(args.input.recurrence) ?? args.existing?.frequency;
-  if (!frequency) {
-    return undefined;
-  }
-  if (!args.nextRunAtMs) {
-    throwToolInputError("Recurring scheduled tasks require next_run_at.");
-  }
-
-  try {
-    return buildCalendarRecurrence({
-      frequency,
-      interval: args.existing?.interval,
-      nextRunAtMs: args.nextRunAtMs,
-      timezone: args.timezone,
-      weekdays: frequency === "weekly" ? args.existing?.weekdays : undefined,
-    });
-  } catch (error) {
-    throwToolInputError(
-      error instanceof RangeError
-        ? "timezone must be a valid IANA time zone."
-        : error instanceof Error
-          ? error.message
-          : String(error),
-    );
-  }
-}
-
-/** Reject recurrence values that would exceed the scheduler cadence policy. */
-export function validateRecurringFrequencyLimit(input: {
-  recurrence?: unknown;
-}) {
-  if (
-    input.recurrence !== undefined &&
-    input.recurrence !== null &&
-    !normalizeFrequency(input.recurrence)
-  ) {
-    throwToolInputError(
-      "Recurring scheduled tasks can run at most once per day.",
-    );
-  }
-}
-
-/** Force create-tool callers to explicitly choose one-off versus recurring semantics. */
-export function validateCreateScheduleKind(input: {
-  recurrence?: unknown;
-  schedule_kind?: unknown;
-}) {
-  if (input.schedule_kind === undefined) {
-    throwToolInputError("Provide schedule_kind as one_off or recurring.");
-  }
-  if (
-    input.schedule_kind !== "one_off" &&
-    input.schedule_kind !== "recurring"
-  ) {
-    throwToolInputError("schedule_kind must be one_off or recurring.");
-  }
-  if (
-    input.schedule_kind === "one_off" &&
-    input.recurrence !== undefined &&
-    input.recurrence !== null
-  ) {
-    throwToolInputError("Omit recurrence when schedule_kind is one_off.");
-  }
-  if (
-    input.schedule_kind === "recurring" &&
-    (input.recurrence === undefined || input.recurrence === null)
-  ) {
-    throwToolInputError("Provide recurrence when schedule_kind is recurring.");
-  }
-}
-
-/** Detect update inputs that affect calendar recurrence materialization. */
-export function shouldRebuildRecurrence(input: {
-  next_run_at?: string;
-  recurrence?: unknown;
-  timezone?: string;
-}): boolean {
-  return (
-    input.next_run_at !== undefined ||
-    input.recurrence !== undefined ||
-    input.timezone !== undefined
-  );
-}
-
 /** Centralize scheduler timezone defaulting for all concrete tool entry points. */
 export function getDefaultScheduleTimezone(): string {
   return process.env.JUNIOR_TIMEZONE?.trim() || DEFAULT_SCHEDULE_TIMEZONE;
-}
-
-/** Validate IANA timezone names before persisting scheduler cadence state. */
-export function isValidTimeZone(timezone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Parse model-supplied timestamps without leaking date parser details to tools. */
-export function parseNextRunAtMs(
-  nextRunAtIso: string | undefined,
-): number | undefined {
-  try {
-    if (nextRunAtIso) {
-      return parseScheduleTimestamp(nextRunAtIso);
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }

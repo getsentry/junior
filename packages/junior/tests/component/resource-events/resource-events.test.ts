@@ -18,6 +18,7 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
   cancelResourceEventSubscription,
+  cancelSubscriptions,
   createResourceEventSubscription,
   deliverResourceEventSubscription,
   findMatchingResourceEventSubscriptions,
@@ -322,6 +323,26 @@ describe("resource event subscriptions", () => {
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("cancels every active subscription for a conversation", async () => {
+    await createGithubPrSubscription({
+      events: ["checks.failed"],
+    });
+    await createGithubPrSubscription({
+      events: ["pull_request.merged"],
+    });
+
+    await cancelSubscriptions({
+      conversationId: CONVERSATION_ID,
+      nowMs: 1_200,
+    });
+    await expect(
+      listResourceEventSubscriptions({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_300,
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("does not deliver from a stale match after cancellation", async () => {

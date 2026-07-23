@@ -19,6 +19,7 @@ function createMockDeps(
 ): SlackTurnRuntimeDependencies<TestState> {
   return {
     assistantUserName: "test-bot",
+    cancelEventSubscriptions: vi.fn().mockResolvedValue(undefined),
     modelId: "test-model",
     now: () => 1700000000000,
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
@@ -117,6 +118,37 @@ describe("createSlackTurnRuntime", () => {
   });
 
   describe("handleSubscribedMessage", () => {
+    it("does not unsubscribe the thread when resource cleanup fails", async () => {
+      const cleanupError = new Error("resource cleanup failed");
+      const deps = createMockDeps({
+        cancelEventSubscriptions: vi.fn().mockRejectedValue(cleanupError),
+        decideSubscribedReply: vi.fn().mockResolvedValue({
+          shouldReply: false,
+          shouldUnsubscribe: true,
+          reason: "explicit stop",
+        }),
+      });
+      const runtime = createSlackTurnRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+      await thread.subscribe();
+
+      await expect(
+        runtime.handleSubscribedMessage(thread, message, {
+          destination: createTestDestination(thread),
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(deps.cancelEventSubscriptions).toHaveBeenCalledWith({
+        conversationId: thread.id,
+      });
+      expect(thread.subscribed).toBe(true);
+      expect(thread.posts).toHaveLength(1);
+      expect(thread.posts).not.toContain(
+        "Understood. I'll stay out of this thread unless someone @mentions me again.",
+      );
+    });
+
     it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {
       const deps = createMockDeps({
         stripLeadingBotMention: vi.fn(() => "stripped text"),

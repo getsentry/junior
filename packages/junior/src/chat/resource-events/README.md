@@ -9,6 +9,8 @@ conversation.
   operation.
 - Core owns subscription creation, cancellation, expiry, deduplication, and the
   conversation association.
+- A thread opt-out cancels every active subscription for that conversation
+  before the Slack thread is marked unsubscribed.
 - Provider route code validates and normalizes incoming events before calling
   the ingestion boundary.
 - Plugin-owned provider routes publish normalized events through the route-hook

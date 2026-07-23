@@ -41,6 +41,8 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
+import { actorFromRouting } from "@/chat/agent/request";
+import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
@@ -65,8 +67,10 @@ import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import type {
@@ -301,6 +305,10 @@ export interface EvalOverrides {
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
+  timeout_resume?: {
+    arguments: Record<string, JsonValue>;
+    tool_name: string;
+  };
   unset_gateway_api_key?: boolean;
 }
 
@@ -523,22 +531,6 @@ function toEvalToolInvocation(input: {
     arguments: input.params,
     ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
   };
-
-  if (input.toolName.startsWith("slackSchedule")) {
-    invocation.arguments = Object.fromEntries(
-      [
-        "task_id",
-        "task",
-        "schedule",
-        "timezone",
-        "next_run_at",
-        "recurrence",
-        "status",
-      ]
-        .filter((key) => key in input.params)
-        .map((key) => [key, input.params[key]]),
-    );
-  }
 
   if (input.toolName === "bash" && typeof input.params.command === "string") {
     invocation.bash_command = input.params.command.trim();
@@ -1642,6 +1634,7 @@ function buildRuntimeServices(
   }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
+  let timeoutResumeInjected = false;
 
   const services: JuniorRuntimeServiceOverrides = {
     ...(subscribedDecisions.length > 0
@@ -1692,6 +1685,91 @@ function buildRuntimeServices(
                 },
               }
             : request;
+          const timeoutResume = scenario.overrides?.timeout_resume;
+          if (timeoutResume && !timeoutResumeInjected) {
+            timeoutResumeInjected = true;
+            await runRequest.durability?.onInputCommitted?.();
+            const nowMs = Date.now();
+            const toolCallId = "eval-timeout-resume-tool-call";
+            const unknownOutcome = {
+              ok: false,
+              status: "error",
+              target: timeoutResume.tool_name,
+              data: {
+                aborted: true,
+              },
+              error: {
+                kind: "outcome_unknown",
+                message: "Command outcome was not confirmed.",
+                retryable: false,
+              },
+            };
+            const deadlineResult = annotateTurnDeadlineToolResult({
+              content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
+              details: unknownOutcome,
+            });
+            if (
+              !deadlineResult?.content ||
+              deadlineResult.details === undefined ||
+              deadlineResult.isError !== true
+            ) {
+              throw new Error("Failed to build timeout continuation fixture");
+            }
+            const piMessages = [
+              {
+                role: "user",
+                content: [{ type: "text", text: runRequest.input.messageText }],
+                timestamp: nowMs,
+              },
+              {
+                role: "assistant",
+                content: [
+                  {
+                    type: "toolCall",
+                    id: toolCallId,
+                    name: timeoutResume.tool_name,
+                    arguments: timeoutResume.arguments,
+                  },
+                ],
+                stopReason: "toolUse",
+                api: "eval-timeout-resume",
+                provider: "eval-timeout-resume",
+                model: "xai/grok-4.5",
+                timestamp: nowMs,
+                usage: { input: 0, output: 0, totalTokens: 0 },
+              },
+              {
+                role: "toolResult",
+                toolCallId,
+                toolName: timeoutResume.tool_name,
+                content: deadlineResult.content,
+                details: deadlineResult.details,
+                isError: deadlineResult.isError,
+                timestamp: nowMs,
+              },
+            ] as PiMessage[];
+            const sessionRecord = await upsertAgentTurnSessionRecord({
+              conversationId: runRequest.conversationId,
+              sessionId: runRequest.turnId,
+              sliceId: 2,
+              state: "awaiting_resume",
+              piMessages,
+              modelId: "xai/grok-4.5",
+              resumeReason: "timeout",
+              resumedFromSliceId: 1,
+              destination: runRequest.routing.destination,
+              destinationVisibility: runRequest.routing.destinationVisibility,
+              source: runRequest.routing.source,
+              surface: runRequest.routing.surface,
+              actor: actorFromRouting(runRequest.routing),
+              errorMessage: "Agent turn timed out at the eval fixture boundary",
+              turnStartMessageIndex: 0,
+            });
+            return {
+              status: "suspended",
+              resumeVersion: sessionRecord.version,
+            };
+          }
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {

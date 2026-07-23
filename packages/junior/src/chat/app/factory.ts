@@ -46,6 +46,7 @@ import {
   sendSlackReply,
   type SlackAssistantReplyDelivery,
 } from "@/chat/slack/reply";
+import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
 
 export interface CreateSlackRuntimeOptions {
   /** Completed assistant reply delivery; defaults to Slack's Web API boundary. */
@@ -124,6 +125,7 @@ export function createSlackRuntime(
 
   return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
     assistantUserName: botConfig.userName,
+    cancelEventSubscriptions,
     modelId: standardModelId(botConfig),
     now: options.now ?? (() => Date.now()),
     getThreadId,

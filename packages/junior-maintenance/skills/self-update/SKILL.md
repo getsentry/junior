@@ -36,17 +36,18 @@ Stop if any package lacks the target on npm.
 
 ### 3. Build release context
 
-Junior does not publish GitHub releases, tags, or a changelog. Use npm publish timestamps to summarize merged PRs between `old_version` and `target_version`:
+Summarize changes between `old_version` and `target_version` (exclusive of old, inclusive of target) from GitHub release notes. Do not read `CHANGELOG.md` or scrape PRs — release bodies carry the authoritative release context.
+
+Tags match package versions with no `v` prefix (for example `0.107.1`):
+
+Ask npm to resolve the semver range to the exact tags, then fetch only those releases:
 
 ```bash
-pnpm view @sentry/junior time --json
-gh pr list --repo getsentry/junior --state merged \
-  --search "merged:>=<old_published_at> merged:<=<target_published_at>" \
-  --limit 100 \
-  --json number,title,url,mergedAt
+pnpm view '@sentry/junior@><old_version> <=<target_version>' version --json
+gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Save total PR count, breaking PRs (`!` or `BREAKING CHANGE`), and config-relevant PRs (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking PR exists, keep the PR draft and call out manual review, but continue the update.
+Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -96,7 +97,7 @@ For `vercel.json`, do not normalize the whole file against the example. Use upst
 git -C /tmp/junior-upstream diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
-Only act on Junior-owned deployment requirements proven by that diff or by release-window PRs/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
+Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
 
 ### 8. Verify
 
@@ -122,11 +123,12 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release-window summary with the no-changelog disclaimer, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking PRs, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 ## Stop conditions
 
 - Any Junior package lacks the target version on npm.
+- Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.
 - `package.json` changed but `pnpm-lock.yaml` did not.
