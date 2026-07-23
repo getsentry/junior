@@ -330,6 +330,7 @@ describe("plugin background tasks", () => {
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
+    expect(loadedRuns[0]?.visibility).toBe("private");
     const transcript = loadedRuns[0]!.transcript;
     const instructionEntries = transcript.filter(
       (entry) =>
@@ -447,6 +448,7 @@ describe("plugin background tasks", () => {
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
+    expect(loadedRuns[0]?.visibility).toBe("public");
     const transcript = loadedRuns[0]!.transcript;
     expect(transcript).toContainEqual({
       type: "message",
@@ -745,6 +747,7 @@ describe("plugin background tasks", () => {
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
+    expect(loadedRuns[0]?.visibility).toBe("private");
     const transcript = loadedRuns[0]!.transcript;
     expect(
       transcript.some(

@@ -69,6 +69,8 @@ export const pluginRunContextSchema = z
     runId: z.string().min(1),
     source: sourceSchema,
     transcript: z.array(pluginRunTranscriptEntrySchema),
+    /** Persisted destination visibility; missing metadata fails closed to private. */
+    visibility: z.enum(["public", "private"]),
   })
   .strict();
 

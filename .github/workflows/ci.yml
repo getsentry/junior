@@ -213,9 +213,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-conversation-classification build
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
       - run: pnpm --filter @sentry/junior-vercel build
+      - run: pnpm --filter @sentry/junior-conversation-classification test
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-github test
       - run: pnpm --filter @sentry/junior-vercel test
@@ -347,6 +349,7 @@ jobs:
           pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
           pnpm --filter @sentry/junior-amplitude pack --pack-destination artifacts
           pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-conversation-classification pack --pack-destination artifacts
           pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts

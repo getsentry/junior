@@ -379,6 +379,10 @@ async function loadPluginRun(
     runId: record.sessionId,
     source: record.source,
     transcript: [...contextEntries, ...runEntries],
+    visibility:
+      record.source.platform === "slack" && record.source.type === "pub"
+        ? "public"
+        : "private",
   });
 }
 

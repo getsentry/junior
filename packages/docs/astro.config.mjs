@@ -110,6 +110,10 @@ export default defineConfig({
               label: "Cloudflare Plugin",
               link: "/extend/cloudflare-plugin/",
             },
+            {
+              label: "Conversation Classification Plugin",
+              link: "/extend/conversation-classification-plugin/",
+            },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },
@@ -191,10 +195,7 @@ export default defineConfig({
           ],
         },
       ],
-      plugins: [
-        sentryStarlightTheme(),
-        sentryAgentMarkdown(),
-      ],
+      plugins: [sentryStarlightTheme(), sentryAgentMarkdown()],
     }),
   ],
   markdown: {

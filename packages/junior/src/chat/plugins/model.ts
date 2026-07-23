@@ -34,7 +34,10 @@ export function createPluginModel(
           pluginModelRole: "structured",
         },
       });
-      return { object: result.object };
+      return {
+        ...(result.modelId ? { modelId: result.modelId } : {}),
+        object: result.object,
+      };
     },
   };
 }

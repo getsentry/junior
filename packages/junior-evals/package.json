@@ -12,6 +12,7 @@
   "devDependencies": {
     "@chat-adapter/slack": "4.29.0",
     "@sentry/junior": "workspace:*",
+    "@sentry/junior-conversation-classification": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",

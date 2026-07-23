@@ -20,21 +20,22 @@ Start here:
 
 ## Packages
 
-| Package                        | Purpose                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `@sentry/junior`               | Core Slack bot runtime                                                       |
-| `@sentry/junior-plugin-api`    | Lightweight plugin API types and helpers                                     |
-| `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
-| `@sentry/junior-amplitude`     | Read-only Amplitude product analytics through Amplitude's hosted MCP server  |
-| `@sentry/junior-cloudflare`    | Cloudflare plugin package for production operations                          |
-| `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
-| `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
-| `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
-| `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
-| `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
-| `@sentry/junior-memory`        | Memory plugin package for long-term Junior memory storage                    |
-| `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
-| `@sentry/junior-scheduler`     | Scheduler plugin package for scheduled Junior tasks                          |
-| `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |
-| `@sentry/junior-sentry`        | Sentry plugin package for issue workflows                                    |
-| `@sentry/junior-vercel`        | Vercel plugin package for deployment monitoring and log investigations       |
+| Package                                      | Purpose                                                                      |
+| -------------------------------------------- | ---------------------------------------------------------------------------- |
+| `@sentry/junior`                             | Core Slack bot runtime                                                       |
+| `@sentry/junior-plugin-api`                  | Lightweight plugin API types and helpers                                     |
+| `@sentry/junior-agent-browser`               | Agent Browser plugin package for browser automation                          |
+| `@sentry/junior-amplitude`                   | Read-only Amplitude product analytics through Amplitude's hosted MCP server  |
+| `@sentry/junior-cloudflare`                  | Cloudflare plugin package for production operations                          |
+| `@sentry/junior-conversation-classification` | Per-turn requested-job classification for product analytics                  |
+| `@sentry/junior-dashboard`                   | Authenticated dashboard package for Junior runtime diagnostics               |
+| `@sentry/junior-datadog`                     | Datadog plugin package for observability workflows through Datadog's Pup CLI |
+| `@sentry/junior-github`                      | GitHub plugin package for issue workflows                                    |
+| `@sentry/junior-hex`                         | Hex plugin package for data warehouse query workflows                        |
+| `@sentry/junior-linear`                      | Linear plugin package for issue workflows                                    |
+| `@sentry/junior-memory`                      | Memory plugin package for long-term Junior memory storage                    |
+| `@sentry/junior-notion`                      | Notion plugin package for page search workflows                              |
+| `@sentry/junior-scheduler`                   | Scheduler plugin package for scheduled Junior tasks                          |
+| `@sentry/junior-maintenance`                 | Maintenance plugin package for updating and improving Junior apps            |
+| `@sentry/junior-sentry`                      | Sentry plugin package for issue workflows                                    |
+| `@sentry/junior-vercel`                      | Vercel plugin package for deployment monitoring and log investigations       |

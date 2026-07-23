@@ -8,6 +8,10 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
+const classificationPackageRoot = path.resolve(
+  __dirname,
+  "../junior-conversation-classification",
+);
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
 // Leave room for harness cleanup and rubric judging after a reply reaches its
@@ -48,6 +52,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+      "@sentry/junior-conversation-classification": path.resolve(
+        classificationPackageRoot,
+        "src/index.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",

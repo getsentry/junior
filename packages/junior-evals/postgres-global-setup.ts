@@ -48,6 +48,13 @@ export default async function setup(
           {
             dir: path.resolve(
               workspaceRoot,
+              "packages/junior-conversation-classification/migrations",
+            ),
+            pluginName: "conversation-classification",
+          },
+          {
+            dir: path.resolve(
+              workspaceRoot,
               "packages/junior-memory/migrations",
             ),
             pluginName: "memory",

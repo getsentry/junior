@@ -293,7 +293,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
-}): Promise<{ object: z.infer<TSchema> }> {
+}): Promise<{ modelId?: string; object: z.infer<TSchema> }> {
   const apiKey = getGatewayApiKey();
   const provider = createGatewayProvider(apiKey ? { apiKey } : {});
   try {
@@ -319,6 +319,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         });
         setSpanAttributes({
           "gen_ai.response.finish_reasons": [result.finishReason],
+          ...(result.response.modelId
+            ? { "gen_ai.response.model": result.response.modelId }
+            : {}),
           ...extractGenAiUsageAttributes(result.usage),
         });
         return result;
@@ -341,7 +344,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : {}),
       },
     );
-    return { object: result.object as z.infer<TSchema> };
+    return {
+      ...(result.response.modelId ? { modelId: result.response.modelId } : {}),
+      object: result.object as z.infer<TSchema>,
+    };
   } catch (error) {
     const providerError = createProviderError(error);
     if (isProviderRetryError(providerError)) {

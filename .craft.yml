@@ -20,6 +20,9 @@ targets:
     id: "@sentry/junior-cloudflare"
     includeNames: /^sentry-junior-cloudflare-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-conversation-classification"
+    includeNames: /^sentry-junior-conversation-classification-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-dashboard"
     includeNames: /^sentry-junior-dashboard-\d.*\.tgz$/
   - name: npm
