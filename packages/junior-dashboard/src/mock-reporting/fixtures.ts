@@ -59,6 +59,7 @@ type DetailOptions = Omit<
   ConversationDetailReport,
   | "cumulativeDurationMs"
   | "displayTitle"
+  | "eventCursor"
   | "eventHistory"
   | "events"
   | "generatedAt"
@@ -92,6 +93,7 @@ function detail(
   return {
     ...options,
     cumulativeDurationMs: options.cumulativeDurationMs ?? 0,
+    eventCursor: `mock:${options.conversationId}`,
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
     isParticipant: options.isParticipant ?? false,

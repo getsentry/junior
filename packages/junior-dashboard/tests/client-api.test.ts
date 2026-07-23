@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readConversationData } from "../src/client/api";
+import {
+  readConversationData,
+  readConversationUpdates,
+} from "../src/client/api";
 
 describe("dashboard client API", () => {
   afterEach(() => {
@@ -31,6 +34,34 @@ describe("dashboard client API", () => {
     );
     expect(assign).toHaveBeenCalledWith(
       "/auth/login?next=%2Fconversations%3Ffilter%3Drecent",
+    );
+  });
+
+  it("requests only events after the supplied cursor", async () => {
+    const response = {
+      conversationId: "slack:C1:123",
+      displayTitle: "Conversation",
+      cumulativeDurationMs: 0,
+      isParticipant: true,
+      status: "active",
+      startedAt: "2026-07-23T00:00:00.000Z",
+      lastSeenAt: "2026-07-23T00:00:00.000Z",
+      lastProgressAt: "2026-07-23T00:00:00.000Z",
+      surface: "slack",
+      events: [],
+      eventHistory: { status: "available" },
+      eventCursor: "next-cursor",
+      generatedAt: "2026-07-23T00:00:00.000Z",
+    };
+    const fetchMock = vi.fn(async () => Response.json(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readConversationUpdates("slack:C1:123", "signed cursor"),
+    ).resolves.toMatchObject({ eventCursor: "next-cursor", events: [] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/slack%3AC1%3A123/updates?cursor=signed+cursor",
+      { credentials: "same-origin" },
     );
   });
 

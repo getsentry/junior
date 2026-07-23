@@ -22,6 +22,17 @@ export const conversationParamsSchema = z
   .object({ conversationId: z.string().min(1) })
   .strict();
 
+export const conversationDetailQuerySchema = z
+  .object({
+    before: z.string().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(1_000).default(500),
+  })
+  .strict();
+
+export const conversationUpdatesQuerySchema = z
+  .object({ cursor: z.string().min(1) })
+  .strict();
+
 export const conversationFeedQuerySchema = z
   .object({
     actorEmail: z
@@ -235,6 +246,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
+    eventCursor: z.string().min(1).optional(),
+    previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
   })
@@ -299,6 +312,26 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
           code: "custom",
           path: ["events", index, "data"],
           message: "redacted event history must redact tool outputs",
+        });
+      }
+    }
+  });
+
+export const conversationUpdatesReportSchema = conversationSummaryReportSchema
+  .extend({
+    events: z.array(conversationReportEventSchema),
+    eventHistory: conversationEventHistorySchema,
+    eventCursor: z.string().min(1),
+    generatedAt: z.string(),
+  })
+  .strict()
+  .superRefine((report, context) => {
+    for (let index = 1; index < report.events.length; index += 1) {
+      if (report.events[index]!.seq <= report.events[index - 1]!.seq) {
+        context.addIssue({
+          code: "custom",
+          path: ["events", index, "seq"],
+          message: "report event sequences must be strictly increasing",
         });
       }
     }
@@ -375,6 +408,9 @@ export type ConversationEventHistory = z.infer<
 >;
 export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
+>;
+export type ConversationUpdatesReport = z.infer<
+  typeof conversationUpdatesReportSchema
 >;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;

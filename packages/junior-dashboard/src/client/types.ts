@@ -60,8 +60,12 @@ export type TranscriptViewMessage = {
   timestamp?: number;
 };
 
-export type ConversationTranscript = ConversationDetailReport & {
+export type ConversationTranscript = Omit<
+  ConversationDetailReport,
+  "eventCursor"
+> & {
   assistantLabel?: string;
+  eventCursor?: string;
 };
 
 export type Conversation = {

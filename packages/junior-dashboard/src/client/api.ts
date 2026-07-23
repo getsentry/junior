@@ -1,6 +1,9 @@
 import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import type { ZodType } from "zod";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationUpdatesReport,
+} from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -8,6 +11,7 @@ import {
   conversationDetailReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
+  conversationUpdatesReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   actorDirectoryReportSchema,
@@ -241,8 +245,20 @@ export function useConversationData(conversationId: string | undefined) {
   return useQuery({
     enabled: Boolean(conversationId),
     queryKey: ["conversation", conversationId],
-    queryFn: async (): Promise<ConversationDetailReport> =>
-      readConversationData(conversationId!),
+    queryFn: async (): Promise<ConversationDetailReport> => {
+      const existing = client.getQueryData<ConversationDetailReport>([
+        "conversation",
+        conversationId,
+      ]);
+      if (!existing || existing.status !== "active" || !existing.eventCursor) {
+        return readConversationData(conversationId!);
+      }
+      const update = await readConversationUpdates(
+        conversationId!,
+        existing.eventCursor,
+      );
+      return mergeConversationUpdate(existing, update);
+    },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
@@ -257,4 +273,34 @@ export function readConversationData(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
+}
+
+/** Read only canonical events appended after the supplied conversation cursor. */
+export function readConversationUpdates(
+  conversationId: string,
+  cursor: string,
+): Promise<ConversationUpdatesReport> {
+  const query = new URLSearchParams({ cursor });
+  return read(
+    conversationUpdatesReportSchema,
+    `/api/conversations/${encodeURIComponent(conversationId)}/updates?${query}`,
+  );
+}
+
+function mergeConversationUpdate(
+  current: ConversationDetailReport,
+  update: ConversationUpdatesReport,
+): ConversationDetailReport {
+  const existingSeqs = new Set(current.events.map((event) => event.seq));
+  return {
+    ...current,
+    ...update,
+    events: [
+      ...current.events,
+      ...update.events.filter((event) => !existingSeqs.has(event.seq)),
+    ],
+    modelUsage: current.modelUsage,
+    previousCursor: current.previousCursor,
+    sentryConversationUrl: current.sentryConversationUrl,
+  };
 }

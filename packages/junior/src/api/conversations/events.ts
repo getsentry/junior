@@ -203,11 +203,15 @@ function reportEventData(args: {
  * `canExposePayload` must come from the authorized conversation-detail policy;
  * this projection never derives visibility or authorization from event data.
  */
-export function projectConversationReportEvents(args: {
+export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
-}): ConversationReportEvent[] {
-  const subagentStarts = new Map<string, number>();
+  openSubagents?: ReadonlyArray<readonly [string, number]>;
+}): {
+  events: ConversationReportEvent[];
+  openSubagents: Array<[string, number]>;
+} {
+  const subagentStarts = new Map<string, number>(args.openSubagents);
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
@@ -242,6 +246,7 @@ export function projectConversationReportEvents(args: {
           startedSeq,
           outcome: event.data.outcome,
         };
+        subagentStarts.delete(event.data.subagentInvocationId);
       }
     } else if (event.data.type === "handoff") {
       data = {
@@ -272,5 +277,13 @@ export function projectConversationReportEvents(args: {
     );
   }
 
-  return projected;
+  return { events: projected, openSubagents: [...subagentStarts] };
+}
+
+/** Project a complete canonical event history into reporting events. */
+export function projectConversationReportEvents(args: {
+  canExposePayload: boolean;
+  events: ConversationEvent[];
+}): ConversationReportEvent[] {
+  return projectConversationReportEventPage(args).events;
 }
