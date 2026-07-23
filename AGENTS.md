@@ -1,5 +1,12 @@
 # Agent Instructions
 
+## Core Principles
+
+- Use the words in `TERMINOLOGY.md`. Do not invent synonyms, overloaded terms, or long compound names when an existing term fits.
+- This is TypeScript/JavaScript, not Java. Prefer functions, plain objects, simple types, and small modules. Avoid class hierarchies, manager/factory names, and interface layers unless they solve a real problem; follow `policies/interface-design.md`.
+- Optimize for the next maintainer. Choose the smallest design that solves the proven problem, keep complexity local, and avoid speculative abstractions, configuration, extension points, and wrappers; follow `policies/correctness-complexity.md`.
+- Write for normal humans. Code, names, docs, plans, and explanations should make sense without a PhD or an architecture lecture. If they do not, simplify them.
+
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`.
 
 ## Commands
@@ -13,48 +20,42 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Generate package schema    | `pnpm --filter <package> db:generate`                                          |
 | Release package alignment  | `pnpm release:check`                                                           |
 
-For local evals, run `pnpm dev:env` once, start dependencies with `docker compose up -d postgres redis`, and ensure `cloudflared` is on `PATH`. Use the eval commands above without manually binding environment variables; the eval config loads repository env files and provisions its Postgres test databases.
-
-## Required Workflows
+## Workflow
 
 - Use `/commit` for commits, `/pr-writer` for pull requests, and `/skill-writer` for skill changes.
-- For tests, read `policies/testing.md`; harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.
-- Use evals for model interpretation, continuity, tool choice, routing, or reply quality.
-- Prefer integration tests for product/runtime behavior; use unit tests for local deterministic logic.
+- For non-trivial changes: discover, implement the smallest vertical slice, verify, and summarize.
+- Search every consumer before changing a shared signature, error contract, or name; use a hard cutover unless compatibility is explicitly required.
+- Let unexpected failures reach the owning boundary; retry only expected transient failures. Follow `policies/error-handling.md`.
+- Exported functions need brief intent-focused JSDoc; follow `policies/code-comments.md`.
+- Run applicable checks, move durable explanations beside the owning code, and delete completed plans.
+
+## Testing And Validation
+
+- Follow `policies/testing.md` and `policies/evals.md`: prefer integration tests for product/runtime behavior, evals for agent interpretation and reply quality, and unit tests for local deterministic logic.
+- Test harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.
+- For local evals, run `pnpm dev:env` once, run `docker compose up -d postgres redis`, and ensure `cloudflared` is on `PATH`. Do not bind environment variables manually; the eval config loads repo env files and provisions test databases.
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
+- Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
 
-## Architecture Boundaries
+## Architecture
 
-- `packages/junior/src/chat/app/*` is composition-root only.
-- `packages/junior/src/chat/ingress/*` owns inbound parsing, classification, and routing.
-- `runtime/` orchestrates turns; `services/` owns domain decisions; `state/` persists by concern.
-- Queue and worker code depends on injected runtime interfaces, not `@/chat/app/production`.
-- Slack modules must not import runtime modules; shared modules must not expose provider SDK types.
+- Read `packages/junior/src/chat/README.md` before changing shared chat runtime behavior; it owns flow, module boundaries, vocabulary, and invariants.
+- Follow `policies/provider-boundaries.md`; provider modules do not import runtime orchestration, and shared modules do not expose provider SDK types.
 - Group files by feature and import feature files directly; do not add feature-directory barrels.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.
 
-## Engineering Defaults
+## Where Rules Live
 
-- Prefer obvious code, small public interfaces, standards, and library-native behavior.
-- Use hard cutovers for internal renames unless compatibility is explicitly required.
-- Let unexpected failures reach the owning boundary; retry only expected transient failures.
-- Exported functions need brief intent-focused JSDoc; follow `policies/code-comments.md`.
-- Follow `policies/observability.md`; telemetry is not a product behavior assertion.
+| Need                    | Source                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| Repo-wide policy index  | `policies/README.md`                                                                                    |
+| Runtime vocabulary      | `TERMINOLOGY.md`                                                                                        |
+| Design and failures     | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`       |
+| Provider boundaries     | `policies/provider-boundaries.md`                                                                       |
+| Comments and telemetry  | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                 |
+| Chat architecture       | `packages/junior/src/chat/README.md`                                                                    |
+| Testing and evals       | `policies/testing.md`, `policies/evals.md`, `packages/junior/tests/README.md`, `packages/junior-evals/README.md` |
+| Local agent validation  | `packages/docs/src/content/docs/contribute/local-agent-validation.md`                                   |
+| Temporary plans         | `openspec/changes/<slug>/`                                                                              |
 
-## Documentation Routing
-
-- `policies/README.md`: durable repo-wide engineering rules.
-- `TERMINOLOGY.md`: canonical repo-wide runtime vocabulary.
-- Owning package or module `README.md`: implemented architecture and non-obvious invariants.
-- Code, schemas, exported types, and tests: authoritative implementation contracts.
-- `openspec/changes/<slug>/`: temporary implementation plans; delete completed plans.
-- `TELEMETRY.md`: production investigation recipes.
-
-- Read the owning module README before changing a shared runtime boundary.
-- Plans cannot override policies; update a policy explicitly for an exception.
-
-## Completion
-
-- Search every consumer before changing a shared signature, error contract, or name.
-- For non-trivial changes: discover, implement the smallest vertical slice, verify, summarize.
-- Run applicable checks, move durable explanation beside code, and delete completed plans.
+Feature architecture and non-obvious invariants belong in the owning package or module `README.md`. Code, schemas, exported types, and tests are authoritative. Plans cannot override policy; update the policy for an exception.
