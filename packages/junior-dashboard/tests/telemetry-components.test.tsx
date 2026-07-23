@@ -335,7 +335,6 @@ describe("dashboard canonical-event components", () => {
         event(2, {
           type: "tool_result",
           toolCallId: "search-1",
-          name: "search",
           outcome: "completed",
           output: { matches: 2 },
         }),
@@ -361,7 +360,6 @@ describe("dashboard canonical-event components", () => {
         event(1, {
           type: "tool_result",
           toolCallId: "search-1",
-          name: "search",
           outcome: "error",
           output: { error: "timed out" },
         }),

@@ -182,7 +182,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       reportEvent(5, iso(Date.parse(startedAt), 21_000), {
         type: "tool_result",
         toolCallId: "qa-advisor",
-        name: "advisor",
         outcome: "completed",
         output: { ok: true, status: "success" },
       }),
@@ -355,7 +354,6 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
       reportEvent(3, iso(Date.parse(startedAt), 28_000), {
         type: "tool_result",
         toolCallId: "incident-issue",
-        name: "sentry.get_issue",
         outcome: "completed",
         output: {
           ok: true,
@@ -407,7 +405,6 @@ function privateConversation(nowMs: number): ConversationDetailReport {
       reportEvent(3, iso(Date.parse(startedAt), 25_000), {
         type: "tool_result",
         toolCallId: "private-search",
-        name: "sentry.search",
         outcome: "completed",
       }),
       reportEvent(4, iso(Date.parse(startedAt), 30_000), {

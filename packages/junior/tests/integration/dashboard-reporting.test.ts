@@ -334,7 +334,6 @@ describe("dashboard canonical event reporting", () => {
       {
         type: "tool_result",
         toolCallId: `${conversationId}:tool-call`,
-        name: "search",
         outcome: "completed",
         output: "model-visible result",
       },

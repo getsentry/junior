@@ -221,14 +221,12 @@ describe("conversation report event projection", () => {
       {
         type: "tool_result",
         toolCallId: "call-1",
-        name: "search",
         outcome: "error",
         output: "model-visible error summary",
       },
       {
         type: "tool_result",
         toolCallId: "call-2",
-        name: "fetch",
         outcome: "completed",
         output: [
           { type: "text", text: "native result" },
@@ -337,7 +335,6 @@ describe("conversation report event projection", () => {
     expect(projected[1]?.data).toEqual({
       type: "tool_result",
       toolCallId: "private-tool-call-id",
-      name: "safe_tool_name",
       outcome: "error",
     });
     expect(projected[2]?.data).toEqual({
@@ -747,7 +744,6 @@ describe("conversation report event projection", () => {
             data: {
               type: "tool_result",
               toolCallId: "private-call",
-              name: "search",
               outcome: "completed",
               output: { matches: "must not be exposed" },
             },
@@ -802,7 +798,6 @@ describe("conversation report event projection", () => {
             data: {
               type: "tool_result",
               toolCallId: "private-call",
-              name: "search",
               outcome: "completed",
             },
           },

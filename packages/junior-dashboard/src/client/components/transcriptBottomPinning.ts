@@ -268,11 +268,9 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
     return [
       part.type,
       part.id,
-      part.name,
       part.status,
       part.input === undefined ? "" : "input",
       part.output === undefined ? "" : "output",
-      part.resultTimestamp ?? "",
     ].join(":");
   }
   if (part.type === "subagent") {

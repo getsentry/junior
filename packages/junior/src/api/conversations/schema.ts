@@ -101,7 +101,6 @@ const conversationReportToolResultEventDataSchema = z
   .object({
     type: z.literal("tool_result"),
     toolCallId: z.string().min(1),
-    name: z.string().min(1),
     outcome: z.enum(["completed", "error"]),
     output: z.unknown().optional(),
   })

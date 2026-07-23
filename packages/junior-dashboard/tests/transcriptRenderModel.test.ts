@@ -130,7 +130,6 @@ describe("canonical event transcript reduction", () => {
         event(2, "2026-01-01T00:00:03.000Z", {
           type: "tool_result",
           toolCallId: "search-1",
-          name: "search",
           outcome: "completed",
           output: { matches: 2 },
         }),
@@ -201,14 +200,12 @@ describe("canonical event transcript reduction", () => {
           event(9, "2026-01-01T00:00:09.000Z", {
             type: "tool_result",
             toolCallId: "advisor-correlated",
-            name: "advisor",
             outcome: "completed",
             output: { ok: true },
           }),
           event(10, "2026-01-01T00:00:10.000Z", {
             type: "tool_result",
             toolCallId: "handoff-correlated",
-            name: "handoff",
             outcome: "completed",
             output: { ok: true },
           }),
@@ -328,7 +325,6 @@ describe("canonical event transcript reduction", () => {
           event(2, "2026-01-01T00:00:02.000Z", {
             type: "tool_result",
             toolCallId: "search-1",
-            name: "sentry.search",
             outcome: "completed",
             output: { culprit: "payments-v42" },
           }),

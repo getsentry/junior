@@ -204,7 +204,6 @@ function appendTool(
   lines.push("", `### Tool: ${headingText(part.name)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.status);
-  addMetaLine(lines, "Result timestamp", eventTimestamp(part.resultTimestamp));
   addMetaLine(
     lines,
     "Duration",

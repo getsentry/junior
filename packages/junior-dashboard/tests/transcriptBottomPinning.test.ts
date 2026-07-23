@@ -100,7 +100,6 @@ describe("transcript bottom pinning", () => {
             data: {
               type: "tool_result",
               toolCallId: "search-1",
-              name: "search",
               outcome: "completed",
               output: { matches: 2 },
             },

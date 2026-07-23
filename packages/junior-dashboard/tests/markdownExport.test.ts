@@ -88,7 +88,6 @@ describe("dashboard canonical-event Markdown export", () => {
         event(2, {
           type: "tool_result",
           toolCallId: "search-1",
-          name: "search",
           outcome: "completed",
           output: { matches: 3 },
         }),

@@ -97,16 +97,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
   return message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
-      if (part.type === "tool_call") {
-        return [
-          `tool_call ${part.name}`,
-          `status ${part.status}`,
-          part.input === undefined ? "" : JSON.stringify(part.input, null, 2),
-          part.output === undefined ? "" : JSON.stringify(part.output, null, 2),
-        ]
-          .filter((value) => value.length > 0)
-          .join("\n");
-      }
+      if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }

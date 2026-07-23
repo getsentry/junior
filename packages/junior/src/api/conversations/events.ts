@@ -41,7 +41,6 @@ const reportingToolResultMessageSchema = z
   .object({
     role: z.literal("toolResult"),
     toolCallId: z.string().min(1),
-    toolName: z.string().min(1),
     content: z.array(z.unknown()),
     details: z.unknown().optional(),
     isError: z.boolean().optional(),
@@ -142,7 +141,6 @@ function reportToolResult(args: {
   return {
     type: "tool_result",
     toolCallId: message.data.toolCallId,
-    name: message.data.toolName,
     outcome,
     ...(args.canExposePayload && output !== undefined ? { output } : {}),
   };
