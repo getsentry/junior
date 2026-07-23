@@ -11,8 +11,8 @@ catalogs:
       specifier: 10.65.0
       version: 10.65.0
     '@sentry/starlight-theme':
-      specifier: ^0.7.0
-      version: 0.7.0
+      specifier: ^0.8.0
+      version: 0.8.0
     drizzle-kit:
       specifier: ^0.31.8
       version: 0.31.10
@@ -83,7 +83,7 @@ importers:
         version: link:../../packages/junior-datadog
       '@sentry/junior-github':
         specifier: workspace:*
-        version: link:../../packages/junior-github
+        version: file:packages/junior-github
       '@sentry/junior-hex':
         specifier: workspace:*
         version: link:../../packages/junior-hex
@@ -132,7 +132,7 @@ importers:
         version: 0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)
       '@sentry/starlight-theme':
         specifier: 'catalog:'
-        version: 0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))
+        version: 0.8.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))
       astro:
         specifier: ^6.3.7
         version: 6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)
@@ -238,7 +238,7 @@ importers:
         version: 1.10.0
       '@sentry/junior-github':
         specifier: workspace:*
-        version: link:../junior-github
+        version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -373,7 +373,7 @@ importers:
         version: file:packages/junior
       '@sentry/junior-github':
         specifier: workspace:*
-        version: link:../junior-github
+        version: file:packages/junior-github
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory
@@ -3170,6 +3170,9 @@ packages:
   '@sentry/junior-dashboard@file:packages/junior-dashboard':
     resolution: {directory: packages/junior-dashboard, type: directory}
 
+  '@sentry/junior-github@file:packages/junior-github':
+    resolution: {directory: packages/junior-github, type: directory}
+
   '@sentry/junior-memory@file:packages/junior-memory':
     resolution: {directory: packages/junior-memory, type: directory}
 
@@ -3260,8 +3263,8 @@ packages:
     resolution: {integrity: sha512-80toEFD6s+0Le7jrYB6pHWLF703WSg0WyavAWqrBGWG8JkREHgedAxzFYgoY5GlMI756qk6Ea7UzhJTHd2zAXA==}
     engines: {node: '>=18'}
 
-  '@sentry/starlight-theme@0.7.0':
-    resolution: {integrity: sha512-yDVa7JMKKRsH3BwTFezudPJYHoZbMPi0Kvz28Szj1GT2Q7gj3Kh9cVZrooJbWqO5aexj0MFGYe3ejbTK1VXvcg==}
+  '@sentry/starlight-theme@0.8.0':
+    resolution: {integrity: sha512-Stcb8D2EqO309jfhugJJxM3tf0vq+zg1XV1dA0AVJMK81sMa8AWHKajqgy60rhLvr22rpJnc2UextZw/szd2BA==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@astrojs/starlight': '>=0.39.0'
@@ -10039,6 +10042,80 @@ snapshots:
       - xml2js
       - zephyr-agent
 
+  '@sentry/junior-github@file:packages/junior-github':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sinclair/typebox': 0.34.49
+      drizzle-orm: 0.45.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sinclair/typebox': 0.34.49
+      drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   '@sentry/junior-memory@file:packages/junior-memory':
     dependencies:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
@@ -10436,7 +10513,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@sentry/starlight-theme@0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))':
+  '@sentry/starlight-theme@0.8.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))':
     dependencies:
       '@astrojs/starlight': 0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)
       '@fontsource-variable/rubik': 5.2.8
