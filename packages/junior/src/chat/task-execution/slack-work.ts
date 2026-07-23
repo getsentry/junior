@@ -11,6 +11,7 @@ import { z } from "zod";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
+  SteeringDisposition,
 } from "@/chat/runtime/slack-runtime";
 import {
   isCooperativeTurnYieldError,
@@ -838,21 +839,24 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Explicit follow-ups never enter steering. Implicit records are
+        // Explicit follow-ups never enter steering. Auto-routed records are
         // offered to runtime policy, while explicit steering bypasses that
-        // ambiguity through activeRequest.
+        // decision through activeRequest.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
-          ) => Promise<readonly string[] | void>,
+          ) => Promise<SteeringDisposition>,
         ): Promise<void> => {
           await context.attempt.steer(async (pendingRecords) => {
-            const messages = pendingRecords.map((record) => ({
-              activeRequest: record.routing === "steer",
-              inboundMessageId: record.inboundMessageId,
-              message: restoreMessage({ adapter, record }),
-            }));
-            return await accept(messages);
+            const disposition = await accept(
+              pendingRecords.map((record) => ({
+                activeRequest: record.routing === "steer",
+                inboundMessageId: record.inboundMessageId,
+                message: restoreMessage({ adapter, record }),
+              })),
+            );
+            await context.attempt.followUp(disposition.followUp);
+            return disposition.handled;
           });
         };
 
@@ -933,7 +937,7 @@ export function buildSlackInboundMessage(args: {
       args.route === "mention" ||
       isSlackAssistantThreadUserMessage(args.message)
         ? "steer"
-        : "implicit",
+        : "auto",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,

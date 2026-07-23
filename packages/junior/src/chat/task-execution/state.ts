@@ -83,7 +83,7 @@ export interface AgentInput {
   text: string;
 }
 
-export type InboundMessageRouting = "follow_up" | "implicit" | "steer";
+export type InboundMessageRouting = "follow_up" | "auto" | "steer";
 
 export interface InboundMessage {
   attemptCount?: number;
@@ -329,7 +329,7 @@ function normalizeInput(value: unknown): AgentInput | undefined {
 }
 
 function normalizeInboundMessageRouting(value: unknown): InboundMessageRouting {
-  return value === "follow_up" || value === "steer" ? value : "implicit";
+  return value === "follow_up" || value === "steer" ? value : "auto";
 }
 
 function normalizeMessage(value: unknown): InboundMessage | undefined {
@@ -1497,7 +1497,7 @@ export async function routeConversationMailboxMessages(args: {
   inboundMessageIds: readonly string[];
   leaseToken: string;
   nowMs?: number;
-  routing: Exclude<InboundMessageRouting, "implicit">;
+  routing: Exclude<InboundMessageRouting, "auto">;
   state?: StateAdapter;
 }): Promise<void> {
   if (args.inboundMessageIds.length === 0) {

@@ -56,7 +56,7 @@ export interface AssistantLifecycleEvent {
   userId?: string;
 }
 
-type SteeringMode = "defer" | "interrupt";
+type SteeringMode = "follow_up" | "steer";
 
 export interface SteeringCandidateMessage {
   activeRequest: boolean;
@@ -64,12 +64,17 @@ export interface SteeringCandidateMessage {
   message: Message;
 }
 
+export interface SteeringDisposition {
+  followUp: readonly string[];
+  handled: readonly string[];
+}
+
 export interface ReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
   drainSteeringMessages?: (
     accept: (
       messages: SteeringCandidateMessage[],
-    ) => Promise<readonly string[] | void>,
+    ) => Promise<SteeringDisposition>,
   ) => Promise<void>;
   messageContext?: MessageContext;
   ack?: () => Promise<void>;
@@ -295,20 +300,25 @@ function createAcceptedSteeringDrain(
     await hooks.drainSteeringMessages!(async (messages) => {
       const selection = await options.selectMessages(messages, context);
       await options.onSkipped?.(selection.skipped);
-      // Deferred accepted messages stay pending so a later worker slice handles
-      // them after the active answer is delivered.
+      // Follow-ups stay pending so a later worker slice handles them after the
+      // active answer is delivered.
       const interrupted = selection.accepted
-        .filter((accepted) => accepted.mode === "interrupt")
+        .filter((accepted) => accepted.mode === "steer")
         .map((accepted) => accepted.message);
       await accept(getQueuedMessagesFromSlackMessages(interrupted, options));
       interruptedMessages = interrupted;
       await options.onAcceptedForProcessing?.(interrupted);
-      return [
-        ...selection.accepted
-          .filter((accepted) => accepted.mode === "interrupt")
+      return {
+        followUp: selection.accepted
+          .filter((accepted) => accepted.mode === "follow_up")
           .map((accepted) => accepted.inboundMessageId),
-        ...selection.skipped.map((skipped) => skipped.inboundMessageId),
-      ];
+        handled: [
+          ...selection.accepted
+            .filter((accepted) => accepted.mode === "steer")
+            .map((accepted) => accepted.inboundMessageId),
+          ...selection.skipped.map((skipped) => skipped.inboundMessageId),
+        ],
+      };
     });
     return getQueuedMessagesFromSlackMessages(
       interruptedMessages ?? [],
@@ -556,7 +566,7 @@ export function createSlackTurnRuntime<
     return {
       context,
       decision,
-      mode: isActiveRequest ? "interrupt" : "defer",
+      mode: isActiveRequest ? "steer" : "follow_up",
       text,
     };
   };

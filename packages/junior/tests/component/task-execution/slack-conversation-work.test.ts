@@ -905,7 +905,10 @@ describe("Slack conversation work execution", () => {
         });
         await hooks.drainSteeringMessages?.(async (steering) => {
           injected.push(steering.map((candidate) => candidate.message.id));
-          return steering.map((candidate) => candidate.inboundMessageId);
+          return {
+            followUp: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
+          };
         });
       },
       handleSubscribedMessage: async () => {
@@ -985,7 +988,10 @@ describe("Slack conversation work execution", () => {
         });
         await hooks.drainSteeringMessages?.(async (steering) => {
           observed.push(steering.map((candidate) => candidate.message.id));
-          return steering.map((candidate) => candidate.inboundMessageId);
+          return {
+            followUp: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
+          };
         });
       },
       handleSubscribedMessage: async () => {
@@ -1096,7 +1102,10 @@ describe("Slack conversation work execution", () => {
               id: candidate.message.id,
             })),
           );
-          return steering.map((candidate) => candidate.inboundMessageId);
+          return {
+            followUp: [],
+            handled: steering.map((candidate) => candidate.inboundMessageId),
+          };
         });
       },
       handleSubscribedMessage: async () => {

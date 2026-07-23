@@ -7,7 +7,7 @@ source of truth.
 ## State Model
 
 - A conversation mailbox contains normalized pending work with a durable routing
-  mode: `steer`, `follow_up`, or `implicit` when runtime policy must decide.
+  mode: `steer`, `follow_up`, or `auto` when runtime policy must decide.
 - A queue payload identifies the conversation to wake; persisted conversation
   work owns destination and routing.
 - A lease grants one worker temporary execution ownership.
@@ -33,7 +33,7 @@ source of truth.
 
 New messages that arrive during a run remain durable. Explicit `steer` work is
 eligible at the next safe boundary, explicit `follow_up` work waits for the next
-turn, and `implicit` work is classified by runtime policy.
+turn, and `auto` work is classified by runtime policy.
 
 ## Queue And Lease Rules
 
