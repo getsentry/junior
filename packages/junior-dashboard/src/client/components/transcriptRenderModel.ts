@@ -101,9 +101,17 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
-      return part.event.type === "handoff"
-        ? `model handoff\nprofile ${part.event.modelProfile}`
-        : "context compacted";
+      if (part.event.type !== "handoff") return "context compacted";
+      return [
+        "model handoff",
+        `profile ${part.event.modelProfile}`,
+        `model ${part.event.modelId}`,
+        part.event.reasoningLevel
+          ? `reasoning ${part.event.reasoningLevel}`
+          : undefined,
+      ]
+        .filter((line): line is string => line !== undefined)
+        .join("\n");
     })
     .filter((part) => part.trim().length > 0)
     .join("\n\n");

@@ -199,6 +199,7 @@ async function appendVisibleHistory(
       type: "handoff",
       modelProfile: "fast",
       modelId: "private-handoff-model-id",
+      reasoningLevel: "high",
       triggeringToolCallId: `${conversationId}:handoff-tool-call`,
       replacementHistory: [],
     },

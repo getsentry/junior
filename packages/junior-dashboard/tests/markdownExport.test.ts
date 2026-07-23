@@ -117,6 +117,12 @@ describe("dashboard canonical-event Markdown export", () => {
         }),
         event(4, { type: "compaction" }),
         event(5, {
+          type: "handoff",
+          modelProfile: "fast",
+          modelId: "openai/gpt-5-mini",
+          reasoningLevel: "medium",
+        }),
+        event(6, {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
@@ -132,6 +138,10 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain('"matches": 3');
     expect(markdown).toContain("### Subagent: advisor");
     expect(markdown).toContain("### Context compacted");
+    expect(markdown).toContain("### Model handoff");
+    expect(markdown).toContain("- Profile: fast");
+    expect(markdown).toContain("- Model: openai/gpt-5-mini");
+    expect(markdown).toContain("- Reasoning: medium");
     expect(markdown).toContain("### Agent response failed");
     expect(markdown).not.toContain("missing");
     expect(markdown).not.toContain("Result: running");

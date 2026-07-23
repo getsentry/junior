@@ -367,12 +367,18 @@ describe("canonical event transcript reduction", () => {
             type: "compaction",
           }),
           event(5, "2026-01-01T00:00:05.000Z", {
+            type: "handoff",
+            modelProfile: "fast",
+            modelId: "openai/gpt-5-mini",
+            reasoningLevel: "medium",
+          }),
+          event(6, "2026-01-01T00:00:06.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-1",
             state: "failed",
             failureKind: "agent",
           }),
-          event(6, "2026-01-01T00:00:06.000Z", {
+          event(7, "2026-01-01T00:00:07.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-2",
             state: "failed",
@@ -389,6 +395,8 @@ describe("canonical event transcript reduction", () => {
       "advisor",
       "completed",
       "compacted",
+      "openai/gpt-5-mini",
+      "medium",
       "failed",
       "delivery failed",
     ]) {

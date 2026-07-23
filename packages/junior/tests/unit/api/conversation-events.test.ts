@@ -431,6 +431,7 @@ describe("conversation report event projection", () => {
           type: "handoff",
           modelProfile: "fast",
           modelId: "private-handoff-model-id",
+          reasoningLevel: "high",
           triggeringToolCallId: "private-handoff-tool-call-id",
           replacementHistory: [],
         }),
@@ -530,7 +531,6 @@ describe("conversation report event projection", () => {
     for (const forbidden of [
       "private-input-id",
       "private-model-id",
-      "private-handoff-model-id",
       "subagent-invocation-1",
       "private-child-model-id",
       "private-reasoning-level",
