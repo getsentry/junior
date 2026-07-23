@@ -375,7 +375,7 @@ import type { AgentRunRequest } from "@/chat/agent/request";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
-  conversationId: "local:test:agent-run-lazy-sandbox",
+  conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
@@ -388,7 +388,7 @@ async function generateLocalReply(
   const outcome = await executeAgentRun({
     ...context,
     conversationId: context.conversationId ?? LOCAL_DESTINATION.conversationId,
-    turnId: context.turnId ?? "turn-agent-run-lazy-sandbox",
+    turnId: context.turnId ?? "turn-agent-run-sandbox",
     input: {
       messageText: message,
       ...(context.input ?? {}),
@@ -496,22 +496,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
-  it("retains sandbox reuse metadata after lazy boot on error turns", async () => {
-    agentMode.value = "bashThenError";
-
-    const reply = await generateLocalReply("run pwd");
-
-    // Raw exception text stays in diagnostics; it is never reply text.
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.errorMessage).toContain("agent exploded");
-    expect(createSandboxCallCount.value).toBe(1);
-    expect(reply.sandbox).toEqual({
-      id: "sandbox-test",
-      profileHash: "hash-test",
-    });
-  });
-
-  it("reports sandbox metadata as soon as lazy boot succeeds on error turns", async () => {
+  it("retains and reports the sandbox reference after lazy boot on error turns", async () => {
     agentMode.value = "bashThenError";
     const onSandboxRefChanged = vi.fn();
 
@@ -524,6 +509,11 @@ describe("executeAgentRun lazy sandbox boot", () => {
     // Raw exception text stays in diagnostics; it is never reply text.
     expect(reply.text).toBe("");
     expect(reply.diagnostics.errorMessage).toContain("agent exploded");
+    expect(createSandboxCallCount.value).toBe(1);
+    expect(reply.sandbox).toEqual({
+      id: "sandbox-test",
+      profileHash: "hash-test",
+    });
     expect(onSandboxRefChanged).toHaveBeenCalledTimes(1);
     expect(onSandboxRefChanged).toHaveBeenCalledWith({
       id: "sandbox-test",
