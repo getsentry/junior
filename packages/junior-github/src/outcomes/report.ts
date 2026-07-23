@@ -212,26 +212,40 @@ async function aggregatePullRequestDays(args: {
         date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
         interval '1 day'
       ) AS day
+    ), events AS (
+      SELECT
+        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
+        'created' AS kind
+      FROM ${table}
+      WHERE ${table.openedAt} >= ${start}
+      UNION ALL
+      SELECT
+        date_trunc('day', ${table.mergedAt} AT TIME ZONE 'UTC') AS day,
+        'merged' AS kind
+      FROM ${table}
+      WHERE ${table.state} = 'merged' AND ${table.mergedAt} >= ${start}
+      UNION ALL
+      SELECT
+        date_trunc('day', ${table.closedAt} AT TIME ZONE 'UTC') AS day,
+        'closed' AS kind
+      FROM ${table}
+      WHERE ${table.state} = 'closed_unmerged' AND ${table.closedAt} >= ${start}
+    ), daily AS (
+      SELECT
+        events.day,
+        count(*) FILTER (WHERE events.kind = 'created')::integer AS created,
+        count(*) FILTER (WHERE events.kind = 'merged')::integer AS merged,
+        count(*) FILTER (WHERE events.kind = 'closed')::integer AS closed
+      FROM events
+      GROUP BY events.day
     )
     SELECT
       to_char(days.day, 'YYYY-MM-DD') AS "date",
-      count(${table.pullRequestId}) FILTER (
-        WHERE (${table.openedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "created",
-      count(${table.pullRequestId}) FILTER (
-        WHERE ${table.state} = 'merged'
-          AND (${table.mergedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "merged",
-      count(${table.pullRequestId}) FILTER (
-        WHERE ${table.state} = 'closed_unmerged'
-          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "closed"
+      coalesce(daily.created, 0)::integer AS "created",
+      coalesce(daily.merged, 0)::integer AS "merged",
+      coalesce(daily.closed, 0)::integer AS "closed"
     FROM days
-    LEFT JOIN ${table} ON
-      ${table.openedAt} >= ${start}
-      OR ${table.mergedAt} >= ${start}
-      OR ${table.closedAt} >= ${start}
-    GROUP BY days.day
+    LEFT JOIN daily ON daily.day = days.day
     ORDER BY days.day
   `);
   return z.array(pullRequestDaySchema).parse(queryRows(result));
@@ -368,37 +382,42 @@ async function aggregateIssueDays(args: {
         date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
         interval '1 day'
       ) AS day
+    ), events AS (
+      SELECT
+        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
+        'created' AS kind
+      FROM ${table}
+      WHERE ${table.openedAt} >= ${start}
+      UNION ALL
+      SELECT
+        date_trunc('day', ${table.closedAt} AT TIME ZONE 'UTC') AS day,
+        coalesce(${table.stateReason}, 'unknown') AS kind
+      FROM ${table}
+      WHERE ${table.state} = 'closed' AND ${table.closedAt} >= ${start}
+    ), daily AS (
+      SELECT
+        events.day,
+        count(*) FILTER (WHERE events.kind = 'created')::integer AS created,
+        count(*) FILTER (WHERE events.kind = 'completed')::integer
+          AS closed_completed,
+        count(*) FILTER (WHERE events.kind = 'duplicate')::integer
+          AS closed_duplicate,
+        count(*) FILTER (WHERE events.kind = 'not_planned')::integer
+          AS closed_not_planned,
+        count(*) FILTER (WHERE events.kind = 'unknown')::integer
+          AS closed_unknown
+      FROM events
+      GROUP BY events.day
     )
     SELECT
       to_char(days.day, 'YYYY-MM-DD') AS "date",
-      count(${table.issueId}) FILTER (
-        WHERE (${table.openedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "created",
-      count(${table.issueId}) FILTER (
-        WHERE ${table.state} = 'closed'
-          AND ${table.stateReason} = 'completed'
-          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "closedCompleted",
-      count(${table.issueId}) FILTER (
-        WHERE ${table.state} = 'closed'
-          AND ${table.stateReason} = 'duplicate'
-          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "closedDuplicate",
-      count(${table.issueId}) FILTER (
-        WHERE ${table.state} = 'closed'
-          AND ${table.stateReason} = 'not_planned'
-          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "closedNotPlanned",
-      count(${table.issueId}) FILTER (
-        WHERE ${table.state} = 'closed'
-          AND ${table.stateReason} IS NULL
-          AND (${table.closedAt} AT TIME ZONE 'UTC')::date = days.day::date
-      )::integer AS "closedUnknown"
+      coalesce(daily.created, 0)::integer AS "created",
+      coalesce(daily.closed_completed, 0)::integer AS "closedCompleted",
+      coalesce(daily.closed_duplicate, 0)::integer AS "closedDuplicate",
+      coalesce(daily.closed_not_planned, 0)::integer AS "closedNotPlanned",
+      coalesce(daily.closed_unknown, 0)::integer AS "closedUnknown"
     FROM days
-    LEFT JOIN ${table} ON
-      ${table.openedAt} >= ${start}
-      OR ${table.closedAt} >= ${start}
-    GROUP BY days.day
+    LEFT JOIN daily ON daily.day = days.day
     ORDER BY days.day
   `);
   return z.array(issueDaySchema).parse(queryRows(result));

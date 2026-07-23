@@ -1001,6 +1001,45 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("keeps the newest chart categories when sanitizing bounded reports", async () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          operationalReport() {
+            return {
+              widgets: [
+                {
+                  categories: Array.from({ length: 101 }, (_, index) => ({
+                    id: `day-${index + 1}`,
+                    label: `Day ${index + 1}`,
+                    values: { created: index + 1 },
+                  })),
+                  id: "activity",
+                  series: [{ key: "created", label: "Created" }],
+                  title: "Activity",
+                  type: "bar_chart" as const,
+                },
+              ],
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const reports = await getPluginOperationalReports(123);
+      expect(reports[0]?.widgets?.[0]?.categories).toHaveLength(100);
+      expect(reports[0]?.widgets?.[0]?.categories[0]?.id).toBe("day-2");
+      expect(reports[0]?.widgets?.[0]?.categories.at(-1)?.id).toBe("day-101");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("contains failed operational reports per plugin", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({

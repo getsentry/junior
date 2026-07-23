@@ -853,7 +853,7 @@ function sanitizeOperationalReport(args: {
       }
       const series = seriesEntries.map((item) => item.sanitizedSeries);
       const categories = widget.categories
-        .slice(0, OPERATIONAL_REPORT_MAX_CHART_CATEGORIES)
+        .slice(-OPERATIONAL_REPORT_MAX_CHART_CATEGORIES)
         .map((category, categoryIndex) => ({
           id:
             operationalReportText(
