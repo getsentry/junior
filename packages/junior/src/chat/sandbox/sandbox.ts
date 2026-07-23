@@ -86,13 +86,27 @@ export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
   configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
+  getSandboxEgressId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
   createSandbox(): Promise<SandboxInstance>;
+  /** Drop unavailable live state so a later operation can reacquire the sandbox. */
+  invalidateIfUnavailable(error: unknown, sandboxEgressId?: string): boolean;
   execute<T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>>;
   dispose(): Promise<void>;
+}
+
+/** Create the safe expected tool error for an unavailable sandbox operation. */
+export function createSandboxUnavailableToolError(
+  operation: string,
+  cause: unknown,
+): ToolInputError {
+  return new ToolInputError(
+    `The temporary sandbox became unavailable during ${operation}, so the operation did not complete reliably. The next sandbox operation will use a fresh session. It may have produced side effects; retry only if it is safe.`,
+    { cause },
+  );
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -115,20 +129,6 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
       .filter(([, value]) => typeof value === "string")
       .map(([key, value]) => [key, value as string]),
   );
-}
-
-function sandboxStreamInterruptedResult(toolName: string) {
-  return makeStructuredToolResult({
-    ok: false,
-    status: "error",
-    target: toolName,
-    error: {
-      kind: "stream_interrupted",
-      message: `Sandbox command stream was interrupted during ${toolName}. The operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
-      retryable: true,
-    },
-    tool: toolName,
-  });
 }
 
 function bashToolResult(params: BashCustomCommandResult) {
@@ -665,10 +665,13 @@ export function createSandboxExecutor(options?: {
           return { result: bashToolResult(custom.result) as T };
         }
       }
-      return await executeBashTool(rawInput, bashCommand, params.signal);
     }
 
     try {
+      if (bashCommand !== undefined) {
+        return await executeBashTool(rawInput, bashCommand, params.signal);
+      }
+
       if (params.toolName === "readFile") {
         return await executeReadFileTool(rawInput);
       }
@@ -693,10 +696,17 @@ export function createSandboxExecutor(options?: {
         return await executeWriteFileTool(rawInput);
       }
     } catch (error) {
-      if (!isSandboxCommandStreamInterruptedError(error)) {
-        throw error;
+      if (sessionManager.invalidateIfUnavailable(error)) {
+        // Do not replay an operation that may already have produced side effects.
+        throw createSandboxUnavailableToolError(params.toolName, error);
       }
-      return { result: sandboxStreamInterruptedResult(params.toolName) as T };
+      if (isSandboxCommandStreamInterruptedError(error)) {
+        throw new ToolInputError(
+          `The sandbox command stream was interrupted during ${params.toolName}, so the operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
+          { cause: error },
+        );
+      }
+      throw error;
     }
 
     throw new Error(`unsupported sandbox tool: ${params.toolName}`);
@@ -714,6 +724,9 @@ export function createSandboxExecutor(options?: {
     getSandboxId() {
       return sessionManager.getSandboxId();
     },
+    getSandboxEgressId() {
+      return sessionManager.getSandboxEgressId();
+    },
     getDependencyProfileHash() {
       return sessionManager.getDependencyProfileHash();
     },
@@ -722,6 +735,9 @@ export function createSandboxExecutor(options?: {
     },
     async createSandbox() {
       return await sessionManager.createSandbox();
+    },
+    invalidateIfUnavailable(error, sandboxEgressId) {
+      return sessionManager.invalidateIfUnavailable(error, sandboxEgressId);
     },
     execute,
     async dispose() {

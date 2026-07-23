@@ -10,6 +10,8 @@ traffic through verified host egress.
   conversation or run.
 - Persist only the sandbox identifier and durable artifact metadata needed to
   resume work; do not treat the sandbox filesystem as product storage.
+- An unavailable session fails the current operation without replay, retains
+  its sandbox identifier, and reacquires a session only on a later operation.
 - Commands are non-interactive and bounded by runtime deadlines.
 - Generated files become shareable only after artifact validation and
   destination-aware delivery planning.

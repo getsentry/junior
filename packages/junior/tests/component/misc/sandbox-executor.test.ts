@@ -15,6 +15,45 @@ const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@vercel/sandbox", () => ({
+  FileSystem: class {
+    private readonly fs: {
+      readFile(
+        filePath: string,
+        options: { encoding: BufferEncoding },
+      ): Promise<string>;
+      writeFile(
+        filePath: string,
+        content: string,
+        options?: { encoding?: BufferEncoding },
+      ): Promise<void>;
+      readdir(filePath: string): Promise<string[]>;
+      stat(filePath: string): Promise<{ isDirectory(): boolean }>;
+    };
+
+    constructor(session: { fs: MockSandbox["fs"] }) {
+      this.fs = session.fs as unknown as typeof this.fs;
+    }
+
+    readFile(filePath: string, options: { encoding: BufferEncoding }) {
+      return this.fs.readFile(filePath, options);
+    }
+
+    writeFile(
+      filePath: string,
+      content: string,
+      options?: { encoding?: BufferEncoding },
+    ) {
+      return this.fs.writeFile(filePath, content, options);
+    }
+
+    readdir(filePath: string) {
+      return this.fs.readdir(filePath);
+    }
+
+    stat(filePath: string) {
+      return this.fs.stat(filePath);
+    }
+  },
   Sandbox: {
     get: sandboxGetMock,
     create: sandboxCreateMock,
@@ -101,12 +140,27 @@ import {
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/session";
+import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
+import { createSandboxInstance } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
   name: string;
+  session: {
+    sessionId: string;
+    fs: MockSandbox["fs"];
+    mkDir: MockSandbox["mkDir"];
+    writeFiles: MockSandbox["writeFiles"];
+    readFileToBuffer: MockSandbox["readFileToBuffer"];
+    runCommand: MockSandbox["runCommand"];
+    stop: MockSandbox["stop"];
+    extendTimeout: MockSandbox["extendTimeout"];
+    snapshot: MockSandbox["snapshot"];
+    update: MockSandbox["update"];
+  };
   currentSession: ReturnType<typeof vi.fn>;
   fs: {
     readFile: ReturnType<typeof vi.fn>;
@@ -131,35 +185,58 @@ function makeSandbox(
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
+  const fs = {
+    readFile: vi.fn(async () => ""),
+    writeFile: vi.fn(async () => {}),
+    readdir: vi.fn(async () => []),
+    stat: vi.fn(async () => ({ isDirectory: () => false })),
+  };
+  const mkDir = vi.fn(async () => {
+    if (options.mkDirError) {
+      throw options.mkDirError;
+    }
+  });
+  const writeFiles = vi.fn(async () => {
+    if (options.writeFilesError) {
+      throw options.writeFilesError;
+    }
+  });
+  const readFileToBuffer = vi.fn(async () => Buffer.from(""));
+  const runCommand = vi.fn(async () => ({
+    exitCode: 0,
+    stdout: async () => "",
+    stderr: async () => "",
+  }));
+  const stop = vi.fn(async () => {});
+  const extendTimeout = vi.fn(async () => {});
+  const snapshot = vi.fn(async () => ({ snapshotId: "snap_test" }));
+  const update = vi.fn(async () => {});
+  const session = {
+    sessionId: `${name}_session`,
+    fs,
+    mkDir,
+    writeFiles,
+    readFileToBuffer,
+    runCommand,
+    stop,
+    extendTimeout,
+    snapshot,
+    update,
+  };
+
   return {
     name,
-    currentSession: vi.fn(() => ({ sessionId: `${name}_session` })),
-    fs: {
-      readFile: vi.fn(async () => ""),
-      writeFile: vi.fn(async () => {}),
-      readdir: vi.fn(async () => []),
-      stat: vi.fn(async () => ({ isDirectory: () => false })),
-    },
-    mkDir: vi.fn(async () => {
-      if (options.mkDirError) {
-        throw options.mkDirError;
-      }
-    }),
-    writeFiles: vi.fn(async () => {
-      if (options.writeFilesError) {
-        throw options.writeFilesError;
-      }
-    }),
-    readFileToBuffer: vi.fn(async () => Buffer.from("")),
-    runCommand: vi.fn(async () => ({
-      exitCode: 0,
-      stdout: async () => "",
-      stderr: async () => "",
-    })),
-    stop: vi.fn(async () => {}),
-    extendTimeout: vi.fn(async () => {}),
-    snapshot: vi.fn(async () => ({ snapshotId: "snap_test" })),
-    update: vi.fn(async () => {}),
+    session,
+    currentSession: vi.fn(() => session),
+    fs,
+    mkDir,
+    writeFiles,
+    readFileToBuffer,
+    runCommand,
+    stop,
+    extendTimeout,
+    snapshot,
+    update,
   };
 }
 
@@ -212,6 +289,13 @@ function createStreamInterruptedError(): Error {
   return Object.assign(new Error("Stream ended before command finished"), {
     name: "StreamError",
   });
+}
+
+function createClosedStreamError(): Error {
+  return Object.assign(
+    new Error("Sandbox stream was closed and is not accepting commands."),
+    { name: "StreamError" },
+  );
 }
 
 async function expectWorkspaceToDelegate(
@@ -278,7 +362,196 @@ describe("createSandboxExecutor", () => {
     delete process.env.JUNIOR_SECRET;
   });
 
-  it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
+  it("pins workspace commands to the acquired session without SDK replay", async () => {
+    const sandbox = makeSandbox("sbx_pinned_session");
+    const resumingRunCommand = vi.fn();
+    const workspace = createSandboxInstance({
+      ...sandbox,
+      runCommand: resumingRunCommand,
+    } as never);
+
+    await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
+
+    expect(sandbox.session.runCommand).toHaveBeenCalledTimes(1);
+    expect(resumingRunCommand).not.toHaveBeenCalled();
+  });
+
+  it("rebinds the lazy workspace after an unavailable session", async () => {
+    const unavailable = createClosedStreamError();
+    const firstWorkspace = {
+      sandboxId: "sbx_lazy_recovery",
+      sandboxEgressId: "session_lazy_recovery",
+      readFileToBuffer: vi.fn(async () => {
+        throw unavailable;
+      }),
+      runCommand: vi.fn(),
+    };
+    const recoveredWorkspace = {
+      sandboxId: "sbx_lazy_recovery",
+      sandboxEgressId: "session_lazy_recovered",
+      readFileToBuffer: vi.fn(async () => Buffer.from("recovered")),
+      runCommand: vi.fn(),
+    };
+    const createSandbox = vi
+      .fn()
+      .mockResolvedValueOnce(firstWorkspace)
+      .mockResolvedValueOnce(recoveredWorkspace);
+    const invalidateIfUnavailable = vi.fn(() => true);
+    const workspace = createLazySandboxWorkspace({
+      executor: {
+        createSandbox,
+        getSandboxId: () => "sbx_lazy_recovery",
+        getSandboxEgressId: () => undefined,
+        invalidateIfUnavailable,
+      } as never,
+      spanContext: {},
+    });
+
+    const error = await workspace
+      .readFileToBuffer({ path: "/tmp/result.txt" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ToolInputError);
+    expect(error).toMatchObject({ cause: unavailable });
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/result.txt" }),
+    ).resolves.toEqual(Buffer.from("recovered"));
+
+    expect(invalidateIfUnavailable).toHaveBeenCalledWith(
+      unavailable,
+      "session_lazy_recovery",
+    );
+    expect(createSandbox).toHaveBeenCalledTimes(2);
+  });
+
+  it("rebinds the lazy workspace after executor-side invalidation", async () => {
+    let sessionId: string | undefined;
+    const firstWorkspace = {
+      sandboxId: "sbx_lazy_external",
+      sandboxEgressId: "session_1",
+      readFileToBuffer: vi.fn(async () => Buffer.from("first")),
+      runCommand: vi.fn(),
+    };
+    const recoveredWorkspace = {
+      sandboxId: "sbx_lazy_external",
+      sandboxEgressId: "session_2",
+      readFileToBuffer: vi.fn(async () => Buffer.from("recovered")),
+      runCommand: vi.fn(),
+    };
+    const createSandbox = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        sessionId = "session_1";
+        return firstWorkspace;
+      })
+      .mockImplementationOnce(async () => {
+        sessionId = "session_2";
+        return recoveredWorkspace;
+      });
+    const workspace = createLazySandboxWorkspace({
+      executor: {
+        createSandbox,
+        getSandboxId: () => "sbx_lazy_external",
+        getSandboxEgressId: () => sessionId,
+        invalidateIfUnavailable: vi.fn(() => false),
+      } as never,
+      spanContext: {},
+    });
+
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/result.txt" }),
+    ).resolves.toEqual(Buffer.from("first"));
+
+    sessionId = undefined;
+
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/result.txt" }),
+    ).resolves.toEqual(Buffer.from("recovered"));
+    expect(createSandbox).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a late lazy-workspace failure discard the recovered workspace", async () => {
+    const unavailable = createClosedStreamError();
+    let sessionId: string | undefined;
+    let rejectStaleOperation: () => void = () => {};
+    let markStaleOperationStarted: () => void = () => {};
+    const staleOperationStarted = new Promise<void>((resolve) => {
+      markStaleOperationStarted = resolve;
+    });
+    const staleOperation = new Promise<Buffer>((_resolve, reject) => {
+      rejectStaleOperation = () => reject(unavailable);
+    });
+    const staleWorkspace = {
+      sandboxId: "sbx_lazy_parallel",
+      sandboxEgressId: "session_1",
+      readFileToBuffer: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          markStaleOperationStarted();
+          return await staleOperation;
+        })
+        .mockRejectedValueOnce(unavailable),
+      runCommand: vi.fn(),
+    };
+    const recoveredWorkspace = {
+      sandboxId: "sbx_lazy_parallel",
+      sandboxEgressId: "session_2",
+      readFileToBuffer: vi.fn(async () => Buffer.from("recovered")),
+      runCommand: vi.fn(),
+    };
+    const createSandbox = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        sessionId = "session_1";
+        return staleWorkspace;
+      })
+      .mockImplementationOnce(async () => {
+        sessionId = "session_2";
+        return recoveredWorkspace;
+      });
+    const invalidateIfUnavailable = vi.fn(
+      (_error: unknown, unavailableSessionId?: string) => {
+        if (sessionId === unavailableSessionId) {
+          sessionId = undefined;
+        }
+        return true;
+      },
+    );
+    const workspace = createLazySandboxWorkspace({
+      executor: {
+        createSandbox,
+        getSandboxId: () => "sbx_lazy_parallel",
+        getSandboxEgressId: () => sessionId,
+        invalidateIfUnavailable,
+      } as never,
+      spanContext: {},
+    });
+
+    const lateFailure = workspace.readFileToBuffer({
+      path: "/tmp/stale.txt",
+    });
+    await staleOperationStarted;
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/closed.txt" }),
+    ).rejects.toBeInstanceOf(ToolInputError);
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/recovered.txt" }),
+    ).resolves.toEqual(Buffer.from("recovered"));
+
+    rejectStaleOperation();
+    await expect(lateFailure).rejects.toBeInstanceOf(ToolInputError);
+    await expect(
+      workspace.readFileToBuffer({ path: "/tmp/still-recovered.txt" }),
+    ).resolves.toEqual(Buffer.from("recovered"));
+
+    expect(createSandbox).toHaveBeenCalledTimes(2);
+    expect(invalidateIfUnavailable).toHaveBeenNthCalledWith(
+      2,
+      unavailable,
+      "session_1",
+    );
+  });
+
+  it("fails a stopped hinted session and reacquires it on a later call", async () => {
     const stoppedSandbox = makeSandbox("sbx_stopped", {
       mkDirError: createApiError(
         410,
@@ -287,25 +560,56 @@ describe("createSandboxExecutor", () => {
         "Sandbox has stopped execution and is no longer available",
       ),
     });
-    const freshSandbox = makeSandbox("sbx_fresh");
+    const recoveredSandbox = makeSandbox("sbx_stopped");
 
-    sandboxGetMock.mockResolvedValue(stoppedSandbox);
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
+    sandboxGetMock
+      .mockResolvedValueOnce(stoppedSandbox)
+      .mockResolvedValueOnce(recoveredSandbox);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_stopped" });
     executor.configureSkills([]);
 
+    await expect(executor.createSandbox()).rejects.toThrow("sandbox_stopped");
     const sandbox = await executor.createSandbox();
 
-    await expectWorkspaceToDelegate(sandbox, freshSandbox);
+    await expectWorkspaceToDelegate(sandbox, recoveredSandbox);
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_stopped",
       resume: true,
     });
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledTimes(2);
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
     expect(stoppedSandbox.mkDir).toHaveBeenCalled();
-    expect(freshSandbox.mkDir).toHaveBeenCalled();
-    expect(executor.getSandboxId()).toBe("sbx_fresh");
+    expect(recoveredSandbox.mkDir).toHaveBeenCalled();
+    expect(executor.getSandboxId()).toBe("sbx_stopped");
+  });
+
+  it("retains a fresh sandbox hint when its setup session becomes unavailable", async () => {
+    const stoppedSandbox = makeSandbox("sbx_fresh_stopped", {
+      mkDirError: createApiError(
+        410,
+        "Gone",
+        "sandbox_stopped",
+        "Sandbox has stopped execution and is no longer available",
+      ),
+    });
+    const recoveredSandbox = makeSandbox("sbx_fresh_stopped");
+    getRuntimeDependencyProfileHashMock.mockReturnValue("profile-v1");
+    sandboxCreateMock.mockResolvedValueOnce(stoppedSandbox);
+    sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toThrow("sandbox_stopped");
+    const sandbox = await executor.createSandbox();
+
+    await expectWorkspaceToDelegate(sandbox, recoveredSandbox);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_fresh_stopped",
+      resume: true,
+    });
   });
 
   it("reports acquired sandbox metadata immediately after fresh sandbox boot", async () => {
@@ -483,7 +787,7 @@ describe("createSandboxExecutor", () => {
     expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
   });
 
-  it("refreshes changed network policy when reusing a cached sandbox", async () => {
+  it("keeps network policy tied to the acquired session", async () => {
     const sandbox = makeSandbox("sbx_cached_policy");
     sandboxCreateMock.mockResolvedValue(sandbox);
     let providerDomain = "api.first.example";
@@ -523,25 +827,12 @@ describe("createSandboxExecutor", () => {
     });
     await manager.createSandbox();
 
-    expect(sandbox.update).toHaveBeenCalledTimes(2);
-    expect(sandbox.update).toHaveBeenLastCalledWith({
-      networkPolicy: {
-        allow: {
-          "*": [],
-          "api.first.example": [
-            {
-              forwardURL:
-                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_resumed_session",
-            },
-          ],
-        },
-      },
-    });
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
 
     providerDomain = "api.second.example";
     await manager.createSandbox();
 
-    expect(sandbox.update).toHaveBeenCalledTimes(3);
+    expect(sandbox.update).toHaveBeenCalledTimes(2);
     expect(sandbox.update).toHaveBeenLastCalledWith({
       networkPolicy: {
         allow: {
@@ -549,7 +840,7 @@ describe("createSandboxExecutor", () => {
           "api.second.example": [
             {
               forwardURL:
-                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_resumed_session",
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_session",
             },
           ],
         },
@@ -562,31 +853,16 @@ describe("createSandboxExecutor", () => {
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
 
-    const stoppedSandbox = makeSandbox("sbx_stopped", {
-      mkDirError: createApiError(
-        410,
-        "Gone",
-        "sandbox_stopped",
-        "Sandbox has stopped execution and is no longer available",
-      ),
-    });
     const freshSandbox = makeSandbox("sbx_fresh");
 
-    sandboxGetMock.mockResolvedValue(stoppedSandbox);
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
-    const executor = createSandboxExecutor({ sandboxId: "sbx_stopped" });
+    const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
     await executor.createSandbox();
 
-    expect(sandboxGetMock).toHaveBeenCalledWith({
-      name: "sbx_stopped",
-      resume: true,
-      token: "sandbox-token",
-      teamId: "team_123",
-      projectId: "prj_123",
-    });
+    expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       runtime: "node22",
@@ -632,6 +908,26 @@ describe("createSandboxExecutor", () => {
     await expect(executor.createSandbox()).rejects.toThrow(
       "sandbox setup failed",
     );
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a hinted sandbox after an unrelated restore failure", async () => {
+    sandboxGetMock.mockRejectedValueOnce(
+      createApiError(
+        500,
+        "Internal Server Error",
+        "sandbox_api_error",
+        "Sandbox API failed",
+      ),
+    );
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_restore_error" });
+    executor.configureSkills([]);
+
+    const error = await executor.createSandbox().catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ message: "sandbox restore failed" });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -1349,7 +1645,7 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo local-only");
   });
 
-  it("returns a failed bash result when the command stream ends without a status", async () => {
+  it("returns a tool error when the bash command stream ends without a status", async () => {
     const streamError = createStreamInterruptedError();
     const sandbox = makeSandbox("sbx_stream_interrupted");
     sandbox.runCommand.mockRejectedValueOnce(streamError);
@@ -1366,22 +1662,24 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<StructuredSandboxResult>({
-      toolName: "bash",
-      input: {
-        command: "pnpm test",
-      },
-    });
+    const error = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: {
+          command: "pnpm test",
+        },
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(response.result.details).toMatchObject({
-      ok: false,
-      exit_code: 125,
-      stderr:
-        "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
+    expect(error).toBeInstanceOf(ToolInputError);
+    expect(error).toMatchObject({
+      message: expect.stringContaining(
+        "The sandbox command stream was interrupted during bash",
+      ),
     });
   });
 
-  it("returns structured file-tool results when sandbox command streams end", async () => {
+  it("returns tool errors when file-tool command streams end", async () => {
     const sandbox = makeSandbox("sbx_find_files_interrupted");
     sandbox.fs.stat.mockRejectedValueOnce(createStreamInterruptedError());
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
@@ -1395,24 +1693,180 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    const response = await executor.execute<StructuredSandboxResult>({
+    const error = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "findFiles",
+        input: { pattern: "*.ts" },
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ToolInputError);
+    expect(error).toMatchObject({
+      message: expect.stringContaining(
+        "The sandbox command stream was interrupted during findFiles",
+      ),
+    });
+  });
+
+  it("invalidates an unavailable sandbox and lets a later tool call recover", async () => {
+    const closedSandbox = makeSandbox("sbx_closed_file_tools");
+    const recoveredSandbox = makeSandbox("sbx_closed_file_tools");
+    closedSandbox.fs.stat.mockRejectedValueOnce(createClosedStreamError());
+    recoveredSandbox.fs.stat.mockResolvedValue({ isDirectory: () => true });
+    recoveredSandbox.fs.readdir.mockResolvedValue([]);
+    getRuntimeDependencyProfileHashMock.mockReturnValue("profile-v1");
+    sandboxCreateMock.mockResolvedValueOnce(closedSandbox);
+    sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      onSandboxAcquired: vi.fn(),
+    });
+    executor.configureSkills([]);
+
+    const unavailable = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "grep",
+        input: { pattern: "needle" },
+      })
+      .catch((error: unknown) => error);
+
+    expect(unavailable).toBeInstanceOf(ToolInputError);
+    expect(unavailable).toMatchObject({
+      message: expect.stringContaining(
+        "The temporary sandbox became unavailable during grep",
+      ),
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+
+    const recovered = await executor.execute<StructuredSandboxResult>({
+      toolName: "grep",
+      input: { pattern: "needle" },
+    });
+
+    expect(recovered.result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      data: { match_count: 0 },
+    });
+    expect(sandboxGetMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: closedSandbox.name,
+      resume: true,
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a late stale-session failure invalidate the recovered session", async () => {
+    const unavailable = createClosedStreamError();
+    const staleSandbox = makeSandbox("sbx_parallel_recovery");
+    const recoveredSandbox = makeSandbox("sbx_parallel_recovery");
+    recoveredSandbox.session.sessionId =
+      "sbx_parallel_recovery_recovered_session";
+    let rejectStaleOperation: () => void = () => {};
+    let markStaleOperationStarted: () => void = () => {};
+    const staleOperationStarted = new Promise<void>((resolve) => {
+      markStaleOperationStarted = resolve;
+    });
+    staleSandbox.fs.stat
+      .mockImplementationOnce(
+        async () =>
+          await new Promise<never>((_resolve, reject) => {
+            rejectStaleOperation = () => reject(unavailable);
+            markStaleOperationStarted();
+          }),
+      )
+      .mockRejectedValueOnce(unavailable);
+    recoveredSandbox.fs.stat.mockResolvedValue({
+      isDirectory: () => true,
+    });
+    recoveredSandbox.fs.readdir.mockResolvedValue([]);
+    sandboxGetMock
+      .mockResolvedValueOnce(staleSandbox)
+      .mockResolvedValueOnce(recoveredSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: staleSandbox.name,
+    });
+    executor.configureSkills([]);
+
+    const staleOperation = executor.execute<StructuredSandboxResult>({
       toolName: "findFiles",
       input: { pattern: "*.ts" },
     });
+    await staleOperationStarted;
 
-    expect(response.result).toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        error: {
-          kind: "stream_interrupted",
-          message: expect.stringContaining(
-            "Sandbox command stream was interrupted during findFiles",
-          ),
-        },
-        tool: "findFiles",
+    const invalidatingError = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "findFiles",
+        input: { pattern: "*.ts" },
+      })
+      .catch((error: unknown) => error);
+    expect(invalidatingError).toBeInstanceOf(ToolInputError);
+
+    await expect(
+      executor.execute<StructuredSandboxResult>({
+        toolName: "findFiles",
+        input: { pattern: "*.ts" },
+      }),
+    ).resolves.toBeDefined();
+
+    rejectStaleOperation();
+    await expect(staleOperation).rejects.toBeInstanceOf(ToolInputError);
+
+    await expect(
+      executor.execute<StructuredSandboxResult>({
+        toolName: "findFiles",
+        input: { pattern: "*.ts" },
+      }),
+    ).resolves.toBeDefined();
+    expect(sandboxGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a tool error instead of replaying unavailable bash commands", async () => {
+    const sandbox = makeSandbox("sbx_closed_bash");
+    sandbox.runCommand.mockRejectedValueOnce(createClosedStreamError());
+    sandboxGetMock.mockResolvedValueOnce(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
       },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: sandbox.name,
     });
+    executor.configureSkills([]);
+
+    const unavailable = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: { command: "gh pr create" },
+      })
+      .catch((error: unknown) => error);
+
+    expect(unavailable).toBeInstanceOf(ToolInputError);
+    expect(unavailable).toMatchObject({
+      message: expect.stringContaining(
+        "The temporary sandbox became unavailable during bash",
+      ),
+    });
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("recognizes stream interruptions wrapped by writeFile errors", async () => {
@@ -1431,20 +1885,18 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    const response = await executor.execute<StructuredSandboxResult>({
-      toolName: "writeFile",
-      input: { path: "file.ts", content: "new content" },
-    });
+    const error = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "writeFile",
+        input: { path: "file.ts", content: "new content" },
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(response.result).toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        error: {
-          kind: "stream_interrupted",
-        },
-        tool: "writeFile",
-      },
+    expect(error).toBeInstanceOf(ToolInputError);
+    expect(error).toMatchObject({
+      message: expect.stringContaining(
+        "The sandbox command stream was interrupted during writeFile",
+      ),
     });
   });
 
@@ -1586,7 +2038,7 @@ describe("createSandboxExecutor", () => {
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
   });
 
-  it("recreates cached sandboxes before reusing cached tool executors", async () => {
+  it("fails a stopped cached session and reacquires it on a later tool call", async () => {
     const stoppedSandboxError = createApiError(
       410,
       "Gone",
@@ -1600,24 +2052,21 @@ describe("createSandboxExecutor", () => {
         throw stoppedSandboxError;
       }
     });
-    firstSandbox.runCommand
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: async () => "first\n",
-        stderr: async () => "",
-      })
-      .mockRejectedValueOnce(new Error("expired sandbox should not be reused"));
+    firstSandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: async () => "first\n",
+      stderr: async () => "",
+    });
 
-    const secondSandbox = makeSandbox("sbx_cached_second");
+    const secondSandbox = makeSandbox("sbx_cached_first");
     secondSandbox.runCommand.mockResolvedValueOnce({
       exitCode: 0,
       stdout: async () => "second\n",
       stderr: async () => "",
     });
 
-    sandboxCreateMock
-      .mockResolvedValueOnce(firstSandbox)
-      .mockResolvedValueOnce(secondSandbox);
+    sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
+    sandboxGetMock.mockResolvedValueOnce(secondSandbox);
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
@@ -1636,14 +2085,30 @@ describe("createSandboxExecutor", () => {
     });
     stopCachedSandbox = true;
 
-    const response = await executor.execute<StructuredSandboxResult>({
+    const interrupted = await executor
+      .execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: {
+          command: "echo second",
+        },
+      })
+      .catch((error: unknown) => error);
+
+    expect(interrupted).toBeInstanceOf(ToolInputError);
+    expect(interrupted).toMatchObject({
+      message: expect.stringContaining(
+        "The temporary sandbox became unavailable during bash",
+      ),
+    });
+
+    const recovered = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "echo second",
       },
     });
 
-    expect(response.result.details).toMatchObject({
+    expect(recovered.result.details).toMatchObject({
       ok: true,
       stdout: "second\n",
       exit_code: 0,
@@ -1651,7 +2116,11 @@ describe("createSandboxExecutor", () => {
     expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(1);
     expect(firstSandbox.runCommand).toHaveBeenCalledTimes(1);
     expect(secondSandbox.runCommand).toHaveBeenCalledTimes(1);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_cached_first",
+      resume: true,
+    });
   });
 
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {
@@ -1823,7 +2292,7 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("keeps sandbox API failures as readFile errors", async () => {
+  it("keeps non-lifecycle sandbox API failures as readFile errors", async () => {
     const sandbox = makeSandbox("sbx_read_file_api_error");
     sandboxCreateMock.mockResolvedValue(sandbox);
     vi.mocked(createBashTool).mockResolvedValue({
@@ -1831,10 +2300,10 @@ describe("createSandboxExecutor", () => {
         readFile: {
           execute: vi.fn(async () => {
             throw createApiError(
-              410,
-              "Gone",
-              "sandbox_stopped",
-              "Sandbox has stopped execution and is no longer available",
+              500,
+              "Internal Server Error",
+              "sandbox_api_error",
+              "Sandbox API failed",
             );
           }),
         },
@@ -1852,7 +2321,7 @@ describe("createSandboxExecutor", () => {
           path: "missing.ts",
         },
       }),
-    ).rejects.toThrow("Status code 410 is not ok");
+    ).rejects.toThrow("Status code 500 is not ok");
   });
 
   it("reads virtual skill files from sandbox when a sandbox id hint exists", async () => {

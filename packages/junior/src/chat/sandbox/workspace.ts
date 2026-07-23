@@ -1,4 +1,8 @@
-import type { NetworkPolicy, Sandbox as VercelSandbox } from "@vercel/sandbox";
+import {
+  FileSystem,
+  type NetworkPolicy,
+  type Sandbox as VercelSandbox,
+} from "@vercel/sandbox";
 
 export interface SandboxCommandResult {
   exitCode: number;
@@ -61,38 +65,38 @@ export interface SandboxInstance extends SandboxWorkspace {
 
 /** Adapt the Vercel SDK object once so the rest of Junior sees one sandbox contract. */
 export function createSandboxInstance(sandbox: VercelSandbox): SandboxInstance {
+  // Pin operations to the acquired VM session. The Sandbox convenience methods
+  // may resume and replay an operation after a lifecycle failure.
+  const session = sandbox.currentSession();
+
   return {
     sandboxId: sandbox.name,
-    get sandboxEgressId() {
-      // Vercel Sandbox v2 names the persistent sandbox separately from the
-      // running VM session identified by firewall proxy OIDC tokens.
-      return sandbox.currentSession().sessionId;
-    },
-    fs: sandbox.fs as SandboxFileSystem,
+    sandboxEgressId: session.sessionId,
+    fs: new FileSystem(session) as SandboxFileSystem,
     extendTimeout(duration) {
-      return sandbox.extendTimeout(duration);
+      return session.extendTimeout(duration);
     },
     mkDir(path) {
-      return sandbox.mkDir(path);
+      return session.mkDir(path);
     },
     readFileToBuffer(input) {
-      return sandbox.readFileToBuffer(input);
+      return session.readFileToBuffer(input);
     },
     runCommand(input) {
-      return sandbox.runCommand(input);
+      return session.runCommand(input);
     },
     async snapshot() {
-      const snapshot = await sandbox.snapshot();
+      const snapshot = await session.snapshot();
       return { snapshotId: snapshot.snapshotId };
     },
     stop() {
-      return sandbox.stop();
+      return session.stop();
     },
     update(params) {
-      return sandbox.update(params);
+      return session.update(params);
     },
     writeFiles(files) {
-      return sandbox.writeFiles(files);
+      return session.writeFiles(files);
     },
   };
 }

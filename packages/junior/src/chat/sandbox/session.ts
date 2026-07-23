@@ -3,7 +3,6 @@ import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import {
   logInfo,
-  logWarn,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -12,7 +11,6 @@ import {
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
-  isSandboxCommandStreamInterruptedError,
   isSandboxUnavailableError,
   isSnapshottingError,
   wrapSandboxSetupError,
@@ -73,6 +71,48 @@ interface SandboxToolExecutors {
   fs: SandboxFileSystem;
 }
 
+/** Preserve which pinned session produced a lifecycle failure. */
+class SandboxSessionUnavailableError extends Error {
+  readonly sandboxEgressId: string;
+
+  constructor(sandboxEgressId: string, cause: unknown) {
+    super("sandbox session unavailable", { cause });
+    this.name = "SandboxSessionUnavailableError";
+    this.sandboxEgressId = sandboxEgressId;
+  }
+}
+
+/** Read the originating session identity from a wrapped unavailable error. */
+function getUnavailableSandboxEgressId(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    if (current instanceof SandboxSessionUnavailableError) {
+      return current.sandboxEgressId;
+    }
+    seen.add(current);
+    current =
+      typeof current === "object"
+        ? (current as { cause?: unknown }).cause
+        : undefined;
+  }
+  return undefined;
+}
+
+async function bindUnavailableErrorToSandbox<T>(
+  sandboxEgressId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isSandboxUnavailableError(error)) {
+      throw error;
+    }
+    throw new SandboxSessionUnavailableError(sandboxEgressId, error);
+  }
+}
+
 function createBashToolSandboxAdapter(sandbox: SandboxInstance) {
   return {
     async executeCommand(command: string) {
@@ -116,6 +156,8 @@ interface SandboxSessionManager {
   getDependencyProfileHash(): string | undefined;
   createSandbox(): Promise<SandboxInstance>;
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
+  /** Drop unavailable live state while retaining the hint; true means the current operation must fail. */
+  invalidateIfUnavailable(error: unknown, sandboxEgressId?: string): boolean;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -140,23 +182,6 @@ function parseKeepAliveMs(): number {
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function getCommandStreamInterruptedResult(): {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  stdoutTruncated: boolean;
-  stderrTruncated: boolean;
-} {
-  return {
-    stdout: "",
-    stderr:
-      "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
-    exitCode: 125,
-    stdoutTruncated: false,
-    stderrTruncated: false,
-  };
 }
 
 function getCommandAbortedResult(): {
@@ -196,6 +221,7 @@ export function createSandboxSessionManager(options?: {
 }): SandboxSessionManager {
   let sandbox: SandboxInstance | null = null;
   let sandboxIdHint = options?.sandboxId;
+  let sandboxDependencyProfileHashHint = options?.sandboxDependencyProfileHash;
   let availableSkills: SkillMetadata[] = [];
   let availableReferenceFiles: string[] = [];
   let toolExecutors: SandboxToolExecutors | undefined;
@@ -218,9 +244,9 @@ export function createSandboxSessionManager(options?: {
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
-  const clearSession = (): void => {
+  /** Drop unavailable live state while retaining the persisted hint for lazy reacquisition. */
+  const invalidateSession = (): void => {
     sandbox = null;
-    sandboxIdHint = undefined;
     toolExecutors = undefined;
     loadingToolExecutors = undefined;
     appliedNetworkPolicyKey = undefined;
@@ -238,15 +264,20 @@ export function createSandboxSessionManager(options?: {
     return options?.createNetworkPolicy?.(sandboxName);
   };
 
+  const retainSandboxHint = (nextSandbox: SandboxInstance): void => {
+    sandboxIdHint = nextSandbox.sandboxId;
+    sandboxDependencyProfileHashHint = dependencyProfileHash;
+  };
+
   const rememberSandbox = async (
     nextSandbox: SandboxInstance,
   ): Promise<SandboxInstance> => {
     sandbox = nextSandbox;
-    sandboxIdHint = nextSandbox.sandboxId;
+    retainSandboxHint(nextSandbox);
     toolExecutors = undefined;
     loadingToolExecutors = undefined;
     const acquired = {
-      sandboxId: sandboxIdHint,
+      sandboxId: nextSandbox.sandboxId,
       ...(dependencyProfileHash
         ? { sandboxDependencyProfileHash: dependencyProfileHash }
         : {}),
@@ -257,6 +288,10 @@ export function createSandboxSessionManager(options?: {
 
   const failSetup = (error: unknown): never => {
     throw wrapSandboxSetupError(error);
+  };
+
+  const failRestore = (error: unknown): never => {
+    throw new Error("sandbox restore failed", { cause: error });
   };
 
   const syncSkills = async (targetSandbox: SandboxInstance): Promise<void> => {
@@ -330,27 +365,6 @@ export function createSandboxSessionManager(options?: {
         }
       },
     );
-  };
-
-  const recreateUnavailableSandbox = async (
-    source: "memory" | "id_hint",
-  ): Promise<SandboxInstance> => {
-    setSpanAttributes({
-      "app.sandbox.recovery.attempted": true,
-      "app.sandbox.recovery.source": source,
-    });
-    logWarn(
-      "sandbox_unavailable_recreating",
-      traceContext,
-      { "app.sandbox.recovery.source": source },
-      "Sandbox unavailable; recreating",
-    );
-    clearSession();
-    const replacement = await createFreshSandbox();
-    setSpanAttributes({
-      "app.sandbox.recovery.succeeded": true,
-    });
-    return replacement;
   };
 
   const createSandboxFromSnapshot = async (
@@ -504,6 +518,9 @@ export function createSandboxSessionManager(options?: {
       await applyNetworkPolicy(createdSandbox);
       await prepareSandbox(createdSandbox);
     } catch (error) {
+      if (isSandboxUnavailableError(error)) {
+        retainSandboxHint(createdSandbox);
+      }
       return failSetup(error);
     }
 
@@ -514,7 +531,7 @@ export function createSandboxSessionManager(options?: {
     if (
       sandbox ||
       !sandboxIdHint ||
-      dependencyProfileHash === options?.sandboxDependencyProfileHash
+      dependencyProfileHash === sandboxDependencyProfileHashHint
     ) {
       return;
     }
@@ -522,10 +539,10 @@ export function createSandboxSessionManager(options?: {
     setSpanAttributes({
       "app.sandbox.reused": false,
       "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...(options?.sandboxDependencyProfileHash
+      ...(sandboxDependencyProfileHashHint
         ? {
             "app.sandbox.previous_profile_hash":
-              options.sandboxDependencyProfileHash,
+              sandboxDependencyProfileHashHint,
           }
         : {}),
       ...(dependencyProfileHash
@@ -536,10 +553,10 @@ export function createSandboxSessionManager(options?: {
       "sandbox_hint_discarded_profile_mismatch",
       traceContext,
       {
-        ...(options?.sandboxDependencyProfileHash
+        ...(sandboxDependencyProfileHashHint
           ? {
               "app.sandbox.previous_profile_hash":
-                options.sandboxDependencyProfileHash,
+                sandboxDependencyProfileHashHint,
             }
           : {}),
         ...(dependencyProfileHash
@@ -549,6 +566,7 @@ export function createSandboxSessionManager(options?: {
       "Dependency profile changed; discarding sandbox hint and creating fresh session",
     );
     sandboxIdHint = undefined;
+    sandboxDependencyProfileHashHint = undefined;
   };
 
   const tryReuseCachedSandbox = async (): Promise<SandboxInstance | null> => {
@@ -564,7 +582,8 @@ export function createSandboxSessionManager(options?: {
       return cachedSandbox;
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
-        return await recreateUnavailableSandbox("memory");
+        invalidateSession();
+        throw error;
       }
       return failSetup(error);
     }
@@ -595,17 +614,11 @@ export function createSandboxSessionManager(options?: {
           ),
       );
     } catch (error) {
-      logWarn(
-        "sandbox_restore_hint_failed",
-        traceContext,
-        {
-          "app.sandbox.hint_id": sandboxIdHint,
-          "app.sandbox.error":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Failed to restore sandbox from hint; will create fresh session",
-      );
-      return null;
+      if (isSandboxUnavailableError(error)) {
+        invalidateSession();
+        throw error;
+      }
+      return failRestore(error);
     }
 
     try {
@@ -614,7 +627,8 @@ export function createSandboxSessionManager(options?: {
       return await rememberSandbox(hintedSandbox);
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
-        return await recreateUnavailableSandbox("id_hint");
+        invalidateSession();
+        throw error;
       }
       return failSetup(error);
     }
@@ -807,9 +821,6 @@ export function createSandboxSessionManager(options?: {
           if (aborted || input.signal?.aborted) {
             return getCommandAbortedResult();
           }
-          if (isSandboxCommandStreamInterruptedError(error)) {
-            return getCommandStreamInterruptedResult();
-          }
           throw error;
         } finally {
           if (timeoutId) {
@@ -852,8 +863,32 @@ export function createSandboxSessionManager(options?: {
 
     const nextToolExecutors = buildToolExecutors(activeSandbox).then(
       (executors) => {
-        toolExecutors = executors;
-        return executors;
+        const bind = <T>(operation: () => Promise<T>): Promise<T> =>
+          bindUnavailableErrorToSandbox(
+            activeSandbox.sandboxEgressId,
+            operation,
+          );
+        const boundExecutors: SandboxToolExecutors = {
+          bash: async (input) => await bind(async () => executors.bash(input)),
+          readFile: async (input) =>
+            await bind(async () => executors.readFile(input)),
+          writeFile: async (input) =>
+            await bind(async () => executors.writeFile(input)),
+          fs: {
+            readFile: async (filePath, options) =>
+              await bind(async () => executors.fs.readFile(filePath, options)),
+            writeFile: async (filePath, content, options) =>
+              await bind(async () =>
+                executors.fs.writeFile(filePath, content, options),
+              ),
+            readdir: async (filePath) =>
+              await bind(async () => executors.fs.readdir(filePath)),
+            stat: async (filePath) =>
+              await bind(async () => executors.fs.stat(filePath)),
+          },
+        };
+        toolExecutors = boundExecutors;
+        return boundExecutors;
       },
     );
     loadingToolExecutors = nextToolExecutors;
@@ -887,6 +922,22 @@ export function createSandboxSessionManager(options?: {
     },
     async ensureToolExecutors() {
       return await loadToolExecutors(await ensureReadySandbox());
+    },
+    invalidateIfUnavailable(error, sandboxEgressId) {
+      if (!isSandboxUnavailableError(error)) {
+        return false;
+      }
+      const unavailableEgressId =
+        getUnavailableSandboxEgressId(error) ?? sandboxEgressId;
+      if (
+        unavailableEgressId &&
+        sandbox &&
+        sandbox.sandboxEgressId !== unavailableEgressId
+      ) {
+        return true;
+      }
+      invalidateSession();
+      return true;
     },
     async refreshNetworkPolicy(traceHeaders) {
       const activeSandbox = sandbox;

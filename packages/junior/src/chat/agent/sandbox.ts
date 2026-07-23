@@ -6,31 +6,52 @@
  * and rebinding when the executor's sandbox identity changes mid-run.
  */
 import { logInfo, type LogContext } from "@/chat/logging";
-import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
+import {
+  createSandboxUnavailableToolError,
+  type SandboxExecutor,
+} from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+
+type LazySandboxExecutor = Pick<
+  SandboxExecutor,
+  | "createSandbox"
+  | "getSandboxId"
+  | "getSandboxEgressId"
+  | "invalidateIfUnavailable"
+>;
 
 /** Create a lazy-boot workspace port bound to the run's sandbox executor. */
 export function createLazySandboxWorkspace(args: {
-  executor: SandboxExecutor;
+  executor: LazySandboxExecutor;
   spanContext: LogContext;
 }): SandboxWorkspace {
-  let sandboxPromise: Promise<SandboxWorkspace> | undefined;
-  let sandboxPromiseId: string | undefined;
-  const clearSandboxPromise = (): void => {
+  interface SandboxBinding {
+    workspace: SandboxWorkspace;
+    sandboxId: string;
+    sandboxEgressId: string | undefined;
+  }
+
+  let sandboxPromise: Promise<SandboxBinding> | undefined;
+  let sandboxBinding: SandboxBinding | undefined;
+  const clearSandboxPromise = (expected?: Promise<SandboxBinding>): void => {
+    if (expected && sandboxPromise !== expected) {
+      return;
+    }
     sandboxPromise = undefined;
-    sandboxPromiseId = undefined;
+    sandboxBinding = undefined;
   };
   const getSandbox = (reason: {
     trigger: string;
     path?: string;
     cmd?: string;
     cwd?: string;
-  }): Promise<SandboxWorkspace> => {
+  }): Promise<SandboxBinding> => {
     const currentSandboxId = args.executor.getSandboxId();
+    const currentSandboxEgressId = args.executor.getSandboxEgressId();
     if (
-      sandboxPromise &&
-      sandboxPromiseId &&
-      currentSandboxId !== sandboxPromiseId
+      sandboxBinding &&
+      (currentSandboxId !== sandboxBinding.sandboxId ||
+        currentSandboxEgressId !== sandboxBinding.sandboxEgressId)
     ) {
       clearSandboxPromise();
     }
@@ -47,35 +68,71 @@ export function createLazySandboxWorkspace(args: {
         },
         "Lazy sandbox boot requested",
       );
-      sandboxPromise = args.executor
+      const nextSandboxPromise = args.executor
         .createSandbox()
-        .then((sandbox) => {
-          sandboxPromiseId = sandbox.sandboxId;
-          return sandbox;
+        .then((workspace) => {
+          const binding = {
+            workspace,
+            sandboxId: workspace.sandboxId,
+            sandboxEgressId: workspace.sandboxEgressId,
+          };
+          if (sandboxPromise === nextSandboxPromise) {
+            sandboxBinding = binding;
+          }
+          return binding;
         })
         .catch((error) => {
-          clearSandboxPromise();
+          clearSandboxPromise(nextSandboxPromise);
           throw error;
         });
+      sandboxPromise = nextSandboxPromise;
     }
     return sandboxPromise;
   };
 
+  /** Fail the current operation and discard the pinned workspace after lifecycle loss. */
+  const runWithSandbox = async <T>(
+    reason: {
+      trigger: string;
+      path?: string;
+      cmd?: string;
+      cwd?: string;
+    },
+    operation: (sandbox: SandboxWorkspace) => Promise<T>,
+  ): Promise<T> => {
+    const activeSandboxPromise = getSandbox(reason);
+    let binding: SandboxBinding | undefined;
+    try {
+      binding = await activeSandboxPromise;
+      return await operation(binding.workspace);
+    } catch (error) {
+      if (
+        args.executor.invalidateIfUnavailable(error, binding?.sandboxEgressId)
+      ) {
+        clearSandboxPromise(activeSandboxPromise);
+        throw createSandboxUnavailableToolError(reason.trigger, error);
+      }
+      throw error;
+    }
+  };
+
   return {
     readFileToBuffer: async (input) =>
-      (
-        await getSandbox({
+      await runWithSandbox(
+        {
           trigger: "workspace.readFileToBuffer",
           path: input.path,
-        })
-      ).readFileToBuffer(input),
+        },
+        async (sandbox) => await sandbox.readFileToBuffer(input),
+      ),
     runCommand: async (input) =>
-      (
-        await getSandbox({
+      await runWithSandbox(
+        {
           trigger: "workspace.runCommand",
           cmd: input.cmd,
           cwd: input.cwd,
-        })
-      ).runCommand(input),
+        },
+        async (sandbox) => await sandbox.runCommand(input),
+      ),
   };
 }
