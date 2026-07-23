@@ -275,11 +275,10 @@ export async function readPeopleProfileFromSql(
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
     recentConversations: recentRows.map((row) =>
-      summaryFromRow(
-        row,
-        accessByConversation.get(row.conversationId),
-        metricsByRoot.get(row.conversationId),
-      ),
+      summaryFromRow(row, {
+        access: accessByConversation.get(row.conversationId),
+        metrics: metricsByRoot.get(row.conversationId),
+      }),
     ),
     actor,
     source: "conversation_index",

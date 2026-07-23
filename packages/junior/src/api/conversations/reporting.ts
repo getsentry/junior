@@ -81,11 +81,13 @@ function actorFromRow(
 /** Project one SQL conversation row into a privacy-safe API summary. */
 export function summaryFromRow(
   row: ReportingConversationRow,
-  access?: ConversationAccess,
-  metrics?: {
-    durationMs: number;
-    usage?: NonNullable<ReportingConversationRow["usage"]>;
-  },
+  options: {
+    access?: ConversationAccess;
+    metrics?: {
+      durationMs: number;
+      usage?: NonNullable<ReportingConversationRow["usage"]>;
+    };
+  } = {},
 ): ConversationSummaryReport {
   const actor = actorFromRow(row);
   const conversation = {
@@ -103,18 +105,15 @@ export function summaryFromRow(
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(row.source ? { source: row.source } : {}),
     ...(row.title ? { title: row.title } : {}),
-    ...(access?.visibility === "public" || access?.visibility === "private"
-      ? { visibility: access.visibility }
-      : {}),
   };
   return conversationSummaryFromStoredConversation({
-    access,
+    access: options.access,
     conversation,
-    durationMs: metrics?.durationMs ?? row.durationMs,
-    ...(access?.visibility === "public" && row.destinationId
+    durationMs: options.metrics?.durationMs ?? row.durationMs,
+    ...(options.access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
       : {}),
-    usage: metrics?.usage ?? row.usage ?? undefined,
+    usage: options.metrics?.usage ?? row.usage ?? undefined,
   });
 }
 

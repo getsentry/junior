@@ -505,11 +505,10 @@ export async function readLocationDetailFromSql(
     ),
     generatedAt: new Date(nowMs).toISOString(),
     recentConversations: recentRows.map((row) =>
-      summaryFromRow(
-        row,
-        accessByConversation.get(row.conversationId),
-        metricsByRoot.get(row.conversationId),
-      ),
+      summaryFromRow(row, {
+        access: accessByConversation.get(row.conversationId),
+        metrics: metricsByRoot.get(row.conversationId),
+      }),
     ),
     source: "conversation_index",
     windowEnd: end.toISOString(),

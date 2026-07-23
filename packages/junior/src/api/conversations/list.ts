@@ -108,12 +108,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
       : {}),
-    ...(row.destinationVisibility
-      ? {
-          visibility:
-            row.destinationVisibility === "public" ? "public" : "private",
-        }
-      : {}),
   };
 }
 

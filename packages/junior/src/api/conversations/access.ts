@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import type { JuniorDatabase } from "@/db/db";
@@ -26,36 +26,20 @@ export async function readConversationAccessFromSql(
   verifiedViewerEmail?: string,
 ): Promise<Map<string, ConversationAccess>> {
   if (conversationIds.length === 0) return new Map();
-  const normalizedViewerEmail = verifiedViewerEmail?.trim().toLowerCase();
+  const normalizedViewerEmail =
+    verifiedViewerEmail?.trim().toLowerCase() || undefined;
 
-  const hasValidRoot = and(
-    isNull(rootConversation.parentConversationId),
-    eq(rootConversation.rootConversationId, rootConversation.conversationId),
-    or(
-      isNotNull(juniorConversations.parentConversationId),
-      eq(
-        juniorConversations.rootConversationId,
-        juniorConversations.conversationId,
-      ),
-    ),
-  );
   const rows = await db
     .select({
       conversationId: juniorConversations.conversationId,
-      rootConversationId: sql<string | null>`case
-        when ${hasValidRoot} then ${rootConversation.conversationId}
-        else null
-      end`,
-      visibility: sql<JuniorDestinationVisibility | null>`case
-        when ${hasValidRoot} then ${rootDestination.visibility}
-        else null
-      end`,
-      isParticipant: sql<boolean>`coalesce(
-        ${hasValidRoot}
-          and ${rootIdentity.emailVerified} = true
-          and ${rootIdentity.emailNormalized} = ${normalizedViewerEmail || null},
-        false
-      )`,
+      parentConversationId: juniorConversations.parentConversationId,
+      storedRootConversationId: juniorConversations.rootConversationId,
+      rootConversationId: rootConversation.conversationId,
+      rootParentConversationId: rootConversation.parentConversationId,
+      rootRootConversationId: rootConversation.rootConversationId,
+      visibility: rootDestination.visibility,
+      rootEmailNormalized: rootIdentity.emailNormalized,
+      rootEmailVerified: rootIdentity.emailVerified,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -77,21 +61,38 @@ export async function readConversationAccessFromSql(
 
   return new Map(
     rows.map((row) => {
+      const hasValidRoot =
+        row.rootConversationId !== null &&
+        row.rootConversationId === row.storedRootConversationId &&
+        row.rootRootConversationId === row.rootConversationId &&
+        row.rootParentConversationId === null &&
+        (row.parentConversationId !== null ||
+          row.storedRootConversationId === row.conversationId);
+      const validRootConversationId = hasValidRoot
+        ? (row.rootConversationId ?? undefined)
+        : undefined;
+      const visibility =
+        validRootConversationId === undefined ? null : row.visibility;
+      const isParticipant =
+        validRootConversationId !== undefined &&
+        normalizedViewerEmail !== undefined &&
+        row.rootEmailVerified === true &&
+        row.rootEmailNormalized === normalizedViewerEmail;
       const canViewPrivateContent =
-        row.isParticipant ||
-        (row.rootConversationId !== null &&
+        isParticipant ||
+        (validRootConversationId !== undefined &&
           canExposeConversationPayload({
-            conversationId: row.rootConversationId,
-            ...(row.visibility === "public" || row.visibility === "private"
-              ? { visibility: row.visibility }
+            conversationId: validRootConversationId,
+            ...(visibility === "public" || visibility === "private"
+              ? { visibility }
               : {}),
           }));
       return [
         row.conversationId,
         {
           canViewPrivateContent,
-          isParticipant: row.isParticipant,
-          visibility: row.visibility,
+          isParticipant,
+          visibility,
         },
       ];
     }),
