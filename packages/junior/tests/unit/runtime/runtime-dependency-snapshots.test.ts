@@ -21,6 +21,7 @@ const { withSpanMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@vercel/sandbox", () => ({
+  FileSystem: class {},
   Sandbox: {
     create: sandboxCreateMock,
   },
@@ -76,19 +77,27 @@ function makeSandbox(
     stderr: () => Promise<string>;
   }>,
 ) {
+  const runCommand = vi.fn(
+    runCommandImpl ??
+      (async () => ({
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      })),
+  );
+  const snapshot = vi.fn(async () => ({ snapshotId }));
+  const stop = vi.fn(async () => {});
   return {
     name: `sbx_${snapshotId}`,
-    currentSession: vi.fn(() => ({ sessionId: `sbx_${snapshotId}_session` })),
-    runCommand: vi.fn(
-      runCommandImpl ??
-        (async () => ({
-          exitCode: 0,
-          stdout: async () => "",
-          stderr: async () => "",
-        })),
-    ),
-    snapshot: vi.fn(async () => ({ snapshotId })),
-    stop: vi.fn(async () => {}),
+    currentSession: vi.fn(() => ({
+      sessionId: `sbx_${snapshotId}_session`,
+      runCommand,
+      snapshot,
+      stop,
+    })),
+    runCommand,
+    snapshot,
+    stop,
   };
 }
 
