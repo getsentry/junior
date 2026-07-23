@@ -32,81 +32,82 @@ export function SystemCapabilities(props: {
       : "No plugins have been reported yet.";
 
   return (
-    <section aria-label="Capabilities">
-      <div
-        aria-label="Capability inventories"
-        className="mb-3 flex gap-1 border-b border-white/[0.07]"
-        role="tablist"
-      >
-        <CapabilityTabButton
-          activeTab={activeTab}
-          buttonRef={pluginTabRef}
-          label="Plugins"
-          tab="plugins"
-          onSelect={setActiveTab}
-          onNavigate={(tab) => {
-            setActiveTab(tab);
-            (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
-          }}
-        />
-        <CapabilityTabButton
-          activeTab={activeTab}
-          buttonRef={skillTabRef}
-          label="Skills"
-          tab="skills"
-          onSelect={setActiveTab}
-          onNavigate={(tab) => {
-            setActiveTab(tab);
-            (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
-          }}
-        />
-      </div>
-      <div
-        aria-labelledby="plugins-tab"
-        hidden={activeTab !== "plugins"}
-        id="plugins-panel"
-        role="tabpanel"
-      >
-        <div className="grid gap-4 sm:gap-6">
+    <section aria-label="Capabilities" className="grid gap-4 sm:gap-6">
+      {props.pluginReportsError ? (
+        <Card
+          className="border-amber-300/10 bg-amber-300/[0.025]"
+          padding="sm"
+        >
+          <div className="flex items-center gap-3">
+            <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
+              <TriangleAlert aria-hidden="true" size={15} />
+            </div>
+            <div>
+              <div className="font-display text-sm font-medium text-white/75">
+                Plugin stats failed to load.
+              </div>
+              <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
+                {props.reports.length
+                  ? "Showing the last operational reports Junior received."
+                  : "Loaded capabilities are still available below."}
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+      <PluginReports emptyText={reportEmptyText} reports={props.reports} />
+
+      <div>
+        <div
+          aria-label="Capability inventories"
+          className="mb-3 flex gap-1 border-b border-white/[0.07]"
+          role="tablist"
+        >
+          <CapabilityTabButton
+            activeTab={activeTab}
+            buttonRef={pluginTabRef}
+            label="Plugins"
+            tab="plugins"
+            onSelect={setActiveTab}
+            onNavigate={(tab) => {
+              setActiveTab(tab);
+              (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
+            }}
+          />
+          <CapabilityTabButton
+            activeTab={activeTab}
+            buttonRef={skillTabRef}
+            label="Skills"
+            tab="skills"
+            onSelect={setActiveTab}
+            onNavigate={(tab) => {
+              setActiveTab(tab);
+              (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
+            }}
+          />
+        </div>
+        <div
+          aria-labelledby="plugins-tab"
+          hidden={activeTab !== "plugins"}
+          id="plugins-panel"
+          role="tabpanel"
+        >
           <PluginInventory
             loadingReports={props.loadingReports}
             plugins={props.plugins}
             reports={props.reports}
           />
-          {props.pluginReportsError ? (
-            <Card
-              className="border-amber-300/10 bg-amber-300/[0.025]"
-              padding="sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
-                  <TriangleAlert aria-hidden="true" size={15} />
-                </div>
-                <div>
-                  <div className="font-display text-sm font-medium text-white/75">
-                    Plugin stats failed to load.
-                  </div>
-                  <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
-                    {props.reports.length
-                      ? "Showing the last operational reports Junior received."
-                      : "Loaded capabilities are still available above."}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ) : null}
-          <PluginReports emptyText={reportEmptyText} reports={props.reports} />
         </div>
-      </div>
-      <div
-        aria-labelledby="skills-tab"
-        hidden={activeTab !== "skills"}
-        id="skills-panel"
-        role="tabpanel"
-      >
-        {activeTab === "skills" ? (
-          <SkillInventory skills={props.skills} />
-        ) : null}
+        <div
+          aria-labelledby="skills-tab"
+          hidden={activeTab !== "skills"}
+          id="skills-panel"
+          role="tabpanel"
+        >
+          {activeTab === "skills" ? (
+            <SkillInventory skills={props.skills} />
+          ) : null}
+        </div>
       </div>
     </section>
   );
