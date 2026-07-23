@@ -12,8 +12,6 @@ interface ConversationAggregateSource {
 function tokenValue(source: ConversationAggregateSource) {
   return sql<number | null>`
     CASE
-      WHEN ${source.usage}->>'totalTokens' IS NOT NULL
-        THEN (${source.usage}->>'totalTokens')::double precision
       WHEN COALESCE(
         ${source.usage}->>'inputTokens',
         ${source.usage}->>'outputTokens',
@@ -24,6 +22,8 @@ function tokenValue(source: ConversationAggregateSource) {
           + COALESCE((${source.usage}->>'outputTokens')::double precision, 0)
           + COALESCE((${source.usage}->>'cachedInputTokens')::double precision, 0)
           + COALESCE((${source.usage}->>'cacheCreationTokens')::double precision, 0)
+      WHEN ${source.usage}->>'totalTokens' IS NOT NULL
+        THEN (${source.usage}->>'totalTokens')::double precision
       ELSE NULL
     END
   `;

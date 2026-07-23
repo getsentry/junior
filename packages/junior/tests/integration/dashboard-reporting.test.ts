@@ -464,7 +464,13 @@ describe("dashboard canonical event reporting", () => {
       });
     await getDb()
       .update(juniorConversations)
-      .set({ usage: { inputTokens: 10, cost: { total: 0.001 } } })
+      .set({
+        usage: {
+          inputTokens: 10,
+          totalTokens: 999,
+          cost: { total: 0.001 },
+        },
+      })
       .where(eq(juniorConversations.conversationId, rootConversationId));
     await appendVisibleHistory(childConversationId, "Unprojected child answer");
 
