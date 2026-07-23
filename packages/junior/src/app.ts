@@ -8,7 +8,11 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
+import {
+  configureFunctionMaxDurationSeconds,
+  getSlackReactionConfig,
+  setSlackReactionConfig,
+} from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -140,6 +144,7 @@ type CreateDashboardApp = (
 ) => DashboardApp;
 
 interface JuniorVirtualConfig {
+  functionMaxDurationSeconds?: number;
   createDashboardApp?: CreateDashboardApp;
   dashboard?: JuniorVirtualDashboardOptions;
   pluginSet?: JuniorPluginSet;
@@ -179,6 +184,7 @@ async function resolveVirtualConfig(): Promise<
   try {
     const mod: {
       createDashboardApp?: CreateDashboardApp;
+      functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions;
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
@@ -186,6 +192,7 @@ async function resolveVirtualConfig(): Promise<
     } = await import("#junior/config");
     return {
       createDashboardApp: mod.createDashboardApp,
+      functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
@@ -531,6 +538,11 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
+  if (virtualConfig?.functionMaxDurationSeconds !== undefined) {
+    configureFunctionMaxDurationSeconds(
+      virtualConfig.functionMaxDurationSeconds,
+    );
+  }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);

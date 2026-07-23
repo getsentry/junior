@@ -20,6 +20,7 @@ declare module "#junior/config" {
       })
     | undefined;
   export const dashboard: VirtualDashboardConfig | undefined;
+  export const functionMaxDurationSeconds: number;
   export const pluginSet: JuniorPluginSet | undefined;
   export const plugins: PluginCatalogConfig;
   export const pluginRuntimeRegistrations: string[];

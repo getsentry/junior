@@ -25,6 +25,8 @@ const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
  * Junior can abort, persist, and schedule continuation before host teardown.
  */
 export const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
+/** Additional buffer that makes conversation work yield before the hard request deadline. */
+export const CONVERSATION_WORK_SOFT_YIELD_BUFFER_SECONDS = 40;
 const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Consulting the orb",
   "Bribing the gremlins",
@@ -58,6 +60,7 @@ export type SqlDriver = "neon" | "postgres";
 export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
+  conversationWorkSoftYieldAfterMs: number;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
@@ -92,15 +95,20 @@ function parseAgentTurnTimeoutMs(
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, Math.min(value, maxTimeoutMs));
 }
 
-function resolveFunctionMaxDurationSeconds(env: NodeJS.ProcessEnv): number {
-  const raw =
-    env.FUNCTION_MAX_DURATION_SECONDS ??
-    env.QUEUE_CALLBACK_MAX_DURATION_SECONDS;
-  const value = Number.parseInt(raw ?? "", 10);
-  if (Number.isNaN(value) || value <= 0) {
-    return DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  }
-  return value;
+function resolveFunctionMaxDurationSeconds(
+  functionMaxDurationSeconds?: number,
+): number {
+  return functionMaxDurationSeconds ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
+}
+
+function resolveConversationWorkSoftYieldAfterMs(
+  functionMaxDurationSeconds: number,
+): number {
+  return Math.max(
+    MIN_AGENT_TURN_TIMEOUT_MS,
+    (functionMaxDurationSeconds - CONVERSATION_WORK_SOFT_YIELD_BUFFER_SECONDS) *
+      1000,
+  );
 }
 
 function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
@@ -252,8 +260,10 @@ function parseReactionEmoji(
   return normalized;
 }
 
-function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
-  const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
+function readBotConfig(
+  env: NodeJS.ProcessEnv,
+  functionMaxDurationSeconds: number,
+): BotConfig {
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
@@ -326,11 +336,18 @@ function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
+  functionMaxDurationSeconds = DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
 ): ChatConfig {
   const databaseUrl = readDatabaseUrl(env);
+  const resolvedFunctionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(
+    functionMaxDurationSeconds,
+  );
   return {
-    bot: readBotConfig(env),
-    functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
+    bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
+    functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
+    conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
+      resolvedFunctionMaxDurationSeconds,
+    ),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -359,6 +376,22 @@ export function readChatConfig(
 
 /** Chat configuration parsed once at module load from the process environment. */
 const chatConfig: ChatConfig = readChatConfig(process.env);
+
+/** Apply the host execution budget injected by juniorNitro(). */
+export function configureFunctionMaxDurationSeconds(
+  functionMaxDurationSeconds: number,
+): void {
+  const resolved = resolveFunctionMaxDurationSeconds(
+    functionMaxDurationSeconds,
+  );
+  chatConfig.functionMaxDurationSeconds = resolved;
+  chatConfig.conversationWorkSoftYieldAfterMs =
+    resolveConversationWorkSoftYieldAfterMs(resolved);
+  chatConfig.bot.turnTimeoutMs = parseAgentTurnTimeoutMs(
+    process.env.AGENT_TURN_TIMEOUT_MS,
+    resolveMaxTurnTimeoutMs(resolved),
+  );
+}
 
 /** Return the chat configuration (parsed once at startup). */
 export function getChatConfig(): ChatConfig {

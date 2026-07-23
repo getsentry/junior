@@ -37,6 +37,7 @@ function dashboardEnabled(
 
 /** Render the virtual config module consumed by createApp(). */
 export function renderVirtualConfig(options: {
+  functionMaxDurationSeconds?: number;
   dashboard?: JuniorDashboardOptions;
   plugins?: PluginCatalogConfig;
   pluginModule?: RuntimePluginModule;
@@ -53,6 +54,7 @@ export function renderVirtualConfig(options: {
     `export const plugins = ${JSON.stringify(options.plugins ?? { packages: [] })};`,
     `export const pluginRuntimeRegistrations = ${JSON.stringify(options.pluginRuntimeRegistrations ?? [])};`,
     `export const dashboard = ${JSON.stringify(options.dashboard)};`,
+    `export const functionMaxDurationSeconds = ${JSON.stringify(options.functionMaxDurationSeconds)};`,
   ];
 
   return lines.join("\n");
@@ -62,6 +64,7 @@ export function renderVirtualConfig(options: {
 export function injectVirtualConfig(
   nitro: Nitro,
   options: {
+    functionMaxDurationSeconds?: number;
     loadPluginSet?: () => Promise<JuniorPluginSet | undefined>;
     pluginModule?: RuntimePluginModule;
     plugins?: PluginCatalogConfig;
@@ -77,6 +80,7 @@ export function injectVirtualConfig(
     const pluginSet = await options.loadPluginSet();
 
     return renderVirtualConfig({
+      functionMaxDurationSeconds: options.functionMaxDurationSeconds,
       pluginModule: options.pluginModule,
       plugins: pluginCatalogConfigFromPluginSet(pluginSet),
       pluginRuntimeRegistrations: pluginRuntimeRegistrationsFromPluginSet(

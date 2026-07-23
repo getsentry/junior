@@ -193,13 +193,13 @@ describe("juniorNitro plugin modules", () => {
       },
     ]);
     expect(vercel.functions).toEqual({
-      maxDuration: 120,
+      maxDuration: 300,
       memory: 1024,
     });
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE],
     ).toEqual({
-      maxDuration: 120,
+      maxDuration: 300,
       memory: 2048,
       experimentalTriggers: [
         {
@@ -209,7 +209,7 @@ describe("juniorNitro plugin modules", () => {
       ],
     });
     expect(vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]).toEqual({
-      maxDuration: 120,
+      maxDuration: 300,
       memory: 1024,
       experimentalTriggers: [
         {
@@ -312,36 +312,44 @@ describe("juniorNitro plugin modules", () => {
     ]);
   });
 
-  it("preserves Vercel max function duration settings", () => {
+  it("makes juniorNitro maxDuration authoritative", async () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
-      hooks: {
-        hook() {},
-      },
+      hooks: { hook() {} },
       options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
+        output: { serverDir: "/tmp/junior-output" },
         rootDir: "/tmp/junior-app",
         vercel: {
-          functions: {
-            maxDuration: "max" as const,
+          functions: { maxDuration: 120 },
+          functionRules: {
+            [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
+              maxDuration: 180,
+            },
           },
         },
         virtual,
       },
     };
 
-    juniorNitro().nitro.setup(nitro);
+    juniorNitro({ maxDuration: 800 }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
+    const template = virtual["#junior/config"];
 
+    expect(vercel.functions?.maxDuration).toBe(800);
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
         ?.maxDuration,
-    ).toBe("max");
+    ).toBe(800);
     expect(
       vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]?.maxDuration,
-    ).toBe("max");
+    ).toBe(800);
+    expect(typeof template).toBe("function");
+    if (typeof template !== "function") {
+      throw new Error("Expected virtual config template");
+    }
+    await expect(template()).resolves.toContain(
+      "export const functionMaxDurationSeconds = 800;",
+    );
   });
 
   it("loads plugin modules lazily when virtual config is rendered", async () => {

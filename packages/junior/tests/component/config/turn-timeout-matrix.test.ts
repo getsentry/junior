@@ -1,86 +1,63 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { readChatConfig } from "@/chat/config";
 
-const ORIGINAL_ENV = { ...process.env };
+const BASE_ENV = {
+  DATABASE_URL: "postgres://localhost/junior",
+  JUNIOR_STATE_ADAPTER: "memory",
+};
 
-function setOrDelete(key: string, value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[key];
-  } else {
-    process.env[key] = value;
-  }
-}
-
-describe("turnTimeoutMs decision matrix", () => {
-  afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    vi.resetModules();
-  });
-
+describe("execution budget decision matrix", () => {
   it.each([
     {
-      label: "all defaults",
-      turnMs: undefined,
-      funcMax: undefined,
-      queueMax: undefined,
-      expected: 280000,
+      label: "uses the safe default budget",
+      maxDuration: undefined,
+      turnTimeout: undefined,
+      expectedTurnTimeoutMs: 280_000,
+      expectedSoftYieldMs: 260_000,
     },
     {
-      label: "explicit turn timeout",
-      turnMs: "240000",
-      funcMax: undefined,
-      queueMax: undefined,
-      expected: 240000,
+      label: "derives budgets from maxDuration",
+      maxDuration: 800,
+      turnTimeout: undefined,
+      expectedTurnTimeoutMs: 720_000,
+      expectedSoftYieldMs: 760_000,
     },
     {
-      label: "invalid turn timeout falls back to default",
-      turnMs: "not-a-number",
-      funcMax: undefined,
-      queueMax: undefined,
-      expected: 280000,
+      label: "allows a shorter agent timeout",
+      maxDuration: 800,
+      turnTimeout: "240000",
+      expectedTurnTimeoutMs: 240_000,
+      expectedSoftYieldMs: 760_000,
     },
     {
-      label:
-        "turn timeout capped by default function max (300s - 20s buffer = 280s)",
-      turnMs: "999999",
-      funcMax: undefined,
-      queueMax: undefined,
-      expected: 280000,
+      label: "caps an agent timeout below the host budget",
+      maxDuration: 500,
+      turnTimeout: "999999",
+      expectedTurnTimeoutMs: 480_000,
+      expectedSoftYieldMs: 460_000,
     },
-    {
-      label: "turn timeout capped by FUNCTION_MAX_DURATION_SECONDS",
-      turnMs: "999999",
-      funcMax: "500",
-      queueMax: undefined,
-      expected: 480000,
+  ])(
+    "$label",
+    ({
+      maxDuration,
+      turnTimeout,
+      expectedTurnTimeoutMs,
+      expectedSoftYieldMs,
+    }) => {
+      const env = {
+        ...BASE_ENV,
+        ...(turnTimeout === undefined
+          ? {}
+          : { AGENT_TURN_TIMEOUT_MS: turnTimeout }),
+        // These legacy values must not affect the generated host budget.
+        FUNCTION_MAX_DURATION_SECONDS: "900",
+        QUEUE_CALLBACK_MAX_DURATION_SECONDS: "900",
+      };
+      const config = readChatConfig(env, maxDuration);
+
+      expect(config.functionMaxDurationSeconds).toBe(maxDuration ?? 300);
+      expect(config.bot.turnTimeoutMs).toBe(expectedTurnTimeoutMs);
+      expect(config.conversationWorkSoftYieldAfterMs).toBe(expectedSoftYieldMs);
     },
-    {
-      label: "QUEUE_CALLBACK_MAX_DURATION_SECONDS as fallback",
-      turnMs: "999999",
-      funcMax: undefined,
-      queueMax: "500",
-      expected: 480000,
-    },
-    {
-      label: "turn timeout floored at minimum (10s)",
-      turnMs: "5000",
-      funcMax: undefined,
-      queueMax: undefined,
-      expected: 10000,
-    },
-    {
-      label:
-        "FUNCTION_MAX_DURATION_SECONDS takes precedence over QUEUE_CALLBACK",
-      turnMs: "999999",
-      funcMax: "500",
-      queueMax: "600",
-      expected: 480000,
-    },
-  ])("$label", async ({ turnMs, funcMax, queueMax, expected }) => {
-    setOrDelete("AGENT_TURN_TIMEOUT_MS", turnMs);
-    setOrDelete("FUNCTION_MAX_DURATION_SECONDS", funcMax);
-    setOrDelete("QUEUE_CALLBACK_MAX_DURATION_SECONDS", queueMax);
-    vi.resetModules();
-    const { readChatConfig } = await import("@/chat/config");
-    expect(readChatConfig(process.env).bot.turnTimeoutMs).toBe(expected);
-  });
+  );
 });

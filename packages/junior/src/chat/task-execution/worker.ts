@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
@@ -31,7 +32,6 @@ import {
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
-export const CONVERSATION_WORK_SOFT_YIELD_AFTER_MS = 240_000;
 
 export interface ConversationWorkerContext {
   attempt: InboxAttempt;
@@ -309,7 +309,8 @@ export async function processConversationWork(
   const startedAtMs = now(options);
   const softYieldDeadlineMs =
     startedAtMs +
-    (options.softYieldAfterMs ?? CONVERSATION_WORK_SOFT_YIELD_AFTER_MS);
+    (options.softYieldAfterMs ??
+      getChatConfig().conversationWorkSoftYieldAfterMs);
   const leasedWork = await getConversationWorkState({
     conversationId,
     state: options.state,
