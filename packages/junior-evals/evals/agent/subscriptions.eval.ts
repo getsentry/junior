@@ -97,6 +97,8 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(toolCalls(result.session)).toHaveLength(0);
   });
 
   it("when a subscribed event does not serve the intent, stay silent", async ({
