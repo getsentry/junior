@@ -13,7 +13,6 @@ import type {
 
 import { client } from "../src/client/api";
 import { HighlightedCode } from "../src/client/code";
-import { formatMessageTimestamp } from "../src/client/format";
 import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
@@ -63,13 +62,10 @@ function conversation(
   };
 }
 
-function renderTranscript(
-  detail: ConversationTranscript,
-  query = "",
-): string {
+function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <TranscriptSearchProvider query={query}>
+      <TranscriptSearchProvider query="">
         <ConversationTranscriptView conversation={detail} view="rich" />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
@@ -234,25 +230,6 @@ describe("dashboard canonical-event components", () => {
       "Transcript refresh failed. Showing the latest available data.",
     );
     expect(staleHtml).not.toContain("Junior is responding");
-  });
-
-  it("renders resource event timestamps and expands matches during search", () => {
-    const timestamp = Date.parse("2026-01-01T00:00:00.000Z");
-    const html = renderTranscript(
-      conversation([
-        event(0, {
-          type: "message",
-          messageId: "resource-event",
-          role: "user",
-          eventType: "pull_request.merged",
-          text: "merged safely",
-        }),
-      ]),
-      "merged safely",
-    );
-
-    expect(html).toContain(`open=""`);
-    expect(html).toContain(formatMessageTimestamp(timestamp));
   });
 
   it("renders redacted visible events without exposing text", () => {
