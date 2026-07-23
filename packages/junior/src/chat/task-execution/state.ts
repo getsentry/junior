@@ -83,7 +83,12 @@ export interface AgentInput {
   text: string;
 }
 
-export type InboundMessageRouting = "follow_up" | "auto" | "steer";
+export type InboundMessageRouting = "auto" | "defer" | "interrupt";
+
+export interface MailboxDrainResult {
+  ack: readonly string[];
+  defer: readonly string[];
+}
 
 export interface InboundMessage {
   attemptCount?: number;
@@ -94,7 +99,7 @@ export interface InboundMessage {
   injectedAtMs?: number;
   input: AgentInput;
   receivedAtMs: number;
-  routing?: InboundMessageRouting;
+  routing: InboundMessageRouting;
   source: Source;
 }
 
@@ -328,8 +333,15 @@ function normalizeInput(value: unknown): AgentInput | undefined {
   };
 }
 
-function normalizeInboundMessageRouting(value: unknown): InboundMessageRouting {
-  return value === "follow_up" || value === "steer" ? value : "auto";
+function normalizeInboundMessageRouting(
+  value: unknown,
+): InboundMessageRouting | undefined {
+  if (value === undefined) {
+    return "auto";
+  }
+  return value === "auto" || value === "defer" || value === "interrupt"
+    ? value
+    : undefined;
 }
 
 function normalizeMessage(value: unknown): InboundMessage | undefined {
@@ -343,6 +355,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const receivedAtMs = toOptionalNumber(value.receivedAtMs);
   const input = normalizeInput(value.input);
+  const routing = normalizeInboundMessageRouting(value.routing);
   if (
     !conversationId ||
     !destination ||
@@ -350,7 +363,8 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     !source ||
     typeof createdAtMs !== "number" ||
     typeof receivedAtMs !== "number" ||
-    !input
+    !input ||
+    !routing
   ) {
     return undefined;
   }
@@ -362,7 +376,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     createdAtMs,
     receivedAtMs,
     input,
-    routing: normalizeInboundMessageRouting(value.routing),
+    routing,
     injectedAtMs: toOptionalNumber(value.injectedAtMs),
     attemptCount: toOptionalNumber(value.attemptCount),
   };
@@ -1491,66 +1505,15 @@ export async function checkInConversationWork(args: {
   });
 }
 
-/** Persist an explicit route for pending mailbox entries under the active lease. */
-export async function routeConversationMailboxMessages(args: {
-  conversationId: string;
-  inboundMessageIds: readonly string[];
-  leaseToken: string;
-  nowMs?: number;
-  routing: Exclude<InboundMessageRouting, "auto">;
-  state?: StateAdapter;
-}): Promise<void> {
-  if (args.inboundMessageIds.length === 0) {
-    return;
-  }
-  const routedIds = new Set(args.inboundMessageIds);
-  await withConversationMutation(args, async (state, lock) => {
-    const current = await readConversation(state, args.conversationId);
-    if (!current || current.execution.lease?.token !== args.leaseToken) {
-      throw new Error(
-        `Conversation lease is not held for ${args.conversationId}`,
-      );
-    }
-    const pendingIds = new Set(
-      current.execution.pendingMessages.map(
-        (message) => message.inboundMessageId,
-      ),
-    );
-    for (const inboundMessageId of routedIds) {
-      if (!pendingIds.has(inboundMessageId)) {
-        throw new Error(
-          `Conversation mailbox route is not pending for ${args.conversationId}`,
-        );
-      }
-    }
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        current,
-        {
-          ...current.execution,
-          pendingMessages: current.execution.pendingMessages.map((message) =>
-            routedIds.has(message.inboundMessageId)
-              ? { ...message, routing: args.routing }
-              : message,
-          ),
-        },
-        args.nowMs ?? now(),
-      ),
-    );
-  });
-}
-
 /**
- * Drain pending mailbox entries after the caller acknowledges durable handling.
+ * Resolve pending mailbox entries after the caller accepts responsibility.
  *
- * Returning ids acknowledges only that subset; returning nothing acknowledges
- * every pending entry passed to the handler.
+ * Acknowledged entries are removed while deferred entries remain for the next
+ * turn. Returning nothing acknowledges every entry passed to the handler.
  */
 export async function drainConversationMailbox(args: {
   conversationId: string;
-  handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
+  handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1569,20 +1532,28 @@ export async function drainConversationMailbox(args: {
     return [];
   }
 
-  const acknowledgedIds = await args.handle(pending);
+  const result = await args.handle(pending);
   const pendingIds = new Set(
     pending.map((message) => message.inboundMessageId),
   );
-  for (const inboundMessageId of acknowledgedIds ?? []) {
+  const acknowledgedIds = new Set(
+    result?.ack ?? pending.map((message) => message.inboundMessageId),
+  );
+  const deferredIds = new Set(result?.defer ?? []);
+  for (const inboundMessageId of [...acknowledgedIds, ...deferredIds]) {
     if (!pendingIds.has(inboundMessageId)) {
       throw new Error(
-        `Conversation mailbox acknowledgement is not pending for ${args.conversationId}`,
+        `Conversation mailbox drain result is not pending for ${args.conversationId}`,
       );
     }
   }
-  const drainedIds = new Set(
-    acknowledgedIds ?? pending.map((message) => message.inboundMessageId),
-  );
+  for (const inboundMessageId of deferredIds) {
+    if (acknowledgedIds.has(inboundMessageId)) {
+      throw new Error(
+        `Conversation mailbox drain result overlaps for ${args.conversationId}`,
+      );
+    }
+  }
 
   await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
@@ -1591,9 +1562,13 @@ export async function drainConversationMailbox(args: {
         `Conversation lease is not held for ${args.conversationId}`,
       );
     }
-    const pendingMessages = current.execution.pendingMessages.filter(
-      (message) => !drainedIds.has(message.inboundMessageId),
-    );
+    const pendingMessages = current.execution.pendingMessages
+      .filter((message) => !acknowledgedIds.has(message.inboundMessageId))
+      .map((message) =>
+        deferredIds.has(message.inboundMessageId)
+          ? { ...message, routing: "defer" as const }
+          : message,
+      );
     await writeConversation(
       state,
       lock,
@@ -1612,7 +1587,9 @@ export async function drainConversationMailbox(args: {
       ),
     );
   });
-  return pending.filter((message) => drainedIds.has(message.inboundMessageId));
+  return pending.filter((message) =>
+    acknowledgedIds.has(message.inboundMessageId),
+  );
 }
 
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */

@@ -271,6 +271,7 @@ describe("Slack conversation work execution", () => {
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
+      routing: "auto" as const,
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
@@ -343,10 +344,9 @@ describe("Slack conversation work execution", () => {
           ack: async () => {},
           conversationId: CONVERSATION_ID,
           destination: SLACK_DESTINATION,
-          followUp: async () => {},
+          drain: async () => [],
           isFinalAttempt: false,
           messages: [malformed],
-          steer: async () => [],
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
@@ -906,8 +906,8 @@ describe("Slack conversation work execution", () => {
         await hooks.drainSteeringMessages?.(async (steering) => {
           injected.push(steering.map((candidate) => candidate.message.id));
           return {
-            followUp: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
+            ack: steering.map((candidate) => candidate.inboundMessageId),
+            defer: [],
           };
         });
       },
@@ -943,7 +943,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("leaves resource events queued as follow-up work during an active turn", async () => {
+  it("leaves resource events deferred during an active turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -989,8 +989,8 @@ describe("Slack conversation work execution", () => {
         await hooks.drainSteeringMessages?.(async (steering) => {
           observed.push(steering.map((candidate) => candidate.message.id));
           return {
-            followUp: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
+            ack: steering.map((candidate) => candidate.inboundMessageId),
+            defer: [],
           };
         });
       },
@@ -1008,14 +1008,14 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(observed).toEqual([[]]);
+    expect(observed).toEqual([]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
     });
     expect(work?.execution.pendingMessages).toEqual([
       expect.objectContaining({
-        routing: "follow_up",
+        routing: "defer",
         source: "resource_event",
       }),
     ]);
@@ -1103,8 +1103,8 @@ describe("Slack conversation work execution", () => {
             })),
           );
           return {
-            followUp: [],
-            handled: steering.map((candidate) => candidate.inboundMessageId),
+            ack: steering.map((candidate) => candidate.inboundMessageId),
+            defer: [],
           };
         });
       },

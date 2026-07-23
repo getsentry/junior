@@ -7,7 +7,7 @@ source of truth.
 ## State Model
 
 - A conversation mailbox contains normalized pending work with a durable routing
-  mode: `steer`, `follow_up`, or `auto` when runtime policy must decide.
+  mode: `interrupt`, `defer`, or `auto` when runtime policy must decide.
 - A queue payload identifies the conversation to wake; persisted conversation
   work owns destination and routing.
 - A lease grants one worker temporary execution ownership.
@@ -31,8 +31,8 @@ source of truth.
 6. Terminal delivery or intentional no-reply completion records the delivered
    turn before acknowledging work.
 
-New messages that arrive during a run remain durable. Explicit `steer` work is
-eligible at the next safe boundary, explicit `follow_up` work waits for the next
+New messages that arrive during a run remain durable. Explicit `interrupt` work
+is eligible at the next safe boundary, explicit `defer` work waits for the next
 turn, and `auto` work is classified by runtime policy.
 
 ## Queue And Lease Rules

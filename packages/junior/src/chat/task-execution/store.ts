@@ -24,6 +24,7 @@ export {
   type InboundMessage,
   type InboundMessageRouting,
   type Lease,
+  type MailboxDrainResult,
   type RequestConversationWorkResult,
   type Source,
   type StartConversationWorkAcquired,
@@ -363,18 +364,6 @@ export async function checkInConversationWork(args: {
   return result;
 }
 
-/** Persist an explicit route for pending mailbox entries under the active lease. */
-export async function routeConversationMailboxMessages(
-  args: Parameters<typeof workState.routeConversationMailboxMessages>[0] & {
-    conversationStore?: ConversationStore;
-    state?: StateAdapter;
-  },
-) {
-  const result = await workState.routeConversationMailboxMessages(args);
-  await recordExecutionMetadata(args);
-  return result;
-}
-
 /** Drain pending mailbox entries after the caller accepts responsibility. */
 export async function drainConversationMailbox(
   args: Parameters<typeof workState.drainConversationMailbox>[0] & {
@@ -382,8 +371,18 @@ export async function drainConversationMailbox(
     state?: StateAdapter;
   },
 ) {
-  const result = await workState.drainConversationMailbox(args);
-  if (result.length > 0) {
+  let changed = false;
+  const result = await workState.drainConversationMailbox({
+    ...args,
+    handle: async (messages) => {
+      const result = await args.handle(messages);
+      changed = result
+        ? result.ack.length > 0 || result.defer.length > 0
+        : messages.length > 0;
+      return result;
+    },
+  });
+  if (changed) {
     await recordExecutionMetadata(args);
   }
   return result;

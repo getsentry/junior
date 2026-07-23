@@ -11,7 +11,7 @@ import { z } from "zod";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
-  SteeringDisposition,
+  SteeringDrainResult,
 } from "@/chat/runtime/slack-runtime";
 import {
   isCooperativeTurnYieldError,
@@ -567,7 +567,7 @@ export function createSlackResourceEventInboundMessage(
     createdAtMs: input.event.occurredAtMs,
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
-    routing: "follow_up",
+    routing: "defer",
     source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
@@ -839,24 +839,22 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Explicit follow-ups never enter steering. Auto-routed records are
-        // offered to runtime policy, while explicit steering bypasses that
-        // decision through activeRequest.
+        // Explicitly deferred records never enter steering. Auto-routed records
+        // are offered to runtime policy, while interrupts bypass that decision.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
-          ) => Promise<SteeringDisposition>,
+          ) => Promise<SteeringDrainResult>,
         ): Promise<void> => {
-          await context.attempt.steer(async (pendingRecords) => {
-            const disposition = await accept(
+          await context.attempt.drain(async (pendingRecords) => {
+            const result = await accept(
               pendingRecords.map((record) => ({
-                activeRequest: record.routing === "steer",
+                activeRequest: record.routing === "interrupt",
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({ adapter, record }),
               })),
             );
-            await context.attempt.followUp(disposition.followUp);
-            return disposition.handled;
+            return result;
           });
         };
 
@@ -936,7 +934,7 @@ export function buildSlackInboundMessage(args: {
     routing:
       args.route === "mention" ||
       isSlackAssistantThreadUserMessage(args.message)
-        ? "steer"
+        ? "interrupt"
         : "auto",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),

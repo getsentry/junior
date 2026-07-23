@@ -24,11 +24,11 @@ import {
   recordAttemptFailure,
   releaseConversationWork,
   requestConversationContinuation,
-  routeConversationMailboxMessages,
   startConversationWork,
   type AttemptFailure,
   type ConversationWorkState,
   type InboundMessage,
+  type MailboxDrainResult,
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
@@ -46,12 +46,11 @@ export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
   destination: Destination;
-  followUp(inboundMessageIds: readonly string[]): Promise<void>;
+  drain(
+    handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>,
+  ): Promise<InboundMessage[]>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
-  steer(
-    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
-  ): Promise<InboundMessage[]>;
 }
 
 export interface ConversationWorkerResult {
@@ -340,8 +339,8 @@ export async function processConversationWork(
     "Conversation work lease acquired",
   );
 
-  const steer = (
-    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+  const drain = (
+    handle: (messages: InboundMessage[]) => Promise<MailboxDrainResult | void>,
   ) =>
     drainConversationMailbox({
       conversationId,
@@ -349,29 +348,21 @@ export async function processConversationWork(
       conversationStore: options.conversationStore,
       handle: async (messages) => {
         const candidates = messages.filter(
-          (message) => message.routing !== "follow_up",
+          (message) => message.routing !== "defer",
         );
+        if (candidates.length === 0) {
+          return { ack: [], defer: [] };
+        }
         return (
-          (await handle(candidates)) ??
-          candidates.map((message) => message.inboundMessageId)
+          (await handle(candidates)) ?? {
+            ack: candidates.map((message) => message.inboundMessageId),
+            defer: [],
+          }
         );
       },
       nowMs: now(options),
       state: options.state,
     });
-
-  const followUp = async (
-    inboundMessageIds: readonly string[],
-  ): Promise<void> => {
-    await routeConversationMailboxMessages({
-      conversationId,
-      inboundMessageIds,
-      leaseToken: lease.leaseToken,
-      routing: "follow_up",
-      nowMs: now(options),
-      state: options.state,
-    });
-  };
 
   const ack = async (): Promise<void> => {
     const acknowledged = await ackMessages({
@@ -395,12 +386,11 @@ export async function processConversationWork(
       ack,
       conversationId,
       destination,
-      followUp,
+      drain,
       isFinalAttempt: attemptMessages.some((message) =>
         isFinalAttempt(message),
       ),
       messages: attemptMessages,
-      steer,
     },
     conversationId,
     destination,

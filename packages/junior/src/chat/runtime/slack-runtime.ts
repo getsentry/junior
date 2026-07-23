@@ -56,7 +56,7 @@ export interface AssistantLifecycleEvent {
   userId?: string;
 }
 
-type SteeringMode = "follow_up" | "steer";
+type SteeringMode = "defer" | "interrupt";
 
 export interface SteeringCandidateMessage {
   activeRequest: boolean;
@@ -64,9 +64,9 @@ export interface SteeringCandidateMessage {
   message: Message;
 }
 
-export interface SteeringDisposition {
-  followUp: readonly string[];
-  handled: readonly string[];
+export interface SteeringDrainResult {
+  ack: readonly string[];
+  defer: readonly string[];
 }
 
 export interface ReplyHooks {
@@ -74,7 +74,7 @@ export interface ReplyHooks {
   drainSteeringMessages?: (
     accept: (
       messages: SteeringCandidateMessage[],
-    ) => Promise<SteeringDisposition>,
+    ) => Promise<SteeringDrainResult>,
   ) => Promise<void>;
   messageContext?: MessageContext;
   ack?: () => Promise<void>;
@@ -300,21 +300,21 @@ function createAcceptedSteeringDrain(
     await hooks.drainSteeringMessages!(async (messages) => {
       const selection = await options.selectMessages(messages, context);
       await options.onSkipped?.(selection.skipped);
-      // Follow-ups stay pending so a later worker slice handles them after the
-      // active answer is delivered.
+      // Deferred messages stay pending so a later worker slice handles them
+      // after the active answer is delivered.
       const interrupted = selection.accepted
-        .filter((accepted) => accepted.mode === "steer")
+        .filter((accepted) => accepted.mode === "interrupt")
         .map((accepted) => accepted.message);
       await accept(getQueuedMessagesFromSlackMessages(interrupted, options));
       interruptedMessages = interrupted;
       await options.onAcceptedForProcessing?.(interrupted);
       return {
-        followUp: selection.accepted
-          .filter((accepted) => accepted.mode === "follow_up")
+        defer: selection.accepted
+          .filter((accepted) => accepted.mode === "defer")
           .map((accepted) => accepted.inboundMessageId),
-        handled: [
+        ack: [
           ...selection.accepted
-            .filter((accepted) => accepted.mode === "steer")
+            .filter((accepted) => accepted.mode === "interrupt")
             .map((accepted) => accepted.inboundMessageId),
           ...selection.skipped.map((skipped) => skipped.inboundMessageId),
         ],
@@ -566,7 +566,7 @@ export function createSlackTurnRuntime<
     return {
       context,
       decision,
-      mode: isActiveRequest ? "steer" : "follow_up",
+      mode: isActiveRequest ? "interrupt" : "defer",
       text,
     };
   };

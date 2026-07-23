@@ -573,7 +573,7 @@ describe("conversation work execution", () => {
       queue,
       run: async (context) => {
         runs += 1;
-        await context.attempt.steer(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -613,7 +613,7 @@ describe("conversation work execution", () => {
       nowMs: () => currentNowMs,
       queue,
       run: async (context) => {
-        await context.attempt.steer(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -725,7 +725,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -761,7 +761,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -806,7 +806,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -930,7 +930,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await scheduleAgentContinue(
             {
@@ -1090,7 +1090,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          injected.push(await context.attempt.steer(async () => {}));
+          injected.push(await context.attempt.drain(async () => {}));
           return { status: "completed" };
         },
       }),
@@ -1123,11 +1123,12 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.steer(async (messages) => {
+          await context.attempt.drain(async (messages) => {
             injected.push(messages.map((message) => message.inboundMessageId));
-            return messages
-              .filter((message) => message.inboundMessageId === "m1")
-              .map((message) => message.inboundMessageId);
+            return {
+              ack: ["m1"],
+              defer: [],
+            };
           });
           return { status: "completed" };
         },
@@ -1144,7 +1145,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("routes explicit follow-ups separately from steering", async () => {
+  it("keeps deferred messages separate from interruptions", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     await appendInboundMessage({
@@ -1154,29 +1155,32 @@ describe("conversation work execution", () => {
       }),
       nowMs: 2_100,
     });
-    const steered: string[][] = [];
+    const drained: string[][] = [];
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.followUp(["m2"]);
-          await context.attempt.steer(async (messages) => {
-            steered.push(messages.map((message) => message.inboundMessageId));
+          await context.attempt.drain(async (messages) => {
+            drained.push(messages.map((message) => message.inboundMessageId));
+            return {
+              ack: ["m1"],
+              defer: ["m2"],
+            };
           });
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(steered).toEqual([["m1"]]);
+    expect(drained).toEqual([["m1", "m2"]]);
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
     expect(state?.messages).toEqual([
       expect.objectContaining({
         inboundMessageId: "m2",
-        routing: "follow_up",
+        routing: "defer",
       }),
     ]);
   });
@@ -1191,7 +1195,10 @@ describe("conversation work execution", () => {
         queue,
         run: async (context) => {
           try {
-            await context.attempt.steer(async () => ["different-message"]);
+            await context.attempt.drain(async () => ({
+              ack: ["different-message"],
+              defer: [],
+            }));
           } catch (error) {
             drainError = error;
             throw error;
@@ -1202,7 +1209,7 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "failed" });
 
     expect(String(drainError)).toContain(
-      "Conversation mailbox acknowledgement is not pending for",
+      "Conversation mailbox drain result is not pending for",
     );
 
     const state = await getConversationWorkState({
@@ -1232,7 +1239,7 @@ describe("conversation work execution", () => {
         queue,
         state: observed.state,
         run: async (context) => {
-          const drain = context.attempt.steer(async () => {
+          const drain = context.attempt.drain(async () => {
             expect(observed.isHeld()).toBe(false);
             injectionStarted.resolve();
             await finishInjection.promise;
@@ -1281,7 +1288,7 @@ describe("conversation work execution", () => {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
-        await context.attempt.steer(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -1321,7 +1328,7 @@ describe("conversation work execution", () => {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
-        await context.attempt.steer(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve({
           shouldYield: context.shouldYield,
         });
@@ -1557,7 +1564,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          const first = await context.attempt.steer(async () => {});
+          const first = await context.attempt.drain(async () => {});
           injected.push(first.map((message) => message.inboundMessageId));
           await appendInboundMessage({
             message: inboundMessage("m2", {
@@ -1566,7 +1573,7 @@ describe("conversation work execution", () => {
             }),
             nowMs: 2_100,
           });
-          const second = await context.attempt.steer(async () => {});
+          const second = await context.attempt.drain(async () => {});
           injected.push(second.map((message) => message.inboundMessageId));
           return { status: "completed" };
         },
@@ -1584,7 +1591,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           await appendInboundMessage({
             message: inboundMessage("m2", {
               createdAtMs: 2_000,
@@ -1592,7 +1599,7 @@ describe("conversation work execution", () => {
             }),
             nowMs: 2_100,
           });
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           return { status: "completed" };
         },
       }),
@@ -1615,7 +1622,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_100;
           await appendInboundMessage({
             message: inboundMessage("m2", {
@@ -1646,7 +1653,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.attempt.steer(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 242_000;
           expect(context.shouldYield()).toBe(true);
           return { status: "yielded" };
@@ -1843,7 +1850,7 @@ describe("conversation work execution", () => {
       processConversationQueueMessage(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          const messages = await context.attempt.steer(async () => {});
+          const messages = await context.attempt.drain(async () => {});
           injected.push(...messages.map((message) => message.inboundMessageId));
           return { status: "completed" };
         },

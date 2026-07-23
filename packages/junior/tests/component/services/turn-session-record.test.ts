@@ -131,6 +131,7 @@ describe("persistAuthPauseSessionRecord", () => {
             text: "start",
           },
           receivedAtMs: 9_000,
+          routing: "auto",
           source: "slack",
         },
         nowMs: 9_000,
