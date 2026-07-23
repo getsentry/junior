@@ -1,4 +1,5 @@
-import { inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   hasAgentTurnUsage,
   type AgentTurnCost,
@@ -8,6 +9,10 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 
 const usage = juniorConversations.usage;
+const metricRootConversation = alias(
+  juniorConversations,
+  "metric_root_conversation",
+);
 const componentFields = [
   "inputTokens",
   "outputTokens",
@@ -114,6 +119,20 @@ export async function readRootConversationMetricsFromSql(
       costTotal: summedCostNumber("total"),
     })
     .from(juniorConversations)
+    .innerJoin(
+      metricRootConversation,
+      and(
+        eq(
+          metricRootConversation.conversationId,
+          juniorConversations.rootConversationId,
+        ),
+        isNull(metricRootConversation.parentConversationId),
+        eq(
+          metricRootConversation.rootConversationId,
+          metricRootConversation.conversationId,
+        ),
+      ),
+    )
     .where(
       inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
     )

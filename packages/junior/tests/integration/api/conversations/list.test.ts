@@ -232,4 +232,53 @@ describe("conversation list API", () => {
       await fixture.close();
     }
   });
+
+  test("does not return partial tree metrics for an invalid root", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "slack:C1:invalid-root",
+        nowMs: 1_000,
+        source: "slack",
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          durationMs: 100,
+          rootConversationId: null,
+          usage: { inputTokens: 10 },
+        })
+        .where(eq(juniorConversations.conversationId, "slack:C1:invalid-root"));
+      const childAt = new Date(2_000);
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: "advisor:invalid-root-child",
+          parentConversationId: "slack:C1:invalid-root",
+          rootConversationId: "slack:C1:invalid-root",
+          createdAt: childAt,
+          lastActivityAt: childAt,
+          updatedAt: childAt,
+          executionStatus: "idle",
+          durationMs: 500,
+          usage: { outputTokens: 50 },
+        });
+
+      const feed = await readConversationFeedFromSql();
+
+      expect(feed.conversations).toContainEqual(
+        expect.objectContaining({
+          conversationId: "slack:C1:invalid-root",
+          cumulativeDurationMs: 100,
+          cumulativeUsage: { inputTokens: 10 },
+        }),
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
 });
