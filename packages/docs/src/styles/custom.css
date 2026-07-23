@@ -272,6 +272,63 @@
   white-space: nowrap;
 }
 
+.jr-customers {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  margin: clamp(3.5rem, 8vw, 6rem) auto 1rem;
+  text-align: center;
+}
+
+.jr-customers-eyebrow {
+  color: var(--ve-text-light);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0 0 1.5rem;
+  text-transform: uppercase;
+}
+
+.jr-customer-logos {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  min-height: 4rem;
+}
+
+.jr-customer-logo {
+  align-items: center;
+  color: var(--ve-text-light);
+  display: inline-flex;
+  font-size: 1.35rem;
+  font-weight: 700;
+  gap: 0.6rem;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.jr-customer-logo:hover {
+  color: var(--ve-text);
+}
+
+.jr-customer-logo svg {
+  height: 2.5rem;
+  width: auto;
+}
+
+.jr-customers-cta {
+  color: var(--ve-text-light);
+  font-size: 0.875rem;
+  margin-top: 1.25rem;
+  text-underline-offset: 0.2em;
+}
+
+.jr-customers-cta:hover {
+  color: var(--ve-text);
+}
+
 @media (max-width: 44rem) {
   :root:not([data-has-sidebar])
     .hero
