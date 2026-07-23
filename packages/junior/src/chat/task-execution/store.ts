@@ -49,7 +49,7 @@ export type EnsureConversationWakeResult =
       status: "enqueued";
     }
   | {
-      status: "already_enqueued" | "no_work";
+      status: "already_enqueued" | "lease_active" | "no_work";
     };
 
 function metadataStore(options: MetadataOptions): ConversationStore {
@@ -170,6 +170,13 @@ export async function ensureConversationWake(args: {
   }
   if (!conversation.destination) {
     return { status: "no_work" };
+  }
+  if (
+    args.replaceExistingWake !== true &&
+    conversation.execution.lease &&
+    conversation.execution.lease.expiresAtMs > nowMs
+  ) {
+    return { status: "lease_active" };
   }
   if (
     args.replaceExistingWake !== true &&
@@ -402,6 +409,21 @@ export async function requestConversationContinuation(args: {
 }) {
   const result = await workState.requestConversationContinuation(args);
   await recordExecutionMetadata(args);
+  return result;
+}
+
+/** Begin a requested turn resume without releasing the current lease. */
+export async function beginConversationResume(args: {
+  conversationId: string;
+  leaseToken: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.beginConversationResume(args);
+  if (result) {
+    await recordExecutionMetadata(args);
+  }
   return result;
 }
 

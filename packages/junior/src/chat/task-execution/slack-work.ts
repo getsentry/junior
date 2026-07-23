@@ -450,7 +450,10 @@ export interface CreateSlackConversationWorkerOptions {
     teamId: string,
     userId: string,
   ) => Promise<SlackActorProfile | null | undefined>;
-  resumeAwaitingContinuation: (conversationId: string) => Promise<boolean>;
+  resumeAwaitingContinuation: (
+    conversationId: string,
+    options: { shouldYield: () => boolean },
+  ) => Promise<boolean>;
   conversationStore?: ConversationStore;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -756,7 +759,9 @@ export function createSlackConversationWorker(
         installation: { teamId: destination.teamId },
         state,
         task: async () => {
-          await options.resumeAwaitingContinuation(context.conversationId);
+          await options.resumeAwaitingContinuation(context.conversationId, {
+            shouldYield: context.shouldYield,
+          });
         },
       });
       return { status: "completed" };
@@ -842,7 +847,6 @@ export function createSlackConversationWorker(
             );
           });
         };
-
         try {
           if (route === "mention") {
             await options.runtime.handleNewMention(thread, latestMessage, {
@@ -853,17 +857,20 @@ export function createSlackConversationWorker(
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
             });
-            return;
+          } else {
+            await options.runtime.handleSubscribedMessage(
+              thread,
+              latestMessage,
+              {
+                destination: context.destination,
+                messageContext,
+                drainSteeringMessages,
+                ack,
+                isFinalAttempt: context.attempt.isFinalAttempt,
+                shouldYield: context.shouldYield,
+              },
+            );
           }
-
-          await options.runtime.handleSubscribedMessage(thread, latestMessage, {
-            destination: context.destination,
-            messageContext,
-            drainSteeringMessages,
-            ack,
-            isFinalAttempt: context.attempt.isFinalAttempt,
-            shouldYield: context.shouldYield,
-          });
         } catch (error) {
           if (isTurnInputDeferredError(error)) {
             return { status: "deferred" } satisfies ConversationWorkerResult;

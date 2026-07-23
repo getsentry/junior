@@ -1328,12 +1328,12 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
   });
 
-  it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
+  it("commits follow-up input before requesting a turn resume", async () => {
     const conversationId = "slack:C9PARKEDLOG:1700000000.000";
     const destination = slackDestination("C9PARKEDLOG");
     const activeSessionId = "turn_msg-original";
     const storedSource = createSlackSourceForTest("C9PARKEDLOG");
-    const parkedRecord = await upsertAgentTurnSessionRecord({
+    await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1345,14 +1345,17 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const projectionAtScheduleTime: string[] = [];
+    const order: string[] = [];
     const scheduleAgentContinue = vi.fn(async () => {
-      projectionAtScheduleTime.push(
+      expect(
         JSON.stringify(await loadProjection({ conversationId })),
-      );
+      ).toContain("also check the logs");
+      order.push("schedule");
+    });
+    const ack = vi.fn(async () => {
+      order.push("ack");
     });
     const executeAgentRun = vi.fn();
-    const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -1381,15 +1384,11 @@ describe("bot handlers (integration)", () => {
     expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
     expect(ack).toHaveBeenCalledOnce();
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      sessionId: activeSessionId,
-      // The append is a log-only write: the resume request stays valid.
-      expectedVersion: parkedRecord.version,
-    });
-    // The durable append happened before the continuation was scheduled.
-    expect(projectionAtScheduleTime[0]).toContain("also check the logs");
+    expect(order).toEqual(["schedule", "ack"]);
+    expect(scheduleAgentContinue).toHaveBeenCalledOnce();
+    expect(JSON.stringify(await loadProjection({ conversationId }))).toContain(
+      "also check the logs",
+    );
 
     // The resumed continue() replays the record's Pi history, which must now
     // end with the follow-up at a continuable user boundary.

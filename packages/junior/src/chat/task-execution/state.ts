@@ -1428,7 +1428,10 @@ export async function startConversationWork(args: {
         {
           ...current.execution,
           lease,
-          status: "running",
+          status:
+            current.execution.status === "awaiting_resume"
+              ? "awaiting_resume"
+              : "running",
           runId: current.execution.runId ?? randomUUID(),
           lastEnqueuedAtMs: undefined,
         },
@@ -1634,6 +1637,39 @@ export async function requestConversationContinuation(args: {
   });
 }
 
+/** Begin a requested turn resume under the worker's existing lease. */
+export async function beginConversationResume(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (
+      !current ||
+      current.execution.lease?.token !== args.leaseToken ||
+      current.execution.status !== "awaiting_resume"
+    ) {
+      return false;
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          status: "running",
+        },
+        nowMs,
+      ),
+    );
+    return true;
+  });
+}
+
 /** Release the durable execution lease without changing completion state. */
 export async function releaseConversationWork(args: {
   conversationId: string;
@@ -1691,7 +1727,11 @@ export async function completeConversationWork(args: {
         {
           ...current.execution,
           lease: undefined,
-          status: runnable ? "pending" : "idle",
+          status: needsRun
+            ? "awaiting_resume"
+            : hasPending
+              ? "pending"
+              : "idle",
           runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
@@ -1844,7 +1884,7 @@ export async function clearExpiredConversationLease(args: {
         {
           ...current.execution,
           lease: undefined,
-          status: "pending",
+          status: "awaiting_resume",
         },
         nowMs,
       ),

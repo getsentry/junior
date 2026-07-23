@@ -118,12 +118,16 @@ export function createProductionConversationWorkOptions(options: {
     run: createSlackConversationWorker({
       getSlackAdapter: getProductionSlackAdapter,
       conversationStore,
-      resumeAwaitingContinuation: async (conversationId) =>
-        await resumeAwaitingSlackContinuation(conversationId, {
-          agentRunner,
-          scheduleSessionCompletedPluginTasks:
-            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-        }),
+      resumeAwaitingContinuation: async (conversationId, runOptions) =>
+        await resumeAwaitingSlackContinuation(
+          conversationId,
+          {
+            agentRunner,
+            scheduleSessionCompletedPluginTasks:
+              services.replyExecutor?.scheduleSessionCompletedPluginTasks,
+          },
+          runOptions,
+        ),
       runtime,
     }),
   };

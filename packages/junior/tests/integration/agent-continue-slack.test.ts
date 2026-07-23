@@ -1284,6 +1284,7 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
+    const shouldYield = vi.fn(() => false);
     const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
@@ -1294,6 +1295,7 @@ describe("agent continuation Slack integration", () => {
               queue,
             }),
         },
+        { shouldYield },
       ),
     );
 
@@ -1304,6 +1306,7 @@ describe("agent continuation Slack integration", () => {
         routing: expect.objectContaining({
           destination: SLACK_DESTINATION,
         }),
+        durability: expect.objectContaining({ shouldYield }),
       }),
     );
     // Exactly one visible reply for the interrupted request.

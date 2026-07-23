@@ -11,6 +11,7 @@ import {
 } from "./queue";
 import {
   ackMessages,
+  beginConversationResume,
   checkInConversationWork,
   clearConsumedConversationWake,
   completeConversationWork,
@@ -82,11 +83,15 @@ function now(options: ProcessConversationWorkOptions): number {
 }
 
 /** Prioritize the interrupt batch; otherwise process the deferred batch. */
-function selectAttemptMessages(messages: InboundMessage[]): InboundMessage[] {
+function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
+  const messages = work.messages;
   const interrupts = messages.filter(
     (message) => message.delivery === "interrupt",
   );
-  return interrupts.length > 0 ? interrupts : messages;
+  if (interrupts.length > 0) {
+    return interrupts;
+  }
+  return work.execution.status === "awaiting_resume" ? [] : messages;
 }
 
 function nudgeIdempotencyKey(
@@ -104,7 +109,7 @@ async function requestLostLeaseRecovery(args: {
   nowMs: number;
   options: ProcessConversationWorkOptions;
 }): Promise<void> {
-  const continuationMarked = await requestConversationContinuation({
+  const resumeRequested = await requestConversationContinuation({
     conversationId: args.conversationId,
     destination: args.destination,
     leaseToken: args.leaseToken,
@@ -112,7 +117,7 @@ async function requestLostLeaseRecovery(args: {
     nowMs: args.nowMs,
     state: args.options.state,
   });
-  if (!continuationMarked) {
+  if (!resumeRequested) {
     return;
   }
   const released = await releaseConversationWork({
@@ -319,16 +324,7 @@ export async function processConversationWork(
     startedAtMs +
     (options.softYieldAfterMs ??
       getChatConfig().conversationWorkSoftYieldAfterMs);
-  const leasedWork = await getConversationWorkState({
-    conversationId,
-    state: options.state,
-  });
-  const attemptMessages = selectAttemptMessages(
-    leasedWork?.messages ?? initial.messages,
-  );
-  const attemptMessageIds = attemptMessages.map(
-    (message) => message.inboundMessageId,
-  );
+  let attemptMessageIds: string[] = [];
   let leaseLost = false;
   const markLeaseLost = (): void => {
     leaseLost = true;
@@ -372,167 +368,251 @@ export async function processConversationWork(
       state: options.state,
     });
 
-  const ack = async (): Promise<void> => {
-    const acknowledged = await ackMessages({
+  const shouldYield = (): boolean =>
+    leaseLost || now(options) >= softYieldDeadlineMs;
+  const checkIn = async (): Promise<boolean> => {
+    const checkedIn = await checkInConversationWork({
       conversationId,
-      inboundMessageIds: attemptMessageIds,
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
       nowMs: now(options),
       state: options.state,
     });
-    if (!acknowledged) {
+    if (!checkedIn) {
       markLeaseLost();
-      throw new Error(
-        `Conversation work lease lost before inbox ack for ${conversationId}`,
-      );
     }
+    return checkedIn;
   };
-
-  const workerContext: ConversationWorkerContext = {
-    attempt: {
-      ack,
+  const yieldWork = async (): Promise<ConversationWorkProcessResult> => {
+    const yieldNowMs = now(options);
+    await ensureConversationWake({
       conversationId,
-      destination,
-      drain,
-      isFinalAttempt: attemptMessages.some((message) =>
-        isFinalAttempt(message),
-      ),
-      messages: attemptMessages,
-    },
-    conversationId,
-    destination,
-    shouldYield: () => leaseLost || now(options) >= softYieldDeadlineMs,
-    checkIn: async () => {
-      const checkedIn = await checkInConversationWork({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: now(options),
-        state: options.state,
-      });
-      if (!checkedIn) {
-        markLeaseLost();
-      }
-      return checkedIn;
-    },
+      conversationStore: options.conversationStore,
+      idempotencyKey: nudgeIdempotencyKey("yield", conversationId, yieldNowMs),
+      nowMs: yieldNowMs,
+      queue: options.queue,
+      replaceExistingWake: true,
+      state: options.state,
+    });
+    const released = await releaseConversationWork({
+      conversationId,
+      leaseToken: lease.leaseToken,
+      conversationStore: options.conversationStore,
+      nowMs: yieldNowMs,
+      state: options.state,
+    });
+    if (!released) {
+      return { status: "lost_lease" };
+    }
+    logInfo(
+      "conversation_work_cooperative_yield",
+      { conversationId },
+      {
+        "app.worker.elapsed_ms": now(options) - startedAtMs,
+        "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
+      },
+      "Conversation work yielded cooperatively",
+    );
+    return { status: "yielded" };
   };
 
   try {
-    const result = await options.run(workerContext);
-    if (result.status === "lost_lease") {
-      await requestLostLeaseRecovery({
+    let hasRun = false;
+    while (true) {
+      attemptMessageIds = [];
+      const leasedWork = await getConversationWorkState({
         conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        nowMs: now(options),
-        options,
-      });
-      return { status: "lost_lease" };
-    }
-    if (leaseLost) {
-      await requestLostLeaseRecovery({
-        conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        nowMs: now(options),
-        options,
-      });
-      return { status: "lost_lease" };
-    }
-    if (result.status === "yielded") {
-      const yieldNowMs = now(options);
-      const continuationMarked = await requestConversationContinuation({
-        conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: yieldNowMs,
         state: options.state,
       });
-      if (!continuationMarked) {
+      if (
+        !leasedWork ||
+        leasedWork.lease?.leaseToken !== lease.leaseToken ||
+        leaseLost
+      ) {
+        markLeaseLost();
+        await requestLostLeaseRecovery({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          options,
+        });
         return { status: "lost_lease" };
       }
-      await ensureConversationWake({
-        conversationId,
-        conversationStore: options.conversationStore,
-        idempotencyKey: nudgeIdempotencyKey(
-          "yield",
-          conversationId,
-          yieldNowMs,
-        ),
-        nowMs: yieldNowMs,
-        queue: options.queue,
-        state: options.state,
-      });
-      await releaseConversationWork({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: yieldNowMs,
-        state: options.state,
-      });
-      logInfo(
-        "conversation_work_cooperative_yield",
-        { conversationId },
-        {
-          "app.worker.elapsed_ms": now(options) - startedAtMs,
-          "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
-        },
-        "Conversation work yielded cooperatively",
-      );
-      return { status: "yielded" };
-    }
 
-    if (result.status === "deferred") {
-      const deferredNowMs = now(options);
-      const released = await releaseConversationWork({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: deferredNowMs,
-        state: options.state,
-      });
-      if (!released) {
-        return { status: "lost_lease" };
+      const resumePending = leasedWork.execution.status === "awaiting_resume";
+      const attemptMessages = selectAttemptMessages(leasedWork);
+
+      if (hasRun && shouldYield()) {
+        if (resumePending) {
+          return await yieldWork();
+        }
+        break;
       }
-      const wake = await ensureConversationWake({
-        conversationId,
-        conversationStore: options.conversationStore,
-        idempotencyKey: nudgeIdempotencyKey(
-          "deferred",
-          conversationId,
-          deferredNowMs,
-        ),
-        nowMs: deferredNowMs,
-        queue: options.queue,
-        state: options.state,
-      });
-      return wake.status === "enqueued"
-        ? { status: "pending_requeued" }
-        : { status: "completed" };
-    }
 
-    // A run that returns without durably handling any attempted message is a
-    // failed delivery attempt, even when the runner swallowed its error:
-    // completing would requeue the untouched mailbox forever.
-    if (attemptMessageIds.length > 0) {
-      const failure = await recordFailedDeliveryAttempt({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        nowMs: now(options),
-        messageIds: attemptMessageIds,
-        options,
-      });
-      if (isTerminalFailure(failure)) {
-        await deadLetterAttempt({
+      if (resumePending && attemptMessages.length === 0) {
+        const resumeStarted = await beginConversationResume({
           conversationId,
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
           nowMs: now(options),
           state: options.state,
         });
-        return { status: "failed" };
+        if (!resumeStarted) {
+          markLeaseLost();
+          await requestLostLeaseRecovery({
+            conversationId,
+            destination,
+            leaseToken: lease.leaseToken,
+            nowMs: now(options),
+            options,
+          });
+          return { status: "lost_lease" };
+        }
+      }
+
+      attemptMessageIds = attemptMessages.map(
+        (message) => message.inboundMessageId,
+      );
+      const ack = async (): Promise<void> => {
+        const acknowledged = await ackMessages({
+          conversationId,
+          inboundMessageIds: attemptMessageIds,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (!acknowledged) {
+          markLeaseLost();
+          throw new Error(
+            `Conversation work lease lost before inbox ack for ${conversationId}`,
+          );
+        }
+      };
+      const workerContext: ConversationWorkerContext = {
+        attempt: {
+          ack,
+          conversationId,
+          destination,
+          drain,
+          isFinalAttempt: attemptMessages.some((message) =>
+            isFinalAttempt(message),
+          ),
+          messages: attemptMessages,
+        },
+        conversationId,
+        destination,
+        shouldYield,
+        checkIn,
+      };
+
+      const result = await options.run(workerContext);
+      hasRun = true;
+      if (result.status === "lost_lease") {
+        await requestLostLeaseRecovery({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          options,
+        });
+        return { status: "lost_lease" };
+      }
+      if (leaseLost) {
+        await requestLostLeaseRecovery({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          options,
+        });
+        return { status: "lost_lease" };
+      }
+      if (result.status === "yielded") {
+        const resumeRequested = await requestConversationContinuation({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (!resumeRequested) {
+          return { status: "lost_lease" };
+        }
+        return await yieldWork();
+      }
+
+      if (result.status === "deferred") {
+        const deferredNowMs = now(options);
+        const released = await releaseConversationWork({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: deferredNowMs,
+          state: options.state,
+        });
+        if (!released) {
+          return { status: "lost_lease" };
+        }
+        const wake = await ensureConversationWake({
+          conversationId,
+          conversationStore: options.conversationStore,
+          idempotencyKey: nudgeIdempotencyKey(
+            "deferred",
+            conversationId,
+            deferredNowMs,
+          ),
+          nowMs: deferredNowMs,
+          queue: options.queue,
+          state: options.state,
+        });
+        return wake.status === "enqueued"
+          ? { status: "pending_requeued" }
+          : { status: "completed" };
+      }
+
+      // A run that returns without durably handling any attempted message is a
+      // failed delivery attempt, even when the runner swallowed its error.
+      if (attemptMessageIds.length > 0) {
+        const failure = await recordFailedDeliveryAttempt({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          messageIds: attemptMessageIds,
+          options,
+        });
+        if (isTerminalFailure(failure)) {
+          await deadLetterAttempt({
+            conversationId,
+            leaseToken: lease.leaseToken,
+            conversationStore: options.conversationStore,
+            nowMs: now(options),
+            state: options.state,
+          });
+          return { status: "failed" };
+        }
+        if (failure.status === "lost_lease") {
+          return { status: "lost_lease" };
+        }
+        if (failure.status === "recorded") {
+          break;
+        }
+      }
+
+      const next = await getConversationWorkState({
+        conversationId,
+        state: options.state,
+      });
+      if (!next || next.lease?.leaseToken !== lease.leaseToken) {
+        return { status: "lost_lease" };
+      }
+      if (
+        next.execution.status !== "awaiting_resume" &&
+        countPendingConversationMessages(next) === 0
+      ) {
+        break;
       }
     }
 
@@ -601,7 +681,7 @@ export async function processConversationWork(
           state: options.state,
         });
       } else {
-        const continuationMarked = await requestConversationContinuation({
+        const resumeRequested = await requestConversationContinuation({
           conversationId,
           destination,
           leaseToken: lease.leaseToken,
@@ -609,7 +689,7 @@ export async function processConversationWork(
           nowMs: errorNowMs,
           state: options.state,
         });
-        if (continuationMarked) {
+        if (resumeRequested) {
           await ensureConversationWake({
             conversationId,
             conversationStore: options.conversationStore,
@@ -620,6 +700,7 @@ export async function processConversationWork(
             ),
             nowMs: errorNowMs,
             queue: options.queue,
+            replaceExistingWake: true,
             state: options.state,
           });
         }

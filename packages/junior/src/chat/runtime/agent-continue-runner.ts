@@ -89,6 +89,11 @@ export interface AgentContinueRunnerOptions {
   }) => Promise<void>;
 }
 
+/** Per-worker controls for one continued run. */
+export interface AgentContinueRunOptions {
+  shouldYield?: () => boolean;
+}
+
 /** Persist a delivered continuation reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
   sessionRecord: AgentTurnSessionRecord;
@@ -282,6 +287,7 @@ async function failUnresumableContinuation(args: {
 export async function continueSlackAgentRun(
   payload: AgentContinueRequest,
   options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions = {},
 ): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   if (!thread) {
@@ -431,6 +437,7 @@ export async function continueSlackAgentRun(
               sandboxRef,
             },
             durability: {
+              shouldYield: runOptions.shouldYield,
               recordPendingAuth: async (nextPendingAuth) => {
                 conversation.processing.pendingAuth = nextPendingAuth;
                 await persistThreadStateById(payload.conversationId, {
@@ -558,6 +565,7 @@ async function failStrandedSessionWithFallback(args: {
 async function recoverStrandedRunningSession(args: {
   conversationId: string;
   options: AgentContinueRunnerOptions;
+  runOptions: AgentContinueRunOptions;
   summary: AgentTurnSessionSummary;
 }): Promise<boolean> {
   // A live resume outside the mailbox lease (OAuth/timeout continuation)
@@ -623,7 +631,13 @@ async function recoverStrandedRunningSession(args: {
     return false;
   }
 
-  if (await continueSlackAgentRunWithLockRetry(request, args.options)) {
+  if (
+    await continueSlackAgentRunWithLockRetry(
+      request,
+      args.options,
+      args.runOptions,
+    )
+  ) {
     return true;
   }
   await failUnresumableContinuation({
@@ -639,6 +653,7 @@ async function recoverStrandedRunningSession(args: {
 export async function resumeAwaitingSlackContinuation(
   conversationId: string,
   options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions = {},
 ): Promise<boolean> {
   const summaries =
     await listAgentTurnSessionSummariesForConversation(conversationId);
@@ -651,6 +666,7 @@ export async function resumeAwaitingSlackContinuation(
     return await recoverStrandedRunningSession({
       conversationId,
       options,
+      runOptions,
       summary: newest,
     });
   }
@@ -674,7 +690,9 @@ export async function resumeAwaitingSlackContinuation(
       continue;
     }
 
-    if (await continueSlackAgentRunWithLockRetry(request, options)) {
+    if (
+      await continueSlackAgentRunWithLockRetry(request, options, runOptions)
+    ) {
       return true;
     }
 
@@ -699,6 +717,7 @@ export async function resumeAwaitingSlackContinuation(
 export async function continueSlackAgentRunWithLockRetry(
   payload: AgentContinueRequest,
   options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions = {},
 ): Promise<boolean> {
   const scheduleAgentContinue =
     options.scheduleAgentContinue ?? defaultScheduleAgentContinue;
@@ -707,7 +726,7 @@ export async function continueSlackAgentRunWithLockRetry(
     undefined,
   ].entries()) {
     try {
-      return await continueSlackAgentRun(payload, options);
+      return await continueSlackAgentRun(payload, options, runOptions);
     } catch (error) {
       if (!(error instanceof ResumeTurnBusyError)) {
         throw error;

@@ -241,7 +241,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
   });
 
-  it("interrupts explicit follow-ups and queues deferred follow-ups", async () => {
+  it("steers with explicit mentions and then processes follow-up messages", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
     let blockingCallReleased = false;
@@ -357,18 +357,6 @@ describe("Slack behavior: durable turn steering", () => {
         conversationId,
         idempotencyKey: `slack:T123:${conversationId}:${THREAD_TS}`,
       }),
-      expect.objectContaining({
-        conversationId,
-        idempotencyKey: `slack:T123:${conversationId}:1712345.000200`,
-      }),
-    ]);
-
-    expect(agentCalls).toEqual([
-      {
-        context: undefined,
-        prompt: "start the incident summary",
-        steeringTexts: ["include the rollback owner"],
-      },
     ]);
 
     // The steered follow-up keeps its own Slack author as an instruction,
@@ -384,23 +372,13 @@ describe("Slack behavior: durable turn steering", () => {
       },
     ]);
 
-    const postCalls = slackApiOutbox.messages();
-    expect(postCalls).toHaveLength(1);
-    expect(postCalls[0]?.params).toEqual(
-      expect.objectContaining({
-        channel: CHANNEL_ID,
-        thread_ts: THREAD_TS,
-        text: expect.stringContaining("Steered: include the rollback owner"),
-      }),
-    );
-
     const queuedResults: string[] = [];
     while (queue.hasQueuedMessages()) {
       queuedResults.push((await runNextQueuedWork()).status);
     }
     expect(
       queuedResults.filter((status) => status === "completed"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     expect(agentCalls).toEqual([
       {
@@ -526,7 +504,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
-  it("applies queued opt-out decisions on the next turn", async () => {
+  it("applies follow-up opt-out decisions after the active turn", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
     const drainedTexts: string[] = [];
@@ -626,7 +604,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(await state.isSubscribed(conversationId)).toBe(true);
+    expect(await state.isSubscribed(conversationId)).toBe(false);
     while (queue.hasQueuedMessages()) {
       await runNextQueuedWork();
     }

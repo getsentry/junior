@@ -24,14 +24,20 @@ require a valid delivery value and reject invalid pending work.
 
 1. Ingress appends mailbox work before sending a queue nudge.
 2. The worker validates the queue callback and acquires the conversation lease.
-3. It drains available mailbox messages into durable agent history.
+3. While it owns the lease, the worker reloads durable state and runs the next
+   work: `interrupt` mailbox delivery first, then a paused turn, then `defer`
+   mailbox delivery. Each iteration gets a fresh mailbox delivery attempt.
 4. Runtime advances the turn until completion, auth pause, cooperative yield,
    or terminal failure, delivering and recording completed tool-free assistant
-   messages as it advances. Tool-bearing assistant text remains agent history;
-   explicit progress uses the status surface.
-5. Before yielding, the worker commits a safe history boundary, sends another
+   messages as it advances. A requested turn resume is durable state, not an
+   in-memory callback; the same worker observes it on the next loop iteration.
+   Tool-bearing assistant text remains agent history; explicit progress uses
+   the status surface.
+5. Work appended under a healthy lease does not send another queue nudge. The
+   current worker observes it on its next state reload.
+6. Before yielding, the worker commits a safe history boundary, sends another
    nudge, and releases the lease.
-6. Terminal delivery or intentional no-reply completion records the delivered
+7. Terminal delivery or intentional no-reply completion records the delivered
    turn before acknowledging work.
 
 New messages that arrive during a run remain durable. `interrupt` work is
@@ -41,8 +47,8 @@ and waits for the next turn.
 Slack `@` mentions use `interrupt` delivery; all other inbound messages use
 `defer`.
 
-An active turn drains only `interrupt` messages. When a new turn starts,
-interrupt messages are handled before queued deferred work.
+An active turn drains only messages with `interrupt` mailbox delivery. When a
+new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 
 ## Queue And Lease Rules
 
