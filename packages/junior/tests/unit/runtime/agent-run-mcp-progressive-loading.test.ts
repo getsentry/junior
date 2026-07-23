@@ -840,6 +840,61 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(listToolsMock).toHaveBeenCalledTimes(1);
   });
 
+  it("restores prior MCP providers for a system actor with a delegated credential subject", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+
+    await executeAgentRun(
+      makeAgentRunRequest(
+        "run the scheduled task",
+        {
+          conversationId: "conversation-delegated-provider",
+          threadTs: "1712345.0092",
+          turnId: "turn-delegated-provider",
+        },
+        {
+          input: {
+            piMessages: [
+              {
+                role: "toolResult",
+                toolName: "callMcpTool",
+                isError: false,
+                content: [{ type: "text", text: "pong" }],
+                input: {
+                  tool_name: "mcp__demo__ping",
+                  arguments: { query: "prior" },
+                },
+              },
+            ] as unknown as PiMessage[],
+          },
+          routing: {
+            actor: { platform: "system", name: "scheduler" },
+            credentialContext: {
+              actor: { platform: "system", name: "scheduler" },
+              subject: {
+                type: "user",
+                userId: "U123",
+                allowedWhen: "scheduled-task",
+                taskId: "scheduled-task-1",
+                binding: {
+                  type: "scheduled-task",
+                  plugin: "scheduler",
+                  taskId: "scheduled-task-1",
+                  signature: "v1=test",
+                },
+              },
+            },
+          },
+        },
+      ),
+    );
+
+    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
+      { provider: "demo", available_tool_count: 1 },
+    ]);
+    expect(listToolsMock).toHaveBeenCalledTimes(1);
+  });
+
   it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
     const priorMessages = [
       {

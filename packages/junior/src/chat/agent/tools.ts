@@ -58,6 +58,7 @@ import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -116,11 +117,9 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.routing.source;
-  const authActorId =
-    args.routing.credentialContext &&
-    "type" in args.routing.credentialContext.actor
-      ? args.routing.credentialContext.actor.userId
-      : undefined;
+  const authActorId = args.routing.credentialContext
+    ? credentialUserSubjectId(args.routing.credentialContext)
+    : undefined;
   const userTokenStore = createUserTokenStore();
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
@@ -370,36 +369,41 @@ export async function wireAgentTools(
       ? args.state.pendingAuth.provider
       : undefined;
 
-  // Restore providers visible in durable Pi session history. In serverless
-  // runtimes, later slices and follow-up turns usually run in a fresh
-  // process, so in-memory MCP clients cannot be reused.
-  const providersToRestore = new Set([
-    ...args.connectedMcpProviders,
-    ...inferActiveMcpProvidersFromPiMessages(args.priorPiMessages),
-  ]);
-  for (const provider of providersToRestore) {
-    if (provider === pendingMcpProvider) {
-      continue; // awaiting user authorization — skip to avoid aborting unrelated turns
+  // Conversation history records prior capability use, not authority for the
+  // current turn. Credentialless system turns must not reconnect user-owned
+  // MCP providers merely because an earlier user turn activated them.
+  if (authActorId) {
+    // Restore providers visible in durable Pi session history. In serverless
+    // runtimes, later slices and follow-up turns usually run in a fresh
+    // process, so in-memory MCP clients cannot be reused.
+    const providersToRestore = new Set([
+      ...args.connectedMcpProviders,
+      ...inferActiveMcpProvidersFromPiMessages(args.priorPiMessages),
+    ]);
+    for (const provider of providersToRestore) {
+      if (provider === pendingMcpProvider) {
+        continue; // awaiting user authorization — skip to avoid aborting unrelated turns
+      }
+      if (await mcpToolManager.activateProvider(provider)) {
+        await args.recordConnectedMcpProvider(provider);
+      }
+      if (mcpAuth.getPendingPause()) {
+        args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
+        throw mcpAuth.getPendingPause()!;
+      }
     }
-    if (await mcpToolManager.activateProvider(provider)) {
-      await args.recordConnectedMcpProvider(provider);
-    }
-    if (mcpAuth.getPendingPause()) {
-      args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
-      throw mcpAuth.getPendingPause()!;
-    }
-  }
-  // Activate MCP for skills recovered from durable Pi history.
-  for (const skill of args.activeSkills) {
-    if (skill.pluginProvider === pendingMcpProvider) {
-      continue; // awaiting user authorization — skip to avoid aborting unrelated turns
-    }
-    if (await mcpToolManager.activateForSkill(skill)) {
-      await args.recordConnectedMcpProvider(skill.pluginProvider!);
-    }
-    if (mcpAuth.getPendingPause()) {
-      args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
-      throw mcpAuth.getPendingPause()!;
+    // Activate MCP for skills recovered from durable Pi history.
+    for (const skill of args.activeSkills) {
+      if (skill.pluginProvider === pendingMcpProvider) {
+        continue; // awaiting user authorization — skip to avoid aborting unrelated turns
+      }
+      if (await mcpToolManager.activateForSkill(skill)) {
+        await args.recordConnectedMcpProvider(skill.pluginProvider!);
+      }
+      if (mcpAuth.getPendingPause()) {
+        args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
+        throw mcpAuth.getPendingPause()!;
+      }
     }
   }
 
