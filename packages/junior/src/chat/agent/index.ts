@@ -65,7 +65,10 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  isTurnInputCommitLostError,
+  type CooperativeTurnYieldError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import {
   buildTurnResult,
@@ -799,6 +802,9 @@ async function executeAgentRunInPrivacyContext(
     };
 
     const apiKeyOverride = getPiGatewayApiKey();
+    // Pi converts hook exceptions into error turns. Keep that compatibility
+    // state local so the resume API only exposes runtime domain operations.
+    let pendingPiHookError: CooperativeTurnYieldError | undefined;
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
       streamFn: createTracedStreamFn({ conversationPrivacy }),
@@ -826,7 +832,11 @@ async function executeAgentRunInPrivacyContext(
       prepareNextTurn: async () => {
         const update = applyPendingHandoff();
         await drainSteeringMessages();
-        runResume.yieldAtSafeBoundaryIfDue(currentAgentMessages());
+        const yieldError = runResume.prepareYieldIfDue(currentAgentMessages());
+        if (yieldError) {
+          pendingPiHookError = yieldError;
+          throw yieldError;
+        }
         return update;
       },
       initialState: {
@@ -947,11 +957,17 @@ async function executeAgentRunInPrivacyContext(
               : undefined;
 
             try {
-              return await Promise.race(
+              const result = await Promise.race(
                 abortPromise
                   ? [run, timeoutPromise, abortPromise]
                   : [run, timeoutPromise],
               );
+              if (pendingPiHookError) {
+                const error = pendingPiHookError;
+                pendingPiHookError = undefined;
+                throw error;
+              }
+              return result;
             } catch (error) {
               if (runResume.timedOut) {
                 logWarn(
@@ -1051,7 +1067,6 @@ async function executeAgentRunInPrivacyContext(
                 throw assistantMessageDeliveryError;
               }
               signal?.throwIfAborted();
-              runResume.rethrowPendingYield();
 
               newMessages = agent!.state.messages.slice(
                 runResume.beforeMessageCount,
@@ -1126,10 +1141,13 @@ async function executeAgentRunInPrivacyContext(
             }
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
-              return runResume.requireAuthPauseOutcome({
+              const outcome = await runResume.translateExpectedEnding({
                 currentUsage: turnUsage,
                 error,
               });
+              if (outcome) {
+                return outcome;
+              }
             }
             throw error;
           }

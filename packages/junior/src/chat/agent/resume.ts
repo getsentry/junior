@@ -61,7 +61,7 @@ interface ResumeStateArgs {
 }
 
 /** Auth pause could not be made durable and must remain a terminal failure. */
-export class AuthPausePersistenceError extends Error {
+class AuthPausePersistenceError extends Error {
   constructor(conversationId: string, turnId: string, cause: unknown) {
     super(
       `Failed to persist auth pause for conversation=${conversationId} turn=${turnId}`,
@@ -88,7 +88,6 @@ export function createResumeState(args: ResumeStateArgs) {
   let beforeMessageCount = 0;
   let inputCommitted = false;
   let latestSafeBoundaryMessages: PiMessage[] = [];
-  let pendingYieldError: CooperativeTurnYieldError | undefined;
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let turnStartMessageIndex: number | undefined;
@@ -112,10 +111,10 @@ export function createResumeState(args: ResumeStateArgs) {
     surface: args.surface,
   });
 
-  const persistAuthPauseOutcome = async (pause: {
+  const persistAuthPause = async (pause: {
     currentUsage?: AgentTurnUsage;
     error: AuthorizationPauseError;
-  }): Promise<AuthPauseOutcome | undefined> => {
+  }): Promise<AuthPauseOutcome> => {
     const usage =
       pause.currentUsage ??
       (resumeMessages.length > 0
@@ -131,7 +130,11 @@ export function createResumeState(args: ResumeStateArgs) {
       errorMessage: pause.error.message,
     });
     if (!sessionRecord) {
-      return undefined;
+      throw new AuthPausePersistenceError(
+        args.conversationId,
+        args.turnId,
+        pause.error,
+      );
     }
     return {
       status: "awaiting_auth",
@@ -214,37 +217,18 @@ export function createResumeState(args: ResumeStateArgs) {
       }
       return persisted;
     },
-    yieldAtSafeBoundaryIfDue(currentMessages: PiMessage[]): void {
+    /** Prepare a cooperative yield at the current durable boundary. */
+    prepareYieldIfDue(
+      currentMessages: PiMessage[],
+    ): CooperativeTurnYieldError | undefined {
       if (!args.durability.shouldYield?.()) {
-        return;
+        return undefined;
       }
 
       resumeMessages = this.getResumeSnapshot(currentMessages);
-      pendingYieldError = new CooperativeTurnYieldError(
+      return new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${currentDurationMs()}ms`,
       );
-      throw pendingYieldError;
-    },
-    /** Re-throw a cooperative yield that Pi converted into an error turn. */
-    rethrowPendingYield(): void {
-      if (pendingYieldError) {
-        throw pendingYieldError;
-      }
-    },
-    /** Persist an auth pause or fail. */
-    async requireAuthPauseOutcome(pause: {
-      currentUsage?: AgentTurnUsage;
-      error: AuthorizationPauseError;
-    }): Promise<AuthPauseOutcome> {
-      const outcome = await persistAuthPauseOutcome(pause);
-      if (!outcome) {
-        throw new AuthPausePersistenceError(
-          args.conversationId,
-          args.turnId,
-          pause.error,
-        );
-      }
-      return outcome;
     },
     /**
      * Persist the continuation for an expected run ending and translate it
@@ -259,7 +243,7 @@ export function createResumeState(args: ResumeStateArgs) {
       if (error instanceof AuthPausePersistenceError) {
         throw error;
       }
-      if (pendingYieldError && error instanceof CooperativeTurnYieldError) {
+      if (error instanceof CooperativeTurnYieldError) {
         const usage =
           ending.currentUsage ??
           extractSliceUsage(resumeMessages, beforeMessageCount);
@@ -326,7 +310,7 @@ export function createResumeState(args: ResumeStateArgs) {
       }
 
       if (error instanceof AuthorizationPauseError) {
-        return persistAuthPauseOutcome({
+        return persistAuthPause({
           currentUsage: ending.currentUsage,
           error,
         });
