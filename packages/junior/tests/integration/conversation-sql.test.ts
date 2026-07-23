@@ -40,7 +40,7 @@ describe("conversation SQL local mode", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       const rows = await fixture.sql.query<{
         column_name: string;
@@ -221,7 +221,7 @@ INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
 VALUES ('host-migration', 9999999999999)
 `);
 
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       const [host] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
@@ -250,7 +250,10 @@ VALUES ('host-migration', 9999999999999)
           second.query("SELECT 1"),
         ]);
 
-        await Promise.all([migrateSchema(fixture.sql), migrateSchema(second)]);
+        await Promise.all([
+          migrateSchema(fixture.sql, { mode: "schema-bootstrap" }),
+          migrateSchema(second, { mode: "schema-bootstrap" }),
+        ]);
         const [journal] = await fixture.sql.query<{ count: number }>(
           "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
         );
@@ -266,14 +269,18 @@ VALUES ('host-migration', 9999999999999)
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await expect(migrateSchema(fixture.sql)).resolves.toEqual({
+      await expect(
+        migrateSchema(fixture.sql, { mode: "schema-bootstrap" }),
+      ).resolves.toEqual({
         existing: 0,
         migrated: coreMigrations.length,
         scanned: coreMigrations.length,
         skipped: 0,
       });
 
-      await expect(migrateSchema(fixture.sql)).resolves.toEqual({
+      await expect(
+        migrateSchema(fixture.sql, { mode: "schema-bootstrap" }),
+      ).resolves.toEqual({
         existing: coreMigrations.length,
         migrated: 0,
         scanned: coreMigrations.length,
@@ -369,7 +376,9 @@ CREATE TABLE junior_conversations (
 )
 `);
 
-        await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        await expect(
+          migrateSchema(fixture.sql, { mode: "schema-bootstrap" }),
+        ).rejects.toThrow(
           "Stop old Junior workers, install @sentry/junior@0.107.1, run `junior upgrade`, then restore this Junior version",
         );
         await expectNoDrizzleMigrationState(fixture.sql);
@@ -383,7 +392,7 @@ CREATE TABLE junior_conversations (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const store = createSqlStore(fixture.sql);
 
       await recordAgentTurnSessionSummary({

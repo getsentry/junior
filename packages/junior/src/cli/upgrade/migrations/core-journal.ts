@@ -17,12 +17,11 @@ export async function migrateCoreJournal(
   });
   try {
     const result = await migrateSchema(executor, {
+      getStateContext: context.getStateContext,
       loadTypeScript: async (path) =>
         await migrationLoader.import<Record<string, unknown>>(path),
       log: context.io.info,
       mode: "all",
-      redisStateAdapter: context.redisStateAdapter,
-      stateAdapter: context.stateAdapter,
     });
     return {
       existing: result.existing,

@@ -24,11 +24,12 @@ export async function migratePluginJournals(
       executor,
       pluginCatalogRuntime.getMigrationRoots(),
       {
+        getStateAdapter: async () =>
+          (await context.getStateContext()).stateAdapter,
         loadTypeScript: async (path) =>
           await migrationLoader.import<Record<string, unknown>>(path),
         log: context.io.info,
         mode: "all",
-        stateAdapter: context.stateAdapter,
       },
     );
     return {

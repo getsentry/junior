@@ -82,11 +82,13 @@ function assertSupportedMigrationState(state: CoreMigrationState): void {
 export type MigrateSchemaOptions =
   | { mode: "schema-bootstrap" }
   | {
+      getStateContext: () => Promise<{
+        redisStateAdapter?: RedisStateAdapter;
+        stateAdapter: StateAdapter;
+      }>;
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
       mode: "all";
-      redisStateAdapter?: RedisStateAdapter;
-      stateAdapter: StateAdapter;
     };
 
 export { schema };
@@ -94,7 +96,7 @@ export { schema };
 /** Apply all migrations, or bootstrap an empty test database to the latest schema. */
 export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
-  options: MigrateSchemaOptions = { mode: "schema-bootstrap" },
+  options: MigrateSchemaOptions,
 ): Promise<MigrationRunResult> {
   const migrationsFolder = migrationFolder();
   const runAll = options.mode === "all";
@@ -114,22 +116,24 @@ export async function migrateSchema(
   }
   return await runMigrationJournal({
     ...baseOptions,
-    createContext: ({ progress }): MigrationContextV1 => ({
-      database: executor,
-      log: options.log ?? (() => {}),
-      progress,
-      ...(options.redisStateAdapter
-        ? {
-            redis: {
-              sendCommand: async <T>(args: readonly string[]) =>
-                await options
-                  .redisStateAdapter!.getClient()
-                  .sendCommand<T>([...args]),
-            },
-          }
-        : {}),
-      state: options.stateAdapter,
-    }),
+    createContext: async ({ progress }): Promise<MigrationContextV1> => {
+      const { redisStateAdapter, stateAdapter } =
+        await options.getStateContext();
+      return {
+        database: executor,
+        log: options.log ?? (() => {}),
+        progress,
+        ...(redisStateAdapter
+          ? {
+              redis: {
+                sendCommand: async <T>(args: readonly string[]) =>
+                  await redisStateAdapter.getClient().sendCommand<T>([...args]),
+              },
+            }
+          : {}),
+        state: stateAdapter,
+      };
+    },
     loadTypeScript: options.loadTypeScript,
     mode: "all",
   });

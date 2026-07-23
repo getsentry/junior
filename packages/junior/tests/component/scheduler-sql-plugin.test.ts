@@ -8,7 +8,7 @@ import {
   type SchedulerDb,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
@@ -27,7 +27,7 @@ function memoryMigrationsDir(): string {
 async function migrateSchedulerSchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
@@ -122,7 +122,7 @@ INSERT INTO junior_scheduler_tasks (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -155,7 +155,7 @@ ORDER BY created_at
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -190,11 +190,13 @@ ORDER BY created_at
     );
 
     try {
-      await expect(migratePluginSchemas(fixture.sql, roots)).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        scanned: migrationCount,
-      });
+      await expect(bootstrapPluginSchemas(fixture.sql, roots)).resolves.toEqual(
+        {
+          existing: 0,
+          migrated: migrationCount,
+          scanned: migrationCount,
+        },
+      );
       const migrationTables = await fixture.sql.query<{ tablename: string }>(`
 SELECT tablename
 FROM pg_tables
@@ -204,7 +206,7 @@ ORDER BY tablename
 `);
       expect(migrationTables).toHaveLength(2);
       await expect(
-        migratePluginSchemas(fixture.sql, [...roots].reverse()),
+        bootstrapPluginSchemas(fixture.sql, [...roots].reverse()),
       ).resolves.toEqual({
         existing: migrationCount,
         migrated: 0,
@@ -228,12 +230,12 @@ ORDER BY tablename
 
     try {
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: missingJournal, pluginName: "missing" },
         ]),
       ).rejects.toThrow("Can't find meta/_journal.json file");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: invalidJournal, pluginName: "invalid" },
         ]),
       ).rejects.toThrow("Expected property name");

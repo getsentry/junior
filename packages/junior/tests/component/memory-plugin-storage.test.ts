@@ -13,10 +13,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
-import { runUpgrade } from "@/cli/upgrade";
+import { runUpgrade, runUpgradeMigrations } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
@@ -86,7 +86,7 @@ function memoryMigrationFiles(): string[] {
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: memoryMigrationsDir(),
       pluginName: "memory",
@@ -130,7 +130,7 @@ CREATE TABLE junior_schema_migrations (
       }
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -168,7 +168,7 @@ CREATE TABLE junior_schema_migrations (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -227,6 +227,28 @@ CREATE TABLE junior_schema_migrations (
         `Finished migration plugin-migrations: scanned=${memoryMigrationCount} migrated=0 existing=${memoryMigrationCount} missing=0`,
         "Junior upgrade complete.",
       ]);
+    } finally {
+      NEON.sql = undefined;
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not connect state for SQL-only migration journals", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    NEON.sql = fixture.sql;
+
+    try {
+      const getStateContext = vi.fn(async () => {
+        throw new Error("SQL-only migrations must not connect state");
+      });
+      await expect(
+        runUpgradeMigrations({
+          getStateContext,
+          io: { info: () => {} },
+          pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
+        }),
+      ).resolves.toHaveLength(2);
+      expect(getStateContext).not.toHaveBeenCalled();
     } finally {
       NEON.sql = undefined;
       await fixture.close();

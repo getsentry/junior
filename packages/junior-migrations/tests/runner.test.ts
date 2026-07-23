@@ -167,7 +167,7 @@ describe("runMigrationJournal", () => {
         migrationsFolder: folder,
         migrationsTable: "__drizzle_test",
         loadTypeScript: async () => ({ default: migration }),
-        createContext: ({ progress }) => ({
+        createContext: async ({ progress }) => ({
           log: () => {},
           progress,
           database: executor,

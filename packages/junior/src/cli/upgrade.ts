@@ -9,6 +9,7 @@ import { migratePluginJournals } from "./upgrade/migrations/plugin-journal";
 import type {
   MigrationContext,
   MigrationResult,
+  MigrationStateContext,
   UpgradeIo,
 } from "./upgrade/types";
 import { type JuniorPluginSet } from "@/plugins";
@@ -90,19 +91,21 @@ export async function runUpgrade(
   io: UpgradeIo = DEFAULT_IO,
   options: { pluginSet?: JuniorPluginSet | null } = {},
 ): Promise<void> {
+  let stateContext: Promise<MigrationStateContext> | undefined;
+  const getStateContext = (): Promise<MigrationStateContext> => {
+    stateContext ??= getConnectedStateContext();
+    return stateContext;
+  };
   try {
-    const { redisStateAdapter, stateAdapter } =
-      await getConnectedStateContext();
     const pluginSet =
       options.pluginSet === undefined
         ? await resolveUpgradePluginSet()
         : (options.pluginSet ?? undefined);
     io.info("Running Junior upgrade migrations...");
     await runUpgradeMigrations({
+      getStateContext,
       io,
       pluginSet,
-      redisStateAdapter,
-      stateAdapter,
     });
     io.info("Junior upgrade complete.");
   } finally {

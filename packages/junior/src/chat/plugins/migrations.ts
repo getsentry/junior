@@ -26,10 +26,10 @@ type PluginMigrationResult = {
 type PluginMigrationOptions =
   | { mode: "schema-bootstrap" }
   | {
+      getStateAdapter: () => Promise<StateAdapter>;
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
       mode: "all";
-      stateAdapter: StateAdapter;
     };
 
 const LEGACY_SCHEDULER_BASELINE_HASH =
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
   roots: readonly PluginMigrationRoot[],
-  options: PluginMigrationOptions = { mode: "schema-bootstrap" },
+  options: PluginMigrationOptions,
 ): Promise<PluginMigrationResult> {
   const result: PluginMigrationResult = {
     existing: 0,
@@ -165,13 +165,13 @@ export async function migratePluginSchemas(
     const pluginResult = runAll
       ? await runMigrationJournal({
           ...baseOptions,
-          createContext: ({ progress }): MigrationContextV1 => ({
+          createContext: async ({ progress }): Promise<MigrationContextV1> => ({
             database: executor,
             log: options.log ?? (() => {}),
             progress,
             state: createPluginMigrationStateV1(
               root.pluginName,
-              options.stateAdapter,
+              await options.getStateAdapter(),
             ),
           }),
           loadTypeScript: options.loadTypeScript,

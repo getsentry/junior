@@ -72,7 +72,7 @@ interface RunAllMigrationJournalOptions extends RunMigrationJournalBaseOptions {
   createContext: (args: {
     migration: ResolvedMigration;
     progress: MigrationContextV1["progress"];
-  }) => MigrationContextV1;
+  }) => MigrationContextV1 | Promise<MigrationContextV1>;
   loadTypeScript: TypeScriptMigrationLoader;
   mode?: "all";
 }
@@ -270,7 +270,10 @@ async function runTypeScriptMigration(args: {
     },
   };
   try {
-    const context = args.createContext({ migration: args.migration, progress });
+    const context = await args.createContext({
+      migration: args.migration,
+      progress,
+    });
     const currentSource = await readFile(args.migration.path, "utf8");
     const currentHash = createHash("sha256")
       .update(currentSource)
