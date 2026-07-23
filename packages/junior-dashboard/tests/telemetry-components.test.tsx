@@ -160,17 +160,24 @@ describe("dashboard canonical-event components", () => {
     expect(completedHtml).not.toContain("Junior is responding");
   });
 
-  it("omits active badges from conversation detail while retaining progress", () => {
-    const queryClient = conversationQueryClient();
-    queryClient.setQueryData(
+  it("omits status badges from conversation detail while retaining progress", () => {
+    const activeClient = conversationQueryClient();
+    activeClient.setQueryData(
       ["conversation", "conversation-1"],
       conversation([], { status: "active" }),
     );
+    const failedClient = conversationQueryClient();
+    failedClient.setQueryData(
+      ["conversation", "conversation-1"],
+      conversation([], { status: "failed" }),
+    );
 
-    const html = renderConversationPageWithClient(queryClient);
+    const activeHtml = renderConversationPageWithClient(activeClient);
+    const failedHtml = renderConversationPageWithClient(failedClient);
 
-    expect(html).not.toContain(">active</span>");
-    expect(html).toContain("Junior is responding");
+    expect(activeHtml).not.toContain(">active</span>");
+    expect(activeHtml).toContain("Junior is responding");
+    expect(failedHtml).not.toContain(">error</span>");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {
