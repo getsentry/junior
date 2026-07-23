@@ -5,7 +5,7 @@ import {
 } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { FakeSlackAdapter } from "./slack-harness";
-import { postSlackAssistantReplyToThread } from "@/chat/slack/reply";
+import { sendReplyToThread } from "@/chat/slack/reply";
 
 export function createTestChatRuntime(
   args: {
@@ -19,7 +19,7 @@ export function createTestChatRuntime(
   return {
     slackAdapter,
     slackRuntime: createSlackRuntime({
-      deliverAssistantReply: postSlackAssistantReplyToThread,
+      sendReply: sendReplyToThread,
       getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
       now: args.now,
       services: args.services,

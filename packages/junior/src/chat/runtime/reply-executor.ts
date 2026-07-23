@@ -24,9 +24,9 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  postSlackAssistantReplyToThread,
+  sendReplyToThread,
   sendSlackReply,
-  type SlackAssistantReplyDelivery,
+  type SendReply,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
@@ -399,7 +399,7 @@ export interface ReplyExecutorServices {
 }
 
 interface ReplyExecutorDeps {
-  deliverAssistantReply: SlackAssistantReplyDelivery;
+  sendReply: SendReply;
   getSlackAdapter: () => SlackAdapter;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
@@ -1020,11 +1020,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           boundaryFailureCode = "delivery_failed";
           let slackTs: string | undefined;
           try {
-            const deliverAssistantReply =
-              channelId && threadTs
-                ? deps.deliverAssistantReply
-                : postSlackAssistantReplyToThread;
-            slackTs = await deliverAssistantReply({
+            const sendReply =
+              channelId && threadTs ? deps.sendReply : sendReplyToThread;
+            slackTs = await sendReply({
               beforePost: beforeFirstResponsePost,
               channelId: channelId ?? thread.channelId,
               conversationId,

@@ -16,18 +16,17 @@ import {
   splitSlackReplyText,
 } from "@/chat/slack/output";
 
-/** Inputs shared by Slack reply delivery implementations. */
-export interface SendSlackReplyArgs {
+type SendSlackReplyOptions = {
   beforePost?: () => Promise<void>;
   channelId: string;
   conversationId?: string;
   text: string;
   threadTs?: string;
-}
+};
 
-/** Deliver one completed assistant reply for an active Chat SDK thread. */
-export type SlackAssistantReplyDelivery = (
-  args: SendSlackReplyArgs & { thread: Thread },
+/** Send one completed reply for an active Chat SDK thread. */
+export type SendReply = (
+  options: SendSlackReplyOptions & { thread: Thread },
 ) => Promise<string | undefined>;
 
 /**
@@ -37,23 +36,23 @@ export type SlackAssistantReplyDelivery = (
  * `conversationId`, and posts through the shared Slack outbound boundary.
  */
 export async function sendSlackReply(
-  args: SendSlackReplyArgs,
+  options: SendSlackReplyOptions,
 ): Promise<string | undefined> {
-  const chunks = splitSlackReplyText(args.text);
+  const chunks = splitSlackReplyText(options.text);
   const footer = buildSlackReplyFooter({
-    conversationId: args.conversationId,
+    conversationId: options.conversationId,
   });
   let lastPostedMessageTs: string | undefined;
 
   for (const [index, text] of chunks.entries()) {
-    await args.beforePost?.();
+    await options.beforePost?.();
     const blocks = buildSlackReplyBlocks(
       text,
       index === chunks.length - 1 ? footer : undefined,
     );
     const response = await postSlackMessage({
-      channelId: args.channelId,
-      threadTs: args.threadTs,
+      channelId: options.channelId,
+      threadTs: options.threadTs,
       text,
       ...(blocks ? { blocks } : {}),
     });
@@ -63,16 +62,17 @@ export async function sendSlackReply(
   return lastPostedMessageTs;
 }
 
-/** Deliver an assistant reply through the Chat SDK thread boundary. */
-export const postSlackAssistantReplyToThread: SlackAssistantReplyDelivery =
-  async (args) => {
-    let lastPostedMessageTs: string | undefined;
+/** Send a reply through the Chat SDK thread. */
+export const sendReplyToThread: SendReply = async (options) => {
+  let lastPostedMessageTs: string | undefined;
 
-    for (const text of splitSlackReplyText(args.text)) {
-      await args.beforePost?.();
-      const sentMessage = await args.thread.post(buildSlackOutputMessage(text));
-      lastPostedMessageTs = sentMessage.id;
-    }
+  for (const text of splitSlackReplyText(options.text)) {
+    await options.beforePost?.();
+    const sentMessage = await options.thread.post(
+      buildSlackOutputMessage(text),
+    );
+    lastPostedMessageTs = sentMessage.id;
+  }
 
-    return lastPostedMessageTs;
-  };
+  return lastPostedMessageTs;
+};
