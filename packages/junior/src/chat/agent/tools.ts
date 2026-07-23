@@ -174,6 +174,7 @@ export async function wireAgentTools(
       args.routing.source.platform === "slack"
         ? args.routing.source.threadTs
         : undefined,
+    userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,

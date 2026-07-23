@@ -177,6 +177,9 @@ describe("createMcpAuthOrchestration", () => {
     await expect(orchestration.onAuthorizationRequired("github")).resolves.toBe(
       true,
     );
+    expect(orchestration.getPendingPause()).toMatchObject({
+      requestText: "use MCP",
+    });
 
     expect(deliverPrivateMessage).toHaveBeenCalledWith(
       expect.objectContaining({

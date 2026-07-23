@@ -253,6 +253,32 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
+  it("preserves the user request on the auth pause", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      actorId: "U123",
+      userMessage: "Create the requested issue",
+      userTokenStore: tokenStore(),
+    });
+
+    let caught: unknown;
+    try {
+      await orchestration.maybeHandleAuthSignal({
+        auth_required: githubWriteSignal,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PluginAuthorizationPauseError);
+    expect(caught).toMatchObject({ requestText: "Create the requested issue" });
+  });
+
   it("starts oauth for GitHub write grant signal", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,

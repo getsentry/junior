@@ -19,6 +19,7 @@ export type AgentRunOutcome =
   | {
       status: "awaiting_auth";
       providerDisplayName: string;
+      requestText?: string;
       usage?: AgentTurnUsage;
     };
 

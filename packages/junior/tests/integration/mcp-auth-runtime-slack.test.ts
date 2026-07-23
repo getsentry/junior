@@ -488,7 +488,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
-          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
     ]);
@@ -643,7 +643,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
-          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
       expect.objectContaining({
@@ -741,7 +741,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C124",
           thread_ts: "1700000000.002",
-          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
     ]);
@@ -1062,7 +1062,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C125",
           thread_ts: "1700000000.003",
-          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* use eval-auth directly for the budget answer\n\nI sent you a link.",
         }),
       }),
       expect.objectContaining({

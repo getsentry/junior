@@ -11,12 +11,14 @@ export class AuthorizationPauseError extends Error {
   readonly kind: AuthorizationPauseKind;
   readonly provider: string;
   readonly providerDisplayName: string;
+  readonly requestText?: string;
 
   constructor(
     kind: AuthorizationPauseKind,
     provider: string,
     providerDisplayName: string,
     disposition: AuthorizationPauseDisposition,
+    requestText?: string,
   ) {
     super(
       kind === "mcp"
@@ -31,6 +33,7 @@ export class AuthorizationPauseError extends Error {
     this.kind = kind;
     this.provider = provider;
     this.providerDisplayName = providerDisplayName;
+    this.requestText = requestText;
   }
 }
 

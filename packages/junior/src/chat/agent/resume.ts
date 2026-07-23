@@ -216,6 +216,7 @@ export function createResumeState(args: ResumeStateArgs) {
         return {
           status: "awaiting_auth",
           providerDisplayName: pause.providerDisplayName,
+          ...(pause.requestText ? { requestText: pause.requestText } : {}),
           ...(usage ? { usage } : {}),
         };
       } catch (error) {

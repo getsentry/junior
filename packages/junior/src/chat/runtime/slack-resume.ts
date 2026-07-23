@@ -426,7 +426,11 @@ export async function resumeSlackTurn(
   });
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredAuthInfo:
-    | { providerDisplayName: string; actorId: string | undefined }
+    | {
+        providerDisplayName: string;
+        actorId: string | undefined;
+        requestText?: string;
+      }
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
@@ -631,6 +635,7 @@ export async function resumeSlackTurn(
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
+          ...(outcome.requestText ? { requestText: outcome.requestText } : {}),
         };
         deferredPauseHandler = async () => {
           await onAuthPause({
@@ -793,6 +798,7 @@ export async function resumeSlackTurn(
           buildAuthPauseResponse(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
+            deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
         );

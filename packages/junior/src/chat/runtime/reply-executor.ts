@@ -577,6 +577,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         const postAuthPauseNotice = async (
           providerDisplayName: string,
+          requestText?: string,
         ): Promise<void> => {
           if (!actor) {
             throw new Error("Slack auth pause notice requires an actor");
@@ -584,6 +585,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const text = buildAuthPauseResponse(
             actor.userId,
             providerDisplayName,
+            requestText,
           );
           try {
             await beforeFirstResponsePost();
@@ -1386,7 +1388,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldPersistFailureState = false;
               return;
             }
-            await postAuthPauseNotice(outcome.providerDisplayName);
+            await postAuthPauseNotice(
+              outcome.providerDisplayName,
+              outcome.requestText,
+            );
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: turnId,
