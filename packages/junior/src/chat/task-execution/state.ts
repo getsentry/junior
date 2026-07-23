@@ -397,12 +397,11 @@ function normalizeExecution(
   if (Array.isArray(value.pendingMessages)) {
     for (const rawMessage of value.pendingMessages) {
       const message = normalizeMessage(rawMessage, schemaVersion);
-      if (
-        !message ||
-        message.conversationId !== conversationId ||
-        message.injectedAtMs !== undefined
-      ) {
+      if (!message || message.conversationId !== conversationId) {
         return undefined;
+      }
+      if (message.injectedAtMs !== undefined) {
+        continue;
       }
       pendingMessages.push(message);
     }

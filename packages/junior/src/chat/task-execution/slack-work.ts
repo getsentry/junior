@@ -916,7 +916,7 @@ export function buildSlackInboundMessage(args: {
       args.conversationId,
       args.message.id,
     ].join(":"),
-    delivery: args.route === "mention" ? "interrupt" : "defer",
+    delivery: args.message.isMention ? "interrupt" : "defer",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,

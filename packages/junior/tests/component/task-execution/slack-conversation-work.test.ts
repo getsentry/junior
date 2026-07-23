@@ -212,6 +212,7 @@ describe("Slack conversation work execution", () => {
         isMe: false,
       },
     });
+    message.isMention = true;
     const thread = new ThreadImpl({
       adapter: slackAdapter,
       stateAdapter: state,
@@ -1101,7 +1102,7 @@ describe("Slack conversation work execution", () => {
             installation: { teamId: "T123" },
             message: followUp,
             receivedAtMs: 1_100,
-            route: "subscribed",
+            route: "mention",
             thread,
           }),
           state,

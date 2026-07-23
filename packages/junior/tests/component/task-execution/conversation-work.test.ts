@@ -285,6 +285,35 @@ describe("conversation work execution", () => {
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(raw);
   });
 
+  it("ignores legacy injected markers without blocking pending work", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("injected"),
+      nowMs: 1_000,
+      state,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("pending", {
+        createdAtMs: 2_000,
+        receivedAtMs: 2_100,
+      }),
+      nowMs: 2_100,
+      state,
+    });
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    raw.execution.pendingMessages[0]!.injectedAtMs = 1_500;
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      messages: [expect.objectContaining({ inboundMessageId: "pending" })],
+    });
+  });
+
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({
