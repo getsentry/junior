@@ -2718,15 +2718,28 @@ Conversation: \`local:test:old-conversation\`
         "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
     [
-      "extends a final trailer block ending with another trailer",
+      "replaces model-supplied Junior aliases with host-derived human actors",
+      "initial commit message\n" +
+        "\n" +
+        "Co-authored-by: sentry-junior[bot] <264270552+sentry-junior[bot]@users.noreply.github.com>\n" +
+        "Co-authored-by: junior <noreply@getsentry.com>\n" +
+        "Co-Authored-By: Junior <junior@sentry.io>\n" +
+        "Co-authored-by: Model Supplied <model@example.com>\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "preserves other final trailers while replacing co-author attribution",
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Signed-off-by: Reviewer <reviewer@example.com>\n",
       "initial commit message\n" +
         "\n" +
-        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Signed-off-by: Reviewer <reviewer@example.com>\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
   ])("%s", async (_name, initialMessage, expectedMessage) => {

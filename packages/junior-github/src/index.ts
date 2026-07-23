@@ -412,6 +412,52 @@ if [ -n "\${JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:-}" ]; then
   done <<< "$JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"
 fi
 
+# The hook owns co-author attribution. Remove every model-supplied co-author
+# from the final Git trailer block before appending the host-derived actors.
+tmp_file=$(mktemp)
+trap 'rm -f "$tmp_file"' EXIT
+awk '
+  { lines[NR] = $0 }
+  END {
+    line = NR
+    while (line > 0 && lines[line] == "") {
+      line--
+    }
+    start = line
+    while (start > 0 && lines[start] != "") {
+      start--
+    }
+    valid = line > 0
+    for (i = start + 1; valid && i <= line; i++) {
+      if (lines[i] !~ /^[[:alnum:]-]+: .+/) {
+        valid = 0
+      }
+    }
+    if (!valid) {
+      for (i = 1; i <= NR; i++) {
+        print lines[i]
+      }
+      exit 0
+    }
+    kept = 0
+    for (i = start + 1; i <= line; i++) {
+      if (tolower(lines[i]) !~ /^co-authored-by: /) {
+        kept++
+      }
+    }
+    before = kept > 0 ? start : start - 1
+    for (i = 1; i <= before; i++) {
+      print lines[i]
+    }
+    for (i = start + 1; i <= line; i++) {
+      if (tolower(lines[i]) !~ /^co-authored-by: /) {
+        print lines[i]
+      }
+    }
+  }
+' "$message_file" > "$tmp_file"
+cat "$tmp_file" > "$message_file"
+
 final_trailer_block=$(awk '
   { lines[NR] = $0 }
   END {
@@ -436,57 +482,6 @@ final_trailer_block=$(awk '
     }
   }
 ' "$message_file")
-
-duplicate_desired_trailer=false
-while IFS= read -r desired_trailer; do
-  if [ -n "$desired_trailer" ] && [ "$(printf '%s\\n' "$final_trailer_block" | grep -Fxc -- "$desired_trailer")" -gt 1 ]; then
-    duplicate_desired_trailer=true
-    break
-  fi
-done <<< "$desired_trailers"
-
-if [ "$duplicate_desired_trailer" = true ]; then
-  tmp_file=$(mktemp)
-  desired_file=$(mktemp)
-  trap 'rm -f "$tmp_file" "$desired_file"' EXIT
-  printf '%s' "$desired_trailers" > "$desired_file"
-  awk -v desired_file="$desired_file" '
-    BEGIN {
-      while ((getline value < desired_file) > 0) {
-        if (value != "") {
-          wanted[value] = 1
-        }
-      }
-      close(desired_file)
-    }
-    { lines[NR] = $0 }
-    END {
-      line = NR
-      while (line > 0 && lines[line] == "") {
-        line--
-      }
-      start = line
-      while (start > 0 && lines[start] != "") {
-        start--
-      }
-      valid = line > 0
-      for (i = start + 1; valid && i <= line; i++) {
-        if (lines[i] !~ /^[[:alnum:]-]+: .+/) {
-          valid = 0
-        }
-      }
-      for (i = 1; i <= NR; i++) {
-        if (valid && i > start && i <= line && wanted[lines[i]]) {
-          if (seen[lines[i]]++) {
-            continue
-          }
-        }
-        print lines[i]
-      }
-    }
-  ' "$message_file" > "$tmp_file"
-  cat "$tmp_file" > "$message_file"
-fi
 
 missing_trailers=""
 collect_missing_trailer() {
