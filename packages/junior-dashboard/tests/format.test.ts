@@ -18,6 +18,7 @@ import {
   formatCompactNumber,
   formatConversationDuration,
   formatCostTotal,
+  formatElapsedDuration,
   formatRuntime,
   formatTranscriptDuration,
   formatUsageTotal,
@@ -97,6 +98,12 @@ describe("dashboard conversation formatting", () => {
     expect(formatTranscriptDuration({ cumulativeDurationMs: 7_000 })).toBe(
       "7.0s",
     );
+  });
+
+  it("formats elapsed transcript event durations", () => {
+    expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
+    expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
+    expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
   });
 
   it("formats conversation duration from cumulative execution time", () => {

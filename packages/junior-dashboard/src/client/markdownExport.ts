@@ -1,6 +1,7 @@
 import {
   conversationDisplayTitle,
   formatCostTotal,
+  formatElapsedDuration,
   formatMs,
   formatUsageTotal,
   actorLabel,
@@ -204,7 +205,11 @@ function appendTool(
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.status);
   addMetaLine(lines, "Result timestamp", eventTimestamp(part.resultTimestamp));
-  addMetaLine(lines, "Duration", toolDuration(timestamp, part.resultTimestamp));
+  addMetaLine(
+    lines,
+    "Duration",
+    formatElapsedDuration(timestamp, part.resultTimestamp),
+  );
   if (part.input !== undefined) {
     lines.push(
       "",
@@ -221,20 +226,6 @@ function appendTool(
       fencedBlock(stringifyPartValue(part.output), "json"),
     );
   }
-}
-
-function toolDuration(
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-): string | undefined {
-  if (
-    typeof startedAt !== "number" ||
-    typeof endedAt !== "number" ||
-    endedAt < startedAt
-  ) {
-    return undefined;
-  }
-  return formatMs(endedAt - startedAt);
 }
 
 function addEventMeta(

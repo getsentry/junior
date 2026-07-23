@@ -103,6 +103,21 @@ export function formatMs(value: number | undefined): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+/** Format the elapsed duration between two transcript event timestamps. */
+export function formatElapsedDuration(
+  startedAt: number | undefined,
+  endedAt: number | undefined,
+): string | undefined {
+  if (
+    typeof startedAt !== "number" ||
+    typeof endedAt !== "number" ||
+    endedAt < startedAt
+  ) {
+    return undefined;
+  }
+  return formatMs(endedAt - startedAt);
+}
+
 /** Format a persisted conversation runtime when duration data exists. */
 export function formatRuntime(durationMs: number | undefined): string {
   if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return "";

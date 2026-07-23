@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
 import {
+  formatElapsedDuration,
   formatMessageTimestamp,
-  formatMs,
   stringifyPartValue,
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
@@ -17,7 +17,10 @@ export function TranscriptToolView(props: {
   view?: "raw" | "rich";
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
-  const duration = toolDuration(props.timestamp, props.part.resultTimestamp);
+  const duration = formatElapsedDuration(
+    props.timestamp,
+    props.part.resultTimestamp,
+  );
   const hasDetails =
     props.part.input !== undefined || props.part.output !== undefined;
   const meta = [duration, timestamp].filter(isString);
@@ -126,20 +129,6 @@ function ToolBody(props: { children: ReactNode; label?: string }) {
       {props.children}
     </div>
   );
-}
-
-function toolDuration(
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-): string | undefined {
-  if (
-    typeof startedAt !== "number" ||
-    typeof endedAt !== "number" ||
-    endedAt < startedAt
-  ) {
-    return undefined;
-  }
-  return formatMs(endedAt - startedAt);
 }
 
 function isString(value: string | undefined): value is string {
