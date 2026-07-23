@@ -1,4 +1,9 @@
-import { Fragment, type ClipboardEventHandler, type ReactNode } from "react";
+import {
+  Fragment,
+  type ClipboardEventHandler,
+  type ReactNode,
+  useState,
+} from "react";
 import {
   Bot,
   CircleAlert,
@@ -725,14 +730,31 @@ function TranscriptResourceEventView(props: {
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,
   );
+  const timestamp = formatMessageTimestamp(props.message.timestamp);
   const { active: searchActive } = useTranscriptSearch();
+  const [expanded, setExpanded] = useState(false);
   return (
     <details
       className="min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2"
-      open={searchActive || undefined}
+      open={searchActive || expanded}
+      onToggle={(event) => {
+        if (!searchActive) setExpanded(event.currentTarget.open);
+      }}
     >
-      <summary className="cursor-pointer list-none font-display text-[0.88rem] font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
-        <HighlightText text={props.message.eventType ?? ""} />
+      <summary
+        className="cursor-pointer list-none font-display text-[0.88rem] font-semibold text-violet-100 [&::-webkit-details-marker]:hidden"
+        onClick={(event) => {
+          if (searchActive) event.preventDefault();
+        }}
+      >
+        <span className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <HighlightText text={props.message.eventType ?? ""} />
+          {timestamp ? (
+            <span className="text-[0.76rem] font-normal text-white/35">
+              {timestamp}
+            </span>
+          ) : null}
+        </span>
       </summary>
       {text ? (
         <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-white/55">
