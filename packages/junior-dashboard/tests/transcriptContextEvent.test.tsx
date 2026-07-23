@@ -43,6 +43,7 @@ describe("transcript context events", () => {
             event: {
               type: "handoff",
               createdAt: "2026-01-01T00:00:04.000Z",
+              modelProfile: "coding",
             },
           }}
         />,
@@ -50,6 +51,6 @@ describe("transcript context events", () => {
     );
 
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Execution continued with a different model.");
+    expect(html).toContain("Execution continued with the coding profile.");
   });
 });

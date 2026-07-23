@@ -492,6 +492,7 @@ describe("conversation report event projection", () => {
       },
       {
         type: "handoff",
+        modelProfile: "fast",
         triggeringToolCallId: "private-handoff-tool-call-id",
       },
       {

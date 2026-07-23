@@ -102,7 +102,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
       return part.event.type === "handoff"
-        ? "model handoff"
+        ? `model handoff\nprofile ${part.event.modelProfile}`
         : "context compacted";
     })
     .filter((part) => part.trim().length > 0)

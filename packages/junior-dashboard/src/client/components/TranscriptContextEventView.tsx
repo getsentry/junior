@@ -6,7 +6,8 @@ export function TranscriptContextEventView(props: {
   part: TranscriptViewContextEventPart;
   timestamp?: number;
 }) {
-  const handoff = props.part.event.type === "handoff";
+  const event = props.part.event;
+  const handoff = event.type === "handoff";
   return (
     <article
       className={`min-w-0 rounded-lg border px-3 py-3 first:mt-1 ${
@@ -31,7 +32,7 @@ export function TranscriptContextEventView(props: {
       </div>
       <div className="mt-1.5 text-[0.8rem] text-white/45">
         {handoff
-          ? "Execution continued with a different model."
+          ? `Execution continued with the ${event.modelProfile} profile.`
           : "Earlier context was summarized for the next turn."}
       </div>
     </article>

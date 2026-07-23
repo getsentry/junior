@@ -159,6 +159,7 @@ const conversationReportCompactionEventDataSchema = z
 const conversationReportHandoffEventDataSchema = z
   .object({
     type: z.literal("handoff"),
+    modelProfile: z.string().min(1),
     triggeringToolCallId: z.string().min(1).optional(),
   })
   .strict();

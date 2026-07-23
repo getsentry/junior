@@ -127,7 +127,9 @@ describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="line">
-        <TranscriptMarkdown text={"line one\nline two\n\n[docs](https://docs.sentry.io)"} />
+        <TranscriptMarkdown
+          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+        />
       </TranscriptSearchProvider>,
     );
 
@@ -322,7 +324,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
-        event(1, { type: "handoff" }),
+        event(1, { type: "handoff", modelProfile: "fast" }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",

@@ -274,6 +274,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
     }),
     reportEvent(14, iso(Date.parse(startedAt), 90_000), {
       type: "handoff",
+      modelProfile: "fast",
     }),
     reportEvent(15, iso(Date.parse(startedAt), 166_000), {
       type: "message",
