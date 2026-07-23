@@ -473,7 +473,10 @@ describe("conversation report event projection", () => {
         toolCallId: "private-handoff-tool-call-id",
         name: "handoff",
       },
-      { type: "handoff", toolStartedSeq: 3 },
+      {
+        type: "handoff",
+        triggeringToolCallId: "private-handoff-tool-call-id",
+      },
       {
         type: "turn_lifecycle",
         turnId: "turn-1",
@@ -489,7 +492,7 @@ describe("conversation report event projection", () => {
         type: "subagent_started",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
-        toolStartedSeq: 8,
+        parentToolCallId: "private-parent-tool-id",
       },
       {
         type: "subagent_ended",

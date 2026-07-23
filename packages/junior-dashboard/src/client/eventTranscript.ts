@@ -44,22 +44,14 @@ function subagentOutcomes(
 }
 
 function specialToolIds(events: ConversationReportEvent[]): Set<string> {
-  const startsBySeq = new Map<number, string>();
-  for (const event of events) {
-    if (event.data.type === "tool_started") {
-      startsBySeq.set(event.seq, event.data.toolCallId);
-    }
-  }
-
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (
-      (data.type === "handoff" || data.type === "subagent_started") &&
-      data.toolStartedSeq !== undefined
-    ) {
-      const id = startsBySeq.get(data.toolStartedSeq);
-      if (id) ids.add(id);
+    if (data.type === "handoff" && data.triggeringToolCallId) {
+      ids.add(data.triggeringToolCallId);
+    }
+    if (data.type === "subagent_started" && data.parentToolCallId) {
+      ids.add(data.parentToolCallId);
     }
   }
   return ids;

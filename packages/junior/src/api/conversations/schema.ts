@@ -135,7 +135,7 @@ const conversationReportCompactionEventDataSchema = z
 const conversationReportHandoffEventDataSchema = z
   .object({
     type: z.literal("handoff"),
-    toolStartedSeq: z.number().int().nonnegative().optional(),
+    triggeringToolCallId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -144,7 +144,7 @@ const conversationReportSubagentStartedEventDataSchema = z
     type: z.literal("subagent_started"),
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
-    toolStartedSeq: z.number().int().nonnegative().optional(),
+    parentToolCallId: z.string().min(1).optional(),
   })
   .strict();
 

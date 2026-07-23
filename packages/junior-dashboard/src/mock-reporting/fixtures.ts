@@ -172,7 +172,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_PLAN_ID,
         subagentKind: "advisor",
-        toolStartedSeq: 1,
+        parentToolCallId: "qa-advisor",
       }),
       reportEvent(4, iso(Date.parse(startedAt), 20_000), {
         type: "subagent_ended",

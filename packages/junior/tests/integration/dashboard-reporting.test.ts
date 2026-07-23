@@ -359,7 +359,10 @@ describe("dashboard canonical event reporting", () => {
         outcome: "success",
       },
       { type: "compaction" },
-      { type: "handoff" },
+      {
+        type: "handoff",
+        triggeringToolCallId: `${conversationId}:handoff-tool-call`,
+      },
     ]);
     const eventSeqs = detail.events.map((event) => event.seq);
     expect(eventSeqs).toEqual(eventSeqs.slice().sort((a, b) => a - b));

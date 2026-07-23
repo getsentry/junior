@@ -158,7 +158,7 @@ describe("dashboard conversation formatting", () => {
           type: "subagent_started",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          toolStartedSeq: 1,
+          parentToolCallId: "search-1",
         }),
         event(3, {
           type: "message",

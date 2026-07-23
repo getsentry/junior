@@ -151,20 +151,15 @@ describe("canonical event transcript reduction", () => {
     ]);
   });
 
-  it("replaces only correlated tool starts with special lifecycle rows", () => {
+  it("replaces correlated tool facts with special lifecycle rows", () => {
     const entries = groupTranscriptMessages(
       conversationTranscriptMessages(
         conversation([
-          event(0, "2026-01-01T00:00:00.000Z", {
-            type: "tool_started",
-            toolCallId: "advisor-correlated",
-            name: "advisor",
-          }),
           event(1, "2026-01-01T00:00:01.000Z", {
             type: "subagent_started",
             childConversationId: "child-correlated",
             subagentKind: "advisor",
-            toolStartedSeq: 0,
+            parentToolCallId: "advisor-correlated",
           }),
           event(2, "2026-01-01T00:00:02.000Z", {
             type: "subagent_ended",
@@ -176,14 +171,9 @@ describe("canonical event transcript reduction", () => {
             toolCallId: "advisor-visible",
             name: "advisor",
           }),
-          event(4, "2026-01-01T00:00:04.000Z", {
-            type: "tool_started",
-            toolCallId: "handoff-correlated",
-            name: "handoff",
-          }),
           event(5, "2026-01-01T00:00:05.000Z", {
             type: "handoff",
-            toolStartedSeq: 4,
+            triggeringToolCallId: "handoff-correlated",
           }),
           event(6, "2026-01-01T00:00:06.000Z", {
             type: "subagent_started",

@@ -207,7 +207,6 @@ export function projectConversationReportEvents(args: {
   events: ConversationEvent[];
 }): ConversationReportEvent[] {
   const subagentStarts = new Map<string, number>();
-  const toolStarts = new Map<string, number>();
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
@@ -219,7 +218,6 @@ export function projectConversationReportEvents(args: {
       };
       data = reportToolCalls(reportArgs) ?? reportToolResult(reportArgs);
     } else if (event.data.type === "tool_execution_started") {
-      toolStarts.set(event.data.toolCallId, event.seq);
       data = {
         type: "tool_started",
         toolCallId: event.data.toolCallId,
@@ -227,14 +225,13 @@ export function projectConversationReportEvents(args: {
       };
     } else if (event.data.type === "subagent_started") {
       subagentStarts.set(event.data.subagentInvocationId, event.seq);
-      const toolStartedSeq = event.data.parentToolCallId
-        ? toolStarts.get(event.data.parentToolCallId)
-        : undefined;
       data = {
         type: "subagent_started",
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
-        ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),
+        ...(event.data.parentToolCallId
+          ? { parentToolCallId: event.data.parentToolCallId }
+          : {}),
       };
     } else if (event.data.type === "subagent_ended") {
       const startedSeq = subagentStarts.get(event.data.subagentInvocationId);
@@ -246,12 +243,11 @@ export function projectConversationReportEvents(args: {
         };
       }
     } else if (event.data.type === "handoff") {
-      const toolStartedSeq = event.data.triggeringToolCallId
-        ? toolStarts.get(event.data.triggeringToolCallId)
-        : undefined;
       data = {
         type: "handoff",
-        ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),
+        ...(event.data.triggeringToolCallId
+          ? { triggeringToolCallId: event.data.triggeringToolCallId }
+          : {}),
       };
     } else {
       data = reportEventData({
