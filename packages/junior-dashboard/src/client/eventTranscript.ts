@@ -111,13 +111,14 @@ export function conversationTranscriptMessages(
   for (const event of conversation.events) {
     const data = event.data;
     if (data.type === "message") {
-      messages.push(
-        eventMessage(event, data.role, [
+      messages.push({
+        ...eventMessage(event, data.role, [
           data.redacted
             ? { type: "text", redacted: true }
             : { type: "text", text: data.text! },
         ]),
-      );
+        ...(data.eventType ? { eventType: data.eventType } : {}),
+      });
       continue;
     }
 

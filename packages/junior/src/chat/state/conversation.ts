@@ -11,6 +11,7 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   attachmentCount?: number;
+  eventType?: string;
   explicitMention?: boolean;
   imageAttachmentCount?: number;
   imageFileIds?: string[];

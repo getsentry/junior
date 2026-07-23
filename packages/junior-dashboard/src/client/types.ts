@@ -48,6 +48,7 @@ export type TranscriptViewPart =
   | TranscriptViewToolCallPart;
 
 export type TranscriptViewMessage = {
+  eventType?: string;
   outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";

@@ -157,6 +157,9 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
+        ...(typeof data.meta?.eventType === "string"
+          ? { eventType: data.meta.eventType }
+          : {}),
         ...(args.canExposePayload
           ? { text: data.text }
           : { redacted: true as const }),

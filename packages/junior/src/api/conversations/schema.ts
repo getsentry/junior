@@ -54,6 +54,7 @@ const conversationReportMessageEventDataSchema = z
     type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
+    eventType: z.string().min(1).optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
   })

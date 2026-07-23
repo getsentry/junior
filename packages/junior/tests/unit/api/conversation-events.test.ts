@@ -240,6 +240,32 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("AAAA");
   });
 
+  it("projects only the resource event discriminator from message metadata", () => {
+    const [projected] = projectConversationReportEvents({
+      canExposePayload: true,
+      events: [
+        event(1, {
+          type: "message",
+          messageId: "event-1",
+          role: "user",
+          text: "event details",
+          meta: {
+            eventType: "pull_request.merged",
+            provider: "private-provider",
+          },
+        }),
+      ],
+    });
+
+    expect(projected?.data).toEqual({
+      type: "message",
+      messageId: "event-1",
+      role: "user",
+      eventType: "pull_request.merged",
+      text: "event details",
+    });
+  });
+
   it("keeps projected prefixes byte-equivalent when later facts arrive", () => {
     const events = [
       event(1, {

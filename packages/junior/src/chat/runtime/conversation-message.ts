@@ -16,6 +16,15 @@ interface ConversationMessageInput {
   text: string;
 }
 
+function resourceEventType(entry: Message): string | undefined {
+  if (!entry.raw || typeof entry.raw !== "object") return undefined;
+  const raw = entry.raw as Record<string, unknown>;
+  return raw.event_type === "resource_event" &&
+    typeof raw.resource_event_type === "string"
+    ? raw.resource_event_type
+    : undefined;
+}
+
 function resolveMessageText(args: ConversationMessageInput): string {
   const text = normalizeConversationText(args.text);
   return text || NON_TEXT_MESSAGE_TEXT;
@@ -50,6 +59,7 @@ export function toConversationMessage(
     },
     meta: {
       attachmentCount: args.entry.attachments.length,
+      eventType: resourceEventType(args.entry),
       explicitMention: args.explicitMention,
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,

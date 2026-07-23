@@ -495,6 +495,7 @@ function slackSerializedThread(input: {
  */
 function slackSerializedResourceEventMessage(input: {
   channelId: string;
+  eventType: string;
   id: string;
   text: string;
   threadTs: string;
@@ -519,6 +520,7 @@ function slackSerializedResourceEventMessage(input: {
     raw: {
       channel: input.channelId,
       event_type: "resource_event",
+      resource_event_type: input.eventType,
       thread_ts: input.threadTs,
       type: "message",
       user: "UJRNEVENT",
@@ -548,6 +550,7 @@ export function createSlackResourceEventInboundMessage(
   const timestampIso = new Date(input.event.occurredAtMs).toISOString();
   const message = slackSerializedResourceEventMessage({
     channelId: slack.channelId,
+    eventType: input.event.eventType,
     id: messageId,
     text: input.text,
     threadTs: slack.threadTs,
