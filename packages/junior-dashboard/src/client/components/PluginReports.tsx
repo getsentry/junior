@@ -3,6 +3,7 @@ import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
 import { formatTime } from "../format";
 import { cn } from "../styles";
+import { PluginBarChart } from "./PluginBarChart";
 import { Card } from "./layout/Card";
 
 /** Render plugin operational reports without plugin-specific UI code. */
@@ -89,6 +90,13 @@ function PluginReportView(props: { report: PluginOperationalReport }) {
                 {metric.label}
               </div>
             </div>
+          ))}
+        </div>
+      ) : null}
+      {props.report.widgets?.length ? (
+        <div className="grid gap-3 border-t border-white/[0.06] bg-black/15 p-3 lg:grid-cols-2">
+          {props.report.widgets.map((widget) => (
+            <PluginBarChart key={widget.id} widget={widget} />
           ))}
         </div>
       ) : null}

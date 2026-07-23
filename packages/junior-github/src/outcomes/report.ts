@@ -410,31 +410,53 @@ export async function buildGitHubOutcomeReport(args: {
         value: String(issueThirtyDays.closedNotPlanned),
       },
     ],
-    recordSets: [
+    widgets: [
       {
-        title: "Pull request outcome windows",
-        fields: [
-          { key: "window", label: "Window" },
+        id: "pull-request-outcomes",
+        type: "bar_chart",
+        title: "Pull request outcomes",
+        description: "Cumulative outcomes across rolling windows",
+        series: [
           { key: "created", label: "Created" },
-          { key: "merged", label: "Merged" },
-          { key: "closed", label: "Closed unmerged" },
-          { key: "commitComposition", label: "Merged commit composition" },
-          { key: "mergeRate", label: "Merge rate" },
-          { key: "mergeTime", label: "Median merge time" },
+          { key: "merged", label: "Merged", tone: "good" },
+          { key: "closed", label: "Closed unmerged", tone: "danger" },
         ],
-        records: windows.map((stats) => ({
+        categories: windows.map((stats) => ({
           id: `${stats.days}d`,
+          label: `${stats.days}d`,
           values: {
-            window: `${stats.days} days`,
-            created: String(stats.created),
-            merged: String(stats.merged),
-            closed: String(stats.closed),
-            commitComposition: formatCommitComposition(stats),
-            mergeRate: formatPercent(stats.mergeRate),
-            mergeTime: formatDuration(stats.medianMergeTimeMs),
+            created: stats.created,
+            merged: stats.merged,
+            closed: stats.closed,
           },
         })),
       },
+      {
+        id: "issue-outcomes",
+        type: "bar_chart",
+        title: "Issue outcomes",
+        description: "Cumulative outcomes across rolling windows",
+        series: [
+          { key: "created", label: "Created" },
+          { key: "completed", label: "Completed", tone: "good" },
+          { key: "duplicate", label: "Duplicate", tone: "warning" },
+          { key: "notPlanned", label: "Not planned", tone: "danger" },
+          { key: "unknown", label: "Unknown" },
+        ],
+        categories: issueWindows.map((stats) => ({
+          id: `${stats.days}d`,
+          label: `${stats.days}d`,
+          values: {
+            created: stats.created,
+            completed: stats.closedCompleted,
+            duplicate: stats.closedDuplicate,
+            notPlanned: stats.closedNotPlanned,
+            unknown: stats.closedUnknown,
+          },
+        })),
+      },
+    ],
+    recordSets: [
       {
         title: "Pull request repositories · 30d",
         emptyText: "No Junior-owned pull request activity yet.",
@@ -455,30 +477,6 @@ export async function buildGitHubOutcomeReport(args: {
             closed: String(stats.closed),
             commitComposition: formatCommitComposition(stats),
             mergeRate: formatPercent(stats.mergeRate),
-          },
-        })),
-      },
-      {
-        title: "Issue outcome windows",
-        fields: [
-          { key: "window", label: "Window" },
-          { key: "created", label: "Created" },
-          { key: "completed", label: "Completed" },
-          { key: "duplicate", label: "Duplicate" },
-          { key: "notPlanned", label: "Not planned" },
-          { key: "unknown", label: "Unknown reason" },
-          { key: "closeTime", label: "Median close time" },
-        ],
-        records: issueWindows.map((stats) => ({
-          id: `${stats.days}d`,
-          values: {
-            window: `${stats.days} days`,
-            created: String(stats.created),
-            completed: String(stats.closedCompleted),
-            duplicate: String(stats.closedDuplicate),
-            notPlanned: String(stats.closedNotPlanned),
-            unknown: String(stats.closedUnknown),
-            closeTime: formatDuration(stats.medianCloseTimeMs),
           },
         })),
       },

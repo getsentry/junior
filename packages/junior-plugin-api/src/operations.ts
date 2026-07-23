@@ -56,11 +56,34 @@ export interface PluginOperationalRecordSet {
   title: string;
 }
 
+export interface PluginOperationalChartSeries {
+  key: string;
+  label: string;
+  tone?: PluginOperationalTone;
+}
+
+export interface PluginOperationalChartCategory {
+  id: string;
+  label: string;
+  values: Record<string, number>;
+}
+
+export interface PluginOperationalBarChartWidget {
+  categories: PluginOperationalChartCategory[];
+  description?: string;
+  emptyText?: string;
+  id: string;
+  series: PluginOperationalChartSeries[];
+  title: string;
+  type: "bar_chart";
+}
+
 export interface PluginOperationalReportContent {
   generatedAt?: string;
   metrics?: PluginOperationalMetric[];
   recordSets?: PluginOperationalRecordSet[];
   title?: string;
+  widgets?: PluginOperationalBarChartWidget[];
 }
 
 export interface PluginOperationalReport extends PluginOperationalReportContent {

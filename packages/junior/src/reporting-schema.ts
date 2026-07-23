@@ -88,6 +88,39 @@ const pluginOperationalRecordSetSchema = z
   })
   .strict();
 
+const pluginOperationalBarChartWidgetSchema = z
+  .object({
+    categories: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            values: z.record(z.string(), z.number().finite()),
+          })
+          .strict(),
+      )
+      .max(100),
+    description: z.string().optional(),
+    emptyText: z.string().optional(),
+    id: z.string().min(1),
+    series: z
+      .array(
+        z
+          .object({
+            key: z.string().min(1),
+            label: z.string().min(1),
+            tone: pluginOperationalToneSchema.optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8),
+    title: z.string().min(1),
+    type: z.literal("bar_chart"),
+  })
+  .strict();
+
 export const pluginOperationalReportSchema = z
   .object({
     generatedAt: z.string().optional(),
@@ -95,6 +128,7 @@ export const pluginOperationalReportSchema = z
     recordSets: z.array(pluginOperationalRecordSetSchema).optional(),
     title: z.string().optional(),
     pluginName: z.string(),
+    widgets: z.array(pluginOperationalBarChartWidgetSchema).max(12).optional(),
   })
   .strict();
 

@@ -846,6 +846,38 @@ describe("dashboard canonical-event components", () => {
     expect(skillsHtml).toContain(">triage<");
   });
 
+  it("renders plugin chart widgets with accessible values", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories: [
+                  {
+                    id: "30d",
+                    label: "30d",
+                    values: { created: 4, merged: 3 },
+                  },
+                ],
+                id: "pull-request-outcomes",
+                series: [
+                  { key: "created", label: "Created" },
+                  { key: "merged", label: "Merged", tone: "good" },
+                ],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain("Pull request outcomes");
+    expect(html).toContain('aria-label="30d, Merged: 3"');
+  });
+
   it("renders plugin records without declared fields safely", () => {
     const html = renderToStaticMarkup(
       <PluginReports
