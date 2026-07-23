@@ -75,9 +75,9 @@ function extractSliceUsage(
 /** Create the run's resume state: checkpoints, snapshots, and ending translation. */
 export function createResumeState(args: ResumeStateArgs) {
   let beforeMessageCount = 0;
-  let cooperativeYieldError: CooperativeTurnYieldError | undefined;
   let inputCommitted = false;
   let latestSafeBoundaryMessages: PiMessage[] = [];
+  let pendingYieldError: CooperativeTurnYieldError | undefined;
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let turnStartMessageIndex: number | undefined;
@@ -138,9 +138,6 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     get timedOut(): boolean {
       return timedOut;
-    },
-    get cooperativeYieldError(): CooperativeTurnYieldError | undefined {
-      return cooperativeYieldError;
     },
     setTurnStartMessageIndex(index: number | undefined): void {
       turnStartMessageIndex = index;
@@ -212,10 +209,16 @@ export function createResumeState(args: ResumeStateArgs) {
       }
 
       resumeMessages = this.getResumeSnapshot(currentMessages);
-      cooperativeYieldError = new CooperativeTurnYieldError(
+      pendingYieldError = new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${currentDurationMs()}ms`,
       );
-      throw cooperativeYieldError;
+      throw pendingYieldError;
+    },
+    /** Re-throw a cooperative yield that Pi converted into an error turn. */
+    rethrowPendingYield(): void {
+      if (pendingYieldError) {
+        throw pendingYieldError;
+      }
     },
     /** Persist an auth pause or fail. */
     async requireAuthPauseOutcome(pause: {
@@ -241,7 +244,7 @@ export function createResumeState(args: ResumeStateArgs) {
       error: unknown;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
-      if (cooperativeYieldError && error instanceof CooperativeTurnYieldError) {
+      if (pendingYieldError && error instanceof CooperativeTurnYieldError) {
         const usage =
           ending.currentUsage ??
           extractSliceUsage(resumeMessages, beforeMessageCount);

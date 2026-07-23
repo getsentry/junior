@@ -1051,9 +1051,7 @@ async function executeAgentRunInPrivacyContext(
                 throw assistantMessageDeliveryError;
               }
               signal?.throwIfAborted();
-              if (runResume.cooperativeYieldError) {
-                throw runResume.cooperativeYieldError;
-              }
+              runResume.rethrowPendingYield();
 
               newMessages = agent!.state.messages.slice(
                 runResume.beforeMessageCount,
