@@ -30,6 +30,7 @@ import {
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import {
   applyConversationEventPage,
+  mergeConversationSnapshot,
   mergeConversationUpdate,
 } from "./conversation-cache";
 import type { DashboardCoreData, SystemData } from "./types";
@@ -262,7 +263,10 @@ export function useConversationData(conversationId: string | undefined) {
     queryFn: async ({ signal }): Promise<ConversationDetailReport> => {
       const existing = client.getQueryData<ConversationDetailReport>(queryKey);
       if (!existing || existing.status !== "active") {
-        return readConversationData(conversationId!, signal);
+        const snapshot = await readConversationData(conversationId!, signal);
+        return existing
+          ? mergeConversationSnapshot(existing, snapshot)
+          : snapshot;
       }
       return readAllConversationUpdates(conversationId!, existing, signal);
     },

@@ -9,6 +9,7 @@ import type {
 import {
   applyConversationEventPage,
   mergeConversationEventPage,
+  mergeConversationSnapshot,
   mergeConversationUpdate,
 } from "../src/client/conversation-cache";
 
@@ -104,6 +105,29 @@ describe("conversation query cache", () => {
       ],
       previousCursor: "before-3",
       sentryConversationUrl: "https://sentry.example/conversation-1",
+      status: "completed",
+    });
+  });
+
+  it("refreshes a snapshot without discarding loaded history", () => {
+    const current = mergeConversationEventPage(detail(), {
+      events: [event(1), event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    });
+    const snapshot: ConversationDetailReport = {
+      ...detail(),
+      cumulativeDurationMs: 30,
+      eventCursor: "refreshed-cursor",
+      events: [event(4), event(5)],
+      status: "completed",
+    };
+
+    expect(mergeConversationSnapshot(current, snapshot)).toMatchObject({
+      cumulativeDurationMs: 30,
+      eventCursor: "refreshed-cursor",
+      events: [event(1), event(2), event(3), event(4), event(5)],
+      previousCursor: undefined,
       status: "completed",
     });
   });

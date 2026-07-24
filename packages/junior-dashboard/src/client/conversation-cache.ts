@@ -41,6 +41,24 @@ export function mergeConversationEventPage(
   };
 }
 
+/** Refresh detail fields without discarding history pages already in the cache. */
+export function mergeConversationSnapshot(
+  current: ConversationDetailReport,
+  snapshot: ConversationDetailReport,
+): ConversationDetailReport {
+  if (snapshot.eventHistory.status !== current.eventHistory.status) {
+    return snapshot;
+  }
+  const events = new Map(
+    [...current.events, ...snapshot.events].map((event) => [event.seq, event]),
+  );
+  return {
+    ...snapshot,
+    events: [...events.values()].sort((left, right) => left.seq - right.seq),
+    previousCursor: current.previousCursor,
+  };
+}
+
 /**
  * Stop an in-flight poll and prepend history to the latest cached transcript.
  *
