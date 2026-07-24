@@ -11,6 +11,7 @@ import type {
 import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
 import type {
   ActorIdentity,
+  ConversationEventHistory,
   ConversationReportStatus,
   ConversationSummaryReport,
   ConversationSurface,
@@ -149,6 +150,22 @@ function channelNameRedactedFromConversation(
     return false;
   }
   return !canViewPrivateContent;
+}
+
+/** Describe whether a viewer can read one conversation's retained events. */
+export function conversationEventHistory(args: {
+  canExposePayload: boolean;
+  transcriptPurgedAtMs?: number;
+}): ConversationEventHistory {
+  if (args.transcriptPurgedAtMs !== undefined) {
+    return {
+      status: "expired",
+      expiredAt: new Date(args.transcriptPurgedAtMs).toISOString(),
+    };
+  }
+  return args.canExposePayload
+    ? { status: "available" }
+    : { status: "redacted", reason: "non_public_conversation" };
 }
 
 /** Project one durable conversation and its SQL metrics into the REST summary. */

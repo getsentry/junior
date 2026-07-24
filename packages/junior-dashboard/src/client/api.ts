@@ -2,6 +2,7 @@ import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import type {
   ConversationDetailReport,
+  ConversationEventPage,
   ConversationUpdatesReport,
 } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
@@ -9,6 +10,7 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   archiveConversationResponseSchema,
   conversationDetailReportSchema,
+  conversationEventPageSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
   conversationUpdatesReportSchema,
@@ -26,6 +28,10 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import {
+  mergeConversationEventPage,
+  mergeConversationUpdate,
+} from "./conversation-cache";
 import type { DashboardCoreData, SystemData } from "./types";
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
@@ -242,27 +248,48 @@ export function useArchiveConversation(conversationId: string) {
 
 /** Fetch one conversation transcript while preserving route-level disabled state. */
 export function useConversationData(conversationId: string | undefined) {
-  return useQuery({
+  const queryKey = ["conversation", conversationId] as const;
+  const query = useQuery({
     enabled: Boolean(conversationId),
-    queryKey: ["conversation", conversationId],
+    queryKey,
     queryFn: async (): Promise<ConversationDetailReport> => {
-      const existing = client.getQueryData<ConversationDetailReport>([
-        "conversation",
-        conversationId,
-      ]);
-      if (!existing || existing.status !== "active" || !existing.eventCursor) {
+      const existing = client.getQueryData<ConversationDetailReport>(queryKey);
+      if (!existing || existing.status !== "active") {
         return readConversationData(conversationId!);
       }
-      const update = await readConversationUpdates(
-        conversationId!,
-        existing.eventCursor,
-      );
-      return mergeConversationUpdate(existing, update);
+      return readAllConversationUpdates(conversationId!, existing);
     },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
   });
+  const history = useMutation({
+    mutationFn: (before: string) =>
+      readConversationEvents(conversationId!, before),
+    onSuccess: async (page) => {
+      const current = client.getQueryData<ConversationDetailReport>(queryKey);
+      if (!current) return;
+      if (page.eventHistory.status !== current.eventHistory.status) {
+        await client.invalidateQueries({ queryKey });
+        return;
+      }
+      client.setQueryData<ConversationDetailReport>(
+        queryKey,
+        mergeConversationEventPage(current, page),
+      );
+    },
+  });
+  return {
+    ...query,
+    historyError: history.error,
+    hasPreviousPage: Boolean(query.data?.previousCursor),
+    isLoadingPreviousPage: history.isPending,
+    loadPreviousPage: () => {
+      const before =
+        client.getQueryData<ConversationDetailReport>(queryKey)?.previousCursor;
+      if (before && !history.isPending) history.mutate(before);
+    },
+  };
 }
 
 /** Read one conversation transcript payload for dashboard-local detail views. */
@@ -272,6 +299,18 @@ export function readConversationData(
   return read(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+/** Read one bounded page of events before the supplied history cursor. */
+export function readConversationEvents(
+  conversationId: string,
+  before: string,
+): Promise<ConversationEventPage> {
+  const query = new URLSearchParams({ before });
+  return read(
+    conversationEventPageSchema,
+    `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
   );
 }
 
@@ -287,20 +326,21 @@ export function readConversationUpdates(
   );
 }
 
-function mergeConversationUpdate(
-  current: ConversationDetailReport,
-  update: ConversationUpdatesReport,
-): ConversationDetailReport {
-  const existingSeqs = new Set(current.events.map((event) => event.seq));
-  return {
-    ...current,
-    ...update,
-    events: [
-      ...current.events,
-      ...update.events.filter((event) => !existingSeqs.has(event.seq)),
-    ],
-    modelUsage: current.modelUsage,
-    previousCursor: current.previousCursor,
-    sentryConversationUrl: current.sentryConversationUrl,
-  };
+/** Drain a bounded forward feed before publishing one coherent cache update. */
+async function readAllConversationUpdates(
+  conversationId: string,
+  initial: ConversationDetailReport,
+): Promise<ConversationDetailReport> {
+  let current = initial;
+  while (true) {
+    const update = await readConversationUpdates(
+      conversationId,
+      current.eventCursor,
+    );
+    if (update.eventHistory.status !== current.eventHistory.status) {
+      return readConversationData(conversationId);
+    }
+    current = mergeConversationUpdate(current, update);
+    if (!update.hasMore) return current;
+  }
 }

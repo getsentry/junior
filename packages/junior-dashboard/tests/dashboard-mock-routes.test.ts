@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
   conversationDetailReportSchema,
+  conversationEventPageSchema,
+  conversationUpdatesReportSchema,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
@@ -243,6 +245,26 @@ describe("dashboard canonical-event mock routes", () => {
     expect(long.events.map((event) => event.data.type)).toEqual(
       expect.arrayContaining(["compaction", "handoff"]),
     );
+    const historyResponse = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(long.conversationId)}/events?before=${encodeURIComponent(long.previousCursor!)}`,
+      ),
+    );
+    expect(historyResponse.status).toBe(200);
+    const history = conversationEventPageSchema.parse(
+      await historyResponse.json(),
+    );
+    expect(history.events.map((event) => event.seq)).toEqual([0]);
+
+    const updatesResponse = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(active.conversationId)}/updates?cursor=${encodeURIComponent(active.eventCursor)}`,
+      ),
+    );
+    expect(updatesResponse.status).toBe(200);
+    expect(
+      conversationUpdatesReportSchema.parse(await updatesResponse.json()),
+    ).toMatchObject({ events: [], hasMore: false });
   });
 
   it("loads canonical child conversations through the ordinary detail route", async () => {

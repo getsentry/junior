@@ -5,10 +5,14 @@ import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   conversationDetailReportSchema,
+  conversationEventPageSchema,
+  conversationEventsQuerySchema,
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
   conversationStatsReportSchema,
+  conversationUpdatesQuerySchema,
+  conversationUpdatesReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
@@ -16,8 +20,10 @@ import {
 } from "@sentry/junior/api/schema";
 import {
   readMockConversationDetail,
+  readMockConversationEvents,
   readMockConversationFeed,
   readMockConversationStats,
+  readMockConversationUpdates,
   readMockLocationDetail,
   readMockLocationDirectory,
   readMockPeopleDirectory,
@@ -73,6 +79,46 @@ export function createMockReportingApi(): Hono {
   app.get("/conversations/stats", () =>
     jsonResponse(conversationStatsReportSchema, readMockConversationStats()),
   );
+  app.get("/conversations/:conversationId/events", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const query = conversationEventsQuerySchema.safeParse(c.req.query());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    const report = readMockConversationEvents(
+      params.data.conversationId,
+      query.data.before,
+    );
+    return report
+      ? jsonResponse(conversationEventPageSchema, report)
+      : errorResponse("Invalid conversation cursor.", 400);
+  });
+  app.get("/conversations/:conversationId/updates", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const query = conversationUpdatesQuerySchema.safeParse(c.req.query());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    const report = readMockConversationUpdates(
+      params.data.conversationId,
+      query.data.cursor,
+    );
+    return report
+      ? jsonResponse(conversationUpdatesReportSchema, report)
+      : errorResponse("Invalid conversation cursor.", 400);
+  });
   app.get("/conversations/:conversationId", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {

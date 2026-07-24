@@ -6,12 +6,14 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ConversationDetailReport,
+  ConversationEventPage,
   ConversationFeed,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
+  ConversationUpdatesReport,
   LocationDetailReport,
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -250,7 +252,7 @@ function advisorConversation(
 function longConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -92 * 60_000);
   const events: ConversationReportEvent[] = [
-    reportEvent(0, startedAt, {
+    reportEvent(1, startedAt, {
       type: "message",
       messageId: "release-user",
       role: "user",
@@ -260,7 +262,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
   for (let index = 0; index < 12; index += 1) {
     events.push(
       reportEvent(
-        index + 1,
+        index + 2,
         iso(Date.parse(startedAt), 2_000 + index * 4_000),
         {
           type: "tool_started",
@@ -271,16 +273,16 @@ function longConversation(nowMs: number): ConversationDetailReport {
     );
   }
   events.push(
-    reportEvent(13, iso(Date.parse(startedAt), 53_000), {
+    reportEvent(14, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
     }),
-    reportEvent(14, iso(Date.parse(startedAt), 90_000), {
+    reportEvent(15, iso(Date.parse(startedAt), 90_000), {
       type: "handoff",
       modelProfile: "fast",
       modelId: "openai/gpt-5-mini",
       reasoningLevel: "medium",
     }),
-    reportEvent(15, iso(Date.parse(startedAt), 166_000), {
+    reportEvent(16, iso(Date.parse(startedAt), 166_000), {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
@@ -299,6 +301,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
     actorIdentity: actor(undefined, "Jordan Blake", "jordan"),
     cumulativeDurationMs: 552_761,
     cumulativeUsage: usage(0.18),
+    previousCursor: `mock:before:${LONG_CONVERSATION_ID}`,
     modelUsage: [
       {
         modelId: "anthropic/claude-sonnet-4-5",
@@ -548,6 +551,7 @@ function summaryFromConversation(
     generatedAt: _generatedAt,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
+    previousCursor: _previousCursor,
     sentryConversationUrl: _sentryConversationUrl,
     ...summary
   } = conversation;
@@ -680,6 +684,46 @@ export function readMockConversationDetail(
   return detail.channel && PUBLIC_MOCK_CHANNEL_IDS.has(detail.channel)
     ? { ...detail, locationId: `mock:${detail.channel}` }
     : detail;
+}
+
+/** Return the deterministic older page used to exercise transcript pagination. */
+export function readMockConversationEvents(
+  conversationId: string,
+  before: string,
+): ConversationEventPage | undefined {
+  const detail = readMockConversationDetail(conversationId);
+  if (!detail || before !== detail.previousCursor) return undefined;
+  return {
+    events: [
+      reportEvent(0, iso(Date.parse(detail.startedAt), -60_000), {
+        type: "message",
+        messageId: `${conversationId}:earlier`,
+        role: "user",
+        text: "Prepare the release and include the complete earlier context.",
+      }),
+    ],
+    eventHistory: detail.eventHistory,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** Return a no-op forward page so active mock conversations poll successfully. */
+export function readMockConversationUpdates(
+  conversationId: string,
+  cursor: string,
+): ConversationUpdatesReport | undefined {
+  const conversation = mockConversations(Date.now()).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation || cursor !== conversation.eventCursor) return undefined;
+  return {
+    ...summaryFromConversation(conversation),
+    events: [],
+    eventCursor: conversation.eventCursor,
+    eventHistory: conversation.eventHistory,
+    generatedAt: new Date().toISOString(),
+    hasMore: false,
+  };
 }
 
 /** Build mock dashboard stats from canonical-event mock conversations. */

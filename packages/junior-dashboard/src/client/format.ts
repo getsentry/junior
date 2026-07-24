@@ -4,8 +4,6 @@ import type {
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-
 import type {
   CodeBlock,
   Conversation,
@@ -857,7 +855,7 @@ export function buildConversations(
 
 /** Build a conversation row from a detail report so permalinks do not depend on the feed. */
 export function conversationFromDetail(
-  detail: ConversationDetailReport | undefined,
+  detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
   const conversation = buildConversations([detail])[0];

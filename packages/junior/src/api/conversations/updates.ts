@@ -1,11 +1,15 @@
-import { decodeStoredConversationEvent } from "@/chat/conversations/history";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
-import { readConversationReportEventRows } from "./detail";
-import { projectConversationReportEventPage } from "./events";
+import {
+  readConversationEventHighWaterSeq,
+  readConversationEventUpdates,
+} from "./event-page";
 import { readConversationRecordFromSql } from "./list";
-import { conversationSummaryFromStoredConversation } from "./projection";
+import {
+  conversationEventHistory,
+  conversationSummaryFromStoredConversation,
+} from "./projection";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { defineApiRoute } from "../route";
@@ -20,8 +24,14 @@ import {
 export async function readConversationUpdates(
   conversationId: string,
   cursorValue: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: {
+    limit?: number;
+    verifiedViewerEmail?: string;
+  } = {},
 ): Promise<ConversationUpdatesReport | undefined> {
+  const record = await readConversationRecordFromSql(conversationId);
+  if (!record) return undefined;
+
   const cursor = decodeConversationCursor({
     conversationId,
     cursor: cursorValue,
@@ -29,64 +39,39 @@ export async function readConversationUpdates(
   });
   if (!cursor) throwApiError(400, "Invalid conversation cursor.");
 
-  const record = await readConversationRecordFromSql(conversationId);
-  if (!record) return undefined;
   const includeDescendantMetrics = record.rootConversationId === conversationId;
-  const [accessByConversation, rows, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      getDb(),
-      [conversationId],
-      options.verifiedViewerEmail,
-    ),
-    readConversationReportEventRows(getSqlExecutor(), conversationId, {
-      afterSeq: cursor.seq,
-    }),
-    readRootConversationMetricsFromSql(
-      getDb(),
-      includeDescendantMetrics ? [conversationId] : [],
-    ),
-  ]);
-  const decodeEventRow = (row: (typeof rows)[number]) =>
-    decodeStoredConversationEvent({
-      schemaVersion: row.schemaVersion,
-      seq: row.seq,
-      historyVersion: row.historyVersion,
-      ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
-      createdAtMs: row.createdAt.getTime(),
-      type: row.type,
-      payload: row.payload,
-    });
-  const canonicalEvents = rows.map(decodeEventRow);
-  const endedInvocationIds = canonicalEvents.flatMap((event) =>
-    event.data.type === "subagent_ended"
-      ? [event.data.subagentInvocationId]
-      : [],
+  const [accessByConversation, highWaterSeq, metricsByRoot] = await Promise.all(
+    [
+      readConversationAccessFromSql(
+        getDb(),
+        [conversationId],
+        options.verifiedViewerEmail,
+      ),
+      readConversationEventHighWaterSeq(getSqlExecutor(), conversationId),
+      readRootConversationMetricsFromSql(
+        getDb(),
+        includeDescendantMetrics ? [conversationId] : [],
+      ),
+    ],
   );
-  const subagentStartRows =
-    endedInvocationIds.length === 0
-      ? []
-      : await readConversationReportEventRows(
-          getSqlExecutor(),
-          conversationId,
-          {
-            subagentInvocationIds: endedInvocationIds,
-            types: ["subagent_started"],
-          },
-        );
-  const subagentStartEvents = subagentStartRows.map(decodeEventRow);
   const access = accessByConversation.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
-  const projected = projectConversationReportEventPage({
-    canExposePayload,
-    events:
-      record.conversation.transcriptPurgedAtMs === undefined
-        ? canonicalEvents
-        : [],
-    subagentStartEvents,
-  });
-  const maxSeq = canonicalEvents.at(-1)?.seq ?? cursor.seq;
-  const metrics = metricsByRoot.get(conversationId);
   const transcriptPurgedAtMs = record.conversation.transcriptPurgedAtMs;
+  const page =
+    transcriptPurgedAtMs === undefined
+      ? await readConversationEventUpdates(getSqlExecutor(), {
+          afterSeq: cursor.seq,
+          canExposePayload,
+          conversationId,
+          limit: options.limit ?? 500,
+          throughSeq: highWaterSeq,
+        })
+      : {
+          cursorSeq: highWaterSeq,
+          events: [],
+          hasMore: false,
+        };
+  const metrics = metricsByRoot.get(conversationId);
 
   return conversationUpdatesReportSchema.parse({
     ...conversationSummaryFromStoredConversation({
@@ -96,22 +81,18 @@ export async function readConversationUpdates(
       ...(record.locationId ? { locationId: record.locationId } : {}),
       usage: metrics?.usage ?? record.usage ?? undefined,
     }),
-    events: projected,
+    events: page.events,
     eventCursor: encodeConversationCursor({
       conversationId,
       kind: "after",
-      seq: maxSeq,
+      seq: page.cursorSeq,
     }),
-    eventHistory:
-      transcriptPurgedAtMs !== undefined
-        ? {
-            status: "expired",
-            expiredAt: new Date(transcriptPurgedAtMs).toISOString(),
-          }
-        : canExposePayload
-          ? { status: "available" }
-          : { status: "redacted", reason: "non_public_conversation" },
+    eventHistory: conversationEventHistory({
+      canExposePayload,
+      ...(transcriptPurgedAtMs === undefined ? {} : { transcriptPurgedAtMs }),
+    }),
     generatedAt: new Date().toISOString(),
+    hasMore: page.hasMore,
   });
 }
 
@@ -124,16 +105,15 @@ export default defineApiRoute({
       conversationParamsSchema,
       c.req.param(),
     );
-    const { cursor } = parseQuery(
+    const { cursor, limit } = parseQuery(
       conversationUpdatesQuerySchema,
       c.req.query(),
     );
     const verifiedViewerEmail = c.get("verifiedViewerEmail");
-    const report = await readConversationUpdates(
-      conversationId,
-      cursor,
-      verifiedViewerEmail ? { verifiedViewerEmail } : {},
-    );
+    const report = await readConversationUpdates(conversationId, cursor, {
+      limit,
+      ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
+    });
     if (!report) throwApiError(404, "Conversation not found.");
     return report;
   },

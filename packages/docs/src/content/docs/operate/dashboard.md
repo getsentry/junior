@@ -96,30 +96,34 @@ When the GitHub plugin is enabled, its GitHub work outcome report appears on
 
 The current authenticated product API slices are:
 
-| Endpoint                           | Purpose                                                                                                     |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/api/health`                      | Dashboard-safe health metadata.                                                                             |
-| `/api/runtime`                     | Runtime paths, providers, skills, and packages.                                                             |
-| `/api/plugins`                     | Loaded plugin list.                                                                                         |
-| `/api/plugins/:plugin/*`           | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
-| `/api/skills`                      | Discovered skill list.                                                                                      |
-| `/api/conversations`               | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
-| `/api/conversations/stats`         | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                         |
-| `/api/people`                      | Actor directory.                                                                                            |
-| `/api/people/:email`               | Actor profile and recent conversation resources.                                                            |
-| `/api/locations`                   | Public location directory and generic private-activity totals.                                              |
-| `/api/locations/:location`         | Activity, actors, and recent conversations for one public location.                                         |
-| `/api/plugin-reports`              | Sanitized plugin operational summaries.                                                                     |
-| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.       |
-| `/api/config`                      | Safe dashboard config signals and feature readiness.                                                        |
-| `/api/me`                          | Signed-in dashboard identity.                                                                               |
+| Endpoint                                   | Purpose                                                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `/api/health`                              | Dashboard-safe health metadata.                                                                             |
+| `/api/runtime`                             | Runtime paths, providers, skills, and packages.                                                             |
+| `/api/plugins`                             | Loaded plugin list.                                                                                         |
+| `/api/plugins/:plugin/*`                   | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
+| `/api/skills`                              | Discovered skill list.                                                                                      |
+| `/api/conversations`                       | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
+| `/api/conversations/stats`                 | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                         |
+| `/api/people`                              | Actor directory.                                                                                            |
+| `/api/people/:email`                       | Actor profile and recent conversation resources.                                                            |
+| `/api/locations`                           | Public location directory and generic private-activity totals.                                              |
+| `/api/locations/:location`                 | Activity, actors, and recent conversations for one public location.                                         |
+| `/api/plugin-reports`                      | Sanitized plugin operational summaries.                                                                     |
+| `/api/conversations/:conversation`         | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.       |
+| `/api/conversations/:conversation/events`  | Earlier transcript event pages selected with a signed `before` cursor.                                      |
+| `/api/conversations/:conversation/updates` | New transcript events and refreshed conversation fields selected with a signed `cursor`.                    |
+| `/api/config`                              | Safe dashboard config signals and feature readiness.                                                        |
+| `/api/me`                                  | Signed-in dashboard identity.                                                                               |
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Every REST conversation resource reports that match through `isParticipant`; other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 
 The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/locations` provides aggregate browsing for public destinations without exposing private destination identity, while `/system` shows 90-day aggregate conversation metrics, loaded plugin inventory, and operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.
 When dashboard auth is explicitly disabled for local or demo use, the workspace shows the global feed because there is no authenticated actor to filter by.
-The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
+The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail returns the latest 500 reporting events by default, an `eventCursor` for forward updates, and a `previousCursor` when earlier events remain. The `limit` query parameter can select between 1 and 1,000 events. Cursors are signed for one conversation and direction; consumers should treat them as opaque.
+
+The dashboard loads earlier pages from the `/events` collection and polls `/updates` only while a conversation is active. An update response sets `hasMore` when another bounded forward page is available. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 The conversation stats endpoint is separate from the recent feed. PostgreSQL computes complete 90-day counts, locations, actors, status, runtime, token usage, and estimated cost directly from durable conversation-index records; those aggregates are not derived from a bounded recent-row sample.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
 

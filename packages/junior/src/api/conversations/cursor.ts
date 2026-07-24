@@ -7,7 +7,7 @@ const conversationCursorPayloadSchema = z
   .object({
     conversationId: z.string().min(1),
     kind: z.enum(["after", "before"]),
-    seq: z.number().int().nonnegative(),
+    seq: z.number().int().min(-1),
     version: z.literal(1),
   })
   .strict();

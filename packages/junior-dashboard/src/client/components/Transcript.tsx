@@ -20,7 +20,11 @@ import { TranscriptSearchProvider } from "./transcriptSearch";
 /** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
   actions?: ReactNode;
+  hasPreviousPage?: boolean;
+  historyError?: Error | null;
   live?: boolean;
+  loadingPreviousPage?: boolean;
+  onLoadPreviousPage?: () => void;
   responding?: boolean;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -73,6 +77,24 @@ export function Transcript(props: {
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
         </div>
+        {props.hasPreviousPage || props.loadingPreviousPage ? (
+          <div className="mb-2 flex justify-center">
+            <Button
+              disabled={props.loadingPreviousPage}
+              onClick={props.onLoadPreviousPage}
+            >
+              {props.loadingPreviousPage ? "Loading…" : "Load earlier events"}
+            </Button>
+          </div>
+        ) : null}
+        {props.historyError ? (
+          <div
+            aria-live="polite"
+            className="mb-2 text-center font-mono text-[0.7rem] text-amber-100/65"
+          >
+            Earlier events could not be loaded.
+          </div>
+        ) : null}
         <ConversationTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.transcript}

@@ -140,7 +140,11 @@ export function ConversationPage(props: {
                   }
                 />
               }
+              hasPreviousPage={detail.hasPreviousPage}
+              historyError={detail.historyError}
               live={conversationIsLive(visualStatus, detail.data)}
+              loadingPreviousPage={detail.isLoadingPreviousPage}
+              onLoadPreviousPage={detail.loadPreviousPage}
               responding={
                 !detail.error && conversationIsLive(visualStatus, detail.data)
               }

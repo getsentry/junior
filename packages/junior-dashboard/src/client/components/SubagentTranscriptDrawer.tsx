@@ -107,7 +107,13 @@ export function SubagentTranscriptDrawer(props: {
               Conversation failed to load.
             </DrawerEmptyState>
           ) : detail ? (
-            <Transcript transcript={detail} />
+            <Transcript
+              hasPreviousPage={query.hasPreviousPage}
+              historyError={query.historyError}
+              loadingPreviousPage={query.isLoadingPreviousPage}
+              onLoadPreviousPage={query.loadPreviousPage}
+              transcript={detail}
+            />
           ) : (
             <DrawerEmptyState>Conversation unavailable.</DrawerEmptyState>
           )}

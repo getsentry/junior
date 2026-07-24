@@ -3,8 +3,11 @@ export type { DailyConversationActivity } from "./activity";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  conversationDetailQuerySchema,
   conversationDetailReportSchema,
+  conversationEventPageSchema,
   conversationEventHistorySchema,
+  conversationEventsQuerySchema,
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
@@ -12,6 +15,7 @@ export {
   conversationReportEventSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
+  conversationUpdatesQuerySchema,
   conversationUpdatesReportSchema,
 } from "./schema/conversation";
 export type {
@@ -20,6 +24,7 @@ export type {
   ActorIdentity,
   ConversationCost,
   ConversationDetailReport,
+  ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
   ConversationReportEvent,
