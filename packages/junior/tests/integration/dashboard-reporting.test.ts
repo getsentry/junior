@@ -401,20 +401,29 @@ describe("dashboard canonical event reporting", () => {
     }
   });
 
-  it("aggregates original model calls without counting replayed history", async () => {
+  it("aggregates per-model tokens and costs without counting replayed history", async () => {
     const conversationId = "slack:C-reporting:model-usage";
     await recordRoot(conversationId, "public");
     const componentUsageMessage = {
       role: "assistant",
       provider: "openai",
       model: "gpt-5",
-      usage: { input: 10 },
+      usage: {
+        input: 10,
+        cost: {
+          input: 0.01,
+          output: 0.02,
+          cacheRead: 0.003,
+          cacheWrite: 0.004,
+          total: 0.037,
+        },
+      },
     };
     const totalOnlyUsageMessage = {
       role: "assistant",
       provider: "openai",
       model: "gpt-5",
-      usage: { totalTokens: 7 },
+      usage: { totalTokens: 7, cost: { total: 0.005 } },
     };
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
@@ -443,7 +452,17 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(conversationId)).modelUsage).toEqual([
       {
         modelId: "openai/gpt-5",
-        usage: { inputTokens: 10, totalTokens: 17 },
+        usage: {
+          inputTokens: 10,
+          totalTokens: 17,
+          cost: {
+            input: 0.01,
+            output: 0.02,
+            cacheRead: 0.003,
+            cacheWrite: 0.004,
+            total: 0.042,
+          },
+        },
       },
     ]);
   });
