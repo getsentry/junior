@@ -160,6 +160,25 @@ describe("provider retry helpers", () => {
     });
   });
 
+  it("preserves Pi transient provider retry signals", () => {
+    for (const message of [
+      "ResourceExhausted",
+      "Provider returned error",
+      "Internal error",
+      "other side closed",
+      "upstream connect error",
+      "reset before headers",
+      "stream ended without a final event",
+      "HTTP2 request did not get a response",
+      "retry delay exceeded",
+      "you can retry your request",
+      "try your request again",
+      "please retry your request",
+    ]) {
+      expect(isProviderRetryError(createProviderError(message))).toBe(true);
+    }
+  });
+
   it("does not claim a retry happened in terminal capacity copy", () => {
     const message = getProviderErrorUserMessage(
       createProviderError("Provider capacity exceeded"),

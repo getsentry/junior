@@ -167,7 +167,11 @@ function classifyProviderError(
   if (status === 429 || /rate.?limit|too many requests/i.test(message)) {
     return "rate_limit";
   }
-  if (/overloaded|at capacity|capacity exceeded/i.test(message)) {
+  if (
+    /overloaded|at capacity|capacity exceeded|\bResourceExhausted\b/i.test(
+      message,
+    )
+  ) {
     return "capacity";
   }
   if (
@@ -178,7 +182,7 @@ function classifyProviderError(
   }
   if (
     transportKind === "network" ||
-    /network.?error|connection|fetch failed|socket|stream ended|ended before|\bterminated\b|ECONNRESET/i.test(
+    /network.?error|connection|fetch failed|socket|other side closed|upstream.?connect|reset before headers|stream ended|ended (?:before|without)|http2 request did not get a response|\bterminated\b|ECONNRESET/i.test(
       message,
     )
   ) {
@@ -186,7 +190,7 @@ function classifyProviderError(
   }
   if (
     (status !== undefined && status >= 500) ||
-    /service(?: temporarily)?[ _-]?unavailable|internal server error|bad gateway|upstream (?:request )?failed|unexpected error occurred/i.test(
+    /service(?: temporarily)?[ _-]?unavailable|server.?error|internal.?error|bad gateway|provider.?returned.?error|upstream (?:request )?failed|unexpected error occurred|retry delay|(?:you can|try|please retry) your request/i.test(
       message,
     )
   ) {
