@@ -41,13 +41,12 @@ export function mergeConversationEventPage(
   current: ConversationDetailReport,
   page: ConversationEventPage,
 ): ConversationDetailReport {
-  const existingSeqs = new Set(current.events.map((event) => event.seq));
+  const events = new Map(
+    [...page.events, ...current.events].map((event) => [event.seq, event]),
+  );
   return {
     ...current,
-    events: [
-      ...page.events.filter((event) => !existingSeqs.has(event.seq)),
-      ...current.events,
-    ],
+    events: [...events.values()].sort((left, right) => left.seq - right.seq),
     eventHistory: page.eventHistory,
     previousCursor: page.previousCursor,
   };

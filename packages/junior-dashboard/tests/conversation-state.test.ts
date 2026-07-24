@@ -119,6 +119,25 @@ describe("conversation state", () => {
     });
   });
 
+  it("sorts overlapping history after a cursor refresh", () => {
+    const current = {
+      ...detail(),
+      events: [event(1), event(4)],
+    };
+    const page: ConversationEventPage = {
+      events: [event(2), event(3), event(4)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    };
+
+    expect(mergeConversationEventPage(current, page).events).toEqual([
+      event(1),
+      event(2),
+      event(3),
+      event(4),
+    ]);
+  });
+
   it("appends updates while preserving detail-only fields", () => {
     const update: ConversationUpdatesReport = {
       conversationId: "conversation-1",
