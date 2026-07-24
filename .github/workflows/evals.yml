@@ -21,7 +21,7 @@ jobs:
     name: evals / gate
     runs-on: ubuntu-latest
     outputs:
-      evals_changed: ${{ steps.changes.outputs.evals_changed }}
+      eval_file_changed: ${{ steps.changes.outputs.eval_file_changed }}
       evals_requested: ${{ steps.request.outputs.evals_requested }}
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
@@ -52,15 +52,8 @@ jobs:
         id: changes
         with:
           filters: |
-            evals_changed:
-              - packages/junior-evals/evals/**
-              - packages/junior-evals/package.json
-              - packages/junior-evals/global-setup.ts
-              - packages/junior-evals/postgres-global-setup.ts
-              - packages/junior-evals/src/**
-              - packages/junior-evals/tests/**
-              - packages/junior-evals/vitest.evals.config.ts
-              - packages/junior/src/**
+            eval_file_changed:
+              - '**/*.eval.ts'
 
       - id: secrets
         env:
@@ -86,7 +79,7 @@ jobs:
 
       - id: decision
         env:
-          EVALS_CHANGED: ${{ steps.changes.outputs.evals_changed }}
+          EVAL_FILE_CHANGED: ${{ steps.changes.outputs.eval_file_changed }}
           EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
@@ -94,7 +87,7 @@ jobs:
           set -euo pipefail
 
           should_run=false
-          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVAL_FILE_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
             should_run=true
           fi
 
@@ -102,7 +95,7 @@ jobs:
           {
             echo "## Eval Gate"
             echo
-            echo "- evals_changed: $EVALS_CHANGED"
+            echo "- eval_file_changed: $EVAL_FILE_CHANGED"
             echo "- evals_requested: $EVALS_REQUESTED"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
