@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Duration, formatDuration } from "../../components/Duration";
 import { Clock3, Coins, MessageSquare } from "lucide-react";
 import { useParams } from "react-router";
@@ -8,6 +9,11 @@ import type {
 
 import { useActorProfileData } from "../../api";
 import { ContributionGrid } from "../../components/ContributionGrid";
+import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
+import {
+  TimeRangeSelector,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Section } from "../../components/Section";
@@ -47,6 +53,7 @@ export function PersonProfilePage() {
 
 /** Present one actor's activity and dimensions. */
 export function Profile(props: { profile: ActorProfileReport }) {
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const profile = props.profile;
   const displayName =
     profile.actor.fullName ??
@@ -56,6 +63,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
   return (
     <div className="grid min-w-0 gap-5">
       <PageHeader
+        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
           <>
             {profile.actor.email}
@@ -67,6 +75,21 @@ export function Profile(props: { profile: ActorProfileReport }) {
         eyebrow="People / profile"
         title={displayName}
       />
+
+      <section className="grid gap-4" aria-labelledby="profile-metrics-title">
+        <div>
+          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+            Runtime telemetry
+          </div>
+          <h2
+            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-white"
+            id="profile-metrics-title"
+          >
+            Usage over time
+          </h2>
+        </div>
+        <SystemMetricCharts days={profile.activityDays.slice(-range)} />
+      </section>
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
         <aside className="grid min-w-0 gap-4 lg:order-2">

@@ -36,6 +36,7 @@ import {
 type AggregateRow = {
   active: number;
   conversations: number;
+  costUsd: number | null;
   durationMs: number;
   failed: number;
   tokens: number | null;
@@ -222,6 +223,7 @@ export async function readPeopleProfileFromSql(
     days.set(row.date, {
       active: row.active,
       conversations: row.conversations,
+      ...(row.costUsd !== null ? { costUsd: row.costUsd } : {}),
       date: row.date,
       durationMs: row.durationMs,
       failed: row.failed,

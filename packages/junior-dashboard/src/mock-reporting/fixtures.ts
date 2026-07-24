@@ -857,6 +857,10 @@ export function readMockPeopleProfile(
     day.durationMs += summary.cumulativeDurationMs;
     day.failed += summary.status === "failed" ? 1 : 0;
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
+    const costUsd = summary.cumulativeUsage?.cost?.total;
+    if (costUsd !== undefined) {
+      day.costUsd = (day.costUsd ?? 0) + costUsd;
+    }
     sparseDays.set(date, day);
 
     const place = locationLabel(summary);

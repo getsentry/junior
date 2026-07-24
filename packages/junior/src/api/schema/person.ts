@@ -16,6 +16,7 @@ export const actorActivityDayReportSchema = z
   .object({
     active: z.number(),
     conversations: z.number(),
+    costUsd: z.number().optional(),
     date: z.string(),
     durationMs: z.number(),
     failed: z.number(),

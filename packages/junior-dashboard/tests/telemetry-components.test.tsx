@@ -658,9 +658,11 @@ describe("dashboard canonical-event components", () => {
         {
           active: 0,
           conversations: 2,
+          costUsd: 0.42,
           date: "2026-01-02",
           durationMs: 1_200,
           failed: 0,
+          tokens: 1_234,
         },
       ],
       generatedAt: "2026-01-02T00:00:00.000Z",
@@ -723,6 +725,13 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Avery Example");
     expect(html).toContain("avery@example.com");
     expect(html).toContain("Activity");
+    expect(html).toContain("Usage over time");
+    expect(html).toContain("Token usage");
+    expect(html).toContain("Model spend");
+    expect(html).toContain("Runtime");
+    expect(html).toContain("1.2k");
+    expect(html).toContain("$0.42");
+    expect(html).toContain("30d");
     expect(html).not.toContain("Incident triage");
     expect(html).toContain("Daily Junior conversation activity");
     expect(html).toContain("52 weeks");
