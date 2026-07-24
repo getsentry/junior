@@ -275,12 +275,18 @@ export function useConversationData(conversationId: string | undefined) {
     retry: false,
   });
   const history = useMutation({
-    mutationFn: (before: string) =>
-      readConversationEvents(conversationId!, before),
-    onSuccess: async (page) => {
-      const result = await applyConversationEventPage(client, queryKey, page);
+    mutationFn: (request: { before: string; conversationId: string }) =>
+      readConversationEvents(request.conversationId, request.before),
+    onSuccess: async (page, request) => {
+      const result = await applyConversationEventPage(
+        client,
+        request.conversationId,
+        page,
+      );
       if (result === "refresh") {
-        await client.invalidateQueries({ queryKey });
+        await client.invalidateQueries({
+          queryKey: ["conversation", request.conversationId],
+        });
       }
     },
   });
@@ -290,9 +296,13 @@ export function useConversationData(conversationId: string | undefined) {
     hasPreviousPage: Boolean(query.data?.previousCursor),
     isLoadingPreviousPage: history.isPending,
     loadPreviousPage: () => {
+      if (!conversationId || history.isPending) return;
+      const historyQueryKey = ["conversation", conversationId] as const;
       const before =
-        client.getQueryData<ConversationDetailReport>(queryKey)?.previousCursor;
-      if (before && !history.isPending) history.mutate(before);
+        client.getQueryData<ConversationDetailReport>(
+          historyQueryKey,
+        )?.previousCursor;
+      if (before) history.mutate({ before, conversationId });
     },
   };
 }
@@ -335,19 +345,27 @@ export function readConversationUpdates(
   );
 }
 
-/** Drain a bounded forward feed before publishing one coherent cache update. */
-async function readAllConversationUpdates(
+/** Drain a bounded forward feed, refreshing detail when its cursor is invalid. */
+export async function readAllConversationUpdates(
   conversationId: string,
   initial: ConversationDetailReport,
   signal?: AbortSignal,
 ): Promise<ConversationDetailReport> {
   let current = initial;
   while (true) {
-    const update = await readConversationUpdates(
-      conversationId,
-      current.eventCursor,
-      signal,
-    );
+    let update: ConversationUpdatesReport;
+    try {
+      update = await readConversationUpdates(
+        conversationId,
+        current.eventCursor,
+        signal,
+      );
+    } catch (error) {
+      if (error instanceof DashboardApiError && error.status === 400) {
+        return readConversationData(conversationId, signal);
+      }
+      throw error;
+    }
     if (update.eventHistory.status !== current.eventHistory.status) {
       return readConversationData(conversationId, signal);
     }

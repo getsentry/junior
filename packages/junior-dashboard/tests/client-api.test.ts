@@ -1,9 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
+  readAllConversationUpdates,
   readConversationData,
   readConversationEvents,
   readConversationUpdates,
 } from "../src/client/api";
+
+const generatedAt = "2026-07-23T00:00:00.000Z";
+
+function conversationDetail(): ConversationDetailReport {
+  return {
+    conversationId: "slack:C1:123",
+    cumulativeDurationMs: 0,
+    displayTitle: "Conversation",
+    eventCursor: "fresh-cursor",
+    eventHistory: { status: "available" },
+    events: [],
+    generatedAt,
+    isParticipant: true,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    modelUsage: [],
+    startedAt: generatedAt,
+    status: "active",
+    surface: "slack",
+  };
+}
 
 describe("dashboard client API", () => {
   afterEach(() => {
@@ -97,6 +120,55 @@ describe("dashboard client API", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/conversations/slack%3AC1%3A123/events?before=history+cursor",
       { credentials: "same-origin" },
+    );
+  });
+
+  it("refreshes conversation detail when an update cursor is invalid", async () => {
+    const refreshed = conversationDetail();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Invalid conversation cursor." },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json(refreshed));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readAllConversationUpdates("slack:C1:123", {
+        ...refreshed,
+        eventCursor: "expired-cursor",
+      }),
+    ).resolves.toEqual(refreshed);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/conversations/slack%3AC1%3A123/updates?cursor=expired-cursor",
+      { credentials: "same-origin" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/conversations/slack%3AC1%3A123",
+      { credentials: "same-origin" },
+    );
+  });
+
+  it("does not hide non-cursor update failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: "unavailable" }, { status: 503 }),
+      ),
+    );
+
+    await expect(
+      readAllConversationUpdates("slack:C1:123", {
+        ...conversationDetail(),
+        eventCursor: "current-cursor",
+      }),
+    ).rejects.toThrow(
+      "/api/conversations/slack%3AC1%3A123/updates?cursor=current-cursor returned 503",
     );
   });
 

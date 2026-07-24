@@ -1,4 +1,4 @@
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ConversationDetailReport,
   ConversationEventPage,
@@ -67,9 +67,10 @@ export function mergeConversationSnapshot(
  */
 export async function applyConversationEventPage(
   queryClient: QueryClient,
-  queryKey: QueryKey,
+  conversationId: string,
   page: ConversationEventPage,
 ): Promise<"merged" | "missing" | "refresh"> {
+  const queryKey = ["conversation", conversationId] as const;
   await queryClient.cancelQueries({ exact: true, queryKey });
   let result: "merged" | "missing" | "refresh" = "missing";
   queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) => {

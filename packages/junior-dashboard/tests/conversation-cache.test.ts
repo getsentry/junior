@@ -156,7 +156,7 @@ describe("conversation query cache", () => {
     };
 
     await expect(
-      applyConversationEventPage(queryClient, queryKey, page),
+      applyConversationEventPage(queryClient, "conversation-1", page),
     ).resolves.toBe("merged");
     resolvePoll({ ...detail(), events: [event(3), event(4), event(5)] });
     await poll;
@@ -164,5 +164,36 @@ describe("conversation query cache", () => {
     expect(
       queryClient.getQueryData<ConversationDetailReport>(queryKey)?.events,
     ).toEqual([event(1), event(2), event(3), event(4)]);
+  });
+
+  it("applies history only to the requested conversation cache", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["conversation", "conversation-1"], detail());
+    queryClient.setQueryData(["conversation", "conversation-2"], {
+      ...detail(),
+      conversationId: "conversation-2",
+      events: [event(10)],
+    });
+
+    await expect(
+      applyConversationEventPage(queryClient, "conversation-1", {
+        events: [event(1), event(2)],
+        eventHistory: { status: "available" },
+        generatedAt,
+      }),
+    ).resolves.toBe("merged");
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-1",
+      ])?.events,
+    ).toEqual([event(1), event(2), event(3), event(4)]);
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-2",
+      ])?.events,
+    ).toEqual([event(10)]);
   });
 });
