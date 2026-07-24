@@ -97,10 +97,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         typeof call.arguments?.command === "string" &&
         call.arguments.command.includes("github-push-recovery-fixture/push.sh"),
     );
-    const interruptedPushIndex = calls.findIndex(
-      (call) => call.name === "bash" && call.arguments?.command === pushCommand,
-    );
-    const remoteStateIndex = calls.findIndex(
+    const remoteStateCall = calls.find(
       (call) =>
         call.name === "bash" &&
         call.status === "ok" &&
@@ -109,8 +106,8 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ) === true,
     );
 
-    expect(pushCalls).toHaveLength(1);
-    expect(remoteStateIndex).toBeGreaterThan(interruptedPushIndex);
+    expect(pushCalls).toHaveLength(0);
+    expect(remoteStateCall).toMatchObject({ result: { ok: true } });
   });
 
   it("when asked about PR auth sequencing, explain automatic installation credentials", async ({
