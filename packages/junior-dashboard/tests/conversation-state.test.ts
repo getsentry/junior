@@ -90,6 +90,20 @@ describe("conversation state", () => {
     expect(mergeCompleteConversationHistory(current, complete)).toBe(current);
   });
 
+  it("adopts restricted history when visibility changes during loading", () => {
+    const current = detail();
+    const restricted: ConversationDetailReport = {
+      ...detail(),
+      eventHistory: { status: "expired", expiredAt: generatedAt },
+      events: [],
+      previousCursor: undefined,
+    };
+
+    expect(mergeCompleteConversationHistory(current, restricted)).toBe(
+      restricted,
+    );
+  });
+
   it("prepends history without replacing the live cursor or duplicating events", () => {
     const page: ConversationEventPage = {
       events: [event(1), event(2), event(3)],

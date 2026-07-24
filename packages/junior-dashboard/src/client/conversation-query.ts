@@ -26,6 +26,7 @@ export async function applyConversationEventPage(
   let refresh = false;
   queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) => {
     if (!current) return current;
+    if (!current.previousCursor) return current;
     if (
       refreshed &&
       refreshed.eventHistory.status !== current.eventHistory.status

@@ -59,7 +59,7 @@ export function mergeCompleteConversationHistory(
   complete: ConversationDetailReport,
 ): ConversationDetailReport {
   if (complete.eventHistory.status !== current.eventHistory.status) {
-    return current;
+    return current.eventHistory.status === "available" ? complete : current;
   }
   const events = new Map(
     [...complete.events, ...current.events].map((event) => [event.seq, event]),

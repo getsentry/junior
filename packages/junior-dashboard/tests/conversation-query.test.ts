@@ -152,6 +152,30 @@ describe("conversation query", () => {
     ).toBeUndefined();
   });
 
+  it("ignores a late history page after another request completes history", async () => {
+    const queryClient = new QueryClient();
+    const complete = {
+      ...detail(),
+      events: [event(1), event(2), event(3), event(4)],
+      previousCursor: undefined,
+    };
+    queryClient.setQueryData(["conversation", "conversation-1"], complete);
+
+    await applyConversationEventPage(queryClient, "conversation-1", {
+      events: [event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+      previousCursor: "before-2",
+    });
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-1",
+      ]),
+    ).toEqual(complete);
+  });
+
   it("applies history only to the requested conversation", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["conversation", "conversation-1"], detail());
