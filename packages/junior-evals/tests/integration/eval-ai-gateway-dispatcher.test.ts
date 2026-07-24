@@ -2,7 +2,6 @@ import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getModel,
-  isRetryableAssistantError,
   streamAnthropic,
   type Message as PiAiMessage,
 } from "@/chat/pi/sdk";
@@ -84,12 +83,11 @@ describe("eval AI Gateway dispatcher", () => {
         stopReason: "error",
         errorMessage: "terminated",
       });
-      expect(isRetryableAssistantError(failedAssistant)).toBe(true);
       expect(
         nextProviderRetry({
           attempt: 0,
+          failure: failedAssistant,
           messages: [userMessage as PiMessage, failedAssistant as PiMessage],
-          retryableFailure: isRetryableAssistantError(failedAssistant),
         }),
       ).toEqual({ delayMs: 2_000, messages: [userMessage as PiMessage] });
     } finally {

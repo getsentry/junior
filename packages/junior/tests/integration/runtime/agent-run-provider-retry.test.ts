@@ -489,10 +489,14 @@ describe("executeAgentRun provider retry", () => {
     expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 2_000)).toBe(
       true,
     );
-    controller.abort(new Error("eval test cancelled"));
+    const cancellation = new Error("provider connection cancelled");
+    controller.abort(cancellation);
 
     const reply = finalReply(await replyPromise);
-    expect(reply.diagnostics.errorMessage).toBe("eval test cancelled");
+    expect(reply.diagnostics.errorMessage).toBe(
+      "provider connection cancelled",
+    );
+    expect(reply.diagnostics.providerError).toBe(cancellation);
     expect(counters.continueCalls).toBe(0);
     setTimeoutSpy.mockRestore();
   });

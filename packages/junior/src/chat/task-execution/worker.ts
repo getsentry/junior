@@ -3,7 +3,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { isProviderRetryError } from "@/chat/services/provider-retry";
+import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,

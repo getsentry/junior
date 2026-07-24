@@ -9,7 +9,7 @@
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
-import { isProviderRetryError } from "@/chat/services/provider-retry";
+import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SlackActionError } from "@/chat/slack/client";
 import {

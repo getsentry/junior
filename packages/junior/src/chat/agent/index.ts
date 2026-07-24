@@ -11,7 +11,6 @@
  * completion.
  */
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
-import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -74,10 +73,8 @@ import {
   buildTurnResult,
   getAssistantMessageText,
 } from "@/chat/services/turn-result";
-import {
-  isProviderRetryError,
-  nextProviderRetry,
-} from "@/chat/services/provider-retry";
+import { isProviderRetryError } from "@/chat/services/provider-error";
+import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -1111,10 +1108,8 @@ async function executeAgentRunInPrivacyContext(
 
               const providerRetry = nextProviderRetry({
                 attempt,
+                failure: lastAssistant,
                 messages: agent!.state.messages,
-                retryableFailure:
-                  lastAssistant !== undefined &&
-                  isRetryableAssistantError(lastAssistant),
               });
               if (!providerRetry) {
                 break;

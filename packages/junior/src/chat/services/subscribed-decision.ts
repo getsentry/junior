@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { escapeXml } from "@/chat/xml";
-import { isProviderRetryError } from "@/chat/services/provider-retry";
+import { isProviderRetryError } from "@/chat/services/provider-error";
 
 export enum SubscribedReplyReason {
   ThreadOptOut = "thread_opt_out",

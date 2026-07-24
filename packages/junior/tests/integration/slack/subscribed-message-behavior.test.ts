@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { createProviderError } from "@/chat/services/provider-retry";
+import { createProviderError } from "@/chat/services/provider-error";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,

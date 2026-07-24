@@ -1,57 +1,36 @@
 import type { PiMessage } from "@/chat/pi/messages";
+import { createProviderError } from "@/chat/services/provider-error";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 
 const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000] as const;
-const PROVIDER_ERROR_PREFIX = "AI provider error:";
-const PROVIDER_RETRY_ERROR_NAME = "ProviderRetryError";
-const NON_RETRYABLE_PROVIDER_ERROR_PATTERNS = [
-  /invalid.?api.?key|no api key|authentication|authorization|permission|forbidden|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i,
-  /context.?length|context.?window/i,
-  /content.?policy|validation|bad request|\b(?:400|401|403)\b/i,
-  /unsupported model|invalid model|unknown ai gateway model|unknown model|mismatched api/i,
-  /usage limit|monthly usage limit|available balance|insufficient.?quota|out of budget|quota exceeded|billing/i,
-] as const;
-
-function providerMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).trim();
-}
-
-/** Mark failures that cross the AI provider boundary for shared retry handling. */
-export function createProviderError(error: unknown): Error {
-  const message = providerMessage(error);
-  const displayMessage = `${PROVIDER_ERROR_PREFIX} ${message || "Unknown provider error"}`;
-  const providerError = new Error(displayMessage, { cause: error });
-  if (message && isRetryableProviderFailure(message)) {
-    providerError.name = PROVIDER_RETRY_ERROR_NAME;
-  }
-  return providerError;
-}
-
-/** Return whether a provider-boundary error should be retried by the worker. */
-export function isProviderRetryError(error: unknown): boolean {
-  return error instanceof Error && error.name === PROVIDER_RETRY_ERROR_NAME;
-}
-
-/** Classify upstream failures by exclusion so new transient provider errors retry. */
-function isRetryableProviderFailure(errorMessage: string): boolean {
-  return !NON_RETRYABLE_PROVIDER_ERROR_PATTERNS.some((pattern) =>
-    pattern.test(errorMessage),
-  );
-}
+const MAX_PROVIDER_RETRY_DELAY_MS = 60_000;
 
 /** Build the next provider retry step from Pi history, if the turn can resume. */
 export function nextProviderRetry(args: {
   attempt: number;
+  failure?: { stopReason?: string; errorMessage?: string };
   messages: PiMessage[];
-  retryableFailure: boolean;
 }): { delayMs: number; messages: PiMessage[] } | undefined {
-  const delayMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
-  if (delayMs === undefined || !args.retryableFailure) {
+  const backoffMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
+  if (
+    backoffMs === undefined ||
+    args.failure?.stopReason !== "error" ||
+    !args.failure.errorMessage
+  ) {
     return undefined;
   }
+
+  const providerError = createProviderError(args.failure.errorMessage);
+  if (!providerError.retryable) {
+    return undefined;
+  }
+  const delayMs = Math.min(
+    MAX_PROVIDER_RETRY_DELAY_MS,
+    Math.max(backoffMs, providerError.retryAfterMs ?? 0),
+  );
 
   const messages = trimTrailingAssistantMessages(args.messages);
   if (messages.length === args.messages.length) {

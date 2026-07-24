@@ -2,6 +2,7 @@ import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
 import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -331,7 +332,10 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     usage,
     stopReason,
     errorMessage,
-    providerError: undefined,
+    providerError:
+      resolvedOutcome === "provider_error" && errorMessage
+        ? createProviderError(errorMessage, { modelId })
+        : undefined,
   };
 
   return {

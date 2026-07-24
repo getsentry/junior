@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
+import { createProviderError } from "@/chat/services/provider-error";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
 function providerErrorReply(args: {
   assistantMessageCount: number;
   errorMessage?: string;
+  providerError?: unknown;
   text: string;
 }): AgentRunResult {
   return {
@@ -19,6 +21,7 @@ function providerErrorReply(args: {
       toolErrorCount: 0,
       usedPrimaryText: false,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+      ...(args.providerError ? { providerError: args.providerError } : {}),
     },
   };
 }
@@ -26,11 +29,13 @@ function providerErrorReply(args: {
 describe("finalizeFailedTurnReply", () => {
   it("never delivers synthesized error text without assistant messages", () => {
     const logException = vi.fn().mockReturnValue("evt_123");
+    const internalError = new Error("ECONNRESET at redis.js:42");
 
     const finalized = finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 0,
-        errorMessage: "ECONNRESET at redis.js:42",
+        errorMessage: internalError.message,
+        providerError: internalError,
         text: "Error: ECONNRESET at redis.js:42",
       }),
       logException,
@@ -39,6 +44,35 @@ describe("finalizeFailedTurnReply", () => {
 
     expect(finalized.text).not.toContain("ECONNRESET");
     expect(finalized.text).toContain("event_id=evt_123");
+  });
+
+  it("explains recognized provider failures without exposing the payload", () => {
+    const logException = vi.fn().mockReturnValue("evt_503");
+    const providerError = createProviderError(
+      '503 {"error":{"message":"Service temporarily unavailable"}}',
+      { modelId: "xai/grok-4.5" },
+    );
+
+    const finalized = finalizeFailedTurnReply({
+      reply: providerErrorReply({
+        assistantMessageCount: 0,
+        errorMessage: providerError.message,
+        providerError,
+        text: "",
+      }),
+      logException,
+      context: {},
+    });
+
+    expect(finalized.text).toContain("temporary connection problem");
+    expect(finalized.text).toContain("event_id=evt_503");
+    expect(finalized.text).not.toContain("Service temporarily unavailable");
+    expect(logException.mock.calls[0]?.[3]).toMatchObject({
+      "app.ai.provider_error.kind": "server",
+      "app.ai.provider_error.retryable": true,
+      "app.ai.provider_error.status": 503,
+      "gen_ai.request.model": "xai/grok-4.5",
+    });
   });
 
   it("delivers genuine model-authored partial text with the interruption marker", () => {

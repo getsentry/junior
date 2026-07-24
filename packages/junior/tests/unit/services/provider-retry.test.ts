@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  isRetryableAssistantError,
-  type AssistantMessage,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  nextProviderRetry,
   createProviderError,
+  getProviderErrorUserMessage,
   isProviderRetryError,
-} from "@/chat/services/provider-retry";
+  ProviderError,
+} from "@/chat/services/provider-error";
+import { nextProviderRetry } from "@/chat/services/provider-retry";
 
 function assistantError(errorMessage: string | undefined): AssistantMessage {
   return fauxAssistantMessage([], {
@@ -30,6 +29,12 @@ describe("provider retry helpers", () => {
     expect(error.message).toBe(
       "AI provider error: Anthropic stream ended before message_stop",
     );
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({
+      code: "provider_error",
+      kind: "network",
+      retryable: true,
+    });
     expect(isProviderRetryError(error)).toBe(true);
     expect(isProviderRetryError(createProviderError("invalid_api_key"))).toBe(
       false,
@@ -50,8 +55,8 @@ describe("provider retry helpers", () => {
     expect(
       nextProviderRetry({
         attempt: 0,
+        failure: failedAssistant,
         messages: [user, failedAssistant],
-        retryableFailure: isRetryableAssistantError(failedAssistant),
       }),
     ).toEqual({ delayMs: 2_000, messages: [user] });
   });
@@ -63,17 +68,78 @@ describe("provider retry helpers", () => {
     } as PiMessage;
     const failedAssistant = assistantError(XAI_SERVICE_UNAVAILABLE);
 
-    expect(
-      isProviderRetryError(createProviderError(XAI_SERVICE_UNAVAILABLE)),
-    ).toBe(true);
+    const providerError = createProviderError(XAI_SERVICE_UNAVAILABLE);
+    expect(providerError).toMatchObject({
+      kind: "server",
+      modelId: "xai/grok-4.5",
+      retryable: true,
+      status: 503,
+    });
+    expect(isProviderRetryError(providerError)).toBe(true);
 
     expect(
       nextProviderRetry({
         attempt: 0,
+        failure: failedAssistant,
         messages: [user, failedAssistant],
-        retryableFailure: isRetryableAssistantError(failedAssistant),
       }),
     ).toEqual({ delayMs: 2_000, messages: [user] });
+  });
+
+  it("honors bounded rate-limit hints", () => {
+    const error = Object.assign(new Error("rate limited"), {
+      responseHeaders: { "Retry-After": "30" },
+      statusCode: 429,
+    });
+    expect(createProviderError(error)).toMatchObject({
+      kind: "rate_limit",
+      retryable: true,
+      retryAfterMs: 30_000,
+      status: 429,
+    });
+
+    const user = {
+      role: "user",
+      content: [{ type: "text", text: "help" }],
+    } as PiMessage;
+    const failedAssistant = assistantError(
+      '429 too many requests {"retry-after":"90"}',
+    );
+    expect(
+      nextProviderRetry({
+        attempt: 0,
+        failure: failedAssistant,
+        messages: [user, failedAssistant],
+      }),
+    ).toEqual({ delayMs: 60_000, messages: [user] });
+  });
+
+  it("retries common server failures without treating bare safety text as policy", () => {
+    for (const message of [
+      "Internal Server Error",
+      "Error: 502 Bad Gateway",
+      "upstream request failed",
+      "An unexpected error occurred",
+      "503 Safety service temporarily unavailable",
+    ]) {
+      expect(createProviderError(message)).toMatchObject({
+        retryable: true,
+      });
+    }
+
+    expect(createProviderError("Blocked by the safety policy")).toMatchObject({
+      kind: "content_policy",
+      retryable: false,
+    });
+  });
+
+  it("does not claim a retry happened in terminal capacity copy", () => {
+    const message = getProviderErrorUserMessage(
+      createProviderError("Provider capacity exceeded"),
+    );
+
+    expect(message).toContain("at capacity");
+    expect(message).not.toContain("retried");
   });
 
   it("does not retry explicit credential failures", () => {
@@ -97,17 +163,17 @@ describe("provider retry helpers", () => {
       overrides: {
         attempt?: number;
         messages?: PiMessage[];
-        retryableFailure?: boolean;
+        failure?: AssistantMessage;
       } = {},
     ) =>
       nextProviderRetry({
         attempt: 0,
+        failure: failedAssistant,
         messages: [user, failedAssistant],
-        retryableFailure: true,
         ...overrides,
       });
 
-    for (const message of [
+    for (const failure of [
       assistantError("400 bad request"),
       assistantError(undefined),
       fauxAssistantMessage("done"),
@@ -115,10 +181,11 @@ describe("provider retry helpers", () => {
         '429 {"error":{"message":"Quota exceeded","type":"insufficient_quota"}}',
       ),
     ]) {
-      expect(isRetryableAssistantError(message)).toBe(false);
+      expect(retry({ failure })).toBeUndefined();
     }
-    expect(retry({ retryableFailure: false })).toBeUndefined();
     expect(retry({ attempt: 3 })).toBeUndefined();
-    expect(retry({ messages: [failedAssistant] })).toBeUndefined();
+    expect(
+      retry({ failure: undefined, messages: [failedAssistant] }),
+    ).toBeUndefined();
   });
 });

@@ -44,7 +44,7 @@ import {
 import {
   createProviderError,
   isProviderRetryError,
-} from "@/chat/services/provider-retry";
+} from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
@@ -201,7 +201,7 @@ export async function completeText(params: {
           },
         );
       } catch (error) {
-        throw createProviderError(error);
+        throw createProviderError(error, { modelId: params.modelId });
       }
       const outputText = extractText(message);
       const outputMessagesAttribute = serializeGenAiAttribute(
@@ -244,7 +244,7 @@ export async function completeText(params: {
           },
           "AI completion returned provider error",
         );
-        throw createProviderError(providerMessage);
+        throw createProviderError(providerMessage, { modelId: params.modelId });
       }
 
       return {
@@ -343,7 +343,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     );
     return { object: result.object as z.infer<TSchema> };
   } catch (error) {
-    const providerError = createProviderError(error);
+    const providerError = createProviderError(error, {
+      modelId: params.modelId,
+    });
     if (isProviderRetryError(providerError)) {
       throw providerError;
     }
@@ -425,7 +427,9 @@ export async function embedTexts(params: {
       vectors: result.result.embeddings,
     };
   } catch (error) {
-    const providerError = createProviderError(error);
+    const providerError = createProviderError(error, {
+      modelId: params.modelId,
+    });
     if (isProviderRetryError(providerError)) {
       throw providerError;
     }
