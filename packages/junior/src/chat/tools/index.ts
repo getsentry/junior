@@ -15,8 +15,8 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import {
   canUseResourceEventSubscriptionTools,
-  createCancelResourceEventSubscriptionTool,
   createListResourceEventSubscriptionsTool,
+  createStopWatchingResourcesTool,
   createSubscribeToResourceEventsTool,
 } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
@@ -143,8 +143,7 @@ export function createTools(
       createSubscribeToResourceEventsTool(context);
     tools.listResourceEventSubscriptions =
       createListResourceEventSubscriptionsTool(context);
-    tools.cancelResourceEventSubscription =
-      createCancelResourceEventSubscriptionTool(context);
+    tools.stopWatchingResources = createStopWatchingResourcesTool(context);
   }
 
   if (context.mcpToolManager) {

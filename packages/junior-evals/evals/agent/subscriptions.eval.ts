@@ -68,6 +68,49 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     );
   });
 
+  it("when a follow-up stops monitoring, cancel the conversation's subscriptions before confirming", async ({
+    run,
+  }) => {
+    const thread = {
+      id: "thread-resource-event-stop",
+      channel_id: "CRESOURCEEVENTSTOP",
+      thread_ts: "17000000.7301",
+    };
+    const result = await run({
+      overrides: {
+        plugin_dirs: ["fixtures/resource-event-plugins"],
+      },
+      initialEvents: [
+        mention(
+          "/eval-resource-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
+          { thread },
+        ),
+      ],
+      events: [mention("stop", { thread })],
+      criteria: rubric({
+        pass: [
+          "Junior understands from the conversation that the terse follow-up asks it to stop monitoring the pull request.",
+          "Junior briefly confirms that monitoring stopped.",
+        ],
+        fail: [
+          "Do not require the user to repeat a special unsubscribe phrase.",
+          "Do not ask which resource the user meant when the active monitoring target is clear from the conversation.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "subscribeToResourceEvents",
+        }),
+        expect.objectContaining({
+          name: "stopWatchingResources",
+        }),
+      ]),
+    );
+  });
+
   it("when a subscribed PR check fails, summarize the failure and suggest next steps", async ({
     run,
   }) => {

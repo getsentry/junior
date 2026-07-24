@@ -41,16 +41,18 @@ const subscribeInputSchema = z.object({
     .optional(),
 });
 
-const cancelInputSchema = z.object({
-  subscriptionId: z
-    .string()
+const stopWatchingInputSchema = z.object({
+  resourceRefs: z
+    .array(z.string())
+    .min(1)
+    .optional()
     .describe(
-      "Subscription id returned by subscribeToResourceEvents or listResourceEventSubscriptions.",
+      "Resource refs to stop watching when the user identifies specific resources. Omit only when they want every active watch stopped or the conversation has one unambiguous watch.",
     ),
 });
 
 type SubscribeInput = z.output<typeof subscribeInputSchema>;
-type CancelInput = z.output<typeof cancelInputSchema>;
+type StopWatchingInput = z.output<typeof stopWatchingInputSchema>;
 
 function requireConversationContext(context: ToolRuntimeContext): string {
   if (!context.conversationId) {
@@ -187,27 +189,55 @@ export function createListResourceEventSubscriptionsTool(
   });
 }
 
-/** Create the tool that cancels a current-conversation resource subscription. */
-export function createCancelResourceEventSubscriptionTool(
-  context: ToolRuntimeContext,
-) {
+/** Create the tool that stops resource watches for this conversation. */
+export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
-      "Cancel a resource event subscription for the current conversation.",
-    inputSchema: cancelInputSchema,
+      "Stop watching resources for the current conversation. Infer the user's intent from context instead of requiring a special command. Pass resource refs when they identify specific watches; omit them only when they mean all active watches or one watch is unambiguous. Call this tool before confirming that watching stopped.",
+    inputSchema: stopWatchingInputSchema,
     outputSchema: juniorToolResultSchema,
-    async execute(input: CancelInput) {
+    async execute(input: StopWatchingInput) {
       const conversationId = requireConversationContext(context);
-      const subscription = await cancelResourceEventSubscription({
+      const subscriptions = await listResourceEventSubscriptions({
         conversationId,
-        id: input.subscriptionId,
       });
-      if (!subscription) {
-        throw new Error("Resource event subscription was not found");
+      const requestedRefs = input.resourceRefs
+        ? new Set(cleanStrings(input.resourceRefs))
+        : undefined;
+      const targets = requestedRefs
+        ? subscriptions.filter((subscription) =>
+            requestedRefs.has(subscription.resourceRef),
+          )
+        : subscriptions;
+      const matchedRefs = new Set(
+        targets.map((subscription) => subscription.resourceRef),
+      );
+      const missingRefs = requestedRefs
+        ? [...requestedRefs].filter(
+            (resourceRef) => !matchedRefs.has(resourceRef),
+          )
+        : [];
+      if (missingRefs.length > 0) {
+        throw new Error(
+          `No active resource watches matched: ${missingRefs.join(", ")}`,
+        );
       }
+      await Promise.all(
+        targets.map((subscription) =>
+          cancelResourceEventSubscription({
+            conversationId,
+            id: subscription.id,
+          }),
+        ),
+      );
       const details = {
-        id: subscription.id,
-        subscription_status: subscription.status,
+        stopped_count: targets.length,
+        subscriptions: targets.map((subscription) => ({
+          id: subscription.id,
+          label: subscription.label,
+          resourceRef: subscription.resourceRef,
+          subscription_status: "cancelled" as const,
+        })),
       };
       return {
         ok: true,
