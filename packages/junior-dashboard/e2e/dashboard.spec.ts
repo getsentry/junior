@@ -317,6 +317,7 @@ test("scrolls long conversation and transcript panes independently", async ({
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
+        eventCursor: "test:after:long-0",
         eventHistory: { status: "available" },
         isParticipant: true,
         events: Array.from({ length: 60 }, (_, index) => ({
