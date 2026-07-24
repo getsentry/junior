@@ -33,6 +33,7 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
     "0002_pull_request_commit_composition.sql",
     "0003_pull_request_conversations.sql",
     "0004_marvelous_toad_men.sql",
+    "0005_github_cost_associations.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
@@ -111,7 +112,7 @@ function issueLifecyclePayload(input: {
     issue: {
       body:
         input.body ??
-        "Created by Junior\n\n<!-- junior-session-footer:start -->",
+        "Created by Junior\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-session-footer:end -->",
       closed_at: input.closedAt ?? null,
       created_at: input.createdAt,
       id: input.id,
@@ -521,6 +522,8 @@ describe("GitHub-owned pull request outcomes", () => {
         "0001_issue_outcomes.sql",
         "0002_pull_request_commit_composition.sql",
         "0003_pull_request_conversations.sql",
+        "0004_marvelous_toad_men.sql",
+        "0005_github_cost_associations.sql",
       ]) {
         await fixture.execute(await migrationSql(migration));
       }
@@ -531,6 +534,7 @@ describe("GitHub-owned pull request outcomes", () => {
         expect.objectContaining({
           commitComposition: null,
           conversationIds: [],
+          linkedIssueNumbers: [],
           pullRequestId: "legacy-pr",
         }),
       ]);
@@ -1122,6 +1126,10 @@ describe("GitHub-owned pull request outcomes", () => {
           label: "Median issue close time · closed in 30d",
           value: "71d",
         },
+        { label: "PR cost · opened in 30d", value: "$0.00" },
+        { label: "Median PR cost · opened in 30d", value: "—" },
+        { label: "Issue cost · opened in 30d", value: "$0.00" },
+        { label: "Median issue cost · opened in 30d", value: "—" },
       ]);
       expect(report.widgets?.[0]?.timeRangeDays).toEqual([7, 30, 90]);
       expect(report.widgets?.[0]?.title).toBe("Pull requests created");
@@ -1141,6 +1149,7 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
         closed: "1",
+        cost: "$0.00",
         created: "2",
         juniorOnly: "1",
         merged: "1",
@@ -1170,6 +1179,7 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.recordSets?.[1]?.records?.[0]?.values).toEqual({
         completed: "0",
+        cost: "$0.00",
         created: "2",
         duplicate: "0",
         notPlanned: "1",
@@ -1262,6 +1272,10 @@ describe("GitHub-owned pull request outcomes", () => {
           label: "Median issue close time · closed in 30d",
           value: "—",
         },
+        { label: "PR cost · opened in 30d", value: "$0.00" },
+        { label: "Median PR cost · opened in 30d", value: "—" },
+        { label: "Issue cost · opened in 30d", value: "$0.00" },
+        { label: "Median issue cost · opened in 30d", value: "—" },
       ]);
       expect(report.recordSets?.[0]?.records).toEqual([]);
       expect(report.recordSets?.[1]?.records).toEqual([]);
@@ -1365,6 +1379,120 @@ describe("GitHub-owned pull request outcomes", () => {
       const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
       expect(row?.state).toBe("open");
       expect(row?.updatedAt.toISOString()).toBe("2026-07-04T12:00:00.000Z");
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
+describe("GitHub cost associations", () => {
+  it("tracks issue conversations and linked PR issue numbers", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      const issueOpened = issueLifecyclePayload({
+        createdAt: "2026-07-10T12:00:00.000Z",
+        id: 4101,
+        number: 1201,
+      });
+      expect((await route.handler(signedRequest(issueOpened, "issues"))).status).toBe(
+        202,
+      );
+
+      const prOpened = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body:
+            "Fixes #1201\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
+          id: 5101,
+          number: 1301,
+        },
+      });
+      expect((await route.handler(signedRequest(prOpened))).status).toBe(202);
+
+      await expect(fixture.db().select().from(juniorGitHubIssues)).resolves.toEqual([
+        expect.objectContaining({
+          conversationIds: ["slack:C123:1712345.0001"],
+          issueId: "4101",
+          number: 1201,
+        }),
+      ]);
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationIds: ["slack:C999:1711111.0001"],
+          linkedIssueNumbers: [1201],
+          pullRequestId: "5101",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rolls conversation cost into PR and issue stats with linked-issue inclusion", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      await fixture.execute(`
+        CREATE TABLE junior_conversations (
+          conversation_id text PRIMARY KEY,
+          root_conversation_id text,
+          usage_json jsonb
+        );
+      `);
+      await fixture.execute(`
+        INSERT INTO junior_conversations (conversation_id, root_conversation_id, usage_json)
+        VALUES
+          ('slack:issue', 'slack:issue', '{"cost":{"total":1.25}}'::jsonb),
+          ('slack:pr', 'slack:pr', '{"cost":{"total":2.5}}'::jsonb),
+          ('slack:pr-child', 'slack:pr', '{"cost":{"total":0.5}}'::jsonb);
+      `);
+
+      const openedAt = new Date("2026-07-10T12:00:00.000Z");
+      await fixture.db().insert(juniorGitHubIssues).values({
+        conversationIds: ["slack:issue"],
+        number: 1201,
+        openedAt,
+        issueId: "issue-cost",
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "2001",
+        state: "open",
+        updatedAt: openedAt,
+      });
+      await fixture.db().insert(juniorGitHubPullRequests).values({
+        conversationIds: ["slack:pr"],
+        linkedIssueNumbers: [1201],
+        number: 1301,
+        openedAt,
+        pullRequestId: "pr-cost",
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "2001",
+        state: "open",
+        updatedAt: openedAt,
+      });
+
+      const report = await buildGitHubOutcomeReport({
+        db: fixture.db(),
+        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
+      });
+
+      expect(report.metrics).toEqual(
+        expect.arrayContaining([
+          { label: "PR cost · opened in 30d", value: "$4.25" },
+          { label: "Median PR cost · opened in 30d", value: "$4.25" },
+          { label: "Issue cost · opened in 30d", value: "$4.25" },
+          { label: "Median issue cost · opened in 30d", value: "$4.25" },
+        ]),
+      );
+      expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
+        cost: "$4.25",
+        repository: "getsentry/junior",
+      });
+      expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
+        cost: "$4.25",
+        repository: "getsentry/junior",
+      });
     } finally {
       await fixture.close();
     }

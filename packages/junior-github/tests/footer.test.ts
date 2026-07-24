@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   appendGitHubFooter,
   githubConversationIds,
+  githubLinkedIssueNumbers,
 } from "../src/tools/footer.js";
 
 const originalEnv = { ...process.env };
@@ -51,5 +52,13 @@ describe("GitHub conversation footer", () => {
     );
 
     expect(githubConversationIds(footer)).toEqual([conversationId]);
+  });
+
+  it("reads linked issue numbers from closing keywords and bare references", () => {
+    expect(
+      githubLinkedIssueNumbers(
+        "Fixes #12 and closes getsentry/junior#34.\nAlso mentions #12 again and #9.",
+      ),
+    ).toEqual([9, 12, 34]);
   });
 });

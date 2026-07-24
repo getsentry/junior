@@ -46,6 +46,10 @@ export const juniorGitHubIssues = pgTable(
     number: integer("number").notNull(),
     state: text("state").$type<GitHubIssueState>().notNull(),
     stateReason: text("state_reason").$type<GitHubIssueStateReason>(),
+    conversationIds: text("conversation_ids")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -74,6 +78,10 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    linkedIssueNumbers: integer("linked_issue_numbers")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::integer[]`),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),

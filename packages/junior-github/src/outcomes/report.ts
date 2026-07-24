@@ -3,6 +3,11 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubIssues, juniorGitHubPullRequests } from "../db/schema.js";
+import {
+  aggregateGitHubCostWindows,
+  aggregateGitHubRepositoryCosts,
+  formatCostUsd,
+} from "./cost.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
@@ -408,6 +413,8 @@ export async function buildGitHubOutcomeReport(args: {
     issueWindows,
     issueDays,
     issueRepositories,
+    costWindows,
+    repositoryCosts,
   ] = await Promise.all([
     aggregatePullRequestWindows(args),
     aggregatePullRequestDays(args),
@@ -415,9 +422,15 @@ export async function buildGitHubOutcomeReport(args: {
     aggregateIssueWindows(args),
     aggregateIssueDays(args),
     aggregateIssueRepositories(args),
+    aggregateGitHubCostWindows({ ...args, windows: WINDOWS }),
+    aggregateGitHubRepositoryCosts(args),
   ]);
   const thirtyDays = windows.find((window) => window.days === 30)!;
   const issueThirtyDays = issueWindows.find((window) => window.days === 30)!;
+  const costThirtyDays = costWindows.find((window) => window.days === 30)!;
+  const repositoryCostByName = new Map(
+    repositoryCosts.map((row) => [row.repository, row] as const),
+  );
 
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
@@ -434,6 +447,22 @@ export async function buildGitHubOutcomeReport(args: {
       {
         label: "Median issue close time · closed in 30d",
         value: formatDuration(issueThirtyDays.medianCloseTimeMs),
+      },
+      {
+        label: "PR cost · opened in 30d",
+        value: formatCostUsd(costThirtyDays.pullRequestCostUsd),
+      },
+      {
+        label: "Median PR cost · opened in 30d",
+        value: formatCostUsd(costThirtyDays.medianPullRequestCostUsd),
+      },
+      {
+        label: "Issue cost · opened in 30d",
+        value: formatCostUsd(costThirtyDays.issueCostUsd),
+      },
+      {
+        label: "Median issue cost · opened in 30d",
+        value: formatCostUsd(costThirtyDays.medianIssueCostUsd),
       },
     ],
     widgets: [
@@ -475,6 +504,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "merged", label: "Merged" },
           { key: "closed", label: "Closed unmerged" },
           { key: "mergeRate", label: "Closure merge rate" },
+          { key: "cost", label: "Cost" },
         ],
         records: repositories.map(({ repository, ...stats }) => ({
           id: repository,
@@ -485,6 +515,9 @@ export async function buildGitHubOutcomeReport(args: {
             closed: String(stats.closed),
             juniorOnly: String(stats.juniorOnly),
             mergeRate: formatPercent(stats.mergeRate),
+            cost: formatCostUsd(
+              repositoryCostByName.get(repository)?.pullRequestCostUsd ?? 0,
+            ),
           },
         })),
       },
@@ -498,6 +531,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "duplicate", label: "Duplicate" },
           { key: "notPlanned", label: "Not planned" },
           { key: "unknown", label: "Unknown reason" },
+          { key: "cost", label: "Cost" },
         ],
         records: issueRepositories.map(({ repository, ...stats }) => ({
           id: repository,
@@ -508,6 +542,9 @@ export async function buildGitHubOutcomeReport(args: {
             duplicate: String(stats.closedDuplicate),
             notPlanned: String(stats.closedNotPlanned),
             unknown: String(stats.closedUnknown),
+            cost: formatCostUsd(
+              repositoryCostByName.get(repository)?.issueCostUsd ?? 0,
+            ),
           },
         })),
       },

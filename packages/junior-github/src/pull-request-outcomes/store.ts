@@ -39,6 +39,17 @@ export type GitHubPullRequestConversationsInput = z.output<
   typeof githubPullRequestConversationsInputSchema
 >;
 
+const githubPullRequestLinkedIssuesInputSchema = z
+  .object({
+    linkedIssueNumbers: z.array(z.number().int().positive()).min(1),
+    pullRequestId: z.string().min(1),
+  })
+  .strict();
+
+export type GitHubPullRequestLinkedIssuesInput = z.output<
+  typeof githubPullRequestLinkedIssuesInputSchema
+>;
+
 /** Select mutable lifecycle fields while excluding transient ownership inputs. */
 function projectionValues(input: GitHubPullRequestOutcomeInput) {
   return {
@@ -125,6 +136,35 @@ export async function recordGitHubPullRequestConversations(
         FROM unnest(
           ${juniorGitHubPullRequests.conversationIds}
           || ARRAY[${conversationIds}]::text[]
+        ) AS value
+        ORDER BY value
+      )`,
+    })
+    .where(
+      eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
+    )
+    .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
+  return updated.length > 0;
+}
+
+/** Append linked issue numbers to an existing Junior-owned PR projection. */
+export async function recordGitHubPullRequestLinkedIssues(
+  db: GitHubDb,
+  input: GitHubPullRequestLinkedIssuesInput,
+): Promise<boolean> {
+  const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
+  const linkedIssueNumbers = sql.join(
+    association.linkedIssueNumbers.map((number) => sql`${number}`),
+    sql`, `,
+  );
+  const updated = await db
+    .update(juniorGitHubPullRequests)
+    .set({
+      linkedIssueNumbers: sql`ARRAY(
+        SELECT DISTINCT value
+        FROM unnest(
+          ${juniorGitHubPullRequests.linkedIssueNumbers}
+          || ARRAY[${linkedIssueNumbers}]::integer[]
         ) AS value
         ORDER BY value
       )`,

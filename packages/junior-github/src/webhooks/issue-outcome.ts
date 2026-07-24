@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { githubIssueStateReasonSchema } from "../db/schema.js";
-import type { GitHubIssueOutcomeInput } from "../issue-outcomes/store.js";
-import { GITHUB_SESSION_FOOTER_START } from "../tools/footer.js";
+import type {
+  GitHubIssueConversationsInput,
+  GitHubIssueOutcomeInput,
+} from "../issue-outcomes/store.js";
+import {
+  GITHUB_SESSION_FOOTER_START,
+  githubConversationIds,
+} from "../tools/footer.js";
 import { botLoginFromEmail } from "./ownership.js";
 
 const canonicalIssueOutcomeSchema = z
@@ -133,4 +139,63 @@ export function normalizeGitHubIssueOutcome(args: {
       parsed.action === "closed" ? (issue.state_reason ?? undefined) : undefined,
     updatedAt,
   };
+}
+
+const canonicalIssueConversationSchema = z
+  .object({
+    issue: z
+      .object({
+        body: z.string().nullable().optional(),
+        id: z.number().int().positive(),
+        user: z.object({ login: z.string().min(1) }).strict(),
+      })
+      .strict(),
+    sender: z.object({ login: z.string().min(1) }).strict().optional(),
+  })
+  .strict();
+
+const issueConversationSchema = z
+  .object({
+    issue: z
+      .object({
+        body: z.string().nullable().optional(),
+        id: z.number().int().positive(),
+        user: z.object({ login: z.string().min(1) }).passthrough(),
+      })
+      .passthrough(),
+    sender: z.object({ login: z.string().min(1) }).passthrough().optional(),
+  })
+  .passthrough()
+  .transform((provider) =>
+    canonicalIssueConversationSchema.parse({
+      issue: {
+        body: provider.issue.body,
+        id: provider.issue.id,
+        user: { login: provider.issue.user.login },
+      },
+      ...(provider.sender
+        ? { sender: { login: provider.sender.login } }
+        : {}),
+    }),
+  );
+
+/** Normalize native conversation ids written to a Junior-owned issue by its bot. */
+export function normalizeGitHubIssueConversations(args: {
+  body: unknown;
+  botEmail?: string;
+}): GitHubIssueConversationsInput | undefined {
+  const parsed = issueConversationSchema.safeParse(args.body);
+  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
+  if (!parsed.success || !botLogin) return undefined;
+  const authorLogin = parsed.data.issue.user.login.trim().toLowerCase();
+  if (authorLogin !== botLogin) return undefined;
+  const senderLogin = parsed.data.sender?.login.trim().toLowerCase();
+  if (senderLogin && senderLogin !== botLogin) return undefined;
+  const conversationIds = githubConversationIds(parsed.data.issue.body);
+  return conversationIds.length > 0
+    ? {
+        conversationIds,
+        issueId: String(parsed.data.issue.id),
+      }
+    : undefined;
 }

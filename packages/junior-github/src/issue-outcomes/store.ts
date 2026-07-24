@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -24,6 +24,17 @@ const githubIssueOutcomeInputSchema = z
 
 export type GitHubIssueOutcomeInput = z.output<
   typeof githubIssueOutcomeInputSchema
+>;
+
+const githubIssueConversationsInputSchema = z
+  .object({
+    conversationIds: z.array(z.string().min(1)).min(1),
+    issueId: z.string().min(1),
+  })
+  .strict();
+
+export type GitHubIssueConversationsInput = z.output<
+  typeof githubIssueConversationsInputSchema
 >;
 
 /** Select mutable issue lifecycle fields while excluding ownership evidence. */
@@ -72,4 +83,31 @@ export async function recordGitHubIssueOutcome(
       set: values,
       where: lte(juniorGitHubIssues.updatedAt, outcome.updatedAt),
     });
+}
+
+/** Append native conversation ids to an existing Junior-owned issue projection. */
+export async function recordGitHubIssueConversations(
+  db: GitHubDb,
+  input: GitHubIssueConversationsInput,
+): Promise<boolean> {
+  const association = githubIssueConversationsInputSchema.parse(input);
+  const conversationIds = sql.join(
+    association.conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const updated = await db
+    .update(juniorGitHubIssues)
+    .set({
+      conversationIds: sql`ARRAY(
+        SELECT DISTINCT value
+        FROM unnest(
+          ${juniorGitHubIssues.conversationIds}
+          || ARRAY[${conversationIds}]::text[]
+        ) AS value
+        ORDER BY value
+      )`,
+    })
+    .where(eq(juniorGitHubIssues.issueId, association.issueId))
+    .returning({ issueId: juniorGitHubIssues.issueId });
+  return updated.length > 0;
 }

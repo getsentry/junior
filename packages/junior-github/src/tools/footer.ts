@@ -98,6 +98,29 @@ export function githubConversationIds(
 }
 
 /**
+ * Read same-repository issue numbers linked from a pull request body via GitHub
+ * closing keywords or bare `#N` references.
+ */
+export function githubLinkedIssueNumbers(
+  body: string | null | undefined,
+): number[] {
+  if (!body) return [];
+  const numbers = new Set<number>();
+  const patterns = [
+    /\b(?:close[sd]?|fix(?:e[sd]|ing)?|resolve[sd]?)\s+#(\d+)\b/gi,
+    /\b(?:close[sd]?|fix(?:e[sd]|ing)?|resolve[sd]?)\s+[\w.-]+\/[\w.-]+#(\d+)\b/gi,
+    /(?:^|[^\w/])#(\d+)\b/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of body.matchAll(pattern)) {
+      const value = Number.parseInt(match[1] ?? "", 10);
+      if (Number.isInteger(value) && value > 0) numbers.add(value);
+    }
+  }
+  return [...numbers].sort((left, right) => left - right);
+}
+
+/**
  * Append (or replace an existing) Junior session footer to a GitHub body string.
  * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
  */
