@@ -269,7 +269,12 @@ function ConversationStats(props: {
       : undefined,
     costSummary
       ? {
-          content: <CostMetric summary={costSummary} />,
+          content: (
+            <CostMetric
+              modelUsage={props.detail?.modelUsage}
+              summary={costSummary}
+            />
+          ),
           key: "cost",
         }
       : undefined,

@@ -682,7 +682,12 @@ function transcriptMeta(
       : undefined,
     costSummary
       ? {
-          content: <CostMetric summary={costSummary} />,
+          content: (
+            <CostMetric
+              modelUsage={conversation.modelUsage}
+              summary={costSummary}
+            />
+          ),
           key: "cost",
         }
       : undefined,
