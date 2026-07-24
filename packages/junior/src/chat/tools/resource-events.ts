@@ -4,13 +4,14 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
-  cancelResourceEventSubscription,
+  cancelSubscriptions,
   createResourceEventSubscription,
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const STOP_WATCHING_TOOL_NAME = "stopWatchingResources";
 
 const subscribeInputSchema = z.object({
   resourceRef: z
@@ -42,18 +43,7 @@ const subscribeInputSchema = z.object({
     .optional(),
 });
 
-const stopWatchingInputSchema = z.object({
-  resourceRefs: z
-    .array(z.string())
-    .min(1)
-    .optional()
-    .describe(
-      "Resource refs to stop watching when the user identifies specific resources. Omit only when they want every active watch stopped or the conversation has one unambiguous watch.",
-    ),
-});
-
 type SubscribeInput = z.output<typeof subscribeInputSchema>;
-type StopWatchingInput = z.output<typeof stopWatchingInputSchema>;
 
 function requireConversationContext(context: ToolRuntimeContext): string {
   if (!context.conversationId) {
@@ -141,6 +131,10 @@ function createSubscribeToResourceEventsTool(context: ToolRuntimeContext) {
         resourceRef: subscription.resourceRef,
         events: subscription.events,
         expiresAtMs: subscription.expiresAtMs,
+        stop_watching: {
+          tool_name: STOP_WATCHING_TOOL_NAME,
+          arguments: {},
+        },
       };
       return {
         ok: true,
@@ -190,51 +184,14 @@ function createListResourceEventSubscriptionsTool(context: ToolRuntimeContext) {
 function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
-      "Stop watching resources for the current conversation. Infer the user's intent from context instead of requiring a special command. Pass resource refs when they identify specific watches; omit them only when they mean all active watches or one watch is unambiguous. Call this tool before confirming that watching stopped.",
-    inputSchema: stopWatchingInputSchema,
+      "Stop every resource watch for the current conversation. Infer the user's intent from context instead of requiring a special command, and call this tool before confirming that watching stopped.",
+    inputSchema: z.object({}),
     outputSchema: juniorToolResultSchema,
-    async execute(input: StopWatchingInput) {
+    async execute() {
       const conversationId = requireConversationContext(context);
-      const subscriptions = await listResourceEventSubscriptions({
-        conversationId,
-      });
-      const requestedRefs = input.resourceRefs
-        ? new Set(cleanStrings(input.resourceRefs))
-        : undefined;
-      const targets = requestedRefs
-        ? subscriptions.filter((subscription) =>
-            requestedRefs.has(subscription.resourceRef),
-          )
-        : subscriptions;
-      const matchedRefs = new Set(
-        targets.map((subscription) => subscription.resourceRef),
-      );
-      const missingRefs = requestedRefs
-        ? [...requestedRefs].filter(
-            (resourceRef) => !matchedRefs.has(resourceRef),
-          )
-        : [];
-      if (missingRefs.length > 0) {
-        throw new Error(
-          `No active resource watches matched: ${missingRefs.join(", ")}`,
-        );
-      }
-      await Promise.all(
-        targets.map((subscription) =>
-          cancelResourceEventSubscription({
-            conversationId,
-            id: subscription.id,
-          }),
-        ),
-      );
+      await cancelSubscriptions({ conversationId });
       const details = {
-        stopped_count: targets.length,
-        subscriptions: targets.map((subscription) => ({
-          id: subscription.id,
-          label: subscription.label,
-          resourceRef: subscription.resourceRef,
-          subscription_status: "cancelled" as const,
-        })),
+        watching_status: "stopped",
       };
       return {
         ok: true,
@@ -258,6 +215,6 @@ export function createResourceEventTools(
     subscribeToResourceEvents: createSubscribeToResourceEventsTool(context),
     listResourceEventSubscriptions:
       createListResourceEventSubscriptionsTool(context),
-    stopWatchingResources: createStopWatchingResourcesTool(context),
+    [STOP_WATCHING_TOOL_NAME]: createStopWatchingResourcesTool(context),
   };
 }

@@ -2,14 +2,16 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-const { cancelSubscription, listSubscriptions } = vi.hoisted(() => ({
-  cancelSubscription: vi.fn(),
-  listSubscriptions: vi.fn(),
-}));
+const { cancelSubscriptions, createSubscription, listSubscriptions } =
+  vi.hoisted(() => ({
+    cancelSubscriptions: vi.fn(),
+    createSubscription: vi.fn(),
+    listSubscriptions: vi.fn(),
+  }));
 
 vi.mock("@/chat/resource-events/store", () => ({
-  cancelResourceEventSubscription: cancelSubscription,
-  createResourceEventSubscription: vi.fn(),
+  cancelSubscriptions,
+  createResourceEventSubscription: createSubscription,
   listResourceEventSubscriptions: listSubscriptions,
 }));
 
@@ -51,55 +53,54 @@ const subscriptions = [
 
 describe("resource event tools", () => {
   beforeEach(() => {
-    cancelSubscription.mockReset();
-    cancelSubscription.mockImplementation(async ({ id }) => ({
-      id,
-      status: "cancelled",
-    }));
+    cancelSubscriptions.mockReset();
+    cancelSubscriptions.mockResolvedValue(undefined);
+    createSubscription.mockReset();
+    createSubscription.mockResolvedValue({
+      id: "subscription-1",
+      status: "active",
+      resourceRef: "github:pull_request:getsentry/junior#1",
+      events: ["checks.failed", "review.changes_requested"],
+      expiresAtMs: 1_800_000_000_000,
+    });
     listSubscriptions.mockReset();
     listSubscriptions.mockResolvedValue(subscriptions);
   });
 
-  it("stops only the resource watches selected from conversation context", async () => {
-    const tool = createResourceEventTools(context).stopWatchingResources!;
+  it("returns the inverse action after creating a resource watch", async () => {
+    const tool = createResourceEventTools(context).subscribeToResourceEvents!;
 
     await expect(
       tool.execute!(
         {
-          resourceRefs: ["github:pull_request:getsentry/junior#2"],
+          resourceRef: "github:pull_request:getsentry/junior#1",
+          provider: "github",
+          resourceType: "pull_request",
+          label: "GitHub PR #1",
+          events: ["checks.failed", "review.changes_requested"],
+          intent: "Report failed checks and requested changes.",
         },
         {},
       ),
     ).resolves.toMatchObject({
-      stopped_count: 1,
-      subscriptions: [
-        {
-          id: "subscription-2",
-          resourceRef: "github:pull_request:getsentry/junior#2",
-          subscription_status: "cancelled",
-        },
-      ],
-    });
-    expect(cancelSubscription).toHaveBeenCalledTimes(1);
-    expect(cancelSubscription).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-      id: "subscription-2",
+      subscription_status: "active",
+      stop_watching: {
+        tool_name: "stopWatchingResources",
+        arguments: {},
+      },
     });
   });
 
-  it("does not stop other watches when a requested resource is not active", async () => {
+  it("stops every resource watch for the current conversation", async () => {
     const tool = createResourceEventTools(context).stopWatchingResources!;
 
-    await expect(
-      tool.execute!(
-        {
-          resourceRefs: ["github:pull_request:getsentry/junior#404"],
-        },
-        {},
-      ),
-    ).rejects.toThrow(
-      "No active resource watches matched: github:pull_request:getsentry/junior#404",
-    );
-    expect(cancelSubscription).not.toHaveBeenCalled();
+    await expect(tool.execute!({}, {})).resolves.toMatchObject({
+      watching_status: "stopped",
+    });
+    expect(cancelSubscriptions).toHaveBeenCalledTimes(1);
+    expect(cancelSubscriptions).toHaveBeenCalledWith({
+      conversationId: "slack:C123:1712345.0001",
+    });
+    expect(listSubscriptions).not.toHaveBeenCalled();
   });
 });

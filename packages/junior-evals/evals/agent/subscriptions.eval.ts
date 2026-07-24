@@ -60,6 +60,12 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
               "state.closed_unmerged",
             ]),
           }),
+          result: expect.objectContaining({
+            stop_watching: {
+              tool_name: "stopWatchingResources",
+              arguments: {},
+            },
+          }),
         }),
       ]),
     );
