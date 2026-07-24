@@ -10,9 +10,21 @@ export function mergeConversationUpdate(
   update: ConversationUpdatesReport,
 ): ConversationDetailReport {
   const { hasMore: _hasMore, ...detailUpdate } = update;
+  const {
+    actorIdentity: _actorIdentity,
+    archivedAt: _archivedAt,
+    channel: _channel,
+    channelName: _channelName,
+    channelNameRedacted: _channelNameRedacted,
+    cumulativeUsage: _cumulativeUsage,
+    locationId: _locationId,
+    sentryTraceUrl: _sentryTraceUrl,
+    traceId: _traceId,
+    ...detailBase
+  } = current;
   const existingSeqs = new Set(current.events.map((event) => event.seq));
   return {
-    ...current,
+    ...detailBase,
     ...detailUpdate,
     events: [
       ...current.events,

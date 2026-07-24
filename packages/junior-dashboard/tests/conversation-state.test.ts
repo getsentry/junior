@@ -91,7 +91,21 @@ describe("conversation state", () => {
       surface: "internal",
     };
 
-    const merged = mergeConversationUpdate(detail(), update);
+    const merged = mergeConversationUpdate(
+      {
+        ...detail(),
+        actorIdentity: { email: "actor@example.com" },
+        archivedAt: generatedAt,
+        channel: "C123",
+        channelName: "releases",
+        channelNameRedacted: true,
+        cumulativeUsage: { inputTokens: 1, totalTokens: 1 },
+        locationId: "location-1",
+        sentryTraceUrl: "https://sentry.example/trace/old",
+        traceId: "old-trace",
+      },
+      update,
+    );
     expect(conversationDetailReportSchema.parse(merged)).toMatchObject({
       cumulativeDurationMs: 20,
       displayTitle: "Updated conversation",
@@ -107,6 +121,15 @@ describe("conversation state", () => {
       sentryConversationUrl: "https://sentry.example/conversation-1",
       status: "completed",
     });
+    expect(merged).not.toHaveProperty("actorIdentity");
+    expect(merged).not.toHaveProperty("archivedAt");
+    expect(merged).not.toHaveProperty("channel");
+    expect(merged).not.toHaveProperty("channelName");
+    expect(merged).not.toHaveProperty("channelNameRedacted");
+    expect(merged).not.toHaveProperty("cumulativeUsage");
+    expect(merged).not.toHaveProperty("locationId");
+    expect(merged).not.toHaveProperty("sentryTraceUrl");
+    expect(merged).not.toHaveProperty("traceId");
   });
 
   it("refreshes a snapshot without discarding loaded history", () => {
