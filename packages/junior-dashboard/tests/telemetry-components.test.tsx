@@ -674,6 +674,13 @@ describe("dashboard canonical-event components", () => {
           failed: 0,
           label: "#proj-alpha",
         },
+        {
+          active: 0,
+          conversations: 1,
+          durationMs: 400,
+          failed: 0,
+          label: "#proj-beta",
+        },
       ],
       recentConversations: [
         {
@@ -705,6 +712,13 @@ describe("dashboard canonical-event components", () => {
           durationMs: 1_200,
           failed: 0,
           label: "Conversation",
+        },
+        {
+          active: 0,
+          conversations: 1,
+          durationMs: 400,
+          failed: 0,
+          label: "API",
         },
       ],
       totals: {
@@ -751,7 +765,10 @@ describe("dashboard canonical-event components", () => {
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
     expect(html).not.toContain('aria-label="Search recent conversations"');
-    expect(html).not.toContain(">Places<");
+    expect(html).toContain(">Places<");
+    expect(html).toContain(">Surfaces<");
+    expect(html.indexOf(">Places<")).toBeGreaterThan(activityStart);
+    expect(html.indexOf(">Surfaces<")).toBeGreaterThan(activityStart);
     expect(html).not.toContain(">active days<");
     expect(html).not.toContain(">runs<");
     expect(html).not.toContain(">attention<");

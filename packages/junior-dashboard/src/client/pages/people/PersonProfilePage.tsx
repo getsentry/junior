@@ -113,8 +113,6 @@ export function Profile(props: { profile: ActorProfileReport }) {
               value={formatCompactNumber(profile.totals.tokens ?? 0)}
             />
           </div>
-          <LeaderboardSection items={profile.locations} title="Places" />
-          <LeaderboardSection items={profile.surfaces} title="Surfaces" />
         </aside>
 
         <div className="grid min-w-0 gap-5 lg:order-1">
@@ -130,6 +128,10 @@ export function Profile(props: { profile: ActorProfileReport }) {
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
           </Section>
+          <div className="grid min-w-0 gap-5 md:grid-cols-2">
+            <LeaderboardSection items={profile.locations} title="Places" />
+            <LeaderboardSection items={profile.surfaces} title="Surfaces" />
+          </div>
         </div>
       </div>
     </div>
