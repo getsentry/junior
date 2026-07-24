@@ -90,10 +90,8 @@ function tokenTooltip(
   return lines.filter(isMetricTooltipLine);
 }
 
-function costTooltipLines(
-  summary: CostUsageSummary,
-): Array<MetricTooltipLine | undefined> {
-  return [
+function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
+  const lines: Array<MetricTooltipLine | undefined> = [
     summary.input !== undefined
       ? { label: "input", value: formatCostSummary({ total: summary.input }) }
       : undefined,
@@ -116,6 +114,10 @@ function costTooltipLines(
         }
       : undefined,
   ];
+  const componentLines = lines.filter(isMetricTooltipLine);
+  return componentLines.length
+    ? componentLines
+    : [{ label: "total", value: formatCostSummary(summary) }];
 }
 
 function costTooltip(
@@ -129,16 +131,15 @@ function costTooltip(
       : [];
   });
   if (!modelSummaries.length) {
-    return costTooltipLines(summary).filter(isMetricTooltipLine);
+    return costTooltipLines(summary);
   }
 
   return modelSummaries.flatMap((item) => [
     { value: modelLabel(item.modelId), valueStyle: "heading" },
-    ...costTooltipLines(item.summary)
-      .filter(isMetricTooltipLine)
-      .map((line) =>
-        line.label ? { ...line, label: `• ${line.label}` } : line,
-      ),
+    ...costTooltipLines(item.summary).map((line) => ({
+      ...line,
+      label: `• ${line.label}`,
+    })),
   ]);
 }
 
