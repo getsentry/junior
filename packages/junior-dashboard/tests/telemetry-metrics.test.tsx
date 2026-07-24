@@ -21,13 +21,24 @@ vi.mock("../src/client/components/Metric", () => ({
 import { CostMetric } from "../src/client/components/TelemetryMetrics";
 
 describe("CostMetric", () => {
-  it("shows each model's total when component costs are unavailable", () => {
+  it.each([
+    {
+      name: "total-only costs",
+      cost: { total: 0.42 },
+      expected: ["• total: $0.42"],
+    },
+    {
+      name: "mixed total and component costs",
+      cost: { total: 0.42, input: 0.1 },
+      expected: ["• total: $0.42", "• input: $0.10"],
+    },
+  ])("shows $name", ({ cost, expected }) => {
     const html = renderToStaticMarkup(
       <CostMetric
         modelUsage={[
           {
             modelId: "openai/gpt-5",
-            usage: { cost: { total: 0.42 } },
+            usage: { cost },
           },
         ]}
         summary={{ total: 0.42 }}
@@ -35,6 +46,6 @@ describe("CostMetric", () => {
     );
 
     expect(html).toContain("gpt-5");
-    expect(html).toContain("• total: $0.42");
+    for (const line of expected) expect(html).toContain(line);
   });
 });

@@ -92,6 +92,7 @@ function tokenTooltip(
 
 function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
   const lines: Array<MetricTooltipLine | undefined> = [
+    { label: "total", value: formatCostSummary(summary) },
     summary.input !== undefined
       ? { label: "input", value: formatCostSummary({ total: summary.input }) }
       : undefined,
@@ -114,10 +115,7 @@ function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
         }
       : undefined,
   ];
-  const componentLines = lines.filter(isMetricTooltipLine);
-  return componentLines.length
-    ? componentLines
-    : [{ label: "total", value: formatCostSummary(summary) }];
+  return lines.filter(isMetricTooltipLine);
 }
 
 function costTooltip(
