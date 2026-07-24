@@ -11,9 +11,10 @@ state.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.
-- Conversation detail exposes one ordered, privacy-safe event log. The
-  dashboard owns the event-to-view reduction and never merges a duplicate
-  transcript, activity stream, or provider runtime state.
+- Conversation detail, backward event pages, and forward update pages use
+  separate TanStack Query resources. The client derives one ordered transcript
+  from those immutable responses; paginated reads never write into another
+  resource's cache.
 - Reporting projects only tool calls and model-visible results from agent
   steps. The dashboard correlates their start, call, and result facts by tool
   call id into one row without exposing the rest of model history.

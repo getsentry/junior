@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import type {
   ConversationDetailReport,
@@ -29,14 +35,9 @@ import {
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import {
-  applyCompleteConversationHistory,
-  applyConversationEventPage,
-} from "./conversation-query";
-import {
-  mergeConversationEventPage,
-  mergeConversationSnapshot,
-  mergeConversationUpdate,
-} from "./conversation-state";
+  buildConversationTranscript,
+  conversationHistoryChanged,
+} from "./conversation-transcript";
 import type { DashboardCoreData, SystemData } from "./types";
 
 class DashboardApiError extends Error {
@@ -254,7 +255,8 @@ export function useArchiveConversation(conversationId: string) {
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         queryClient.invalidateQueries({
-          queryKey: ["conversation", conversationId],
+          exact: true,
+          queryKey: ["conversation", conversationId, "detail"],
         }),
       ]);
     },
@@ -263,89 +265,138 @@ export function useArchiveConversation(conversationId: string) {
 
 /** Fetch one conversation transcript while preserving route-level disabled state. */
 export function useConversationData(conversationId: string | undefined) {
-  const queryClient = useQueryClient();
-  const queryKey = ["conversation", conversationId] as const;
-  const query = useQuery({
+  const detail = useQuery({
     enabled: Boolean(conversationId),
-    queryKey,
-    queryFn: async ({ signal }): Promise<ConversationDetailReport> => {
-      const existing =
-        queryClient.getQueryData<ConversationDetailReport>(queryKey);
-      if (!existing || existing.status !== "active") {
-        const snapshot = await readConversationData(conversationId!, signal);
-        return existing
-          ? mergeConversationSnapshot(existing, snapshot)
-          : snapshot;
-      }
-      return readAllConversationUpdates(conversationId!, existing, signal);
-    },
-    refetchInterval: (query) =>
-      query.state.data?.status === "active" ? 2_000 : false,
+    queryKey: ["conversation", conversationId, "detail"],
+    queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const history = useInfiniteQuery({
+    enabled: false,
+    queryKey: [
+      "conversation",
+      conversationId,
+      "history",
+      detail.data?.previousCursor,
+      detail.data?.eventHistory.status,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      readConversationEvents(conversationId!, pageParam, signal),
+    initialPageParam: detail.data?.previousCursor ?? "",
+    getNextPageParam: (page) => page.previousCursor,
     retry: false,
   });
-  const history = useMutation({
-    mutationFn: (request: { before: string; conversationId: string }) =>
-      readConversationHistoryPage(request.conversationId, request.before),
-    onSuccess: async (result, request) => {
-      await applyConversationEventPage(
-        queryClient,
-        request.conversationId,
-        result.page,
-        result.refreshed,
-      );
-    },
+  const updates = useInfiniteQuery({
+    enabled: Boolean(
+      conversationId &&
+      detail.data?.status === "active" &&
+      detail.data.eventCursor,
+    ),
+    queryKey: [
+      "conversation",
+      conversationId,
+      "updates",
+      detail.data?.eventCursor,
+      detail.data?.eventHistory.status,
+      detail.data?.generatedAt,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      readConversationUpdateBatch(conversationId!, pageParam, signal),
+    initialPageParam: detail.data?.eventCursor ?? "",
+    getNextPageParam: (page) =>
+      page.status === "active" ? page.eventCursor : undefined,
+    retry: false,
   });
-  const completeHistory = useMutation({
-    mutationFn: async (request: {
-      conversationId: string;
-      initial: ConversationDetailReport;
-    }) => readAllConversationEvents(request.conversationId, request.initial),
-    onSuccess: async (complete, request) => {
-      await applyCompleteConversationHistory(
-        queryClient,
-        request.conversationId,
-        complete,
-      );
-    },
-  });
+
+  const historyPages = history.data?.pages ?? [];
+  const updatePages = updates.data?.pages ?? [];
+  const latestUpdate = updatePages.at(-1);
+  const data = useMemo(
+    () =>
+      detail.data
+        ? buildConversationTranscript(detail.data, historyPages, updatePages)
+        : undefined,
+    [detail.data, historyPages, updatePages],
+  );
+  const shouldRefreshDetail = Boolean(
+    detail.data &&
+    (conversationHistoryChanged(detail.data, historyPages, updatePages) ||
+      isInvalidCursorError(history.error) ||
+      isInvalidCursorError(updates.error)),
+  );
+
+  useEffect(() => {
+    if (shouldRefreshDetail) void detail.refetch();
+  }, [detail.refetch, shouldRefreshDetail]);
+
+  useEffect(() => {
+    if (
+      (latestUpdate?.status ?? detail.data?.status) !== "active" ||
+      updates.error ||
+      !updates.hasNextPage
+    ) {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      if (!updates.isFetchingNextPage) void updates.fetchNextPage();
+    }, 2_000);
+    return () => window.clearInterval(interval);
+  }, [
+    detail.data?.status,
+    latestUpdate?.status,
+    updates.error,
+    updates.fetchNextPage,
+    updates.hasNextPage,
+    updates.isFetchingNextPage,
+  ]);
+
   return {
-    ...query,
-    historyError: history.error ?? completeHistory.error,
-    hasPreviousPage: Boolean(query.data?.previousCursor),
-    isLoadingPreviousPage: history.isPending || completeHistory.isPending,
+    ...detail,
+    data,
+    error: detail.error ?? updates.error,
+    historyError: history.error,
+    hasPreviousPage: history.data
+      ? history.hasNextPage
+      : Boolean(detail.data?.previousCursor),
+    isLoadingPreviousPage: history.isFetchingNextPage,
     loadCompleteTranscript: async () => {
-      if (!conversationId) {
+      if (!conversationId || !detail.data) {
         throw new Error("Cannot load a conversation without an id");
       }
-      const completeQueryKey = ["conversation", conversationId] as const;
-      const current =
-        queryClient.getQueryData<ConversationDetailReport>(completeQueryKey);
-      if (!current) {
-        throw new Error("Cannot load history before conversation detail");
+      let pages = history.data?.pages ?? [];
+      let hasNextPage = history.data
+        ? history.hasNextPage
+        : Boolean(detail.data.previousCursor);
+      while (hasNextPage) {
+        const result = await history.fetchNextPage();
+        if (result.error) throw result.error;
+        pages = result.data?.pages ?? pages;
+        hasNextPage = result.hasNextPage;
       }
-      if (!current.previousCursor) return current;
-
-      await completeHistory.mutateAsync({
-        conversationId,
-        initial: current,
-      });
-      const complete =
-        queryClient.getQueryData<ConversationDetailReport>(completeQueryKey);
-      if (!complete || complete.previousCursor) {
+      let latestUpdates = updates.data?.pages;
+      if ((latestUpdate?.status ?? detail.data.status) === "active") {
+        const result = await updates.fetchNextPage();
+        if (result.error) throw result.error;
+        latestUpdates = result.data?.pages;
+      }
+      const complete = buildConversationTranscript(
+        detail.data,
+        pages,
+        latestUpdates ?? [],
+      );
+      if (complete.previousCursor) {
         throw new Error("Conversation history did not finish loading");
       }
       return complete;
     },
     loadPreviousPage: () => {
-      if (!conversationId || history.isPending || completeHistory.isPending) {
-        return;
+      const hasPreviousPage = history.data
+        ? history.hasNextPage
+        : Boolean(detail.data?.previousCursor);
+      if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
+        void history.fetchNextPage();
       }
-      const historyQueryKey = ["conversation", conversationId] as const;
-      const before =
-        queryClient.getQueryData<ConversationDetailReport>(
-          historyQueryKey,
-        )?.previousCursor;
-      if (before) history.mutate({ before, conversationId });
     },
   };
 }
@@ -373,71 +424,43 @@ export function readConversationEvents(
     conversationEventPageSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
     signal,
-  );
-}
-
-/** Read one older page, refreshing its detail anchor when the cursor is stale. */
-export async function readConversationHistoryPage(
-  conversationId: string,
-  before: string,
-  signal?: AbortSignal,
-): Promise<{
-  page?: ConversationEventPage;
-  refreshed?: ConversationDetailReport;
-}> {
-  try {
-    return {
-      page: await readConversationEvents(conversationId, before, signal),
-    };
-  } catch (error) {
-    if (!(error instanceof DashboardApiError) || error.status !== 400) {
-      throw error;
-    }
-    const refreshed = await readConversationData(conversationId, signal);
-    return {
-      page: refreshed.previousCursor
-        ? await readConversationEvents(
-            conversationId,
-            refreshed.previousCursor,
-            signal,
-          )
-        : undefined,
-      refreshed,
-    };
-  }
-}
-
-/** Drain every older event page into one complete transcript snapshot. */
-export async function readAllConversationEvents(
-  conversationId: string,
-  initial: ConversationDetailReport,
-  signal?: AbortSignal,
-): Promise<ConversationDetailReport> {
-  let current = initial;
-  const seenCursors = new Set<string>();
-  while (current.previousCursor) {
-    const cursor = current.previousCursor;
-    if (seenCursors.has(cursor)) {
+  ).then((page) => {
+    if (page.previousCursor === before) {
       throw new Error("Conversation history cursor did not advance");
     }
-    seenCursors.add(cursor);
+    return page;
+  });
+}
 
-    let page: ConversationEventPage;
-    try {
-      page = await readConversationEvents(conversationId, cursor, signal);
-    } catch (error) {
-      if (error instanceof DashboardApiError && error.status === 400) {
-        current = await readConversationData(conversationId, signal);
-        continue;
-      }
-      throw error;
+/** Read all forward pages from one stable detail cursor. */
+export async function readConversationUpdateBatch(
+  conversationId: string,
+  initialCursor: string,
+  signal?: AbortSignal,
+): Promise<ConversationUpdatesReport> {
+  const events = new Map<number, ConversationUpdatesReport["events"][number]>();
+  const seenCursors = new Set<string>();
+  let cursor = initialCursor;
+  let latest: ConversationUpdatesReport | undefined;
+
+  do {
+    if (seenCursors.has(cursor)) {
+      throw new Error("Conversation update cursor did not advance");
     }
-    if (page.eventHistory.status !== current.eventHistory.status) {
-      return readConversationData(conversationId, signal);
-    }
-    current = mergeConversationEventPage(current, page);
-  }
-  return current;
+    seenCursors.add(cursor);
+    latest = await readConversationUpdates(conversationId, cursor, signal);
+    for (const event of latest.events) events.set(event.seq, event);
+    cursor = latest.eventCursor;
+  } while (latest.hasMore);
+
+  return {
+    ...latest,
+    events: [...events.values()].sort((left, right) => left.seq - right.seq),
+  };
+}
+
+function isInvalidCursorError(error: Error | null): boolean {
+  return error instanceof DashboardApiError && error.status === 400;
 }
 
 /** Read only canonical events appended after the supplied conversation cursor. */
@@ -452,39 +475,4 @@ export function readConversationUpdates(
     `/api/conversations/${encodeURIComponent(conversationId)}/updates?${query}`,
     signal,
   );
-}
-
-/** Drain a bounded forward feed, refreshing detail when its cursor is invalid. */
-export async function readAllConversationUpdates(
-  conversationId: string,
-  initial: ConversationDetailReport,
-  signal?: AbortSignal,
-): Promise<ConversationDetailReport> {
-  let current = initial;
-  while (true) {
-    let update: ConversationUpdatesReport;
-    try {
-      update = await readConversationUpdates(
-        conversationId,
-        current.eventCursor,
-        signal,
-      );
-    } catch (error) {
-      if (error instanceof DashboardApiError && error.status === 400) {
-        const snapshot = await readConversationData(conversationId, signal);
-        return {
-          ...mergeConversationSnapshot(current, snapshot),
-          previousCursor: current.previousCursor
-            ? snapshot.previousCursor
-            : undefined,
-        };
-      }
-      throw error;
-    }
-    if (update.eventHistory.status !== current.eventHistory.status) {
-      return readConversationData(conversationId, signal);
-    }
-    current = mergeConversationUpdate(current, update);
-    if (!update.hasMore) return current;
-  }
 }

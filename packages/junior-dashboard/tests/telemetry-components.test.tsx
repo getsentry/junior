@@ -247,12 +247,12 @@ describe("dashboard canonical-event components", () => {
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(
-      ["conversation", "conversation-1"],
+      conversationDetailQueryKey("conversation-1"),
       conversation([], { status: "active" }),
     );
     const failedClient = conversationQueryClient();
     failedClient.setQueryData(
-      ["conversation", "conversation-1"],
+      conversationDetailQueryKey("conversation-1"),
       conversation([], { status: "failed" }),
     );
 
@@ -268,7 +268,7 @@ describe("dashboard canonical-event components", () => {
     const initialClient = conversationQueryClient();
     const initialError = new Error("initial detail failed");
     const initialQuery = initialClient.getQueryCache().build(initialClient, {
-      queryKey: ["conversation", "conversation-1"],
+      queryKey: conversationDetailQueryKey("conversation-1"),
     });
     initialQuery.setState({
       ...initialQuery.state,
@@ -296,9 +296,12 @@ describe("dashboard canonical-event components", () => {
       ],
       { status: "active" },
     );
-    staleClient.setQueryData(["conversation", "conversation-1"], staleDetail);
+    staleClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
+      staleDetail,
+    );
     const staleQuery = staleClient.getQueryCache().find({
-      queryKey: ["conversation", "conversation-1"],
+      queryKey: conversationDetailQueryKey("conversation-1"),
     });
     staleQuery?.setState({
       ...staleQuery.state,
@@ -518,7 +521,7 @@ describe("dashboard canonical-event components", () => {
       ],
       { conversationId: "child-1", displayTitle: "Advisor review" },
     );
-    client.setQueryData(["conversation", "child-1"], child);
+    client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
       part: {
@@ -549,7 +552,7 @@ describe("dashboard canonical-event components", () => {
       displayTitle: "Advisor review",
       status: "completed",
     });
-    client.setQueryData(["conversation", "child-1"], child);
+    client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
       part: {
@@ -598,7 +601,7 @@ describe("dashboard canonical-event components", () => {
       displayTitle: "Advisor review",
       status: "completed",
     });
-    client.setQueryData(["conversation", "child-1"], child);
+    client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const drawerHtml = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
@@ -632,7 +635,7 @@ describe("dashboard canonical-event components", () => {
     const error = new Error("unavailable");
     errorClient.getQueryCache().build(
       errorClient,
-      { queryKey: ["conversation", "child-error"] },
+      { queryKey: conversationDetailQueryKey("child-error") },
       {
         data: undefined,
         dataUpdateCount: 0,
@@ -1289,7 +1292,10 @@ describe("dashboard canonical-event components", () => {
         displayTitle: summary.displayTitle,
       },
     );
-    client.setQueryData(["conversation", summary.conversationId], detail);
+    client.setQueryData(
+      conversationDetailQueryKey(summary.conversationId),
+      detail,
+    );
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={["/conversations/slack%3AC1%3A123"]}>
@@ -1324,6 +1330,10 @@ function conversationQueryClient(): QueryClient {
       queries: { refetchOnMount: false, retry: false, retryOnMount: false },
     },
   });
+}
+
+function conversationDetailQueryKey(conversationId: string) {
+  return ["conversation", conversationId, "detail"] as const;
 }
 
 function renderConversationPageWithClient(queryClient: QueryClient): string {
