@@ -10,34 +10,27 @@ const WINDOWS = [7, 30, 90] as const;
 const pullRequestStatsSchema = z
   .object({
     closed: z.number().int().nonnegative(),
-    compositionUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     days: z.number().int().positive(),
-    juniorOnly: z.number().int().nonnegative(),
     medianMergeTimeMs: z.number().nonnegative().nullable(),
     merged: z.number().int().nonnegative(),
-    mixed: z.number().int().nonnegative(),
   })
   .strict()
   .transform((row) => {
     const terminal = row.merged + row.closed;
-    const classified = row.juniorOnly + row.mixed;
     return {
       ...row,
       medianMergeTimeMs: row.medianMergeTimeMs ?? undefined,
       mergeRate: terminal > 0 ? row.merged / terminal : undefined,
-      juniorOnlyRate: classified > 0 ? row.juniorOnly / classified : undefined,
     };
   });
 
 const pullRequestRepositoryStatsSchema = z
   .object({
     closed: z.number().int().nonnegative(),
-    compositionUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     juniorOnly: z.number().int().nonnegative(),
     merged: z.number().int().nonnegative(),
-    mixed: z.number().int().nonnegative(),
     repository: z.string().min(1),
   })
   .strict()
@@ -67,19 +60,13 @@ const issueStatsSchema = z
 
 const pullRequestDaySchema = z
   .object({
-    closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     date: z.string().date(),
-    merged: z.number().int().nonnegative(),
   })
   .strict();
 
 const issueDaySchema = z
   .object({
-    closedCompleted: z.number().int().nonnegative(),
-    closedDuplicate: z.number().int().nonnegative(),
-    closedNotPlanned: z.number().int().nonnegative(),
-    closedUnknown: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     date: z.string().date(),
   })
@@ -136,7 +123,6 @@ async function aggregatePullRequestWindows(args: {
       SELECT
         ${table.pullRequestId},
         ${table.state},
-        ${table.commitComposition},
         ${table.openedAt},
         ${table.mergedAt},
         ${table.closedAt}
@@ -160,24 +146,6 @@ async function aggregatePullRequestWindows(args: {
           WHERE recent_pull_requests.state = 'closed_unmerged'
             AND recent_pull_requests.closed_at >= windows.start_at
         )::integer AS "closed",
-      count(recent_pull_requests.pull_request_id)
-        FILTER (
-          WHERE recent_pull_requests.state = 'merged'
-            AND recent_pull_requests.merged_at >= windows.start_at
-            AND recent_pull_requests.commit_composition = 'junior_only'
-        )::integer AS "juniorOnly",
-      count(recent_pull_requests.pull_request_id)
-        FILTER (
-          WHERE recent_pull_requests.state = 'merged'
-            AND recent_pull_requests.merged_at >= windows.start_at
-            AND recent_pull_requests.commit_composition = 'mixed'
-        )::integer AS "mixed",
-      count(recent_pull_requests.pull_request_id)
-        FILTER (
-          WHERE recent_pull_requests.state = 'merged'
-            AND recent_pull_requests.merged_at >= windows.start_at
-            AND recent_pull_requests.commit_composition IS NULL
-        )::integer AS "compositionUnknown",
       (
         percentile_cont(0.5) WITHIN GROUP (
           ORDER BY extract(
@@ -212,38 +180,17 @@ async function aggregatePullRequestDays(args: {
         date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
         interval '1 day'
       ) AS day
-    ), events AS (
-      SELECT
-        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
-        'created' AS kind
-      FROM ${table}
-      WHERE ${table.openedAt} >= ${start}
-      UNION ALL
-      SELECT
-        date_trunc('day', ${table.mergedAt} AT TIME ZONE 'UTC') AS day,
-        'merged' AS kind
-      FROM ${table}
-      WHERE ${table.state} = 'merged' AND ${table.mergedAt} >= ${start}
-      UNION ALL
-      SELECT
-        date_trunc('day', ${table.closedAt} AT TIME ZONE 'UTC') AS day,
-        'closed' AS kind
-      FROM ${table}
-      WHERE ${table.state} = 'closed_unmerged' AND ${table.closedAt} >= ${start}
     ), daily AS (
       SELECT
-        events.day,
-        count(*) FILTER (WHERE events.kind = 'created')::integer AS created,
-        count(*) FILTER (WHERE events.kind = 'merged')::integer AS merged,
-        count(*) FILTER (WHERE events.kind = 'closed')::integer AS closed
-      FROM events
-      GROUP BY events.day
+        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
+        count(*)::integer AS created
+      FROM ${table}
+      WHERE ${table.openedAt} >= ${start}
+      GROUP BY date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC')
     )
     SELECT
       to_char(days.day, 'YYYY-MM-DD') AS "date",
-      coalesce(daily.created, 0)::integer AS "created",
-      coalesce(daily.merged, 0)::integer AS "merged",
-      coalesce(daily.closed, 0)::integer AS "closed"
+      coalesce(daily.created, 0)::integer AS "created"
     FROM days
     LEFT JOIN daily ON daily.day = days.day
     ORDER BY days.day
@@ -273,17 +220,7 @@ async function aggregatePullRequestRepositories(args: {
         WHERE ${table.state} = 'merged'
           AND ${table.mergedAt} >= ${start}
           AND ${table.commitComposition} = 'junior_only'
-      )::integer AS "juniorOnly",
-      count(*) FILTER (
-        WHERE ${table.state} = 'merged'
-          AND ${table.mergedAt} >= ${start}
-          AND ${table.commitComposition} = 'mixed'
-      )::integer AS "mixed",
-      count(*) FILTER (
-        WHERE ${table.state} = 'merged'
-          AND ${table.mergedAt} >= ${start}
-          AND ${table.commitComposition} IS NULL
-      )::integer AS "compositionUnknown"
+      )::integer AS "juniorOnly"
     FROM ${table}
     WHERE ${table.openedAt} >= ${start}
       OR ${table.mergedAt} >= ${start}
@@ -382,40 +319,17 @@ async function aggregateIssueDays(args: {
         date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
         interval '1 day'
       ) AS day
-    ), events AS (
-      SELECT
-        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
-        'created' AS kind
-      FROM ${table}
-      WHERE ${table.openedAt} >= ${start}
-      UNION ALL
-      SELECT
-        date_trunc('day', ${table.closedAt} AT TIME ZONE 'UTC') AS day,
-        coalesce(${table.stateReason}, 'unknown') AS kind
-      FROM ${table}
-      WHERE ${table.state} = 'closed' AND ${table.closedAt} >= ${start}
     ), daily AS (
       SELECT
-        events.day,
-        count(*) FILTER (WHERE events.kind = 'created')::integer AS created,
-        count(*) FILTER (WHERE events.kind = 'completed')::integer
-          AS closed_completed,
-        count(*) FILTER (WHERE events.kind = 'duplicate')::integer
-          AS closed_duplicate,
-        count(*) FILTER (WHERE events.kind = 'not_planned')::integer
-          AS closed_not_planned,
-        count(*) FILTER (WHERE events.kind = 'unknown')::integer
-          AS closed_unknown
-      FROM events
-      GROUP BY events.day
+        date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC') AS day,
+        count(*)::integer AS created
+      FROM ${table}
+      WHERE ${table.openedAt} >= ${start}
+      GROUP BY date_trunc('day', ${table.openedAt} AT TIME ZONE 'UTC')
     )
     SELECT
       to_char(days.day, 'YYYY-MM-DD') AS "date",
-      coalesce(daily.created, 0)::integer AS "created",
-      coalesce(daily.closed_completed, 0)::integer AS "closedCompleted",
-      coalesce(daily.closed_duplicate, 0)::integer AS "closedDuplicate",
-      coalesce(daily.closed_not_planned, 0)::integer AS "closedNotPlanned",
-      coalesce(daily.closed_unknown, 0)::integer AS "closedUnknown"
+      coalesce(daily.created, 0)::integer AS "created"
     FROM days
     LEFT JOIN daily ON daily.day = days.day
     ORDER BY days.day
@@ -476,14 +390,6 @@ function formatDuration(value: number | undefined): string {
   return `${Math.round((hours / 24) * 10) / 10}d`;
 }
 
-function formatCommitComposition(stats: {
-  compositionUnknown: number;
-  juniorOnly: number;
-  mixed: number;
-}): string {
-  return `${stats.juniorOnly} Junior-only · ${stats.mixed} mixed · ${stats.compositionUnknown} unknown`;
-}
-
 function startOfUtcDay(timestampMs: number): Date {
   const date = new Date(timestampMs);
   date.setUTCHours(0, 0, 0, 0);
@@ -515,70 +421,46 @@ export async function buildGitHubOutcomeReport(args: {
 
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
-    title: "GitHub work delivered",
+    title: "GitHub activity",
     metrics: [
       {
-        label: "Junior-only merge rate · 30d",
-        value: formatPercent(thirtyDays.juniorOnlyRate),
-      },
-      {
-        label: "PR merge rate · 30d",
+        label: "PR closure merge rate · 30d",
         value: formatPercent(thirtyDays.mergeRate),
       },
       {
-        label: "median PR merge time · 30d",
+        label: "Median PR merge time · merged in 30d",
         value: formatDuration(thirtyDays.medianMergeTimeMs),
       },
       {
-        label: "median issue close time · 30d",
+        label: "Median issue close time · closed in 30d",
         value: formatDuration(issueThirtyDays.medianCloseTimeMs),
       },
     ],
     widgets: [
       {
-        id: "pull-request-outcomes",
+        id: "pull-requests-created",
         type: "bar_chart",
-        title: "Pull request outcomes",
-        description: "Daily outcomes",
+        title: "Pull requests created",
+        description: "Junior-owned pull requests opened per day",
         timeRangeDays: [...WINDOWS],
-        series: [
-          { key: "created", label: "Created" },
-          { key: "merged", label: "Merged", tone: "good" },
-          { key: "closed", label: "Closed unmerged", tone: "danger" },
-        ],
+        series: [{ key: "created", label: "Created" }],
         categories: pullRequestDays.map((stats) => ({
           id: stats.date,
           label: stats.date,
-          values: {
-            created: stats.created,
-            merged: stats.merged,
-            closed: stats.closed,
-          },
+          values: { created: stats.created },
         })),
       },
       {
-        id: "issue-outcomes",
+        id: "issues-created",
         type: "bar_chart",
-        title: "Issue outcomes",
-        description: "Daily outcomes",
+        title: "Issues created",
+        description: "Junior-owned issues opened per day",
         timeRangeDays: [...WINDOWS],
-        series: [
-          { key: "created", label: "Created" },
-          { key: "completed", label: "Completed", tone: "good" },
-          { key: "duplicate", label: "Duplicate", tone: "warning" },
-          { key: "notPlanned", label: "Not planned", tone: "danger" },
-          { key: "unknown", label: "Unknown" },
-        ],
+        series: [{ key: "created", label: "Created" }],
         categories: issueDays.map((stats) => ({
           id: stats.date,
           label: stats.date,
-          values: {
-            created: stats.created,
-            completed: stats.closedCompleted,
-            duplicate: stats.closedDuplicate,
-            notPlanned: stats.closedNotPlanned,
-            unknown: stats.closedUnknown,
-          },
+          values: { created: stats.created },
         })),
       },
     ],
@@ -591,8 +473,8 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "created", label: "Created" },
           { key: "merged", label: "Merged" },
           { key: "closed", label: "Closed unmerged" },
-          { key: "commitComposition", label: "Merged commit composition" },
-          { key: "mergeRate", label: "Merge rate" },
+          { key: "juniorOnly", label: "Junior-only merges" },
+          { key: "mergeRate", label: "Closure merge rate" },
         ],
         records: repositories.map(({ repository, ...stats }) => ({
           id: repository,
@@ -601,7 +483,7 @@ export async function buildGitHubOutcomeReport(args: {
             created: String(stats.created),
             merged: String(stats.merged),
             closed: String(stats.closed),
-            commitComposition: formatCommitComposition(stats),
+            juniorOnly: String(stats.juniorOnly),
             mergeRate: formatPercent(stats.mergeRate),
           },
         })),

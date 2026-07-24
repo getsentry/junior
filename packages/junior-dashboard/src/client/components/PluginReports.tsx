@@ -83,7 +83,14 @@ function PluginReportView(props: {
         ) : null}
       </div>
       {props.report.metrics?.length ? (
-        <div className="grid gap-px bg-white/[0.055] sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={cn(
+            "grid gap-px bg-white/[0.055] sm:grid-cols-2",
+            props.report.metrics.length === 3
+              ? "lg:grid-cols-3"
+              : "lg:grid-cols-4",
+          )}
+        >
           {props.report.metrics.map((metric) => (
             <div
               className={cn(

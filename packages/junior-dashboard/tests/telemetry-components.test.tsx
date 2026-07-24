@@ -947,6 +947,7 @@ describe("dashboard canonical-event components", () => {
       />,
     );
     expect(html).toContain("Pull request outcomes");
+    expect(html).toContain('aria-label="Chart legend"');
     expect(html).toContain('aria-label="30d, Created: 4.5"');
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
@@ -975,6 +976,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain(">0.1</text>");
     expect(html).not.toContain("0.10000000000000002");
+    expect(html).not.toContain('aria-label="Chart legend"');
   });
 
   it("keeps dense chart bars within their allocated slots", () => {

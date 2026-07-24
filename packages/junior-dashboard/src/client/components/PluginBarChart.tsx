@@ -53,24 +53,26 @@ export function PluginBarChart(props: {
             {widget.description}
           </p>
         ) : null}
-        <div className="mt-3 flex flex-wrap gap-3">
-          {widget.series.map((series, index) => (
-            <span
-              className="flex items-center gap-1.5 font-mono text-[0.58rem] text-white/40"
-              key={series.key}
-            >
-              <i
-                className="size-2 rounded-sm"
-                style={{
-                  backgroundColor: series.tone
-                    ? toneColors[series.tone]
-                    : colors[index % colors.length],
-                }}
-              />
-              {series.label}
-            </span>
-          ))}
-        </div>
+        {widget.series.length > 1 ? (
+          <div aria-label="Chart legend" className="mt-3 flex flex-wrap gap-3">
+            {widget.series.map((series, index) => (
+              <span
+                className="flex items-center gap-1.5 font-mono text-[0.58rem] text-white/40"
+                key={series.key}
+              >
+                <i
+                  className="size-2 rounded-sm"
+                  style={{
+                    backgroundColor: series.tone
+                      ? toneColors[series.tone]
+                      : colors[index % colors.length],
+                  }}
+                />
+                {series.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
       {categories.length === 0 ? (
         <p className="m-0 p-4 font-mono text-[0.68rem] text-white/30">

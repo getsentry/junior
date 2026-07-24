@@ -154,20 +154,20 @@ The GitHub plugin classifies a pull request or issue as Junior-owned on its
 signed `opened` event when the author matches the bot login derived from
 `GITHUB_APP_BOT_EMAIL` and the opening body contains Junior's session footer.
 It keeps tracking that projection through later lifecycle events even if the
-body changes. The `/system` dashboard reports pull request creation, merge,
-closure, merge-rate, and time-to-merge summaries alongside issue creation,
-closure, open-count, and time-to-close summaries for 7-, 30-, and 90-day
-windows. This reporting is independent of conversation subscriptions and never
-stores pull request or issue bodies.
+body changes. The `/system` dashboard charts daily pull request and issue
+creation for 7-, 30-, and 90-day windows. It also reports pull request and
+issue closure summaries with 30-day repository breakdowns. This reporting is
+independent of conversation subscriptions and never stores pull request or
+issue bodies.
 
 When a tracked pull request merges, Junior reads its commit list with the
 GitHub App installation credential. A merged pull request is `Junior-only` when
 every commit's Git author matches the configured bot login or bot email. If any
 commit has another author, the report classifies the pull request as `mixed`.
 Older records, empty commit lists, and lookups that fail remain `unknown`; the
-pull request outcome is still recorded. The headline Junior-only merge rate
-excludes unknown records. Junior stores only that classification, not commit
-SHAs, author identities, or email addresses.
+pull request outcome is still recorded. The repository breakdown exposes only
+the count of Junior-only merges. Junior stores the full classification, not
+commit SHAs, author identities, or email addresses.
 
 The pull request projection also keeps the native Junior conversation ids from
 bot-written session footers in a deduplicated `text[]`. These are opaque
@@ -194,7 +194,7 @@ Then confirm:
 2. The author is the GitHub App bot, and the body includes `Requested by` attribution for the verified runtime actor.
 3. A follow-up GitHub request can update or comment on the same issue without asking the user to authorize GitHub or handle tokens manually.
 4. A pushed branch can be turned into a draft PR with `github_createPullRequest` using explicit `repo`, `head`, and `base` values.
-5. After that PR merges, `/system` reports it as a Junior-only or mixed merge.
+5. After that PR merges, `/system` includes it in the repository's Junior-only merge count when every commit belongs to Junior.
 
 For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch. The App installation requires `Contents: write`; grant it `Workflows: write` when Junior may change files under `.github/workflows`. Creating the PR after the branch exists is a separate pull-request write operation, but it uses the same repository-scoped write credential.
 
