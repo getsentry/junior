@@ -1147,10 +1147,11 @@ describe("GitHub-owned pull request outcomes", () => {
         mergeRate: "50%",
         repository: "getsentry/junior",
       });
-      expect(report.recordSets?.[0]?.fields).toContainEqual({
-        key: "juniorOnly",
-        label: "Junior-only merges",
-      });
+      expect(report.recordSets?.[0]?.fields?.slice(0, 3)).toEqual([
+        { key: "repository", label: "Repository" },
+        { key: "created", label: "Created" },
+        { key: "juniorOnly", label: "Junior-only merges" },
+      ]);
       expect(report.widgets?.[1]?.timeRangeDays).toEqual([7, 30, 90]);
       expect(report.widgets?.[1]?.title).toBe("Issues created");
       expect(report.widgets?.[1]?.series).toEqual([

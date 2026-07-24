@@ -952,6 +952,60 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
 
+  it("prioritizes plugin report content at mobile widths", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            generatedAt: "2026-07-24T21:15:00.000Z",
+            metrics: [
+              { label: "Primary", value: "1" },
+              { label: "Secondary", value: "2" },
+            ],
+            pluginName: "github",
+            recordSets: [
+              {
+                fields: [
+                  { key: "repository", label: "Repository" },
+                  { key: "created", label: "Created" },
+                  { key: "juniorOnly", label: "Junior-only merges" },
+                  { key: "merged", label: "Merged" },
+                ],
+                records: [
+                  {
+                    id: "getsentry/junior",
+                    values: {
+                      created: "2",
+                      juniorOnly: "1",
+                      merged: "1",
+                      repository: "getsentry/junior",
+                    },
+                  },
+                ],
+                title: "Pull request repositories · 30d",
+              },
+            ],
+            title: "GitHub activity",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(
+      'class="mt-1 hidden font-mono text-[0.62rem] text-white/30 sm:block"',
+    );
+    expect(html).toContain(
+      'class="hidden shrink-0 font-mono text-[0.62rem] text-white/30 sm:block"',
+    );
+    expect(html).toContain(
+      'class="min-w-0 bg-[#09090b] px-4 py-4 hidden sm:block"',
+    );
+    expect(html).toContain(
+      'class="w-full table-fixed border-collapse text-left sm:min-w-[36rem] sm:table-auto"',
+    );
+    expect(html.match(/hidden sm:table-cell/g) ?? []).toHaveLength(2);
+  });
+
   it("formats fractional chart ticks without floating-point noise", () => {
     const html = renderToStaticMarkup(
       <PluginReports

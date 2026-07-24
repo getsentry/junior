@@ -72,12 +72,12 @@ function PluginReportView(props: {
           <h3 className="m-0 truncate font-display text-lg font-medium text-white">
             {title}
           </h3>
-          <div className="mt-1 font-mono text-[0.62rem] text-white/30">
+          <div className="mt-1 hidden font-mono text-[0.62rem] text-white/30 sm:block">
             {props.report.pluginName}
           </div>
         </div>
         {props.report.generatedAt ? (
-          <div className="shrink-0 font-mono text-[0.62rem] text-white/30">
+          <div className="hidden shrink-0 font-mono text-[0.62rem] text-white/30 sm:block">
             updated {formatTime(props.report.generatedAt)}
           </div>
         ) : null}
@@ -91,10 +91,11 @@ function PluginReportView(props: {
               : "lg:grid-cols-4",
           )}
         >
-          {props.report.metrics.map((metric) => (
+          {props.report.metrics.map((metric, index) => (
             <div
               className={cn(
                 "min-w-0 bg-[#09090b] px-4 py-4",
+                index > 0 && "hidden sm:block",
                 summaryToneClass(metric.tone),
               )}
               key={metric.label}
@@ -145,7 +146,7 @@ function PluginReportRecordSet(props: {
         <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-white/45">
           {props.recordSet.title}
         </div>
-        <div className="font-mono text-[0.58rem] text-white/25">
+        <div className="hidden font-mono text-[0.58rem] text-white/25 sm:block">
           {records.length} records
         </div>
       </div>
@@ -158,13 +159,17 @@ function PluginReportRecordSet(props: {
           Report records are unavailable because no fields were declared.
         </div>
       ) : (
-        <div className="overflow-x-auto border-t border-white/[0.05]">
-          <table className="w-full min-w-[36rem] border-collapse text-left">
+        <div className="overflow-x-hidden border-t border-white/[0.05] sm:overflow-x-auto">
+          <table className="w-full table-fixed border-collapse text-left sm:min-w-[36rem] sm:table-auto">
             <thead className="bg-black/15 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-white/25">
               <tr>
-                {fields.map((field) => (
+                {fields.map((field, index) => (
                   <th
-                    className="border-b border-white/[0.055] px-5 py-2.5 font-medium"
+                    className={cn(
+                      "border-b border-white/[0.055] px-3 py-2.5 font-medium sm:w-auto sm:px-5",
+                      index === 0 ? "w-1/2" : index === 1 ? "w-1/6" : "w-1/3",
+                      index > 2 && "hidden sm:table-cell",
+                    )}
                     key={field.key}
                     scope="col"
                   >
@@ -182,9 +187,12 @@ function PluginReportRecordSet(props: {
                   )}
                   key={record.id}
                 >
-                  {fields.map((field) => (
+                  {fields.map((field, index) => (
                     <td
-                      className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-[0.7rem] text-white/55"
+                      className={cn(
+                        "max-w-72 truncate border-b border-white/[0.05] px-3 py-3 font-mono text-[0.7rem] text-white/55 sm:px-5",
+                        index > 2 && "hidden sm:table-cell",
+                      )}
                       key={field.key}
                     >
                       {record.values[field.key] ?? ""}

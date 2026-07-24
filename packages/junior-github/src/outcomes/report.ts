@@ -471,9 +471,9 @@ export async function buildGitHubOutcomeReport(args: {
         fields: [
           { key: "repository", label: "Repository" },
           { key: "created", label: "Created" },
+          { key: "juniorOnly", label: "Junior-only merges" },
           { key: "merged", label: "Merged" },
           { key: "closed", label: "Closed unmerged" },
-          { key: "juniorOnly", label: "Junior-only merges" },
           { key: "mergeRate", label: "Closure merge rate" },
         ],
         records: repositories.map(({ repository, ...stats }) => ({
