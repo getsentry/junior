@@ -33,8 +33,10 @@ Canonical words used across Junior's code and documentation.
   not as a generic context-start marker.
 - **History version**: an internal sequence partition used to load agent
   history after a replacement. It is not a product event or lifecycle state.
+- **Turn route**: the model profile and reasoning level selected for a turn
+  before model execution begins.
 - **Model profile**: a stable host-owned model name, such as `standard` or
-  `handoff`, recorded on a history replacement.
+  `handoff`, recorded on a turn route or history replacement.
 - **Message**: exact normalized source or destination chat content stored for
   transcript display, privacy, delivery handling, and search.
 - **Message update**: later delivery or hydration state for an existing

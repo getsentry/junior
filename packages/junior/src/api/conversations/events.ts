@@ -13,6 +13,7 @@ export const conversationReportSourceEventTypes = [
   "agent_step",
   "tool_execution_started",
   "turn_started",
+  "turn_routed",
   "turn_completed",
   "turn_failed",
   "compaction",
@@ -218,6 +219,18 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "started",
+      };
+    case "turn_routed":
+      return {
+        type: "turn_routed",
+        turnId: data.turnId,
+        modelProfile: data.modelProfile,
+        modelId: data.modelId,
+        reasoningLevel: data.reasoningLevel,
+        ...(data.confidence !== undefined
+          ? { confidence: data.confidence }
+          : {}),
+        source: data.source,
       };
     case "turn_completed":
       return {

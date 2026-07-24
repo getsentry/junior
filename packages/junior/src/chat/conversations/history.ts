@@ -222,6 +222,18 @@ const turnStartedEventDataSchema = z
     "turn input message ids must be unique",
   );
 
+const turnRoutedEventDataSchema = z
+  .object({
+    type: z.literal("turn_routed"),
+    turnId: z.string().min(1),
+    modelProfile: modelProfileSchema,
+    modelId: z.string().min(1),
+    reasoningLevel: z.string().min(1),
+    confidence: z.number().min(0).max(1).optional(),
+    source: z.enum(["configured", "inherited", "router"]),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -281,6 +293,7 @@ const appendableConversationEventDataSchema = z.union([
   messageHandledEventDataSchema,
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
+  turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
@@ -312,6 +325,7 @@ const knownConversationEventTypeSchema = z.enum([
   "message_handled",
   "messages_summarized",
   "turn_started",
+  "turn_routed",
   "turn_completed",
   "turn_failed",
   "subagent_started",

@@ -39,9 +39,11 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
+  loadTurnRoute,
   openConversationProjection,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
+  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
   instructionActors,
@@ -461,7 +463,18 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    if (activeModelProfile === STANDARD_MODEL_PROFILE) {
+    const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
+    if (storedTurnRoute) {
+      turnRoute = {
+        profile: storedTurnRoute.modelProfile,
+        reasoningLevel: storedTurnRoute.reasoningLevel as TurnRoute["reasoningLevel"],
+        ...(storedTurnRoute.confidence !== undefined
+          ? { confidence: storedTurnRoute.confidence }
+          : {}),
+        reason: `persisted:${storedTurnRoute.source}`,
+        source: storedTurnRoute.source,
+      };
+    } else if (activeModelProfile === STANDARD_MODEL_PROFILE) {
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -498,6 +511,24 @@ async function executeAgentRunInPrivacyContext(
             : "default",
       );
     }
+
+    const routedModelProfile = turnRoute.profile;
+    const routedModelId = modelIdForProfile(botConfig, routedModelProfile);
+    if (!storedTurnRoute) {
+      await recordTurnRoute({
+        conversationId,
+        turnId,
+        modelProfile: routedModelProfile,
+        modelId: routedModelId,
+        reasoningLevel: turnRoute.reasoningLevel,
+        ...(turnRoute.confidence !== undefined
+          ? { confidence: turnRoute.confidence }
+          : {}),
+        source: turnRoute.source ?? "configured",
+      });
+    }
+    activeModelProfile = routedModelProfile;
+    activeModelId = routedModelId;
 
     // ── Mutable turn state ───────────────────────────────────────────
     const generatedFiles: FileUpload[] = [];
@@ -1017,39 +1048,9 @@ async function executeAgentRunInPrivacyContext(
             return result;
           };
 
-          const requestedProfile =
-            activeModelProfile === STANDARD_MODEL_PROFILE
-              ? turnRoute!.profile
-              : undefined;
-          let run: Promise<unknown>;
-          if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              scheduleHandoff({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [freshPromptMessage]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            applyPendingHandoff();
-            if (shouldPromptAgent) {
-              await runResume.requireDurableInputCheckpoint([
-                ...agent!.state.messages,
-                freshPromptMessage,
-              ]);
-              run = agent!.prompt(freshPromptMessage);
-            } else {
-              run = agent!.continue();
-            }
-          } else {
-            run = shouldPromptAgent
-              ? agent!.prompt(freshPromptMessage)
-              : agent!.continue();
-          }
+          let run: Promise<unknown> = shouldPromptAgent
+            ? agent!.prompt(freshPromptMessage)
+            : agent!.continue();
           let retryUsage: AgentTurnUsage | undefined;
           try {
             for (let attempt = 0; ; attempt += 1) {

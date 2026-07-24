@@ -389,6 +389,54 @@ export async function recordAuthorizationCompleted(args: {
   ]);
 }
 
+/** Load a previously selected execution profile for a resumed turn. */
+export async function loadTurnRoute(args: {
+  conversationId: string;
+  turnId: string;
+}): Promise<
+  | Extract<ConversationEvent["data"], { type: "turn_routed" }>
+  | undefined
+> {
+  const events = await getConversationEventStore().loadHistory(
+    args.conversationId,
+  );
+  return events.find(
+    (event) =>
+      event.data.type === "turn_routed" && event.data.turnId === args.turnId,
+  )?.data as
+    | Extract<ConversationEvent["data"], { type: "turn_routed" }>
+    | undefined;
+}
+
+/** Record the execution profile selected for one turn without changing agent history. */
+export async function recordTurnRoute(args: {
+  conversationId: string;
+  turnId: string;
+  modelProfile: string;
+  modelId: string;
+  reasoningLevel: string;
+  confidence?: number;
+  source: "configured" | "inherited" | "router";
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      idempotencyKey: `turn:${args.turnId}:routed`,
+      createdAtMs: Date.now(),
+      data: {
+        type: "turn_routed",
+        turnId: args.turnId,
+        modelProfile: args.modelProfile,
+        modelId: args.modelId,
+        reasoningLevel: args.reasoningLevel,
+        ...(args.confidence !== undefined
+          ? { confidence: args.confidence }
+          : {}),
+        source: args.source,
+      },
+    },
+  ]);
+}
+
 /** Record a host-observed parent tool start without adding it to Pi replay. */
 export async function recordToolExecutionStarted(args: {
   conversationId: string;

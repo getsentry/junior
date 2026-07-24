@@ -291,26 +291,28 @@ describe("executeAgentRun model handoff", () => {
       mimeType: "image/png",
     });
     expect(observations.reasoningLevels).toEqual(["high"]);
-    expect(observations.summaryCalls).toBe(1);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-    expect(
-      (await getConversationEventStore().loadHistory(conversationId))
-        .map((event) => event.data)
-        .filter((entry) => entry.type === "handoff"),
-    ).toEqual([
+    ).toBe("standard");
+    const events = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).map((event) => event.data);
+    expect(events.filter((entry) => entry.type === "handoff")).toEqual([]);
+    expect(events.filter((entry) => entry.type === "turn_routed")).toEqual([
       {
-        type: "handoff",
+        type: "turn_routed",
+        turnId: "turn-router-model-handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
-        replacementHistory: expectedHandoffReplacementHistory(),
+        confidence: 0.99,
+        source: "router",
       },
     ]);
   });
 
-  it("applies the turn deadline while preparing a router-requested handoff", async () => {
+  it("does not compact context while applying a router-selected profile", async () => {
     observations.routedModelProfile = "handoff";
     observations.summaryPending = true;
     const conversationId = "local:test:router-model-handoff-timeout";
@@ -326,9 +328,9 @@ describe("executeAgentRun model handoff", () => {
       },
     });
 
-    expect(outcome.status).toBe("suspended");
-    expect(observations.summaryAborted).toBe(true);
-    expect(observations.providerCalls).toBe(0);
+    expect(outcome.status).toBe("completed");
+    expect(observations.summaryAborted).toBe(false);
+    expect(observations.providerCalls).toBe(1);
   });
 
   it("compacts and upgrades the same conversation before continuing the turn", async () => {

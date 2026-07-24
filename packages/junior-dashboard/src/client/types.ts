@@ -54,6 +54,13 @@ export type TranscriptViewPart =
 
 export type TranscriptViewMessage = {
   eventType?: string;
+  route?: {
+    confidence?: number;
+    modelId: string;
+    modelProfile: string;
+    reasoningLevel: string;
+    source: "configured" | "inherited" | "router";
+  };
   outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";

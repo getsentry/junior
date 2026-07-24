@@ -70,6 +70,7 @@ export interface TurnRoute {
   profile: ModelProfile;
   reasoningLevel: TurnReasoningLevel;
   reason: string;
+  source?: "configured" | "inherited" | "router";
 }
 
 const CLASSIFIER_FALLBACK_REASONING_LEVEL: TurnRoute["reasoningLevel"] =
@@ -179,6 +180,7 @@ export function configuredTurnRoute(
     profile,
     reasoningLevel,
     reason: `configured:${source}`,
+    source: source === "profile" ? "inherited" : "configured",
   };
 }
 
@@ -271,7 +273,7 @@ export async function selectTurnRoute(args: {
           : {}),
       });
 
-      return normalizedSelection;
+      return { ...normalizedSelection, source: "router" };
     },
   );
 }
@@ -341,6 +343,7 @@ async function classifyTurn(args: {
         profile: STANDARD_MODEL_PROFILE,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
+        source: "router",
       };
     }
 
@@ -349,6 +352,7 @@ async function classifyTurn(args: {
       profile: parsed.profile,
       reasoningLevel: parsed.reasoning_level,
       reason,
+      source: "router",
     };
   } catch (error) {
     logWarn(
@@ -370,6 +374,7 @@ async function classifyTurn(args: {
       profile: STANDARD_MODEL_PROFILE,
       reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
       reason: "classifier_error_default",
+      source: "router",
     };
   }
 }

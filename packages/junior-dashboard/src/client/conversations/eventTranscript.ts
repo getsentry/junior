@@ -56,6 +56,8 @@ export function conversationTranscriptMessages(
     Extract<TranscriptViewPart, { type: "subagent" }>
   >();
   const messages: TranscriptViewMessage[] = [];
+  const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
+  let latestUserMessage: TranscriptViewMessage | undefined;
 
   const ensureTool = (event: ConversationReportEvent, call: ToolCall): void => {
     if (replacedToolIds.has(call.toolCallId)) return;
@@ -98,14 +100,39 @@ export function conversationTranscriptMessages(
   for (const event of conversation.events) {
     const data = event.data;
     if (data.type === "message") {
-      messages.push({
+      const message = {
         ...eventMessage(event, data.role, [
           data.redacted
             ? { type: "text", redacted: true }
             : { type: "text", text: data.text! },
         ]),
         ...(data.eventType ? { eventType: data.eventType } : {}),
-      });
+      };
+      messages.push(message);
+      if (message.role === "user") latestUserMessage = message;
+      continue;
+    }
+
+    if (data.type === "turn_lifecycle" && data.state === "started") {
+      if (latestUserMessage) {
+        latestUserMessageByTurn.set(data.turnId, latestUserMessage);
+      }
+      continue;
+    }
+
+    if (data.type === "turn_routed") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message) {
+        message.route = {
+          modelProfile: data.modelProfile,
+          modelId: data.modelId,
+          reasoningLevel: data.reasoningLevel,
+          ...(data.confidence !== undefined
+            ? { confidence: data.confidence }
+            : {}),
+          source: data.source,
+        };
+      }
       continue;
     }
 
