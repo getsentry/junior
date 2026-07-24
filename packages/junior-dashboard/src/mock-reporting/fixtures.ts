@@ -723,6 +723,7 @@ export function readMockConversationUpdates(
     eventHistory: conversation.eventHistory,
     generatedAt: new Date().toISOString(),
     hasMore: false,
+    ...(conversation.modelUsage ? { modelUsage: conversation.modelUsage } : {}),
   };
 }
 

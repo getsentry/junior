@@ -35,7 +35,7 @@ function message(messageId: string, createdAtMs: number) {
   };
 }
 
-function textAgentStep(createdAtMs: number) {
+function textAgentStep(createdAtMs: number, inputTokens = 0) {
   return {
     data: {
       type: "agent_step" as const,
@@ -48,17 +48,17 @@ function textAgentStep(createdAtMs: number) {
         stopReason: "stop",
         timestamp: createdAtMs,
         usage: {
-          input: 0,
+          input: inputTokens,
           output: 0,
           cacheRead: 0,
           cacheWrite: 0,
-          totalTokens: 0,
+          totalTokens: inputTokens,
           cost: {
-            input: 0,
+            input: inputTokens / 1_000,
             output: 0,
             cacheRead: 0,
             cacheWrite: 0,
-            total: 0,
+            total: inputTokens / 1_000,
           },
         },
       } as PiMessage,
@@ -166,8 +166,9 @@ describe("conversation event REST resources", () => {
     ]);
 
     await getConversationEventStore().append(conversationId, [
-      message("message-4", 7),
-      message("message-5", 8),
+      textAgentStep(7, 5),
+      message("message-4", 8),
+      message("message-5", 9),
     ]);
 
     const firstUpdateResponse = await app.request(
@@ -177,8 +178,17 @@ describe("conversation event REST resources", () => {
     const firstUpdate = conversationUpdatesReportSchema.parse(
       await firstUpdateResponse.json(),
     );
-    expect(firstUpdate.events.map((event) => event.seq)).toEqual([6]);
+    expect(firstUpdate.events.map((event) => event.seq)).toEqual([7]);
     expect(firstUpdate.hasMore).toBe(true);
+    expect(firstUpdate.modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({
+          inputTokens: 5,
+          totalTokens: 5,
+        }),
+      },
+    ]);
 
     const secondUpdateResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}/updates?cursor=${encodeURIComponent(firstUpdate.eventCursor)}&limit=1`,
@@ -187,7 +197,7 @@ describe("conversation event REST resources", () => {
     const secondUpdate = conversationUpdatesReportSchema.parse(
       await secondUpdateResponse.json(),
     );
-    expect(secondUpdate.events.map((event) => event.seq)).toEqual([7]);
+    expect(secondUpdate.events.map((event) => event.seq)).toEqual([8]);
     expect(secondUpdate.hasMore).toBe(false);
   });
 

@@ -29,7 +29,7 @@ import {
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import {
-  mergeConversationEventPage,
+  applyConversationEventPage,
   mergeConversationUpdate,
 } from "./conversation-cache";
 import type { DashboardCoreData, SystemData } from "./types";
@@ -83,8 +83,15 @@ async function mutate<T>(
   return schema.parse(await response.json());
 }
 
-async function read<T>(schema: ZodType<T>, path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin" });
+async function read<T>(
+  schema: ZodType<T>,
+  path: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
   if (response.status === 401) {
     restartDashboardSignIn();
     throw new DashboardApiError(path, response.status);
@@ -252,12 +259,12 @@ export function useConversationData(conversationId: string | undefined) {
   const query = useQuery({
     enabled: Boolean(conversationId),
     queryKey,
-    queryFn: async (): Promise<ConversationDetailReport> => {
+    queryFn: async ({ signal }): Promise<ConversationDetailReport> => {
       const existing = client.getQueryData<ConversationDetailReport>(queryKey);
       if (!existing || existing.status !== "active") {
-        return readConversationData(conversationId!);
+        return readConversationData(conversationId!, signal);
       }
-      return readAllConversationUpdates(conversationId!, existing);
+      return readAllConversationUpdates(conversationId!, existing, signal);
     },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
@@ -267,16 +274,10 @@ export function useConversationData(conversationId: string | undefined) {
     mutationFn: (before: string) =>
       readConversationEvents(conversationId!, before),
     onSuccess: async (page) => {
-      const current = client.getQueryData<ConversationDetailReport>(queryKey);
-      if (!current) return;
-      if (page.eventHistory.status !== current.eventHistory.status) {
+      const result = await applyConversationEventPage(client, queryKey, page);
+      if (result === "refresh") {
         await client.invalidateQueries({ queryKey });
-        return;
       }
-      client.setQueryData<ConversationDetailReport>(
-        queryKey,
-        mergeConversationEventPage(current, page),
-      );
     },
   });
   return {
@@ -295,10 +296,12 @@ export function useConversationData(conversationId: string | undefined) {
 /** Read one conversation transcript payload for dashboard-local detail views. */
 export function readConversationData(
   conversationId: string,
+  signal?: AbortSignal,
 ): Promise<ConversationDetailReport> {
   return read(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
+    signal,
   );
 }
 
@@ -318,11 +321,13 @@ export function readConversationEvents(
 export function readConversationUpdates(
   conversationId: string,
   cursor: string,
+  signal?: AbortSignal,
 ): Promise<ConversationUpdatesReport> {
   const query = new URLSearchParams({ cursor });
   return read(
     conversationUpdatesReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}/updates?${query}`,
+    signal,
   );
 }
 
@@ -330,15 +335,17 @@ export function readConversationUpdates(
 async function readAllConversationUpdates(
   conversationId: string,
   initial: ConversationDetailReport,
+  signal?: AbortSignal,
 ): Promise<ConversationDetailReport> {
   let current = initial;
   while (true) {
     const update = await readConversationUpdates(
       conversationId,
       current.eventCursor,
+      signal,
     );
     if (update.eventHistory.status !== current.eventHistory.status) {
-      return readConversationData(conversationId);
+      return readConversationData(conversationId, signal);
     }
     current = mergeConversationUpdate(current, update);
     if (!update.hasMore) return current;

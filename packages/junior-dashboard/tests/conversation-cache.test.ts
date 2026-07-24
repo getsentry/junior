@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type {
   ConversationDetailReport,
@@ -6,6 +7,7 @@ import type {
   ConversationUpdatesReport,
 } from "@sentry/junior/api/schema";
 import {
+  applyConversationEventPage,
   mergeConversationEventPage,
   mergeConversationUpdate,
 } from "../src/client/conversation-cache";
@@ -35,6 +37,12 @@ function detail(): ConversationDetailReport {
     isParticipant: false,
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
+    modelUsage: [
+      {
+        modelId: "openai/gpt-5",
+        usage: { inputTokens: 1, totalTokens: 1 },
+      },
+    ],
     previousCursor: "before-3",
     sentryConversationUrl: "https://sentry.example/conversation-1",
     startedAt: generatedAt,
@@ -72,6 +80,12 @@ describe("conversation query cache", () => {
       isParticipant: false,
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5",
+          usage: { inputTokens: 2, totalTokens: 2 },
+        },
+      ],
       startedAt: generatedAt,
       status: "completed",
       surface: "internal",
@@ -82,9 +96,49 @@ describe("conversation query cache", () => {
       displayTitle: "Updated conversation",
       eventCursor: "next-cursor",
       events: [event(3), event(4), event(5)],
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5",
+          usage: { inputTokens: 2, totalTokens: 2 },
+        },
+      ],
       previousCursor: "before-3",
       sentryConversationUrl: "https://sentry.example/conversation-1",
       status: "completed",
     });
+  });
+
+  it("cancels a stale poll before merging an older history page", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const queryKey = ["conversation", "conversation-1"] as const;
+    queryClient.setQueryData(queryKey, detail());
+
+    let resolvePoll!: (value: ConversationDetailReport) => void;
+    const poll = queryClient
+      .fetchQuery({
+        queryKey,
+        queryFn: () =>
+          new Promise<ConversationDetailReport>((resolve) => {
+            resolvePoll = resolve;
+          }),
+      })
+      .catch(() => undefined);
+    const page: ConversationEventPage = {
+      events: [event(1), event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    };
+
+    await expect(
+      applyConversationEventPage(queryClient, queryKey, page),
+    ).resolves.toBe("merged");
+    resolvePoll({ ...detail(), events: [event(3), event(4), event(5)] });
+    await poll;
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>(queryKey)?.events,
+    ).toEqual([event(1), event(2), event(3), event(4)]);
   });
 });

@@ -346,6 +346,7 @@ export const conversationEventPageSchema = z
 
 export const conversationUpdatesReportSchema = conversationSummaryReportSchema
   .extend({
+    modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     eventCursor: z.string().min(1),

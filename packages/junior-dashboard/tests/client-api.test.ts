@@ -54,13 +54,28 @@ describe("dashboard client API", () => {
       eventCursor: "next-cursor",
       generatedAt: "2026-07-23T00:00:00.000Z",
       hasMore: false,
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5",
+          usage: { inputTokens: 5, totalTokens: 5 },
+        },
+      ],
     };
     const fetchMock = vi.fn(async () => Response.json(response));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
       readConversationUpdates("slack:C1:123", "signed cursor"),
-    ).resolves.toMatchObject({ eventCursor: "next-cursor", events: [] });
+    ).resolves.toMatchObject({
+      eventCursor: "next-cursor",
+      events: [],
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5",
+          usage: { inputTokens: 5, totalTokens: 5 },
+        },
+      ],
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/conversations/slack%3AC1%3A123/updates?cursor=signed+cursor",
       { credentials: "same-origin" },

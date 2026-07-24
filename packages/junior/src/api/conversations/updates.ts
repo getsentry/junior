@@ -1,4 +1,5 @@
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
 import {
@@ -39,27 +40,33 @@ export async function readConversationUpdates(
   });
   if (!cursor) throwApiError(400, "Invalid conversation cursor.");
 
+  const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
-  const [accessByConversation, highWaterSeq, metricsByRoot] = await Promise.all(
-    [
+  const [accessByConversation, highWaterSeq, metricsByRoot, modelUsage] =
+    await Promise.all([
       readConversationAccessFromSql(
         getDb(),
         [conversationId],
         options.verifiedViewerEmail,
       ),
-      readConversationEventHighWaterSeq(getSqlExecutor(), conversationId),
+      readConversationEventHighWaterSeq(executor, conversationId),
       readRootConversationMetricsFromSql(
         getDb(),
         includeDescendantMetrics ? [conversationId] : [],
       ),
-    ],
-  );
+      record.conversation.transcriptPurgedAtMs === undefined
+        ? readConversationModelUsageFromSql(executor, {
+            conversationId,
+            includeDescendants: includeDescendantMetrics,
+          })
+        : Promise.resolve([]),
+    ]);
   const access = accessByConversation.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
   const transcriptPurgedAtMs = record.conversation.transcriptPurgedAtMs;
   const page =
     transcriptPurgedAtMs === undefined
-      ? await readConversationEventUpdates(getSqlExecutor(), {
+      ? await readConversationEventUpdates(executor, {
           afterSeq: cursor.seq,
           canExposePayload,
           conversationId,
@@ -82,6 +89,7 @@ export async function readConversationUpdates(
       usage: metrics?.usage ?? record.usage ?? undefined,
     }),
     events: page.events,
+    ...(modelUsage.length > 0 ? { modelUsage } : {}),
     eventCursor: encodeConversationCursor({
       conversationId,
       kind: "after",

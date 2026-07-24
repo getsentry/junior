@@ -1,3 +1,4 @@
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   ConversationDetailReport,
   ConversationEventPage,
@@ -17,7 +18,7 @@ export function mergeConversationUpdate(
       ...current.events,
       ...update.events.filter((event) => !existingSeqs.has(event.seq)),
     ],
-    modelUsage: current.modelUsage,
+    modelUsage: update.modelUsage ?? current.modelUsage,
     previousCursor: current.previousCursor,
     sentryConversationUrl: current.sentryConversationUrl,
   };
@@ -38,4 +39,29 @@ export function mergeConversationEventPage(
     eventHistory: page.eventHistory,
     previousCursor: page.previousCursor,
   };
+}
+
+/**
+ * Stop an in-flight poll and prepend history to the latest cached transcript.
+ *
+ * Returns `refresh` when retention or authorization changed while the history
+ * request was in flight and the caller should reload conversation detail.
+ */
+export async function applyConversationEventPage(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+  page: ConversationEventPage,
+): Promise<"merged" | "missing" | "refresh"> {
+  await queryClient.cancelQueries({ exact: true, queryKey });
+  let result: "merged" | "missing" | "refresh" = "missing";
+  queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) => {
+    if (!current) return current;
+    if (page.eventHistory.status !== current.eventHistory.status) {
+      result = "refresh";
+      return current;
+    }
+    result = "merged";
+    return mergeConversationEventPage(current, page);
+  });
+  return result;
 }
