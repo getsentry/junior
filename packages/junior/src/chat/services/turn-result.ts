@@ -1,3 +1,4 @@
+import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
 import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
@@ -334,7 +335,13 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     errorMessage,
     providerError:
       resolvedOutcome === "provider_error" && errorMessage
-        ? createProviderError(errorMessage, { modelId })
+        ? createProviderError(errorMessage, {
+            modelId,
+            retryable:
+              lastAssistant !== undefined &&
+              isAssistantMessage(lastAssistant) &&
+              isRetryableAssistantError(lastAssistant),
+          })
         : undefined,
   };
 

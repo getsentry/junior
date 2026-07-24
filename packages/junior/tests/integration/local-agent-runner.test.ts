@@ -28,6 +28,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { createProviderError } from "@/chat/services/provider-error";
 import {
   flattenAgentRunRequestForTest,
   scriptedAssistantMessageRunner,
@@ -57,7 +58,10 @@ function successReply(
   };
 }
 
-function providerFailureReply(rawError: string): AgentRunResult {
+function providerFailureReply(
+  rawError: string,
+  providerError: unknown = new Error(rawError),
+): AgentRunResult {
   return {
     text: rawError,
     diagnostics: {
@@ -65,7 +69,7 @@ function providerFailureReply(rawError: string): AgentRunResult {
       errorMessage: rawError,
       modelId: "fake-local-agent",
       outcome: "provider_error",
-      providerError: new Error(rawError),
+      providerError,
       toolCalls: [],
       toolErrorCount: 0,
       toolResultCount: 0,
@@ -349,14 +353,18 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-model-failure",
     });
     const rawError =
-      "raw-error-sentinel https://provider.invalid/private?token=secret";
+      "503 raw-error-sentinel https://provider.invalid/private?token=secret";
+    const providerError = createProviderError(rawError, {
+      modelId: "xai/grok-4.5",
+    });
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
       { conversationId: conversationId!, message: "please try" },
       {
         agentRunner: {
-          run: async () => completedAgentRun(providerFailureReply(rawError)),
+          run: async () =>
+            completedAgentRun(providerFailureReply(rawError, providerError)),
         },
         deliverReply: async (reply) => {
           delivered.push(reply);
@@ -368,6 +376,7 @@ describe("local agent runner", () => {
     );
 
     expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.text).toContain("temporary connection problem");
     expect(delivered[0]?.text).toContain(
       "event_id=0123456789abcdef0123456789abcdef",
     );

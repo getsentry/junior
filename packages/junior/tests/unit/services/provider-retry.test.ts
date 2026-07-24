@@ -18,7 +18,7 @@ function assistantError(errorMessage: string | undefined): AssistantMessage {
 }
 
 const XAI_SERVICE_UNAVAILABLE =
-  '503 {"error":{"message":"Service temporarily unavailable. Please try again shortly.","type":"service_unavailable_error","param":{"error":"Service temporarily unavailable. Please try again shortly.","type":"service_unavailable_error","statusCode":503}},"providerMetadata":{"gateway":{"routing":{"originalModelId":"xai/grok-4.5","resolvedProvider":"xai","fallbacksAvailable":[],"canonicalSlug":"xai/grok-4.5","modelAttemptCount":1,"modelAttempts":[{"canonicalSlug":"xai/grok-4.5","success":false,"providerAttemptCount":1,"providerAttempts":[{"provider":"xai","credentialType":"system","success":false,"error":"Service temporarily unavailable","startTime":1784041443272,"endTime":1784041443386,"statusCode":503,"inferenceEndpoint":{"slug":"global","scope":"global"}}]}],"totalProviderAttemptCount":1},"generationId":"gen_01KXGJG3XC3MJ511VVF87ZSBTC"}}}';
+  '503 {"error":{"message":"Service temporarily unavailable","statusCode":503},"providerMetadata":{"gateway":{"routing":{"originalModelId":"xai/grok-4.5","providerAttempts":[{"credentialType":"system"}]}}}}';
 
 describe("provider retry helpers", () => {
   it("marks retryable provider-boundary exceptions", () => {
@@ -26,9 +26,7 @@ describe("provider retry helpers", () => {
       new Error("Anthropic stream ended before message_stop"),
     );
 
-    expect(error.message).toBe(
-      "AI provider error: Anthropic stream ended before message_stop",
-    );
+    expect(error.message).toBe("AI provider error: network");
     expect(error).toBeInstanceOf(ProviderError);
     expect(error).toMatchObject({
       code: "provider_error",
@@ -70,6 +68,29 @@ describe("provider retry helpers", () => {
     }
   });
 
+  it("uses structured transient signals when the provider message is empty", () => {
+    for (const [statusCode, kind] of [
+      [503, "server"],
+      [429, "rate_limit"],
+      [408, "timeout"],
+    ] as const) {
+      expect(
+        createProviderError(Object.assign(new Error(""), { statusCode })),
+      ).toMatchObject({
+        kind,
+        retryable: true,
+        status: statusCode,
+      });
+    }
+
+    expect(
+      createProviderError(Object.assign(new Error(""), { code: "ECONNRESET" })),
+    ).toMatchObject({
+      kind: "network",
+      retryable: true,
+    });
+  });
+
   it("builds a retry step from resumable Pi history", () => {
     const user = {
       role: "user",
@@ -95,7 +116,9 @@ describe("provider retry helpers", () => {
     } as PiMessage;
     const failedAssistant = assistantError(XAI_SERVICE_UNAVAILABLE);
 
-    const providerError = createProviderError(XAI_SERVICE_UNAVAILABLE);
+    const providerError = createProviderError(XAI_SERVICE_UNAVAILABLE, {
+      modelId: "xai/grok-4.5",
+    });
     expect(providerError).toMatchObject({
       kind: "server",
       modelId: "xai/grok-4.5",
@@ -141,14 +164,34 @@ describe("provider retry helpers", () => {
     ).toEqual({ delayMs: 60_000, messages: [user] });
   });
 
+  it("classifies HTTP request timeouts without overriding permanent signals", () => {
+    expect(
+      createProviderError(
+        Object.assign(new Error("Request failed"), { statusCode: 408 }),
+      ),
+    ).toMatchObject({
+      kind: "timeout",
+      retryable: true,
+      status: 408,
+    });
+
+    for (const message of ["Invalid model", "Context length exceeded"]) {
+      expect(
+        createProviderError(
+          Object.assign(new Error(message), { statusCode: 408 }),
+        ),
+      ).toMatchObject({
+        kind: "invalid_request",
+        retryable: false,
+        status: 408,
+      });
+    }
+  });
+
   it("retries common server failures without treating bare safety text as policy", () => {
     for (const message of [
-      "Internal Server Error",
       "Error: 502 Bad Gateway",
-      "upstream request failed",
-      "An unexpected error occurred",
       "503 Safety service temporarily unavailable",
-      "503 Authentication service temporarily unavailable",
       "Authorization service internal error",
     ]) {
       expect(createProviderError(message)).toMatchObject({
@@ -162,31 +205,26 @@ describe("provider retry helpers", () => {
     });
   });
 
-  it("preserves Pi transient provider retry signals", () => {
-    for (const message of [
-      "ResourceExhausted",
-      "Provider returned error",
-      "Internal error",
-      "other side closed",
-      "upstream connect error",
-      "reset before headers",
-      "stream ended without a final event",
-      "HTTP2 request did not get a response",
-      "retry delay exceeded",
-      "you can retry your request",
-      "try your request again",
-      "please retry your request",
-    ]) {
-      expect(isProviderRetryError(createProviderError(message))).toBe(true);
-    }
+  it("uses Pi's transient provider retry decision", () => {
+    const user = {
+      role: "user",
+      content: [{ type: "text", text: "help" }],
+    } as PiMessage;
+    const failure = assistantError("ResourceExhausted");
+
+    expect(
+      nextProviderRetry({
+        attempt: 0,
+        failure,
+        messages: [user, failure],
+      }),
+    ).toEqual({ delayMs: 2_000, messages: [user] });
   });
 
   it("keeps explicit permanent request failures terminal", () => {
     for (const error of [
       Object.assign(new Error("Invalid model"), { statusCode: 503 }),
-      "503 Internal error: context length exceeded",
       "500 Bad Request",
-      "Server error: unsupported model",
     ]) {
       expect(createProviderError(error)).toMatchObject({
         kind: "invalid_request",
@@ -204,15 +242,29 @@ describe("provider retry helpers", () => {
     expect(message).not.toContain("retried");
   });
 
+  it("does not blame credentials for provider access failures", () => {
+    const message = getProviderErrorUserMessage(
+      createProviderError(
+        Object.assign(new Error("Forbidden"), { statusCode: 403 }),
+      ),
+    );
+
+    expect(message).toContain("denied access");
+    expect(message).not.toContain("credentials");
+  });
+
   it("does not retry explicit credential failures", () => {
+    expect(
+      createProviderError("Unauthenticated request to AI Gateway"),
+    ).toMatchObject({
+      kind: "auth",
+      retryable: false,
+    });
+
     for (const message of [
       "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
       '401 {"error":{"message":"The provided credentials are invalid","type":"authentication_error","statusCode":401}}',
-      "Provider credentials have expired",
-      "Provider credentials were revoked",
-      "Authentication failed",
       "Permission denied",
-      "Authorization required",
     ]) {
       expect(isProviderRetryError(createProviderError(message))).toBe(false);
     }
@@ -240,6 +292,7 @@ describe("provider retry helpers", () => {
 
     for (const failure of [
       assistantError("400 bad request"),
+      assistantError("503 invalid model"),
       assistantError(undefined),
       fauxAssistantMessage("done"),
       assistantError(

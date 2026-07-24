@@ -244,7 +244,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         role: "assistant",
         content: [],
         stopReason: "error",
-        errorMessage: "Anthropic stream ended before message_stop",
+        errorMessage: "408 Request failed",
         usage: {
           input: 10,
           output: 1,
@@ -411,7 +411,7 @@ describe("executeAgentRun provider retry", () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
-  it("continues from the last safe boundary after a transient provider stream error", async () => {
+  it("continues from the last safe boundary after an HTTP request timeout", async () => {
     const replyPromise = executeAgentRun({
       conversationId: "conversation-1",
       turnId: "turn-1",

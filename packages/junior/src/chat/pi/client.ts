@@ -404,7 +404,13 @@ export async function embedTexts(params: {
             (embedding) => embedding.length === dimensions,
           )
         ) {
-          throw new Error("Embedding provider returned invalid vectors.");
+          throw createProviderError(
+            "Embedding provider returned invalid vectors.",
+            {
+              kind: "invalid_response",
+              modelId: params.modelId,
+            },
+          );
         }
         setSpanAttributes({
           "gen_ai.embeddings.dimension.count": dimensions,

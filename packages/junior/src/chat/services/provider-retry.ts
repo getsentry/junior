@@ -1,3 +1,7 @@
+import {
+  isRetryableAssistantError,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -8,23 +12,24 @@ import {
 const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000] as const;
 const MAX_PROVIDER_RETRY_DELAY_MS = 60_000;
 
-/** Build the next provider retry step from Pi history, if the turn can resume. */
+/** Apply Junior's retry budget to a retryable Pi assistant failure. */
 export function nextProviderRetry(args: {
   attempt: number;
-  failure?: { stopReason?: string; errorMessage?: string };
+  failure?: AssistantMessage;
   messages: PiMessage[];
 }): { delayMs: number; messages: PiMessage[] } | undefined {
   const backoffMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
-  if (
-    backoffMs === undefined ||
-    args.failure?.stopReason !== "error" ||
-    !args.failure.errorMessage
-  ) {
+  const errorMessage = args.failure?.errorMessage;
+  if (backoffMs === undefined || !args.failure || !errorMessage) {
     return undefined;
   }
 
-  const providerError = createProviderError(args.failure.errorMessage);
-  if (!providerError.retryable) {
+  const providerError = createProviderError(errorMessage, {
+    retryable: true,
+  });
+  const hasRetrySignal =
+    isRetryableAssistantError(args.failure) || providerError.status === 408;
+  if (!hasRetrySignal || !providerError.retryable) {
     return undefined;
   }
   const delayMs = Math.min(

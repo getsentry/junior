@@ -264,9 +264,7 @@ describe("completeText", () => {
         schema: z.object({ ok: z.boolean() }),
         prompt: "return json",
       }),
-    ).rejects.toThrow(
-      "AI provider error: Anthropic stream ended before message_stop",
-    );
+    ).rejects.toThrow("AI provider error: network");
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
   });
@@ -312,7 +310,7 @@ describe("completeText", () => {
         modelId: "openai/text-embedding-3-small",
         texts: ["one", "two"],
       }),
-    ).rejects.toThrow("Embedding provider returned invalid vectors");
+    ).rejects.toThrow("AI provider error: invalid_response");
     expect(mocks.setSpanAttributes).not.toHaveBeenCalled();
   });
 });

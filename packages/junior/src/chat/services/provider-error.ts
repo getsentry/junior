@@ -1,3 +1,10 @@
+/**
+ * Normalize failures at the model-provider boundary.
+ *
+ * Junior owns stable failure kinds, safe user copy, and telemetry fields. Pi
+ * remains the source of truth for retrying assistant error messages.
+ */
+
 export type ProviderErrorKind =
   | "auth"
   | "permission"
@@ -7,16 +14,21 @@ export type ProviderErrorKind =
   | "network"
   | "server"
   | "invalid_request"
+  | "invalid_response"
   | "quota"
   | "content_policy"
   | "unknown";
 
-interface ProviderErrorContext {
+interface ProviderErrorOptions {
+  kind?: ProviderErrorKind;
   modelId?: string;
+  /** Pi's decision for an assistant error; explicit terminal kinds still win. */
+  retryable?: boolean;
 }
 
-interface ProviderErrorDetails extends ProviderErrorContext {
+interface ProviderErrorDetails {
   kind: ProviderErrorKind;
+  modelId?: string;
   retryable: boolean;
   retryAfterMs?: number;
   status?: number;
@@ -31,10 +43,8 @@ export class ProviderError extends Error {
   readonly retryAfterMs?: number;
   readonly status?: number;
 
-  constructor(message: string, details: ProviderErrorDetails, cause?: unknown) {
-    super(`AI provider error: ${message || "Unknown provider error"}`, {
-      cause,
-    });
+  constructor(details: ProviderErrorDetails) {
+    super(`AI provider error: ${details.kind}`);
     this.name = "ProviderError";
     this.kind = details.kind;
     this.modelId = details.modelId;
@@ -64,6 +74,38 @@ const TIMEOUT_ERROR_CODES = new Set([
   "ETIMEDOUT",
   "ECONNABORTED",
   "ESOCKETTIMEDOUT",
+]);
+
+const CONTENT_POLICY_PATTERN =
+  /\b(?:content|safety)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b/i;
+const QUOTA_PATTERN =
+  /insufficient.?quota|quota exceeded|usage limit|available balance|out of budget|billing (?:limit|quota|error)|payment required/i;
+const AUTH_PATTERN =
+  /unauthenticated|invalid.?api.?key|no api key|authentication (?:failed|error|required)|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i;
+const PERMISSION_PATTERN =
+  /permission denied|forbidden|not authorized|authorization (?:failed|required|denied)/i;
+const INVALID_REQUEST_PATTERN =
+  /context.?length|context.?window|validation (?:error|failed)|bad request|unsupported model|invalid model|unknown (?:ai gateway )?model|mismatched api/i;
+const CAPACITY_PATTERN = /overloaded|at capacity|capacity exceeded/i;
+const TIMEOUT_PATTERN = /timed? out|timeout|gateway timeout/i;
+const NETWORK_PATTERN =
+  /network.?error|connection (?:error|refused|lost|closed)|fetch failed|socket (?:hang up|closed)|stream ended before/i;
+const SERVER_PATTERN =
+  /service(?: temporarily)?[ _-]?unavailable|server.?error|internal.?error|bad gateway|upstream (?:request )?failed/i;
+const TERMINAL_KINDS = new Set<ProviderErrorKind>([
+  "auth",
+  "permission",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+]);
+const RETRYABLE_KINDS = new Set<ProviderErrorKind>([
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
 ]);
 
 function providerMessage(error: unknown): string {
@@ -98,13 +140,6 @@ function extractStatus(error: unknown, message: string): number | undefined {
   return status ? Number(status) : undefined;
 }
 
-function extractMessageField(
-  message: string,
-  field: string,
-): string | undefined {
-  return message.match(new RegExp(`"${field}"\\s*:\\s*"([^"]+)"`, "i"))?.[1];
-}
-
 function extractRetryAfterMs(
   error: unknown,
   message: string,
@@ -134,78 +169,27 @@ function extractRetryAfterMs(
   return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
+/** Classify stable provider signals without copying Pi's retry vocabulary. */
 function classifyProviderError(
   status: number | undefined,
   message: string,
   transportKind: ProviderErrorKind | undefined,
 ): ProviderErrorKind {
-  if (
-    /\b(?:content|safety)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b/i.test(
-      message,
-    )
-  ) {
-    return "content_policy";
-  }
-  if (
-    /insufficient.?quota|quota exceeded|usage limit|monthly usage limit|available balance|out of budget|billing/i.test(
-      message,
-    )
-  ) {
-    return "quota";
-  }
-  if (
-    status === 401 ||
-    /invalid.?api.?key|no api key|authentication (?:failed|error|required)|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i.test(
-      message,
-    )
-  ) {
-    return "auth";
-  }
-  if (
-    status === 403 ||
-    /permission denied|forbidden|not authorized|authorization (?:failed|required|denied)/i.test(
-      message,
-    )
-  ) {
-    return "permission";
-  }
+  if (CONTENT_POLICY_PATTERN.test(message)) return "content_policy";
+  if (QUOTA_PATTERN.test(message)) return "quota";
+  if (status === 401 || AUTH_PATTERN.test(message)) return "auth";
+  if (status === 403 || PERMISSION_PATTERN.test(message)) return "permission";
+  if (INVALID_REQUEST_PATTERN.test(message)) return "invalid_request";
   if (status === 429 || /rate.?limit|too many requests/i.test(message)) {
     return "rate_limit";
   }
-  if (
-    /context.?length|context.?window|validation|bad request|unsupported model|invalid model|unknown (?:ai gateway )?model|mismatched api/i.test(
-      message,
-    )
-  ) {
-    return "invalid_request";
-  }
-  if (
-    /overloaded|at capacity|capacity exceeded|\bResourceExhausted\b/i.test(
-      message,
-    )
-  ) {
-    return "capacity";
-  }
-  if (
-    transportKind === "timeout" ||
-    /timed? out|timeout|gateway timeout/i.test(message)
-  ) {
+  if (status === 408) return "timeout";
+  if (CAPACITY_PATTERN.test(message)) return "capacity";
+  if (transportKind === "timeout" || TIMEOUT_PATTERN.test(message))
     return "timeout";
-  }
-  if (
-    transportKind === "network" ||
-    /network.?error|connection|fetch failed|socket|other side closed|upstream.?connect|reset before headers|stream ended|ended (?:before|without)|http2 request did not get a response|\bterminated\b|ECONNRESET/i.test(
-      message,
-    )
-  ) {
+  if (transportKind === "network" || NETWORK_PATTERN.test(message))
     return "network";
-  }
-  if (
-    (status !== undefined && status >= 500) ||
-    /service(?: temporarily)?[ _-]?unavailable|server.?error|internal.?error|bad gateway|provider.?returned.?error|upstream (?:request )?failed|unexpected error occurred|retry delay|(?:you can|try|please retry) your request/i.test(
-      message,
-    )
-  ) {
+  if ((status !== undefined && status >= 500) || SERVER_PATTERN.test(message)) {
     return "server";
   }
   if (status !== undefined && status >= 400) {
@@ -217,33 +201,25 @@ function classifyProviderError(
 /** Normalize SDK, Gateway, and Pi failures into one provider error contract. */
 export function createProviderError(
   error: unknown,
-  context: ProviderErrorContext = {},
+  options: ProviderErrorOptions = {},
 ): ProviderError {
   if (error instanceof ProviderError) return error;
 
   const message = providerMessage(error);
   const status = extractStatus(error, message);
-  const kind = classifyProviderError(
+  const kind =
+    options.kind ??
+    classifyProviderError(status, message, extractTransportKind(error));
+  const retryable =
+    !TERMINAL_KINDS.has(kind) &&
+    (options.retryable ?? RETRYABLE_KINDS.has(kind));
+  return new ProviderError({
+    kind,
+    modelId: options.modelId,
+    retryable,
+    retryAfterMs: extractRetryAfterMs(error, message),
     status,
-    message,
-    extractTransportKind(error),
-  );
-  return new ProviderError(
-    message,
-    {
-      kind,
-      modelId:
-        context.modelId ?? extractMessageField(message, "originalModelId"),
-      retryable:
-        Boolean(message) &&
-        ["rate_limit", "capacity", "timeout", "network", "server"].includes(
-          kind,
-        ),
-      retryAfterMs: extractRetryAfterMs(error, message),
-      status,
-    },
-    error,
-  );
+  });
 }
 
 /** Return whether a provider-boundary error should be retried. */
@@ -269,10 +245,17 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
     case "server":
       return "The model provider had a temporary connection problem. Please try again.";
     case "auth":
-    case "permission":
       return "The model provider rejected Junior's credentials. This needs an administrator or configuration fix.";
+    case "permission":
+      return "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.";
     case "quota":
       return "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.";
+    case "content_policy":
+      return "The model provider blocked this request under its content policy. Please revise the request and try again.";
+    case "invalid_request":
+      return "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.";
+    case "invalid_response":
+      return "The model provider returned an invalid response. Please try again.";
     default:
       return "";
   }

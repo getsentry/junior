@@ -46,14 +46,14 @@ describe("finalizeFailedTurnReply", () => {
     expect(finalized.text).toContain("event_id=evt_123");
   });
 
-  it("explains recognized provider failures without exposing the payload", () => {
+  it("records structured provider failure telemetry without raw payloads", () => {
     const logException = vi.fn().mockReturnValue("evt_503");
     const providerError = createProviderError(
       '503 {"error":{"message":"Service temporarily unavailable"}}',
       { modelId: "xai/grok-4.5" },
     );
 
-    const finalized = finalizeFailedTurnReply({
+    finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: providerError.message,
@@ -64,16 +64,53 @@ describe("finalizeFailedTurnReply", () => {
       context: {},
     });
 
-    expect(finalized.text).toContain("temporary connection problem");
-    expect(finalized.text).toContain("event_id=evt_503");
-    expect(finalized.text).not.toContain("Service temporarily unavailable");
-    expect(logException.mock.calls[0]?.[3]).toMatchObject({
+    const attributes = logException.mock.calls[0]?.[3];
+    expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.retryable": true,
       "app.ai.provider_error.status": 503,
       "gen_ai.request.model": "xai/grok-4.5",
     });
+    expect(attributes).not.toHaveProperty("exception.message");
   });
+
+  it.each([
+    {
+      error: createProviderError("Blocked by the content policy"),
+      explanation: "content policy",
+    },
+    {
+      error: createProviderError("Context length exceeded"),
+      explanation: "invalid",
+    },
+    {
+      error: createProviderError(
+        "Embedding provider returned invalid vectors",
+        {
+          kind: "invalid_response",
+        },
+      ),
+      explanation: "invalid response",
+    },
+  ])(
+    "explains terminal provider failures instead of calling them internal errors",
+    ({ error, explanation }) => {
+      const finalized = finalizeFailedTurnReply({
+        reply: providerErrorReply({
+          assistantMessageCount: 0,
+          errorMessage: error.message,
+          providerError: error,
+          text: "",
+        }),
+        logException: vi.fn().mockReturnValue("evt_terminal"),
+        context: {},
+      });
+
+      expect(finalized.text).toContain(explanation);
+      expect(finalized.text).toContain("event_id=evt_terminal");
+      expect(finalized.text).not.toContain("internal error");
+    },
+  );
 
   it("delivers genuine model-authored partial text with the interruption marker", () => {
     const logException = vi.fn().mockReturnValue("evt_456");
