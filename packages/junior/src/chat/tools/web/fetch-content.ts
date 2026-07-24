@@ -64,6 +64,14 @@ function truncateAtWordBoundary(
   return { content: `${shortened.trimEnd()}...`, truncated: true };
 }
 
+/** Apply the web-fetch character limit to already extracted text content. */
+export function truncateWebFetchContent(
+  content: string,
+  maxChars: number,
+): { content: string; truncated: boolean } {
+  return truncateAtWordBoundary(content, maxChars);
+}
+
 function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&quot;/g, '"')
@@ -157,7 +165,7 @@ export function extractContentDetails(
       const sourceHtml = extractMainHtml(normalizedBody);
       const markdown = htmlToMarkdownConverter.translate(sourceHtml);
       const normalizedMarkdown = normalizeWhitespace(markdown);
-      const truncated = truncateAtWordBoundary(normalizedMarkdown, maxChars);
+      const truncated = truncateWebFetchContent(normalizedMarkdown, maxChars);
       return {
         content: truncated.content,
         title: extractTitle(normalizedBody),
@@ -173,7 +181,7 @@ export function extractContentDetails(
     try {
       const parsed = JSON.parse(normalizedBody);
       const formatted = JSON.stringify(parsed, null, 2);
-      const truncated = truncateAtWordBoundary(formatted, maxChars);
+      const truncated = truncateWebFetchContent(formatted, maxChars);
       return {
         content: truncated.content,
         truncated: truncated.truncated,
@@ -181,7 +189,7 @@ export function extractContentDetails(
       };
     } catch {
       const normalizedText = normalizeWhitespace(normalizedBody);
-      const truncated = truncateAtWordBoundary(normalizedText, maxChars);
+      const truncated = truncateWebFetchContent(normalizedText, maxChars);
       return {
         content: truncated.content,
         truncated: truncated.truncated,
@@ -191,7 +199,7 @@ export function extractContentDetails(
   }
 
   const normalizedText = normalizeWhitespace(normalizedBody);
-  const truncated = truncateAtWordBoundary(normalizedText, maxChars);
+  const truncated = truncateWebFetchContent(normalizedText, maxChars);
   return {
     content: truncated.content,
     truncated: truncated.truncated,

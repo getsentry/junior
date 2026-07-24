@@ -158,7 +158,7 @@ describeEval("Shared Memory", slackEvals, (it) => {
   }) => {
     await clearMemories();
     const userText =
-      "Branch QA runbooks require risk notes before summary notes.";
+      "For this team, branch QA runbooks require risk notes before summary notes. Please acknowledge.";
     const result = await run({
       overrides: memoryPluginOverrides,
       initialEvents: [

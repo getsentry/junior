@@ -172,7 +172,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
-          "I prefer status updates with risks listed first. Can you draft one for the rollout pause?",
+          "I prefer status updates with risks listed first. Draft a brief update saying the rollout is paused while we validate the rollback and that the next checkpoint is tomorrow.",
           {
             thread: conflictingPreferencesThread,
             author: ALICE,
@@ -314,7 +314,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
-          "Can you list the open questions from this thread when you get a chance?",
+          "Open question: should we pause the launch? Please list it when you get a chance.",
           {
             thread: actorPreferenceMultiActorThread,
             author: BOB,

@@ -161,6 +161,40 @@ describe("chat config", () => {
     expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-large");
   });
 
+  it("uses the default web search model when AI_WEB_SEARCH_MODEL is blank", async () => {
+    process.env.AI_WEB_SEARCH_MODEL = "   ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.webSearchModelId).toBe("openai/gpt-5.4");
+  });
+
+  it("uses AI_WEB_SEARCH_MODEL when configured", async () => {
+    process.env.AI_WEB_SEARCH_MODEL = " anthropic/claude-sonnet-4.6 ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.webSearchModelId).toBe("anthropic/claude-sonnet-4.6");
+  });
+
+  it("throws when AI_WEB_SEARCH_MODEL is not a registered gateway model id", async () => {
+    process.env.AI_WEB_SEARCH_MODEL = "openai/search-model-not-real";
+
+    await expect(loadConfig()).rejects.toThrow(/Unknown AI Gateway model id/);
+  });
+
+  it("uses the default image generation model when AI_IMAGE_MODEL is blank", async () => {
+    process.env.AI_IMAGE_MODEL = "   ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.imageGenerationModelId).toBe("google/gemini-3-pro-image");
+  });
+
+  it("uses AI_IMAGE_MODEL when configured", async () => {
+    process.env.AI_IMAGE_MODEL = " openai/dall-e-3 ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.imageGenerationModelId).toBe("openai/dall-e-3");
+  });
+
   it("uses the default slash command when JUNIOR_SLASH_COMMAND is unset", async () => {
     delete process.env.JUNIOR_SLASH_COMMAND;
 

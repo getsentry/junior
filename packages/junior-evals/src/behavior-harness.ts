@@ -13,6 +13,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
@@ -71,6 +72,8 @@ import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
+import { DEFAULT_MAX_CHARS, MAX_FETCH_CHARS } from "@/chat/tools/web/constants";
+import { truncateWebFetchContent } from "@/chat/tools/web/fetch-content";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import type {
@@ -434,10 +437,11 @@ function createReplayWebFetchDeps(
 
   return {
     execute: async (input) => {
-      const args: Record<string, JsonValue> = { url: input.url };
-      if (input.max_chars !== undefined) {
-        args.max_chars = input.max_chars;
-      }
+      const requestedMaxChars = input.max_chars ?? DEFAULT_MAX_CHARS;
+      const args: Record<string, JsonValue> = {
+        url: input.url,
+        max_chars: MAX_FETCH_CHARS,
+      };
 
       const { result } = await executeWithReplay({
         toolName: "webFetch",
@@ -461,14 +465,25 @@ function createReplayWebFetchDeps(
           return output as JsonValue;
         },
         replay: {
-          version: "web-fetch-v1",
+          version: "web-fetch-v2",
           key: (replayArgs) => ({
             url: replayArgs.url,
-            max_chars: replayArgs.max_chars ?? null,
           }),
         },
       });
-      return juniorToolResultSchema.parse(result);
+      const parsed = juniorToolResultSchema.parse(result);
+      if (parsed.ok !== true || typeof parsed.content !== "string") {
+        return parsed;
+      }
+      const limited = truncateWebFetchContent(
+        parsed.content,
+        requestedMaxChars,
+      );
+      return {
+        ...parsed,
+        content: limited.content,
+        truncated: parsed.truncated === true || limited.truncated,
+      };
     },
   };
 }
@@ -476,7 +491,7 @@ function createReplayWebFetchDeps(
 function createReplayWebSearchDeps(
   baseOverrides: ToolHooks["toolOverrides"],
 ): WebSearchToolDeps {
-  const liveTool = createWebSearchTool({
+  const liveTool = createWebSearchTool(botConfig.webSearchModelId, {
     execute: baseOverrides?.webSearch?.execute,
   });
 

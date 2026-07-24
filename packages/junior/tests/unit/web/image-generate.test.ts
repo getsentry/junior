@@ -19,6 +19,9 @@ import { completeText } from "@/chat/pi/client";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 
 const mockCompleteText = vi.mocked(completeText);
+const defaultImageOptions = {
+  modelId: "google/gemini-3-pro-image",
+};
 
 function getRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
   const request = fetchMock.mock.calls[0];
@@ -74,12 +77,11 @@ describe("createImageGenerateTool", () => {
   afterEach(() => {
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_OIDC_TOKEN;
-    delete process.env.AI_IMAGE_MODEL;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
-  it("uses the default image model when AI_IMAGE_MODEL is not set", async () => {
+  it("uses the configured image generation model", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = vi
@@ -89,12 +91,15 @@ describe("createImageGenerateTool", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
 
     const uploads: FileUpload[] = [];
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts: (files: FileUpload[]) => {
-        uploads.push(...files);
-        return writeGeneratedArtifacts(files);
-      },
-    } as any);
+    const tool = createImageGenerateTool(
+      {
+        writeGeneratedArtifacts: (files: FileUpload[]) => {
+          uploads.push(...files);
+          return writeGeneratedArtifacts(files);
+        },
+      } as any,
+      { modelId: "openai/dall-e-3" },
+    );
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
     }
@@ -106,13 +111,13 @@ describe("createImageGenerateTool", () => {
     expect(request).toBeDefined();
     expect(request[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
     expect(getRequestBody(fetchMock)).toMatchObject({
-      model: "google/gemini-3-pro-image",
+      model: "openai/dall-e-3",
       messages: [{ role: "user", content: "enriched prompt" }],
       modalities: ["image"],
     });
     expect(result).toMatchObject({
       ok: true,
-      model: "google/gemini-3-pro-image",
+      model: "openai/dall-e-3",
       image_count: 1,
       delivery: expect.stringContaining("no file-send tool"),
     });
@@ -154,7 +159,10 @@ describe("createImageGenerateTool", () => {
       {
         writeGeneratedArtifacts,
       },
-      { canSendFilesToActiveConversation: true },
+      {
+        ...defaultImageOptions,
+        canSendFilesToActiveConversation: true,
+      },
     );
     const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
 
@@ -167,35 +175,8 @@ describe("createImageGenerateTool", () => {
     });
   });
 
-  it("uses AI_IMAGE_MODEL when configured", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
-    process.env.AI_IMAGE_MODEL = "openai/dall-e-3";
-    mockCompleteText.mockResolvedValueOnce({ text: "enriched cat" } as any);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts,
-    } as any);
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
-    const result = await tool.execute({ prompt: "a cat" }, {} as any);
-
-    expect(getRequestBody(fetchMock)).toMatchObject({
-      model: "openai/dall-e-3",
-    });
-    expect(result).toMatchObject({
-      ok: true,
-      model: "openai/dall-e-3",
-    });
-  });
-
   it("returns an actionable error when model is not image-capable", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    process.env.AI_IMAGE_MODEL = "google/gemini-3-pro-image";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = vi.fn().mockResolvedValueOnce(
       createErrorResponse(
@@ -210,9 +191,10 @@ describe("createImageGenerateTool", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts,
-    } as any);
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts } as any,
+      defaultImageOptions,
+    );
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
     }
@@ -233,9 +215,10 @@ describe("createImageGenerateTool", () => {
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts,
-    } as any);
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts } as any,
+      defaultImageOptions,
+    );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     const body = getRequestBody(fetchMock);
@@ -256,9 +239,10 @@ describe("createImageGenerateTool", () => {
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts,
-    } as any);
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts } as any,
+      defaultImageOptions,
+    );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     const body = getRequestBody(fetchMock);
@@ -277,9 +261,10 @@ describe("createImageGenerateTool", () => {
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({
-      writeGeneratedArtifacts,
-    } as any);
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts } as any,
+      defaultImageOptions,
+    );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     const body = getRequestBody(fetchMock);

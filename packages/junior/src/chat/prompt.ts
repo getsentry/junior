@@ -350,12 +350,14 @@ const TURN_CONTEXT_HEADER =
 const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
+  "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, use clear placeholders or ask one focused question instead of searching unrelated memory, history, files, or providers.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
   "- When a tool result includes a subscribable resource, use resource-event subscriptions for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the subscription can deliver. Use the suggested events when they fit and write a concise intent summary.",
+  "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis when that tool is available.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
@@ -389,6 +391,7 @@ const CONVERSATION_RULES = [
 
 const SLACK_ACTION_RULES = [
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
+  "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];

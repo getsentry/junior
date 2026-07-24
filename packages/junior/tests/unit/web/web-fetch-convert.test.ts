@@ -3,6 +3,7 @@ import {
   extractContent,
   extractContentDetails,
   extractWebFetchResponse,
+  truncateWebFetchContent,
 } from "@/chat/tools/web/fetch-content";
 
 describe("web fetch content conversion", () => {
@@ -30,6 +31,19 @@ describe("web fetch content conversion", () => {
     );
     expect(result).toContain('"name": "junior"');
     expect(result).toContain('"ok": true');
+  });
+
+  it("applies different limits to canonical extracted content", () => {
+    const content = "Slack streaming guidance ".repeat(600);
+
+    const short = truncateWebFetchContent(content, 6000);
+    const long = truncateWebFetchContent(content, 8000);
+
+    expect(short.content.length).toBeLessThanOrEqual(6003);
+    expect(long.content.length).toBeLessThanOrEqual(8003);
+    expect(long.content.length).toBeGreaterThan(short.content.length);
+    expect(short.truncated).toBe(true);
+    expect(long.truncated).toBe(true);
   });
 
   it("prefers main document content over page chrome", () => {

@@ -6,7 +6,9 @@
 export {
   completeSimple,
   getEnvApiKey,
+  getModel,
   getModels,
+  isRetryableAssistantError,
   registerApiProvider,
   type Message,
   type Model,

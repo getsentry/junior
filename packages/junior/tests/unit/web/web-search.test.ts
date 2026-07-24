@@ -12,6 +12,7 @@ vi.mock("@ai-sdk/gateway", () => ({
 }));
 
 describe("createWebSearchTool", () => {
+  const defaultModelId = "openai/gpt-5.4";
   const parallelSearch = { id: "parallel-search-tool" };
   const gatewayProvider = {
     chat: vi.fn((model: string) => ({ model })),
@@ -25,17 +26,11 @@ describe("createWebSearchTool", () => {
   });
 
   afterEach(() => {
-    delete process.env.AI_GATEWAY_API_KEY;
-    delete process.env.VERCEL_OIDC_TOKEN;
-    delete process.env.AI_WEB_SEARCH_MODEL;
-    delete process.env.AI_FAST_MODEL;
-    delete process.env.AI_MODEL;
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   it("uses AI Gateway parallel search and maps tool results", async () => {
-    process.env.AI_WEB_SEARCH_MODEL = "openai/gpt-5.4";
     vi.mocked(generateText).mockResolvedValueOnce({
       toolResults: [
         {
@@ -54,7 +49,7 @@ describe("createWebSearchTool", () => {
       ],
     } as never);
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool("anthropic/claude-sonnet-4.6");
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -71,7 +66,7 @@ describe("createWebSearchTool", () => {
     });
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: { model: "openai/gpt-5.4" },
+        model: { model: "anthropic/claude-sonnet-4.6" },
         prompt: "vercel ai gateway",
         toolChoice: { type: "tool", toolName: "parallelSearch" },
         abortSignal: expect.any(AbortSignal),
@@ -80,7 +75,7 @@ describe("createWebSearchTool", () => {
     expect(result).toEqual({
       ok: true,
       status: "success",
-      model: "openai/gpt-5.4",
+      model: "anthropic/claude-sonnet-4.6",
       query: "vercel ai gateway",
       result_count: 1,
       results: [
@@ -93,28 +88,12 @@ describe("createWebSearchTool", () => {
     });
   });
 
-  it("uses the default search model when AI_WEB_SEARCH_MODEL is unset, ignoring AI_MODEL/AI_FAST_MODEL", async () => {
-    delete process.env.AI_WEB_SEARCH_MODEL;
-    process.env.AI_FAST_MODEL = "openai/gpt-5.4";
-    process.env.AI_MODEL = "anthropic/claude-sonnet-4.6";
-    vi.mocked(generateText).mockResolvedValueOnce({ toolResults: [] } as never);
-
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await tool.execute({ query: "anything" }, {} as never);
-
-    expect(gatewayProvider.chat).toHaveBeenCalledWith("openai/gpt-5.4");
-  });
-
   it("wraps AI SDK errors in web search error message", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error('400 Invalid input: expected "function"'),
     );
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -142,7 +121,7 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -174,7 +153,7 @@ describe("createWebSearchTool", () => {
       });
     }) as never);
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -196,7 +175,7 @@ describe("createWebSearchTool", () => {
       return Promise.resolve({ toolResults: [] });
     }) as never);
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -230,7 +209,7 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -256,7 +235,7 @@ describe("createWebSearchTool", () => {
       ),
     );
 
-    const tool = createWebSearchTool();
+    const tool = createWebSearchTool(defaultModelId);
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }

@@ -12,8 +12,6 @@ import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 
-const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
-
 const imageGenerateOutputSchema = juniorToolResultSchema
   .extend({
     model: z.string(),
@@ -82,7 +80,7 @@ function parseImageGenerationError(
     const message = payload.error?.message?.trim();
     if (!message) return `image generation failed: ${status} ${body}`;
     if (message.includes("not an image model")) {
-      return `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to a compatible image model (for example "${DEFAULT_IMAGE_MODEL}").`;
+      return `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to a compatible image model.`;
     }
     return `image generation failed: ${status} ${message}`;
   } catch {
@@ -93,7 +91,10 @@ function parseImageGenerationError(
 /** Create the image tool with sandbox artifact guidance matched to file-send capability. */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
-  options: { canSendFilesToActiveConversation?: boolean } = {},
+  options: {
+    modelId: string;
+    canSendFilesToActiveConversation?: boolean;
+  },
   deps: ImageGenerateToolDeps = {},
 ) {
   return zodTool({
@@ -111,7 +112,7 @@ export function createImageGenerateTool(
       if (!apiKey) {
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
-      const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
+      const model = options.modelId;
       const enrichedPrompt = await enrichImagePrompt(prompt);
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",

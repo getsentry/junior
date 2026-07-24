@@ -1,4 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
+import { botConfig } from "@/chat/config";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
@@ -112,7 +113,10 @@ export function createTools(
     findFiles: createFindFilesTool(),
     listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
-    webSearch: createWebSearchTool(hooks.toolOverrides?.webSearch),
+    webSearch: createWebSearchTool(
+      botConfig.webSearchModelId,
+      hooks.toolOverrides?.webSearch,
+    ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
     }),
@@ -123,6 +127,7 @@ export function createTools(
         writeGeneratedArtifacts: hooks.writeGeneratedArtifacts,
       },
       {
+        modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
       },
       hooks.toolOverrides?.imageGenerate,

@@ -45,6 +45,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 export interface BotConfig {
   embeddingModelId: string;
   fastModelId: string;
+  imageGenerationModelId: string;
   loadingMessages: string[];
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
@@ -53,6 +54,7 @@ export interface BotConfig {
   maxSlicesPerTurn: number;
   turnTimeoutMs: number;
   userName: string;
+  webSearchModelId: string;
 }
 
 export type SqlDriver = "neon" | "postgres";
@@ -179,7 +181,12 @@ const DEFAULT_HANDOFF_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-sol",
 ).id;
+const DEFAULT_WEB_SEARCH_MODEL_ID = getModel(
+  "vercel-ai-gateway",
+  "openai/gpt-5.4",
+).id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
+const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
@@ -285,6 +292,9 @@ function readBotConfig(
         ? undefined
         : parseTurnReasoningLevel(reasoningLevel),
     fastModelId,
+    imageGenerationModelId:
+      toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
+      DEFAULT_IMAGE_GENERATION_MODEL_ID,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
@@ -295,6 +305,9 @@ function readBotConfig(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
     ),
+    webSearchModelId:
+      validateGatewayModelId(env.AI_WEB_SEARCH_MODEL) ??
+      DEFAULT_WEB_SEARCH_MODEL_ID,
   };
 }
 

@@ -179,6 +179,7 @@ describe("selectTurnRoute", () => {
 
     expect(profile).toMatchObject({
       reasoningLevel: "medium",
+      profile: "standard",
       reason: "low_confidence_medium_default:not confident",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");

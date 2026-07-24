@@ -22,7 +22,17 @@ const {
   return {
     executeAgentRunMock: vi.fn<
       (request: {
-        policy?: { signal?: AbortSignal };
+        policy?: {
+          signal?: AbortSignal;
+          toolOverrides?: {
+            webFetch?: {
+              execute?: (input: {
+                url: string;
+                max_chars?: number;
+              }) => Promise<unknown> | unknown;
+            };
+          };
+        };
       }) => Promise<Record<string, never>>
     >(async () => ({})),
     observedRuntimeIds,
@@ -166,6 +176,40 @@ describe("behavior harness", () => {
     await expect(
       runtimeState.agentRunner?.run({ policy: {} }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("replays one canonical web source at different output limits", async () => {
+    const previousReplayMode = process.env.VITEST_EVALS_REPLAY_MODE;
+    process.env.VITEST_EVALS_REPLAY_MODE = "strict";
+    let shortResult: unknown;
+    let longResult: unknown;
+    executeAgentRunMock.mockImplementationOnce(async (request) => {
+      const execute = request.policy?.toolOverrides?.webFetch?.execute;
+      if (!execute) throw new Error("missing eval webFetch override");
+      const url = "https://docs.slack.dev/reference/methods/chat.startStream/";
+      shortResult = await execute({ url, max_chars: 1_000 });
+      longResult = await execute({ url, max_chars: 8_000 });
+      return {};
+    });
+
+    try {
+      await runEvalScenario({ initialEvents: [] });
+      await runtimeState.agentRunner?.run({ policy: {} });
+    } finally {
+      if (previousReplayMode === undefined) {
+        delete process.env.VITEST_EVALS_REPLAY_MODE;
+      } else {
+        process.env.VITEST_EVALS_REPLAY_MODE = previousReplayMode;
+      }
+    }
+
+    expect(shortResult).toMatchObject({ ok: true, truncated: true });
+    expect(longResult).toMatchObject({ ok: true, truncated: true });
+    const shortContent = (shortResult as { content: string }).content;
+    const longContent = (longResult as { content: string }).content;
+    expect(shortContent.length).toBeLessThanOrEqual(1_003);
+    expect(longContent.length).toBeLessThanOrEqual(8_003);
+    expect(longContent.length).toBeGreaterThan(shortContent.length);
   });
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {

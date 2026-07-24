@@ -17,6 +17,7 @@ import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { loadEvalPluginFixtures } from "./src/eval-plugin-fixtures";
+import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
   provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
@@ -32,6 +33,7 @@ export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
   const teardownPostgres = await setupPostgres(project);
+  const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
   let mswListening = false;
@@ -49,6 +51,7 @@ export default async function setup(
         pluginCatalogRuntime.setConfig(previousCatalogConfig);
       },
       teardownPostgres,
+      restoreAiGatewayDispatcher,
     ]) {
       try {
         await task();

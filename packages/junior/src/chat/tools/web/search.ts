@@ -3,14 +3,12 @@ import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { getModel } from "@earendil-works/pi-ai/compat";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
 import type { WebSearchToolDeps } from "@/chat/tools/types";
 
 const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;
-const DEFAULT_SEARCH_MODEL = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
 const SEARCH_TOOL_NAME = "parallelSearch";
 
 function asString(value: unknown): string | undefined {
@@ -75,7 +73,10 @@ function isAuthFailure(message: string): boolean {
   );
 }
 
-export function createWebSearchTool(override?: WebSearchToolDeps) {
+export function createWebSearchTool(
+  modelId: string,
+  override?: WebSearchToolDeps,
+) {
   return zodTool({
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
@@ -103,7 +104,6 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
       const maxResults = max_results ?? 3;
       // Keep web search pinned to a provider-tool capable model instead of
       // inheriting the main turn model.
-      const model = process.env.AI_WEB_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
       const controller = new AbortController();
 
       try {
@@ -112,7 +112,7 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
         const provider = createGatewayProvider();
         const response = await withTimeout(
           generateText({
-            model: provider.chat(model),
+            model: provider.chat(modelId),
             prompt: query,
             tools: {
               [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
@@ -132,7 +132,7 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
         return {
           ok: true,
           status: "success" as const,
-          model,
+          model: modelId,
           query,
           result_count: results.length,
           results,
