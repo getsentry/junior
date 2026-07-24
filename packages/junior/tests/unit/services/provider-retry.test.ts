@@ -43,6 +43,33 @@ describe("provider retry helpers", () => {
     expect(isProviderRetryError(new Error(error.message))).toBe(false);
   });
 
+  it("retries transport errno failures from direct and nested causes", () => {
+    for (const code of [
+      "ECONNREFUSED",
+      "ECONNRESET",
+      "ENOTFOUND",
+      "EAI_AGAIN",
+    ]) {
+      const error = Object.assign(new Error("Provider request failed"), {
+        code,
+      });
+      expect(createProviderError(error)).toMatchObject({
+        kind: "network",
+        retryable: true,
+      });
+    }
+
+    for (const code of ["ETIMEDOUT", "ECONNABORTED", "ESOCKETTIMEDOUT"]) {
+      const error = new Error("Provider request failed", {
+        cause: Object.assign(new Error("Transport failed"), { code }),
+      });
+      expect(createProviderError(error)).toMatchObject({
+        kind: "timeout",
+        retryable: true,
+      });
+    }
+  });
+
   it("builds a retry step from resumable Pi history", () => {
     const user = {
       role: "user",

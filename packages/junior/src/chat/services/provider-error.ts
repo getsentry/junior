@@ -45,14 +45,43 @@ export class ProviderError extends Error {
 }
 
 type ErrorShape = Error & {
+  cause?: unknown;
+  code?: unknown;
   response?: { headers?: unknown };
   responseHeaders?: unknown;
   status?: unknown;
   statusCode?: unknown;
 };
 
+const NETWORK_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
+
+const TIMEOUT_ERROR_CODES = new Set([
+  "ETIMEDOUT",
+  "ECONNABORTED",
+  "ESOCKETTIMEDOUT",
+]);
+
 function providerMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).trim();
+}
+
+function extractTransportKind(
+  error: unknown,
+  depth = 0,
+): ProviderErrorKind | undefined {
+  if (!(error instanceof Error) || depth > 4) return undefined;
+
+  const shaped = error as ErrorShape;
+  const code =
+    typeof shaped.code === "string" ? shaped.code.toUpperCase() : undefined;
+  if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
+  if (code && NETWORK_ERROR_CODES.has(code)) return "network";
+  return extractTransportKind(shaped.cause, depth + 1);
 }
 
 function extractStatus(error: unknown, message: string): number | undefined {
@@ -108,6 +137,7 @@ function extractRetryAfterMs(
 function classifyProviderError(
   status: number | undefined,
   message: string,
+  transportKind: ProviderErrorKind | undefined,
 ): ProviderErrorKind {
   if (
     /\b(?:content|safety)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b/i.test(
@@ -140,10 +170,14 @@ function classifyProviderError(
   if (/overloaded|at capacity|capacity exceeded/i.test(message)) {
     return "capacity";
   }
-  if (/timed? out|timeout|gateway timeout/i.test(message)) {
+  if (
+    transportKind === "timeout" ||
+    /timed? out|timeout|gateway timeout/i.test(message)
+  ) {
     return "timeout";
   }
   if (
+    transportKind === "network" ||
     /network.?error|connection|fetch failed|socket|stream ended|ended before|\bterminated\b|ECONNRESET/i.test(
       message,
     )
@@ -178,7 +212,11 @@ export function createProviderError(
 
   const message = providerMessage(error);
   const status = extractStatus(error, message);
-  const kind = classifyProviderError(status, message);
+  const kind = classifyProviderError(
+    status,
+    message,
+    extractTransportKind(error),
+  );
   return new ProviderError(
     message,
     {
