@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   cancelResourceEventSubscription,
@@ -72,7 +73,7 @@ function requireConversationContext(context: ToolRuntimeContext): string {
 }
 
 /** Return whether the current runtime can safely manage conversation subscriptions. */
-export function canUseResourceEventSubscriptionTools(
+function canUseResourceEventSubscriptionTools(
   context: ToolRuntimeContext,
 ): boolean {
   return (
@@ -109,9 +110,7 @@ function ttlMs(input: SubscribeInput): number {
 }
 
 /** Create the tool that subscribes the current conversation to resource events. */
-export function createSubscribeToResourceEventsTool(
-  context: ToolRuntimeContext,
-) {
+function createSubscribeToResourceEventsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
       "Subscribe the current conversation to high-signal events for a resource returned by a subscribable tool result. Matching events are queued as normal conversation messages; they do not interrupt active work.",
@@ -154,9 +153,7 @@ export function createSubscribeToResourceEventsTool(
 }
 
 /** Create the tool that lists active resource subscriptions for this conversation. */
-export function createListResourceEventSubscriptionsTool(
-  context: ToolRuntimeContext,
-) {
+function createListResourceEventSubscriptionsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
       "List active resource event subscriptions for the current conversation.",
@@ -190,7 +187,7 @@ export function createListResourceEventSubscriptionsTool(
 }
 
 /** Create the tool that stops resource watches for this conversation. */
-export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
+function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
       "Stop watching resources for the current conversation. Infer the user's intent from context instead of requiring a special command. Pass resource refs when they identify specific watches; omit them only when they mean all active watches or one watch is unambiguous. Call this tool before confirming that watching stopped.",
@@ -247,4 +244,20 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       };
     },
   });
+}
+
+/** Build the complete resource-watch tool set allowed by this runtime context. */
+export function createResourceEventTools(
+  context: ToolRuntimeContext,
+): ToolRegistry {
+  if (!canUseResourceEventSubscriptionTools(context)) {
+    return {};
+  }
+
+  return {
+    subscribeToResourceEvents: createSubscribeToResourceEventsTool(context),
+    listResourceEventSubscriptions:
+      createListResourceEventSubscriptionsTool(context),
+    stopWatchingResources: createStopWatchingResourcesTool(context),
+  };
 }

@@ -13,7 +13,7 @@ vi.mock("@/chat/resource-events/store", () => ({
   listResourceEventSubscriptions: listSubscriptions,
 }));
 
-import { createStopWatchingResourcesTool } from "@/chat/tools/resource-events";
+import { createResourceEventTools } from "@/chat/tools/resource-events";
 
 const context: ToolRuntimeContext = {
   conversationId: "slack:C123:1712345.0001",
@@ -61,7 +61,7 @@ describe("resource event tools", () => {
   });
 
   it("stops only the resource watches selected from conversation context", async () => {
-    const tool = createStopWatchingResourcesTool(context);
+    const tool = createResourceEventTools(context).stopWatchingResources!;
 
     await expect(
       tool.execute!(
@@ -88,7 +88,7 @@ describe("resource event tools", () => {
   });
 
   it("does not stop other watches when a requested resource is not active", async () => {
-    const tool = createStopWatchingResourcesTool(context);
+    const tool = createResourceEventTools(context).stopWatchingResources!;
 
     await expect(
       tool.execute!(
