@@ -28,8 +28,12 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
-import { applyConversationEventPage } from "./conversation-query";
 import {
+  applyCompleteConversationHistory,
+  applyConversationEventPage,
+} from "./conversation-query";
+import {
+  mergeConversationEventPage,
   mergeConversationSnapshot,
   mergeConversationUpdate,
 } from "./conversation-state";
@@ -290,13 +294,51 @@ export function useConversationData(conversationId: string | undefined) {
       );
     },
   });
+  const completeHistory = useMutation({
+    mutationFn: async (request: {
+      conversationId: string;
+      initial: ConversationDetailReport;
+    }) => readAllConversationEvents(request.conversationId, request.initial),
+    onSuccess: async (complete, request) => {
+      await applyCompleteConversationHistory(
+        queryClient,
+        request.conversationId,
+        complete,
+      );
+    },
+  });
   return {
     ...query,
-    historyError: history.error,
+    historyError: history.error ?? completeHistory.error,
     hasPreviousPage: Boolean(query.data?.previousCursor),
-    isLoadingPreviousPage: history.isPending,
+    isLoadingPreviousPage: history.isPending || completeHistory.isPending,
+    loadCompleteTranscript: async () => {
+      if (!conversationId) {
+        throw new Error("Cannot load a conversation without an id");
+      }
+      const completeQueryKey = ["conversation", conversationId] as const;
+      const current =
+        queryClient.getQueryData<ConversationDetailReport>(completeQueryKey);
+      if (!current) {
+        throw new Error("Cannot load history before conversation detail");
+      }
+      if (!current.previousCursor) return current;
+
+      await completeHistory.mutateAsync({
+        conversationId,
+        initial: current,
+      });
+      const complete =
+        queryClient.getQueryData<ConversationDetailReport>(completeQueryKey);
+      if (!complete || complete.previousCursor) {
+        throw new Error("Conversation history did not finish loading");
+      }
+      return complete;
+    },
     loadPreviousPage: () => {
-      if (!conversationId || history.isPending) return;
+      if (!conversationId || history.isPending || completeHistory.isPending) {
+        return;
+      }
       const historyQueryKey = ["conversation", conversationId] as const;
       const before =
         queryClient.getQueryData<ConversationDetailReport>(
@@ -323,12 +365,48 @@ export function readConversationData(
 export function readConversationEvents(
   conversationId: string,
   before: string,
+  signal?: AbortSignal,
 ): Promise<ConversationEventPage> {
   const query = new URLSearchParams({ before });
   return read(
     conversationEventPageSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
+    signal,
   );
+}
+
+/** Drain every older event page into one complete transcript snapshot. */
+export async function readAllConversationEvents(
+  conversationId: string,
+  initial: ConversationDetailReport,
+  signal?: AbortSignal,
+): Promise<ConversationDetailReport> {
+  let current = initial;
+  const seenCursors = new Set<string>();
+  while (current.previousCursor) {
+    const cursor = current.previousCursor;
+    if (seenCursors.has(cursor)) {
+      throw new Error("Conversation history cursor did not advance");
+    }
+    seenCursors.add(cursor);
+
+    let page: ConversationEventPage;
+    try {
+      page = await readConversationEvents(conversationId, cursor, signal);
+    } catch (error) {
+      if (error instanceof DashboardApiError && error.status === 400) {
+        current = await readConversationData(conversationId, signal);
+        continue;
+      }
+      throw error;
+    }
+    if (page.eventHistory.status !== current.eventHistory.status) {
+      current = await readConversationData(conversationId, signal);
+      continue;
+    }
+    current = mergeConversationEventPage(current, page);
+  }
+  return current;
 }
 
 /** Read only canonical events appended after the supplied conversation cursor. */

@@ -649,8 +649,13 @@ function transcriptMeta(
   const duration = formatTranscriptDuration(conversation);
   const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
   const costSummary = summarizeCost(conversation.cumulativeUsage);
-  const toolSummary = summarizeToolCalls(conversation);
-  const turnSummary = summarizeTurns(conversation);
+  const completeHistory = !conversation.previousCursor;
+  const toolSummary = completeHistory
+    ? summarizeToolCalls(conversation)
+    : undefined;
+  const turnSummary = completeHistory
+    ? summarizeTurns(conversation)
+    : undefined;
   const items: Array<MetricListItem | undefined> = [
     duration !== "none"
       ? {
@@ -669,9 +674,11 @@ function transcriptMeta(
           content: (
             <TokenMetric
               compactionCount={
-                conversation.events.filter(
-                  (event) => event.data.type === "compaction",
-                ).length
+                completeHistory
+                  ? conversation.events.filter(
+                      (event) => event.data.type === "compaction",
+                    ).length
+                  : undefined
               }
               modelUsage={conversation.modelUsage}
               summary={tokenSummary}
@@ -697,7 +704,7 @@ function transcriptMeta(
           key: "turns",
         }
       : undefined,
-    toolSummary.total > 0
+    toolSummary && toolSummary.total > 0
       ? {
           content: <ToolCallsMetric summary={toolSummary} />,
           key: "tools",

@@ -62,7 +62,7 @@ export type TranscriptViewMessage = {
 
 export type ConversationTranscript = Omit<
   ConversationDetailReport,
-  "eventCursor" | "previousCursor"
+  "eventCursor"
 > & {
   assistantLabel?: string;
 };

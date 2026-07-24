@@ -219,6 +219,31 @@ describe("dashboard canonical-event components", () => {
     expect(completedHtml).not.toContain("Junior is responding");
   });
 
+  it("does not present partial event counts as conversation totals", () => {
+    const events = [
+      event(0, {
+        type: "message",
+        messageId: "user-1",
+        role: "user",
+        text: "Investigate",
+      }),
+      event(1, {
+        type: "tool_started",
+        toolCallId: "search-1",
+        name: "search",
+      }),
+    ];
+    const partialHtml = renderTranscript(
+      conversation(events, { previousCursor: "older-events" }),
+    );
+    const completeHtml = renderTranscript(conversation(events));
+
+    expect(partialHtml).not.toContain("1 turn");
+    expect(partialHtml).not.toContain("1 tool call");
+    expect(completeHtml).toContain("1 turn");
+    expect(completeHtml).toContain("1 tool call");
+  });
+
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(

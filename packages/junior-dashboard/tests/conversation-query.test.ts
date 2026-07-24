@@ -6,7 +6,10 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
-import { applyConversationEventPage } from "../src/client/conversation-query";
+import {
+  applyCompleteConversationHistory,
+  applyConversationEventPage,
+} from "../src/client/conversation-query";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -42,6 +45,34 @@ function detail(): ConversationDetailReport {
 }
 
 describe("conversation query", () => {
+  it("preserves live updates when committing complete history", async () => {
+    const queryClient = new QueryClient();
+    const current = {
+      ...detail(),
+      cumulativeDurationMs: 20,
+      eventCursor: "new-live-cursor",
+      events: [event(3), event(4), event(5)],
+    };
+    queryClient.setQueryData(["conversation", "conversation-1"], current);
+    await applyCompleteConversationHistory(queryClient, "conversation-1", {
+      ...detail(),
+      events: [event(1), event(2), event(3), event(4)],
+      previousCursor: undefined,
+    });
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-1",
+      ]),
+    ).toMatchObject({
+      cumulativeDurationMs: 20,
+      eventCursor: "new-live-cursor",
+      events: [event(1), event(2), event(3), event(4), event(5)],
+      previousCursor: undefined,
+    });
+  });
+
   it("cancels a stale poll before merging an older history page", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

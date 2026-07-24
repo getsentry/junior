@@ -29,6 +29,9 @@ export function buildConversationMarkdown(
   detail: ConversationTranscript,
   conversation?: Conversation,
 ): string {
+  if (detail.previousCursor) {
+    throw new Error("Cannot export a partial conversation transcript");
+  }
   const lines: string[] = [];
 
   lines.push(`# ${headingText(conversationTitle(detail, conversation))}`, "");

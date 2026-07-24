@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
+  readAllConversationEvents,
   readAllConversationUpdates,
   readConversationData,
   readConversationEvents,
@@ -134,6 +135,126 @@ describe("dashboard client API", () => {
       "/api/conversations/slack%3AC1%3A123/events?before=history+cursor",
       { credentials: "same-origin" },
     );
+  });
+
+  it("drains every older event page before returning a transcript", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          events: [messageEvent(1, "Middle event")],
+          eventHistory: { status: "available" },
+          generatedAt,
+          previousCursor: "before-1",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          events: [messageEvent(0, "Earliest event")],
+          eventHistory: { status: "available" },
+          generatedAt,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readAllConversationEvents("slack:C1:123", {
+        ...conversationDetail(),
+        events: [messageEvent(2, "Latest event")],
+        previousCursor: "before-2",
+      }),
+    ).resolves.toMatchObject({
+      events: [
+        messageEvent(0, "Earliest event"),
+        messageEvent(1, "Middle event"),
+        messageEvent(2, "Latest event"),
+      ],
+      previousCursor: undefined,
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/conversations/slack%3AC1%3A123/events?before=before-2",
+      { credentials: "same-origin" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/conversations/slack%3AC1%3A123/events?before=before-1",
+      { credentials: "same-origin" },
+    );
+  });
+
+  it("refreshes an invalid history cursor before completing export", async () => {
+    const refreshed = {
+      ...conversationDetail(),
+      events: [messageEvent(2, "Latest event")],
+      previousCursor: "fresh-before",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Invalid conversation cursor." },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json(refreshed))
+      .mockResolvedValueOnce(
+        Response.json({
+          events: [
+            messageEvent(0, "Earliest event"),
+            messageEvent(1, "Middle event"),
+          ],
+          eventHistory: { status: "available" },
+          generatedAt,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readAllConversationEvents("slack:C1:123", {
+        ...refreshed,
+        previousCursor: "expired-before",
+      }),
+    ).resolves.toMatchObject({
+      events: [
+        messageEvent(0, "Earliest event"),
+        messageEvent(1, "Middle event"),
+        messageEvent(2, "Latest event"),
+      ],
+      previousCursor: undefined,
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/conversations/slack%3AC1%3A123",
+      { credentials: "same-origin" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/conversations/slack%3AC1%3A123/events?before=fresh-before",
+      { credentials: "same-origin" },
+    );
+  });
+
+  it("stops when a refreshed history cursor is still invalid", async () => {
+    const initial = {
+      ...conversationDetail(),
+      previousCursor: "invalid-before",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Invalid conversation cursor." },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json(initial));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readAllConversationEvents("slack:C1:123", initial),
+    ).rejects.toThrow("Conversation history cursor did not advance");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes invalid cursors without discarding loaded history", async () => {

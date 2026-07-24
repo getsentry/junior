@@ -4,21 +4,28 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "./Button";
 
 /** Copy an available Markdown document while exposing clipboard result state. */
-export function CopyMarkdownButton(props: { getMarkdown?: () => string }) {
-  const [status, setStatus] = useState<"copied" | "failed" | "idle">("idle");
+export function CopyMarkdownButton(props: {
+  getMarkdown?: () => Promise<string> | string;
+}) {
+  const [status, setStatus] = useState<
+    "copied" | "copying" | "failed" | "idle"
+  >("idle");
   const label =
     status === "copied"
       ? "Copied"
-      : status === "failed"
-        ? "Copy failed"
-        : "Copy as Markdown";
+      : status === "copying"
+        ? "Preparing Markdown"
+        : status === "failed"
+          ? "Copy failed"
+          : "Copy as Markdown";
   const Icon = status === "copied" ? Check : Copy;
 
   async function copyMarkdown() {
     if (!props.getMarkdown) return;
 
     try {
-      await navigator.clipboard.writeText(props.getMarkdown());
+      setStatus("copying");
+      await navigator.clipboard.writeText(await props.getMarkdown());
       setStatus("copied");
     } catch {
       setStatus("failed");
@@ -28,7 +35,7 @@ export function CopyMarkdownButton(props: { getMarkdown?: () => string }) {
   return (
     <Button
       aria-label={label}
-      disabled={!props.getMarkdown}
+      disabled={!props.getMarkdown || status === "copying"}
       onClick={() => void copyMarkdown()}
       size="icon"
       title={label}

@@ -43,6 +43,14 @@ function conversation(
 }
 
 describe("dashboard canonical-event Markdown export", () => {
+  it("rejects partial transcript exports", () => {
+    expect(() =>
+      buildConversationMarkdown(
+        conversation([], { previousCursor: "older-events" }),
+      ),
+    ).toThrow("Cannot export a partial conversation transcript");
+  });
+
   it("exports visible user and assistant messages", () => {
     const markdown = buildConversationMarkdown(
       conversation([

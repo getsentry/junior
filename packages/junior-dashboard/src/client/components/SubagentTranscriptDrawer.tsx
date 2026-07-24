@@ -83,9 +83,14 @@ export function SubagentTranscriptDrawer(props: {
             </div>
             <div className="absolute right-4 top-3 flex items-center gap-1.5 md:right-5">
               <CopyMarkdownButton
-                key={`${props.target.conversationId}:${detail?.generatedAt ?? "loading"}`}
+                key={props.target.conversationId}
                 getMarkdown={
-                  detail ? () => buildConversationMarkdown(detail) : undefined
+                  detail
+                    ? async () =>
+                        buildConversationMarkdown(
+                          await query.loadCompleteTranscript(),
+                        )
+                    : undefined
                 }
               />
               <Button

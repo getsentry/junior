@@ -7,6 +7,7 @@ import {
   type ConversationUpdatesReport,
 } from "@sentry/junior/api/schema";
 import {
+  mergeCompleteConversationHistory,
   mergeConversationEventPage,
   mergeConversationSnapshot,
   mergeConversationUpdate,
@@ -52,6 +53,43 @@ function detail(): ConversationDetailReport {
 }
 
 describe("conversation state", () => {
+  it("merges complete history without replacing newer live fields", () => {
+    const complete = mergeConversationEventPage(detail(), {
+      events: [event(1), event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    });
+    const current = {
+      ...detail(),
+      cumulativeDurationMs: 20,
+      eventCursor: "new-live-cursor",
+      events: [event(3), event(4), event(5)],
+    };
+
+    expect(mergeCompleteConversationHistory(current, complete)).toMatchObject({
+      cumulativeDurationMs: 20,
+      eventCursor: "new-live-cursor",
+      events: [event(1), event(2), event(3), event(4), event(5)],
+      previousCursor: undefined,
+    });
+  });
+
+  it("keeps newer detail when history visibility changes during loading", () => {
+    const current: ConversationDetailReport = {
+      ...detail(),
+      eventHistory: { status: "expired", expiredAt: generatedAt },
+      events: [],
+      previousCursor: undefined,
+    };
+    const complete = mergeConversationEventPage(detail(), {
+      events: [event(1), event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    });
+
+    expect(mergeCompleteConversationHistory(current, complete)).toBe(current);
+  });
+
   it("prepends history without replacing the live cursor or duplicating events", () => {
     const page: ConversationEventPage = {
       events: [event(1), event(2), event(3)],

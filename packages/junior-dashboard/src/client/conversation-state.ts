@@ -53,6 +53,24 @@ export function mergeConversationEventPage(
   };
 }
 
+/** Add a fully drained history without replacing newer live detail fields. */
+export function mergeCompleteConversationHistory(
+  current: ConversationDetailReport,
+  complete: ConversationDetailReport,
+): ConversationDetailReport {
+  if (complete.eventHistory.status !== current.eventHistory.status) {
+    return current;
+  }
+  const events = new Map(
+    [...complete.events, ...current.events].map((event) => [event.seq, event]),
+  );
+  return {
+    ...current,
+    events: [...events.values()].sort((left, right) => left.seq - right.seq),
+    previousCursor: complete.previousCursor,
+  };
+}
+
 /** Refresh detail fields without discarding history pages already in the cache. */
 export function mergeConversationSnapshot(
   current: ConversationDetailReport,

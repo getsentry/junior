@@ -4,7 +4,10 @@ import type {
   ConversationEventPage,
 } from "@sentry/junior/api/schema";
 
-import { mergeConversationEventPage } from "./conversation-state";
+import {
+  mergeCompleteConversationHistory,
+  mergeConversationEventPage,
+} from "./conversation-state";
 
 /**
  * Stop an in-flight poll and prepend history to the requested transcript.
@@ -31,4 +34,17 @@ export async function applyConversationEventPage(
   if (refresh) {
     await queryClient.invalidateQueries({ exact: true, queryKey });
   }
+}
+
+/** Commit a fully drained history without allowing a stale poll to replace it. */
+export async function applyCompleteConversationHistory(
+  queryClient: QueryClient,
+  conversationId: string,
+  complete: ConversationDetailReport,
+): Promise<void> {
+  const queryKey = ["conversation", conversationId] as const;
+  await queryClient.cancelQueries({ exact: true, queryKey });
+  queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) =>
+    current ? mergeCompleteConversationHistory(current, complete) : complete,
+  );
 }
