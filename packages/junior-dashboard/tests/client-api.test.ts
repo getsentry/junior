@@ -295,6 +295,46 @@ describe("dashboard client API", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("returns a fresh snapshot when history availability changes", async () => {
+    const initial = {
+      ...conversationDetail(),
+      events: [messageEvent(2, "Latest event")],
+      previousCursor: "before-2",
+    };
+    const refreshed: ConversationDetailReport = {
+      ...initial,
+      eventHistory: {
+        status: "redacted",
+        reason: "non_public_conversation",
+      },
+      events: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          events: [],
+          eventHistory: {
+            status: "redacted",
+            reason: "non_public_conversation",
+          },
+          generatedAt,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(refreshed));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readAllConversationEvents("slack:C1:123", initial),
+    ).resolves.toEqual(refreshed);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/conversations/slack%3AC1%3A123",
+      { credentials: "same-origin" },
+    );
+  });
+
   it("refreshes invalid cursors without discarding loaded history", async () => {
     const refreshed: ConversationDetailReport = {
       ...conversationDetail(),

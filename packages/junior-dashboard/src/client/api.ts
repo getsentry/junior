@@ -433,8 +433,7 @@ export async function readAllConversationEvents(
       throw error;
     }
     if (page.eventHistory.status !== current.eventHistory.status) {
-      current = await readConversationData(conversationId, signal);
-      continue;
+      return readConversationData(conversationId, signal);
     }
     current = mergeConversationEventPage(current, page);
   }
