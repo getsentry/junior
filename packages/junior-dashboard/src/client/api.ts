@@ -287,7 +287,7 @@ export function useConversationData(conversationId: string | undefined) {
     getNextPageParam: (page) => page.previousCursor,
     retry: false,
   });
-  const updates = useInfiniteQuery({
+  const updates = useQuery({
     enabled: Boolean(
       conversationId &&
       detail.data?.status === "active" &&
@@ -301,17 +301,23 @@ export function useConversationData(conversationId: string | undefined) {
       detail.data?.eventHistory.status,
       detail.data?.generatedAt,
     ],
-    queryFn: ({ pageParam, signal }) =>
-      readConversationUpdateBatch(conversationId!, pageParam, signal),
-    initialPageParam: detail.data?.eventCursor ?? "",
-    getNextPageParam: (page) =>
-      page.status === "active" ? page.eventCursor : undefined,
+    queryFn: ({ signal }) =>
+      readConversationUpdateBatch(
+        conversationId!,
+        detail.data!.eventCursor,
+        signal,
+      ),
+    refetchInterval: (query) =>
+      !query.state.error &&
+      (query.state.data?.status ?? detail.data?.status) === "active"
+        ? 2_000
+        : false,
     retry: false,
   });
 
   const historyPages = history.data?.pages ?? [];
-  const updatePages = updates.data?.pages ?? [];
-  const latestUpdate = updatePages.at(-1);
+  const updatePages = updates.data ? [updates.data] : [];
+  const latestUpdate = updates.data;
   const data = useMemo(
     () =>
       detail.data
@@ -329,27 +335,6 @@ export function useConversationData(conversationId: string | undefined) {
   useEffect(() => {
     if (shouldRefreshDetail) void detail.refetch();
   }, [detail.refetch, shouldRefreshDetail]);
-
-  useEffect(() => {
-    if (
-      (latestUpdate?.status ?? detail.data?.status) !== "active" ||
-      updates.error ||
-      !updates.hasNextPage
-    ) {
-      return undefined;
-    }
-    const interval = window.setInterval(() => {
-      if (!updates.isFetchingNextPage) void updates.fetchNextPage();
-    }, 2_000);
-    return () => window.clearInterval(interval);
-  }, [
-    detail.data?.status,
-    latestUpdate?.status,
-    updates.error,
-    updates.fetchNextPage,
-    updates.hasNextPage,
-    updates.isFetchingNextPage,
-  ]);
 
   return {
     ...detail,
@@ -374,11 +359,11 @@ export function useConversationData(conversationId: string | undefined) {
         pages = result.data?.pages ?? pages;
         hasNextPage = result.hasNextPage;
       }
-      let latestUpdates = updates.data?.pages;
+      let latestUpdates = updates.data ? [updates.data] : [];
       if ((latestUpdate?.status ?? detail.data.status) === "active") {
-        const result = await updates.fetchNextPage();
+        const result = await updates.refetch();
         if (result.error) throw result.error;
-        latestUpdates = result.data?.pages;
+        latestUpdates = result.data ? [result.data] : [];
       }
       const complete = buildConversationTranscript(
         detail.data,
