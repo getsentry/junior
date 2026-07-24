@@ -62,8 +62,11 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           }),
           result: expect.objectContaining({
             stop_watching: {
-              tool_name: "stopWatchingResources",
-              arguments: {},
+              execution_tool: "executeTool",
+              execution_example: {
+                tool_name: "stopWatchingResources",
+                arguments: {},
+              },
             },
           }),
         }),

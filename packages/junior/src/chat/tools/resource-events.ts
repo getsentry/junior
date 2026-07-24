@@ -12,6 +12,10 @@ import {
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const STOP_WATCHING_TOOL_NAME = "stopWatchingResources";
+const RESOURCE_WATCH_TOOL_SOURCE = {
+  id: "resource-watches",
+  description: "Inspect or stop resource watches for the current conversation.",
+};
 
 const subscribeInputSchema = z.object({
   resourceRef: z
@@ -132,8 +136,11 @@ function createSubscribeToResourceEventsTool(context: ToolRuntimeContext) {
         events: subscription.events,
         expiresAtMs: subscription.expiresAtMs,
         stop_watching: {
-          tool_name: STOP_WATCHING_TOOL_NAME,
-          arguments: {},
+          execution_tool: "executeTool",
+          execution_example: {
+            tool_name: STOP_WATCHING_TOOL_NAME,
+            arguments: {},
+          },
         },
       };
       return {
@@ -151,6 +158,8 @@ function createListResourceEventSubscriptionsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
       "List active resource event subscriptions for the current conversation.",
+    exposure: "deferred",
+    source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z.object({}),
     outputSchema: juniorToolResultSchema,
     async execute() {
@@ -185,6 +194,8 @@ function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
       "Stop every resource watch for the current conversation. Infer the user's intent from context instead of requiring a special command, and call this tool before confirming that watching stopped.",
+    exposure: "deferred",
+    source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z.object({}),
     outputSchema: juniorToolResultSchema,
     async execute() {

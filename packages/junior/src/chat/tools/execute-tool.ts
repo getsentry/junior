@@ -9,14 +9,16 @@ export const EXECUTE_TOOL_NAME = "executeTool";
 export function createExecuteToolTool() {
   return zodTool({
     description:
-      "Execute any catalog tool by exact tool_name from searchTools. Put tool-specific parameters inside arguments.",
+      "Execute any catalog tool by exact tool_name from searchTools or a tool-result execution hint. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",
     inputSchema: z
       .object({
         tool_name: z
           .string()
           .min(1)
-          .describe("Exact catalog tool_name returned by searchTools."),
+          .describe(
+            "Exact catalog tool_name returned by searchTools or a tool-result execution hint.",
+          ),
         arguments: z
           .record(z.string(), z.unknown())
           .describe(
