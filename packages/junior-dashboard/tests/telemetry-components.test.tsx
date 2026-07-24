@@ -218,28 +218,6 @@ describe("dashboard canonical-event components", () => {
     expect(completedHtml).not.toContain("Junior is responding");
   });
 
-  it("offers earlier transcript pages without replacing current events", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript
-          hasPreviousPage
-          onLoadPreviousPage={() => undefined}
-          transcript={conversation([
-            event(3, {
-              type: "message",
-              messageId: "message-3",
-              role: "user",
-              text: "Current transcript event",
-            }),
-          ])}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("Load earlier events");
-    expect(html).toContain("Current transcript event");
-  });
-
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(

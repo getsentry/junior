@@ -26,6 +26,7 @@ import { defineApiRoute } from "../route";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { conversationParamsSchema } from "../schema/conversation";
 
+/** Project stored metadata and a bounded event page into signed detail cursors. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   conversation: Conversation;

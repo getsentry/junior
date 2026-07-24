@@ -62,25 +62,26 @@ export function mergeConversationSnapshot(
 /**
  * Stop an in-flight poll and prepend history to the latest cached transcript.
  *
- * Returns `refresh` when retention or authorization changed while the history
- * request was in flight and the caller should reload conversation detail.
+ * Refresh detail when retention or authorization changed while the history
+ * request was in flight.
  */
 export async function applyConversationEventPage(
   queryClient: QueryClient,
   conversationId: string,
   page: ConversationEventPage,
-): Promise<"merged" | "missing" | "refresh"> {
+): Promise<void> {
   const queryKey = ["conversation", conversationId] as const;
   await queryClient.cancelQueries({ exact: true, queryKey });
-  let result: "merged" | "missing" | "refresh" = "missing";
+  let refresh = false;
   queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) => {
     if (!current) return current;
     if (page.eventHistory.status !== current.eventHistory.status) {
-      result = "refresh";
+      refresh = true;
       return current;
     }
-    result = "merged";
     return mergeConversationEventPage(current, page);
   });
-  return result;
+  if (refresh) {
+    await queryClient.invalidateQueries({ exact: true, queryKey });
+  }
 }

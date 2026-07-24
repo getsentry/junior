@@ -278,16 +278,7 @@ export function useConversationData(conversationId: string | undefined) {
     mutationFn: (request: { before: string; conversationId: string }) =>
       readConversationEvents(request.conversationId, request.before),
     onSuccess: async (page, request) => {
-      const result = await applyConversationEventPage(
-        client,
-        request.conversationId,
-        page,
-      );
-      if (result === "refresh") {
-        await client.invalidateQueries({
-          queryKey: ["conversation", request.conversationId],
-        });
-      }
+      await applyConversationEventPage(client, request.conversationId, page);
     },
   });
   return {
@@ -362,7 +353,11 @@ export async function readAllConversationUpdates(
       );
     } catch (error) {
       if (error instanceof DashboardApiError && error.status === 400) {
-        return readConversationData(conversationId, signal);
+        const snapshot = await readConversationData(conversationId, signal);
+        return {
+          ...mergeConversationSnapshot(current, snapshot),
+          previousCursor: snapshot.previousCursor,
+        };
       }
       throw error;
     }

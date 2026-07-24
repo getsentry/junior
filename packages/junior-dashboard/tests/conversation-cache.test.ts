@@ -155,9 +155,7 @@ describe("conversation query cache", () => {
       generatedAt,
     };
 
-    await expect(
-      applyConversationEventPage(queryClient, "conversation-1", page),
-    ).resolves.toBe("merged");
+    await applyConversationEventPage(queryClient, "conversation-1", page);
     resolvePoll({ ...detail(), events: [event(3), event(4), event(5)] });
     await poll;
 
@@ -175,13 +173,11 @@ describe("conversation query cache", () => {
       events: [event(10)],
     });
 
-    await expect(
-      applyConversationEventPage(queryClient, "conversation-1", {
-        events: [event(1), event(2)],
-        eventHistory: { status: "available" },
-        generatedAt,
-      }),
-    ).resolves.toBe("merged");
+    await applyConversationEventPage(queryClient, "conversation-1", {
+      events: [event(1), event(2)],
+      eventHistory: { status: "available" },
+      generatedAt,
+    });
 
     expect(
       queryClient.getQueryData<ConversationDetailReport>([

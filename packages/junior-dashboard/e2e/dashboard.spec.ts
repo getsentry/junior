@@ -285,6 +285,35 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeLessThanOrEqual(390);
 });
 
+test("loads earlier transcript events without dropping the current page", async ({
+  page,
+}) => {
+  const conversationId = "slack:CQA456:1770021600.000600";
+  await page.goto(
+    `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Package release and self-update" }),
+  ).toBeVisible();
+  const currentEvent = page.getByText(
+    "Release the package, update the example app, and open a PR.",
+  );
+  await expect(currentEvent).toBeVisible();
+
+  await page.getByRole("button", { name: "Load earlier events" }).click();
+
+  await expect(
+    page.getByText(
+      "Prepare the release and include the complete earlier context.",
+    ),
+  ).toBeVisible();
+  await expect(currentEvent).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Load earlier events" }),
+  ).toHaveCount(0);
+});
+
 test("scrolls long conversation and transcript panes independently", async ({
   page,
 }) => {

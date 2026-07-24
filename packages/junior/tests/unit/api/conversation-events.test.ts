@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectConversationReportEvents } from "@/api/conversations/events";
+import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
   conversationReportEventSchema,
@@ -39,7 +39,7 @@ describe("conversation report event projection", () => {
     });
 
     expect(
-      projectConversationReportEvents({
+      projectConversationReportEventPage({
         canExposePayload: true,
         events: [unsupported],
       }),
@@ -89,7 +89,7 @@ describe("conversation report event projection", () => {
       ),
       event(13, { type: "message_handled", messageId: "visible-1" }, 1_000),
     ];
-    const projected = projectConversationReportEvents({
+    const projected = projectConversationReportEventPage({
       canExposePayload: true,
       events,
     });
@@ -145,7 +145,7 @@ describe("conversation report event projection", () => {
   });
 
   it("projects parallel calls, structured outcomes, and safe native content", () => {
-    const projected = projectConversationReportEvents({
+    const projected = projectConversationReportEventPage({
       canExposePayload: true,
       events: [
         event(1, {
@@ -241,7 +241,7 @@ describe("conversation report event projection", () => {
   });
 
   it("projects only the resource event discriminator from message metadata", () => {
-    const [projected] = projectConversationReportEvents({
+    const [projected] = projectConversationReportEventPage({
       canExposePayload: true,
       events: [
         event(1, {
@@ -279,11 +279,11 @@ describe("conversation report event projection", () => {
         messageId: "visible-1",
       }),
     ];
-    const prefix = projectConversationReportEvents({
+    const prefix = projectConversationReportEventPage({
       canExposePayload: true,
       events: events.slice(0, 1),
     });
-    const complete = projectConversationReportEvents({
+    const complete = projectConversationReportEventPage({
       canExposePayload: true,
       events,
     });
@@ -293,7 +293,7 @@ describe("conversation report event projection", () => {
 
   it("redacts private content and strips every internal persistence or payload field", () => {
     const eventId = "0123456789abcdef0123456789abcdef";
-    const projected = projectConversationReportEvents({
+    const projected = projectConversationReportEventPage({
       canExposePayload: false,
       events: [
         event(1, {
@@ -407,7 +407,7 @@ describe("conversation report event projection", () => {
   });
 
   it("emits only safe structural lifecycle, context, and child references", () => {
-    const projected = projectConversationReportEvents({
+    const projected = projectConversationReportEventPage({
       canExposePayload: true,
       events: [
         event(1, {

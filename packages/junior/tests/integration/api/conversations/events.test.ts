@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { Hono } from "hono";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createJuniorApi } from "@/api";
+import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
   apiErrorSchema,
   conversationDetailReportSchema,
@@ -11,8 +12,10 @@ import {
 import {
   closeDb,
   getConversationEventStore,
+  getSqlExecutor,
   getConversationStore,
 } from "@/chat/db";
+import { purgeConversation } from "@/chat/conversations/retention";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
@@ -249,6 +252,12 @@ describe("conversation event REST resources", () => {
   it("preserves transcript redaction across history and update pages", async () => {
     const conversationId = "slack:C-private:paged-events";
     await getConversationStore().recordActivity({
+      actor: {
+        email: "Participant@Example.com",
+        platform: "slack",
+        slackUserId: "U-participant",
+        teamId: "T-private",
+      },
       conversationId,
       destination: {
         channelId: "C-private",
@@ -311,5 +320,92 @@ describe("conversation event REST resources", () => {
       role: "assistant",
       redacted: true,
     });
+
+    const participantApi = new Hono<{ Variables: JuniorApiVariables }>();
+    participantApi.use("*", async (context, next) => {
+      context.set("verifiedViewerEmail", "participant@example.COM");
+      await next();
+    });
+    participantApi.route("/", createJuniorApi());
+
+    const participantHistoryResponse = await participantApi.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/events?before=${encodeURIComponent(detail.previousCursor)}`,
+    );
+    const participantHistory = conversationEventPageSchema.parse(
+      await participantHistoryResponse.json(),
+    );
+    expect(participantHistory.eventHistory.status).toBe("available");
+    expect(participantHistory.events[0]?.data).toEqual({
+      type: "message",
+      messageId: "private-message-1",
+      role: "assistant",
+      text: "private-message-1",
+    });
+
+    const participantUpdatesResponse = await participantApi.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/updates?cursor=${encodeURIComponent(detail.eventCursor)}`,
+    );
+    const participantUpdates = conversationUpdatesReportSchema.parse(
+      await participantUpdatesResponse.json(),
+    );
+    expect(participantUpdates.eventHistory.status).toBe("available");
+    expect(participantUpdates.events[0]?.data).toEqual({
+      type: "message",
+      messageId: "private-message-3",
+      role: "assistant",
+      text: "private-message-3",
+    });
+  });
+
+  it("returns expired history and update pages after retention purge", async () => {
+    const conversationId = "internal:expired-paged-events";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      message("expired-message-1", 1),
+      textAgentStep(2, 5),
+      message("expired-message-2", 3),
+    ]);
+
+    const app = createJuniorApi();
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}?limit=1`,
+    );
+    const detail = conversationDetailReportSchema.parse(
+      await detailResponse.json(),
+    );
+    if (!detail.previousCursor) throw new Error("Expected a previous cursor");
+
+    await purgeConversation(getSqlExecutor(), conversationId, { nowMs: 50 });
+
+    const historyResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(detail.previousCursor)}`,
+    );
+    const history = conversationEventPageSchema.parse(
+      await historyResponse.json(),
+    );
+    expect(history).toMatchObject({
+      eventHistory: {
+        status: "expired",
+        expiredAt: new Date(50).toISOString(),
+      },
+      events: [],
+    });
+    expect(history.previousCursor).toBeUndefined();
+
+    const updatesResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/updates?cursor=${encodeURIComponent(detail.eventCursor)}`,
+    );
+    const updates = conversationUpdatesReportSchema.parse(
+      await updatesResponse.json(),
+    );
+    expect(updates).toMatchObject({
+      eventHistory: {
+        status: "expired",
+        expiredAt: new Date(50).toISOString(),
+      },
+      events: [],
+      hasMore: false,
+    });
+    expect(updates.modelUsage).toBeUndefined();
   });
 });

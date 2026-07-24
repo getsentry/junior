@@ -250,6 +250,7 @@ export const conversationModelUsageSchema = z
   })
   .strict();
 
+/** Enforce event ordering and history visibility across paginated wire payloads. */
 function validateConversationEvents(
   report: {
     eventHistory: z.infer<typeof conversationEventHistorySchema>;

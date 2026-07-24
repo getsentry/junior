@@ -281,11 +281,3 @@ export function projectConversationReportEventPage(args: {
 
   return projected;
 }
-
-/** Project a complete canonical event history into reporting events. */
-export function projectConversationReportEvents(args: {
-  canExposePayload: boolean;
-  events: ConversationEvent[];
-}): ConversationReportEvent[] {
-  return projectConversationReportEventPage(args);
-}

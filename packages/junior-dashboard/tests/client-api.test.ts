@@ -28,6 +28,19 @@ function conversationDetail(): ConversationDetailReport {
   };
 }
 
+function messageEvent(seq: number, text: string) {
+  return {
+    createdAt: generatedAt,
+    data: {
+      type: "message" as const,
+      messageId: `message-${seq}`,
+      role: "assistant" as const,
+      text,
+    },
+    seq,
+  };
+}
+
 describe("dashboard client API", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -123,8 +136,12 @@ describe("dashboard client API", () => {
     );
   });
 
-  it("refreshes conversation detail when an update cursor is invalid", async () => {
-    const refreshed = conversationDetail();
+  it("refreshes invalid cursors without discarding loaded history", async () => {
+    const refreshed: ConversationDetailReport = {
+      ...conversationDetail(),
+      events: [messageEvent(2, "Current event"), messageEvent(3, "New event")],
+      previousCursor: "fresh-before",
+    };
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -140,8 +157,20 @@ describe("dashboard client API", () => {
       readAllConversationUpdates("slack:C1:123", {
         ...refreshed,
         eventCursor: "expired-cursor",
+        events: [
+          messageEvent(0, "Loaded earlier event"),
+          messageEvent(2, "Current event"),
+        ],
+        previousCursor: "expired-before",
       }),
-    ).resolves.toEqual(refreshed);
+    ).resolves.toEqual({
+      ...refreshed,
+      events: [
+        messageEvent(0, "Loaded earlier event"),
+        messageEvent(2, "Current event"),
+        messageEvent(3, "New event"),
+      ],
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "/api/conversations/slack%3AC1%3A123/updates?cursor=expired-cursor",

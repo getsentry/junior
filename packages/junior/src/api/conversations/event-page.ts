@@ -29,6 +29,7 @@ type ConversationEventRow = Awaited<
   ReturnType<typeof readConversationEventRows>
 >[number];
 
+/** Read bounded canonical rows while excluding model-only replacement history. */
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
@@ -104,6 +105,7 @@ function decodeConversationEventRow(
   });
 }
 
+/** Project stored rows and resolve subagent starts that precede the page. */
 async function projectConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {

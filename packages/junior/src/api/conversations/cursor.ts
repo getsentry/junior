@@ -12,7 +12,7 @@ const conversationCursorPayloadSchema = z
   })
   .strict();
 
-export type ConversationCursorPayload = z.infer<
+type ConversationCursorPayload = z.infer<
   typeof conversationCursorPayloadSchema
 >;
 
@@ -24,6 +24,7 @@ function cursorSecret(): string {
   return secret;
 }
 
+/** Sign one encoded cursor with the domain-separated server secret. */
 function signature(payload: string): string {
   return createHmac("sha256", cursorSecret())
     .update(`${CURSOR_CONTEXT}:${payload}`)
@@ -46,7 +47,7 @@ export function decodeConversationCursor(args: {
   conversationId: string;
   cursor: string;
   kind: ConversationCursorPayload["kind"];
-}): ConversationCursorPayload | undefined {
+}): { seq: number } | undefined {
   const [encoded, actualSignature, extra] = args.cursor.split(".");
   if (!encoded || !actualSignature || extra !== undefined) return undefined;
   const expected = Buffer.from(signature(encoded));
@@ -65,7 +66,7 @@ export function decodeConversationCursor(args: {
     ) {
       return undefined;
     }
-    return parsed;
+    return { seq: parsed.seq };
   } catch {
     return undefined;
   }
