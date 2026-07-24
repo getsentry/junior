@@ -91,6 +91,11 @@ describe("resolveMigrations", () => {
     await writeFile(
       join(folder, "0000_documented.ts"),
       `// Never call import("@/db") from a migration.
+/*
+import "@/db";
+import { getDb } from "@/db";
+export { getDb } from "@/db";
+*/
 const guidance = "require(\\"@/db\\") is unsupported";
 export default { apiVersion: 1, async up() { void guidance; } };
 `,

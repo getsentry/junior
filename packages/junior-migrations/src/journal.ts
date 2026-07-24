@@ -70,6 +70,12 @@ function validateTypeScriptSource(tag: string, source: string): void {
   const allowedRuntimeImports = new Set([
     "@sentry/junior/migration-helpers/v1",
   ]);
+  const maskNonNewline = (value: string): string =>
+    value.replace(/[^\r\n]/g, " ");
+  const uncommentedSource = source.replace(
+    /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/g,
+    (match) => (match.startsWith("/") ? maskNonNewline(match) : match),
+  );
   const validateRuntimeSpecifier = (specifier: string | undefined): void => {
     if (
       !specifier ||
@@ -85,7 +91,7 @@ function validateTypeScriptSource(tag: string, source: string): void {
       );
     }
   };
-  const imports = source.matchAll(
+  const imports = uncommentedSource.matchAll(
     /^\s*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm,
   );
   for (const match of imports) {
@@ -96,7 +102,7 @@ function validateTypeScriptSource(tag: string, source: string): void {
     }
     validateRuntimeSpecifier(specifier);
   }
-  const exports = source.matchAll(
+  const exports = uncommentedSource.matchAll(
     /^\s*export\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm,
   );
   for (const match of exports) {
@@ -106,12 +112,12 @@ function validateTypeScriptSource(tag: string, source: string): void {
     }
     validateRuntimeSpecifier(match[2]);
   }
-  const executableSource = source.replace(
-    /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/g,
-    (match) => match.replace(/[^\r\n]/g, " "),
+  const executableSource = uncommentedSource.replace(
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/g,
+    maskNonNewline,
   );
   if (
-    /^\s*import\s*["']/m.test(source) ||
+    /^\s*import\s*["']/m.test(uncommentedSource) ||
     /\b(?:import\s*\(|require\s*\()/.test(executableSource)
   ) {
     throw new Error(`TypeScript migration ${tag} cannot load runtime modules`);
