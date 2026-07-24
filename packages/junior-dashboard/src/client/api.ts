@@ -1,4 +1,4 @@
-import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import type {
   ConversationDetailReport,
@@ -28,15 +28,13 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import { applyConversationEventPage } from "./conversation-query";
 import {
-  applyConversationEventPage,
   mergeConversationSnapshot,
   mergeConversationUpdate,
-} from "./conversation-cache";
+} from "./conversation-state";
 import type { DashboardCoreData, SystemData } from "./types";
 
-/** Share dashboard query cache between route data and tooltip detail lookups. */
-export const client = new QueryClient();
 class DashboardApiError extends Error {
   readonly status: number;
 
@@ -234,6 +232,7 @@ export function useSystemData() {
 
 /** Archive or restore one conversation and refresh dashboard caches. */
 export function useArchiveConversation(conversationId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
       mutate(
@@ -243,10 +242,14 @@ export function useArchiveConversation(conversationId: string) {
       ),
     onSettled: async () => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: ["dashboard", "conversations"] }),
-        client.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
-        client.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        client.invalidateQueries({
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "locations"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
+        queryClient.invalidateQueries({
           queryKey: ["conversation", conversationId],
         }),
       ]);
@@ -256,12 +259,14 @@ export function useArchiveConversation(conversationId: string) {
 
 /** Fetch one conversation transcript while preserving route-level disabled state. */
 export function useConversationData(conversationId: string | undefined) {
+  const queryClient = useQueryClient();
   const queryKey = ["conversation", conversationId] as const;
   const query = useQuery({
     enabled: Boolean(conversationId),
     queryKey,
     queryFn: async ({ signal }): Promise<ConversationDetailReport> => {
-      const existing = client.getQueryData<ConversationDetailReport>(queryKey);
+      const existing =
+        queryClient.getQueryData<ConversationDetailReport>(queryKey);
       if (!existing || existing.status !== "active") {
         const snapshot = await readConversationData(conversationId!, signal);
         return existing
@@ -278,7 +283,11 @@ export function useConversationData(conversationId: string | undefined) {
     mutationFn: (request: { before: string; conversationId: string }) =>
       readConversationEvents(request.conversationId, request.before),
     onSuccess: async (page, request) => {
-      await applyConversationEventPage(client, request.conversationId, page);
+      await applyConversationEventPage(
+        queryClient,
+        request.conversationId,
+        page,
+      );
     },
   });
   return {
@@ -290,7 +299,7 @@ export function useConversationData(conversationId: string | undefined) {
       if (!conversationId || history.isPending) return;
       const historyQueryKey = ["conversation", conversationId] as const;
       const before =
-        client.getQueryData<ConversationDetailReport>(
+        queryClient.getQueryData<ConversationDetailReport>(
           historyQueryKey,
         )?.previousCursor;
       if (before) history.mutate({ before, conversationId });

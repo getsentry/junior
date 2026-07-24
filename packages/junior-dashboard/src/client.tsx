@@ -1,10 +1,9 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
 import { DashboardShell } from "./client/App";
-import { client } from "./client/api";
 
 declare global {
   interface Window {
@@ -68,9 +67,11 @@ if (!root) {
   throw new Error("Junior dashboard root element was not found");
 }
 
+const queryClient = new QueryClient();
+
 createRoot(root).render(
   <DashboardErrorBoundary>
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/"}>
         <DashboardShell />
       </BrowserRouter>

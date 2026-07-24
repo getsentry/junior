@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import {
   conversationDetailReportSchema,
@@ -8,11 +7,10 @@ import {
   type ConversationUpdatesReport,
 } from "@sentry/junior/api/schema";
 import {
-  applyConversationEventPage,
   mergeConversationEventPage,
   mergeConversationSnapshot,
   mergeConversationUpdate,
-} from "../src/client/conversation-cache";
+} from "../src/client/conversation-state";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -53,7 +51,7 @@ function detail(): ConversationDetailReport {
   };
 }
 
-describe("conversation query cache", () => {
+describe("conversation state", () => {
   it("prepends history without replacing the live cursor or duplicating events", () => {
     const page: ConversationEventPage = {
       events: [event(1), event(2), event(3)],
@@ -134,64 +132,14 @@ describe("conversation query cache", () => {
     });
   });
 
-  it("cancels a stale poll before merging an older history page", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const queryKey = ["conversation", "conversation-1"] as const;
-    queryClient.setQueryData(queryKey, detail());
-
-    let resolvePoll!: (value: ConversationDetailReport) => void;
-    const poll = queryClient
-      .fetchQuery({
-        queryKey,
-        queryFn: () =>
-          new Promise<ConversationDetailReport>((resolve) => {
-            resolvePoll = resolve;
-          }),
-      })
-      .catch(() => undefined);
-    const page: ConversationEventPage = {
-      events: [event(1), event(2)],
-      eventHistory: { status: "available" },
-      generatedAt,
+  it("uses a fresh snapshot when event history availability changes", () => {
+    const snapshot: ConversationDetailReport = {
+      ...detail(),
+      eventHistory: { status: "expired", expiredAt: generatedAt },
+      events: [],
+      previousCursor: undefined,
     };
 
-    await applyConversationEventPage(queryClient, "conversation-1", page);
-    resolvePoll({ ...detail(), events: [event(3), event(4), event(5)] });
-    await poll;
-
-    expect(
-      queryClient.getQueryData<ConversationDetailReport>(queryKey)?.events,
-    ).toEqual([event(1), event(2), event(3), event(4)]);
-  });
-
-  it("applies history only to the requested conversation cache", async () => {
-    const queryClient = new QueryClient();
-    queryClient.setQueryData(["conversation", "conversation-1"], detail());
-    queryClient.setQueryData(["conversation", "conversation-2"], {
-      ...detail(),
-      conversationId: "conversation-2",
-      events: [event(10)],
-    });
-
-    await applyConversationEventPage(queryClient, "conversation-1", {
-      events: [event(1), event(2)],
-      eventHistory: { status: "available" },
-      generatedAt,
-    });
-
-    expect(
-      queryClient.getQueryData<ConversationDetailReport>([
-        "conversation",
-        "conversation-1",
-      ])?.events,
-    ).toEqual([event(1), event(2), event(3), event(4)]);
-    expect(
-      queryClient.getQueryData<ConversationDetailReport>([
-        "conversation",
-        "conversation-2",
-      ])?.events,
-    ).toEqual([event(10)]);
+    expect(mergeConversationSnapshot(detail(), snapshot)).toEqual(snapshot);
   });
 });

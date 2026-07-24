@@ -11,7 +11,6 @@ import type {
   LocationDirectoryReport,
 } from "@sentry/junior/api/schema";
 
-import { client } from "../src/client/api";
 import { HighlightedCode } from "../src/client/code";
 import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
@@ -32,6 +31,8 @@ import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
+
+const client = new QueryClient();
 
 afterEach(() => client.clear());
 
