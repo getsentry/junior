@@ -95,11 +95,10 @@ import {
   EVAL_OAUTH_PROVIDER,
 } from "@junior-tests/msw/handlers/eval-oauth";
 import {
-  EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTHORIZATION_ENDPOINT,
   EVAL_MCP_AUTH_PROVIDER,
 } from "@junior-tests/msw/handlers/eval-mcp-auth";
-import { runMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp-oauth-callback-harness";
+import { completeMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp-oauth-callback-harness";
 import { runOauthCallbackRoute } from "@junior-tests/fixtures/oauth-callback-harness";
 import {
   readCapturedSlackApiCalls,
@@ -1266,18 +1265,12 @@ async function seedExpiredOAuthTokens(input: {
   }
 }
 
-function getDefaultAuthCode(
-  type: "mcp-oauth" | "oauth",
-  provider: string,
-): string {
-  if (type === "mcp-oauth" && provider === EVAL_MCP_AUTH_PROVIDER) {
-    return EVAL_MCP_AUTH_CODE;
-  }
-  if (type === "oauth" && provider === EVAL_OAUTH_PROVIDER) {
+function getDefaultOauthCode(provider: string): string {
+  if (provider === EVAL_OAUTH_PROVIDER) {
     return EVAL_OAUTH_CODE;
   }
   throw new Error(
-    `No default eval ${type} code configured for provider "${provider}"`,
+    `No default eval OAuth code configured for provider "${provider}"`,
   );
 }
 
@@ -1401,10 +1394,9 @@ async function autoCompleteMcpOauth(args: {
     );
   }
 
-  const response = await runMcpOauthCallbackRoute({
+  const response = await completeMcpOauthCallbackRoute({
     provider,
-    state: delivered.state,
-    code: getDefaultAuthCode("mcp-oauth", provider),
+    authSessionId: delivered.state,
     agentRunner: args.agentRunner,
   });
   if (response.status !== 200) {
@@ -1472,7 +1464,7 @@ async function autoCompleteOauth(args: {
   const response = await runOauthCallbackRoute({
     provider,
     state: delivered.state,
-    code: getDefaultAuthCode("oauth", provider),
+    code: getDefaultOauthCode(provider),
     agentRunner: args.agentRunner,
   });
   if (response.status !== 200) {

@@ -1,10 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import {
-  EVAL_MCP_AUTH_CODE,
-  EVAL_MCP_AUTH_PROVIDER,
-} from "../msw/handlers/eval-mcp-auth";
+import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -551,10 +548,9 @@ describe("mcp auth runtime slack integration", () => {
     });
 
     const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+      await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
-        state: pendingAuthSession!.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
+        authSessionId: pendingAuthSession!.authSessionId,
       });
 
     expect(response.status).toBe(200);
@@ -1038,10 +1034,9 @@ describe("mcp auth runtime slack integration", () => {
     });
 
     const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+      await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
-        state: pendingAuthSession!.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
+        authSessionId: pendingAuthSession!.authSessionId,
       });
 
     expect(response.status).toBe(200);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { http, HttpResponse } from "msw";
 
 export const EVAL_MCP_AUTH_PROVIDER = "eval-auth";
@@ -12,6 +13,29 @@ const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
 const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
+const EVAL_MCP_CLIENT_ID = "eval-auth-client-id";
+const EVAL_MCP_CALLBACK_PATH = "/api/oauth/callback/mcp/eval-auth";
+
+interface AuthorizationGrant {
+  clientId: string;
+  codeChallenge: string;
+  redirectUri: string;
+  scope?: string;
+}
+
+let authorizationGrant: AuthorizationGrant | undefined;
+let clientRegistered = false;
+let tokenIssued = false;
+
+function pkceChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
+function getEvalMcpCallbackUrl(): string {
+  const baseUrl =
+    process.env.JUNIOR_BASE_URL?.trim() || "https://junior.example.com";
+  return new URL(EVAL_MCP_CALLBACK_PATH, baseUrl).toString();
+}
 
 function unauthorizedResponse() {
   return new HttpResponse(null, {
@@ -35,7 +59,12 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
   );
 }
 
-export function resetEvalMcpAuthMockState(): void {}
+/** Reset headless OAuth state between integration tests. */
+export function resetEvalMcpAuthMockState(): void {
+  authorizationGrant = undefined;
+  clientRegistered = false;
+  tokenIssued = false;
+}
 
 export const evalMcpAuthHandlers = [
   http.get(
@@ -205,7 +234,7 @@ export const evalMcpAuthHandlers = [
   ),
   http.post(EVAL_MCP_SERVER_URL, async ({ request }) => {
     const authorization = request.headers.get("authorization");
-    if (authorization !== `Bearer ${EVAL_MCP_ACCESS_TOKEN}`) {
+    if (!tokenIssued || authorization !== `Bearer ${EVAL_MCP_ACCESS_TOKEN}`) {
       return unauthorizedResponse();
     }
 
@@ -332,10 +361,57 @@ export const evalMcpAuthHandlers = [
         code_challenge_methods_supported: ["S256"],
       }),
   ),
+  http.get(EVAL_MCP_AUTHORIZATION_ENDPOINT, async ({ request }) => {
+    const url = new URL(request.url);
+    const clientId = url.searchParams.get("client_id");
+    const redirectUri = url.searchParams.get("redirect_uri");
+    const callbackUrl = getEvalMcpCallbackUrl();
+    const state = url.searchParams.get("state");
+    const codeChallenge = url.searchParams.get("code_challenge");
+    if (
+      !clientRegistered ||
+      clientId !== EVAL_MCP_CLIENT_ID ||
+      redirectUri !== callbackUrl ||
+      !state ||
+      !codeChallenge ||
+      url.searchParams.get("code_challenge_method") !== "S256" ||
+      url.searchParams.get("response_type") !== "code"
+    ) {
+      return HttpResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
+    authorizationGrant = {
+      clientId,
+      codeChallenge,
+      redirectUri,
+      ...(url.searchParams.get("scope")
+        ? { scope: url.searchParams.get("scope")! }
+        : {}),
+    };
+    const callback = new URL(redirectUri);
+    callback.searchParams.set("code", EVAL_MCP_AUTH_CODE);
+    callback.searchParams.set("state", state);
+    return new HttpResponse(null, {
+      status: 302,
+      headers: { Location: callback.toString() },
+    });
+  }),
   http.post(EVAL_MCP_REGISTRATION_ENDPOINT, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
+    const callbackUrl = getEvalMcpCallbackUrl();
+    if (
+      !Array.isArray(body.redirect_uris) ||
+      body.redirect_uris.length !== 1 ||
+      body.redirect_uris[0] !== callbackUrl
+    ) {
+      return HttpResponse.json(
+        { error: "invalid_client_metadata" },
+        { status: 400 },
+      );
+    }
+    clientRegistered = true;
     return HttpResponse.json({
-      client_id: "eval-auth-client-id",
+      client_id: EVAL_MCP_CLIENT_ID,
       client_id_issued_at: Math.floor(Date.now() / 1000),
       ...(Array.isArray(body.redirect_uris)
         ? { redirect_uris: body.redirect_uris }
@@ -360,7 +436,16 @@ export const evalMcpAuthHandlers = [
     const bodyText = await request.text();
     const params = new URLSearchParams(bodyText);
     const code = params.get("code");
-    if (code !== EVAL_MCP_AUTH_CODE) {
+    const verifier = params.get("code_verifier");
+    if (
+      params.get("grant_type") !== "authorization_code" ||
+      code !== EVAL_MCP_AUTH_CODE ||
+      !authorizationGrant ||
+      params.get("client_id") !== authorizationGrant.clientId ||
+      params.get("redirect_uri") !== authorizationGrant.redirectUri ||
+      !verifier ||
+      pkceChallenge(verifier) !== authorizationGrant.codeChallenge
+    ) {
       return HttpResponse.json(
         {
           error: "invalid_grant",
@@ -370,12 +455,16 @@ export const evalMcpAuthHandlers = [
       );
     }
 
+    const scope = authorizationGrant.scope ?? "mcp:read";
+    authorizationGrant = undefined;
+    tokenIssued = true;
+
     return HttpResponse.json({
       access_token: EVAL_MCP_ACCESS_TOKEN,
       token_type: "Bearer",
       expires_in: 3600,
       refresh_token: "eval-auth-refresh-token",
-      scope: "mcp:read",
+      scope,
     });
   }),
 ];
