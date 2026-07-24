@@ -18,18 +18,30 @@ import {
 export async function applyConversationEventPage(
   queryClient: QueryClient,
   conversationId: string,
-  page: ConversationEventPage,
+  page: ConversationEventPage | undefined,
+  refreshed?: ConversationDetailReport,
 ): Promise<void> {
   const queryKey = ["conversation", conversationId] as const;
   await queryClient.cancelQueries({ exact: true, queryKey });
   let refresh = false;
   queryClient.setQueryData<ConversationDetailReport>(queryKey, (current) => {
     if (!current) return current;
-    if (page.eventHistory.status !== current.eventHistory.status) {
+    if (
+      refreshed &&
+      refreshed.eventHistory.status !== current.eventHistory.status
+    ) {
       refresh = true;
       return current;
     }
-    return mergeConversationEventPage(current, page);
+    const anchored = refreshed
+      ? { ...current, previousCursor: refreshed.previousCursor }
+      : current;
+    if (!page) return anchored;
+    if (page.eventHistory.status !== anchored.eventHistory.status) {
+      refresh = true;
+      return anchored;
+    }
+    return mergeConversationEventPage(anchored, page);
   });
   if (refresh) {
     await queryClient.invalidateQueries({ exact: true, queryKey });

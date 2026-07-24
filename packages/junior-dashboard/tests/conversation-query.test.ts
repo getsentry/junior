@@ -105,6 +105,53 @@ describe("conversation query", () => {
     ).toEqual([event(1), event(2), event(3), event(4)]);
   });
 
+  it("replaces a stale history cursor before merging the recovered page", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["conversation", "conversation-1"], detail());
+
+    await applyConversationEventPage(
+      queryClient,
+      "conversation-1",
+      {
+        events: [event(2)],
+        eventHistory: { status: "available" },
+        generatedAt,
+        previousCursor: "before-2",
+      },
+      {
+        ...detail(),
+        previousCursor: "fresh-before",
+      },
+    );
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-1",
+      ]),
+    ).toMatchObject({
+      events: [event(2), event(3), event(4)],
+      previousCursor: "before-2",
+    });
+  });
+
+  it("clears a stale history cursor when refreshed history is complete", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["conversation", "conversation-1"], detail());
+
+    await applyConversationEventPage(queryClient, "conversation-1", undefined, {
+      ...detail(),
+      previousCursor: undefined,
+    });
+
+    expect(
+      queryClient.getQueryData<ConversationDetailReport>([
+        "conversation",
+        "conversation-1",
+      ])?.previousCursor,
+    ).toBeUndefined();
+  });
+
   it("applies history only to the requested conversation", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["conversation", "conversation-1"], detail());

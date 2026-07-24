@@ -5,6 +5,7 @@ import {
   readAllConversationUpdates,
   readConversationData,
   readConversationEvents,
+  readConversationHistoryPage,
   readConversationUpdates,
 } from "../src/client/api";
 
@@ -223,6 +224,43 @@ describe("dashboard client API", () => {
       ],
       previousCursor: undefined,
     });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/conversations/slack%3AC1%3A123",
+      { credentials: "same-origin" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/conversations/slack%3AC1%3A123/events?before=fresh-before",
+      { credentials: "same-origin" },
+    );
+  });
+
+  it("refreshes a stale cursor before reading one history page", async () => {
+    const refreshed = {
+      ...conversationDetail(),
+      previousCursor: "fresh-before",
+    };
+    const page = {
+      events: [messageEvent(1, "Earlier event")],
+      eventHistory: { status: "available" as const },
+      generatedAt,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Invalid conversation cursor." },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json(refreshed))
+      .mockResolvedValueOnce(Response.json(page));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readConversationHistoryPage("slack:C1:123", "stale-before"),
+    ).resolves.toEqual({ page, refreshed });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "/api/conversations/slack%3AC1%3A123",

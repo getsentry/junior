@@ -285,12 +285,13 @@ export function useConversationData(conversationId: string | undefined) {
   });
   const history = useMutation({
     mutationFn: (request: { before: string; conversationId: string }) =>
-      readConversationEvents(request.conversationId, request.before),
-    onSuccess: async (page, request) => {
+      readConversationHistoryPage(request.conversationId, request.before),
+    onSuccess: async (result, request) => {
       await applyConversationEventPage(
         queryClient,
         request.conversationId,
-        page,
+        result.page,
+        result.refreshed,
       );
     },
   });
@@ -373,6 +374,37 @@ export function readConversationEvents(
     `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
     signal,
   );
+}
+
+/** Read one older page, refreshing its detail anchor when the cursor is stale. */
+export async function readConversationHistoryPage(
+  conversationId: string,
+  before: string,
+  signal?: AbortSignal,
+): Promise<{
+  page?: ConversationEventPage;
+  refreshed?: ConversationDetailReport;
+}> {
+  try {
+    return {
+      page: await readConversationEvents(conversationId, before, signal),
+    };
+  } catch (error) {
+    if (!(error instanceof DashboardApiError) || error.status !== 400) {
+      throw error;
+    }
+    const refreshed = await readConversationData(conversationId, signal);
+    return {
+      page: refreshed.previousCursor
+        ? await readConversationEvents(
+            conversationId,
+            refreshed.previousCursor,
+            signal,
+          )
+        : undefined,
+      refreshed,
+    };
+  }
 }
 
 /** Drain every older event page into one complete transcript snapshot. */
