@@ -155,13 +155,18 @@ function classifyProviderError(
   }
   if (
     status === 401 ||
-    /invalid.?api.?key|no api key|authentication|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i.test(
+    /invalid.?api.?key|no api key|authentication (?:failed|error|required)|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i.test(
       message,
     )
   ) {
     return "auth";
   }
-  if (status === 403 || /permission|forbidden|authorization/i.test(message)) {
+  if (
+    status === 403 ||
+    /permission denied|forbidden|not authorized|authorization (?:failed|required|denied)/i.test(
+      message,
+    )
+  ) {
     return "permission";
   }
   if (status === 429 || /rate.?limit|too many requests/i.test(message)) {

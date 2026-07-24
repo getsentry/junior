@@ -148,6 +148,8 @@ describe("provider retry helpers", () => {
       "upstream request failed",
       "An unexpected error occurred",
       "503 Safety service temporarily unavailable",
+      "503 Authentication service temporarily unavailable",
+      "Authorization service internal error",
     ]) {
       expect(createProviderError(message)).toMatchObject({
         retryable: true,
@@ -208,6 +210,9 @@ describe("provider retry helpers", () => {
       '401 {"error":{"message":"The provided credentials are invalid","type":"authentication_error","statusCode":401}}',
       "Provider credentials have expired",
       "Provider credentials were revoked",
+      "Authentication failed",
+      "Permission denied",
+      "Authorization required",
     ]) {
       expect(isProviderRetryError(createProviderError(message))).toBe(false);
     }
