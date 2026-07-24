@@ -1,10 +1,11 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import type {
-  ConversationDetailReport,
-  ConversationEventPage,
-  ConversationReportEvent,
-  ConversationUpdatesReport,
+import {
+  conversationDetailReportSchema,
+  type ConversationDetailReport,
+  type ConversationEventPage,
+  type ConversationReportEvent,
+  type ConversationUpdatesReport,
 } from "@sentry/junior/api/schema";
 import {
   applyConversationEventPage,
@@ -92,7 +93,8 @@ describe("conversation query cache", () => {
       surface: "internal",
     };
 
-    expect(mergeConversationUpdate(detail(), update)).toMatchObject({
+    const merged = mergeConversationUpdate(detail(), update);
+    expect(conversationDetailReportSchema.parse(merged)).toMatchObject({
       cumulativeDurationMs: 20,
       displayTitle: "Updated conversation",
       eventCursor: "next-cursor",

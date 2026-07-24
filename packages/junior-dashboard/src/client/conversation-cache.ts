@@ -10,10 +10,11 @@ export function mergeConversationUpdate(
   current: ConversationDetailReport,
   update: ConversationUpdatesReport,
 ): ConversationDetailReport {
+  const { hasMore: _hasMore, ...detailUpdate } = update;
   const existingSeqs = new Set(current.events.map((event) => event.seq));
   return {
     ...current,
-    ...update,
+    ...detailUpdate,
     events: [
       ...current.events,
       ...update.events.filter((event) => !existingSeqs.has(event.seq)),
