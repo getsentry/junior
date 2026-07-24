@@ -342,6 +342,47 @@ describe("dashboard client API", () => {
     );
   });
 
+  it("keeps completed history complete when refreshing an update cursor", async () => {
+    const refreshed: ConversationDetailReport = {
+      ...conversationDetail(),
+      events: [messageEvent(2, "Current event"), messageEvent(3, "New event")],
+      previousCursor: "fresh-before",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json(
+            { error: "Invalid conversation cursor." },
+            { status: 400 },
+          ),
+        )
+        .mockResolvedValueOnce(Response.json(refreshed)),
+    );
+
+    await expect(
+      readAllConversationUpdates("slack:C1:123", {
+        ...refreshed,
+        eventCursor: "expired-cursor",
+        events: [
+          messageEvent(0, "Loaded earliest event"),
+          messageEvent(1, "Loaded earlier event"),
+          messageEvent(2, "Current event"),
+        ],
+        previousCursor: undefined,
+      }),
+    ).resolves.toMatchObject({
+      events: [
+        messageEvent(0, "Loaded earliest event"),
+        messageEvent(1, "Loaded earlier event"),
+        messageEvent(2, "Current event"),
+        messageEvent(3, "New event"),
+      ],
+      previousCursor: undefined,
+    });
+  });
+
   it("does not hide non-cursor update failures", async () => {
     vi.stubGlobal(
       "fetch",

@@ -475,7 +475,9 @@ export async function readAllConversationUpdates(
         const snapshot = await readConversationData(conversationId, signal);
         return {
           ...mergeConversationSnapshot(current, snapshot),
-          previousCursor: snapshot.previousCursor,
+          previousCursor: current.previousCursor
+            ? snapshot.previousCursor
+            : undefined,
         };
       }
       throw error;
