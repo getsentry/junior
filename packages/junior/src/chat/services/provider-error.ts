@@ -168,6 +168,13 @@ function classifyProviderError(
     return "rate_limit";
   }
   if (
+    /context.?length|context.?window|validation|bad request|unsupported model|invalid model|unknown (?:ai gateway )?model|mismatched api/i.test(
+      message,
+    )
+  ) {
+    return "invalid_request";
+  }
+  if (
     /overloaded|at capacity|capacity exceeded|\bResourceExhausted\b/i.test(
       message,
     )
@@ -196,12 +203,7 @@ function classifyProviderError(
   ) {
     return "server";
   }
-  if (
-    (status !== undefined && status >= 400) ||
-    /context.?length|context.?window|validation|bad request|unsupported model|invalid model|unknown (?:ai gateway )?model|mismatched api/i.test(
-      message,
-    )
-  ) {
+  if (status !== undefined && status >= 400) {
     return "invalid_request";
   }
   return "unknown";

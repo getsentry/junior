@@ -179,6 +179,20 @@ describe("provider retry helpers", () => {
     }
   });
 
+  it("keeps explicit permanent request failures terminal", () => {
+    for (const error of [
+      Object.assign(new Error("Invalid model"), { statusCode: 503 }),
+      "503 Internal error: context length exceeded",
+      "500 Bad Request",
+      "Server error: unsupported model",
+    ]) {
+      expect(createProviderError(error)).toMatchObject({
+        kind: "invalid_request",
+        retryable: false,
+      });
+    }
+  });
+
   it("does not claim a retry happened in terminal capacity copy", () => {
     const message = getProviderErrorUserMessage(
       createProviderError("Provider capacity exceeded"),
