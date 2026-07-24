@@ -674,6 +674,56 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('role="alert"');
   });
 
+  it("keeps a cached child transcript visible after a refresh failure", () => {
+    const staleClient = conversationQueryClient();
+    const staleDetail = conversation(
+      [
+        event(0, {
+          type: "message",
+          messageId: "cached-child-answer",
+          role: "assistant",
+          text: "cached child answer",
+        }),
+      ],
+      { conversationId: "child-stale", status: "active" },
+    );
+    staleClient.setQueryData(
+      conversationDetailQueryKey("child-stale"),
+      staleDetail,
+    );
+    const staleQuery = staleClient.getQueryCache().find({
+      queryKey: conversationDetailQueryKey("child-stale"),
+    });
+    staleQuery?.setState({
+      ...staleQuery.state,
+      error: new Error("refresh failed"),
+      errorUpdatedAt: Date.now(),
+      fetchStatus: "idle",
+      status: "error",
+    });
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-stale",
+      part: {
+        type: "subagent",
+        id: "child-stale",
+        childConversationId: "child-stale",
+        status: "running",
+        subagentKind: "advisor",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={staleClient}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("cached child answer");
+    expect(html).not.toContain("Conversation failed to load.");
+  });
+
   it("renders actor profiles with activity without recent conversations", () => {
     const profile: ActorProfileReport = {
       activityDays: [

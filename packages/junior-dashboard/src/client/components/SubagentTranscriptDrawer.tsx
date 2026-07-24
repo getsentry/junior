@@ -107,7 +107,7 @@ export function SubagentTranscriptDrawer(props: {
         <div className="min-h-0 overflow-auto px-4 py-4 md:px-5">
           {query.isPending ? (
             <TranscriptLoading />
-          ) : query.error ? (
+          ) : query.error && !detail ? (
             <DrawerEmptyState tone="error">
               Conversation failed to load.
             </DrawerEmptyState>

@@ -331,6 +331,12 @@ export function useConversationData(conversationId: string | undefined) {
       isInvalidCursorError(history.error) ||
       isInvalidCursorError(updates.error)),
   );
+  const updateError = isInvalidCursorError(updates.error)
+    ? null
+    : updates.error;
+  const historyError = isInvalidCursorError(history.error)
+    ? null
+    : history.error;
 
   useEffect(() => {
     if (shouldRefreshDetail) void detail.refetch();
@@ -339,8 +345,8 @@ export function useConversationData(conversationId: string | undefined) {
   return {
     ...detail,
     data,
-    error: detail.error ?? updates.error,
-    historyError: history.error,
+    error: detail.error ?? updateError,
+    historyError,
     hasPreviousPage: history.data
       ? history.hasNextPage
       : Boolean(detail.data?.previousCursor),
