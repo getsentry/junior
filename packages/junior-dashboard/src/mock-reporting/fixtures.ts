@@ -13,7 +13,6 @@ import type {
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
-  ConversationUpdatesReport,
   LocationDetailReport,
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -61,7 +60,6 @@ type DetailOptions = Omit<
   ConversationDetailReport,
   | "cumulativeDurationMs"
   | "displayTitle"
-  | "eventCursor"
   | "eventHistory"
   | "events"
   | "generatedAt"
@@ -95,7 +93,6 @@ function detail(
   return {
     ...options,
     cumulativeDurationMs: options.cumulativeDurationMs ?? 0,
-    eventCursor: `mock:${options.conversationId}`,
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
     isParticipant: options.isParticipant ?? false,
@@ -545,7 +542,6 @@ function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
   const {
-    eventCursor: _eventCursor,
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
@@ -674,6 +670,7 @@ export function readMockConversationFeed(
 /** Return one canonical-event visual-QA conversation detail fixture. */
 export function readMockConversationDetail(
   conversationId: string,
+  limit = 500,
 ): ConversationDetailReport | undefined {
   const conversation = mockConversations(Date.now()).find(
     (candidate) => candidate.conversationId === conversationId,
@@ -681,50 +678,75 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const { parentConversationId: _parentConversationId, ...detail } =
     conversation;
-  return detail.channel && PUBLIC_MOCK_CHANNEL_IDS.has(detail.channel)
-    ? { ...detail, locationId: `mock:${detail.channel}` }
-    : detail;
+  const events = detail.events.slice(-limit);
+  const bounded =
+    events.length < detail.events.length && events[0]
+      ? {
+          ...detail,
+          events,
+          previousCursor: mockBeforeCursor(conversationId, events[0].seq),
+        }
+      : detail;
+  return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
+    ? { ...bounded, locationId: `mock:${bounded.channel}` }
+    : bounded;
 }
 
 /** Return the deterministic older page used to exercise transcript pagination. */
 export function readMockConversationEvents(
   conversationId: string,
   before: string,
+  limit = 500,
 ): ConversationEventPage | undefined {
-  const detail = readMockConversationDetail(conversationId);
-  if (!detail || before !== detail.previousCursor) return undefined;
-  return {
-    events: [
-      reportEvent(0, iso(Date.parse(detail.startedAt), -60_000), {
-        type: "message",
-        messageId: `${conversationId}:earlier`,
-        role: "user",
-        text: "Prepare the release and include the complete earlier context.",
-      }),
-    ],
-    eventHistory: detail.eventHistory,
-    generatedAt: new Date().toISOString(),
-  };
-}
-
-/** Return a no-op forward page so active mock conversations poll successfully. */
-export function readMockConversationUpdates(
-  conversationId: string,
-  cursor: string,
-): ConversationUpdatesReport | undefined {
   const conversation = mockConversations(Date.now()).find(
     (candidate) => candidate.conversationId === conversationId,
   );
-  if (!conversation || cursor !== conversation.eventCursor) return undefined;
+  if (!conversation) return undefined;
+  if (before === conversation.previousCursor) {
+    return {
+      events: [
+        reportEvent(0, iso(Date.parse(conversation.startedAt), -60_000), {
+          type: "message",
+          messageId: `${conversationId}:earlier`,
+          role: "user",
+          text: "Prepare the release and include the complete earlier context.",
+        }),
+      ],
+      eventHistory: conversation.eventHistory,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const beforeSeq = parseMockBeforeCursor(conversationId, before);
+  if (beforeSeq === undefined) return undefined;
+  const olderEvents = conversation.events.filter(
+    (event) => event.seq < beforeSeq,
+  );
+  const events = olderEvents.slice(-limit);
   return {
-    ...summaryFromConversation(conversation),
-    events: [],
-    eventCursor: conversation.eventCursor,
+    events,
     eventHistory: conversation.eventHistory,
     generatedAt: new Date().toISOString(),
-    hasMore: false,
-    ...(conversation.modelUsage ? { modelUsage: conversation.modelUsage } : {}),
+    ...(events.length < olderEvents.length && events[0]
+      ? { previousCursor: mockBeforeCursor(conversationId, events[0].seq) }
+      : conversation.previousCursor
+        ? { previousCursor: conversation.previousCursor }
+        : {}),
   };
+}
+
+function mockBeforeCursor(conversationId: string, seq: number): string {
+  return `mock:before:${encodeURIComponent(conversationId)}:${seq}`;
+}
+
+function parseMockBeforeCursor(
+  conversationId: string,
+  cursor: string,
+): number | undefined {
+  const prefix = `mock:before:${encodeURIComponent(conversationId)}:`;
+  if (!cursor.startsWith(prefix)) return undefined;
+  const seq = Number(cursor.slice(prefix.length));
+  return Number.isInteger(seq) && seq >= 0 ? seq : undefined;
 }
 
 /** Build mock dashboard stats from canonical-event mock conversations. */

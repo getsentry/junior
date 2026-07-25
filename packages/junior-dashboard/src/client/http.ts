@@ -1,0 +1,68 @@
+import type { ZodType } from "zod";
+
+/** An authenticated dashboard request rejected by the product API. */
+export class DashboardApiError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number) {
+    super(`${path} returned ${status}`);
+    this.status = status;
+  }
+}
+
+function restartDashboardSignIn(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const basePath = window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/";
+  const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
+  if (window.location.pathname !== loginPath) {
+    const returnPath = `${window.location.pathname}${
+      window.location.search || ""
+    }`;
+    const loginParams = new URLSearchParams();
+    if (returnPath !== "/") {
+      loginParams.set("next", returnPath);
+    }
+    const loginSearch = loginParams.toString();
+    window.location.assign(
+      loginSearch ? `${loginPath}?${loginSearch}` : loginPath,
+    );
+  }
+}
+
+/** Send one authenticated PATCH request and validate its response. */
+export async function patch<T>(
+  schema: ZodType<T>,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(path, {
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+  return schema.parse(await response.json());
+}
+
+/** Read one authenticated JSON resource and validate its response. */
+export async function read<T>(
+  schema: ZodType<T>,
+  path: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
+  if (response.status === 401) {
+    restartDashboardSignIn();
+    throw new DashboardApiError(path, response.status);
+  }
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+  return schema.parse(await response.json());
+}

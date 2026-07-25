@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ConversationReportEvent,
-  ConversationUpdatesReport,
-} from "@sentry/junior/api/schema";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import {
+  conversationDetailQueryOptions,
   readConversationData,
   readConversationEvents,
-  readConversationUpdateBatch,
-  readConversationUpdates,
-} from "../src/client/api";
+} from "../src/client/conversations/queries";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -21,30 +17,6 @@ function event(seq: number): ConversationReportEvent {
       messageId: `message-${seq}`,
     },
     seq,
-  };
-}
-
-function update(
-  eventCursor: string,
-  events: ConversationReportEvent[],
-  hasMore: boolean,
-  status: ConversationUpdatesReport["status"] = "active",
-): ConversationUpdatesReport {
-  return {
-    conversationId: "slack:C1:123",
-    cumulativeDurationMs: events.length,
-    displayTitle: "Conversation",
-    eventCursor,
-    eventHistory: { status: "available" },
-    events,
-    generatedAt,
-    hasMore,
-    isParticipant: true,
-    lastProgressAt: generatedAt,
-    lastSeenAt: generatedAt,
-    startedAt: generatedAt,
-    status,
-    surface: "slack",
   };
 }
 
@@ -74,20 +46,6 @@ describe("dashboard client API", () => {
     );
     expect(assign).toHaveBeenCalledWith(
       "/auth/login?next=%2Fconversations%3Ffilter%3Drecent",
-    );
-  });
-
-  it("requests updates after the supplied cursor", async () => {
-    const response = update("next-cursor", [], false);
-    const fetchMock = vi.fn(async () => Response.json(response));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      readConversationUpdates("slack:C1:123", "signed cursor"),
-    ).resolves.toEqual(response);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/conversations/slack%3AC1%3A123/updates?cursor=signed+cursor",
-      { credentials: "same-origin" },
     );
   });
 
@@ -127,40 +85,33 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
-  it("drains a bounded update feed into one query result", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        Response.json(update("cursor-2", [event(2), event(3)], true)),
-      )
-      .mockResolvedValueOnce(
-        Response.json(update("cursor-3", [event(3), event(4)], false)),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+  it("keeps polling active detail after a failed refresh", () => {
+    const options = conversationDetailQueryOptions("slack:C1:123");
+    const interval = options.refetchInterval;
+    if (typeof interval !== "function") {
+      throw new Error("Expected a dynamic polling interval");
+    }
+    const query = {
+      state: {
+        data: {
+          conversationId: "slack:C1:123",
+          cumulativeDurationMs: 1,
+          displayTitle: "Active conversation",
+          eventHistory: { status: "available" },
+          events: [],
+          generatedAt,
+          isParticipant: true,
+          lastProgressAt: generatedAt,
+          lastSeenAt: generatedAt,
+          startedAt: generatedAt,
+          status: "active",
+          surface: "slack",
+        },
+        error: new Error("temporary failure"),
+      },
+    } as unknown as Parameters<typeof interval>[0];
 
-    await expect(
-      readConversationUpdateBatch("slack:C1:123", "cursor-1"),
-    ).resolves.toMatchObject({
-      eventCursor: "cursor-3",
-      events: [event(2), event(3), event(4)],
-      hasMore: false,
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/conversations/slack%3AC1%3A123/updates?cursor=cursor-2",
-      { credentials: "same-origin" },
-    );
-  });
-
-  it("rejects an update feed whose cursor does not advance", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json(update("same-cursor", [event(2)], true))),
-    );
-
-    await expect(
-      readConversationUpdateBatch("slack:C1:123", "same-cursor"),
-    ).rejects.toThrow("Conversation update cursor did not advance");
+    expect(interval(query)).toBe(2_000);
   });
 
   it("does not redirect for non-auth product API failures", async () => {

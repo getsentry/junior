@@ -3,7 +3,10 @@ import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationFeed } from "@sentry/junior/api/schema";
 
-import { useArchiveConversation, useConversationData } from "../api";
+import {
+  useArchiveConversation,
+  useConversationData,
+} from "../conversations/queries";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
 import {

@@ -3,7 +3,6 @@ import {
   actorDirectoryReportSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
-  conversationUpdatesReportSchema,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
@@ -256,15 +255,29 @@ describe("dashboard canonical-event mock routes", () => {
     );
     expect(history.events.map((event) => event.seq)).toEqual([0]);
 
-    const updatesResponse = await app.fetch(
+    const limitedDetailResponse = await app.fetch(
       new Request(
-        `http://localhost/api/conversations/${encodeURIComponent(active.conversationId)}/updates?cursor=${encodeURIComponent(active.eventCursor)}`,
+        `http://localhost/api/conversations/${encodeURIComponent(long.conversationId)}?limit=2`,
       ),
     );
-    expect(updatesResponse.status).toBe(200);
-    expect(
-      conversationUpdatesReportSchema.parse(await updatesResponse.json()),
-    ).toMatchObject({ events: [], hasMore: false });
+    const limitedDetail = conversationDetailReportSchema.parse(
+      await limitedDetailResponse.json(),
+    );
+    expect(limitedDetail.events).toHaveLength(2);
+    expect(limitedDetail.previousCursor).toBeDefined();
+
+    const limitedHistoryResponse = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(long.conversationId)}/events?before=${encodeURIComponent(limitedDetail.previousCursor!)}&limit=2`,
+      ),
+    );
+    const limitedHistory = conversationEventPageSchema.parse(
+      await limitedHistoryResponse.json(),
+    );
+    expect(limitedHistory.events).toHaveLength(2);
+    expect(limitedHistory.events.at(-1)!.seq).toBeLessThan(
+      limitedDetail.events[0]!.seq,
+    );
   });
 
   it("loads canonical child conversations through the ordinary detail route", async () => {

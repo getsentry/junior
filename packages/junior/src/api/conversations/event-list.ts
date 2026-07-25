@@ -28,7 +28,6 @@ export async function readConversationEvents(
   const before = decodeConversationCursor({
     conversationId,
     cursor: beforeValue,
-    kind: "before",
   });
   if (!before) throwApiError(400, "Invalid conversation cursor.");
 
@@ -61,7 +60,6 @@ export async function readConversationEvents(
       : {
           previousCursor: encodeConversationCursor({
             conversationId,
-            kind: "before",
             seq: page.previousSeq,
           }),
         }),

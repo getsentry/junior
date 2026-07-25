@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Bot, ExternalLink, X } from "lucide-react";
 import { Link } from "react-router";
 
-import { useConversationData } from "../api";
+import { useConversationData } from "../conversations/queries";
 import { conversationPath, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import type { TranscriptViewSubagentPart } from "../types";

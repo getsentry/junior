@@ -13,7 +13,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber, formatMs } from "../../format";
+import { formatCompactNumber } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 import { PeopleActivityChart } from "../../components/charts/PeopleActivityChart";
 import {

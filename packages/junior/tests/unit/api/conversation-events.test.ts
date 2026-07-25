@@ -651,7 +651,6 @@ describe("conversation report event projection", () => {
       lastProgressAt: "2026-07-15T12:00:00.000Z",
       surface: "internal" as const,
       generatedAt: "2026-07-15T12:00:00.000Z",
-      eventCursor: "cursor",
       eventHistory: { status: "available" as const },
       isParticipant: false,
     };
@@ -696,7 +695,6 @@ describe("conversation report event projection", () => {
       lastProgressAt: "2026-07-15T12:00:00.000Z",
       surface: "internal" as const,
       generatedAt: "2026-07-15T12:00:00.000Z",
-      eventCursor: "cursor",
       isParticipant: false,
     };
     const visibleEvent = (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Archive, MessageSquareText, Search } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "../api";
+import { useArchiveConversation } from "../conversations/queries";
 import {
   conversationDisplayTitle,
   conversationPath,

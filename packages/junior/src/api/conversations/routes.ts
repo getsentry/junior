@@ -5,14 +5,12 @@ import detailRoute from "./detail";
 import eventListRoute from "./event-list";
 import listRoute from "./list";
 import statsRoute from "./stats";
-import updatesRoute from "./updates";
 
 const routes: ApiRoute[] = [
   listRoute,
   statsRoute,
   archiveRoute,
   eventListRoute,
-  updatesRoute,
   detailRoute,
 ];
 

@@ -6,7 +6,6 @@ const CURSOR_CONTEXT = "junior-conversation-report-cursor";
 const conversationCursorPayloadSchema = z
   .object({
     conversationId: z.string().min(1),
-    kind: z.enum(["after", "before"]),
     seq: z.number().int().min(-1),
     version: z.literal(1),
   })
@@ -42,11 +41,10 @@ export function encodeConversationCursor(
   return `${encoded}.${signature(encoded)}`;
 }
 
-/** Decode an authenticated reporting cursor for the expected conversation and use. */
+/** Decode an authenticated reporting cursor for the expected conversation. */
 export function decodeConversationCursor(args: {
   conversationId: string;
   cursor: string;
-  kind: ConversationCursorPayload["kind"];
 }): { seq: number } | undefined {
   const [encoded, actualSignature, extra] = args.cursor.split(".");
   if (!encoded || !actualSignature || extra !== undefined) return undefined;
@@ -60,10 +58,7 @@ export function decodeConversationCursor(args: {
     const parsed = conversationCursorPayloadSchema.parse(
       JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
     );
-    if (
-      parsed.conversationId !== args.conversationId ||
-      parsed.kind !== args.kind
-    ) {
+    if (parsed.conversationId !== args.conversationId) {
       return undefined;
     }
     return { seq: parsed.seq };

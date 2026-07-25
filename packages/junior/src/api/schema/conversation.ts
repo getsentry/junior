@@ -35,13 +35,6 @@ export const conversationEventsQuerySchema = z
   })
   .strict();
 
-export const conversationUpdatesQuerySchema = z
-  .object({
-    cursor: z.string().min(1),
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
-  })
-  .strict();
-
 export const conversationFeedQuerySchema = z
   .object({
     actorEmail: z
@@ -327,7 +320,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
-    eventCursor: z.string().min(1),
     previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
@@ -341,18 +333,6 @@ export const conversationEventPageSchema = z
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
-  })
-  .strict()
-  .superRefine(validateConversationEvents);
-
-export const conversationUpdatesReportSchema = conversationSummaryReportSchema
-  .extend({
-    modelUsage: z.array(conversationModelUsageSchema).optional(),
-    events: z.array(conversationReportEventSchema),
-    eventHistory: conversationEventHistorySchema,
-    eventCursor: z.string().min(1),
-    generatedAt: z.string(),
-    hasMore: z.boolean(),
   })
   .strict()
   .superRefine(validateConversationEvents);
@@ -430,9 +410,6 @@ export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
-export type ConversationUpdatesReport = z.infer<
-  typeof conversationUpdatesReportSchema
->;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;
 export type ConversationMetricDay = z.infer<typeof conversationMetricDaySchema>;

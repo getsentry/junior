@@ -6,7 +6,6 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { expect, test } from "@playwright/test";
-import { createDashboardApp } from "../dist/app.js";
 
 let server: ReturnType<typeof createServer> | undefined;
 let baseURL = "http://127.0.0.1";
@@ -45,6 +44,8 @@ async function writeResponse(res: ServerResponse, response: Response) {
 }
 
 test.beforeAll(async () => {
+  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
     allowedEmails: ["morgan@sentry.io"],
     auth: {
@@ -346,7 +347,6 @@ test("scrolls long conversation and transcript panes independently", async ({
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
-        eventCursor: "test:after:long-0",
         eventHistory: { status: "available" },
         isParticipant: true,
         events: Array.from({ length: 60 }, (_, index) => ({

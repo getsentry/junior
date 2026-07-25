@@ -3,10 +3,7 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
-import {
-  readConversationEventHighWaterSeq,
-  readConversationEventPage,
-} from "./event-page";
+import { readConversationEventPage } from "./event-page";
 import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
@@ -26,12 +23,11 @@ import { defineApiRoute } from "../route";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { conversationParamsSchema } from "../schema/conversation";
 
-/** Project stored metadata and a bounded event page into signed detail cursors. */
+/** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   conversation: Conversation;
   durationMs: number;
-  eventCursorSeq: number;
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
@@ -54,16 +50,10 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     events: args.events,
-    eventCursor: encodeConversationCursor({
-      conversationId,
-      kind: "after",
-      seq: args.eventCursorSeq,
-    }),
     ...(args.previousSeq !== undefined
       ? {
           previousCursor: encodeConversationCursor({
             conversationId,
-            kind: "before",
             seq: args.previousSeq,
           }),
         }
@@ -90,25 +80,23 @@ async function readConversationDetailFromSql(
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
-  const [accessByConversation, eventCursorSeq, modelUsage, metricsByRoot] =
-    await Promise.all([
-      readConversationAccessFromSql(
-        getDb(),
-        [conversationId],
-        options.verifiedViewerEmail,
-      ),
-      readConversationEventHighWaterSeq(executor, conversationId),
-      record.conversation.transcriptPurgedAtMs === undefined
-        ? readConversationModelUsageFromSql(executor, {
-            conversationId,
-            includeDescendants: includeDescendantMetrics,
-          })
-        : Promise.resolve([]),
-      readRootConversationMetricsFromSql(
-        getDb(),
-        includeDescendantMetrics ? [conversationId] : [],
-      ),
-    ]);
+  const [accessByConversation, modelUsage, metricsByRoot] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      [conversationId],
+      options.verifiedViewerEmail,
+    ),
+    record.conversation.transcriptPurgedAtMs === undefined
+      ? readConversationModelUsageFromSql(executor, {
+          conversationId,
+          includeDescendants: includeDescendantMetrics,
+        })
+      : Promise.resolve([]),
+    readRootConversationMetricsFromSql(
+      getDb(),
+      includeDescendantMetrics ? [conversationId] : [],
+    ),
+  ]);
   const access = accessByConversation.get(conversationId);
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
@@ -116,7 +104,6 @@ async function readConversationDetailFromSql(
           canExposePayload: access?.canViewPrivateContent ?? false,
           conversationId,
           limit: options.limit,
-          throughSeq: eventCursorSeq,
         })
       : { events: [] };
   const metrics = metricsByRoot.get(conversationId);
@@ -124,7 +111,6 @@ async function readConversationDetailFromSql(
     ...record,
     access,
     durationMs: metrics?.durationMs ?? record.durationMs,
-    eventCursorSeq,
     events: page.events,
     modelUsage,
     ...(page.previousSeq === undefined

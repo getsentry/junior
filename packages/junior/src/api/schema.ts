@@ -15,8 +15,6 @@ export {
   conversationReportEventSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
-  conversationUpdatesQuerySchema,
-  conversationUpdatesReportSchema,
 } from "./schema/conversation";
 export type {
   ArchiveConversationBody,
@@ -38,7 +36,6 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
-  ConversationUpdatesReport,
 } from "./schema/conversation";
 export {
   actorDirectoryReportSchema,

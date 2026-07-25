@@ -12,6 +12,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../src/client/code";
+import { conversationDetailQueryKey } from "../src/client/conversations/queries";
 import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
@@ -1380,10 +1381,6 @@ function conversationQueryClient(): QueryClient {
       queries: { refetchOnMount: false, retry: false, retryOnMount: false },
     },
   });
-}
-
-function conversationDetailQueryKey(conversationId: string) {
-  return ["conversation", conversationId, "detail"] as const;
 }
 
 function renderConversationPageWithClient(queryClient: QueryClient): string {
