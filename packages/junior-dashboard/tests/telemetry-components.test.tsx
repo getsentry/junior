@@ -206,7 +206,7 @@ describe("dashboard canonical-event components", () => {
     expect(html.match(/<details/g)).toHaveLength(6);
   });
 
-  it("keeps card chrome on subagents but not tool calls", () => {
+  it("keeps tool and subagent transcript rows borderless", () => {
     const toolHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
@@ -240,8 +240,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(toolHtml).not.toContain("border-white/[0.055]");
     expect(toolHtml).not.toContain("bg-black/15");
-    expect(subagentHtml).toContain("border-white/[0.055]");
-    expect(subagentHtml).toContain("bg-black/15");
+    expect(subagentHtml).not.toContain("border-white/[0.055]");
+    expect(subagentHtml).not.toContain("bg-black/15");
   });
 
   it("exposes pressed state for transcript view controls", () => {
