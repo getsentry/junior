@@ -100,6 +100,9 @@ export function githubConversationIds(
 /**
  * Read same-repository issue numbers linked from a pull request body via GitHub
  * closing keywords or bare `#N` references.
+ *
+ * Cross-repo `owner/repo#N` references are ignored so they cannot be joined as
+ * local issue numbers and misattribute cost.
  */
 export function githubLinkedIssueNumbers(
   body: string | null | undefined,
@@ -108,7 +111,6 @@ export function githubLinkedIssueNumbers(
   const numbers = new Set<number>();
   const patterns = [
     /\b(?:close[sd]?|fix(?:e[sd]|ing)?|resolve[sd]?)\s+#(\d+)\b/gi,
-    /\b(?:close[sd]?|fix(?:e[sd]|ing)?|resolve[sd]?)\s+[\w.-]+\/[\w.-]+#(\d+)\b/gi,
     /(?:^|[^\w/])#(\d+)\b/g,
   ];
   for (const pattern of patterns) {
