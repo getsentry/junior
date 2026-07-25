@@ -64,7 +64,7 @@ describe("dashboard canonical-event Markdown export", () => {
           type: "message",
           messageId: "assistant-1",
           role: "assistant",
-          text: "investigation complete",
+          text: "investigation complete\nfollow-up deployed",
         }),
       ]),
     );
@@ -74,6 +74,7 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("please investigate");
     expect(markdown).toContain("### Junior");
     expect(markdown.match(/investigation complete/g)).toHaveLength(1);
+    expect(markdown).toContain("investigation complete\nfollow-up deployed");
   });
 
   it("exports resource events without attributing them to the actor", () => {

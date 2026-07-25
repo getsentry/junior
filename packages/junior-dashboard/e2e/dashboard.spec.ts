@@ -337,10 +337,13 @@ test("loads earlier transcript events without dropping the current page", async 
   await expect(
     page.getByRole("heading", { name: "Package release and self-update" }),
   ).toBeVisible();
-  const currentEvent = page.getByText(
-    "Released the package and opened the update pull request.",
-  );
+  const currentEvent = page
+    .locator("p")
+    .filter({ hasText: "Released the package." })
+    .filter({ hasText: "Opened the update pull request." })
+    .filter({ hasText: "Deployment is ready." });
   await expect(currentEvent).toBeVisible();
+  await expect(currentEvent.locator("br")).toHaveCount(2);
 
   const toolRun = page.locator("details").filter({ hasText: /12 tool calls/ });
   await toolRun.locator("summary").click();

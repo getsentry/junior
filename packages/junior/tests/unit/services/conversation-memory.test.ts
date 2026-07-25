@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildConversationContext,
   getThreadTitleSourceMessage,
+  normalizeConversationText,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -61,6 +62,19 @@ describe("conversation memory title source", () => {
     expect(getThreadTitleSourceMessage(conversation)?.text).toBe(
       "Real user request",
     );
+  });
+});
+
+describe("normalizeConversationText", () => {
+  it("preserves message line breaks while normalizing line endings", () => {
+    expect(normalizeConversationText("  first\r\nsecond\rthird  ")).toBe(
+      "first\nsecond\nthird",
+    );
+  });
+
+  it("does not truncate durable message text to the model context budget", () => {
+    const text = "x".repeat(4_000);
+    expect(normalizeConversationText(text)).toBe(text);
   });
 });
 
@@ -163,6 +177,38 @@ describe("buildConversationContext", () => {
     expect(context).toContain('actor_id="U039RR91S"');
     expect(context).toContain("[user] user: hello");
     expect(context).not.toContain("@U039RR91S");
+  });
+
+  it("keeps multiline messages compact in model context", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        text: "first line\nsecond line",
+        createdAtMs: 1000,
+      },
+    ];
+
+    const context = buildConversationContext(conversation);
+    expect(context).toContain("first line second line");
+    expect(context).not.toContain("first line\nsecond line");
+  });
+
+  it("applies the message character budget only to model context", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        text: "x".repeat(4_000),
+        createdAtMs: 1000,
+      },
+    ];
+
+    const context = buildConversationContext(conversation);
+    const renderedText = /\[assistant\][^\n]*: (x+)/.exec(context ?? "")?.[1];
+    expect(renderedText).toHaveLength(3_200);
   });
 });
 

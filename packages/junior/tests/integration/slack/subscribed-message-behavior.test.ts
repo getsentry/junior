@@ -185,7 +185,7 @@ describe("Slack behavior: subscribed messages", () => {
               replyContexts.push(context);
               return await completedReply(
                 request,
-                "I checked the subscribed PR event.",
+                "I checked the subscribed PR event.\nThe PR is merged.",
               );
             },
           },
@@ -196,7 +196,7 @@ describe("Slack behavior: subscribed messages", () => {
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002000.002" });
     const message = createTestMessage({
       id: "resource-event-resub-1-check-suite-1",
-      text: "[event notification]\n\nA subscribed resource changed.",
+      text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
       isMention: false,
       threadId: thread.id,
       author: {
@@ -231,6 +231,25 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     ]);
     expect(thread.posts).toHaveLength(1);
+    const conversation = coerceThreadConversationState(
+      (await thread.state) ?? {},
+    );
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    expect(conversation.messages).toContainEqual(
+      expect.objectContaining({
+        id: "resource-event-resub-1-check-suite-1",
+        text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
+      }),
+    );
+    expect(conversation.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        text: "I checked the subscribed PR event.\nThe PR is merged.",
+      }),
+    );
   });
 
   it("processes resource events when compacted history retains a handled marker without its message", async () => {

@@ -321,7 +321,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package and opened the update pull request.",
+      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
     }),
   );
   return detail(nowMs, {

@@ -46,8 +46,9 @@ export function generateConversationId(
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Normalize message boundaries without changing transcript formatting. */
 export function normalizeConversationText(text: string): string {
-  return text.trim().replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS);
+  return text.replace(/\r\n?/g, "\n").trim();
 }
 
 function buildImageContextSuffix(
@@ -75,6 +76,9 @@ function renderConversationMessageLine(
   conversation?: ThreadConversationState,
 ): string {
   const displayName = conversationAuthorDisplayName(message);
+  const text = message.text
+    .replace(/\s+/g, " ")
+    .slice(0, CONTEXT_MAX_MESSAGE_CHARS);
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
@@ -88,7 +92,7 @@ function renderConversationMessageLine(
 
   const markerSuffix = markers.length > 0 ? ` (${markers.join("; ")})` : "";
   const imageContext = buildImageContextSuffix(message, conversation);
-  return `[${message.role}] ${displayName}: ${message.text}${imageContext}${markerSuffix}`;
+  return `[${message.role}] ${displayName}: ${text}${imageContext}${markerSuffix}`;
 }
 
 function conversationAuthorDisplayName(message: ConversationMessage): string {
