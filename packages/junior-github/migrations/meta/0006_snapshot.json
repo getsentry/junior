@@ -1,5 +1,5 @@
 {
-  "id": "d4799d4c-da99-44aa-a59d-bc0dd4a75157",
+  "id": "5c4638ae-9d00-4ebe-8d93-989a8c3f879b",
   "prevId": "c77b9011-8d0d-4d16-8b63-a9a45c162c6a",
   "version": "7",
   "dialect": "postgresql",
@@ -135,9 +135,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issue_id": {
-          "name": "issue_id",
+        "issue_repository_full_name": {
+          "name": "issue_repository_full_name",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_number": {
+          "name": "issue_number",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         }
@@ -156,27 +162,15 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "junior_github_pull_request_issues_issue_id_junior_github_issues_issue_id_fk": {
-          "name": "junior_github_pull_request_issues_issue_id_junior_github_issues_issue_id_fk",
-          "tableFrom": "junior_github_pull_request_issues",
-          "tableTo": "junior_github_issues",
-          "columnsFrom": [
-            "issue_id"
-          ],
-          "columnsTo": [
-            "issue_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "junior_github_pull_request_issues_pull_request_id_issue_id_pk": {
-          "name": "junior_github_pull_request_issues_pull_request_id_issue_id_pk",
+        "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk": {
+          "name": "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk",
           "columns": [
             "pull_request_id",
-            "issue_id"
+            "issue_repository_full_name",
+            "issue_number"
           ]
         }
       },

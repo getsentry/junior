@@ -125,7 +125,9 @@ function pullRequestConversationIdsExpr() {
           SELECT array_agg(DISTINCT issue_conversation_id)
           FROM ${juniorGitHubPullRequestIssues} AS issue_links
           INNER JOIN ${issues} AS linked_issues
-            ON linked_issues.issue_id = issue_links.issue_id
+            ON lower(linked_issues.repository_full_name) =
+              issue_links.issue_repository_full_name
+            AND linked_issues.number = issue_links.issue_number
           CROSS JOIN LATERAL unnest(linked_issues.conversation_ids)
             AS issue_conversation_id
           WHERE issue_links.pull_request_id = ${pullRequests.pullRequestId}
@@ -150,7 +152,9 @@ function issueConversationIdsExpr() {
             ON linked_prs.pull_request_id = issue_links.pull_request_id
           CROSS JOIN LATERAL unnest(linked_prs.conversation_ids)
             AS pr_conversation_id
-          WHERE issue_links.issue_id = ${issues.issueId}
+          WHERE issue_links.issue_repository_full_name =
+            lower(${issues.repositoryFullName})
+            AND issue_links.issue_number = ${issues.number}
         ), ARRAY[]::text[])
       )
     )

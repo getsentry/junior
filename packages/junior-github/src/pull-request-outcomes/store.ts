@@ -5,7 +5,6 @@ import {
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
-  juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
@@ -171,28 +170,25 @@ export async function recordGitHubPullRequestLinkedIssues(
         .select(
           db
             .select({
-              pullRequestId: sql<string>`${association.pullRequestId}`.as(
-                "pull_request_id",
-              ),
-              issueId: juniorGitHubIssues.issueId,
+              pullRequestId: juniorGitHubPullRequests.pullRequestId,
+              issueRepositoryFullName:
+                sql<string>`lower(${issue.repositoryFullName})`.as(
+                  "issue_repository_full_name",
+                ),
+              issueNumber: sql<number>`${issue.number}`.as("issue_number"),
             })
-            .from(juniorGitHubIssues)
-            .innerJoin(
-              juniorGitHubPullRequests,
+            .from(juniorGitHubPullRequests)
+            .where(
               eq(
                 juniorGitHubPullRequests.pullRequestId,
                 association.pullRequestId,
               ),
-            )
-            .where(
-              and(
-                sql`lower(${juniorGitHubIssues.repositoryFullName}) = lower(${issue.repositoryFullName})`,
-                eq(juniorGitHubIssues.number, issue.number),
-              ),
             ),
         )
         .onConflictDoNothing()
-        .returning({ issueId: juniorGitHubPullRequestIssues.issueId }),
+        .returning({
+          issueNumber: juniorGitHubPullRequestIssues.issueNumber,
+        }),
     ),
   );
   return inserted.some((rows) => rows.length > 0);

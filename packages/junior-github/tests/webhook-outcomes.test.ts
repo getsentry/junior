@@ -35,7 +35,7 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
     "0003_pull_request_conversations.sql",
     "0004_marvelous_toad_men.sql",
     "0005_github_cost_associations.sql",
-    "0006_nice_hiroim.sql",
+    "0006_fat_korvac.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
@@ -526,7 +526,7 @@ describe("GitHub-owned pull request outcomes", () => {
         "0003_pull_request_conversations.sql",
         "0004_marvelous_toad_men.sql",
         "0005_github_cost_associations.sql",
-        "0006_nice_hiroim.sql",
+        "0006_fat_korvac.sql",
       ]) {
         await fixture.execute(await migrationSql(migration));
       }
@@ -1392,6 +1392,17 @@ describe("GitHub cost associations", () => {
     const fixture = await createGitHubFixture();
     try {
       const route = webhookRoute(fixture);
+      const prOpened = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body:
+            "Fixes #1201 and GetSentry/Other#1202\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
+          id: 5101,
+          number: 1301,
+        },
+      });
+      expect((await route.handler(signedRequest(prOpened))).status).toBe(202);
+
       const issueOpened = issueLifecyclePayload({
         createdAt: "2026-07-10T12:00:00.000Z",
         id: 4101,
@@ -1411,17 +1422,6 @@ describe("GitHub cost associations", () => {
       expect(
         (await route.handler(signedRequest(crossRepositoryIssue, "issues"))).status,
       ).toBe(202);
-
-      const prOpened = pullRequestPayload({
-        pull_request: {
-          ...(pullRequestPayload().pull_request as Record<string, unknown>),
-          body:
-            "Fixes #1201 and GetSentry/Other#1202\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
-          id: 5101,
-          number: 1301,
-        },
-      });
-      expect((await route.handler(signedRequest(prOpened))).status).toBe(202);
 
       await expect(fixture.db().select().from(juniorGitHubIssues)).resolves.toEqual([
         expect.objectContaining({
@@ -1446,8 +1446,16 @@ describe("GitHub cost associations", () => {
       await expect(
         fixture.db().select().from(juniorGitHubPullRequestIssues),
       ).resolves.toEqual([
-        { issueId: "4101", pullRequestId: "5101" },
-        { issueId: "4102", pullRequestId: "5101" },
+        {
+          issueNumber: 1201,
+          issueRepositoryFullName: "getsentry/junior",
+          pullRequestId: "5101",
+        },
+        {
+          issueNumber: 1202,
+          issueRepositoryFullName: "getsentry/other",
+          pullRequestId: "5101",
+        },
       ]);
     } finally {
       await fixture.close();
@@ -1529,7 +1537,8 @@ describe("GitHub cost associations", () => {
         updatedAt: openedAt,
       });
       await fixture.db().insert(juniorGitHubPullRequestIssues).values({
-        issueId: "issue-cost",
+        issueNumber: 1201,
+        issueRepositoryFullName: "getsentry/junior",
         pullRequestId: "pr-cost",
       });
 
@@ -1611,8 +1620,16 @@ describe("GitHub cost associations", () => {
         },
       ]);
       await fixture.db().insert(juniorGitHubPullRequestIssues).values([
-        { issueId: "issue-shared", pullRequestId: "pr-a" },
-        { issueId: "issue-shared", pullRequestId: "pr-b" },
+        {
+          issueNumber: 1201,
+          issueRepositoryFullName: "getsentry/junior",
+          pullRequestId: "pr-a",
+        },
+        {
+          issueNumber: 1201,
+          issueRepositoryFullName: "getsentry/junior",
+          pullRequestId: "pr-b",
+        },
       ]);
 
       const report = await buildGitHubOutcomeReport({

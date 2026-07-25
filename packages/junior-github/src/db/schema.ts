@@ -109,11 +109,18 @@ export const juniorGitHubPullRequestIssues = pgTable(
       .references(() => juniorGitHubPullRequests.pullRequestId, {
         onDelete: "cascade",
       }),
-    issueId: text("issue_id")
-      .notNull()
-      .references(() => juniorGitHubIssues.issueId, { onDelete: "cascade" }),
+    issueRepositoryFullName: text("issue_repository_full_name").notNull(),
+    issueNumber: integer("issue_number").notNull(),
   },
-  (table) => [primaryKey({ columns: [table.pullRequestId, table.issueId] })],
+  (table) => [
+    primaryKey({
+      columns: [
+        table.pullRequestId,
+        table.issueRepositoryFullName,
+        table.issueNumber,
+      ],
+    }),
+  ],
 );
 
 export const githubSqlSchema = {
