@@ -110,10 +110,10 @@ function ToolSignature(props: {
       <strong
         aria-label={props.running ? `${props.name} (running)` : undefined}
         className={cn(
-          "shrink-0 font-bold text-[#d6d6d6]",
-          props.running &&
-            !searchActive &&
-            "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none",
+          "shrink-0 font-bold",
+          props.running && !searchActive
+            ? "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none"
+            : "text-[#d6d6d6]",
         )}
       >
         <HighlightText text={props.name} />
