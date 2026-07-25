@@ -473,6 +473,22 @@ describe("executeAgentRun model handoff", () => {
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(observations.providerCalls).toBe(3);
     expect(observations.routerCalls).toBe(1);
+    expect(
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
+        .find(
+          (event) =>
+            event.type === "turn_routed" &&
+            event.turnId === "turn-model-handoff-follow-up",
+        ),
+    ).toEqual({
+      type: "turn_routed",
+      turnId: "turn-model-handoff-follow-up",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      reasoningLevel: "high",
+      source: "inherited",
+    });
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);

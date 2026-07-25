@@ -521,18 +521,21 @@ async function executeAgentRunInPrivacyContext(
       }
     } else {
       const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
-      turnRoute = configuredTurnRoute(
-        activeModelProfile,
-        activeProfileConfig.reasoningLevel ??
+      const reasoningSource = activeProfileConfig.reasoningLevel
+        ? "profile"
+        : policy.reasoningLevel
+          ? "agent_config"
+          : "default";
+      turnRoute = {
+        profile: activeModelProfile,
+        reasoningLevel:
+          activeProfileConfig.reasoningLevel ??
           policy.reasoningLevel ??
           botConfig.reasoningLevel ??
           "medium",
-        activeProfileConfig.reasoningLevel
-          ? "profile"
-          : policy.reasoningLevel
-            ? "agent_config"
-            : "default",
-      );
+        reason: `inherited:${reasoningSource}`,
+        source: "inherited",
+      };
     }
 
     const routedModelProfile = turnRoute.profile;
