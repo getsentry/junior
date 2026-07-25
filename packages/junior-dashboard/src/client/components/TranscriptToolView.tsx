@@ -137,7 +137,7 @@ function ToolErrorMarker(props: {
   return (
     <span
       aria-label="Tool failed"
-      className="absolute -left-[1.95rem] top-1 z-[1] grid size-6 place-items-center rounded border border-rose-300/40 bg-[#071012] text-rose-200 shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]"
+      className="absolute -left-[1.95rem] top-0.5 z-[1] grid size-6 place-items-center rounded border border-rose-300/40 bg-[#071012] text-rose-200 shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]"
       role="img"
     >
       <TriangleAlert size={12} strokeWidth={2.2} />
