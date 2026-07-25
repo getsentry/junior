@@ -361,8 +361,9 @@ async function summarizeContext(
 }
 
 function estimateHistoryTokens(messages: PiMessage[]): number {
-  const stripped = stripRuntimeTurnContext(messages);
-  return stripped.reduce(
+  // Capacity checks must measure the live provider input. Runtime turn context
+  // is stripped only when the replacement is persisted for later turns.
+  return messages.reduce(
     (total, message) =>
       total + estimateTextTokens(JSON.stringify(message) ?? ""),
     0,

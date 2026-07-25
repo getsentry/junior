@@ -405,7 +405,7 @@ describe("context compaction projection reset", () => {
     ).toBeLessThan(380_000);
   });
 
-  it("blocks when retained pending input leaves the replacement above the hard limit", async () => {
+  it("counts retained runtime context in the replacement hard limit", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
     const { commitMessages, loadProjection } =
@@ -422,7 +422,20 @@ describe("context compaction projection reset", () => {
           modelProfile: "standard",
           pendingMessages: [
             {
-              message: user(`Retain exactly: ${"y".repeat(1_600_000)}`, 3),
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `<runtime-turn-context>\n${"y".repeat(1_600_000)}\n</runtime-turn-context>`,
+                  },
+                  {
+                    type: "text",
+                    text: "<current-instruction>\nRetain exactly.\n</current-instruction>",
+                  },
+                ],
+                timestamp: 3,
+              } as PiMessage,
               provenance: { authority: "instruction" },
             },
           ],
