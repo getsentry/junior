@@ -14,7 +14,7 @@ import type {
   VisualStatus,
 } from "./types";
 import { formatDuration } from "./components/Duration";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
 let dashboardTimeZone = "America/Los_Angeles";
 

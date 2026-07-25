@@ -24,7 +24,7 @@ import {
   visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
-import { conversationTranscriptMessages } from "../eventTranscript";
+import { conversationTranscriptMessages } from "../conversations/eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,

@@ -139,6 +139,9 @@ describe("conversation event REST resources", () => {
         data: {
           type: "subagent_ended",
           startedSeq: 4,
+          startedAt: "1970-01-01T00:00:00.005Z",
+          childConversationId: "child-1",
+          subagentKind: "review",
           outcome: "success",
         },
       }),
@@ -164,6 +167,63 @@ describe("conversation event REST resources", () => {
       "message",
       "subagent_started",
       "subagent_ended",
+    ]);
+  });
+
+  it("keeps a history page self-contained when a subagent start is older", async () => {
+    const conversationId = "internal:paged-subagent";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "subagent_started",
+          subagentInvocationId: "invocation-before-page",
+          subagentKind: "advisor",
+          childConversationId: "child-before-page",
+          parentToolCallId: "advisor-before-page",
+        },
+        createdAtMs: 2,
+      },
+      {
+        data: {
+          type: "subagent_ended",
+          subagentInvocationId: "invocation-before-page",
+          outcome: "error",
+        },
+        createdAtMs: 3,
+      },
+      message("latest-message", 4),
+    ]);
+
+    const app = createJuniorApi();
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}?limit=1`,
+    );
+    const detail = conversationDetailReportSchema.parse(
+      await detailResponse.json(),
+    );
+    expect(detail.events.map((event) => event.seq)).toEqual([2]);
+    if (!detail.previousCursor) throw new Error("Expected a previous cursor");
+
+    const historyResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(detail.previousCursor)}&limit=1`,
+    );
+    expect(historyResponse.status).toBe(200);
+    const history = conversationEventPageSchema.parse(
+      await historyResponse.json(),
+    );
+    expect(history.events).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "subagent_ended",
+          startedSeq: 0,
+          startedAt: "1970-01-01T00:00:00.002Z",
+          childConversationId: "child-before-page",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-before-page",
+          outcome: "error",
+        },
+      }),
     ]);
   });
 

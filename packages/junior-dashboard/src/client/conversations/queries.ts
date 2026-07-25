@@ -74,15 +74,16 @@ export function useArchiveConversation(conversationId: string) {
 
 /** Fetch a bounded conversation snapshot and older pages on demand. */
 export function useConversationData(conversationId: string | undefined) {
+  const queryClient = useQueryClient();
   const detail = useQuery(conversationDetailQueryOptions(conversationId));
+  const historyStatus = detail.data?.eventHistory.status;
+  const historyQueryKey = useMemo(
+    () => ["conversation", conversationId, "history", historyStatus] as const,
+    [conversationId, historyStatus],
+  );
   const history = useInfiniteQuery({
     enabled: false,
-    queryKey: [
-      "conversation",
-      conversationId,
-      "history",
-      detail.data?.eventHistory.status,
-    ],
+    queryKey: historyQueryKey,
     queryFn: async ({
       pageParam,
       signal,
@@ -104,14 +105,13 @@ export function useConversationData(conversationId: string | undefined) {
         : undefined,
     [detail.data, historyPages],
   );
+  const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&
     (conversationHistoryChanged(detail.data, historyPages ?? []) ||
-      isInvalidCursorError(history.error)),
+      invalidHistoryCursor),
   );
-  const historyError = isInvalidCursorError(history.error)
-    ? null
-    : history.error;
+  const historyError = invalidHistoryCursor ? null : history.error;
   const historyNeedsReconciliation = Boolean(
     detail.data?.previousCursor &&
     history.data &&
@@ -127,6 +127,15 @@ export function useConversationData(conversationId: string | undefined) {
   useEffect(() => {
     if (shouldRefreshDetail) void detail.refetch();
   }, [detail.refetch, shouldRefreshDetail]);
+
+  useEffect(() => {
+    if (invalidHistoryCursor) {
+      void queryClient.resetQueries({
+        exact: true,
+        queryKey: historyQueryKey,
+      });
+    }
+  }, [historyQueryKey, invalidHistoryCursor, queryClient]);
 
   useEffect(() => {
     if (historyNeedsReconciliation) void history.fetchNextPage();

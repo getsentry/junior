@@ -208,10 +208,21 @@ export function projectConversationReportEventPage(args: {
   events: ConversationEvent[];
   subagentStartEvents?: ConversationEvent[];
 }): ConversationReportEvent[] {
-  const subagentStarts = new Map<string, number>();
+  const subagentStarts = new Map<
+    string,
+    {
+      createdAtMs: number;
+      data: Extract<ConversationEvent["data"], { type: "subagent_started" }>;
+      seq: number;
+    }
+  >();
   for (const event of args.subagentStartEvents ?? []) {
     if (event.data.type === "subagent_started") {
-      subagentStarts.set(event.data.subagentInvocationId, event.seq);
+      subagentStarts.set(event.data.subagentInvocationId, {
+        createdAtMs: event.createdAtMs,
+        data: event.data,
+        seq: event.seq,
+      });
     }
   }
   const projected: ConversationReportEvent[] = [];
@@ -231,7 +242,11 @@ export function projectConversationReportEventPage(args: {
         name: event.data.toolName,
       };
     } else if (event.data.type === "subagent_started") {
-      subagentStarts.set(event.data.subagentInvocationId, event.seq);
+      subagentStarts.set(event.data.subagentInvocationId, {
+        createdAtMs: event.createdAtMs,
+        data: event.data,
+        seq: event.seq,
+      });
       data = {
         type: "subagent_started",
         childConversationId: event.data.childConversationId,
@@ -241,11 +256,17 @@ export function projectConversationReportEventPage(args: {
           : {}),
       };
     } else if (event.data.type === "subagent_ended") {
-      const startedSeq = subagentStarts.get(event.data.subagentInvocationId);
-      if (startedSeq !== undefined) {
+      const started = subagentStarts.get(event.data.subagentInvocationId);
+      if (started) {
         data = {
           type: "subagent_ended",
-          startedSeq,
+          startedSeq: started.seq,
+          startedAt: new Date(started.createdAtMs).toISOString(),
+          childConversationId: started.data.childConversationId,
+          subagentKind: started.data.subagentKind,
+          ...(started.data.parentToolCallId
+            ? { parentToolCallId: started.data.parentToolCallId }
+            : {}),
           outcome: event.data.outcome,
         };
         subagentStarts.delete(event.data.subagentInvocationId);

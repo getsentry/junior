@@ -5,7 +5,7 @@ import type {
   TranscriptViewMessage,
   TranscriptViewPart,
   TranscriptViewSubagentPart,
-} from "./types";
+} from "../types";
 
 function eventTimestamp(event: ConversationReportEvent): number {
   return Date.parse(event.createdAt);
@@ -48,6 +48,14 @@ function subagentOutcomes(
   return outcomes;
 }
 
+function subagentStartedSeqs(events: ConversationReportEvent[]): Set<number> {
+  return new Set(
+    events.flatMap((event) =>
+      event.data.type === "subagent_started" ? [event.seq] : [],
+    ),
+  );
+}
+
 function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
@@ -55,7 +63,10 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
     if (data.type === "handoff" && data.triggeringToolCallId) {
       ids.add(data.triggeringToolCallId);
     }
-    if (data.type === "subagent_started" && data.parentToolCallId) {
+    if (
+      (data.type === "subagent_started" || data.type === "subagent_ended") &&
+      data.parentToolCallId
+    ) {
       ids.add(data.parentToolCallId);
     }
   }
@@ -63,7 +74,10 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
 }
 
 function subagentPart(
-  data: Extract<ConversationReportEvent["data"], { type: "subagent_started" }>,
+  data: {
+    childConversationId: string;
+    subagentKind: string;
+  },
   outcome: "aborted" | "error" | "success" | undefined,
 ): TranscriptViewSubagentPart {
   return {
@@ -85,6 +99,7 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
 ): TranscriptViewMessage[] {
   const outcomes = subagentOutcomes(conversation.events);
+  const startedSeqs = subagentStartedSeqs(conversation.events);
   const replacedToolIds = specialToolIds(conversation.events);
   const tools = new Map<
     string,
@@ -159,6 +174,15 @@ export function conversationTranscriptMessages(
       continue;
     }
 
+    if (data.type === "subagent_ended" && !startedSeqs.has(data.startedSeq)) {
+      messages.push({
+        ...eventMessage(event, "tool", [subagentPart(data, data.outcome)]),
+        sourceSeq: data.startedSeq,
+        timestamp: Date.parse(data.startedAt),
+      });
+      continue;
+    }
+
     if (data.type === "compaction" || data.type === "handoff") {
       messages.push(
         eventMessage(event, "system", [
@@ -194,5 +218,5 @@ export function conversationTranscriptMessages(
     }
   }
 
-  return messages;
+  return messages.sort((left, right) => left.sourceSeq - right.sourceSeq);
 }

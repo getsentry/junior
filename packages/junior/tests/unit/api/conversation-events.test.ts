@@ -518,6 +518,10 @@ describe("conversation report event projection", () => {
       {
         type: "subagent_ended",
         startedSeq: 9,
+        startedAt: "1970-01-01T00:00:09.000Z",
+        childConversationId: "child-conversation-1",
+        subagentKind: "advisor",
+        parentToolCallId: "private-parent-tool-id",
         outcome: "error",
       },
       {
@@ -620,6 +624,9 @@ describe("conversation report event projection", () => {
       data: {
         type: "subagent_ended",
         startedSeq: 1,
+        startedAt: "2026-07-15T12:00:00.000Z",
+        childConversationId: "child-1",
+        subagentKind: "advisor",
         outcome: "success",
       },
     };
@@ -635,7 +642,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...subagentEnded,
-        data: { ...subagentEnded.data, childConversationId: "child-1" },
+        data: { ...subagentEnded.data, childConversationId: undefined },
       }).success,
     ).toBe(false);
   });

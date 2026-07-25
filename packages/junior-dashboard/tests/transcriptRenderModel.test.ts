@@ -6,7 +6,7 @@ import type {
 
 import { groupTranscriptMessages } from "../src/client/components/transcriptRenderModel";
 import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
-import { conversationTranscriptMessages } from "../src/client/eventTranscript";
+import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -187,6 +187,10 @@ describe("canonical event transcript reduction", () => {
           event(2, "2026-01-01T00:00:02.000Z", {
             type: "subagent_ended",
             startedSeq: 1,
+            startedAt: "2026-01-01T00:00:01.000Z",
+            childConversationId: "child-correlated",
+            subagentKind: "advisor",
+            parentToolCallId: "advisor-correlated",
             outcome: "success",
           }),
           event(3, "2026-01-01T00:00:03.000Z", {
@@ -275,6 +279,9 @@ describe("canonical event transcript reduction", () => {
         event(3, "2026-01-01T00:00:03.000Z", {
           type: "subagent_ended",
           startedSeq: 2,
+          startedAt: "2026-01-01T00:00:02.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
           outcome: "success",
         }),
         event(4, "2026-01-01T00:00:04.000Z", {
@@ -317,11 +324,17 @@ describe("canonical event transcript reduction", () => {
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "subagent_ended",
           startedSeq: 1,
+          startedAt: "2026-01-01T00:00:01.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
           outcome: "success",
         }),
         event(3, "2026-01-01T00:00:03.000Z", {
           type: "subagent_ended",
           startedSeq: 0,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
           outcome: "error",
         }),
       ]),
@@ -331,6 +344,61 @@ describe("canonical event transcript reduction", () => {
       { status: "error" },
       { status: "completed" },
     ]);
+  });
+
+  it("renders a completed subagent when its start is outside the page", () => {
+    const ended = event(11, "2026-01-01T00:00:11.000Z", {
+      type: "subagent_ended",
+      startedSeq: 5,
+      startedAt: "2026-01-01T00:00:05.000Z",
+      childConversationId: "child-before-page",
+      subagentKind: "advisor",
+      parentToolCallId: "advisor-before-page",
+      outcome: "success",
+    });
+    const pageMessages = conversationTranscriptMessages(
+      conversation([
+        event(10, "2026-01-01T00:00:10.000Z", {
+          type: "tool_started",
+          toolCallId: "advisor-before-page",
+          name: "advisor",
+        }),
+        ended,
+      ]),
+    );
+    const fullMessages = conversationTranscriptMessages(
+      conversation([
+        event(5, "2026-01-01T00:00:05.000Z", {
+          type: "subagent_started",
+          childConversationId: "child-before-page",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-before-page",
+        }),
+        event(10, "2026-01-01T00:00:10.000Z", {
+          type: "tool_started",
+          toolCallId: "advisor-before-page",
+          name: "advisor",
+        }),
+        ended,
+      ]),
+    );
+
+    expect(pageMessages).toHaveLength(1);
+    expect(pageMessages[0]).toMatchObject({
+      sourceSeq: 5,
+      timestamp: Date.parse("2026-01-01T00:00:05.000Z"),
+      parts: [
+        {
+          childConversationId: "child-before-page",
+          status: "completed",
+          subagentKind: "advisor",
+          type: "subagent",
+        },
+      ],
+    });
+    expect(groupTranscriptMessages(pageMessages)[0]?.key).toBe(
+      groupTranscriptMessages(fullMessages)[0]?.key,
+    );
   });
 
   it("searches canonical tool, failure, context, and subagent rows", () => {

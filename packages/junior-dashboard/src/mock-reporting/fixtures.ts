@@ -181,6 +181,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       reportEvent(4, iso(Date.parse(startedAt), 20_000), {
         type: "subagent_ended",
         startedSeq: 3,
+        startedAt: iso(Date.parse(startedAt), 4_000),
+        childConversationId: DASHBOARD_QA_PLAN_ID,
+        subagentKind: "advisor",
+        parentToolCallId: "qa-advisor",
         outcome: "success",
       }),
       reportEvent(5, iso(Date.parse(startedAt), 21_000), {
@@ -197,6 +201,9 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       reportEvent(7, iso(Date.parse(startedAt), 44_000), {
         type: "subagent_ended",
         startedSeq: 6,
+        startedAt: iso(Date.parse(startedAt), 25_000),
+        childConversationId: DASHBOARD_QA_REVIEW_ID,
+        subagentKind: "advisor",
         outcome: "success",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {

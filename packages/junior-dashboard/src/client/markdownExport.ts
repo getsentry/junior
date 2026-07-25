@@ -14,7 +14,7 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import type {
   Conversation,
   ConversationTranscript,

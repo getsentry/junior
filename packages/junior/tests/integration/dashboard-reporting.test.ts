@@ -369,6 +369,9 @@ describe("dashboard canonical event reporting", () => {
       {
         type: "subagent_ended",
         startedSeq: 7,
+        startedAt: "1970-01-01T00:00:00.017Z",
+        childConversationId: `${conversationId}:child`,
+        subagentKind: "review",
         outcome: "success",
       },
       { type: "compaction" },

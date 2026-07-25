@@ -489,6 +489,9 @@ describe("dashboard canonical-event components", () => {
         event(1, {
           type: "subagent_ended",
           startedSeq: 0,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
           outcome,
         }),
       );
