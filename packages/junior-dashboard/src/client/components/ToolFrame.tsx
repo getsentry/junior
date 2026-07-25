@@ -99,7 +99,7 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "min-w-0 max-w-full overflow-hidden";
+  return "ml-6 min-w-0 max-w-full overflow-hidden px-[1.0625rem]";
 }
 
 function toolHeaderClass(interactive: boolean): string {

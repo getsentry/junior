@@ -240,8 +240,12 @@ describe("dashboard canonical-event components", () => {
 
     expect(toolHtml).not.toContain("border-white/[0.055]");
     expect(toolHtml).not.toContain("bg-black/15");
+    expect(toolHtml).toContain("ml-6");
+    expect(toolHtml).toContain("px-[1.0625rem]");
     expect(subagentHtml).not.toContain("border-white/[0.055]");
     expect(subagentHtml).not.toContain("bg-black/15");
+    expect(subagentHtml).toContain("ml-6");
+    expect(subagentHtml).toContain("px-[1.0625rem]");
   });
 
   it("exposes pressed state for transcript view controls", () => {
