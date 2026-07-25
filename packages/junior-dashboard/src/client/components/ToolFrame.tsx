@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "../styles";
 import {
@@ -19,6 +19,12 @@ export function ToolFrame(props: {
 }) {
   const [open, setOpen] = useState(false);
   const { active: searchActive } = useTranscriptSearch();
+
+  // Search replaces the native details element, so discard its expansion state.
+  useEffect(() => {
+    if (searchActive) setOpen(false);
+  }, [searchActive]);
+
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
   const mobileSummaryMeta =
