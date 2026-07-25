@@ -377,12 +377,7 @@ export async function aggregateGitHubRepositoryCosts(args: {
       ON pull_request_totals.repository = repositories.repository
     LEFT JOIN issue_totals
       ON issue_totals.repository = repositories.repository
-    ORDER BY
-      "medianPullRequestCostUsd" DESC NULLS LAST,
-      "pullRequestCostUsd" DESC,
-      "medianIssueCostUsd" DESC NULLS LAST,
-      "issueCostUsd" DESC,
-      "repository" ASC
+    ORDER BY "repository" ASC
   `);
   return z.array(repositoryCostSchema).parse(queryRows(result));
 }
