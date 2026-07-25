@@ -201,6 +201,7 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getConversationEventStore } from "@/chat/db";
+import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -317,6 +318,29 @@ describe("executeAgentRun model handoff", () => {
         source: "router",
       },
     ]);
+  });
+
+  it("blocks oversized current input after a router handoff before the first provider request", async () => {
+    observations.routedModelProfile = "handoff";
+    const conversationId = "local:test:router-handoff-input-limit";
+    const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-router-handoff-input-limit",
+      turnId: "turn-router-handoff-input-limit",
+      input: { messageText: "x".repeat(1_600_000) },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.outcome).toBe("provider_error");
+    expect(outcome.result.diagnostics.providerError).toBeInstanceOf(
+      ContextInputLimitExceededError,
+    );
+    expect(observations.providerCalls).toBe(0);
   });
 
   it("does not compact context while applying a router-selected profile", async () => {
@@ -494,6 +518,47 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
     expect(observations.summaryCalls).toBe(1);
+  });
+
+  it("blocks oversized steering after a tool handoff before the next provider request", async () => {
+    observations.requestedProfile = "handoff";
+    const conversationId = "local:test:tool-handoff-input-limit";
+    let drained = false;
+    const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-tool-handoff-input-limit",
+      turnId: "turn-tool-handoff-input-limit",
+      input: { messageText: "Start the implementation." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          if (drained) {
+            return [];
+          }
+          drained = true;
+          const messages = [
+            {
+              text: "y".repeat(1_600_000),
+              timestampMs: 2_000,
+              provenance: { authority: "instruction" as const },
+            },
+          ];
+          await inject(messages);
+          return messages;
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.outcome).toBe("provider_error");
+    expect(outcome.result.diagnostics.providerError).toBeInstanceOf(
+      ContextInputLimitExceededError,
+    );
+    expect(observations.providerCalls).toBe(1);
   });
 
   it("delivers only the tool-free assistant message after tool use", async () => {

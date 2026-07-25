@@ -70,9 +70,11 @@ delegation without becoming the execution actor or a general task owner.
 - Model input stays below the configured bot context cap and the active model's
   advertised window. The agent checks before its first provider request and
   after each tool batch; an in-turn compaction commits its history replacement
-  and resumable boundary before execution continues. Compaction events retain
-  the active model plus privacy-safe capacity and replacement metrics for
-  reporting without exposing the summary or replaced history.
+  and resumable boundary before execution continues. A handoff changes the
+  active model and history, then passes through the same capacity check rather
+  than bypassing it. Compaction events retain the active model plus privacy-safe
+  capacity and replacement metrics for reporting without exposing the summary
+  or replaced history.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.

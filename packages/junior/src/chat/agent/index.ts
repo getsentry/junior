@@ -963,21 +963,23 @@ async function executeAgentRunInPrivacyContext(
         try {
           const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
-          const capacityUpdate = handoffUpdate
-            ? undefined
-            : await applyActiveContextCompaction(
-                nextTurn.context.messages as PiMessage[],
-                hookSignal,
-                pendingMessages,
-                true,
-              );
+          const capacityUpdate = await applyActiveContextCompaction(
+            handoffUpdate
+              ? currentAgentMessages()
+              : (nextTurn.context.messages as PiMessage[]),
+            hookSignal,
+            pendingMessages,
+            true,
+          );
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return capacityUpdate ?? handoffUpdate;
+          return capacityUpdate && handoffUpdate
+            ? { ...handoffUpdate, ...capacityUpdate }
+            : (capacityUpdate ?? handoffUpdate);
         } catch (error) {
           pendingPiHookError =
             error instanceof Error ? error : new Error(String(error));
@@ -1177,6 +1179,7 @@ async function executeAgentRunInPrivacyContext(
               ? turnRoute!.profile
               : undefined;
           let run: Promise<unknown>;
+          let handoffApplied = false;
           if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
             const handoffAbortController = new AbortController();
             await runAgentStep(
@@ -1190,38 +1193,34 @@ async function executeAgentRunInPrivacyContext(
               }),
               () => handoffAbortController.abort(),
             );
-            applyPendingHandoff();
-            if (shouldPromptAgent) {
-              await runResume.requireDurableInputCheckpoint([
-                ...agent!.state.messages,
-                freshPromptMessage,
-              ]);
-              run = agent!.prompt(freshPromptMessage);
-            } else {
-              run = agent!.continue();
-            }
-          } else {
-            const compactionAbortController = new AbortController();
-            const capacityUpdate = await runAgentStep(
-              applyActiveContextCompaction(
-                [...agent!.state.messages],
-                compactionAbortController.signal,
-                shouldPromptAgent
-                  ? [
-                      {
-                        message: freshPromptMessage,
-                        provenance: instructionProvenanceFor(actor),
-                      },
-                    ]
-                  : undefined,
-              ),
-              () => compactionAbortController.abort(),
-            );
-            run =
-              shouldPromptAgent && !capacityUpdate
-                ? agent!.prompt(freshPromptMessage)
-                : agent!.continue();
+            handoffApplied = Boolean(applyPendingHandoff());
           }
+          const compactionAbortController = new AbortController();
+          const capacityUpdate = await runAgentStep(
+            applyActiveContextCompaction(
+              [...agent!.state.messages],
+              compactionAbortController.signal,
+              shouldPromptAgent
+                ? [
+                    {
+                      message: freshPromptMessage,
+                      provenance: instructionProvenanceFor(actor),
+                    },
+                  ]
+                : undefined,
+            ),
+            () => compactionAbortController.abort(),
+          );
+          if (shouldPromptAgent && handoffApplied && !capacityUpdate) {
+            await runResume.requireDurableInputCheckpoint([
+              ...agent!.state.messages,
+              freshPromptMessage,
+            ]);
+          }
+          run =
+            shouldPromptAgent && !capacityUpdate
+              ? agent!.prompt(freshPromptMessage)
+              : agent!.continue();
           let retryUsage: AgentTurnUsage | undefined;
           try {
             for (let attempt = 0; ; attempt += 1) {
