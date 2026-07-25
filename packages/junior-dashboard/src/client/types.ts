@@ -57,6 +57,7 @@ export type TranscriptViewMessage = {
   outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
+  sourceSeq: number;
   timestamp?: number;
 };
 

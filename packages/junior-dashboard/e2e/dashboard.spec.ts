@@ -302,7 +302,21 @@ test("loads earlier transcript events without dropping the current page", async 
   );
   await expect(currentEvent).toBeVisible();
 
-  await page.getByRole("button", { name: "Load earlier events" }).click();
+  const toolRun = page.locator("details").filter({ hasText: /12 tool calls/ });
+  await toolRun.locator("summary").click();
+  await expect(toolRun).toHaveAttribute("open", "");
+
+  const transcript = page.locator('[aria-label="Conversation transcript"]');
+  const loadEarlier = page.getByRole("button", {
+    name: "Load earlier events",
+  });
+  await loadEarlier.scrollIntoViewIfNeeded();
+  const before = await transcript.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+
+  await loadEarlier.click();
 
   await expect(
     page.getByText(
@@ -313,6 +327,15 @@ test("loads earlier transcript events without dropping the current page", async 
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
+  await expect(toolRun).toHaveAttribute("open", "");
+
+  const after = await transcript.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+  expect(after.scrollTop - before.scrollTop).toBe(
+    after.scrollHeight - before.scrollHeight,
+  );
 });
 
 test("scrolls long conversation and transcript panes independently", async ({

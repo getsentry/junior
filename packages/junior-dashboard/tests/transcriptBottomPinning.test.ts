@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNearScrollBottom,
+  scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
   transcriptFollowIntent,
   transcriptBottomVersion,
@@ -122,6 +123,55 @@ describe("transcript bottom pinning", () => {
     );
 
     expect(after).toBe(before);
+  });
+
+  it("keeps the tail version stable when earlier events are prepended", () => {
+    const current = activeTurn({
+      events: [
+        {
+          seq: 10,
+          createdAt: "2026-01-01T00:00:01.000Z",
+          data: {
+            type: "message",
+            messageId: "assistant-10",
+            role: "assistant",
+            text: "checking",
+          },
+        },
+      ],
+    });
+    const before = transcriptBottomVersion(current);
+    const after = transcriptBottomVersion(
+      activeTurn({
+        events: [
+          {
+            seq: 5,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            data: {
+              type: "message",
+              messageId: "user-1",
+              role: "user",
+              text: "earlier context",
+            },
+          },
+          ...current.events,
+        ],
+      }),
+    );
+
+    expect(after).toBe(before);
+  });
+
+  it("offsets the viewport by the height added above it", () => {
+    expect(
+      scrollTopAfterPrepend(
+        {
+          scrollHeight: 2_000,
+          scrollTop: 480,
+        },
+        2_750,
+      ),
+    ).toBe(1_230);
   });
 
   it("changes the tail version when the live turn completes", () => {

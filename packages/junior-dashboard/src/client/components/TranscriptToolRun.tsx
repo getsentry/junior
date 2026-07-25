@@ -9,19 +9,12 @@ const TOOL_RUN_REVEAL_THRESHOLD = 4;
 export function TranscriptToolRun(props: {
   autoCollapse: boolean;
   entries: RenderedToolEntry[];
-  keyPrefix: string;
-  renderTool: (entry: RenderedToolEntry, index: number) => ReactNode;
-  startIndex: number;
+  renderTool: (entry: RenderedToolEntry) => ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const rows = props.entries.map((entry, offset) => {
-    const index = props.startIndex + offset;
-    return (
-      <Fragment key={`${props.keyPrefix}:tool:${index}`}>
-        {props.renderTool(entry, index)}
-      </Fragment>
-    );
-  });
+  const rows = props.entries.map((entry) => (
+    <Fragment key={entry.key}>{props.renderTool(entry)}</Fragment>
+  ));
 
   if (
     !props.autoCollapse ||

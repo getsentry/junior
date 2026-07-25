@@ -292,9 +292,8 @@ function VisibleTranscriptEntries(props: {
     <TranscriptEntryList
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
-      renderContext={(entry, index) => (
+      renderContext={(entry) => (
         <TranscriptRailEvent
-          key={`${props.conversation.conversationId}:context:${index}`}
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
         >
           <TranscriptContextEventView
@@ -303,35 +302,27 @@ function VisibleTranscriptEntries(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderFailure={(entry, index) => (
+      renderFailure={(entry) => (
         <TranscriptFailureView
-          key={`${props.conversation.conversationId}:failure:${index}`}
           outcome={entry.outcome}
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry, index) =>
+      renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent
-            key={`${props.conversation.conversationId}:event:${index}`}
-            kind="resource_event"
-          >
+          <TranscriptRailEvent kind="resource_event">
             <TranscriptResourceEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : (
           <TranscriptMessageView
-            key={`${props.conversation.conversationId}:${index}`}
             message={entry.message}
             conversation={props.conversation}
             view={props.view}
           />
         )
       }
-      renderSubagent={(entry, index) => (
-        <TranscriptRailEvent
-          key={`${props.conversation.conversationId}:subagent:${index}`}
-          kind="subagent"
-        >
+      renderSubagent={(entry) => (
+        <TranscriptRailEvent kind="subagent">
           <TranscriptSubagentView
             onOpenTranscript={(part: TranscriptViewSubagentPart) =>
               props.onOpenSubagentTranscript?.({
@@ -344,9 +335,8 @@ function VisibleTranscriptEntries(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderTool={(entry, index) => (
+      renderTool={(entry) => (
         <TranscriptToolView
-          key={`${props.conversation.conversationId}:${index}`}
           part={entry.part}
           timestamp={entry.timestamp}
           view={props.view}
@@ -359,11 +349,11 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
-  renderContext: (entry: TranscriptContextEntry, index: number) => ReactNode;
-  renderFailure: (entry: TranscriptFailureEntry, index: number) => ReactNode;
-  renderMessage: (entry: TranscriptMessageEntry, index: number) => ReactNode;
-  renderSubagent: (entry: TranscriptSubagentEntry, index: number) => ReactNode;
-  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
+  renderContext: (entry: TranscriptContextEntry) => ReactNode;
+  renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
+  renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
+  renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
+  renderTool: (entry: TranscriptToolEntry) => ReactNode;
 }) {
   const search = useTranscriptSearch();
   const rows: ReactNode[] = [];
@@ -372,7 +362,6 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (entry.kind === "tool") {
-      const startIndex = index;
       const runEntries: RenderedToolEntry[] = [];
       while (props.entries[index]?.kind === "tool") {
         runEntries.push(props.entries[index] as RenderedToolEntry);
@@ -388,10 +377,8 @@ function TranscriptEntryList(props: {
           <TranscriptToolRun
             autoCollapse={index < props.entries.length}
             entries={visibleEntries}
-            key={`${props.keyPrefix}:tool-run:${startIndex}`}
-            keyPrefix={props.keyPrefix}
+            key={`${props.keyPrefix}:tool-run:${runEntries.at(-1)!.key}`}
             renderTool={props.renderTool}
-            startIndex={startIndex}
           />,
         );
       }
@@ -400,14 +387,14 @@ function TranscriptEntryList(props: {
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
-        <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
+        <Fragment key={`${props.keyPrefix}:${entry.key}`}>
           {entry.kind === "subagent"
-            ? props.renderSubagent(entry, index)
+            ? props.renderSubagent(entry)
             : entry.kind === "context"
-              ? props.renderContext(entry, index)
+              ? props.renderContext(entry)
               : entry.kind === "failure"
-                ? props.renderFailure(entry, index)
-                : props.renderMessage(entry, index)}
+                ? props.renderFailure(entry)
+                : props.renderMessage(entry)}
         </Fragment>,
       );
     }
@@ -532,9 +519,8 @@ function RedactedTranscriptView(props: {
         conversationTranscriptMessages(props.conversation),
       )}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
-      renderContext={(entry, index) => (
+      renderContext={(entry) => (
         <TranscriptRailEvent
-          key={`${props.conversation.conversationId}:redacted:context:${index}`}
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
         >
           <TranscriptContextEventView
@@ -543,34 +529,26 @@ function RedactedTranscriptView(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderFailure={(entry, index) => (
+      renderFailure={(entry) => (
         <TranscriptFailureView
-          key={`${props.conversation.conversationId}:redacted:failure:${index}`}
           outcome={entry.outcome}
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry, index) =>
+      renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent
-            key={`${props.conversation.conversationId}:redacted:event:${index}`}
-            kind="resource_event"
-          >
+          <TranscriptRailEvent kind="resource_event">
             <TranscriptResourceEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : (
           <RedactedMessageView
-            key={`${props.conversation.conversationId}:redacted:${index}`}
             message={entry.message}
             conversation={props.conversation}
           />
         )
       }
-      renderSubagent={(entry, index) => (
-        <TranscriptRailEvent
-          key={`${props.conversation.conversationId}:redacted:subagent:${index}`}
-          kind="subagent"
-        >
+      renderSubagent={(entry) => (
+        <TranscriptRailEvent kind="subagent">
           <TranscriptSubagentView
             onOpenTranscript={(part: TranscriptViewSubagentPart) =>
               props.onOpenSubagentTranscript?.({
@@ -583,12 +561,8 @@ function RedactedTranscriptView(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderTool={(entry, index) => (
-        <TranscriptToolView
-          key={`${props.conversation.conversationId}:redacted:${index}`}
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+      renderTool={(entry) => (
+        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
       )}
     />
   );

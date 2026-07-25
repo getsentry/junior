@@ -416,10 +416,75 @@ describe("canonical event transcript reduction", () => {
 describe("transcript render grouping", () => {
   it("keeps terminal failure outcomes as standalone entries", () => {
     const messages: TranscriptViewMessage[] = [
-      { role: "assistant", outcome: "error", timestamp: 1_000, parts: [] },
+      {
+        role: "assistant",
+        outcome: "error",
+        sourceSeq: 42,
+        timestamp: 1_000,
+        parts: [],
+      },
     ];
     expect(groupTranscriptMessages(messages)).toEqual([
-      { kind: "failure", outcome: "error", timestamp: 1_000 },
+      {
+        key: "42:failure",
+        kind: "failure",
+        outcome: "error",
+        timestamp: 1_000,
+      },
     ]);
+  });
+
+  it("keeps row identities stable when earlier events are prepended", () => {
+    const current = conversationTranscriptMessages(
+      conversation([
+        event(10, "2026-01-01T00:00:10.000Z", {
+          type: "tool_started",
+          toolCallId: "search-10",
+          name: "search",
+        }),
+        event(11, "2026-01-01T00:00:11.000Z", {
+          type: "message",
+          messageId: "answer-11",
+          role: "assistant",
+          text: "current answer",
+        }),
+      ]),
+    );
+    const prepended = conversationTranscriptMessages(
+      conversation([
+        event(5, "2026-01-01T00:00:05.000Z", {
+          type: "message",
+          messageId: "question-5",
+          role: "user",
+          text: "earlier question",
+        }),
+        event(6, "2026-01-01T00:00:06.000Z", {
+          type: "tool_started",
+          toolCallId: "search-6",
+          name: "search",
+        }),
+        event(10, "2026-01-01T00:00:10.000Z", {
+          type: "tool_started",
+          toolCallId: "search-10",
+          name: "search",
+        }),
+        event(11, "2026-01-01T00:00:11.000Z", {
+          type: "message",
+          messageId: "answer-11",
+          role: "assistant",
+          text: "current answer",
+        }),
+      ]),
+    );
+
+    const currentKeys = groupTranscriptMessages(current).map(
+      (entry) => entry.key,
+    );
+    const prependedKeys = groupTranscriptMessages(prepended).map(
+      (entry) => entry.key,
+    );
+
+    expect(currentKeys).toEqual(["10:tool:search-10", "11:message:0"]);
+    expect(prependedKeys.slice(-currentKeys.length)).toEqual(currentKeys);
   });
 });

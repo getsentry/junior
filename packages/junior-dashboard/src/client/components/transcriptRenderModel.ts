@@ -7,30 +7,35 @@ import type {
 } from "../types";
 
 export type RenderedFailureEntry = {
+  key: string;
   kind: "failure";
   outcome: "error" | "delivery_failed";
   timestamp?: number;
 };
 
 export type RenderedContextEventEntry = {
+  key: string;
   kind: "context";
   part: TranscriptViewContextEventPart;
   timestamp?: number;
 };
 
 export type RenderedSubagentEntry = {
+  key: string;
   kind: "subagent";
   part: TranscriptViewSubagentPart;
   timestamp?: number;
 };
 
 export type RenderedToolEntry = {
+  key: string;
   kind: "tool";
   part: TranscriptViewToolCallPart;
   timestamp?: number;
 };
 
 export type RenderedMessageEntry = {
+  key: string;
   kind: "message";
   message: Omit<TranscriptViewMessage, "parts"> & {
     parts: TranscriptViewTextPart[];
@@ -54,16 +59,19 @@ export function groupTranscriptMessages(
 
   for (const message of messages) {
     let textParts: TranscriptViewTextPart[] = [];
+    let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
       entries.push({
+        key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
         message: { ...message, parts: textParts },
       });
       textParts = [];
+      textGroup += 1;
     };
 
-    for (const part of message.parts) {
+    for (const [partIndex, part] of message.parts.entries()) {
       if (part.type === "text") {
         textParts.push(part);
         continue;
@@ -71,17 +79,33 @@ export function groupTranscriptMessages(
 
       flushMessage();
       if (part.type === "tool_call") {
-        entries.push({ kind: "tool", part, timestamp: message.timestamp });
+        entries.push({
+          key: `${message.sourceSeq}:tool:${part.id}`,
+          kind: "tool",
+          part,
+          timestamp: message.timestamp,
+        });
       } else if (part.type === "subagent") {
-        entries.push({ kind: "subagent", part, timestamp: message.timestamp });
+        entries.push({
+          key: `${message.sourceSeq}:subagent:${part.id}`,
+          kind: "subagent",
+          part,
+          timestamp: message.timestamp,
+        });
       } else {
-        entries.push({ kind: "context", part, timestamp: message.timestamp });
+        entries.push({
+          key: `${message.sourceSeq}:context:${partIndex}`,
+          kind: "context",
+          part,
+          timestamp: message.timestamp,
+        });
       }
     }
 
     flushMessage();
     if (message.outcome) {
       entries.push({
+        key: `${message.sourceSeq}:failure`,
         kind: "failure",
         outcome: message.outcome,
         timestamp: message.timestamp,

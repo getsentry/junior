@@ -38,6 +38,11 @@ export function Transcript(props: {
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
+    loadingPreviousPage: props.loadingPreviousPage ?? false,
+    topVersion: [
+      props.transcript?.conversationId ?? "",
+      props.transcript?.events[0]?.seq ?? "",
+    ].join(":"),
     version: transcriptBottomVersion(props.transcript),
   });
 
@@ -81,7 +86,10 @@ export function Transcript(props: {
           <div className="mb-2 flex justify-center">
             <Button
               disabled={props.loadingPreviousPage}
-              onClick={props.onLoadPreviousPage}
+              onClick={() => {
+                bottomPinning.preserveViewportForPrepend();
+                props.onLoadPreviousPage?.();
+              }}
             >
               {props.loadingPreviousPage ? "Loading…" : "Load earlier events"}
             </Button>

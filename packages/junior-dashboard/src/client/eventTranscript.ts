@@ -16,7 +16,12 @@ function eventMessage(
   role: TranscriptViewMessage["role"],
   parts: TranscriptViewPart[],
 ): TranscriptViewMessage {
-  return { role, timestamp: eventTimestamp(event), parts };
+  return {
+    parts,
+    role,
+    sourceSeq: event.seq,
+    timestamp: eventTimestamp(event),
+  };
 }
 
 function subagentOutcomes(
@@ -182,6 +187,7 @@ export function conversationTranscriptMessages(
         role: data.failureKind === "delivery" ? "system" : "assistant",
         outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
         parts: [],
+        sourceSeq: event.seq,
         timestamp: eventTimestamp(event),
       });
       continue;
