@@ -24,6 +24,8 @@ import {
 import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
+import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
+import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
@@ -202,6 +204,44 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('aria-label="Tool running"');
     expect(html).toContain('aria-label="Tool failed"');
     expect(html.match(/<details/g)).toHaveLength(6);
+  });
+
+  it("keeps card chrome on subagents but not tool calls", () => {
+    const toolHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <TranscriptToolView
+            part={{
+              id: "tool-1",
+              input: { query: "regression" },
+              name: "search",
+              status: "running",
+              type: "tool_call",
+            }}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+    const subagentHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <TranscriptSubagentView
+            part={{
+              childConversationId: "child-1",
+              id: "subagent-1",
+              status: "running",
+              subagentKind: "advisor",
+              type: "subagent",
+            }}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(toolHtml).not.toContain("border-white/[0.055]");
+    expect(toolHtml).not.toContain("bg-black/15");
+    expect(subagentHtml).toContain("border-white/[0.055]");
+    expect(subagentHtml).toContain("bg-black/15");
   });
 
   it("exposes pressed state for transcript view controls", () => {

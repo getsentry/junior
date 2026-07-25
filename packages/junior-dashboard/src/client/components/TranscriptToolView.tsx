@@ -39,6 +39,7 @@ export function TranscriptToolView(props: {
       <ToolFrame
         meta={meta}
         mobileSummaryMeta={mobileSummary}
+        plain
         raw
         signature={signature}
       >
@@ -76,6 +77,7 @@ export function TranscriptToolView(props: {
         expandable={hasDetails}
         meta={meta}
         mobileSummaryMeta={mobileSummary}
+        plain
         signature={signature}
       >
         {props.part.input !== undefined ? (

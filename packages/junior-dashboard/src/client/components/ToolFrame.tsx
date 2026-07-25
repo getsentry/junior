@@ -14,6 +14,7 @@ export function ToolFrame(props: {
   expandable?: boolean;
   meta: string[];
   mobileSummaryMeta?: string;
+  plain?: boolean;
   raw?: boolean;
   signature: ReactNode;
 }) {
@@ -68,7 +69,7 @@ export function ToolFrame(props: {
   // Force-expand tool details during search so highlighted matches are visible.
   if (searchActive || props.raw || !interactive) {
     return (
-      <div className={toolFrameClass()}>
+      <div className={toolFrameClass(props.plain)}>
         <div className={toolHeaderClass(false)}>{header}</div>
         {mobileMeta}
         {props.children}
@@ -78,7 +79,7 @@ export function ToolFrame(props: {
 
   return (
     <details
-      className={toolFrameClass()}
+      className={toolFrameClass(props.plain)}
       onToggle={(event) => {
         if (event.currentTarget !== event.target) return;
         setOpen(event.currentTarget.open);
@@ -92,8 +93,11 @@ export function ToolFrame(props: {
 }
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
-export function toolFrameClass(): string {
-  return "min-w-0 max-w-full overflow-hidden";
+export function toolFrameClass(plain = false): string {
+  return cn(
+    "min-w-0 max-w-full overflow-hidden",
+    !plain && "rounded-lg border border-white/[0.055] bg-black/15 px-3",
+  );
 }
 
 function toolHeaderClass(interactive: boolean): string {
