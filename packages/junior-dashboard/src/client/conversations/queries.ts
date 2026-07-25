@@ -16,7 +16,7 @@ import {
   conversationEventPageSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, patch, read } from "../http";
+import { DashboardApiError, fetchDashboardJson, patch } from "../http";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -180,7 +180,7 @@ export function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
 ): Promise<ConversationDetailReport> {
-  return read(
+  return fetchDashboardJson(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
     signal,
@@ -194,7 +194,7 @@ export function readConversationEvents(
   signal?: AbortSignal,
 ): Promise<ConversationEventPage> {
   const query = new URLSearchParams({ before });
-  return read(
+  return fetchDashboardJson(
     conversationEventPageSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
     signal,

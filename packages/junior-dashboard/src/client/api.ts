@@ -18,7 +18,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
-import { read } from "./http";
+import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
 /** Fetch dashboard shell data shared across browser routes. */
@@ -27,8 +27,8 @@ export function useDashboardCoreData() {
     queryKey: ["dashboard", "core"],
     queryFn: async (): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
-        read(dashboardIdentitySchema, "/api/me"),
-        read(dashboardConfigSchema, "/api/config"),
+        fetchDashboardJson(dashboardIdentitySchema, "/api/me"),
+        fetchDashboardJson(dashboardConfigSchema, "/api/config"),
       ]);
       return {
         config,
@@ -47,7 +47,7 @@ export function useConversationsData(actorEmail?: string) {
   return useQuery({
     queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
     queryFn: () =>
-      read(
+      fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations${search ? `?${search}` : ""}`,
       ),
@@ -59,7 +59,8 @@ export function useConversationsData(actorEmail?: string) {
 export function useActorDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "people"],
-    queryFn: () => read(actorDirectoryReportSchema, "/api/people"),
+    queryFn: () =>
+      fetchDashboardJson(actorDirectoryReportSchema, "/api/people"),
     retry: false,
   });
 }
@@ -70,7 +71,7 @@ export function useActorProfileData(email: string | undefined) {
     enabled: Boolean(email),
     queryKey: ["dashboard", "people", email],
     queryFn: async (): Promise<ActorProfileReport> =>
-      read(
+      fetchDashboardJson(
         actorProfileReportSchema,
         `/api/people/${encodeURIComponent(email!)}`,
       ),
@@ -82,7 +83,8 @@ export function useActorProfileData(email: string | undefined) {
 export function useLocationDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "locations"],
-    queryFn: () => read(locationDirectoryReportSchema, "/api/locations"),
+    queryFn: () =>
+      fetchDashboardJson(locationDirectoryReportSchema, "/api/locations"),
     retry: false,
   });
 }
@@ -93,7 +95,7 @@ export function useLocationDetailData(locationId: string | undefined) {
     enabled: Boolean(locationId),
     queryKey: ["dashboard", "locations", locationId],
     queryFn: async (): Promise<LocationDetailReport> =>
-      read(
+      fetchDashboardJson(
         locationDetailReportSchema,
         `/api/locations/${encodeURIComponent(locationId!)}`,
       ),
@@ -107,23 +109,29 @@ export function useSystemData() {
   const conversationStatsQuery = useQuery({
     queryKey: ["dashboard", "conversation-stats"],
     queryFn: () =>
-      read(conversationStatsReportSchema, "/api/conversations/stats"),
+      fetchDashboardJson(
+        conversationStatsReportSchema,
+        "/api/conversations/stats",
+      ),
     retry: false,
   });
   const pluginsQuery = useQuery({
     queryKey: ["dashboard", "plugins"],
-    queryFn: () => read(pluginReportsSchema, "/api/plugins"),
+    queryFn: () => fetchDashboardJson(pluginReportsSchema, "/api/plugins"),
     retry: false,
   });
   const skillsQuery = useQuery({
     queryKey: ["dashboard", "skills"],
-    queryFn: () => read(skillReportsSchema, "/api/skills"),
+    queryFn: () => fetchDashboardJson(skillReportsSchema, "/api/skills"),
     retry: false,
   });
   const pluginReportsQuery = useQuery({
     queryKey: ["dashboard", "plugin-reports"],
     queryFn: () =>
-      read(pluginOperationalReportFeedSchema, "/api/plugin-reports"),
+      fetchDashboardJson(
+        pluginOperationalReportFeedSchema,
+        "/api/plugin-reports",
+      ),
     retry: false,
   });
   const dataReady = coreQuery.data && pluginsQuery.data && skillsQuery.data;

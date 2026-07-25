@@ -49,8 +49,8 @@ export async function patch<T>(
   return schema.parse(await response.json());
 }
 
-/** Read one authenticated JSON resource and validate its response. */
-export async function read<T>(
+/** Fetch one authenticated dashboard JSON resource and validate its response. */
+export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
   path: string,
   signal?: AbortSignal,
