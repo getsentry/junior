@@ -504,7 +504,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "merged", label: "Merged" },
           { key: "closed", label: "Closed unmerged" },
           { key: "mergeRate", label: "Closure merge rate" },
-          { key: "cost", label: "Cost" },
+          { key: "medianCost", label: "Median cost" },
         ],
         records: repositories.map(({ repository, ...stats }) => ({
           id: repository,
@@ -515,8 +515,8 @@ export async function buildGitHubOutcomeReport(args: {
             closed: String(stats.closed),
             juniorOnly: String(stats.juniorOnly),
             mergeRate: formatPercent(stats.mergeRate),
-            cost: formatCostUsd(
-              repositoryCostByName.get(repository)?.pullRequestCostUsd ?? 0,
+            medianCost: formatCostUsd(
+              repositoryCostByName.get(repository)?.medianPullRequestCostUsd,
             ),
           },
         })),
@@ -531,7 +531,7 @@ export async function buildGitHubOutcomeReport(args: {
           { key: "duplicate", label: "Duplicate" },
           { key: "notPlanned", label: "Not planned" },
           { key: "unknown", label: "Unknown reason" },
-          { key: "cost", label: "Cost" },
+          { key: "medianCost", label: "Median cost" },
         ],
         records: issueRepositories.map(({ repository, ...stats }) => ({
           id: repository,
@@ -542,8 +542,8 @@ export async function buildGitHubOutcomeReport(args: {
             duplicate: String(stats.closedDuplicate),
             notPlanned: String(stats.closedNotPlanned),
             unknown: String(stats.closedUnknown),
-            cost: formatCostUsd(
-              repositoryCostByName.get(repository)?.issueCostUsd ?? 0,
+            medianCost: formatCostUsd(
+              repositoryCostByName.get(repository)?.medianIssueCostUsd,
             ),
           },
         })),

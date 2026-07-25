@@ -29,12 +29,16 @@ const costWindowSchema = z
 const repositoryCostSchema = z
   .object({
     issueCostUsd: z.number().nonnegative().nullable(),
+    medianIssueCostUsd: z.number().nonnegative().nullable(),
+    medianPullRequestCostUsd: z.number().nonnegative().nullable(),
     pullRequestCostUsd: z.number().nonnegative().nullable(),
     repository: z.string().min(1),
   })
   .strict()
   .transform((row) => ({
     issueCostUsd: row.issueCostUsd ?? undefined,
+    medianIssueCostUsd: row.medianIssueCostUsd ?? undefined,
+    medianPullRequestCostUsd: row.medianPullRequestCostUsd ?? undefined,
     pullRequestCostUsd: row.pullRequestCostUsd ?? undefined,
     repository: row.repository,
   }));
@@ -293,7 +297,8 @@ export async function aggregateGitHubRepositoryCosts(args: {
     WITH pull_request_entities AS (
       SELECT
         ${pullRequests.repositoryFullName} AS repository,
-        conversation_ids.ids AS ids
+        conversation_ids.ids AS ids,
+        ${conversationTreeCost} AS cost_usd
       FROM ${pullRequests}
       CROSS JOIN LATERAL (
         SELECT ${pullRequestConversationIds} AS ids
@@ -302,7 +307,8 @@ export async function aggregateGitHubRepositoryCosts(args: {
     ), issue_entities AS (
       SELECT
         ${issues.repositoryFullName} AS repository,
-        conversation_ids.ids AS ids
+        conversation_ids.ids AS ids,
+        ${conversationTreeCost} AS cost_usd
       FROM ${issues}
       CROSS JOIN LATERAL (
         SELECT ${issueConversationIds} AS ids
@@ -324,7 +330,15 @@ export async function aggregateGitHubRepositoryCosts(args: {
               WHERE pull_request_entities.repository = repositories.repository
             ) AS ids
           ) AS conversation_ids
-        ), 0)::double precision AS pull_request_cost_usd
+        ), 0)::double precision AS pull_request_cost_usd,
+        (
+          SELECT percentile_cont(0.5) WITHIN GROUP (
+            ORDER BY pull_request_entities.cost_usd
+          )
+          FROM pull_request_entities
+          WHERE pull_request_entities.repository = repositories.repository
+            AND pull_request_entities.cost_usd > 0
+        )::double precision AS median_pull_request_cost_usd
       FROM repositories
     ), issue_totals AS (
       SELECT
@@ -338,21 +352,37 @@ export async function aggregateGitHubRepositoryCosts(args: {
               WHERE issue_entities.repository = repositories.repository
             ) AS ids
           ) AS conversation_ids
-        ), 0)::double precision AS issue_cost_usd
+        ), 0)::double precision AS issue_cost_usd,
+        (
+          SELECT percentile_cont(0.5) WITHIN GROUP (
+            ORDER BY issue_entities.cost_usd
+          )
+          FROM issue_entities
+          WHERE issue_entities.repository = repositories.repository
+            AND issue_entities.cost_usd > 0
+        )::double precision AS median_issue_cost_usd
       FROM repositories
     )
     SELECT
       repositories.repository AS "repository",
       coalesce(pull_request_totals.pull_request_cost_usd, 0)::double precision
         AS "pullRequestCostUsd",
+      pull_request_totals.median_pull_request_cost_usd
+        AS "medianPullRequestCostUsd",
       coalesce(issue_totals.issue_cost_usd, 0)::double precision
-        AS "issueCostUsd"
+        AS "issueCostUsd",
+      issue_totals.median_issue_cost_usd AS "medianIssueCostUsd"
     FROM repositories
     LEFT JOIN pull_request_totals
       ON pull_request_totals.repository = repositories.repository
     LEFT JOIN issue_totals
       ON issue_totals.repository = repositories.repository
-    ORDER BY "pullRequestCostUsd" DESC, "issueCostUsd" DESC, "repository" ASC
+    ORDER BY
+      "medianPullRequestCostUsd" DESC NULLS LAST,
+      "pullRequestCostUsd" DESC,
+      "medianIssueCostUsd" DESC NULLS LAST,
+      "issueCostUsd" DESC,
+      "repository" ASC
   `);
   return z.array(repositoryCostSchema).parse(queryRows(result));
 }

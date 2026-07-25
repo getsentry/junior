@@ -1151,9 +1151,9 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
         closed: "1",
-        cost: "$0.00",
         created: "2",
         juniorOnly: "1",
+        medianCost: "—",
         merged: "1",
         mergeRate: "50%",
         repository: "getsentry/junior",
@@ -1181,9 +1181,9 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.recordSets?.[1]?.records?.[0]?.values).toEqual({
         completed: "0",
-        cost: "$0.00",
         created: "2",
         duplicate: "0",
+        medianCost: "—",
         notPlanned: "1",
         repository: "getsentry/junior",
         unknown: "0",
@@ -1556,11 +1556,11 @@ describe("GitHub cost associations", () => {
         ]),
       );
       expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
-        cost: "$4.25",
+        medianCost: "$4.25",
         repository: "getsentry/junior",
       });
       expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
-        cost: "$4.25",
+        medianCost: "$4.25",
         repository: "getsentry/junior",
       });
     } finally {
@@ -1650,11 +1650,11 @@ describe("GitHub cost associations", () => {
         ]),
       );
       expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
-        cost: "$6.00",
+        medianCost: "$3.50",
         repository: "getsentry/junior",
       });
       expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
-        cost: "$6.00",
+        medianCost: "$6.00",
         repository: "getsentry/junior",
       });
     } finally {
