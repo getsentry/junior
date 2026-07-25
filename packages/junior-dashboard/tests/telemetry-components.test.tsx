@@ -248,6 +248,52 @@ describe("dashboard canonical-event components", () => {
     expect(subagentHtml).toContain("px-[1.0625rem]");
   });
 
+  it("keeps a running tool name searchable and accessible", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="search">
+          <TranscriptToolView
+            part={{
+              id: "tool-1",
+              input: { query: "regression" },
+              name: "webSearch",
+              status: "running",
+              type: "tool_call",
+            }}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('aria-label="webSearch (running)"');
+    expect(html).toContain("<mark");
+    expect(html).not.toContain("junior-tool-shimmer");
+    expect(html).not.toContain("text-transparent");
+  });
+
+  it("keeps a static running-name treatment when motion is reduced", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <TranscriptToolView
+            part={{
+              id: "tool-1",
+              name: "webSearch",
+              status: "running",
+              type: "tool_call",
+            }}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('aria-label="webSearch (running)"');
+    expect(html).toContain("motion-reduce:animate-none");
+    expect(html).toContain("bg-clip-text");
+    expect(html).not.toContain("motion-reduce:bg-none");
+    expect(html).not.toContain("motion-reduce:text-[#d6d6d6]");
+  });
+
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
       <TranscriptHeader redacted={false} value="raw" onChange={() => {}} />,

@@ -8,9 +8,10 @@ import {
   stringifyPartValue,
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
+import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
-import { HighlightText } from "./transcriptSearch";
+import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export function TranscriptToolView(props: {
@@ -110,14 +111,18 @@ function ToolSignature(props: {
   preview?: string;
   running: boolean;
 }) {
+  const { active: searchActive } = useTranscriptSearch();
+
   return (
     <>
       <strong
-        className={
-          props.running
-            ? "shrink-0 animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text font-bold text-transparent motion-reduce:animate-none motion-reduce:bg-none motion-reduce:text-[#d6d6d6]"
-            : "shrink-0 font-bold text-[#d6d6d6]"
-        }
+        aria-label={props.running ? `${props.name} (running)` : undefined}
+        className={cn(
+          "shrink-0 font-bold text-[#d6d6d6]",
+          props.running &&
+            !searchActive &&
+            "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none",
+        )}
       >
         <HighlightText text={props.name} />
       </strong>
