@@ -512,7 +512,11 @@ async function executeAgentRunInPrivacyContext(
         messageText: userInput,
         profiles: botConfig.profiles,
       });
-      if (configuredReasoningLevel) {
+      const routedProfileReasoningLevel = profileConfig(
+        botConfig,
+        turnRoute.profile,
+      ).reasoningLevel;
+      if (configuredReasoningLevel && !routedProfileReasoningLevel) {
         turnRoute = {
           ...turnRoute,
           reasoningLevel: configuredReasoningLevel,

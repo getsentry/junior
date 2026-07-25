@@ -259,7 +259,7 @@ describe("executeAgentRun model handoff", () => {
     }
   });
 
-  it("routes requested execution profiles through handoff before the first provider request", async () => {
+  it("uses router-selected profile reasoning before the first provider request", async () => {
     observations.routedModelProfile = "handoff";
     observations.routedReasoningLevel = "xhigh";
     const conversationId = "local:test:router-model-handoff";
@@ -281,6 +281,7 @@ describe("executeAgentRun model handoff", () => {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
       },
+      policy: { reasoningLevel: "xhigh" },
     });
 
     expect(outcome.status).toBe("completed");
