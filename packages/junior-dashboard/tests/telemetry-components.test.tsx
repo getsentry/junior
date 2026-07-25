@@ -229,9 +229,14 @@ describe("dashboard canonical-event components", () => {
         text: "Investigate",
       }),
       event(1, {
-        type: "tool_started",
-        toolCallId: "search-1",
-        name: "search",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "search-1",
+            name: "search",
+            status: "running",
+          },
+        ],
       }),
     ];
     const partialHtml = renderTranscript(
@@ -395,9 +400,14 @@ describe("dashboard canonical-event components", () => {
       conversation(
         [
           event(0, {
-            type: "tool_started",
-            toolCallId: "search-1",
-            name: "search",
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "search-1",
+                name: "search",
+                status: "running",
+              },
+            ],
           }),
         ],
         {
@@ -418,9 +428,14 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
-          type: "tool_started",
-          toolCallId: "search-1",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
         event(1, {
           type: "tool_calls",
@@ -428,15 +443,21 @@ describe("dashboard canonical-event components", () => {
             {
               toolCallId: "search-1",
               name: "search",
+              status: "running",
               input: { query: "regression" },
             },
           ],
         }),
         event(2, {
-          type: "tool_result",
-          toolCallId: "search-1",
-          outcome: "completed",
-          output: { matches: 2 },
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "completed",
+              output: { matches: 2 },
+            },
+          ],
         }),
       ]),
     );
@@ -453,15 +474,25 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
-          type: "tool_started",
-          toolCallId: "search-1",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
         event(1, {
-          type: "tool_result",
-          toolCallId: "search-1",
-          outcome: "error",
-          output: { error: "timed out" },
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "error",
+              output: { error: "timed out" },
+            },
+          ],
         }),
       ]),
     );
@@ -479,20 +510,23 @@ describe("dashboard canonical-event components", () => {
   ] as const)("renders the %s child lifecycle status", (status, outcome) => {
     const events: ConversationReportEvent[] = [
       event(0, {
-        type: "subagent_started",
+        type: "subagent",
+        startedSeq: 0,
+        startedAt: "2026-01-01T00:00:00.000Z",
         childConversationId: "child-1",
         subagentKind: "advisor",
+        status: "running",
       }),
     ];
     if (outcome) {
       events.push(
         event(1, {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: 0,
           startedAt: "2026-01-01T00:00:00.000Z",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          outcome,
+          status: outcome,
         }),
       );
     }
@@ -586,9 +620,12 @@ describe("dashboard canonical-event components", () => {
           <ConversationTranscriptView
             conversation={conversation([
               event(0, {
-                type: "subagent_started",
+                type: "subagent",
+                startedSeq: 0,
+                startedAt: "2026-01-01T00:00:00.000Z",
                 childConversationId: "child-1",
                 subagentKind: "advisor",
+                status: "running",
               }),
             ])}
             onOpenSubagentTranscript={() => {}}

@@ -153,15 +153,23 @@ describe("dashboard conversation formatting", () => {
           text: "run search",
         }),
         event(1, {
-          type: "tool_started",
-          toolCallId: "search-1",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
         event(2, {
-          type: "subagent_started",
+          type: "subagent",
+          startedSeq: 2,
+          startedAt: "2026-01-01T00:00:02.000Z",
           childConversationId: "child-1",
           subagentKind: "advisor",
           parentToolCallId: "search-1",
+          status: "running",
         }),
         event(3, {
           type: "message",

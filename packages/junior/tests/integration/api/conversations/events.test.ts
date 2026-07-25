@@ -137,12 +137,12 @@ describe("conversation event REST resources", () => {
     expect(detail.events).toEqual([
       expect.objectContaining({
         data: {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: 4,
           startedAt: "1970-01-01T00:00:00.005Z",
           childConversationId: "child-1",
           subagentKind: "review",
-          outcome: "success",
+          status: "completed",
         },
       }),
     ]);
@@ -165,8 +165,8 @@ describe("conversation event REST resources", () => {
       "message",
       "message",
       "message",
-      "subagent_started",
-      "subagent_ended",
+      "subagent",
+      "subagent",
     ]);
   });
 
@@ -215,13 +215,74 @@ describe("conversation event REST resources", () => {
     expect(history.events).toEqual([
       expect.objectContaining({
         data: {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: 0,
           startedAt: "1970-01-01T00:00:00.002Z",
           childConversationId: "child-before-page",
           subagentKind: "advisor",
           parentToolCallId: "advisor-before-page",
-          outcome: "error",
+          status: "error",
+        },
+      }),
+    ]);
+  });
+
+  it("keeps a terminal tool observation self-contained when its start is older", async () => {
+    const conversationId = "internal:paged-tool";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "tool_execution_started",
+          toolCallId: "search-before-page",
+          toolName: "search",
+        },
+        createdAtMs: 2,
+      },
+      {
+        data: {
+          type: "agent_step",
+          message: {
+            role: "toolResult",
+            toolCallId: "search-before-page",
+            content: [{ type: "text", text: "two matches" }],
+            isError: false,
+          } as PiMessage,
+        },
+        createdAtMs: 3,
+      },
+      message("latest-message", 4),
+    ]);
+
+    const app = createJuniorApi();
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}?limit=1`,
+    );
+    const detail = conversationDetailReportSchema.parse(
+      await detailResponse.json(),
+    );
+    if (!detail.previousCursor) throw new Error("Expected a previous cursor");
+
+    const historyResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(detail.previousCursor)}&limit=1`,
+    );
+    expect(historyResponse.status).toBe(200);
+    const history = conversationEventPageSchema.parse(
+      await historyResponse.json(),
+    );
+    expect(history.events).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-before-page",
+              name: "search",
+              status: "completed",
+              startedSeq: 0,
+              startedAt: "1970-01-01T00:00:00.002Z",
+            },
+          ],
         },
       }),
     ]);

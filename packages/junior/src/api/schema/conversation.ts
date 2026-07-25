@@ -112,35 +112,30 @@ const conversationReportMessageHandledEventDataSchema = z
   })
   .strict();
 
-const conversationReportToolStartedEventDataSchema = z
-  .object({
-    type: z.literal("tool_started"),
-    toolCallId: z.string().min(1),
-    name: z.string().min(1),
-  })
-  .strict();
-
 const conversationReportToolCallSchema = z
   .object({
     toolCallId: z.string().min(1),
     name: z.string().min(1),
+    status: z.enum(["running", "completed", "error"]),
+    startedAt: z.string().datetime().optional(),
+    startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
+    output: z.unknown().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((call, context) => {
+    if ((call.startedAt === undefined) !== (call.startedSeq === undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "tool start sequence and timestamp must be provided together",
+      });
+    }
+  });
 
 const conversationReportToolCallsEventDataSchema = z
   .object({
     type: z.literal("tool_calls"),
     calls: z.array(conversationReportToolCallSchema).min(1),
-  })
-  .strict();
-
-const conversationReportToolResultEventDataSchema = z
-  .object({
-    type: z.literal("tool_result"),
-    toolCallId: z.string().min(1),
-    outcome: z.enum(["completed", "error"]),
-    output: z.unknown().optional(),
   })
   .strict();
 
@@ -179,24 +174,15 @@ const conversationReportHandoffEventDataSchema = z
   })
   .strict();
 
-const conversationReportSubagentStartedEventDataSchema = z
+const conversationReportSubagentEventDataSchema = z
   .object({
-    type: z.literal("subagent_started"),
-    childConversationId: z.string().min(1),
-    subagentKind: z.string().min(1),
-    parentToolCallId: z.string().min(1).optional(),
-  })
-  .strict();
-
-const conversationReportSubagentEndedEventDataSchema = z
-  .object({
-    type: z.literal("subagent_ended"),
+    type: z.literal("subagent"),
     startedSeq: z.number().int().nonnegative(),
     startedAt: z.string().datetime(),
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
     parentToolCallId: z.string().min(1).optional(),
-    outcome: z.enum(["success", "error", "aborted"]),
+    status: z.enum(["running", "completed", "error", "aborted"]),
   })
   .strict();
 
@@ -204,14 +190,11 @@ const conversationReportSubagentEndedEventDataSchema = z
 export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportMessageEventDataSchema,
   conversationReportMessageHandledEventDataSchema,
-  conversationReportToolStartedEventDataSchema,
   conversationReportToolCallsEventDataSchema,
-  conversationReportToolResultEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,
-  conversationReportSubagentStartedEventDataSchema,
-  conversationReportSubagentEndedEventDataSchema,
+  conversationReportSubagentEventDataSchema,
 ]);
 
 /** One ordered, privacy-safe canonical event projected for API consumers. */
@@ -297,23 +280,14 @@ function validateConversationEvents(
     if (
       report.eventHistory.status === "redacted" &&
       event.data.type === "tool_calls" &&
-      event.data.calls.some((call) => call.input !== undefined)
+      event.data.calls.some(
+        (call) => call.input !== undefined || call.output !== undefined,
+      )
     ) {
       context.addIssue({
         code: "custom",
         path: ["events", index, "data"],
-        message: "redacted event history must redact tool inputs",
-      });
-    }
-    if (
-      report.eventHistory.status === "redacted" &&
-      event.data.type === "tool_result" &&
-      event.data.output !== undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["events", index, "data"],
-        message: "redacted event history must redact tool outputs",
+        message: "redacted event history must redact tool payloads",
       });
     }
   }

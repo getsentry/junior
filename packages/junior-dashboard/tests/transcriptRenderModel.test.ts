@@ -116,9 +116,14 @@ describe("canonical event transcript reduction", () => {
     const [message] = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
-          type: "tool_started",
-          toolCallId: "search-1",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
       ]),
     );
@@ -137,9 +142,14 @@ describe("canonical event transcript reduction", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
-          type: "tool_started",
-          toolCallId: "search-1",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
         event(1, "2026-01-01T00:00:01.000Z", {
           type: "tool_calls",
@@ -147,15 +157,23 @@ describe("canonical event transcript reduction", () => {
             {
               toolCallId: "search-1",
               name: "search",
+              status: "running",
               input: { query: "regression" },
             },
           ],
         }),
         event(2, "2026-01-01T00:00:03.000Z", {
-          type: "tool_result",
-          toolCallId: "search-1",
-          outcome: "completed",
-          output: { matches: 2 },
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "completed",
+              startedSeq: 0,
+              startedAt: "2026-01-01T00:00:00.000Z",
+              output: { matches: 2 },
+            },
+          ],
         }),
       ]),
     );
@@ -179,24 +197,32 @@ describe("canonical event transcript reduction", () => {
       conversationTranscriptMessages(
         conversation([
           event(1, "2026-01-01T00:00:01.000Z", {
-            type: "subagent_started",
-            childConversationId: "child-correlated",
-            subagentKind: "advisor",
-            parentToolCallId: "advisor-correlated",
-          }),
-          event(2, "2026-01-01T00:00:02.000Z", {
-            type: "subagent_ended",
+            type: "subagent",
             startedSeq: 1,
             startedAt: "2026-01-01T00:00:01.000Z",
             childConversationId: "child-correlated",
             subagentKind: "advisor",
             parentToolCallId: "advisor-correlated",
-            outcome: "success",
+            status: "running",
+          }),
+          event(2, "2026-01-01T00:00:02.000Z", {
+            type: "subagent",
+            startedSeq: 1,
+            startedAt: "2026-01-01T00:00:01.000Z",
+            childConversationId: "child-correlated",
+            subagentKind: "advisor",
+            parentToolCallId: "advisor-correlated",
+            status: "completed",
           }),
           event(3, "2026-01-01T00:00:03.000Z", {
-            type: "tool_started",
-            toolCallId: "advisor-visible",
-            name: "advisor",
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "advisor-visible",
+                name: "advisor",
+                status: "running",
+              },
+            ],
           }),
           event(5, "2026-01-01T00:00:05.000Z", {
             type: "handoff",
@@ -205,9 +231,12 @@ describe("canonical event transcript reduction", () => {
             triggeringToolCallId: "handoff-correlated",
           }),
           event(6, "2026-01-01T00:00:06.000Z", {
-            type: "subagent_started",
+            type: "subagent",
+            startedSeq: 6,
+            startedAt: "2026-01-01T00:00:06.000Z",
             childConversationId: "child-legacy",
             subagentKind: "advisor",
+            status: "running",
           }),
           event(7, "2026-01-01T00:00:07.000Z", {
             type: "handoff",
@@ -220,26 +249,38 @@ describe("canonical event transcript reduction", () => {
               {
                 toolCallId: "advisor-correlated",
                 name: "advisor",
+                status: "running",
                 input: { task: "review" },
               },
               {
                 toolCallId: "handoff-correlated",
                 name: "handoff",
+                status: "running",
                 input: { profile: "fast" },
               },
             ],
           }),
           event(9, "2026-01-01T00:00:09.000Z", {
-            type: "tool_result",
-            toolCallId: "advisor-correlated",
-            outcome: "completed",
-            output: { ok: true },
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "advisor-correlated",
+                name: "advisor",
+                status: "completed",
+                output: { ok: true },
+              },
+            ],
           }),
           event(10, "2026-01-01T00:00:10.000Z", {
-            type: "tool_result",
-            toolCallId: "handoff-correlated",
-            outcome: "completed",
-            output: { ok: true },
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "handoff-correlated",
+                name: "handoff",
+                status: "completed",
+                output: { ok: true },
+              },
+            ],
           }),
         ]),
       ),
@@ -272,17 +313,20 @@ describe("canonical event transcript reduction", () => {
           modelId: "openai/gpt-5-mini",
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
-          type: "subagent_started",
-          childConversationId: "child-1",
-          subagentKind: "advisor",
-        }),
-        event(3, "2026-01-01T00:00:03.000Z", {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: 2,
           startedAt: "2026-01-01T00:00:02.000Z",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          outcome: "success",
+          status: "running",
+        }),
+        event(3, "2026-01-01T00:00:03.000Z", {
+          type: "subagent",
+          startedSeq: 2,
+          startedAt: "2026-01-01T00:00:02.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+          status: "completed",
         }),
         event(4, "2026-01-01T00:00:04.000Z", {
           type: "turn_lifecycle",
@@ -312,30 +356,36 @@ describe("canonical event transcript reduction", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
-          type: "subagent_started",
-          childConversationId: "child-1",
-          subagentKind: "advisor",
-        }),
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "subagent_started",
-          childConversationId: "child-1",
-          subagentKind: "advisor",
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "subagent_ended",
-          startedSeq: 1,
-          startedAt: "2026-01-01T00:00:01.000Z",
-          childConversationId: "child-1",
-          subagentKind: "advisor",
-          outcome: "success",
-        }),
-        event(3, "2026-01-01T00:00:03.000Z", {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: 0,
           startedAt: "2026-01-01T00:00:00.000Z",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          outcome: "error",
+          status: "running",
+        }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "subagent",
+          startedSeq: 1,
+          startedAt: "2026-01-01T00:00:01.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+          status: "running",
+        }),
+        event(2, "2026-01-01T00:00:02.000Z", {
+          type: "subagent",
+          startedSeq: 1,
+          startedAt: "2026-01-01T00:00:01.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+          status: "completed",
+        }),
+        event(3, "2026-01-01T00:00:03.000Z", {
+          type: "subagent",
+          startedSeq: 0,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+          status: "error",
         }),
       ]),
     );
@@ -348,20 +398,25 @@ describe("canonical event transcript reduction", () => {
 
   it("renders a completed subagent when its start is outside the page", () => {
     const ended = event(11, "2026-01-01T00:00:11.000Z", {
-      type: "subagent_ended",
+      type: "subagent",
       startedSeq: 5,
       startedAt: "2026-01-01T00:00:05.000Z",
       childConversationId: "child-before-page",
       subagentKind: "advisor",
       parentToolCallId: "advisor-before-page",
-      outcome: "success",
+      status: "completed",
     });
     const pageMessages = conversationTranscriptMessages(
       conversation([
         event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_started",
-          toolCallId: "advisor-before-page",
-          name: "advisor",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "advisor-before-page",
+              name: "advisor",
+              status: "running",
+            },
+          ],
         }),
         ended,
       ]),
@@ -369,15 +424,23 @@ describe("canonical event transcript reduction", () => {
     const fullMessages = conversationTranscriptMessages(
       conversation([
         event(5, "2026-01-01T00:00:05.000Z", {
-          type: "subagent_started",
+          type: "subagent",
+          startedSeq: 5,
+          startedAt: "2026-01-01T00:00:05.000Z",
           childConversationId: "child-before-page",
           subagentKind: "advisor",
           parentToolCallId: "advisor-before-page",
+          status: "running",
         }),
         event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_started",
-          toolCallId: "advisor-before-page",
-          name: "advisor",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "advisor-before-page",
+              name: "advisor",
+              status: "running",
+            },
+          ],
         }),
         ended,
       ]),
@@ -406,9 +469,14 @@ describe("canonical event transcript reduction", () => {
       conversationTranscriptMessages(
         conversation([
           event(0, "2026-01-01T00:00:00.000Z", {
-            type: "tool_started",
-            toolCallId: "search-1",
-            name: "sentry.search",
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "search-1",
+                name: "sentry.search",
+                status: "running",
+              },
+            ],
           }),
           event(1, "2026-01-01T00:00:01.000Z", {
             type: "tool_calls",
@@ -416,20 +484,29 @@ describe("canonical event transcript reduction", () => {
               {
                 toolCallId: "search-1",
                 name: "sentry.search",
+                status: "running",
                 input: { project: "checkout-project" },
               },
             ],
           }),
           event(2, "2026-01-01T00:00:02.000Z", {
-            type: "tool_result",
-            toolCallId: "search-1",
-            outcome: "completed",
-            output: { culprit: "payments-v42" },
+            type: "tool_calls",
+            calls: [
+              {
+                toolCallId: "search-1",
+                name: "sentry.search",
+                status: "completed",
+                output: { culprit: "payments-v42" },
+              },
+            ],
           }),
           event(3, "2026-01-01T00:00:03.000Z", {
-            type: "subagent_started",
+            type: "subagent",
+            startedSeq: 3,
+            startedAt: "2026-01-01T00:00:03.000Z",
             childConversationId: "child-1",
             subagentKind: "advisor",
+            status: "running",
           }),
           event(4, "2026-01-01T00:00:04.000Z", {
             type: "compaction",
@@ -506,9 +583,17 @@ describe("transcript render grouping", () => {
     const current = conversationTranscriptMessages(
       conversation([
         event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_started",
-          toolCallId: "search-10",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-10",
+              name: "search",
+              status: "completed",
+              startedSeq: 6,
+              startedAt: "2026-01-01T00:00:06.000Z",
+              output: { matches: 1 },
+            },
+          ],
         }),
         event(11, "2026-01-01T00:00:11.000Z", {
           type: "message",
@@ -527,14 +612,27 @@ describe("transcript render grouping", () => {
           text: "earlier question",
         }),
         event(6, "2026-01-01T00:00:06.000Z", {
-          type: "tool_started",
-          toolCallId: "search-6",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-10",
+              name: "search",
+              status: "running",
+            },
+          ],
         }),
         event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_started",
-          toolCallId: "search-10",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-10",
+              name: "search",
+              status: "completed",
+              startedSeq: 6,
+              startedAt: "2026-01-01T00:00:06.000Z",
+              output: { matches: 1 },
+            },
+          ],
         }),
         event(11, "2026-01-01T00:00:11.000Z", {
           type: "message",
@@ -552,7 +650,12 @@ describe("transcript render grouping", () => {
       (entry) => entry.key,
     );
 
-    expect(currentKeys).toEqual(["10:tool:search-10", "11:message:0"]);
+    expect(current[0]).toMatchObject({
+      sourceSeq: 6,
+      timestamp: Date.parse("2026-01-01T00:00:06.000Z"),
+      parts: [{ id: "search-10", status: "completed" }],
+    });
+    expect(currentKeys).toEqual(["tool:search-10", "11:message:0"]);
     expect(prependedKeys.slice(-currentKeys.length)).toEqual(currentKeys);
   });
 });

@@ -87,9 +87,14 @@ describe("transcript bottom pinning", () => {
       seq: 0,
       createdAt: "2026-01-01T00:00:01.000Z",
       data: {
-        type: "tool_started" as const,
-        toolCallId: "search-1",
-        name: "search",
+        type: "tool_calls" as const,
+        calls: [
+          {
+            toolCallId: "search-1",
+            name: "search",
+            status: "running" as const,
+          },
+        ],
       },
     };
     const before = transcriptBottomVersion(activeTurn({ events: [started] }));
@@ -101,10 +106,15 @@ describe("transcript bottom pinning", () => {
             seq: 1,
             createdAt: "2026-01-01T00:00:02.000Z",
             data: {
-              type: "tool_result",
-              toolCallId: "search-1",
-              outcome: "completed",
-              output: { matches: 2 },
+              type: "tool_calls",
+              calls: [
+                {
+                  toolCallId: "search-1",
+                  name: "search",
+                  status: "completed",
+                  output: { matches: 2 },
+                },
+              ],
             },
           },
         ],

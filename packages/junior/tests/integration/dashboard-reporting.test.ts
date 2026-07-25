@@ -331,9 +331,16 @@ describe("dashboard canonical event reporting", () => {
         text: "Visible answer",
       },
       {
-        type: "tool_started",
-        toolCallId: `${conversationId}:tool-call`,
-        name: "search",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `${conversationId}:tool-call`,
+            name: "search",
+            status: "running",
+            startedSeq: 2,
+            startedAt: "1970-01-01T00:00:00.012Z",
+          },
+        ],
       },
       {
         type: "tool_calls",
@@ -341,15 +348,25 @@ describe("dashboard canonical event reporting", () => {
           {
             toolCallId: `${conversationId}:tool-call`,
             name: "search",
+            status: "running",
+            startedSeq: 3,
+            startedAt: "1970-01-01T00:00:00.012Z",
             input: { query: "visible tool query" },
           },
         ],
       },
       {
-        type: "tool_result",
-        toolCallId: `${conversationId}:tool-call`,
-        outcome: "completed",
-        output: "model-visible result",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `${conversationId}:tool-call`,
+            name: "search",
+            status: "completed",
+            startedSeq: 2,
+            startedAt: "1970-01-01T00:00:00.012Z",
+            output: "model-visible result",
+          },
+        ],
       },
       {
         type: "turn_lifecycle",
@@ -362,17 +379,20 @@ describe("dashboard canonical event reporting", () => {
         state: "succeeded",
       },
       {
-        type: "subagent_started",
-        childConversationId: `${conversationId}:child`,
-        subagentKind: "review",
-      },
-      {
-        type: "subagent_ended",
+        type: "subagent",
         startedSeq: 7,
         startedAt: "1970-01-01T00:00:00.017Z",
         childConversationId: `${conversationId}:child`,
         subagentKind: "review",
-        outcome: "success",
+        status: "running",
+      },
+      {
+        type: "subagent",
+        startedSeq: 7,
+        startedAt: "1970-01-01T00:00:00.017Z",
+        childConversationId: `${conversationId}:child`,
+        subagentKind: "review",
+        status: "completed",
       },
       { type: "compaction" },
       {
@@ -563,9 +583,16 @@ describe("dashboard canonical event reporting", () => {
       redacted: true,
     });
     expect(detail.events[1]?.data).toEqual({
-      type: "tool_started",
-      toolCallId: `${conversationId}:tool-call`,
-      name: "search",
+      type: "tool_calls",
+      calls: [
+        {
+          toolCallId: `${conversationId}:tool-call`,
+          name: "search",
+          status: "running",
+          startedSeq: 2,
+          startedAt: "1970-01-01T00:00:00.012Z",
+        },
+      ],
     });
     const serialized = JSON.stringify(detail);
     expect(serialized).not.toContain("Visible answer");

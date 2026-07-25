@@ -218,7 +218,9 @@ describe("dashboard canonical-event mock routes", () => {
     const active = await readDetail("slack:CQA123:1770003600.000200");
     expect(
       active.events.flatMap((event) =>
-        event.data.type === "tool_started" ? [event.data.name] : [],
+        event.data.type === "tool_calls"
+          ? event.data.calls.map((call) => call.name)
+          : [],
       ),
     ).toContain("datacat.search_logs");
 
@@ -297,7 +299,7 @@ describe("dashboard canonical-event mock routes", () => {
       await parentResponse.json(),
     );
     const childIds = parent.events.flatMap((event) =>
-      event.data.type === "subagent_started"
+      event.data.type === "subagent" && event.data.status === "running"
         ? [event.data.childConversationId]
         : [],
     );

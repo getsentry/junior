@@ -16,6 +16,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationReportEvent } from "../schema/conversation";
 import {
+  conversationReportToolResultIds,
   conversationReportSourceEventTypes,
   projectConversationReportEventPage,
 } from "./events";
@@ -36,6 +37,7 @@ async function readConversationEventRows(
     direction: "backward" | "forward";
     limit: number;
     subagentInvocationIds?: string[];
+    toolCallIds?: string[];
     types?: ConversationEvent["data"]["type"][];
   },
 ) {
@@ -71,6 +73,12 @@ async function readConversationEventRows(
               sql<string>`${juniorConversationEvents.payload}->>'subagentInvocationId'`,
               args.subagentInvocationIds,
             ),
+        args.toolCallIds === undefined
+          ? undefined
+          : inArray(
+              sql<string>`${juniorConversationEvents.payload}->>'toolCallId'`,
+              args.toolCallIds,
+            ),
       ),
     )
     .orderBy(
@@ -95,7 +103,7 @@ function decodeConversationEventRow(
   });
 }
 
-/** Project stored rows and resolve subagent starts that precede the page. */
+/** Project stored rows and resolve entity starts that precede the page. */
 async function projectConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
@@ -126,11 +134,23 @@ async function projectConversationEventRows(
           subagentInvocationIds: endedInvocationIds,
           types: ["subagent_started"],
         });
+  const toolResultIds = conversationReportToolResultIds(events);
+  const toolStartRows =
+    toolResultIds.length === 0
+      ? []
+      : await readConversationEventRows(executor, {
+          conversationId: args.conversationId,
+          direction: "forward",
+          limit: toolResultIds.length,
+          toolCallIds: toolResultIds,
+          types: ["tool_execution_started"],
+        });
 
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
     events,
     subagentStartEvents: subagentStartRows.map(decodeConversationEventRow),
+    toolStartEvents: toolStartRows.map(decodeConversationEventRow),
   });
 }
 

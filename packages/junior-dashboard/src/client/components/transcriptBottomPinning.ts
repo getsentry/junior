@@ -126,7 +126,6 @@ export function usePinnedTranscriptBottom(input: {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const contentElementRef = useRef<HTMLDivElement | null>(null);
   const enabledRef = useRef(input.enabled);
-  const everEnabledRef = useRef(input.enabled);
   const followingRef = useRef(false);
   const initializedRef = useRef(false);
   const previousScrollTopRef = useRef<number | null>(null);
@@ -144,9 +143,7 @@ export function usePinnedTranscriptBottom(input: {
 
   useEffect(() => {
     enabledRef.current = input.enabled;
-    if (input.enabled) {
-      everEnabledRef.current = true;
-    } else {
+    if (!input.enabled) {
       followingRef.current = false;
       setFollowing(false);
       setHasPendingUpdate(false);
@@ -241,7 +238,6 @@ export function usePinnedTranscriptBottom(input: {
     const wasEnabled = enabledRef.current;
     const shouldTrack = input.enabled || wasEnabled;
     enabledRef.current = input.enabled;
-    if (input.enabled) everEnabledRef.current = true;
     if (!shouldTrack) return;
 
     const wasInitialized = initializedRef.current;

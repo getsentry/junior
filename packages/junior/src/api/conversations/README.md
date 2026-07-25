@@ -12,10 +12,27 @@ resources:
 Cursors are opaque, HMAC-signed, and bound to one conversation and canonical
 event sequence. Callers must not derive or modify cursor positions.
 
-Canonical storage contains events that do not appear in the transcript.
-Paging therefore scans bounded row batches until it finds the requested number
-of projected reporting events. A paged `subagent_ended` event resolves its
-matching start even when that start is outside the current page.
+Canonical storage contains runtime and Pi-shaped events that are not a suitable
+REST contract. The reporting adapter projects those facts into normalized
+resource events:
+
+- `tool_calls` carries one or more tool observations. Each observation has a
+  stable tool call id, name, and current status; input and model-visible output
+  are optional according to access policy.
+- `subagent` carries a stable child reference, canonical start position, and
+  current status.
+- message, turn lifecycle, compaction, and handoff events expose only the
+  fields owned by the reporting API.
+
+The projection is append-only: later canonical facts produce new observations
+instead of changing previously returned events. Clients reduce observations by
+stable identity. A terminal tool or subagent observation includes its start
+context even when the canonical start is outside the requested page. Resolving
+that context uses bounded bulk lookups; it does not widen or merge cached REST
+resources.
+
+Paging scans bounded row batches until it finds the requested number of
+projected reporting events because not every canonical event is reportable.
 
 Each resource re-evaluates participant access and retention from persisted
 conversation state. Private payloads are projected as redacted for other

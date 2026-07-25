@@ -41,6 +41,8 @@ const reportingToolResultMessageSchema = z
   .object({
     role: z.literal("toolResult"),
     toolCallId: z.string().min(1),
+    toolName: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
     content: z.array(z.unknown()),
     details: z.unknown().optional(),
     isError: z.boolean().optional(),
@@ -68,6 +70,12 @@ const reportingMediaPartSchema = z
 type ReportingModelContentPart =
   | { type: "text"; text: string }
   | { type: "image" | "audio"; mimeType?: string };
+
+type ToolStart = {
+  createdAtMs: number;
+  name: string;
+  seq: number;
+};
 
 /** Retain model-visible text and media descriptors, dropping all opaque fields. */
 function sanitizeModelContentPart(
@@ -99,7 +107,9 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
 /** Project canonical Pi tool calls into the narrow reporting contract. */
 function reportToolCalls(args: {
   canExposePayload: boolean;
+  createdAtMs: number;
   message: unknown;
+  seq: number;
 }): ConversationReportEventData | undefined {
   const message = reportingAssistantMessageSchema.safeParse(args.message);
   if (!message.success) return undefined;
@@ -111,6 +121,9 @@ function reportToolCalls(args: {
       {
         toolCallId: call.data.id,
         name: call.data.name,
+        status: "running" as const,
+        startedAt: new Date(args.createdAtMs).toISOString(),
+        startedSeq: args.seq,
         ...(args.canExposePayload && call.data.arguments !== undefined
           ? { input: call.data.arguments }
           : {}),
@@ -124,6 +137,7 @@ function reportToolCalls(args: {
 function reportToolResult(args: {
   canExposePayload: boolean;
   message: unknown;
+  start?: ToolStart;
 }): ConversationReportEventData | undefined {
   const message = reportingToolResultMessageSchema.safeParse(args.message);
   if (!message.success) return undefined;
@@ -138,12 +152,42 @@ function reportToolResult(args: {
       ? "error"
       : "completed";
   const output = modelVisibleToolOutput(message.data.content);
+  const name = message.data.toolName ?? message.data.name ?? args.start?.name;
+  if (!name) return undefined;
   return {
-    type: "tool_result",
-    toolCallId: message.data.toolCallId,
-    outcome,
-    ...(args.canExposePayload && output !== undefined ? { output } : {}),
+    type: "tool_calls",
+    calls: [
+      {
+        toolCallId: message.data.toolCallId,
+        name,
+        status: outcome,
+        ...(args.start
+          ? {
+              startedAt: new Date(args.start.createdAtMs).toISOString(),
+              startedSeq: args.start.seq,
+            }
+          : {}),
+        ...(args.canExposePayload && output !== undefined ? { output } : {}),
+      },
+    ],
   };
+}
+
+/** Return tool result ids that may need start metadata from outside a page. */
+export function conversationReportToolResultIds(
+  events: ConversationEvent[],
+): string[] {
+  return [
+    ...new Set(
+      events.flatMap((event) => {
+        if (event.data.type !== "agent_step") return [];
+        const result = reportingToolResultMessageSchema.safeParse(
+          event.data.message,
+        );
+        return result.success ? [result.data.toolCallId] : [];
+      }),
+    ),
+  ];
 }
 
 function reportEventData(args: {
@@ -207,6 +251,7 @@ export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
   subagentStartEvents?: ConversationEvent[];
+  toolStartEvents?: ConversationEvent[];
 }): ConversationReportEvent[] {
   const subagentStarts = new Map<
     string,
@@ -225,6 +270,19 @@ export function projectConversationReportEventPage(args: {
       });
     }
   }
+  const toolStarts = new Map<string, ToolStart>();
+  for (const event of args.toolStartEvents ?? []) {
+    if (event.data.type === "tool_execution_started") {
+      const current = toolStarts.get(event.data.toolCallId);
+      if (!current || event.seq < current.seq) {
+        toolStarts.set(event.data.toolCallId, {
+          createdAtMs: event.createdAtMs,
+          name: event.data.toolName,
+          seq: event.seq,
+        });
+      }
+    }
+  }
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
@@ -232,14 +290,40 @@ export function projectConversationReportEventPage(args: {
     if (event.data.type === "agent_step") {
       const reportArgs = {
         canExposePayload: args.canExposePayload,
+        createdAtMs: event.createdAtMs,
         message: event.data.message,
+        seq: event.seq,
       };
-      data = reportToolCalls(reportArgs) ?? reportToolResult(reportArgs);
+      const result = reportingToolResultMessageSchema.safeParse(
+        event.data.message,
+      );
+      const start = result.success
+        ? toolStarts.get(result.data.toolCallId)
+        : undefined;
+      data =
+        reportToolCalls(reportArgs) ??
+        reportToolResult({
+          canExposePayload: args.canExposePayload,
+          message: event.data.message,
+          ...(start && start.seq < event.seq ? { start } : {}),
+        });
     } else if (event.data.type === "tool_execution_started") {
-      data = {
-        type: "tool_started",
-        toolCallId: event.data.toolCallId,
+      toolStarts.set(event.data.toolCallId, {
+        createdAtMs: event.createdAtMs,
         name: event.data.toolName,
+        seq: event.seq,
+      });
+      data = {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: event.data.toolCallId,
+            name: event.data.toolName,
+            status: "running",
+            startedAt: new Date(event.createdAtMs).toISOString(),
+            startedSeq: event.seq,
+          },
+        ],
       };
     } else if (event.data.type === "subagent_started") {
       subagentStarts.set(event.data.subagentInvocationId, {
@@ -248,18 +332,21 @@ export function projectConversationReportEventPage(args: {
         seq: event.seq,
       });
       data = {
-        type: "subagent_started",
+        type: "subagent",
+        startedSeq: event.seq,
+        startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
+        status: "running",
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
           : {}),
       };
     } else if (event.data.type === "subagent_ended") {
       const started = subagentStarts.get(event.data.subagentInvocationId);
-      if (started) {
+      if (started && started.seq < event.seq) {
         data = {
-          type: "subagent_ended",
+          type: "subagent",
           startedSeq: started.seq,
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
@@ -267,7 +354,8 @@ export function projectConversationReportEventPage(args: {
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
             : {}),
-          outcome: event.data.outcome,
+          status:
+            event.data.outcome === "success" ? "completed" : event.data.outcome,
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }

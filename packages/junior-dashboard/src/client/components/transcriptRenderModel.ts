@@ -80,14 +80,14 @@ export function groupTranscriptMessages(
       flushMessage();
       if (part.type === "tool_call") {
         entries.push({
-          key: `${message.sourceSeq}:tool:${part.id}`,
+          key: `tool:${part.id}`,
           kind: "tool",
           part,
           timestamp: message.timestamp,
         });
       } else if (part.type === "subagent") {
         entries.push({
-          key: `${message.sourceSeq}:subagent:${part.id}`,
+          key: `subagent:${part.id}`,
           kind: "subagent",
           part,
           timestamp: message.timestamp,

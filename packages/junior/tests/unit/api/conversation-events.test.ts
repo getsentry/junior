@@ -114,6 +114,9 @@ describe("conversation report event projection", () => {
             {
               toolCallId: "private-tool-call-id",
               name: "search",
+              status: "running",
+              startedAt: "1970-01-01T00:00:10.000Z",
+              startedSeq: 11,
               input: { query: "private query" },
             },
           ],
@@ -123,9 +126,16 @@ describe("conversation report event projection", () => {
         seq: 12,
         createdAt: "1970-01-01T00:00:05.000Z",
         data: {
-          type: "tool_started",
-          toolCallId: "private-tool-call-id",
-          name: "search",
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "private-tool-call-id",
+              name: "search",
+              status: "running",
+              startedAt: "1970-01-01T00:00:05.000Z",
+              startedSeq: 12,
+            },
+          ],
         },
       },
       {
@@ -209,28 +219,44 @@ describe("conversation report event projection", () => {
           {
             toolCallId: "call-1",
             name: "search",
+            status: "running",
+            startedAt: "1970-01-01T00:00:01.000Z",
+            startedSeq: 1,
             input: { query: "first" },
           },
           {
             toolCallId: "call-2",
             name: "fetch",
+            status: "running",
+            startedAt: "1970-01-01T00:00:01.000Z",
+            startedSeq: 1,
             input: { url: "https://example.com" },
           },
         ],
       },
       {
-        type: "tool_result",
-        toolCallId: "call-1",
-        outcome: "error",
-        output: "model-visible error summary",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "call-1",
+            name: "search",
+            status: "error",
+            output: "model-visible error summary",
+          },
+        ],
       },
       {
-        type: "tool_result",
-        toolCallId: "call-2",
-        outcome: "completed",
-        output: [
-          { type: "text", text: "native result" },
-          { type: "image", mimeType: "image/png" },
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "call-2",
+            name: "fetch",
+            status: "completed",
+            output: [
+              { type: "text", text: "native result" },
+              { type: "image", mimeType: "image/png" },
+            ],
+          },
         ],
       },
     ]);
@@ -289,6 +315,30 @@ describe("conversation report event projection", () => {
     });
 
     expect(JSON.stringify(prefix)).toBe(JSON.stringify(complete.slice(0, 1)));
+  });
+
+  it("does not use future start context to rewrite an earlier tool result", () => {
+    const result = event(1, {
+      type: "agent_step",
+      message: {
+        role: "toolResult",
+        toolCallId: "call-1",
+        content: [{ type: "text", text: "result" }],
+      } as ConversationAgentStepPayload,
+    });
+    const futureStart = event(2, {
+      type: "tool_execution_started",
+      toolCallId: "call-1",
+      toolName: "search",
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [result],
+        toolStartEvents: [futureStart],
+      }),
+    ).toEqual([]);
   });
 
   it("redacts private content and strips every internal persistence or payload field", () => {
@@ -359,14 +409,26 @@ describe("conversation report event projection", () => {
       redacted: true,
     });
     expect(projected[1]?.data).toEqual({
-      type: "tool_result",
-      toolCallId: "private-tool-call-id",
-      outcome: "error",
+      type: "tool_calls",
+      calls: [
+        {
+          toolCallId: "private-tool-call-id",
+          name: "safe_tool_name",
+          status: "error",
+        },
+      ],
     });
     expect(projected[2]?.data).toEqual({
-      type: "tool_started",
-      toolCallId: "private-tool-call-id",
-      name: "safe_tool_name",
+      type: "tool_calls",
+      calls: [
+        {
+          toolCallId: "private-tool-call-id",
+          name: "safe_tool_name",
+          status: "running",
+          startedAt: "1970-01-01T00:00:03.000Z",
+          startedSeq: 3,
+        },
+      ],
     });
     expect(projected[3]?.data).toEqual({
       type: "turn_lifecycle",
@@ -487,9 +549,16 @@ describe("conversation report event projection", () => {
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
       { type: "compaction" },
       {
-        type: "tool_started",
-        toolCallId: "private-handoff-tool-call-id",
-        name: "handoff",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "private-handoff-tool-call-id",
+            name: "handoff",
+            status: "running",
+            startedAt: "1970-01-01T00:00:03.000Z",
+            startedSeq: 3,
+          },
+        ],
       },
       {
         type: "handoff",
@@ -505,29 +574,42 @@ describe("conversation report event projection", () => {
         failureKind: "delivery",
       },
       {
-        type: "tool_started",
-        toolCallId: "private-parent-tool-id",
-        name: "advisor",
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "private-parent-tool-id",
+            name: "advisor",
+            status: "running",
+            startedAt: "1970-01-01T00:00:08.000Z",
+            startedSeq: 8,
+          },
+        ],
       },
       {
-        type: "subagent_started",
-        childConversationId: "child-conversation-1",
-        subagentKind: "advisor",
-        parentToolCallId: "private-parent-tool-id",
-      },
-      {
-        type: "subagent_ended",
+        type: "subagent",
         startedSeq: 9,
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
         parentToolCallId: "private-parent-tool-id",
-        outcome: "error",
+        status: "running",
       },
       {
-        type: "subagent_started",
+        type: "subagent",
+        startedSeq: 9,
+        startedAt: "1970-01-01T00:00:09.000Z",
+        childConversationId: "child-conversation-1",
+        subagentKind: "advisor",
+        parentToolCallId: "private-parent-tool-id",
+        status: "error",
+      },
+      {
+        type: "subagent",
+        startedSeq: 11,
+        startedAt: "1970-01-01T00:00:11.000Z",
         childConversationId: "legacy-child-conversation",
         subagentKind: "advisor",
+        status: "running",
       },
       { type: "turn_lifecycle", turnId: "turn-2", state: "no_reply" },
     ]);
@@ -612,9 +694,12 @@ describe("conversation report event projection", () => {
       conversationReportEventSchema.safeParse({
         ...valid,
         data: {
-          type: "subagent_started",
+          type: "subagent",
+          startedSeq: 1,
+          startedAt: "2026-07-15T12:00:00.000Z",
           childConversationId: "child-1",
           subagentKind: "advisor",
+          status: "running",
         },
       }).success,
     ).toBe(true);
@@ -622,12 +707,12 @@ describe("conversation report event projection", () => {
     const subagentEnded = {
       ...valid,
       data: {
-        type: "subagent_ended",
+        type: "subagent",
         startedSeq: 1,
         startedAt: "2026-07-15T12:00:00.000Z",
         childConversationId: "child-1",
         subagentKind: "advisor",
-        outcome: "success",
+        status: "completed",
       },
     };
     expect(conversationReportEventSchema.safeParse(subagentEnded).success).toBe(
@@ -643,6 +728,32 @@ describe("conversation report event projection", () => {
       conversationReportEventSchema.safeParse({
         ...subagentEnded,
         data: { ...subagentEnded.data, childConversationId: undefined },
+      }).success,
+    ).toBe(false);
+
+    const terminalTool = {
+      ...valid,
+      data: {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "call-1",
+            name: "search",
+            status: "completed",
+          },
+        ],
+      },
+    };
+    expect(conversationReportEventSchema.safeParse(terminalTool).success).toBe(
+      true,
+    );
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...terminalTool,
+        data: {
+          ...terminalTool.data,
+          calls: [{ ...terminalTool.data.calls[0], startedSeq: 1 }],
+        },
       }).success,
     ).toBe(false);
   });
@@ -753,6 +864,7 @@ describe("conversation report event projection", () => {
                 {
                   toolCallId: "private-call",
                   name: "search",
+                  status: "running",
                   input: { query: "must not be exposed" },
                 },
               ],
@@ -773,10 +885,15 @@ describe("conversation report event projection", () => {
             seq: 1,
             createdAt: summary.generatedAt,
             data: {
-              type: "tool_result",
-              toolCallId: "private-call",
-              outcome: "completed",
-              output: { matches: "must not be exposed" },
+              type: "tool_calls",
+              calls: [
+                {
+                  toolCallId: "private-call",
+                  name: "search",
+                  status: "completed",
+                  output: { matches: "must not be exposed" },
+                },
+              ],
             },
           },
         ],
@@ -820,16 +937,27 @@ describe("conversation report event projection", () => {
             createdAt: summary.generatedAt,
             data: {
               type: "tool_calls",
-              calls: [{ toolCallId: "private-call", name: "search" }],
+              calls: [
+                {
+                  toolCallId: "private-call",
+                  name: "search",
+                  status: "running",
+                },
+              ],
             },
           },
           {
             seq: 2,
             createdAt: summary.generatedAt,
             data: {
-              type: "tool_result",
-              toolCallId: "private-call",
-              outcome: "completed",
+              type: "tool_calls",
+              calls: [
+                {
+                  toolCallId: "private-call",
+                  name: "search",
+                  status: "completed",
+                },
+              ],
             },
           },
         ],
