@@ -6,6 +6,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { expect, test } from "@playwright/test";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 let server: ReturnType<typeof createServer> | undefined;
 let baseURL = "http://127.0.0.1";
@@ -290,6 +291,45 @@ test("loads earlier transcript events without dropping the current page", async 
   page,
 }) => {
   const conversationId = "slack:CQA456:1770021600.000600";
+  const detailPath = `/api/conversations/${encodeURIComponent(conversationId)}`;
+  let detailReads = 0;
+  let historyReads = 0;
+  await page.route(`**${detailPath}`, async (route) => {
+    const response = await route.fetch();
+    const detail = (await response.json()) as ConversationDetailReport;
+    detailReads += 1;
+    await route.fulfill({
+      response,
+      json:
+        detailReads === 1
+          ? { ...detail, status: "active" }
+          : {
+              ...detail,
+              events: [
+                ...detail.events.slice(1),
+                {
+                  seq: 17,
+                  createdAt: "2026-06-12T00:00:17.000Z",
+                  data: {
+                    type: "message",
+                    messageId: "release-live-update",
+                    role: "assistant",
+                    text: "The release verification is still running.",
+                  },
+                },
+              ],
+              previousCursor: `mock:before:${encodeURIComponent(conversationId)}:2`,
+              status: "active",
+            },
+    });
+  });
+  await page.route(`**${detailPath}/events?*`, async (route) => {
+    historyReads += 1;
+    if (historyReads === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    }
+    await route.continue();
+  });
   await page.goto(
     `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
@@ -298,7 +338,7 @@ test("loads earlier transcript events without dropping the current page", async 
     page.getByRole("heading", { name: "Package release and self-update" }),
   ).toBeVisible();
   const currentEvent = page.getByText(
-    "Release the package, update the example app, and open a PR.",
+    "Released the package and opened the update pull request.",
   );
   await expect(currentEvent).toBeVisible();
 
@@ -317,6 +357,7 @@ test("loads earlier transcript events without dropping the current page", async 
   }));
 
   await loadEarlier.click();
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
 
   await expect(
     page.getByText(

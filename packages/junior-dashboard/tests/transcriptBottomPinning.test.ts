@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNearScrollBottom,
+  prependViewportIntent,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
   transcriptFollowIntent,
@@ -172,6 +173,30 @@ describe("transcript bottom pinning", () => {
         2_750,
       ),
     ).toBe(1_230);
+  });
+
+  it("waits for history data instead of treating a detail poll as a prepend", () => {
+    expect(
+      prependViewportIntent({
+        currentHistoryVersion: "10",
+        loadingPreviousPage: true,
+        snapshotHistoryVersion: "10",
+      }),
+    ).toBe("wait");
+    expect(
+      prependViewportIntent({
+        currentHistoryVersion: "5",
+        loadingPreviousPage: true,
+        snapshotHistoryVersion: "10",
+      }),
+    ).toBe("wait");
+    expect(
+      prependViewportIntent({
+        currentHistoryVersion: "5",
+        loadingPreviousPage: false,
+        snapshotHistoryVersion: "10",
+      }),
+    ).toBe("restore");
   });
 
   it("changes the tail version when the live turn completes", () => {

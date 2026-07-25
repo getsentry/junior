@@ -21,6 +21,8 @@ import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
   conversationHistoryChanged,
+  conversationHistoryVersion,
+  loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
   type ConversationHistoryPage,
 } from "./transcript";
@@ -123,6 +125,8 @@ export function useConversationData(conversationId: string | undefined) {
     !history.error &&
     !history.isFetchingNextPage,
   );
+  const isLoadingPreviousPage =
+    history.isFetchingNextPage || historyNeedsReconciliation;
 
   useEffect(() => {
     if (shouldRefreshDetail) void detail.refetch();
@@ -145,29 +149,20 @@ export function useConversationData(conversationId: string | undefined) {
     ...detail,
     data,
     historyError,
+    historyVersion: conversationHistoryVersion(historyPages ?? []),
     hasPreviousPage: history.data
       ? history.hasNextPage
       : Boolean(detail.data?.previousCursor),
-    isLoadingPreviousPage: history.isFetchingNextPage,
-    loadCompleteTranscript: async () => {
+    isLoadingPreviousPage,
+    loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {
         throw new Error("Cannot load a conversation without an id");
       }
-      let pages = history.data?.pages ?? [];
-      let hasNextPage = history.data
-        ? history.hasNextPage
-        : Boolean(detail.data.previousCursor);
-      while (hasNextPage) {
-        const result = await history.fetchNextPage();
-        if (result.error) throw result.error;
-        pages = result.data?.pages ?? pages;
-        hasNextPage = result.hasNextPage;
-      }
-      const complete = buildConversationTranscript(detail.data, pages);
-      if (complete.previousCursor) {
-        throw new Error("Conversation history did not finish loading");
-      }
-      return complete;
+      return loadCompleteConversationTranscript({
+        detail: detail.data,
+        historyPages: history.data?.pages ?? [],
+        readPage: (before) => readConversationEvents(conversationId, before),
+      });
     },
     loadPreviousPage: () => {
       const hasPreviousPage = history.data

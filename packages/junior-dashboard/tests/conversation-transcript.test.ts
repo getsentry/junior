@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ConversationDetailReport,
   ConversationEventPage,
@@ -9,6 +9,8 @@ import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
   conversationHistoryChanged,
+  conversationHistoryVersion,
+  loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
   type ConversationHistoryPage,
 } from "../src/client/conversations/transcript";
@@ -190,5 +192,61 @@ describe("conversation transcript", () => {
       1, 2, 500, 501, 502, 1001, 1002,
     ]);
     expect(transcript.previousCursor).toBe("before-1");
+  });
+
+  it("changes the history version only when the oldest loaded event changes", () => {
+    const older = historyPage("before-3", [event(1), event(2)]);
+    const bridge = historyPage("before-6", [event(3), event(5)]);
+
+    expect(conversationHistoryVersion([])).toBe("empty");
+    expect(conversationHistoryVersion([older])).toBe("1");
+    expect(conversationHistoryVersion([older, bridge])).toBe("1");
+    expect(
+      conversationHistoryVersion([
+        older,
+        bridge,
+        historyPage("before-1", [event(0)]),
+      ]),
+    ).toBe("0");
+  });
+
+  it("exports one fixed detail snapshot instead of following a live poll", async () => {
+    const readPage = vi.fn(async (before: string) => {
+      expect(before).toBe("before-3");
+      return {
+        events: [event(1), event(2)],
+        eventHistory: { status: "available" as const },
+        generatedAt,
+      };
+    });
+    const newerLivePage = historyPage(
+      "before-6",
+      [event(4), event(5)],
+      "before-4",
+    );
+
+    const complete = await loadCompleteConversationTranscript({
+      detail: detail(),
+      historyPages: [newerLivePage],
+      readPage,
+    });
+
+    expect(readPage).toHaveBeenCalledOnce();
+    expect(complete.events.map((item) => item.seq)).toEqual([1, 2, 3, 4]);
+    expect(complete.previousCursor).toBeUndefined();
+  });
+
+  it("reuses cached pages that belong to the export snapshot", async () => {
+    const readPage = vi.fn(async () => {
+      throw new Error("Expected the cached page to be reused");
+    });
+    const complete = await loadCompleteConversationTranscript({
+      detail: detail(),
+      historyPages: [historyPage("before-3", [event(1), event(2)])],
+      readPage,
+    });
+
+    expect(readPage).not.toHaveBeenCalled();
+    expect(complete.events.map((item) => item.seq)).toEqual([1, 2, 3, 4]);
   });
 });

@@ -41,6 +41,46 @@ export function buildConversationTranscript(
   };
 }
 
+/** Materialize one immutable detail snapshot through its exact history cursor chain. */
+export async function loadCompleteConversationTranscript(args: {
+  detail: ConversationDetailReport;
+  historyPages: ConversationHistoryPage[];
+  readPage: (before: string) => Promise<ConversationEventPage>;
+}): Promise<ConversationDetailReport> {
+  const cachedPages = new Map(
+    args.historyPages.map((page) => [page.requestedBefore, page]),
+  );
+  const pages: ConversationHistoryPage[] = [];
+  const seenCursors = new Set<string>();
+  let before = args.detail.previousCursor;
+
+  while (before) {
+    if (seenCursors.has(before)) {
+      throw new Error("Conversation history cursor did not advance");
+    }
+    seenCursors.add(before);
+
+    const page =
+      cachedPages.get(before) ??
+      ({
+        ...(await args.readPage(before)),
+        requestedBefore: before,
+      } satisfies ConversationHistoryPage);
+    pages.push(page);
+    before = page.previousCursor;
+  }
+
+  return buildConversationTranscript(args.detail, pages);
+}
+
+/** Identify the oldest event owned by the loaded history resource. */
+export function conversationHistoryVersion(
+  pages: ConversationEventPage[],
+): string {
+  const firstSeq = firstEventSeq(pages);
+  return firstSeq === undefined ? "empty" : String(firstSeq);
+}
+
 /**
  * Return the next cursor needed to keep loaded history connected to detail.
  *

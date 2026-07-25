@@ -22,6 +22,7 @@ export function Transcript(props: {
   actions?: ReactNode;
   hasPreviousPage?: boolean;
   historyError?: Error | null;
+  historyVersion?: string;
   live?: boolean;
   loadingPreviousPage?: boolean;
   onLoadPreviousPage?: () => void;
@@ -38,11 +39,8 @@ export function Transcript(props: {
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
+    historyVersion: props.historyVersion ?? "empty",
     loadingPreviousPage: props.loadingPreviousPage ?? false,
-    topVersion: [
-      props.transcript?.conversationId ?? "",
-      props.transcript?.events[0]?.seq ?? "",
-    ].join(":"),
     version: transcriptBottomVersion(props.transcript),
   });
 

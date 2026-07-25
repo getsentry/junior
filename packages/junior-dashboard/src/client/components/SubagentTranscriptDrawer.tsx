@@ -115,6 +115,7 @@ export function SubagentTranscriptDrawer(props: {
             <Transcript
               hasPreviousPage={query.hasPreviousPage}
               historyError={query.historyError}
+              historyVersion={query.historyVersion}
               loadingPreviousPage={query.isLoadingPreviousPage}
               onLoadPreviousPage={query.loadPreviousPage}
               transcript={detail}

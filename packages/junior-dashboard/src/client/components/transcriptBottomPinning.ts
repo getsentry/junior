@@ -36,10 +36,10 @@ type BottomPinResult = {
 };
 
 type PrependSnapshot = {
+  historyVersion: string;
   root: ScrollRoot;
   scrollHeight: number;
   scrollTop: number;
-  topVersion: string;
 };
 
 const useBrowserLayoutEffect =
@@ -103,11 +103,24 @@ export function transcriptFollowIntent(input: {
   return "preserve";
 }
 
+/** Decide when a requested history prepend can restore or discard its viewport snapshot. */
+export function prependViewportIntent(input: {
+  currentHistoryVersion: string;
+  loadingPreviousPage: boolean;
+  snapshotHistoryVersion: string;
+}): "discard" | "restore" | "wait" {
+  if (input.loadingPreviousPage) return "wait";
+  if (input.currentHistoryVersion !== input.snapshotHistoryVersion) {
+    return "restore";
+  }
+  return "discard";
+}
+
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
   enabled: boolean;
+  historyVersion: string;
   loadingPreviousPage: boolean;
-  topVersion: string;
   version: string;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -181,18 +194,23 @@ export function usePinnedTranscriptBottom(input: {
     if (!root) return;
     const snapshot = scrollSnapshot(root);
     prependSnapshotRef.current = {
+      historyVersion: input.historyVersion,
       root,
       scrollHeight: snapshot.scrollHeight,
       scrollTop: snapshot.scrollTop,
-      topVersion: input.topVersion,
     };
-  }, [input.topVersion]);
+  }, [input.historyVersion]);
 
   useBrowserLayoutEffect(() => {
     const previous = prependSnapshotRef.current;
     if (!previous) return;
 
-    if (previous.topVersion !== input.topVersion) {
+    const intent = prependViewportIntent({
+      currentHistoryVersion: input.historyVersion,
+      loadingPreviousPage: input.loadingPreviousPage,
+      snapshotHistoryVersion: previous.historyVersion,
+    });
+    if (intent === "restore") {
       const current = scrollSnapshot(previous.root);
       setScrollTop(
         previous.root,
@@ -202,8 +220,8 @@ export function usePinnedTranscriptBottom(input: {
       return;
     }
 
-    if (!input.loadingPreviousPage) prependSnapshotRef.current = null;
-  }, [input.loadingPreviousPage, input.topVersion]);
+    if (intent === "discard") prependSnapshotRef.current = null;
+  }, [input.historyVersion, input.loadingPreviousPage]);
 
   const syncAfterLayoutChange = useCallback(() => {
     if (
