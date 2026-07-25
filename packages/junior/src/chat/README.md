@@ -67,6 +67,9 @@ delegation without becoming the execution actor or a general task owner.
 - Tool failures remain internal agent-loop data unless the final result exposes
   an appropriate diagnostic.
 - Durable state is committed before acknowledging queue work or yielding.
+- Cooperative yield preserves the exact agent history and occurs only at a user
+  or tool-result tail. Unlike timeout or auth recovery, it never rolls history
+  back past delivered assistant output.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
 - Actor, destination, conversation, and credential context remain explicit

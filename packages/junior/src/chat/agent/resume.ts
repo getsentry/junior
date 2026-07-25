@@ -31,7 +31,10 @@ import {
 } from "@/chat/services/auth-pause";
 import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { extractGenAiUsageSummary } from "@/chat/logging";
-import { isAssistantMessage } from "@/chat/pi/transcript";
+import {
+  isAssistantMessage,
+  isContinuablePiBoundary,
+} from "@/chat/pi/transcript";
 import {
   RetryableDeliveryError,
   type AgentRunDurability,
@@ -185,7 +188,11 @@ export function createResumeState(args: ResumeStateArgs) {
         return undefined;
       }
 
-      resumeMessages = this.getResumeSnapshot(currentMessages);
+      const nextResumeMessages = this.getResumeSnapshot(currentMessages);
+      if (!isContinuablePiBoundary(nextResumeMessages)) {
+        return undefined;
+      }
+      resumeMessages = nextResumeMessages;
       return new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${currentDurationMs()}ms`,
       );

@@ -11,7 +11,7 @@ import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
-  getPiMessageRole,
+  isContinuablePiBoundary,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
@@ -83,11 +83,6 @@ function addDurationMs(
   return total;
 }
 
-function isContinuableBoundary(messages: PiMessage[]): boolean {
-  const lastRole = getPiMessageRole(messages.at(-1));
-  return lastRole === "user" || lastRole === "toolResult";
-}
-
 /**
  * Choose the latest Pi boundary that can be continued safely after auth pause
  * or timeout, falling back to the last durable record when the current slice
@@ -98,7 +93,7 @@ function resumableBoundary(
   fallbackMessages: PiMessage[] | undefined,
 ): PiMessage[] {
   const current = trimTrailingAssistantMessages(messages);
-  if (current.length > 0 && isContinuableBoundary(current)) {
+  if (current.length > 0 && isContinuablePiBoundary(current)) {
     return current;
   }
   return trimTrailingAssistantMessages(fallbackMessages ?? []);
@@ -143,7 +138,7 @@ export async function persistRunningSessionRecord(args: {
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
-  if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
+  if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
     return false;
   }
 
@@ -385,7 +380,7 @@ export async function persistAuthPauseSessionRecord(args: {
       args.messages,
       latestSessionRecord?.piMessages,
     );
-    if (piMessages.length > 0 && !isContinuableBoundary(piMessages)) {
+    if (piMessages.length > 0 && !isContinuablePiBoundary(piMessages)) {
       return undefined;
     }
     return await upsertAgentTurnSessionRecord({
@@ -485,7 +480,7 @@ export async function persistContinuationSessionRecord(
       args.messages,
       latestSessionRecord?.piMessages,
     );
-    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
+    if (piMessages.length === 0 || !isContinuablePiBoundary(piMessages)) {
       return undefined;
     }
     const cumulativeDurationMs = addDurationMs(
@@ -621,17 +616,16 @@ export async function persistYieldSessionRecord(args: {
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {
+    // Cooperative yield must preserve the exact history boundary. Trimming a
+    // delivered assistant message would regenerate and redeliver that reply.
+    const piMessages = [...args.messages];
+    if (piMessages.length === 0 || !isContinuablePiBoundary(piMessages)) {
+      return undefined;
+    }
     const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    const piMessages = resumableBoundary(
-      args.messages,
-      latestSessionRecord?.piMessages,
-    );
-    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
-      return undefined;
-    }
     return await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }

@@ -100,6 +100,14 @@ export function getPiMessageRole(value: unknown): string | undefined {
   return typeof role === "string" ? role : undefined;
 }
 
+/** Return whether Pi can continue directly from the current history tail. */
+export function isContinuablePiBoundary(
+  messages: readonly PiMessage[],
+): boolean {
+  const lastRole = getPiMessageRole(messages.at(-1));
+  return lastRole === "user" || lastRole === "toolResult";
+}
+
 /** Concatenate text content parts from an assistant message. */
 export function extractAssistantText(message: AssistantMessage): string {
   const content =

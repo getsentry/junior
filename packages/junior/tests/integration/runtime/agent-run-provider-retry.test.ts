@@ -12,6 +12,7 @@ const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
       | "providerRetry"
       | "pendingProviderCall"
       | "cooperativeYield"
+      | "terminalDelivery"
       | "steering"
       | "steeringDelivery"
       | "steeringSteerThrows"
@@ -179,6 +180,35 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             output: 2,
           },
         });
+        return {};
+      }
+      if (agentMode.value === "terminalDelivery") {
+        const finalMessage = {
+          role: "assistant",
+          content: [{ type: "text", text: "Final answer." }],
+          stopReason: "stop",
+          usage: { input: 2, output: 2 },
+        };
+        this.state.messages.push(finalMessage);
+        await Promise.all(
+          this.subscribers.map((subscriber) =>
+            subscriber({ type: "message_end", message: finalMessage }),
+          ),
+        );
+        await Promise.all(
+          this.subscribers.map((subscriber) =>
+            subscriber({
+              type: "turn_end",
+              message: finalMessage,
+              toolResults: [],
+            }),
+          ),
+        );
+        try {
+          await this.prepareNextTurn?.();
+        } catch (error) {
+          this.recordRunFailure(error);
+        }
         return {};
       }
       if (
@@ -663,6 +693,78 @@ describe("executeAgentRun provider retry", () => {
     expect(delivered).toEqual([
       { text: "Initial answer." },
       { text: "Steered." },
+    ]);
+  });
+
+  it("does not suspend after delivering a terminal response", async () => {
+    agentMode.value = "terminalDelivery";
+    const delivered: Array<{ text: string }> = [];
+
+    const outcome = await executeAgentRun({
+      conversationId: "conversation-terminal-delivery-yield",
+      turnId: "turn-terminal-delivery-yield",
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      delivery: {
+        onAssistantMessage: (message) => {
+          delivered.push(message);
+        },
+      },
+      durability: { shouldYield: () => true },
+    });
+
+    expect(delivered).toEqual([{ text: "Final answer." }]);
+    expect(outcome.status).toBe("completed");
+  });
+
+  it("can suspend after delivery when steering creates a continuable boundary", async () => {
+    agentMode.value = "steeringDelivery";
+    const delivered: Array<{ text: string }> = [];
+
+    const outcome = await executeAgentRun({
+      conversationId: "conversation-delivery-steering-yield",
+      turnId: "turn-delivery-steering-yield",
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      delivery: {
+        onAssistantMessage: (message) => {
+          delivered.push(message);
+        },
+      },
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          const messages = [
+            {
+              text: "actually do the other thing",
+              timestampMs: 2_000,
+              provenance: { authority: "instruction" as const },
+            },
+          ];
+          await inject(messages);
+          return messages;
+        },
+        shouldYield: () => true,
+      },
+    });
+
+    expect(outcome.status).toBe("suspended");
+    expect(delivered).toEqual([{ text: "Initial answer." }]);
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+      "conversation-delivery-steering-yield",
+      "turn-delivery-steering-yield",
+    );
+    expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
     ]);
   });
 
