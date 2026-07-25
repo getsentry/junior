@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
-  githubLinkedIssueNumbers,
+  githubLinkedIssues,
 } from "../tools/footer.js";
 import type {
   GitHubPullRequestConversationsInput,
@@ -93,6 +93,7 @@ const canonicalPullRequestConversationSchema = z
         user: z.object({ login: z.string().min(1) }).strict(),
       })
       .strict(),
+    repository: z.object({ full_name: z.string().min(1) }).strict(),
     sender: z.object({ login: z.string().min(1) }).strict(),
   })
   .strict();
@@ -106,6 +107,9 @@ const pullRequestConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
+    repository: z
+      .object({ full_name: z.string().min(1) })
+      .passthrough(),
     sender: z.object({ login: z.string().min(1) }).passthrough(),
   })
   .passthrough()
@@ -116,6 +120,7 @@ const pullRequestConversationSchema = z
         id: provider.pull_request.id,
         user: { login: provider.pull_request.user.login },
       },
+      repository: { full_name: provider.repository.full_name },
       sender: { login: provider.sender.login },
     }),
   );
@@ -212,7 +217,7 @@ export function normalizeGitHubPullRequestConversations(args: {
     : undefined;
 }
 
-/** Normalize linked issue numbers written into a Junior-owned PR body by its bot. */
+/** Normalize linked issues written into a Junior-owned PR body by its bot. */
 export function normalizeGitHubPullRequestLinkedIssues(args: {
   body: unknown;
   botEmail?: string;
@@ -226,12 +231,13 @@ export function normalizeGitHubPullRequestLinkedIssues(args: {
   ) {
     return undefined;
   }
-  const linkedIssueNumbers = githubLinkedIssueNumbers(
+  const linkedIssues = githubLinkedIssues(
     parsed.data.pull_request.body,
+    parsed.data.repository.full_name,
   );
-  return linkedIssueNumbers.length > 0
+  return linkedIssues.length > 0
     ? {
-        linkedIssueNumbers,
+        linkedIssues,
         pullRequestId: String(parsed.data.pull_request.id),
       }
     : undefined;

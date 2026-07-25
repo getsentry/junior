@@ -5,6 +5,8 @@ import {
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
+  juniorGitHubIssues,
+  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
@@ -41,7 +43,16 @@ export type GitHubPullRequestConversationsInput = z.output<
 
 const githubPullRequestLinkedIssuesInputSchema = z
   .object({
-    linkedIssueNumbers: z.array(z.number().int().positive()).min(1),
+    linkedIssues: z
+      .array(
+        z
+          .object({
+            number: z.number().int().positive(),
+            repositoryFullName: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
     pullRequestId: z.string().min(1),
   })
   .strict();
@@ -147,31 +158,38 @@ export async function recordGitHubPullRequestConversations(
   return updated.length > 0;
 }
 
-/** Append linked issue numbers to an existing Junior-owned PR projection. */
+/** Link an existing Junior-owned PR to tracked issues across repositories. */
 export async function recordGitHubPullRequestLinkedIssues(
   db: GitHubDb,
   input: GitHubPullRequestLinkedIssuesInput,
 ): Promise<boolean> {
   const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const linkedIssueNumbers = sql.join(
-    association.linkedIssueNumbers.map((number) => sql`${number}`),
-    sql`, `,
+  const inserted = await Promise.all(
+    association.linkedIssues.map((issue) =>
+      db
+        .insert(juniorGitHubPullRequestIssues)
+        .select(
+          db
+            .select({
+              pullRequestId: sql<string>`${association.pullRequestId}`.as(
+                "pull_request_id",
+              ),
+              issueId: juniorGitHubIssues.issueId,
+            })
+            .from(juniorGitHubIssues)
+            .where(
+              and(
+                eq(
+                  juniorGitHubIssues.repositoryFullName,
+                  issue.repositoryFullName,
+                ),
+                eq(juniorGitHubIssues.number, issue.number),
+              ),
+            ),
+        )
+        .onConflictDoNothing()
+        .returning({ issueId: juniorGitHubPullRequestIssues.issueId }),
+    ),
   );
-  const updated = await db
-    .update(juniorGitHubPullRequests)
-    .set({
-      linkedIssueNumbers: sql`ARRAY(
-        SELECT DISTINCT value
-        FROM unnest(
-          ${juniorGitHubPullRequests.linkedIssueNumbers}
-          || ARRAY[${linkedIssueNumbers}]::integer[]
-        ) AS value
-        ORDER BY value
-      )`,
-    })
-    .where(
-      eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
-    )
-    .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
-  return updated.length > 0;
+  return inserted.some((rows) => rows.length > 0);
 }

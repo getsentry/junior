@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   juniorGitHubIssues,
+  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
@@ -112,7 +113,7 @@ function conversationTreeCostExpr() {
   `;
 }
 
-/** Distinct conversation ids for one PR including same-repo linked issues. */
+/** Distinct conversation ids for one PR including linked issues. */
 function pullRequestConversationIdsExpr() {
   const pullRequests = juniorGitHubPullRequests;
   const issues = juniorGitHubIssues;
@@ -122,19 +123,19 @@ function pullRequestConversationIdsExpr() {
         ${pullRequests.conversationIds}
         || coalesce((
           SELECT array_agg(DISTINCT issue_conversation_id)
-          FROM ${issues} AS linked_issues
+          FROM ${juniorGitHubPullRequestIssues} AS issue_links
+          INNER JOIN ${issues} AS linked_issues
+            ON linked_issues.issue_id = issue_links.issue_id
           CROSS JOIN LATERAL unnest(linked_issues.conversation_ids)
             AS issue_conversation_id
-          WHERE linked_issues.repository_full_name =
-            ${pullRequests.repositoryFullName}
-            AND linked_issues.number = ANY (${pullRequests.linkedIssueNumbers})
+          WHERE issue_links.pull_request_id = ${pullRequests.pullRequestId}
         ), ARRAY[]::text[])
       )
     )
   `;
 }
 
-/** Distinct conversation ids for one issue including same-repo linked PRs. */
+/** Distinct conversation ids for one issue including linked PRs. */
 function issueConversationIdsExpr() {
   const pullRequests = juniorGitHubPullRequests;
   const issues = juniorGitHubIssues;
@@ -144,12 +145,12 @@ function issueConversationIdsExpr() {
         ${issues.conversationIds}
         || coalesce((
           SELECT array_agg(DISTINCT pr_conversation_id)
-          FROM ${pullRequests} AS linked_prs
+          FROM ${juniorGitHubPullRequestIssues} AS issue_links
+          INNER JOIN ${pullRequests} AS linked_prs
+            ON linked_prs.pull_request_id = issue_links.pull_request_id
           CROSS JOIN LATERAL unnest(linked_prs.conversation_ids)
             AS pr_conversation_id
-          WHERE linked_prs.repository_full_name =
-            ${issues.repositoryFullName}
-            AND ${issues.number} = ANY (linked_prs.linked_issue_numbers)
+          WHERE issue_links.issue_id = ${issues.issueId}
         ), ARRAY[]::text[])
       )
     )

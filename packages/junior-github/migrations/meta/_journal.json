@@ -43,6 +43,13 @@
       "when": 1784937000000,
       "tag": "0005_github_cost_associations",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784946638683,
+      "tag": "0006_nice_hiroim",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   appendGitHubFooter,
   githubConversationIds,
-  githubLinkedIssueNumbers,
+  githubLinkedIssues,
 } from "../src/tools/footer.js";
 
 const originalEnv = { ...process.env };
@@ -54,11 +54,16 @@ describe("GitHub conversation footer", () => {
     expect(githubConversationIds(footer)).toEqual([conversationId]);
   });
 
-  it("reads same-repo linked issue numbers and ignores cross-repo refs", () => {
+  it("reads same- and cross-repo linked issues", () => {
     expect(
-      githubLinkedIssueNumbers(
+      githubLinkedIssues(
         "Fixes #12 and closes getsentry/other#34.\nAlso mentions #12 again and #9.",
+        "getsentry/junior",
       ),
-    ).toEqual([9, 12]);
+    ).toEqual([
+      { number: 9, repositoryFullName: "getsentry/junior" },
+      { number: 12, repositoryFullName: "getsentry/junior" },
+      { number: 34, repositoryFullName: "getsentry/other" },
+    ]);
   });
 });

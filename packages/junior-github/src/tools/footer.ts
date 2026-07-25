@@ -97,29 +97,38 @@ export function githubConversationIds(
   return [...ids];
 }
 
-/**
- * Read same-repository issue numbers linked from a pull request body via GitHub
- * closing keywords or bare `#N` references.
- *
- * Cross-repo `owner/repo#N` references are ignored so they cannot be joined as
- * local issue numbers and misattribute cost.
- */
-export function githubLinkedIssueNumbers(
+/** Read same- and cross-repository issue references from a pull request body. */
+export function githubLinkedIssues(
   body: string | null | undefined,
-): number[] {
+  repositoryFullName: string,
+): { number: number; repositoryFullName: string }[] {
   if (!body) return [];
-  const numbers = new Set<number>();
-  const patterns = [
-    /\b(?:close[sd]?|fix(?:e[sd]|ing)?|resolve[sd]?)\s+#(\d+)\b/gi,
-    /(?:^|[^\w/])#(\d+)\b/g,
-  ];
-  for (const pattern of patterns) {
-    for (const match of body.matchAll(pattern)) {
-      const value = Number.parseInt(match[1] ?? "", 10);
-      if (Number.isInteger(value) && value > 0) numbers.add(value);
-    }
+  const references = new Map<
+    string,
+    { number: number; repositoryFullName: string }
+  >();
+  const add = (linkedRepository: string, rawNumber: string) => {
+    const number = Number.parseInt(rawNumber, 10);
+    if (!Number.isInteger(number) || number <= 0) return;
+    const normalizedRepository = linkedRepository.toLowerCase();
+    references.set(`${normalizedRepository}#${number}`, {
+      number,
+      repositoryFullName: linkedRepository,
+    });
+  };
+
+  for (const match of body.matchAll(/\b([\w.-]+\/[\w.-]+)#(\d+)\b/g)) {
+    add(match[1] ?? "", match[2] ?? "");
   }
-  return [...numbers].sort((left, right) => left - right);
+  for (const match of body.matchAll(/(?:^|[^\w/])#(\d+)\b/g)) {
+    add(repositoryFullName, match[1] ?? "");
+  }
+
+  return [...references.values()].sort(
+    (left, right) =>
+      left.repositoryFullName.localeCompare(right.repositoryFullName) ||
+      left.number - right.number,
+  );
 }
 
 /**

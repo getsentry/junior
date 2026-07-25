@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const githubPullRequestStateSchema = z.enum([
@@ -78,10 +85,6 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    linkedIssueNumbers: integer("linked_issue_numbers")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::integer[]`),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
@@ -97,4 +100,24 @@ export const juniorGitHubPullRequests = pgTable(
   ],
 );
 
-export const githubSqlSchema = { juniorGitHubIssues, juniorGitHubPullRequests };
+/** Many-to-many links between tracked pull requests and tracked issues. */
+export const juniorGitHubPullRequestIssues = pgTable(
+  "junior_github_pull_request_issues",
+  {
+    pullRequestId: text("pull_request_id")
+      .notNull()
+      .references(() => juniorGitHubPullRequests.pullRequestId, {
+        onDelete: "cascade",
+      }),
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => juniorGitHubIssues.issueId, { onDelete: "cascade" }),
+  },
+  (table) => [primaryKey({ columns: [table.pullRequestId, table.issueId] })],
+);
+
+export const githubSqlSchema = {
+  juniorGitHubIssues,
+  juniorGitHubPullRequestIssues,
+  juniorGitHubPullRequests,
+};
