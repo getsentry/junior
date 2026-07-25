@@ -269,7 +269,7 @@ async function executeAgentRunInPrivacyContext(
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
-  let handoffPhaseUsage: AgentTurnUsage | undefined;
+  let priorPhaseUsage: AgentTurnUsage | undefined;
   const configuredReasoningLevel =
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
@@ -586,6 +586,16 @@ async function executeAgentRunInPrivacyContext(
         )
         .sort(),
     ];
+    const usageSinceCurrentBoundary = (
+      messages: PiMessage[],
+    ): AgentTurnUsage | undefined => {
+      const usage = extractGenAiUsageSummary(
+        ...messages
+          .slice(runResume.beforeMessageCount)
+          .filter(isAssistantMessage),
+      );
+      return hasAgentTurnUsage(usage) ? usage : undefined;
+    };
     /** Commit the durable handoff epoch before staging its in-memory model swap. */
     const scheduleHandoff = async (args: {
       profile: ModelProfile;
@@ -600,14 +610,7 @@ async function executeAgentRunInPrivacyContext(
       const runtimeContext = retainRuntimeTurnContext(
         args.runtimeContextSourceMessages ?? args.sourceMessages,
       );
-      const standardPhaseUsage = extractGenAiUsageSummary(
-        ...args.sourceMessages
-          .slice(runResume.beforeMessageCount)
-          .filter(isAssistantMessage),
-      );
-      const phaseUsage = hasAgentTurnUsage(standardPhaseUsage)
-        ? standardPhaseUsage
-        : undefined;
+      const phaseUsage = usageSinceCurrentBoundary(args.sourceMessages);
       const selectedProfile = profileConfig(botConfig, args.profile);
       const handoffReasoningLevel =
         selectedProfile.reasoningLevel ?? turnRoute!.reasoningLevel;
@@ -659,7 +662,7 @@ async function executeAgentRunInPrivacyContext(
           reason: `profile_reasoning_override:${args.profile}:${turnRoute!.reason}`,
         };
       }
-      handoffPhaseUsage = phaseUsage;
+      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, phaseUsage);
       pendingHandoff = {
         messages: handoffMessages,
         model: handoffModel,
@@ -819,6 +822,10 @@ async function executeAgentRunInPrivacyContext(
         return undefined;
       }
 
+      priorPhaseUsage = addAgentTurnUsage(
+        priorPhaseUsage,
+        usageSinceCurrentBoundary(messages),
+      );
       const replacement = [...compaction.piMessages];
       await runResume.requireDurableInputCheckpoint(replacement);
       agent!.state.messages = replacement;
@@ -1242,10 +1249,7 @@ async function executeAgentRunInPrivacyContext(
                 retryUsage,
                 currentUsage,
               );
-              turnUsage = addAgentTurnUsage(
-                handoffPhaseUsage,
-                currentPhaseUsage,
-              );
+              turnUsage = addAgentTurnUsage(priorPhaseUsage, currentPhaseUsage);
               setSpanAttributes({
                 ...(outputMessagesAttribute
                   ? { "gen_ai.output.messages": outputMessagesAttribute }

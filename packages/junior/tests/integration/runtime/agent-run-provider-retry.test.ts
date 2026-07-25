@@ -566,6 +566,10 @@ describe("executeAgentRun provider retry", () => {
     expect(statuses).toContain("Compacting context");
     expect(compactionState.summaryCalls).toBe(1);
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
+    expect(result.diagnostics.usage).toMatchObject({
+      inputTokens: 4,
+      outputTokens: 4,
+    });
     const history = await (await import("@/chat/db"))
       .getConversationEventStore()
       .loadHistory("conversation-active-compaction");
