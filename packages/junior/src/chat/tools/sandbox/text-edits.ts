@@ -1,4 +1,8 @@
-import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
+import {
+  MAX_TEXT_CHARS,
+  normalizeToLf,
+  truncateText,
+} from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface TextReplacement {
@@ -15,6 +19,21 @@ interface MatchedEdit {
   matchIndex: number;
   matchLength: number;
   newText: string;
+}
+
+const MAX_DIFF_LINE_CHARS = 4_000;
+
+function truncateDiffLine(value: string): {
+  line: string;
+  truncated: boolean;
+} {
+  if (value.length <= MAX_DIFF_LINE_CHARS) {
+    return { line: value, truncated: false };
+  }
+  return {
+    line: `${value.slice(0, MAX_DIFF_LINE_CHARS)}... [line truncated]`,
+    truncated: true,
+  };
 }
 
 /** Preserve a text artifact's dominant line-ending style across rewrites. */
@@ -117,6 +136,7 @@ export function buildCompactDiff(
 ): {
   diff: string;
   firstChangedLine?: number;
+  truncated: boolean;
 } {
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
@@ -145,32 +165,40 @@ export function buildCompactDiff(
   const oldContextEnd = Math.min(oldLines.length - 1, oldSuffix + 3);
   const width = String(Math.max(oldLines.length, newLines.length)).length;
   const output: string[] = [];
+  let lineTruncated = false;
+  const pushLine = (value: string): void => {
+    const bounded = truncateDiffLine(value);
+    output.push(bounded.line);
+    lineTruncated ||= bounded.truncated;
+  };
 
   if (contextStart > 0) {
-    output.push(` ${"".padStart(width)} ...`);
+    pushLine(` ${"".padStart(width)} ...`);
   }
   for (let index = contextStart; index < prefix; index += 1) {
-    output.push(` ${String(index + 1).padStart(width)} ${oldLines[index]}`);
+    pushLine(` ${String(index + 1).padStart(width)} ${oldLines[index]}`);
   }
   for (let index = prefix; index <= oldSuffix; index += 1) {
-    output.push(`-${String(index + 1).padStart(width)} ${oldLines[index]}`);
+    pushLine(`-${String(index + 1).padStart(width)} ${oldLines[index]}`);
   }
   for (let index = prefix; index <= newSuffix; index += 1) {
-    output.push(`+${String(index + 1).padStart(width)} ${newLines[index]}`);
+    pushLine(`+${String(index + 1).padStart(width)} ${newLines[index]}`);
   }
   for (let index = newSuffix + 1; index <= newContextEnd; index += 1) {
-    output.push(` ${String(index + 1).padStart(width)} ${newLines[index]}`);
+    pushLine(` ${String(index + 1).padStart(width)} ${newLines[index]}`);
   }
   if (
     newContextEnd < newLines.length - 1 ||
     oldContextEnd < oldLines.length - 1
   ) {
-    output.push(` ${"".padStart(width)} ...`);
+    pushLine(` ${"".padStart(width)} ...`);
   }
 
+  const bounded = truncateText(output.join("\n"), MAX_TEXT_CHARS);
   return {
-    diff: output.join("\n"),
+    diff: bounded.content,
     firstChangedLine: firstChangedLine(oldContent, newContent),
+    truncated: lineTruncated || bounded.truncated,
   };
 }
 

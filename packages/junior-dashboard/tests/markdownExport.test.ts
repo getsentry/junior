@@ -138,7 +138,21 @@ describe("dashboard canonical-event Markdown export", () => {
           subagentKind: "advisor",
           status: "running",
         }),
-        event(4, { type: "compaction" }),
+        event(4, {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+          details: {
+            reason: "capacity",
+            estimatedInputTokens: 361_000,
+            replacementInputTokens: 2_400,
+            triggerTokens: 360_000,
+            inputLimitTokens: 380_000,
+            inputMessageCount: 42,
+            retainedMessageCount: 2,
+            summaryChars: 1_200,
+          },
+        }),
         event(5, {
           type: "handoff",
           modelProfile: "fast",
@@ -161,6 +175,9 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain('"matches": 3');
     expect(markdown).toContain("### Subagent: advisor");
     expect(markdown).toContain("### Context compacted");
+    expect(markdown).toContain("- Estimated input tokens: 361000");
+    expect(markdown).toContain("- Compaction trigger: 360000");
+    expect(markdown).toContain("- Input limit: 380000");
     expect(markdown).toContain("### Model handoff");
     expect(markdown).toContain("- Profile: fast");
     expect(markdown).toContain("- Model: openai/gpt-5-mini");

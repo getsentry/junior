@@ -491,6 +491,15 @@ describe("conversation report event projection", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "private-model-id",
+          details: {
+            reason: "capacity",
+            estimatedInputTokens: 361_000,
+            triggerTokens: 360_000,
+            inputLimitTokens: 380_000,
+            inputMessageCount: 42,
+            retainedMessageCount: 2,
+            summaryChars: 1_200,
+          },
           replacementHistory: [],
         }),
         event(4, {
@@ -565,7 +574,20 @@ describe("conversation report event projection", () => {
         confidence: 0.93,
         source: "router",
       },
-      { type: "compaction" },
+      {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "private-model-id",
+        details: {
+          reason: "capacity",
+          estimatedInputTokens: 361_000,
+          triggerTokens: 360_000,
+          inputLimitTokens: 380_000,
+          inputMessageCount: 42,
+          retainedMessageCount: 2,
+          summaryChars: 1_200,
+        },
+      },
       {
         type: "tool_calls",
         calls: [
@@ -634,7 +656,6 @@ describe("conversation report event projection", () => {
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
       "private-input-id",
-      "private-model-id",
       "subagent-invocation-1",
       "private-child-model-id",
       "private-reasoning-level",

@@ -20,6 +20,7 @@ const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
+const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
 /**
  * Buffer between the Vercel function timeout and the agent turn timeout so
  * Junior can abort, persist, and schedule continuation before host teardown.
@@ -43,13 +44,13 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotConfig {
+  contextWindowTokens: number;
   embeddingModelId: string;
   fastModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
-  modelContextWindowTokens?: number;
   visionModelId?: string;
   maxSlicesPerTurn: number;
   turnTimeoutMs: number;
@@ -283,10 +284,11 @@ function readBotConfig(
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
-    modelContextWindowTokens: parseOptionalPositiveInteger(
-      "AI_MODEL_CONTEXT_WINDOW_TOKENS",
-      env.AI_MODEL_CONTEXT_WINDOW_TOKENS,
-    ),
+    contextWindowTokens:
+      parseOptionalPositiveInteger(
+        "AI_MODEL_CONTEXT_WINDOW_TOKENS",
+        env.AI_MODEL_CONTEXT_WINDOW_TOKENS,
+      ) ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
     reasoningLevel:
       reasoningLevel === undefined
         ? undefined

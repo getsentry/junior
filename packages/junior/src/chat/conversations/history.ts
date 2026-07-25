@@ -53,6 +53,19 @@ const replacementHistoryMessageSchema = conversationMessageDataSchema.extend({
  */
 const replacementHistorySchema = z.array(replacementHistoryMessageSchema);
 
+const compactionDetailsSchema = z
+  .object({
+    reason: z.literal("capacity"),
+    estimatedInputTokens: z.number().int().nonnegative(),
+    replacementInputTokens: z.number().int().nonnegative().optional(),
+    triggerTokens: z.number().int().nonnegative(),
+    inputLimitTokens: z.number().int().positive(),
+    inputMessageCount: z.number().int().nonnegative(),
+    retainedMessageCount: z.number().int().nonnegative(),
+    summaryChars: z.number().int().nonnegative(),
+  })
+  .strict();
+
 const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -69,6 +82,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
       type: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
+      details: compactionDetailsSchema.optional(),
       replacementHistory: replacementHistorySchema,
     })
     .strict(),

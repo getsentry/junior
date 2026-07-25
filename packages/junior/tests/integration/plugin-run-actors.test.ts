@@ -27,10 +27,13 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: () => Promise<unknown> | unknown;
+    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
+      prepareNextTurnWithContext?: (
+        context: unknown,
+      ) => Promise<unknown> | unknown;
       initialState: {
         model: unknown;
         systemPrompt: string;
@@ -43,7 +46,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
-      this.prepareNextTurn = input.prepareNextTurn;
+      this.prepareNextTurn =
+        input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
     subscribe() {
@@ -63,7 +67,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
-      await this.prepareNextTurn?.();
+      await this.prepareNextTurn?.({
+        context: { messages: this.state.messages },
+      });
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "Done." }],

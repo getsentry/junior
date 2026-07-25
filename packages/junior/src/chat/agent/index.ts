@@ -66,10 +66,7 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import {
-  isTurnInputCommitLostError,
-  type CooperativeTurnYieldError,
-} from "@/chat/runtime/turn";
+import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import {
   buildTurnResult,
@@ -127,7 +124,10 @@ import {
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
-import { compactContextForHandoff } from "@/chat/services/context-compaction";
+import {
+  compactActiveContextIfNeeded,
+  compactContextForHandoff,
+} from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
@@ -647,7 +647,9 @@ async function executeAgentRunInPrivacyContext(
             runId,
           },
         },
-        { completeText },
+        {
+          completeText: (args) => completeText(args),
+        },
       );
       durableModelProfile = args.profile;
       if (handoffReasoningLevel !== turnRoute!.reasoningLevel) {
@@ -781,6 +783,59 @@ async function executeAgentRunInPrivacyContext(
         thinkingLevel,
       };
     };
+    /** Commit and adopt an active capacity replacement before another model call. */
+    const applyActiveContextCompaction = async (
+      messages: PiMessage[],
+      hookSignal?: AbortSignal,
+      pendingMessages?: Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }>,
+      clearSteeringQueueOnCommit = false,
+    ): Promise<AgentLoopTurnUpdate | undefined> => {
+      const compaction = await compactActiveContextIfNeeded(
+        {
+          conversationContext: input.conversationContext,
+          conversationId,
+          metadata: {
+            threadId: conversationId,
+            channelId: slackDestination?.channelId,
+            actorId: slackActor?.userId,
+            runId,
+          },
+          modelId: activeModelId,
+          modelProfile: activeModelProfile,
+          onCompactionStart: () =>
+            observers.onStatus?.({ text: "Compacting context" }),
+          pendingMessages,
+          piMessages: messages,
+          signal: hookSignal,
+        },
+        {
+          completeText: (args) => completeText(args),
+        },
+      );
+      if (!compaction.compacted || !compaction.piMessages) {
+        return undefined;
+      }
+
+      const replacement = [...compaction.piMessages];
+      await runResume.requireDurableInputCheckpoint(replacement);
+      agent!.state.messages = replacement;
+      runResume.setBeforeMessageCount(replacement.length);
+      runResume.setTurnStartMessageIndex(0);
+      runResume.adoptCommittedBoundary(replacement);
+      if (clearSteeringQueueOnCommit && pendingMessages?.length) {
+        agent!.clearSteeringQueue();
+      }
+      return {
+        context: {
+          systemPrompt: baseInstructions,
+          messages: replacement,
+          tools: agent!.state.tools,
+        },
+      };
+    };
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
@@ -802,11 +857,20 @@ async function executeAgentRunInPrivacyContext(
         throw assistantMessageDeliveryError;
       }
     };
-    const drainSteeringMessages = async (): Promise<void> => {
+    const drainSteeringMessages = async (): Promise<
+      Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }>
+    > => {
       if (!durability.drainSteeringMessages) {
-        return;
+        return [];
       }
 
+      const acceptedMessages: Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }> = [];
       try {
         let steeredMessageCount = 0;
         await durability.drainSteeringMessages(async (messages) => {
@@ -824,6 +888,12 @@ async function executeAgentRunInPrivacyContext(
           for (const message of piMessages) {
             agent!.steer(message);
           }
+          acceptedMessages.push(
+            ...piMessages.map((message, index) => ({
+              message,
+              provenance: messages[index]!.provenance,
+            })),
+          );
           steeredMessageCount += piMessages.length;
         });
         if (steeredMessageCount > 0) {
@@ -850,13 +920,14 @@ async function executeAgentRunInPrivacyContext(
           "Agent turn steering message drain failed",
         );
       }
+      return acceptedMessages;
     };
 
     const apiKeyOverride = getPiGatewayApiKey();
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
-    let pendingPiHookError: CooperativeTurnYieldError | undefined;
+    let pendingPiHookError: Error | undefined;
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
       streamFn: createTracedStreamFn({ conversationPrivacy }),
@@ -881,15 +952,30 @@ async function executeAgentRunInPrivacyContext(
         runResume.timedOut && signal?.aborted
           ? annotateTurnDeadlineToolResult(result)
           : undefined,
-      prepareNextTurn: async () => {
-        const update = applyPendingHandoff();
-        await drainSteeringMessages();
-        const yieldError = runResume.prepareYieldIfDue(currentAgentMessages());
-        if (yieldError) {
-          pendingPiHookError = yieldError;
-          throw yieldError;
+      prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
+        try {
+          const handoffUpdate = applyPendingHandoff();
+          const pendingMessages = await drainSteeringMessages();
+          const capacityUpdate = handoffUpdate
+            ? undefined
+            : await applyActiveContextCompaction(
+                nextTurn.context.messages as PiMessage[],
+                hookSignal,
+                pendingMessages,
+                true,
+              );
+          const yieldError = runResume.prepareYieldIfDue(
+            currentAgentMessages(),
+          );
+          if (yieldError) {
+            throw yieldError;
+          }
+          return capacityUpdate ?? handoffUpdate;
+        } catch (error) {
+          pendingPiHookError =
+            error instanceof Error ? error : new Error(String(error));
+          throw error;
         }
-        return update;
       },
       initialState: {
         systemPrompt: baseInstructions,
@@ -1079,9 +1165,56 @@ async function executeAgentRunInPrivacyContext(
             return result;
           };
 
-          let run: Promise<unknown> = shouldPromptAgent
-            ? agent!.prompt(freshPromptMessage)
-            : agent!.continue();
+          const requestedProfile =
+            activeModelProfile === STANDARD_MODEL_PROFILE
+              ? turnRoute!.profile
+              : undefined;
+          let run: Promise<unknown>;
+          if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
+            const handoffAbortController = new AbortController();
+            await runAgentStep(
+              scheduleHandoff({
+                profile: requestedProfile,
+                runtimeContextSourceMessages: shouldPromptAgent
+                  ? [freshPromptMessage]
+                  : undefined,
+                signal: handoffAbortController.signal,
+                sourceMessages: [...agent!.state.messages],
+              }),
+              () => handoffAbortController.abort(),
+            );
+            applyPendingHandoff();
+            if (shouldPromptAgent) {
+              await runResume.requireDurableInputCheckpoint([
+                ...agent!.state.messages,
+                freshPromptMessage,
+              ]);
+              run = agent!.prompt(freshPromptMessage);
+            } else {
+              run = agent!.continue();
+            }
+          } else {
+            const compactionAbortController = new AbortController();
+            const capacityUpdate = await runAgentStep(
+              applyActiveContextCompaction(
+                [...agent!.state.messages],
+                compactionAbortController.signal,
+                shouldPromptAgent
+                  ? [
+                      {
+                        message: freshPromptMessage,
+                        provenance: instructionProvenanceFor(actor),
+                      },
+                    ]
+                  : undefined,
+              ),
+              () => compactionAbortController.abort(),
+            );
+            run =
+              shouldPromptAgent && !capacityUpdate
+                ? agent!.prompt(freshPromptMessage)
+                : agent!.continue();
+          }
           let retryUsage: AgentTurnUsage | undefined;
           try {
             for (let attempt = 0; ; attempt += 1) {

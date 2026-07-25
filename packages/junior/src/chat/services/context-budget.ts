@@ -1,16 +1,13 @@
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
 import { resolveGatewayModel } from "@/chat/pi/client";
 
-const COMPACTION_TRIGGER_INPUT_RATIO = 0.75;
-const COMPACTION_OUTPUT_RESERVE_RATIO = 0.25;
+const COMPACTION_TRIGGER_RATIO = 0.9;
+const CONTEXT_INPUT_LIMIT_RATIO = 0.95;
 const COMPACTION_TARGET_RATIO = 0.8;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
-const FALLBACK_MAX_OUTPUT_TOKENS = 128_000;
 
 export interface ModelContextBudget {
   contextWindow: number;
-  maxTokens: number;
 }
 
 function positiveInteger(value: number, fallback: number): number {
@@ -30,19 +27,18 @@ export function calculateContextCompactionTriggerTokens(
     model.contextWindow,
     FALLBACK_CONTEXT_WINDOW_TOKENS,
   );
-  const maxTokens = positiveInteger(
-    model.maxTokens,
-    FALLBACK_MAX_OUTPUT_TOKENS,
+  return Math.max(1, Math.floor(contextWindow * COMPACTION_TRIGGER_RATIO));
+}
+
+/** Derive the maximum estimated input size with room for uncounted request overhead. */
+export function calculateContextInputLimitTokens(
+  model: ModelContextBudget,
+): number {
+  const contextWindow = positiveInteger(
+    model.contextWindow,
+    FALLBACK_CONTEXT_WINDOW_TOKENS,
   );
-  const outputReserve = Math.min(
-    maxTokens,
-    Math.floor(contextWindow * COMPACTION_OUTPUT_RESERVE_RATIO),
-  );
-  const usableInputTokens = Math.max(1, contextWindow - outputReserve);
-  return Math.max(
-    1,
-    Math.floor(usableInputTokens * COMPACTION_TRIGGER_INPUT_RATIO),
-  );
+  return Math.max(1, Math.floor(contextWindow * CONTEXT_INPUT_LIMIT_RATIO));
 }
 
 /** Derive the post-compaction target from the automatic trigger threshold. */
@@ -52,20 +48,38 @@ export function calculateContextCompactionTargetTokens(
   return Math.max(1, Math.floor(triggerTokens * COMPACTION_TARGET_RATIO));
 }
 
+/** Cap one model's advertised context capacity with the host bot configuration. */
+export function getModelContextBudget(modelId: string): ModelContextBudget {
+  const model = resolveGatewayModel(modelId);
+  const advertisedContextWindow = positiveInteger(
+    model.contextWindow,
+    FALLBACK_CONTEXT_WINDOW_TOKENS,
+  );
+  return {
+    contextWindow: Math.min(
+      botConfig.contextWindowTokens,
+      advertisedContextWindow,
+    ),
+  };
+}
+
 /** Resolve the automatic compaction threshold for the active agent model. */
-export function getAgentContextCompactionTriggerTokens(): number {
-  const model = resolveGatewayModel(standardModelId(botConfig));
-  return calculateContextCompactionTriggerTokens({
-    contextWindow: botConfig.modelContextWindowTokens ?? model.contextWindow,
-    maxTokens: model.maxTokens,
-  });
+export function getAgentContextCompactionTriggerTokens(
+  modelId: string,
+): number {
+  return calculateContextCompactionTriggerTokens(
+    getModelContextBudget(modelId),
+  );
+}
+
+/** Resolve the hard input ceiling for the active agent model. */
+export function getAgentContextInputLimitTokens(modelId: string): number {
+  return calculateContextInputLimitTokens(getModelContextBudget(modelId));
 }
 
 /** Resolve the visible conversation compaction threshold for the auxiliary model. */
 export function getConversationContextCompactionTriggerTokens(): number {
-  const model = resolveGatewayModel(botConfig.fastModelId);
-  return calculateContextCompactionTriggerTokens({
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-  });
+  return calculateContextCompactionTriggerTokens(
+    getModelContextBudget(botConfig.fastModelId),
+  );
 }

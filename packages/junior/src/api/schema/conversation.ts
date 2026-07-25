@@ -173,7 +173,24 @@ const conversationReportTurnRoutedEventDataSchema = z
   .strict();
 
 const conversationReportCompactionEventDataSchema = z
-  .object({ type: z.literal("compaction") })
+  .object({
+    type: z.literal("compaction"),
+    modelProfile: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional(),
+    details: z
+      .object({
+        reason: z.literal("capacity"),
+        estimatedInputTokens: z.number().int().nonnegative(),
+        replacementInputTokens: z.number().int().nonnegative().optional(),
+        triggerTokens: z.number().int().nonnegative(),
+        inputLimitTokens: z.number().int().positive(),
+        inputMessageCount: z.number().int().nonnegative(),
+        retainedMessageCount: z.number().int().nonnegative(),
+        summaryChars: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
+  })
   .strict();
 
 const conversationReportHandoffEventDataSchema = z

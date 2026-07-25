@@ -293,11 +293,18 @@ describe("chat config", () => {
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
 
-  it("reads optional model context window overrides", async () => {
+  it("uses a 400k model context window cap by default", async () => {
+    delete process.env.AI_MODEL_CONTEXT_WINDOW_TOKENS;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.contextWindowTokens).toBe(400_000);
+  });
+
+  it("reads model context window cap overrides", async () => {
     process.env.AI_MODEL_CONTEXT_WINDOW_TOKENS = "200000";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelContextWindowTokens).toBe(200000);
+    expect(botConfig.contextWindowTokens).toBe(200000);
   });
 
   it("throws when model context window overrides are invalid", async () => {

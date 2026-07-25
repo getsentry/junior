@@ -6,28 +6,37 @@ import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 
-const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
-  agentMode: {
-    value: "providerRetry" as
-      | "providerRetry"
-      | "pendingProviderCall"
-      | "cooperativeYield"
-      | "terminalDelivery"
-      | "steering"
-      | "steeringDelivery"
-      | "steeringSteerThrows"
-      | "toolActivity",
-  },
-  counters: {
-    abortCalls: 0,
-    continueCalls: 0,
-    promptCalls: 0,
-  },
-  sessionLogState: {
-    failToolExecutionAppend: false,
-    toolExecutionAppendCalls: 0,
-  },
-}));
+const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
+  () => ({
+    agentMode: {
+      value: "providerRetry" as
+        | "providerRetry"
+        | "activeCompaction"
+        | "preflightCompaction"
+        | "pendingProviderCall"
+        | "cooperativeYield"
+        | "terminalDelivery"
+        | "steering"
+        | "steeringDelivery"
+        | "steeringSteerThrows"
+        | "toolActivity",
+    },
+    compactionState: {
+      nextProviderContextChars: 0,
+      preflightContextText: "",
+      summaryCalls: 0,
+    },
+    counters: {
+      abortCalls: 0,
+      continueCalls: 0,
+      promptCalls: 0,
+    },
+    sessionLogState: {
+      failToolExecutionAppend: false,
+      toolExecutionAppendCalls: 0,
+    },
+  }),
+);
 
 async function realSleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
@@ -82,7 +91,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: () => Promise<unknown> | unknown;
+    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
     private finishPendingRun?: () => void;
     private steeringMessages: unknown[] = [];
     private subscribers: Array<(event: unknown) => unknown> = [];
@@ -94,6 +103,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         tools: unknown[];
       };
       prepareNextTurn?: () => Promise<unknown> | unknown;
+      prepareNextTurnWithContext?: (
+        context: unknown,
+      ) => Promise<unknown> | unknown;
     }) {
       this.state = {
         messages: [],
@@ -101,7 +113,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
-      this.prepareNextTurn = input.prepareNextTurn;
+      this.prepareNextTurn =
+        input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
     subscribe(subscriber: (event: unknown) => unknown) {
@@ -141,6 +154,51 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
+      if (agentMode.value === "activeCompaction") {
+        const toolResult = {
+          role: "toolResult",
+          toolCallId: "call_oversized",
+          toolName: "editFile",
+          isError: false,
+          content: [{ type: "text", text: "x".repeat(1_600_000) }],
+        };
+        this.state.messages.push({
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call_oversized",
+              name: "editFile",
+              arguments: {},
+            },
+          ],
+          stopReason: "toolUse",
+          usage: { input: 2, output: 2 },
+        });
+        this.state.messages.push(toolResult);
+        await Promise.all(
+          this.subscribers.map((subscriber) =>
+            subscriber({
+              type: "turn_end",
+              message: this.state.messages.at(-2),
+              toolResults: [toolResult],
+            }),
+          ),
+        );
+        await this.prepareNextTurn?.({
+          context: { messages: this.state.messages },
+        });
+        compactionState.nextProviderContextChars = JSON.stringify(
+          this.state.messages,
+        ).length;
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "Verified after compaction." }],
+          stopReason: "stop",
+          usage: { input: 2, output: 2 },
+        });
+        return {};
+      }
       if (agentMode.value === "pendingProviderCall") {
         await new Promise<void>((resolve) => {
           this.finishPendingRun = resolve;
@@ -205,7 +263,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           ),
         );
         try {
-          await this.prepareNextTurn?.();
+          await this.prepareNextTurn?.({
+            context: { messages: this.state.messages },
+          });
         } catch (error) {
           this.recordRunFailure(error);
         }
@@ -232,7 +292,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           );
         }
         try {
-          await this.prepareNextTurn?.();
+          await this.prepareNextTurn?.({
+            context: { messages: this.state.messages },
+          });
         } catch (error) {
           this.recordRunFailure(error);
           return {};
@@ -285,6 +347,35 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async continue() {
       counters.continueCalls += 1;
+      if (agentMode.value === "preflightCompaction") {
+        compactionState.preflightContextText = this.state.messages
+          .flatMap((message) => {
+            const content = (message as { content?: unknown }).content;
+            return Array.isArray(content)
+              ? content.map((part) =>
+                  part &&
+                  typeof part === "object" &&
+                  "text" in part &&
+                  typeof part.text === "string"
+                    ? part.text
+                    : "",
+                )
+              : [];
+          })
+          .join("\n");
+        this.state.messages.push({
+          role: "assistant",
+          content: [
+            { type: "text", text: "Preserved after preflight compaction." },
+          ],
+          stopReason: "stop",
+          usage: {
+            input: 2,
+            output: 2,
+          },
+        });
+        return {};
+      }
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "Recovered." }],
@@ -345,6 +436,10 @@ vi.mock("@/chat/pi/client", () => ({
       reason: "test-router",
     },
   }),
+  completeText: async () => {
+    compactionState.summaryCalls += 1;
+    return { text: "The edit completed; verify the changed file." };
+  },
   getPiGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
 }));
@@ -428,6 +523,9 @@ describe("executeAgentRun provider retry", () => {
     counters.abortCalls = 0;
     counters.continueCalls = 0;
     counters.promptCalls = 0;
+    compactionState.nextProviderContextChars = 0;
+    compactionState.preflightContextText = "";
+    compactionState.summaryCalls = 0;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -439,6 +537,79 @@ describe("executeAgentRun provider retry", () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
+  });
+
+  it("compacts oversized tool history before the next provider request", async () => {
+    agentMode.value = "activeCompaction";
+    const statuses: string[] = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        input: {
+          messageText: "Make a large generated-file edit.",
+        },
+        routing: {
+          source: TEST_SOURCE,
+          destination: TEST_DESTINATION,
+        },
+        conversationId: "conversation-active-compaction",
+        turnId: "turn-active-compaction",
+        observers: {
+          onStatus: (status) => {
+            statuses.push(status.text);
+          },
+        },
+      }),
+    );
+
+    expect(result.text).toBe("Verified after compaction.");
+    expect(statuses).toContain("Compacting context");
+    expect(compactionState.summaryCalls).toBe(1);
+    expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
+    const history = await (await import("@/chat/db"))
+      .getConversationEventStore()
+      .loadHistory("conversation-active-compaction");
+    expect(history.some((event) => event.data.type === "compaction")).toBe(
+      true,
+    );
+  });
+
+  it("retains the complete current instruction across preflight compaction", async () => {
+    agentMode.value = "preflightCompaction";
+    const currentInstruction = `PRESERVE_THIS_START:${"z".repeat(12_000)}:PRESERVE_THIS_END`;
+    const priorMessages = [
+      {
+        role: "toolResult",
+        toolCallId: "call_prior_oversized",
+        toolName: "editFile",
+        isError: false,
+        content: [{ type: "text", text: "x".repeat(1_600_000) }],
+        timestamp: 1,
+      } as PiMessage,
+    ];
+
+    const result = finalReply(
+      await executeAgentRun({
+        input: {
+          messageText: currentInstruction,
+          piMessages: priorMessages,
+        },
+        routing: {
+          source: TEST_SOURCE,
+          destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        conversationId: "conversation-preflight-compaction",
+        turnId: "turn-preflight-compaction",
+      }),
+    );
+
+    expect(result.text).toBe("Preserved after preflight compaction.");
+    expect(compactionState.summaryCalls).toBe(1);
+    expect(compactionState.preflightContextText).toContain(currentInstruction);
+    expect(
+      compactionState.preflightContextText.match(/PRESERVE_THIS_START/g),
+    ).toHaveLength(1);
   });
 
   it("continues from the last safe boundary after an HTTP request timeout", async () => {

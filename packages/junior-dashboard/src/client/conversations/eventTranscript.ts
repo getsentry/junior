@@ -180,7 +180,15 @@ export function conversationTranscriptMessages(
                       ? { reasoningLevel: data.reasoningLevel }
                       : {}),
                   }
-                : { type: data.type, createdAt: event.createdAt },
+                : {
+                    type: data.type,
+                    createdAt: event.createdAt,
+                    ...(data.modelId ? { modelId: data.modelId } : {}),
+                    ...(data.modelProfile
+                      ? { modelProfile: data.modelProfile }
+                      : {}),
+                    ...(data.details ? { details: data.details } : {}),
+                  },
           },
         ]),
       );

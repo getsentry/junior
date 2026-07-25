@@ -1,4 +1,4 @@
-import { formatMessageTimestamp } from "../format";
+import { formatCompactNumber, formatMessageTimestamp } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
 
 /** Render a structural context change from the privacy-safe event API. */
@@ -8,6 +8,14 @@ export function TranscriptContextEventView(props: {
 }) {
   const event = props.part.event;
   const handoff = event.type === "handoff";
+  const compactionDetail =
+    event.type === "compaction" && event.details
+      ? ` at approximately ${formatCompactNumber(event.details.estimatedInputTokens)} estimated tokens`
+      : "";
+  const compactionModel =
+    event.type === "compaction" && event.modelProfile && event.modelId
+      ? ` using the ${event.modelProfile} profile (${event.modelId})`
+      : "";
   return (
     <article
       className={`min-w-0 rounded-lg border px-3 py-3 first:mt-1 ${
@@ -33,7 +41,7 @@ export function TranscriptContextEventView(props: {
       <div className="mt-1.5 text-[0.8rem] text-white/45">
         {handoff
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
-          : "Earlier context was summarized for the next turn."}
+          : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
     </article>
   );

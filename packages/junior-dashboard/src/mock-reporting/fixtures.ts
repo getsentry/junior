@@ -243,6 +243,18 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "compaction",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.4",
+        details: {
+          reason: "capacity",
+          estimatedInputTokens: 361_000,
+          replacementInputTokens: 2_400,
+          triggerTokens: 360_000,
+          inputLimitTokens: 380_000,
+          inputMessageCount: 42,
+          retainedMessageCount: 2,
+          summaryChars: 1_200,
+        },
       }),
       reportEvent(9, iso(Date.parse(startedAt), 55_000), {
         type: "message",
@@ -319,6 +331,18 @@ function longConversation(nowMs: number): ConversationDetailReport {
   events.push(
     reportEvent(14, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      details: {
+        reason: "capacity",
+        estimatedInputTokens: 364_200,
+        replacementInputTokens: 2_750,
+        triggerTokens: 360_000,
+        inputLimitTokens: 380_000,
+        inputMessageCount: 28,
+        retainedMessageCount: 1,
+        summaryChars: 980,
+      },
     }),
     reportEvent(15, iso(Date.parse(startedAt), 90_000), {
       type: "handoff",

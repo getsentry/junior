@@ -35,7 +35,6 @@ interface EditFileResult {
   details:
     | {
         data: {
-          diff: string;
           first_changed_line?: number;
           path: string;
           replacements: number;
@@ -47,6 +46,7 @@ interface EditFileResult {
         replacements: number;
         status: "success";
         target: string;
+        truncated: boolean;
       }
     | {
         data: {
@@ -171,7 +171,6 @@ export async function editFile(params: {
     status: "success",
     target: params.path,
     data: {
-      diff: diff.diff,
       first_changed_line: diff.firstChangedLine,
       path: params.path,
       replacements: params.edits.length,
@@ -180,6 +179,7 @@ export async function editFile(params: {
     first_changed_line: diff.firstChangedLine,
     path: params.path,
     replacements: params.edits.length,
+    truncated: diff.truncated,
   });
 }
 

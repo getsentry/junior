@@ -32,20 +32,22 @@ describe("context compaction retained messages", () => {
     const {
       calculateContextCompactionTargetTokens,
       calculateContextCompactionTriggerTokens,
+      calculateContextInputLimitTokens,
     } = await import("@/chat/services/context-budget");
 
     const miniTrigger = calculateContextCompactionTriggerTokens({
       contextWindow: 400_000,
-      maxTokens: 128_000,
     });
-    expect(miniTrigger).toBe(225_000);
-    expect(calculateContextCompactionTargetTokens(miniTrigger)).toBe(180_000);
+    expect(miniTrigger).toBe(360_000);
+    expect(calculateContextInputLimitTokens({ contextWindow: 400_000 })).toBe(
+      380_000,
+    );
+    expect(calculateContextCompactionTargetTokens(miniTrigger)).toBe(288_000);
     expect(
       calculateContextCompactionTriggerTokens({
         contextWindow: 1_050_000,
-        maxTokens: 128_000,
       }),
-    ).toBe(691_500);
+    ).toBe(945_000);
   });
 
   it("uses configured model context windows for runtime thresholds", async () => {
@@ -61,14 +63,42 @@ describe("context compaction retained messages", () => {
         calculateContextCompactionTriggerTokens,
         getAgentContextCompactionTriggerTokens,
         getConversationContextCompactionTriggerTokens,
+        getModelContextBudget,
       } = await import("@/chat/services/context-budget");
       const { resolveGatewayModel } = await import("@/chat/pi/client");
 
-      expect(getAgentContextCompactionTriggerTokens()).toBe(112_500);
+      expect(getAgentContextCompactionTriggerTokens("openai/gpt-5.4")).toBe(
+        180_000,
+      );
+      expect(getModelContextBudget("openai/gpt-5.4")).toMatchObject({
+        contextWindow: 200_000,
+      });
       expect(getConversationContextCompactionTriggerTokens()).toBe(
-        calculateContextCompactionTriggerTokens(
-          resolveGatewayModel("openai/gpt-5.4-mini"),
-        ),
+        calculateContextCompactionTriggerTokens({
+          ...resolveGatewayModel("openai/gpt-5.4-mini"),
+          contextWindow: 200_000,
+        }),
+      );
+    } finally {
+      process.env = { ...ORIGINAL_ENV };
+      vi.resetModules();
+    }
+  });
+
+  it("never raises an active model's advertised context window", async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      AI_MODEL_CONTEXT_WINDOW_TOKENS: "900000",
+    };
+    vi.resetModules();
+    try {
+      const { getModelContextBudget } =
+        await import("@/chat/services/context-budget");
+      const { resolveGatewayModel } = await import("@/chat/pi/client");
+      const model = resolveGatewayModel("anthropic/claude-haiku-4.5");
+
+      expect(getModelContextBudget(model.id).contextWindow).toBe(
+        model.contextWindow,
       );
     } finally {
       process.env = { ...ORIGINAL_ENV };
@@ -239,6 +269,7 @@ describe("context compaction projection reset", () => {
     const result = await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-1",
+      modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
     });
 
@@ -269,6 +300,187 @@ describe("context compaction projection reset", () => {
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
+  });
+
+  it("compacts active tool history before the next provider request", async () => {
+    const { compactActiveContextIfNeeded } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadConversationProjection, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "conversation-active-capacity";
+    await commitMessages({
+      conversationId,
+      messages: [user("Make the requested edit.", 1)],
+    });
+    const activeMessages = [
+      user(
+        "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+        2,
+      ),
+      user("Make the requested edit.", 3),
+      {
+        role: "toolResult",
+        toolCallId: "edit-1",
+        toolName: "editFile",
+        content: [{ type: "text", text: "x".repeat(1_600_000) }],
+        isError: false,
+        timestamp: 4,
+      } as PiMessage,
+    ];
+
+    const result = await compactActiveContextIfNeeded(
+      {
+        conversationId,
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        pendingMessages: [
+          {
+            message: user("Also run the focused test.", 5),
+            provenance: {
+              authority: "instruction",
+              actor: {
+                platform: "slack",
+                teamId: "T123",
+                userId: "U_STEER",
+                userName: "steering-user",
+              },
+            },
+          },
+        ],
+        piMessages: activeMessages,
+      },
+      {
+        completeText: async () =>
+          ({ text: "The edit completed; verify the result." }) as never,
+      },
+    );
+
+    expect(result.compacted).toBe(true);
+    expect(result.piMessages).toHaveLength(2);
+    expect(textOf(result.piMessages![0]!)).toContain(
+      "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+    );
+    expect(textOf(result.piMessages![0]!)).toContain(
+      "The edit completed; verify the result.",
+    );
+    expect(textOf(result.piMessages![1]!)).toBe("Also run the focused test.");
+    const durable = await loadProjection({ conversationId });
+    expect(textOf(durable[0]!)).not.toContain("<runtime-turn-context>");
+    expect(textOf(durable[0]!)).toContain(
+      "The edit completed; verify the result.",
+    );
+    expect(textOf(durable[1]!)).toBe("Also run the focused test.");
+    const projection = await loadConversationProjection({ conversationId });
+    expect(projection.modelProfile).toBe("standard");
+    expect(projection.provenance[1]).toMatchObject({
+      authority: "instruction",
+      actor: { userId: "U_STEER" },
+    });
+    const compactionEvent = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).find((event) => event.data.type === "compaction");
+    expect(compactionEvent?.data).toMatchObject({
+      type: "compaction",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      details: {
+        reason: "capacity",
+        triggerTokens: 360_000,
+        inputLimitTokens: 380_000,
+        inputMessageCount: 4,
+        retainedMessageCount: 1,
+        summaryChars: 38,
+      },
+    });
+    expect(
+      compactionEvent?.data.type === "compaction"
+        ? compactionEvent.data.details?.estimatedInputTokens
+        : undefined,
+    ).toBeGreaterThan(360_000);
+    expect(
+      compactionEvent?.data.type === "compaction"
+        ? compactionEvent.data.details?.replacementInputTokens
+        : undefined,
+    ).toBeLessThan(380_000);
+  });
+
+  it("blocks when retained pending input leaves the replacement above the hard limit", async () => {
+    const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const conversationId = "conversation-active-pending-hard-limit";
+    const original = [user("Keep this committed history.", 1)];
+    await commitMessages({ conversationId, messages: original });
+
+    await expect(
+      compactActiveContextIfNeeded(
+        {
+          conversationId,
+          modelId: "openai/gpt-5.4",
+          modelProfile: "standard",
+          pendingMessages: [
+            {
+              message: user(`Retain exactly: ${"y".repeat(1_600_000)}`, 3),
+              provenance: { authority: "instruction" },
+            },
+          ],
+          piMessages: [
+            ...original,
+            {
+              role: "toolResult",
+              toolCallId: "tool-1",
+              toolName: "oversized",
+              content: [{ type: "text", text: "x".repeat(1_600_000) }],
+              isError: false,
+              timestamp: 2,
+            } as PiMessage,
+          ],
+        },
+        {
+          completeText: async () => ({ text: "Short summary." }) as never,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
+    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
+  });
+
+  it("blocks the next provider request when hard-limit compaction fails", async () => {
+    const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const conversationId = "conversation-active-hard-limit";
+    const original = [user("Keep this committed history.", 1)];
+    await commitMessages({ conversationId, messages: original });
+
+    await expect(
+      compactActiveContextIfNeeded(
+        {
+          conversationId,
+          modelId: "openai/gpt-5.4",
+          modelProfile: "standard",
+          piMessages: [
+            ...original,
+            {
+              role: "toolResult",
+              toolCallId: "tool-1",
+              toolName: "oversized",
+              content: [{ type: "text", text: "x".repeat(1_600_000) }],
+              isError: false,
+              timestamp: 2,
+            } as PiMessage,
+          ],
+        },
+        {
+          completeText: async () => {
+            throw new Error("summary provider unavailable");
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
+    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
   });
 
   it("handoff binds its named profile and later projection replacements inherit it", async () => {
@@ -364,6 +576,7 @@ describe("context compaction projection reset", () => {
     const compacted = await compactor.maybeCompact({
       conversation: coerceThreadConversationState({}),
       conversationId,
+      modelId: botConfig.profiles.handoff!.modelId,
       piMessages: handoffMessages,
     });
     expect(compacted.compacted).toBe(true);
@@ -580,6 +793,7 @@ describe("context compaction projection reset", () => {
     const result = await compactor.maybeCompact({
       conversation: coerceThreadConversationState({}),
       conversationId: "conversation-identical-retained-text",
+      modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
     });
 
@@ -640,6 +854,7 @@ describe("context compaction projection reset", () => {
     await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-large",
+      modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
     });
 
@@ -707,6 +922,7 @@ describe("context compaction projection reset", () => {
     const result = await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-tool-context",
+      modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
     });
 
@@ -730,6 +946,7 @@ describe("context compaction projection reset", () => {
       compactor.maybeCompact({
         conversation,
         conversationId: "conversation-missing",
+        modelId: "openai/gpt-5.4",
         piMessages: [],
       }),
     ).resolves.toEqual({ compacted: false, reason: "missing_context" });

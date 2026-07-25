@@ -35,7 +35,22 @@ export type TranscriptViewSubagentPart = {
 
 export type TranscriptViewContextEventPart = {
   event:
-    | { createdAt: string; type: "compaction" }
+    | {
+        createdAt: string;
+        type: "compaction";
+        modelId?: string;
+        modelProfile?: string;
+        details?: {
+          reason: "capacity";
+          estimatedInputTokens: number;
+          replacementInputTokens?: number;
+          triggerTokens: number;
+          inputLimitTokens: number;
+          inputMessageCount: number;
+          retainedMessageCount: number;
+          summaryChars: number;
+        };
+      }
     | {
         createdAt: string;
         modelId: string;

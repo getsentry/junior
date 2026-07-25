@@ -394,7 +394,11 @@ describe("dashboard canonical event reporting", () => {
         subagentKind: "review",
         status: "completed",
       },
-      { type: "compaction" },
+      {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "private-model-id",
+      },
       {
         type: "handoff",
         modelProfile: "fast",
@@ -408,7 +412,7 @@ describe("dashboard canonical event reporting", () => {
     expect(JSON.stringify(detail)).not.toContain(
       "private model-only duplicate",
     );
-    expect(JSON.stringify(detail)).not.toContain("private-model-id");
+    expect(JSON.stringify(detail)).toContain("private-model-id");
     expect(JSON.stringify(detail)).toContain("private-handoff-model-id");
     for (const removed of [
       "activity",

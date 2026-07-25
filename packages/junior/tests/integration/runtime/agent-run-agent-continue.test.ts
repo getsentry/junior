@@ -329,6 +329,7 @@ describe("executeAgentRun agent continuation", () => {
       },
     });
 
+    await waitForPromptCall(1);
     await vi.advanceTimersByTimeAsync(10_000);
     const outcome = await replyPromise;
 
@@ -420,6 +421,7 @@ describe("executeAgentRun agent continuation", () => {
       policy: { turnDeadlineAtMs: startedAtMs + 2_500 },
     });
 
+    await waitForPromptCall(1);
     await vi.advanceTimersByTimeAsync(2_500);
     const outcome = await replyPromise;
 

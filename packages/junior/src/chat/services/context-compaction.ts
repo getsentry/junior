@@ -7,10 +7,6 @@
  * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
  * may later append the current bootstrap; future replacement strips it again.
  */
-import {
-  estimateContextTokens,
-  estimateTokens,
-} from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
 import {
   renderCurrentInstruction,
@@ -21,6 +17,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
+  getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
@@ -31,6 +28,7 @@ import { getConversationEventStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
+  retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
@@ -62,7 +60,7 @@ export interface CompactContextArgs {
   conversation: ThreadConversationState;
   conversationContext?: string;
   conversationId: string;
-  onCompactionStart?: () => void;
+  onCompactionStart?: () => void | Promise<void>;
   piMessages: PiMessage[];
   metadata?: {
     channelId?: string;
@@ -70,6 +68,7 @@ export interface CompactContextArgs {
     runId?: string;
     threadId?: string;
   };
+  modelId: string;
 }
 
 export interface CompactContextResult {
@@ -91,6 +90,34 @@ interface HandoffContextArgs {
     modelProfile: ModelProfile;
     reasoningLevel?: string;
   };
+}
+
+interface ActiveContextCompactionArgs {
+  conversationContext?: string;
+  conversationId: string;
+  metadata?: CompactContextArgs["metadata"];
+  modelId: string;
+  modelProfile: ModelProfile;
+  onCompactionStart?: () => void | Promise<void>;
+  pendingMessages?: Array<{
+    message: PiMessage;
+    provenance: ConversationMessageProvenance;
+  }>;
+  piMessages: PiMessage[];
+  signal?: AbortSignal;
+}
+
+/** Raised when Junior cannot compact history below the active model's hard ceiling. */
+export class ContextInputLimitExceededError extends Error {
+  constructor(
+    readonly estimatedTokens: number,
+    readonly inputLimitTokens: number,
+  ) {
+    super(
+      `Agent context is ${estimatedTokens} estimated input tokens, above the ${inputLimitTokens} token limit`,
+    );
+    this.name = "ContextInputLimitExceededError";
+  }
 }
 
 function textPart(value: unknown): string | undefined {
@@ -335,12 +362,11 @@ async function summarizeContext(
 
 function estimateHistoryTokens(messages: PiMessage[]): number {
   const stripped = stripRuntimeTurnContext(messages);
-  const usageEstimate = estimateContextTokens(stripped).tokens;
-  const structuralEstimate = stripped.reduce(
-    (total, message) => total + estimateTokens(message),
+  return stripped.reduce(
+    (total, message) =>
+      total + estimateTextTokens(JSON.stringify(message) ?? ""),
     0,
   );
-  return Math.max(usageEstimate, structuralEstimate);
 }
 
 /**
@@ -391,12 +417,12 @@ async function maybeCompactWithDeps(
 
   const triggerTokens =
     deps.autoCompactionTriggerTokens ??
-    getAgentContextCompactionTriggerTokens();
+    getAgentContextCompactionTriggerTokens(args.modelId);
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
 
-  args.onCompactionStart?.();
+  await args.onCompactionStart?.();
 
   let summary: string;
   try {
@@ -431,6 +457,7 @@ async function maybeCompactWithDeps(
   return await writeCompactedThreadContext(args, source.messages, summary, {
     estimatedTokens: source.estimatedTokens,
     triggerTokens,
+    inputLimitTokens: getAgentContextInputLimitTokens(args.modelId),
   });
 }
 
@@ -445,6 +472,7 @@ async function writeCompactedThreadContext(
   context: {
     estimatedTokens: number;
     triggerTokens?: number;
+    inputLimitTokens: number;
   },
 ): Promise<CompactContextResult> {
   const eventStore = getConversationEventStore();
@@ -458,6 +486,7 @@ async function writeCompactedThreadContext(
     ...retained.map((entry) => entry.message),
     userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${summary}`),
   ];
+  const replacementInputTokens = estimateHistoryTokens(replacement);
   // Provenance comes from the committed projection so retained user asks keep
   // their original instruction author across the compaction epoch.
   const replacementProvenance = buildReplacementProvenance({
@@ -470,6 +499,18 @@ async function writeCompactedThreadContext(
       type: "compaction",
       modelProfile: sourceProjection.modelProfile,
       modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
+      details: {
+        reason: "capacity",
+        estimatedInputTokens: context.estimatedTokens,
+        replacementInputTokens,
+        triggerTokens:
+          context.triggerTokens ??
+          getAgentContextCompactionTriggerTokens(args.modelId),
+        inputLimitTokens: context.inputLimitTokens,
+        inputMessageCount: sourceMessages.length,
+        retainedMessageCount: replacement.length - 1,
+        summaryChars: summary.length,
+      },
       replacementHistory: replacement.map((message, index) => {
         const sourceEventSeq =
           index < retained.length
@@ -551,4 +592,130 @@ export async function compactContextForHandoff(
     },
   });
   return messages;
+}
+
+/**
+ * Replace oversized active history at Pi's next-turn boundary before another
+ * provider request can observe it.
+ */
+export async function compactActiveContextIfNeeded(
+  args: ActiveContextCompactionArgs,
+  deps: Pick<ContextCompactorDeps, "completeText">,
+): Promise<CompactContextResult> {
+  const pendingMessages = args.pendingMessages ?? [];
+  const source = loadCompactionSource([
+    ...args.piMessages,
+    ...pendingMessages.map((entry) => entry.message),
+  ]);
+  if ("reason" in source) {
+    return { compacted: false, reason: source.reason };
+  }
+  const triggerTokens = getAgentContextCompactionTriggerTokens(args.modelId);
+  if (source.estimatedTokens <= triggerTokens) {
+    return { compacted: false, reason: "below_threshold" };
+  }
+
+  await args.onCompactionStart?.();
+
+  const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
+  let summary: string;
+  try {
+    summary = await summarizeContext(
+      {
+        ...args,
+        piMessages: args.piMessages,
+      },
+      deps,
+    );
+  } catch (error) {
+    if (source.estimatedTokens >= inputLimitTokens) {
+      throw new ContextInputLimitExceededError(
+        source.estimatedTokens,
+        inputLimitTokens,
+      );
+    }
+    logWarn(
+      "active_context_compaction_summary_failed",
+      {
+        messageConversationId: args.metadata?.threadId,
+        userId: args.metadata?.actorId,
+        destinationName: args.metadata?.channelId,
+        runId: args.metadata?.runId,
+        assistantUserName: botConfig.userName,
+        modelId: args.modelId,
+      },
+      {
+        "app.context_input_limit_tokens": inputLimitTokens,
+        "app.context_tokens_estimated": source.estimatedTokens,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Active context compaction failed below the hard input limit",
+    );
+    return { compacted: false, reason: "summary_failed" };
+  }
+
+  const summaryText = `${COMPACTION_SUMMARY_PREFIX}\n${summary}`;
+  const runtimeMessage = retainRuntimeTurnContext(args.piMessages).at(-1) as
+    | { content: unknown[] }
+    | undefined;
+  const summaryMessages = runtimeMessage
+    ? [
+        {
+          ...runtimeMessage,
+          content: [
+            ...runtimeMessage.content,
+            { type: "text", text: renderCurrentInstruction(summaryText) },
+          ],
+        } as PiMessage,
+      ]
+    : [userMessage(renderCurrentInstruction(summaryText))];
+  const messages = [
+    ...summaryMessages,
+    ...pendingMessages.map((entry) => entry.message),
+  ];
+  const replacementInputTokens = estimateHistoryTokens(messages);
+  if (replacementInputTokens >= inputLimitTokens) {
+    throw new ContextInputLimitExceededError(
+      replacementInputTokens,
+      inputLimitTokens,
+    );
+  }
+  const replacementMessages = stripRuntimeTurnContext(messages);
+  args.signal?.throwIfAborted();
+  await getConversationEventStore().replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "compaction",
+      modelProfile: args.modelProfile,
+      modelId: args.modelId,
+      details: {
+        reason: "capacity",
+        estimatedInputTokens: source.estimatedTokens,
+        replacementInputTokens,
+        triggerTokens,
+        inputLimitTokens,
+        inputMessageCount: source.messages.length,
+        retainedMessageCount: pendingMessages.length,
+        summaryChars: summary.length,
+      },
+      replacementHistory: replacementMessages.map((message, index) => ({
+        message,
+        provenance:
+          index === 0
+            ? contextProvenance
+            : (pendingMessages[index - 1]?.provenance ?? contextProvenance),
+      })),
+    },
+  });
+  setSpanAttributes({
+    "app.compaction.input_messages": source.messages.length,
+    "app.compaction.replacement_tokens": replacementInputTokens,
+    "app.compaction.retained_messages": pendingMessages.length,
+    "app.compaction.summary_chars": summary.length,
+    "app.compaction.trigger_tokens": triggerTokens,
+    "app.context_input_limit_tokens": inputLimitTokens,
+    "app.context_tokens_estimated": source.estimatedTokens,
+  });
+  return { compacted: true, piMessages: messages };
 }

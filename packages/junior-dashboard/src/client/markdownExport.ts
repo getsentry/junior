@@ -180,6 +180,44 @@ function appendContextEvent(
     addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Model", event.modelId);
     addMetaLine(lines, "Reasoning", event.reasoningLevel);
+  } else {
+    addMetaLine(lines, "Profile", event.modelProfile);
+    addMetaLine(lines, "Model", event.modelId);
+    if (event.details) {
+      addMetaLine(
+        lines,
+        "Estimated input tokens",
+        String(event.details.estimatedInputTokens),
+      );
+      if (event.details.replacementInputTokens !== undefined) {
+        addMetaLine(
+          lines,
+          "Replacement input tokens",
+          String(event.details.replacementInputTokens),
+        );
+      }
+      addMetaLine(
+        lines,
+        "Compaction trigger",
+        String(event.details.triggerTokens),
+      );
+      addMetaLine(lines, "Input limit", String(event.details.inputLimitTokens));
+      addMetaLine(
+        lines,
+        "Input messages",
+        String(event.details.inputMessageCount),
+      );
+      addMetaLine(
+        lines,
+        "Retained messages",
+        String(event.details.retainedMessageCount),
+      );
+      addMetaLine(
+        lines,
+        "Summary characters",
+        String(event.details.summaryChars),
+      );
+    }
   }
 }
 

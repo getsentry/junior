@@ -10,7 +10,12 @@ import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import {
+  modelIdForProfile,
+  STANDARD_MODEL_PROFILE,
+  standardModelId,
+  type ModelProfile,
+} from "@/chat/model-profile";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
@@ -128,7 +133,6 @@ import {
 } from "@/chat/conversations/provenance";
 import {
   commitMessages,
-  loadProjection,
   loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -337,6 +341,7 @@ function collectTurnAttachments(
 
 interface LoadedPiMessagesForTurn {
   canCompact?: boolean;
+  modelProfile?: ModelProfile;
   piMessages?: PiMessage[];
 }
 
@@ -367,13 +372,14 @@ async function loadPiMessagesForTurn(args: {
     }
   }
 
-  const projection = await loadProjection({
+  const projection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
-  if (projection.length > 0) {
+  if (projection.messages.length > 0) {
     return {
       canCompact: true,
-      piMessages: projection,
+      modelProfile: projection.modelProfile,
+      piMessages: projection.messages,
     };
   }
 
@@ -1115,6 +1121,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 },
                 onCompactionStart: () => status.update(compactingStatus),
                 piMessages,
+                modelId: modelIdForProfile(
+                  botConfig,
+                  loadedPiMessages.modelProfile ?? STANDARD_MODEL_PROFILE,
+                ),
               });
             if (compaction.compacted) {
               piMessages = compaction.piMessages;

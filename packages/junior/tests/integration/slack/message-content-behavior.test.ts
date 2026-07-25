@@ -10,6 +10,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { commitMessages } from "@/chat/conversations/projection";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getConversationEventStore } from "@/chat/db";
+import { botConfig } from "@/chat/config";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -433,6 +434,63 @@ describe("Slack behavior: message content", () => {
     expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
       "<runtime-turn-context>",
     );
+  });
+
+  it("uses the projected handoff model for turn-start context limits", async () => {
+    const modelIds: string[] = [];
+    const priorMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Continue after handoff." }],
+        timestamp: 1,
+      },
+    ] as PiMessage[];
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.500" });
+    await getConversationEventStore().replaceHistory(thread.id, {
+      createdAtMs: 1,
+      data: {
+        type: "handoff",
+        modelProfile: "handoff",
+        modelId: botConfig.profiles.handoff!.modelId,
+        replacementHistory: priorMessages.map((message) => ({
+          message,
+          provenance: { authority: "context" },
+        })),
+      },
+    });
+    await persistThreadState(thread, {
+      conversation: coerceThreadConversationState({}),
+    });
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          contextCompactor: {
+            maybeCompact: async (args) => {
+              modelIds.push(args.modelId);
+              return { compacted: false, reason: "below_threshold" };
+            },
+          },
+          agentRunner: {
+            run: async () => completedReply("Done."),
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-content-handoff-model",
+        text: "<@U0APP> continue",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U0TESTER" },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(modelIds).toEqual([botConfig.profiles.handoff!.modelId]);
   });
 
   it("keeps active-turn Pi history instead of compacting older completed history", async () => {

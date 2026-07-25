@@ -23,6 +23,18 @@ describe("transcript context events", () => {
             event: {
               type: "compaction",
               createdAt: "2026-01-01T00:00:02.000Z",
+              modelProfile: "standard",
+              modelId: "openai/gpt-5.4",
+              details: {
+                reason: "capacity",
+                estimatedInputTokens: 361_000,
+                replacementInputTokens: 2_400,
+                triggerTokens: 360_000,
+                inputLimitTokens: 380_000,
+                inputMessageCount: 42,
+                retainedMessageCount: 2,
+                summaryChars: 1_200,
+              },
             },
           }}
           timestamp={Date.parse("2026-01-01T00:00:02.000Z")}
@@ -31,7 +43,8 @@ describe("transcript context events", () => {
     );
 
     expect(html).toContain("Context compacted");
-    expect(html).toContain("Earlier context was summarized");
+    expect(html).toContain("approximately 361k estimated tokens");
+    expect(html).toContain("standard profile (openai/gpt-5.4)");
   });
 
   it("renders a model handoff as a structural event", () => {

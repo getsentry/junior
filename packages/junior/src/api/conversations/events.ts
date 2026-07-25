@@ -247,7 +247,12 @@ function reportEventData(args: {
           data.failureCode === "delivery_failed" ? "delivery" : "agent",
       };
     case "compaction":
-      return { type: "compaction" };
+      return {
+        type: "compaction",
+        modelProfile: data.modelProfile,
+        modelId: data.modelId,
+        ...(data.details ? { details: data.details } : {}),
+      };
     default:
       // Unsupported and host-only facts do not affect this observational view.
       return undefined;

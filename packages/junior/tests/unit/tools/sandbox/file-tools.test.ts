@@ -129,6 +129,34 @@ describe("sandbox file tools", () => {
       throw new Error("editFile should have succeeded");
     }
     expect(result.details.diff).toContain("+2 TWO");
+    expect(result.details.data).not.toHaveProperty("diff");
+    expect(JSON.parse(result.content[0].text)).toEqual(result.details);
+  });
+
+  it("bounds huge single-line edit diffs without duplicating them", async () => {
+    const memory = createMemoryFs({
+      "generated.js": `const data = "${"a".repeat(100_000)}";\n`,
+    });
+
+    const result = await editFile({
+      fs: memory.fs,
+      path: "generated.js",
+      edits: [
+        {
+          oldText: "a".repeat(100_000),
+          newText: "b".repeat(100_000),
+        },
+      ],
+    });
+
+    if (!result.details.ok) {
+      throw new Error("editFile should have succeeded");
+    }
+    expect(result.details.truncated).toBe(true);
+    expect(result.details.diff.length).toBeLessThan(10_000);
+    expect(result.details.diff).toContain("[line truncated]");
+    expect(result.details.data).not.toHaveProperty("diff");
+    expect(result.content[0].text.length).toBeLessThan(20_000);
   });
 
   it("prepares common edit argument variants", () => {
