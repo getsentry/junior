@@ -12,7 +12,12 @@ import {
   STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
+import {
+  logWarn,
+  setSpanAttributes,
+  withSpan,
+  type LogContext,
+} from "@/chat/logging";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
 const MAX_ROUTER_CONTEXT_CHARS = 8_000;
@@ -345,7 +350,22 @@ async function classifyTurn(args: {
       reasoningLevel: parsed.reasoning_level,
       reason,
     };
-  } catch {
+  } catch (error) {
+    logWarn(
+      "turn_router_classifier_failed",
+      {
+        messageConversationId: args.metadata.threadId,
+        destinationName: args.metadata.channelId,
+        userId: args.metadata.actorId,
+        runId: args.metadata.runId,
+        modelId: args.fastModelId,
+      },
+      {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Turn router classifier failed; using the default route",
+    );
     return {
       profile: STANDARD_MODEL_PROFILE,
       reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,

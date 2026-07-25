@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   configuredTurnRoute,
   selectTurnRoute,
   toPiReasoningLevel,
 } from "@/chat/services/turn-router";
+
+const mocks = vi.hoisted(() => ({
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logWarn: mocks.logWarn,
+}));
 
 const profiles = {
   standard: { modelId: "xai/grok-4.5" },
@@ -14,6 +23,10 @@ const routeTurn = (
 ) => selectTurnRoute({ ...args, profiles });
 
 describe("selectTurnRoute", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("keeps configured reasoning independent from model routing", () => {
     expect(configuredTurnRoute("standard", "xhigh", "agent_config")).toEqual({
       profile: "standard",
@@ -200,6 +213,16 @@ describe("selectTurnRoute", () => {
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      "turn_router_classifier_failed",
+      expect.objectContaining({
+        modelId: "openai/gpt-5.4-mini",
+      }),
+      {
+        "exception.message": "router failed",
+      },
+      "Turn router classifier failed; using the default route",
+    );
   });
 
   it("preserves high-confidence low classifications for deterministic simple work", async () => {

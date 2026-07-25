@@ -22,11 +22,11 @@ const XAI_SERVICE_UNAVAILABLE =
 
 describe("provider retry helpers", () => {
   it("marks retryable provider-boundary exceptions", () => {
-    const error = createProviderError(
-      new Error("Anthropic stream ended before message_stop"),
-    );
+    const cause = new Error("Anthropic stream ended before message_stop");
+    const error = createProviderError(cause);
 
     expect(error.message).toBe("AI provider error: network");
+    expect(error.cause).toBe(cause);
     expect(error).toBeInstanceOf(ProviderError);
     expect(error).toMatchObject({
       code: "provider_error",

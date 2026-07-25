@@ -10,7 +10,7 @@ import {
   type ThinkingLevel,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { embedMany, generateObject } from "ai";
+import { embedMany, generateObject, NoObjectGeneratedError } from "ai";
 
 // Directly register the anthropic provider at import time. pi-ai's built-in
 // registration relies on opaque dynamic import() calls that break under
@@ -344,23 +344,11 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     return { object: result.object as z.infer<TSchema> };
   } catch (error) {
     const providerError = createProviderError(error, {
+      ...(NoObjectGeneratedError.isInstance(error)
+        ? { kind: "invalid_response" }
+        : {}),
       modelId: params.modelId,
     });
-    if (isProviderRetryError(providerError)) {
-      throw providerError;
-    }
-
-    logException(
-      providerError,
-      "ai_completion_failed",
-      {},
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-        "gen_ai.request.model": params.modelId,
-      },
-      "AI object completion failed",
-    );
     throw providerError;
   }
 }

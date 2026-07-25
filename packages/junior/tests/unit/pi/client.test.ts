@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
   logException: vi.fn(),
   logWarn: vi.fn(),
+  noObjectGeneratedErrorIsInstance: vi.fn(),
   registerApiProvider: vi.fn(),
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
@@ -46,6 +47,9 @@ vi.mock("@ai-sdk/gateway", () => ({
 vi.mock("ai", () => ({
   embedMany: mocks.embedMany,
   generateObject: mocks.generateObject,
+  NoObjectGeneratedError: {
+    isInstance: mocks.noObjectGeneratedErrorIsInstance,
+  },
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -265,6 +269,29 @@ describe("completeText", () => {
         prompt: "return json",
       }),
     ).rejects.toThrow("AI provider error: network");
+    expect(mocks.logWarn).not.toHaveBeenCalled();
+    expect(mocks.logException).not.toHaveBeenCalled();
+  });
+
+  it("classifies invalid structured output without capturing it", async () => {
+    const sdkError = new Error("No object generated.");
+    mocks.generateObject.mockRejectedValue(sdkError);
+    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
+
+    const { completeObject } = await import("@/chat/pi/client");
+
+    await expect(
+      completeObject({
+        modelId: "anthropic/claude-haiku-4.5",
+        schema: z.object({ ok: z.boolean() }),
+        prompt: "return json",
+      }),
+    ).rejects.toMatchObject({
+      cause: sdkError,
+      kind: "invalid_response",
+      message: "AI provider error: invalid_response",
+      retryable: false,
+    });
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
   });

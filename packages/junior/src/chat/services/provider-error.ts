@@ -27,6 +27,7 @@ interface ProviderErrorOptions {
 }
 
 interface ProviderErrorDetails {
+  cause?: unknown;
   kind: ProviderErrorKind;
   modelId?: string;
   retryable: boolean;
@@ -44,7 +45,10 @@ export class ProviderError extends Error {
   readonly status?: number;
 
   constructor(details: ProviderErrorDetails) {
-    super(`AI provider error: ${details.kind}`);
+    super(
+      `AI provider error: ${details.kind}`,
+      details.cause !== undefined ? { cause: details.cause } : {},
+    );
     this.name = "ProviderError";
     this.kind = details.kind;
     this.modelId = details.modelId;
@@ -214,6 +218,7 @@ export function createProviderError(
     !TERMINAL_KINDS.has(kind) &&
     (options.retryable ?? RETRYABLE_KINDS.has(kind));
   return new ProviderError({
+    cause: error,
     kind,
     modelId: options.modelId,
     retryable,
