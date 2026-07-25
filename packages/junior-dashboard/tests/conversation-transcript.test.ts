@@ -7,7 +7,10 @@ import type {
 
 import {
   buildConversationTranscript,
+  conversationHistoryBridgeCursor,
   conversationHistoryChanged,
+  nextConversationHistoryCursor,
+  type ConversationHistoryPage,
 } from "../src/client/conversations/transcript";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
@@ -46,6 +49,20 @@ function detail(): ConversationDetailReport {
     startedAt: generatedAt,
     status: "active",
     surface: "internal",
+  };
+}
+
+function historyPage(
+  requestedBefore: string,
+  events: ConversationReportEvent[],
+  previousCursor?: string,
+): ConversationHistoryPage {
+  return {
+    events,
+    eventHistory: { status: "available" },
+    generatedAt,
+    requestedBefore,
+    ...(previousCursor ? { previousCursor } : {}),
   };
 }
 
@@ -127,5 +144,51 @@ describe("conversation transcript", () => {
     expect(
       conversationHistoryChanged(restrictedDetail, [formerlyVisible]),
     ).toBe(true);
+  });
+
+  it("bridges a shifted detail window without discarding loaded history", () => {
+    const loaded = historyPage(
+      "before-501",
+      [event(1), event(500)],
+      "before-1",
+    );
+
+    expect(conversationHistoryBridgeCursor("before-1002", [loaded])).toBe(
+      "before-1002",
+    );
+
+    const shifted = historyPage(
+      "before-1002",
+      [event(502), event(1001)],
+      "before-502",
+    );
+    expect(
+      conversationHistoryBridgeCursor("before-1002", [loaded, shifted]),
+    ).toBe("before-502");
+
+    const bridge = historyPage(
+      "before-502",
+      [event(2), event(501)],
+      "before-2",
+    );
+    expect(
+      conversationHistoryBridgeCursor("before-1002", [loaded, shifted, bridge]),
+    ).toBeUndefined();
+    expect(
+      nextConversationHistoryCursor("before-1002", [loaded, shifted, bridge]),
+    ).toBe("before-1");
+
+    const transcript = buildConversationTranscript(
+      {
+        ...detail(),
+        events: [event(1002)],
+        previousCursor: "before-1002",
+      },
+      [loaded, shifted, bridge],
+    );
+    expect(transcript.events.map((item) => item.seq)).toEqual([
+      1, 2, 500, 501, 502, 1001, 1002,
+    ]);
+    expect(transcript.previousCursor).toBe("before-1");
   });
 });

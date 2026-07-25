@@ -19,7 +19,10 @@ import {
 import { DashboardApiError, patch, read } from "../http";
 import {
   buildConversationTranscript,
+  conversationHistoryBridgeCursor,
   conversationHistoryChanged,
+  nextConversationHistoryCursor,
+  type ConversationHistoryPage,
 } from "./transcript";
 
 /** Return the stable cache key for one conversation detail resource. */
@@ -78,13 +81,18 @@ export function useConversationData(conversationId: string | undefined) {
       "conversation",
       conversationId,
       "history",
-      detail.data?.previousCursor,
       detail.data?.eventHistory.status,
     ],
-    queryFn: ({ pageParam, signal }) =>
-      readConversationEvents(conversationId!, pageParam, signal),
+    queryFn: async ({
+      pageParam,
+      signal,
+    }): Promise<ConversationHistoryPage> => ({
+      ...(await readConversationEvents(conversationId!, pageParam, signal)),
+      requestedBefore: pageParam,
+    }),
     initialPageParam: detail.data?.previousCursor ?? "",
-    getNextPageParam: (page) => page.previousCursor,
+    getNextPageParam: (_page, pages) =>
+      nextConversationHistoryCursor(detail.data?.previousCursor, pages),
     retry: false,
   });
 
@@ -104,10 +112,25 @@ export function useConversationData(conversationId: string | undefined) {
   const historyError = isInvalidCursorError(history.error)
     ? null
     : history.error;
+  const historyNeedsReconciliation = Boolean(
+    detail.data?.previousCursor &&
+    history.data &&
+    conversationHistoryBridgeCursor(
+      detail.data.previousCursor,
+      history.data.pages,
+    ) &&
+    !shouldRefreshDetail &&
+    !history.error &&
+    !history.isFetchingNextPage,
+  );
 
   useEffect(() => {
     if (shouldRefreshDetail) void detail.refetch();
   }, [detail.refetch, shouldRefreshDetail]);
+
+  useEffect(() => {
+    if (historyNeedsReconciliation) void history.fetchNextPage();
+  }, [history.fetchNextPage, historyNeedsReconciliation]);
 
   return {
     ...detail,
