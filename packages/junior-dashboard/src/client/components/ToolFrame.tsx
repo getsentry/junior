@@ -30,7 +30,7 @@ export function ToolFrame(props: {
               <span
                 className={cn(
                   "hidden text-[#777] max-md:inline",
-                  !staticFrame && "group-open:hidden",
+                  !staticFrame && "max-md:group-open:hidden",
                 )}
               >
                 ·
@@ -38,7 +38,7 @@ export function ToolFrame(props: {
               <span
                 className={cn(
                   "hidden shrink-0 whitespace-nowrap text-[#888] max-md:inline",
-                  !staticFrame && "group-open:hidden",
+                  !staticFrame && "max-md:group-open:hidden",
                 )}
               >
                 {props.mobileSummaryMeta}
@@ -90,7 +90,7 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "ml-6 min-w-0 max-w-full overflow-hidden px-[1.0625rem]";
+  return "min-w-0 max-w-full overflow-hidden";
 }
 
 function toolHeaderClass(interactive: boolean): string {
