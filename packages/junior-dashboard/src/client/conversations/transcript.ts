@@ -11,7 +11,7 @@ export type ConversationHistoryPage = ConversationEventPage & {
 /** Build the current transcript from independently cached REST resources. */
 export function buildConversationTranscript(
   detail: ConversationDetailReport,
-  historyPages: ConversationEventPage[],
+  historyPages: ConversationHistoryPage[],
 ): ConversationDetailReport {
   if (detail.eventHistory.status !== "available") {
     return withoutModelUsage(detail);
@@ -35,9 +35,11 @@ export function buildConversationTranscript(
       ...historyPages.flatMap((page) => page.events),
       ...detail.events,
     ]),
-    previousCursor: historyPages.length
-      ? oldestPreviousCursor(historyPages)
-      : detail.previousCursor,
+    previousCursor:
+      conversationHistoryBridgeCursor(detail.previousCursor, historyPages) ??
+      (historyPages.length
+        ? oldestPreviousCursor(historyPages)
+        : detail.previousCursor),
   };
 }
 

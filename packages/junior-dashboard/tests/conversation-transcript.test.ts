@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   ConversationDetailReport,
-  ConversationEventPage,
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
@@ -70,12 +69,8 @@ function historyPage(
 
 describe("conversation transcript", () => {
   it("derives one ordered transcript from detail and history resources", () => {
-    const historyPages: ConversationEventPage[] = [
-      {
-        events: [event(1), event(2), event(3)],
-        eventHistory: { status: "available" },
-        generatedAt,
-      },
+    const historyPages = [
+      historyPage("before-3", [event(1), event(2), event(3)]),
     ];
 
     expect(buildConversationTranscript(detail(), historyPages)).toEqual({
@@ -86,18 +81,9 @@ describe("conversation transcript", () => {
   });
 
   it("uses the oldest loaded page cursor without changing detail metadata", () => {
-    const historyPages: ConversationEventPage[] = [
-      {
-        events: [event(2)],
-        eventHistory: { status: "available" },
-        generatedAt,
-        previousCursor: "before-2",
-      },
-      {
-        events: [event(1)],
-        eventHistory: { status: "available" },
-        generatedAt,
-      },
+    const historyPages = [
+      historyPage("before-3", [event(2)], "before-2"),
+      historyPage("before-2", [event(1)]),
     ];
 
     expect(buildConversationTranscript(detail(), historyPages)).toMatchObject({
@@ -108,10 +94,11 @@ describe("conversation transcript", () => {
   });
 
   it("does not retain visible events or model usage after history is restricted", () => {
-    const restricted: ConversationEventPage = {
+    const restricted: ConversationHistoryPage = {
       events: [],
       eventHistory: { status: "expired", expiredAt: generatedAt },
       generatedAt,
+      requestedBefore: "before-3",
     };
     const current = buildConversationTranscript(detail(), [restricted]);
 
@@ -134,10 +121,11 @@ describe("conversation transcript", () => {
       events: [event(4)],
       modelUsage: undefined,
     };
-    const formerlyVisible: ConversationEventPage = {
+    const formerlyVisible: ConversationHistoryPage = {
       events: [event(1), event(2)],
       eventHistory: { status: "available" },
       generatedAt,
+      requestedBefore: "before-3",
     };
 
     expect(
@@ -192,6 +180,28 @@ describe("conversation transcript", () => {
       1, 2, 500, 501, 502, 1001, 1002,
     ]);
     expect(transcript.previousCursor).toBe("before-1");
+  });
+
+  it("marks a slid detail window incomplete until drained history reconnects", () => {
+    const drained = historyPage("before-3", [event(1), event(2)]);
+    const shiftedDetail = {
+      ...detail(),
+      events: [event(5), event(6)],
+      previousCursor: "before-5",
+    };
+
+    const disconnected = buildConversationTranscript(shiftedDetail, [drained]);
+    expect(disconnected.events.map((item) => item.seq)).toEqual([1, 2, 5, 6]);
+    expect(disconnected.previousCursor).toBe("before-5");
+
+    const connected = buildConversationTranscript(shiftedDetail, [
+      drained,
+      historyPage("before-5", [event(3), event(4)], "before-3"),
+    ]);
+    expect(connected.events.map((item) => item.seq)).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ]);
+    expect(connected.previousCursor).toBeUndefined();
   });
 
   it("changes the history version only when the oldest loaded event changes", () => {
