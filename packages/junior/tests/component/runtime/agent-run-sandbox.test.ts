@@ -107,19 +107,22 @@ vi.mock("@earendil-works/pi-agent-core", () => {
   return { Agent: MockAgent };
 });
 
-vi.mock("@/chat/config", () => ({
-  botConfig: {
-    fastModelId: "test-fast-model",
-    modelId: "test-model",
-    profiles: {
-      standard: { modelId: "test-model" },
-      handoff: { modelId: "test-handoff-model", reasoningLevel: "xhigh" },
-    },
-    turnTimeoutMs: 1000,
-    userName: "junior",
-  },
-  getRuntimeMetadata: () => ({ version: "test" }),
-}));
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    AI_FAST_MODEL: "test-fast-model",
+    AI_HANDOFF_MODEL: "test-handoff-model",
+    AI_MODEL: "test-model",
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+    getRuntimeMetadata: () => ({ version: "test" }),
+  };
+});
 
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",

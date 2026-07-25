@@ -321,7 +321,7 @@ describe("executeAgentRun model handoff", () => {
       runId: "run-router-model-handoff-timeout",
       turnId: "turn-router-model-handoff-timeout",
       input: { messageText: "Recommend the architecture." },
-      policy: { turnDeadlineAtMs: Date.now() + 50 },
+      policy: { turnDeadlineAtMs: Date.now() + 1_000 },
       routing: {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
@@ -329,6 +329,7 @@ describe("executeAgentRun model handoff", () => {
     });
 
     expect(outcome.status).toBe("completed");
+    expect(observations.summaryCalls).toBe(0);
     expect(observations.summaryAborted).toBe(false);
     expect(observations.providerCalls).toBe(1);
   });
@@ -754,5 +755,24 @@ describe("executeAgentRun model handoff", () => {
     expect(JSON.stringify(record?.piMessages)).not.toContain(
       "Implement the risky refactor.",
     );
+
+    const resumed = await executeAgentRun({
+      conversationId,
+      runId: "run-model-handoff-yield-resumed",
+      turnId: sessionId,
+      input: { messageText: "Implement the risky refactor." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      durability: {
+        shouldYield: () => false,
+      },
+    });
+
+    expect(resumed.status).toBe("completed");
+    if (resumed.status !== "completed") return;
+    expect(resumed.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
   });
 });

@@ -465,15 +465,33 @@ async function executeAgentRunInPrivacyContext(
 
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
-      turnRoute = {
-        profile: storedTurnRoute.modelProfile,
-        reasoningLevel: storedTurnRoute.reasoningLevel as TurnRoute["reasoningLevel"],
-        ...(storedTurnRoute.confidence !== undefined
-          ? { confidence: storedTurnRoute.confidence }
-          : {}),
-        reason: `persisted:${storedTurnRoute.source}`,
-        source: storedTurnRoute.source,
-      };
+      const resumedAfterHandoff =
+        activeModelProfile !== STANDARD_MODEL_PROFILE &&
+        activeModelProfile !== storedTurnRoute.modelProfile;
+      if (resumedAfterHandoff) {
+        const activeProfileConfig = profileConfig(
+          botConfig,
+          activeModelProfile,
+        );
+        turnRoute = {
+          profile: activeModelProfile,
+          reasoningLevel: (activeProfileConfig.reasoningLevel ??
+            existingSessionRecord?.reasoningLevel ??
+            storedTurnRoute.reasoningLevel) as TurnRoute["reasoningLevel"],
+          reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
+        };
+      } else {
+        turnRoute = {
+          profile: storedTurnRoute.modelProfile,
+          reasoningLevel:
+            storedTurnRoute.reasoningLevel as TurnRoute["reasoningLevel"],
+          ...(storedTurnRoute.confidence !== undefined
+            ? { confidence: storedTurnRoute.confidence }
+            : {}),
+          reason: `persisted:${storedTurnRoute.source}`,
+          source: storedTurnRoute.source,
+        };
+      }
     } else if (activeModelProfile === STANDARD_MODEL_PROFILE) {
       turnRoute = await selectTurnRoute({
         completeObject,

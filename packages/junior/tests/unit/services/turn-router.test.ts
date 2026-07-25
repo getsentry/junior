@@ -32,6 +32,7 @@ describe("selectTurnRoute", () => {
       profile: "standard",
       reasoningLevel: "xhigh",
       reason: "configured:agent_config",
+      source: "configured",
     });
   });
 
