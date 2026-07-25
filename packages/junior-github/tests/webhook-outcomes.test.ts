@@ -1416,7 +1416,7 @@ describe("GitHub cost associations", () => {
         pull_request: {
           ...(pullRequestPayload().pull_request as Record<string, unknown>),
           body:
-            "Fixes #1201 and getsentry/other#1202\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
+            "Fixes #1201 and GetSentry/Other#1202\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
           id: 5101,
           number: 1301,
         },
@@ -1449,6 +1449,41 @@ describe("GitHub cost associations", () => {
         { issueId: "4101", pullRequestId: "5101" },
         { issueId: "4102", pullRequestId: "5101" },
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("ignores links from untracked PRs without aborting the webhook", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEvent[] = [];
+    try {
+      const route = webhookRoute(fixture, published);
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-10T12:00:00.000Z",
+            id: 4201,
+            number: 1201,
+          }),
+          "issues",
+        ),
+      );
+      const untrackedPr = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body: "Fixes #1201",
+          id: 5201,
+          number: 1301,
+        },
+      });
+
+      await expect(route.handler(signedRequest(untrackedPr))).resolves.toMatchObject({
+        status: 202,
+      });
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequestIssues),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

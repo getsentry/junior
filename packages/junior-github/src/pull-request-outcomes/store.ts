@@ -177,12 +177,16 @@ export async function recordGitHubPullRequestLinkedIssues(
               issueId: juniorGitHubIssues.issueId,
             })
             .from(juniorGitHubIssues)
+            .innerJoin(
+              juniorGitHubPullRequests,
+              eq(
+                juniorGitHubPullRequests.pullRequestId,
+                association.pullRequestId,
+              ),
+            )
             .where(
               and(
-                eq(
-                  juniorGitHubIssues.repositoryFullName,
-                  issue.repositoryFullName,
-                ),
+                sql`lower(${juniorGitHubIssues.repositoryFullName}) = lower(${issue.repositoryFullName})`,
                 eq(juniorGitHubIssues.number, issue.number),
               ),
             ),
