@@ -220,6 +220,24 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
+  async loadByIdempotencyKey(
+    conversationId: string,
+    idempotencyKey: string,
+  ): Promise<ConversationEvent | undefined> {
+    const [row] = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return row ? eventFromRow(row) : undefined;
+  }
+
   async loadHistoryContaining(
     conversationId: string,
     seq: number,

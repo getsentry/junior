@@ -50,6 +50,15 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history;
   }
 
+  async loadByIdempotencyKey(
+    _conversationId: string,
+    idempotencyKey: string,
+  ): Promise<ConversationEvent | undefined> {
+    return this.history.find(
+      (event) => event.idempotencyKey === idempotencyKey,
+    );
+  }
+
   async loadHistoryContaining(): Promise<ConversationEvent[]> {
     return this.history;
   }

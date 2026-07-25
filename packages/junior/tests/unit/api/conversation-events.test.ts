@@ -479,17 +479,26 @@ describe("conversation report event projection", () => {
           surface: "slack",
         }),
         event(2, {
+          type: "turn_routed",
+          turnId: "turn-1",
+          modelProfile: "handoff",
+          modelId: "private-routed-model-id",
+          reasoningLevel: "high",
+          confidence: 0.93,
+          source: "router",
+        }),
+        event(3, {
           type: "compaction",
           modelProfile: "standard",
           modelId: "private-model-id",
           replacementHistory: [],
         }),
-        event(3, {
+        event(4, {
           type: "tool_execution_started",
           toolCallId: "private-handoff-tool-call-id",
           toolName: "handoff",
         }),
-        event(4, {
+        event(5, {
           type: "handoff",
           modelProfile: "fast",
           modelId: "private-handoff-model-id",
@@ -543,10 +552,19 @@ describe("conversation report event projection", () => {
     });
 
     expect(projected.map(({ seq }) => seq)).toEqual([
-      1, 2, 3, 4, 7, 8, 9, 10, 11, 13,
+      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
+      {
+        type: "turn_routed",
+        turnId: "turn-1",
+        modelProfile: "handoff",
+        modelId: "private-routed-model-id",
+        reasoningLevel: "high",
+        confidence: 0.93,
+        source: "router",
+      },
       { type: "compaction" },
       {
         type: "tool_calls",
@@ -555,8 +573,8 @@ describe("conversation report event projection", () => {
             toolCallId: "private-handoff-tool-call-id",
             name: "handoff",
             status: "running",
-            startedAt: "1970-01-01T00:00:03.000Z",
-            startedSeq: 3,
+            startedAt: "1970-01-01T00:00:04.000Z",
+            startedSeq: 4,
           },
         ],
       },

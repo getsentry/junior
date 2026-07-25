@@ -84,6 +84,7 @@ import {
   toPiReasoningLevel,
   type TurnRoute,
 } from "@/chat/services/turn-router";
+import { parseTurnReasoningLevel } from "@/chat/reasoning-level";
 import {
   addAgentTurnUsage,
   hasAgentTurnUsage,
@@ -473,18 +474,21 @@ async function executeAgentRunInPrivacyContext(
           botConfig,
           activeModelProfile,
         );
+        const resumedReasoningLevel = existingSessionRecord?.reasoningLevel
+          ? parseTurnReasoningLevel(existingSessionRecord.reasoningLevel)
+          : undefined;
         turnRoute = {
           profile: activeModelProfile,
-          reasoningLevel: (activeProfileConfig.reasoningLevel ??
-            existingSessionRecord?.reasoningLevel ??
-            storedTurnRoute.reasoningLevel) as TurnRoute["reasoningLevel"],
+          reasoningLevel:
+            activeProfileConfig.reasoningLevel ??
+            resumedReasoningLevel ??
+            storedTurnRoute.reasoningLevel,
           reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
         };
       } else {
         turnRoute = {
           profile: storedTurnRoute.modelProfile,
-          reasoningLevel:
-            storedTurnRoute.reasoningLevel as TurnRoute["reasoningLevel"],
+          reasoningLevel: storedTurnRoute.reasoningLevel,
           ...(storedTurnRoute.confidence !== undefined
             ? { confidence: storedTurnRoute.confidence }
             : {}),

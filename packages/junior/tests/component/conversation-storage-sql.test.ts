@@ -207,6 +207,24 @@ it("rejects history replacements through the ordinary append boundary", async ()
   ).rejects.toThrow("Invalid input");
 });
 
+it("rejects invalid turn route reasoning levels", async () => {
+  await expect(
+    getConversationEventStore().append("local:test:invalid-turn-route", [
+      {
+        data: {
+          type: "turn_routed",
+          turnId: "turn-1",
+          modelProfile: "standard",
+          modelId: "test-model",
+          reasoningLevel: "maximum",
+          source: "router",
+        },
+        createdAtMs: 1,
+      } as never,
+    ]),
+  ).rejects.toThrow("Invalid option");
+});
+
 it("rejects incomplete handoffs through the replacement boundary", async () => {
   const conversationId = "local:test:invalid-marker-start";
   await expect(

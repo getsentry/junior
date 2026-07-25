@@ -89,6 +89,76 @@ describe("canonical event transcript reduction", () => {
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
   });
 
+  it("adapts turn routes onto messages while keeping handoffs structural", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "message",
+          messageId: "question-1",
+          role: "user",
+          text: "Review this change.",
+        }),
+        event(2, "2026-01-01T00:00:02.000Z", {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+        }),
+        event(3, "2026-01-01T00:00:03.000Z", {
+          type: "turn_routed",
+          turnId: "turn-1",
+          modelProfile: "handoff",
+          modelId: "openai/gpt-5.6-sol",
+          reasoningLevel: "high",
+          confidence: 0.93,
+          source: "router",
+        }),
+        event(4, "2026-01-01T00:00:04.000Z", {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "handoff-1",
+              name: "handoff",
+              status: "running",
+            },
+          ],
+        }),
+        event(5, "2026-01-01T00:00:05.000Z", {
+          type: "handoff",
+          modelProfile: "review",
+          modelId: "openai/gpt-5.6-review",
+          triggeringToolCallId: "handoff-1",
+        }),
+      ]),
+    );
+    const entries = groupTranscriptMessages(messages);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "message",
+      message: {
+        role: "user",
+        route: {
+          modelProfile: "handoff",
+          modelId: "openai/gpt-5.6-sol",
+          reasoningLevel: "high",
+          confidence: 0.93,
+          source: "router",
+        },
+      },
+    });
+    expect(entries[1]).toMatchObject({
+      kind: "context",
+      part: {
+        type: "context_event",
+        event: {
+          type: "handoff",
+          modelProfile: "review",
+          modelId: "openai/gpt-5.6-review",
+        },
+      },
+    });
+  });
+
   it("preserves resource event type for special rendering", () => {
     const [message] = conversationTranscriptMessages(
       conversation([

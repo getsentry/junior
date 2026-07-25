@@ -10,6 +10,7 @@
 import { z } from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
+import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { conversationMessageProvenanceSchema } from "./provenance";
 
 const handoffModelProfileSchema = modelProfileSchema.refine(
@@ -228,7 +229,7 @@ const turnRoutedEventDataSchema = z
     turnId: z.string().min(1),
     modelProfile: modelProfileSchema,
     modelId: z.string().min(1),
-    reasoningLevel: z.string().min(1),
+    reasoningLevel: z.enum(TURN_REASONING_LEVELS),
     confidence: z.number().min(0).max(1).optional(),
     source: z.enum(["configured", "inherited", "router"]),
   })
@@ -441,6 +442,11 @@ export interface ConversationEventStore {
     conversationId: string,
     replacement: HistoryReplacement,
   ): Promise<void>;
+  /** One event selected by its retry-stable key across history versions. */
+  loadByIdempotencyKey(
+    conversationId: string,
+    idempotencyKey: string,
+  ): Promise<ConversationEvent | undefined>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */

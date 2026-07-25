@@ -132,6 +132,15 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         state: "started",
       }),
       reportEvent(2, iso(Date.parse(startedAt), 8_000), {
+        type: "turn_routed",
+        turnId: "active-turn",
+        modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
+        reasoningLevel: "high",
+        confidence: 0.93,
+        source: "router",
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 10_000), {
         type: "tool_calls",
         calls: [
           {
