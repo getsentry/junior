@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "../styles";
 import {
@@ -10,41 +10,38 @@ import { useTranscriptSearch } from "./transcriptSearch";
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
   children?: ReactNode;
-  collapsedSignature?: ReactNode;
   expandable?: boolean;
   meta: string[];
   mobileSummaryMeta?: string;
   raw?: boolean;
   signature: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   const { active: searchActive } = useTranscriptSearch();
-
-  // Search replaces the native details element, so discard its expansion state.
-  useEffect(() => {
-    if (searchActive) setOpen(false);
-  }, [searchActive]);
-
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
-  const mobileSummaryMeta =
-    props.mobileSummaryMeta && (!interactive || !open)
-      ? props.mobileSummaryMeta
-      : undefined;
-  const signature =
-    props.collapsedSignature && !searchActive && !props.raw && !open
-      ? props.collapsedSignature
-      : props.signature;
+  const staticFrame = searchActive || props.raw || !interactive;
   const header = (
     <TranscriptHeadingRow
       left={
         <>
-          {signature}
-          {mobileSummaryMeta ? (
+          {props.signature}
+          {props.mobileSummaryMeta ? (
             <>
-              <span className="hidden text-[#777] max-md:inline">·</span>
-              <span className="hidden shrink-0 whitespace-nowrap text-[#888] max-md:inline">
-                {mobileSummaryMeta}
+              <span
+                className={cn(
+                  "hidden text-[#777] max-md:inline",
+                  !staticFrame && "group-open:hidden",
+                )}
+              >
+                ·
+              </span>
+              <span
+                className={cn(
+                  "hidden shrink-0 whitespace-nowrap text-[#888] max-md:inline",
+                  !staticFrame && "group-open:hidden",
+                )}
+              >
+                {props.mobileSummaryMeta}
               </span>
             </>
           ) : null}
@@ -52,7 +49,7 @@ export function ToolFrame(props: {
       }
       leftClassName={cn(
         "gap-x-1 gap-y-0.5",
-        interactive && !open ? "flex-nowrap" : "flex-wrap",
+        staticFrame ? "flex-wrap" : "flex-nowrap group-open:flex-wrap",
       )}
       right={
         metaText ? (
@@ -72,7 +69,7 @@ export function ToolFrame(props: {
     ) : null;
 
   // Force-expand tool details during search so highlighted matches are visible.
-  if (searchActive || props.raw || !interactive) {
+  if (staticFrame) {
     return (
       <div className={toolFrameClass()}>
         <div className={toolHeaderClass(false)}>{header}</div>
@@ -83,13 +80,7 @@ export function ToolFrame(props: {
   }
 
   return (
-    <details
-      className={toolFrameClass()}
-      onToggle={(event) => {
-        if (event.currentTarget !== event.target) return;
-        setOpen(event.currentTarget.open);
-      }}
-    >
+    <details className={cn("group", toolFrameClass())}>
       <summary className={toolHeaderClass(true)}>{header}</summary>
       {mobileMeta}
       {props.children}

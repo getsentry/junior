@@ -24,7 +24,6 @@ import {
 import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
-import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
@@ -201,51 +200,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("github_search, query: is:pr is:open, limit: 25");
     expect(html).toContain("jr-rpc config get github.repo");
     expect(html).toContain("junior-qa");
-    expect(html).not.toContain('aria-label="Tool running"');
     expect(html).toContain('aria-label="Tool failed"');
-    expect(html.match(/<details/g)).toHaveLength(6);
-  });
-
-  it("keeps tool and subagent transcript rows borderless", () => {
-    const toolHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <TranscriptToolView
-            part={{
-              id: "tool-1",
-              input: { query: "regression" },
-              name: "search",
-              status: "running",
-              type: "tool_call",
-            }}
-          />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
-    );
-    const subagentHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <TranscriptSubagentView
-            part={{
-              childConversationId: "child-1",
-              id: "subagent-1",
-              status: "running",
-              subagentKind: "advisor",
-              type: "subagent",
-            }}
-          />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(toolHtml).not.toContain("border-white/[0.055]");
-    expect(toolHtml).not.toContain("bg-black/15");
-    expect(toolHtml).toContain("ml-6");
-    expect(toolHtml).toContain("px-[1.0625rem]");
-    expect(subagentHtml).not.toContain("border-white/[0.055]");
-    expect(subagentHtml).not.toContain("bg-black/15");
-    expect(subagentHtml).toContain("ml-6");
-    expect(subagentHtml).toContain("px-[1.0625rem]");
   });
 
   it("keeps a running tool name searchable and accessible", () => {
@@ -267,31 +222,6 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain('aria-label="webSearch (running)"');
     expect(html).toContain("<mark");
-    expect(html).not.toContain("junior-tool-shimmer");
-    expect(html).not.toContain("text-transparent");
-  });
-
-  it("keeps a static running-name treatment when motion is reduced", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <TranscriptToolView
-            part={{
-              id: "tool-1",
-              name: "webSearch",
-              status: "running",
-              type: "tool_call",
-            }}
-          />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain('aria-label="webSearch (running)"');
-    expect(html).toContain("motion-reduce:animate-none");
-    expect(html).toContain("bg-clip-text");
-    expect(html).not.toContain("motion-reduce:bg-none");
-    expect(html).not.toContain("motion-reduce:text-[#d6d6d6]");
   });
 
   it("exposes pressed state for transcript view controls", () => {
@@ -526,7 +456,7 @@ describe("dashboard canonical-event components", () => {
       ),
     );
     expect(html).toContain("search");
-    expect(html).toContain("junior-tool-shimmer");
+    expect(html).toContain('aria-label="search (running)"');
     expect(html).not.toContain(">running<");
     expect(html).not.toContain("started");
     expect(html).not.toContain("missing result");

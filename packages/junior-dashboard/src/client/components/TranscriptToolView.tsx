@@ -32,6 +32,7 @@ export function TranscriptToolView(props: {
   const signature = (
     <ToolSignature
       name={props.part.name}
+      preview={props.view === "raw" ? null : preview}
       running={props.part.status === "running"}
     />
   );
@@ -65,15 +66,6 @@ export function TranscriptToolView(props: {
       </ToolFrame>
     ) : (
       <ToolFrame
-        collapsedSignature={
-          preview ? (
-            <ToolSignature
-              name={props.part.name}
-              preview={preview}
-              running={props.part.status === "running"}
-            />
-          ) : undefined
-        }
         expandable={hasDetails}
         meta={meta}
         mobileSummaryMeta={mobileSummary}
@@ -108,7 +100,7 @@ export function TranscriptToolView(props: {
 
 function ToolSignature(props: {
   name: string;
-  preview?: string;
+  preview: string | null;
   running: boolean;
 }) {
   const { active: searchActive } = useTranscriptSearch();
@@ -126,8 +118,8 @@ function ToolSignature(props: {
       >
         <HighlightText text={props.name} />
       </strong>
-      {props.preview ? (
-        <code className="min-w-0 truncate font-[inherit] text-[#b8b8b8]">
+      {props.preview && !searchActive ? (
+        <code className="min-w-0 truncate font-[inherit] text-[#b8b8b8] group-open:hidden">
           (<HighlightText text={props.preview} />)
         </code>
       ) : null}
