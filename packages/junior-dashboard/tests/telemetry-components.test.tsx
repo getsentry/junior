@@ -26,6 +26,7 @@ import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
+import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
@@ -185,6 +186,22 @@ describe("dashboard canonical-event components", () => {
     expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
       'type="button"',
     );
+  });
+
+  it("renders typed tool states in the component gallery", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ToolCallGallery />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("webSearch");
+    expect(html).toContain("github_search, query: is:pr is:open, limit: 25");
+    expect(html).toContain("jr-rpc config get github.repo");
+    expect(html).toContain("junior-qa");
+    expect(html).not.toContain('aria-label="Tool running"');
+    expect(html).toContain('aria-label="Tool failed"');
+    expect(html.match(/<details/g)).toHaveLength(6);
   });
 
   it("exposes pressed state for transcript view controls", () => {
@@ -419,7 +436,8 @@ describe("dashboard canonical-event components", () => {
       ),
     );
     expect(html).toContain("search");
-    expect(html).toContain("running");
+    expect(html).toContain("junior-tool-shimmer");
+    expect(html).not.toContain(">running<");
     expect(html).not.toContain("started");
     expect(html).not.toContain("missing result");
   });

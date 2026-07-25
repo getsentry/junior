@@ -222,7 +222,7 @@ describe("dashboard canonical-event mock routes", () => {
           ? event.data.calls.map((call) => call.name)
           : [],
       ),
-    ).toContain("datacat.search_logs");
+    ).toContain("webSearch");
 
     const failed = await readDetail("slack:CQA777:1770014400.000500");
     expect(failed.events.at(-1)?.data).toMatchObject({

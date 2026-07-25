@@ -32,7 +32,7 @@ function removeExampleDashboardServerConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
+        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardComponentGallery,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
         "",
       )
       .replace(/  dashboard: \{[\s\S]*?  \},\n  plugins,/, "  plugins,")
@@ -44,7 +44,7 @@ function removeExampleDashboardNitroConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
+        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardComponentGallery,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
         "",
       )
       .replace(

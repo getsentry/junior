@@ -10,6 +10,7 @@ import { useTranscriptSearch } from "./transcriptSearch";
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
   children?: ReactNode;
+  collapsedSignature?: ReactNode;
   expandable?: boolean;
   meta: string[];
   mobileSummaryMeta?: string;
@@ -24,15 +25,19 @@ export function ToolFrame(props: {
     props.mobileSummaryMeta && (!interactive || !open)
       ? props.mobileSummaryMeta
       : undefined;
+  const signature =
+    props.collapsedSignature && !searchActive && !props.raw && !open
+      ? props.collapsedSignature
+      : props.signature;
   const header = (
     <TranscriptHeadingRow
       left={
         <>
-          {props.signature}
+          {signature}
           {mobileSummaryMeta ? (
             <>
               <span className="hidden text-[#777] max-md:inline">·</span>
-              <span className="hidden min-w-0 break-words text-[#888] max-md:inline">
+              <span className="hidden shrink-0 whitespace-nowrap text-[#888] max-md:inline">
                 {mobileSummaryMeta}
               </span>
             </>
@@ -88,7 +93,7 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "min-w-0 max-w-full overflow-hidden rounded-lg border border-white/[0.055] bg-black/15 px-3";
+  return "min-w-0 max-w-full overflow-hidden";
 }
 
 function toolHeaderClass(interactive: boolean): string {

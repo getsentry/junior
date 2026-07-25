@@ -145,7 +145,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "active-search",
-            name: "datacat.search_logs",
+            name: "webSearch",
             status: "running",
           },
         ],
@@ -242,6 +242,48 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         status: "completed",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "qa-load-skill",
+            name: "loadSkill",
+            status: "completed",
+            input: { skill_name: "junior-qa" },
+            output: { ok: true },
+          },
+        ],
+      }),
+      reportEvent(9, iso(Date.parse(startedAt), 52_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "qa-execute-tool",
+            name: "executeTool",
+            status: "completed",
+            input: {
+              tool_name: "github_search",
+              arguments: { query: "is:pr is:open", limit: 25 },
+            },
+            output: { ok: true, matches: 3 },
+          },
+        ],
+      }),
+      reportEvent(10, iso(Date.parse(startedAt), 54_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "qa-bash",
+            name: "bash",
+            status: "error",
+            input: {
+              command: "jr-rpc config get github.repo",
+              timeout_ms: 10_000,
+            },
+            output: { error: "configuration unavailable" },
+          },
+        ],
+      }),
+      reportEvent(11, iso(Date.parse(startedAt), 56_000), {
         type: "compaction",
         modelProfile: "standard",
         modelId: "openai/gpt-5.4",
@@ -256,7 +298,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
           summaryChars: 1_200,
         },
       }),
-      reportEvent(9, iso(Date.parse(startedAt), 55_000), {
+      reportEvent(12, iso(Date.parse(startedAt), 58_000), {
         type: "message",
         messageId: "qa-assistant",
         role: "assistant",

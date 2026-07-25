@@ -27,3 +27,8 @@ export function exampleDashboardAuthRequired(): boolean {
 export function exampleDashboardMockConversations(): boolean {
   return process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS === "true";
 }
+
+/** Return whether the example dashboard should expose its local component gallery. */
+export function exampleDashboardComponentGallery(): boolean {
+  return process.env.JUNIOR_DASHBOARD_COMPONENT_GALLERY === "true";
+}

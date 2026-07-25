@@ -23,7 +23,9 @@ import { MetricList, MetricValue } from "../../components/Metric";
 import { StatCard } from "../../components/metrics/StatCard";
 import { TranscriptMarkdown } from "../../components/TranscriptMarkdown";
 import { TranscriptText } from "../../components/TranscriptText";
+import { TranscriptToolView } from "../../components/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
+import type { TranscriptViewToolCallPart } from "../../types";
 
 const EVENT_NOTIFICATION = `[event notification]
 
@@ -97,6 +99,123 @@ const CONTRIBUTION_DAYS = fixtureDates(70).map((date, index) => ({
   durationMs: index % 9 === 0 ? 0 : 45_000 + ((index * 13) % 20) * 18_000,
 }));
 
+type ToolCallFixture = {
+  description: string;
+  part: TranscriptViewToolCallPart;
+  timestamp: number;
+};
+
+const TOOL_CALL_TIMESTAMP = Date.UTC(2026, 4, 1, 16);
+
+const TOOL_CALL_FIXTURES = [
+  {
+    description: "Default completed tool with normalized arguments",
+    part: {
+      id: "gallery-search",
+      input: {
+        query: "release regression",
+        limit: 25,
+        options: { includeArchived: false },
+      },
+      name: "searchIssues",
+      output: { matches: 3 },
+      resultTimestamp: TOOL_CALL_TIMESTAMP + 1_842,
+      status: "completed",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP,
+  },
+  {
+    description: "Running webSearch with name-only shimmer",
+    part: {
+      id: "gallery-running",
+      input: {
+        query: "service:checkout status:error",
+        max_results: 50,
+      },
+      name: "webSearch",
+      status: "running",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 3_000,
+  },
+  {
+    description: "Failed tool with warning rail marker",
+    part: {
+      id: "gallery-error",
+      input: {
+        command: "jr-rpc config get github.repo",
+        timeout_ms: 10_000,
+      },
+      name: "bash",
+      output: { error: "configuration unavailable" },
+      resultTimestamp: TOOL_CALL_TIMESTAMP + 6_416,
+      status: "error",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 6_000,
+  },
+  {
+    description: "Known loadSkill signature",
+    part: {
+      id: "gallery-load-skill",
+      input: { skill_name: "junior-qa" },
+      name: "loadSkill",
+      output: { ok: true },
+      resultTimestamp: TOOL_CALL_TIMESTAMP + 8_105,
+      status: "completed",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 8_000,
+  },
+  {
+    description: "Known executeTool signature with nested arguments",
+    part: {
+      id: "gallery-execute-tool",
+      input: {
+        tool_name: "github_search",
+        arguments: { query: "is:pr is:open", limit: 25 },
+      },
+      name: "executeTool",
+      output: { matches: 3, ok: true },
+      resultTimestamp: TOOL_CALL_TIMESTAMP + 10_723,
+      status: "completed",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 10_000,
+  },
+  {
+    description: "Long generic arguments exercise both truncation limits",
+    part: {
+      id: "gallery-long",
+      input: {
+        project: "payments-checkout-platform",
+        query:
+          "Find every regression associated with the most recent production deployment and include the complete evidence trail",
+        environment: "production",
+        includeResolved: false,
+        ignoredAfterFourEntries: "not shown in the collapsed preview",
+      },
+      name: "investigateDeploy",
+      output: { ok: true },
+      resultTimestamp: TOOL_CALL_TIMESTAMP + 13_250,
+      status: "completed",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 12_000,
+  },
+  {
+    description: "Completed tool without argument or result payloads",
+    part: {
+      id: "gallery-empty",
+      name: "systemTime",
+      status: "completed",
+      type: "tool_call",
+    },
+    timestamp: TOOL_CALL_TIMESTAMP + 15_000,
+  },
+] as const satisfies readonly ToolCallFixture[];
+
 /** Config-gated visual fixtures for reusable dashboard components. */
 export function ComponentsPage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
@@ -121,30 +240,81 @@ export function ComponentsPage() {
       >
         <Fixture title="Buttons and controls">
           <div className="flex flex-wrap items-center gap-3">
-            <Button><Copy aria-hidden="true" size={14} />Copy</Button>
+            <Button>
+              <Copy aria-hidden="true" size={14} />
+              Copy
+            </Button>
             <Button disabled>Disabled</Button>
-            <Button aria-label="Bot action" size="icon"><Bot aria-hidden="true" size={16} /></Button>
-            <ToggleButton pressed={pressed} variant="pill" onClick={() => setPressed((value) => !value)}>Toggle</ToggleButton>
-            <ToggleButton pressed={!pressed} variant="text" onClick={() => setPressed((value) => !value)}>Alternate</ToggleButton>
+            <Button aria-label="Bot action" size="icon">
+              <Bot aria-hidden="true" size={16} />
+            </Button>
+            <ToggleButton
+              pressed={pressed}
+              variant="pill"
+              onClick={() => setPressed((value) => !value)}
+            >
+              Toggle
+            </ToggleButton>
+            <ToggleButton
+              pressed={!pressed}
+              variant="text"
+              onClick={() => setPressed((value) => !value)}
+            >
+              Alternate
+            </ToggleButton>
             <TimeRangeSelector onChange={setRange} value={range} />
           </div>
         </Fixture>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard detail="Across the selected period" icon={MessageSquare} label="Conversations" value="1,284" />
-          <StatCard detail="94% completed successfully" icon={Activity} label="Completed" value="1,207" />
-          <StatCard detail="Cumulative agent runtime" icon={Timer} label="Runtime" value="18.4h" />
-          <StatCard detail="Model and tool workers" icon={Bot} label="Active agents" value="7" />
+          <StatCard
+            detail="Across the selected period"
+            icon={MessageSquare}
+            label="Conversations"
+            value="1,284"
+          />
+          <StatCard
+            detail="94% completed successfully"
+            icon={Activity}
+            label="Completed"
+            value="1,207"
+          />
+          <StatCard
+            detail="Cumulative agent runtime"
+            icon={Timer}
+            label="Runtime"
+            value="18.4h"
+          />
+          <StatCard
+            detail="Model and tool workers"
+            icon={Bot}
+            label="Active agents"
+            value="7"
+          />
         </div>
         <Fixture title="Metadata and empty state">
           <div className="grid gap-4">
             <MetricList
               items={[
-                { content: <MetricValue tooltip={[{ label: "input", value: "12.4k" }, { label: "output", value: "3.1k" }]}>15.5k tokens</MetricValue>, key: "tokens" },
+                {
+                  content: (
+                    <MetricValue
+                      tooltip={[
+                        { label: "input", value: "12.4k" },
+                        { label: "output", value: "3.1k" },
+                      ]}
+                    >
+                      15.5k tokens
+                    </MetricValue>
+                  ),
+                  key: "tokens",
+                },
                 { content: <MetricValue>$0.42</MetricValue>, key: "cost" },
                 { content: <MetricValue>38s</MetricValue>, key: "duration" },
               ]}
             />
-            <EmptyTelemetry>No activity was recorded for this period.</EmptyTelemetry>
+            <EmptyTelemetry>
+              No activity was recorded for this period.
+            </EmptyTelemetry>
           </div>
         </Fixture>
       </GallerySection>
@@ -157,7 +327,10 @@ export function ComponentsPage() {
         <PeopleActivityChart days={PEOPLE_DAYS} />
         <LocationDirectoryActivityChart days={LOCATION_DAYS} />
         <Card>
-          <CardHeader description="Daily conversation intensity over ten weeks." title="Contribution activity" />
+          <CardHeader
+            description="Daily conversation intensity over ten weeks."
+            title="Contribution activity"
+          />
           <ContributionGrid days={CONTRIBUTION_DAYS} />
         </Card>
       </GallerySection>
@@ -173,12 +346,53 @@ export function ComponentsPage() {
           <TranscriptMarkdown text={GFM_SAMPLE} />
         </Fixture>
         <Fixture title="TranscriptText assistant">
-          <TranscriptText firstChildIndex={0} lastChildIndex={0} role="assistant" text={MIXED_ASSISTANT} />
+          <TranscriptText
+            firstChildIndex={0}
+            lastChildIndex={0}
+            role="assistant"
+            text={MIXED_ASSISTANT}
+          />
         </Fixture>
         <Fixture title="TranscriptText user">
-          <TranscriptText firstChildIndex={0} lastChildIndex={0} role="user" text={EVENT_NOTIFICATION} />
+          <TranscriptText
+            firstChildIndex={0}
+            lastChildIndex={0}
+            role="user"
+            text={EVENT_NOTIFICATION}
+          />
+        </Fixture>
+        <Fixture title="Tool calls">
+          <ToolCallGallery />
         </Fixture>
       </GallerySection>
+    </div>
+  );
+}
+
+/** Render typed transcript tool states for visual regression and interaction checks. */
+export function ToolCallGallery() {
+  return (
+    <div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3">
+      <div aria-hidden="true" className="flex justify-center">
+        <span className="w-px bg-cyan-300/15" />
+      </div>
+      <div className="grid min-w-0 gap-3">
+        <p className="m-0 text-[0.78rem] leading-relaxed text-white/45">
+          Click any row to compare its collapsed signature with the full
+          arguments and result.
+        </p>
+        {TOOL_CALL_FIXTURES.map((fixture) => (
+          <div className="grid min-w-0 gap-1" key={fixture.part.id}>
+            <div className="font-mono text-[0.65rem] uppercase tracking-[0.08em] text-white/30">
+              {fixture.description}
+            </div>
+            <TranscriptToolView
+              part={fixture.part}
+              timestamp={fixture.timestamp}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -191,7 +405,9 @@ function GallerySection(props: {
   return (
     <section className="grid min-w-0 gap-4">
       <div>
-        <h2 className="m-0 font-display text-xl font-medium text-white">{props.title}</h2>
+        <h2 className="m-0 font-display text-xl font-medium text-white">
+          {props.title}
+        </h2>
         <p className="mt-1 mb-0 text-sm text-white/45">{props.description}</p>
       </div>
       {props.children}

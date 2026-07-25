@@ -786,6 +786,7 @@ describe("createApp plugin config", () => {
       dashboard: {
         authRequired: false,
         allowedGoogleDomains: ["sentry.io"],
+        componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -821,6 +822,15 @@ describe("createApp plugin config", () => {
     const systemPage = await app.fetch(new Request("http://localhost/system"));
     expect(systemPage.status).toBe(200);
     await expect(systemPage.text()).resolves.toBe("dashboard");
+
+    const componentGallery = await app.fetch(
+      new Request("http://localhost/dev"),
+    );
+    expect(componentGallery.status).toBe(200);
+    await expect(componentGallery.text()).resolves.toBe("dashboard");
+    expect(createDashboardApp).toHaveBeenCalledWith(
+      expect.objectContaining({ componentGallery: true }),
+    );
 
     const dashboardAvatar = await app.fetch(
       new Request("http://localhost/_junior/dashboard/avatar.png"),

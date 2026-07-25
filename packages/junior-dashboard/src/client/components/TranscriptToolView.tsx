@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
+import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
@@ -24,19 +26,21 @@ export function TranscriptToolView(props: {
   const hasDetails =
     props.part.input !== undefined || props.part.output !== undefined;
   const meta = [duration, timestamp].filter(isString);
-  const status =
-    props.part.status === "completed" ? null : (
-      <ToolStatus status={props.part.status} />
-    );
   const mobileSummary = duration;
-
-  if (props.view === "raw" && hasDetails) {
-    return (
+  const preview = toolCallPreview(props.part.name, props.part.input);
+  const signature = (
+    <ToolSignature
+      name={props.part.name}
+      running={props.part.status === "running"}
+    />
+  );
+  const frame =
+    props.view === "raw" && hasDetails ? (
       <ToolFrame
         meta={meta}
         mobileSummaryMeta={mobileSummary}
         raw
-        signature={<ToolSignature name={props.part.name} status={status} />}
+        signature={signature}
       >
         <ToolBody>
           <HighlightedCode
@@ -58,64 +62,87 @@ export function TranscriptToolView(props: {
           />
         </ToolBody>
       </ToolFrame>
+    ) : (
+      <ToolFrame
+        collapsedSignature={
+          preview ? (
+            <ToolSignature
+              name={props.part.name}
+              preview={preview}
+              running={props.part.status === "running"}
+            />
+          ) : undefined
+        }
+        expandable={hasDetails}
+        meta={meta}
+        mobileSummaryMeta={mobileSummary}
+        signature={signature}
+      >
+        {props.part.input !== undefined ? (
+          <ToolBody label="arguments">
+            <HighlightedCode
+              code={stringifyPartValue(props.part.input)}
+              language="json"
+            />
+          </ToolBody>
+        ) : null}
+        {props.part.output !== undefined ? (
+          <ToolBody label="result">
+            <HighlightedCode
+              code={stringifyPartValue(props.part.output)}
+              language="json"
+            />
+          </ToolBody>
+        ) : null}
+      </ToolFrame>
     );
-  }
 
   return (
-    <ToolFrame
-      expandable={hasDetails}
-      meta={meta}
-      mobileSummaryMeta={mobileSummary}
-      signature={<ToolSignature name={props.part.name} status={status} />}
-    >
-      {props.part.input !== undefined ? (
-        <ToolBody label="arguments">
-          <HighlightedCode
-            code={stringifyPartValue(props.part.input)}
-            language="json"
-          />
-        </ToolBody>
-      ) : null}
-      {props.part.output !== undefined ? (
-        <ToolBody label="result">
-          <HighlightedCode
-            code={stringifyPartValue(props.part.output)}
-            language="json"
-          />
-        </ToolBody>
-      ) : null}
-    </ToolFrame>
+    <div className="relative min-w-0">
+      <ToolErrorMarker status={props.part.status} />
+      {frame}
+    </div>
   );
 }
 
-function ToolSignature(props: { name: string; status: ReactNode }) {
+function ToolSignature(props: {
+  name: string;
+  preview?: string;
+  running: boolean;
+}) {
   return (
     <>
-      <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
+      <strong
+        className={
+          props.running
+            ? "shrink-0 animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text font-bold text-transparent motion-reduce:animate-none motion-reduce:bg-none motion-reduce:text-[#d6d6d6]"
+            : "shrink-0 font-bold text-[#d6d6d6]"
+        }
+      >
         <HighlightText text={props.name} />
       </strong>
-      {props.status ? (
-        <>
-          <span className="text-[#777]">·</span>
-          {props.status}
-        </>
+      {props.preview ? (
+        <code className="min-w-0 truncate font-[inherit] text-[#b8b8b8]">
+          (<HighlightText text={props.preview} />)
+        </code>
       ) : null}
     </>
   );
 }
 
-function ToolStatus(props: { status: "error" | "running" }) {
-  if (props.status === "running") {
-    return (
-      <span
-        aria-label="running"
-        className="animate-pulse text-cyan-200/70 motion-reduce:animate-none"
-      >
-        running
-      </span>
-    );
-  }
-  return <span className="text-rose-300">error</span>;
+function ToolErrorMarker(props: {
+  status: TranscriptViewToolCallPart["status"];
+}) {
+  if (props.status !== "error") return null;
+  return (
+    <span
+      aria-label="Tool failed"
+      className="absolute -left-[1.95rem] top-1 z-[1] grid size-6 place-items-center rounded border border-rose-300/40 bg-[#071012] text-rose-200 shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]"
+      role="img"
+    >
+      <TriangleAlert size={12} strokeWidth={2.2} />
+    </span>
+  );
 }
 
 function ToolBody(props: { children: ReactNode; label?: string }) {

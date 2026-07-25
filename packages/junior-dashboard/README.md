@@ -26,6 +26,9 @@ state.
 Mock reporting data exists for local UI development only and must not be
 reachable as a production fallback.
 
+Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
+and open `/dev` to inspect the typed component fixtures.
+
 User-facing setup lives in
 `packages/docs/src/content/docs/operate/dashboard.md`. Follow
 `../../policies/data-redaction.md` and `../../policies/frontend-components.md`.

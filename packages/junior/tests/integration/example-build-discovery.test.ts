@@ -102,6 +102,7 @@ async function importExampleDashboardConfig() {
   const href = `${pathToFileURL(exampleDashboardConfig).href}?t=${Date.now()}`;
   return (await import(href)) as {
     exampleDashboardAuthRequired: () => boolean;
+    exampleDashboardComponentGallery: () => boolean;
   };
 }
 
@@ -178,6 +179,20 @@ describe.sequential("example build discovery integration", () => {
     delete process.env.NODE_ENV;
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
+  });
+
+  it("enables the component gallery only through its explicit flag", async () => {
+    const config = await importExampleDashboardConfig();
+
+    process.env = { ...originalEnv };
+    delete process.env.JUNIOR_DASHBOARD_COMPONENT_GALLERY;
+    expect(config.exampleDashboardComponentGallery()).toBe(false);
+
+    process.env.JUNIOR_DASHBOARD_COMPONENT_GALLERY = "true";
+    expect(config.exampleDashboardComponentGallery()).toBe(true);
+
+    process.env.JUNIOR_DASHBOARD_COMPONENT_GALLERY = "false";
+    expect(config.exampleDashboardComponentGallery()).toBe(false);
   });
 
   it("does not include top-level Vercel api source files", () => {
