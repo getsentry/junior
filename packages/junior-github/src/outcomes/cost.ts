@@ -112,6 +112,50 @@ function conversationTreeCostExpr() {
   `;
 }
 
+/** Distinct conversation ids for one PR including same-repo linked issues. */
+function pullRequestConversationIdsExpr() {
+  const pullRequests = juniorGitHubPullRequests;
+  const issues = juniorGitHubIssues;
+  return sql`
+    ARRAY(
+      SELECT DISTINCT unnest(
+        ${pullRequests.conversationIds}
+        || coalesce((
+          SELECT array_agg(DISTINCT issue_conversation_id)
+          FROM ${issues} AS linked_issues
+          CROSS JOIN LATERAL unnest(linked_issues.conversation_ids)
+            AS issue_conversation_id
+          WHERE linked_issues.repository_full_name =
+            ${pullRequests.repositoryFullName}
+            AND linked_issues.number = ANY (${pullRequests.linkedIssueNumbers})
+        ), ARRAY[]::text[])
+      )
+    )
+  `;
+}
+
+/** Distinct conversation ids for one issue including same-repo linked PRs. */
+function issueConversationIdsExpr() {
+  const pullRequests = juniorGitHubPullRequests;
+  const issues = juniorGitHubIssues;
+  return sql`
+    ARRAY(
+      SELECT DISTINCT unnest(
+        ${issues.conversationIds}
+        || coalesce((
+          SELECT array_agg(DISTINCT pr_conversation_id)
+          FROM ${pullRequests} AS linked_prs
+          CROSS JOIN LATERAL unnest(linked_prs.conversation_ids)
+            AS pr_conversation_id
+          WHERE linked_prs.repository_full_name =
+            ${issues.repositoryFullName}
+            AND ${issues.number} = ANY (linked_prs.linked_issue_numbers)
+        ), ARRAY[]::text[])
+      )
+    )
+  `;
+}
+
 /** Aggregate PR and issue conversation cost across the standard report windows. */
 export async function aggregateGitHubCostWindows(args: {
   db: GitHubDb;
@@ -135,92 +179,80 @@ export async function aggregateGitHubCostWindows(args: {
     sql`, `,
   );
   const conversationTreeCost = conversationTreeCostExpr();
+  const pullRequestConversationIds = pullRequestConversationIdsExpr();
+  const issueConversationIds = issueConversationIdsExpr();
 
   const result = await args.db.execute(sql`
     WITH windows(days, start_at) AS (
       VALUES ${windowValues}
-    ), pull_request_costs AS (
+    ), pull_request_entities AS (
       SELECT
         ${pullRequests.openedAt} AS opened_at,
+        conversation_ids.ids AS ids,
         ${conversationTreeCost} AS cost_usd
       FROM ${pullRequests}
       CROSS JOIN LATERAL (
-        SELECT ARRAY(
-          SELECT DISTINCT unnest(
-            ${pullRequests.conversationIds}
-            || coalesce((
-              SELECT array_agg(DISTINCT issue_conversation_id)
-              FROM ${issues} AS linked_issues
-              CROSS JOIN LATERAL unnest(linked_issues.conversation_ids)
-                AS issue_conversation_id
-              WHERE linked_issues.repository_full_name =
-                ${pullRequests.repositoryFullName}
-                AND linked_issues.number = ANY (${pullRequests.linkedIssueNumbers})
-            ), ARRAY[]::text[])
-          )
-        ) AS ids
+        SELECT ${pullRequestConversationIds} AS ids
       ) AS conversation_ids
       WHERE ${pullRequests.openedAt} >= ${oldestStart}
-    ), issue_costs AS (
+    ), issue_entities AS (
       SELECT
         ${issues.openedAt} AS opened_at,
+        conversation_ids.ids AS ids,
         ${conversationTreeCost} AS cost_usd
       FROM ${issues}
       CROSS JOIN LATERAL (
-        SELECT ARRAY(
-          SELECT DISTINCT unnest(
-            ${issues.conversationIds}
-            || coalesce((
-              SELECT array_agg(DISTINCT pr_conversation_id)
-              FROM ${pullRequests} AS linked_prs
-              CROSS JOIN LATERAL unnest(linked_prs.conversation_ids)
-                AS pr_conversation_id
-              WHERE linked_prs.repository_full_name =
-                ${issues.repositoryFullName}
-                AND ${issues.number} = ANY (linked_prs.linked_issue_numbers)
-            ), ARRAY[]::text[])
-          )
-        ) AS ids
+        SELECT ${issueConversationIds} AS ids
       ) AS conversation_ids
       WHERE ${issues.openedAt} >= ${oldestStart}
     ), pull_request_window AS (
       SELECT
         windows.days AS days,
-        coalesce(
-          sum(pull_request_costs.cost_usd)
-            FILTER (WHERE pull_request_costs.opened_at >= windows.start_at),
-          0
-        )::double precision AS pull_request_cost_usd,
+        coalesce((
+          SELECT ${conversationTreeCost}
+          FROM (
+            SELECT ARRAY(
+              SELECT DISTINCT unnest(pull_request_entities.ids)
+              FROM pull_request_entities
+              WHERE pull_request_entities.opened_at >= windows.start_at
+            ) AS ids
+          ) AS conversation_ids
+        ), 0)::double precision AS pull_request_cost_usd,
         (
           percentile_cont(0.5) WITHIN GROUP (
-            ORDER BY pull_request_costs.cost_usd
+            ORDER BY pull_request_entities.cost_usd
           ) FILTER (
-            WHERE pull_request_costs.opened_at >= windows.start_at
-              AND pull_request_costs.cost_usd > 0
+            WHERE pull_request_entities.opened_at >= windows.start_at
+              AND pull_request_entities.cost_usd > 0
           )
         )::double precision AS median_pull_request_cost_usd
       FROM windows
-      LEFT JOIN pull_request_costs ON true
-      GROUP BY windows.days
+      LEFT JOIN pull_request_entities ON true
+      GROUP BY windows.days, windows.start_at
     ), issue_window AS (
       SELECT
         windows.days AS days,
-        coalesce(
-          sum(issue_costs.cost_usd)
-            FILTER (WHERE issue_costs.opened_at >= windows.start_at),
-          0
-        )::double precision AS issue_cost_usd,
+        coalesce((
+          SELECT ${conversationTreeCost}
+          FROM (
+            SELECT ARRAY(
+              SELECT DISTINCT unnest(issue_entities.ids)
+              FROM issue_entities
+              WHERE issue_entities.opened_at >= windows.start_at
+            ) AS ids
+          ) AS conversation_ids
+        ), 0)::double precision AS issue_cost_usd,
         (
           percentile_cont(0.5) WITHIN GROUP (
-            ORDER BY issue_costs.cost_usd
+            ORDER BY issue_entities.cost_usd
           ) FILTER (
-            WHERE issue_costs.opened_at >= windows.start_at
-              AND issue_costs.cost_usd > 0
+            WHERE issue_entities.opened_at >= windows.start_at
+              AND issue_entities.cost_usd > 0
           )
         )::double precision AS median_issue_cost_usd
       FROM windows
-      LEFT JOIN issue_costs ON true
-      GROUP BY windows.days
+      LEFT JOIN issue_entities ON true
+      GROUP BY windows.days, windows.start_at
     )
     SELECT
       pull_request_window.days AS "days",
@@ -250,67 +282,59 @@ export async function aggregateGitHubRepositoryCosts(args: {
   const pullRequests = juniorGitHubPullRequests;
   const issues = juniorGitHubIssues;
   const conversationTreeCost = conversationTreeCostExpr();
+  const pullRequestConversationIds = pullRequestConversationIdsExpr();
+  const issueConversationIds = issueConversationIdsExpr();
   const result = await args.db.execute(sql`
-    WITH pull_request_costs AS (
+    WITH pull_request_entities AS (
       SELECT
         ${pullRequests.repositoryFullName} AS repository,
-        ${conversationTreeCost} AS cost_usd
+        conversation_ids.ids AS ids
       FROM ${pullRequests}
       CROSS JOIN LATERAL (
-        SELECT ARRAY(
-          SELECT DISTINCT unnest(
-            ${pullRequests.conversationIds}
-            || coalesce((
-              SELECT array_agg(DISTINCT issue_conversation_id)
-              FROM ${issues} AS linked_issues
-              CROSS JOIN LATERAL unnest(linked_issues.conversation_ids)
-                AS issue_conversation_id
-              WHERE linked_issues.repository_full_name =
-                ${pullRequests.repositoryFullName}
-                AND linked_issues.number = ANY (${pullRequests.linkedIssueNumbers})
-            ), ARRAY[]::text[])
-          )
-        ) AS ids
+        SELECT ${pullRequestConversationIds} AS ids
       ) AS conversation_ids
       WHERE ${pullRequests.openedAt} >= ${start}
-    ), issue_costs AS (
+    ), issue_entities AS (
       SELECT
         ${issues.repositoryFullName} AS repository,
-        ${conversationTreeCost} AS cost_usd
+        conversation_ids.ids AS ids
       FROM ${issues}
       CROSS JOIN LATERAL (
-        SELECT ARRAY(
-          SELECT DISTINCT unnest(
-            ${issues.conversationIds}
-            || coalesce((
-              SELECT array_agg(DISTINCT pr_conversation_id)
-              FROM ${pullRequests} AS linked_prs
-              CROSS JOIN LATERAL unnest(linked_prs.conversation_ids)
-                AS pr_conversation_id
-              WHERE linked_prs.repository_full_name =
-                ${issues.repositoryFullName}
-                AND ${issues.number} = ANY (linked_prs.linked_issue_numbers)
-            ), ARRAY[]::text[])
-          )
-        ) AS ids
+        SELECT ${issueConversationIds} AS ids
       ) AS conversation_ids
       WHERE ${issues.openedAt} >= ${start}
+    ), repositories AS (
+      SELECT repository FROM pull_request_entities
+      UNION
+      SELECT repository FROM issue_entities
     ), pull_request_totals AS (
       SELECT
-        repository,
-        coalesce(sum(cost_usd), 0)::double precision AS pull_request_cost_usd
-      FROM pull_request_costs
-      GROUP BY repository
+        repositories.repository AS repository,
+        coalesce((
+          SELECT ${conversationTreeCost}
+          FROM (
+            SELECT ARRAY(
+              SELECT DISTINCT unnest(pull_request_entities.ids)
+              FROM pull_request_entities
+              WHERE pull_request_entities.repository = repositories.repository
+            ) AS ids
+          ) AS conversation_ids
+        ), 0)::double precision AS pull_request_cost_usd
+      FROM repositories
     ), issue_totals AS (
       SELECT
-        repository,
-        coalesce(sum(cost_usd), 0)::double precision AS issue_cost_usd
-      FROM issue_costs
-      GROUP BY repository
-    ), repositories AS (
-      SELECT repository FROM pull_request_totals
-      UNION
-      SELECT repository FROM issue_totals
+        repositories.repository AS repository,
+        coalesce((
+          SELECT ${conversationTreeCost}
+          FROM (
+            SELECT ARRAY(
+              SELECT DISTINCT unnest(issue_entities.ids)
+              FROM issue_entities
+              WHERE issue_entities.repository = repositories.repository
+            ) AS ids
+          ) AS conversation_ids
+        ), 0)::double precision AS issue_cost_usd
+      FROM repositories
     )
     SELECT
       repositories.repository AS "repository",

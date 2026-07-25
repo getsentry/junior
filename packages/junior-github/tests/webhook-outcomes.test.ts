@@ -1497,4 +1497,88 @@ describe("GitHub cost associations", () => {
       await fixture.close();
     }
   });
+
+  it("dedupes shared conversation trees across linked PRs and issues in totals", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      await fixture.execute(`
+        CREATE TABLE junior_conversations (
+          conversation_id text PRIMARY KEY,
+          root_conversation_id text,
+          usage_json jsonb
+        );
+      `);
+      await fixture.execute(`
+        INSERT INTO junior_conversations (conversation_id, root_conversation_id, usage_json)
+        VALUES
+          ('slack:issue', 'slack:issue', '{"cost":{"total":1}}'::jsonb),
+          ('slack:pr-a', 'slack:pr-a', '{"cost":{"total":2}}'::jsonb),
+          ('slack:pr-b', 'slack:pr-b', '{"cost":{"total":3}}'::jsonb);
+      `);
+
+      const openedAt = new Date("2026-07-10T12:00:00.000Z");
+      await fixture.db().insert(juniorGitHubIssues).values({
+        conversationIds: ["slack:issue"],
+        number: 1201,
+        openedAt,
+        issueId: "issue-shared",
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "2001",
+        state: "open",
+        updatedAt: openedAt,
+      });
+      await fixture.db().insert(juniorGitHubPullRequests).values([
+        {
+          conversationIds: ["slack:pr-a"],
+          linkedIssueNumbers: [1201],
+          number: 1301,
+          openedAt,
+          pullRequestId: "pr-a",
+          repositoryFullName: "getsentry/junior",
+          repositoryId: "2001",
+          state: "open",
+          updatedAt: openedAt,
+        },
+        {
+          conversationIds: ["slack:pr-b"],
+          linkedIssueNumbers: [1201],
+          number: 1302,
+          openedAt,
+          pullRequestId: "pr-b",
+          repositoryFullName: "getsentry/junior",
+          repositoryId: "2001",
+          state: "open",
+          updatedAt: openedAt,
+        },
+      ]);
+
+      const report = await buildGitHubOutcomeReport({
+        db: fixture.db(),
+        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
+      });
+
+      // Per-entity medians still include linked issue work:
+      // PR A = 3, PR B = 4, issue = 1+2+3 = 6
+      // Window/repo totals dedupe shared trees once:
+      // PR total = 1+2+3 = 6, issue total = 6
+      expect(report.metrics).toEqual(
+        expect.arrayContaining([
+          { label: "PR cost · opened in 30d", value: "$6.00" },
+          { label: "Median PR cost · opened in 30d", value: "$3.50" },
+          { label: "Issue cost · opened in 30d", value: "$6.00" },
+          { label: "Median issue cost · opened in 30d", value: "$6.00" },
+        ]),
+      );
+      expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
+        cost: "$6.00",
+        repository: "getsentry/junior",
+      });
+      expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
+        cost: "$6.00",
+        repository: "getsentry/junior",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });
