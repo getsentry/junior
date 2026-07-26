@@ -207,6 +207,11 @@ export function getDispatchConversationId(
   return `agent-dispatch:${dispatch.id}`;
 }
 
+/** Return the stable synthetic input message id for one dispatch turn. */
+export function getDispatchInputMessageId(dispatchId: string): string {
+  return `agent-dispatch:${dispatchId}`;
+}
+
 /** Give dispatch slices stable turn ids for resumability and trace correlation. */
 export function getDispatchTurnId(dispatchId: string): string {
   return `dispatch:${dispatchId}`;

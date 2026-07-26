@@ -9,6 +9,7 @@ import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import { getChannelConfigurationServiceById } from "@/chat/runtime/thread-state";
 import {
   getDispatchConversationId,
+  getDispatchInputMessageId,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import {
@@ -49,7 +50,7 @@ export function createSlackDispatchTurnRunner(options: {
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
     const message = new Message({
-      id: `agent-dispatch:${dispatch.id}`,
+      id: getDispatchInputMessageId(dispatch.id),
       threadId: conversationId,
       text: dispatch.input,
       attachments: [],

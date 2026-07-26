@@ -77,6 +77,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
+import { getDispatchInputMessageId } from "@/chat/agent-dispatch/store";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -346,13 +347,17 @@ export async function continueSlackAgentRun(
           conversationId: payload.conversationId,
         });
         const artifacts = coerceThreadArtifactsState(currentState);
+        const dispatchId = activeSessionRecord.dispatchId;
+        const dispatchUserMessage = dispatchId
+          ? conversation.messages.find(
+              (message) =>
+                message.role === "user" &&
+                message.id === getDispatchInputMessageId(dispatchId),
+            )
+          : undefined;
         const userMessage =
           getTurnUserMessage(conversation, payload.sessionId) ??
-          (activeSessionRecord.dispatchId
-            ? [...conversation.messages]
-                .reverse()
-                .find((message) => message.role === "user")
-            : undefined);
+          dispatchUserMessage;
         const systemActor =
           activeSessionRecord.actor?.platform === "system"
             ? activeSessionRecord.actor
@@ -370,9 +375,11 @@ export async function continueSlackAgentRun(
         const channelConfiguration = getChannelConfigurationServiceById(
           destination.channelId,
         );
-        const conversationContext = buildConversationContext(conversation, {
-          excludeMessageId: userMessage.id,
-        });
+        const conversationContext = dispatchId
+          ? undefined
+          : buildConversationContext(conversation, {
+              excludeMessageId: userMessage.id,
+            });
         const sandboxRef = getPersistedSandboxState(currentState);
         let actor: SlackActor | undefined;
         let credentialContext: CredentialContext;
@@ -448,12 +455,16 @@ export async function continueSlackAgentRun(
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             input: {
-              conversationContext,
+              ...(conversationContext ? { conversationContext } : {}),
               // Pi history is SQL-authoritative: the resumed run reads its
-              // session record first and falls back to the step projection.
-              piMessages: await loadProjection({
-                conversationId: payload.conversationId,
-              }),
+              // exact dispatch session so unrelated conversation input cannot
+              // gain system authority. Interactive turns retain their merged
+              // projection so queued steering remains visible.
+              piMessages: dispatchId
+                ? activeSessionRecord.piMessages
+                : await loadProjection({
+                    conversationId: payload.conversationId,
+                  }),
               ...getTurnUserReplyAttachmentContext(userMessage),
             },
             routing: {

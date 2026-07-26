@@ -123,6 +123,8 @@ import {
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -1080,6 +1082,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
         let finalizedFailureEventId: string | undefined;
+        let terminalDispatchFailureOutcome: "blocked" | "failed" = "failed";
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
             return;
@@ -1798,6 +1801,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           shouldPersistFailureState = true;
           const classifiedFailure = getConversationTurnBoundaryError(error);
           const failureCause = classifiedFailure?.cause ?? error;
+          if (
+            failureCause instanceof AuthorizationFlowDisabledError ||
+            failureCause instanceof PluginCredentialFailureError
+          ) {
+            terminalDispatchFailureOutcome = "blocked";
+          }
           const failureCode =
             classifiedFailure?.failureCode ?? boundaryFailureCode;
           const failureEventId =
@@ -1872,6 +1881,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   source,
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
+                  ...(options.execution?.dispatch
+                    ? {
+                        dispatchOutcome: terminalDispatchFailureOutcome,
+                      }
+                    : {}),
                   traceId: getActiveTraceId(),
                 });
                 const sessionRecord = await getAgentTurnSessionRecord(
@@ -1887,7 +1901,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                       "Agent turn failed before assistant output handling completed",
                   });
                 }
-                await recordDispatchOutcome("failed", "failed");
               } catch (recordError) {
                 logException(
                   recordError,

@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import {
+  getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
@@ -17,7 +18,10 @@ import {
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
+  recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import type { AgentRunRouting } from "@/chat/agent/request";
 import {
   appendAndEnqueueInboundMessage,
@@ -32,6 +36,7 @@ import {
   claimDispatchMailboxAppend,
   confirmDispatchMailboxAppend,
   getDispatchConversationId,
+  getDispatchInputMessageId,
   getDispatchRecord,
   getDispatchTurnId,
   isTerminalDispatchStatus,
@@ -122,7 +127,7 @@ export function buildAgentDispatchInboundMessage(
     createdAtMs: dispatch.createdAtMs,
     delivery: "defer",
     destination: dispatch.destination,
-    inboundMessageId: `agent-dispatch:${dispatch.id}`,
+    inboundMessageId: getDispatchInputMessageId(dispatch.id),
     input: {
       // The dispatch record is the idempotent request authority. The mailbox
       // only signals which request this conversation lease may advance.
@@ -333,6 +338,44 @@ async function projectDispatchTurnResult(
   }
 }
 
+function getDispatchBlockingError(
+  error: unknown,
+): AuthorizationFlowDisabledError | PluginCredentialFailureError | undefined {
+  const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
+  return cause instanceof AuthorizationFlowDisabledError ||
+    cause instanceof PluginCredentialFailureError
+    ? cause
+    : undefined;
+}
+
+async function persistBlockedDispatchTurn(
+  dispatch: DispatchRecord,
+  error: AuthorizationFlowDisabledError | PluginCredentialFailureError,
+): Promise<void> {
+  const conversationId = getDispatchConversationId(dispatch);
+  const sessionId = getDispatchTurnId(dispatch.id);
+  const session = await getAgentTurnSessionRecord(conversationId, sessionId);
+  await recordAgentTurnSessionSummary({
+    actor: dispatch.actor,
+    conversationId,
+    destination: dispatch.destination,
+    destinationVisibility: dispatch.destinationVisibility,
+    dispatchId: dispatch.id,
+    dispatchOutcome: "blocked",
+    sessionId,
+    sliceId: session?.sliceId ?? 1,
+    source: dispatch.source,
+    state: "failed",
+    surface: "api",
+  });
+  await markDispatchBlocked(
+    dispatch.id,
+    error instanceof AuthorizationFlowDisabledError
+      ? `Dispatch requires ${error.provider} authorization.`
+      : error.message,
+  );
+}
+
 /** Run one dispatch start or resume under the owning conversation lease. */
 export function createAgentDispatchConversationWorker(
   options: AgentDispatchConversationWorkerOptions,
@@ -381,6 +424,7 @@ export function createAgentDispatchConversationWorker(
     }
     const durableResult = await readDispatchTurnResult(dispatch);
     if (
+      durableResult.outcome === "blocked" ||
       durableResult.outcome === "completed" ||
       durableResult.outcome === "failed"
     ) {
@@ -423,6 +467,12 @@ export function createAgentDispatchConversationWorker(
       }
       if (isTurnInputCommitLostError(error)) {
         return { status: "lost_lease" };
+      }
+      const blockingError = getDispatchBlockingError(error);
+      if (blockingError) {
+        await persistBlockedDispatchTurn(dispatch, blockingError);
+        await acknowledge();
+        return { status: "completed" };
       }
       if (!context.attempt.isFinalAttempt) {
         throw error;
