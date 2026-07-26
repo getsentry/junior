@@ -228,7 +228,7 @@ function newRunConversationId(): string {
 async function hasLocalDevServer(): Promise<boolean> {
   const port = process.env.PORT?.trim() || "3000";
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(1_000),
     });
     await response.body?.cancel();
@@ -253,20 +253,22 @@ async function prepareLocalChatRun(
   const devServerEgressSignals = await hasLocalDevServer();
   const deps: LocalAgentTurnDeps = {
     agentRunner,
-    cancelAuthorization: oauthCallback.cancelAuthorization,
+    authorization: {
+      callbackPort: oauthCallback.port,
+      cancel: oauthCallback.cancelAuthorization,
+      deliver: async (request) => {
+        oauthCallback.beginAuthorization(request.authorizationUrl);
+        await reportStatus(
+          io,
+          `${request.label}:\n${request.authorizationUrl}\n${request.completionText}`,
+        );
+      },
+      wait: oauthCallback.waitForAuthorization,
+    },
     devServerEgressSignals,
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },
-    deliverAuthorizationRequest: async (request) => {
-      oauthCallback.beginAuthorization(request.authorizationUrl);
-      await reportStatus(
-        io,
-        `${request.label}:\n${request.authorizationUrl}\n${request.completionText}`,
-      );
-    },
-    oauthCallbackPort: oauthCallback.port,
-    waitForAuthorization: oauthCallback.waitForAuthorization,
     onStatus: async (status) => {
       await reportStatus(io, status);
     },

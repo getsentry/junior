@@ -12,8 +12,7 @@ import {
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress/policy";
 import {
-  parseSandboxEgressAuthRequiredSignal,
-  parseSandboxEgressPermissionDeniedSignal,
+  sandboxEgressSignalsResponseSchema,
   type SandboxEgressAuthRequiredSignal,
   type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/schemas";
@@ -158,18 +157,29 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     return token;
   };
-  const devServerSignalUrl = (egressId: string): string => {
+  const devServerSignalRequest = (
+    egressId: string,
+  ): {
+    headers: HeadersInit;
+    url: string;
+  } => {
     const port = process.env.PORT?.trim() || "3000";
-    return `http://127.0.0.1:${port}/api/internal/sandbox-egress/${encodeURIComponent(
-      sandboxEgressCredentialTokenFor(egressId),
-    )}/signals`;
+    return {
+      headers: {
+        "x-junior-sandbox-egress-token":
+          sandboxEgressCredentialTokenFor(egressId),
+      },
+      url: `http://127.0.0.1:${port}/api/internal/sandbox-egress/signals`,
+    };
   };
   const clearEgressSignals = async (egressId: string): Promise<void> => {
     if (!options.devServerEgressSignals) {
       await clearSandboxEgressSignals(egressId);
       return;
     }
-    const response = await fetch(devServerSignalUrl(egressId), {
+    const request = devServerSignalRequest(egressId);
+    const response = await fetch(request.url, {
+      headers: request.headers,
       method: "DELETE",
     });
     if (!response.ok) {
@@ -194,19 +204,23 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         ...(permissionDenied ? { permissionDenied } : {}),
       };
     }
-    const response = await fetch(devServerSignalUrl(egressId));
+    const request = devServerSignalRequest(egressId);
+    const response = await fetch(request.url, {
+      headers: request.headers,
+    });
     if (!response.ok) {
       throw new Error(
         `Could not consume dev-server sandbox egress signals: HTTP ${response.status}`,
       );
     }
-    const value = (await response.json()) as Record<string, unknown>;
-    const authRequired = parseSandboxEgressAuthRequiredSignal(
-      value.auth_required,
+    const value = sandboxEgressSignalsResponseSchema.safeParse(
+      await response.json(),
     );
-    const permissionDenied = parseSandboxEgressPermissionDeniedSignal(
-      value.permission_denied,
-    );
+    if (!value.success) {
+      throw new Error("Dev-server sandbox egress signals were invalid");
+    }
+    const authRequired = value.data.auth_required;
+    const permissionDenied = value.data.permission_denied;
     return {
       ...(authRequired ? { authRequired } : {}),
       ...(permissionDenied ? { permissionDenied } : {}),

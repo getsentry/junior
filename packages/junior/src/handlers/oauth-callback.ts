@@ -74,9 +74,11 @@ interface OAuthCallbackOptions {
 /**
  * OAuth callback contract for `@sentry/junior`.
  *
- * Providers redirect users to a concrete GET endpoint (`/api/oauth/callback/:provider`).
- * We complete token exchange synchronously for correctness, then use `waitUntil(...)`
- * for best-effort Slack side effects so the browser response returns quickly.
+ * Providers redirect users to `/api/oauth/callback/:provider`. A public signed
+ * callback relays to the owning CLI; the loopback callback exchanges and stores
+ * the local credential while the CLI owns continuation. Slack callbacks
+ * exchange credentials synchronously, then use `waitUntil(...)` for
+ * best-effort resume side effects.
  */
 function htmlErrorResponse(
   title: string,

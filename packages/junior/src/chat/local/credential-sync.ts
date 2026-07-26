@@ -27,6 +27,7 @@ function syncSecret(): string {
   return secret;
 }
 
+/** Sign one local credential payload in its own HMAC domain. */
 function signature(body: string): string {
   const signingKey = createSecretKey(Buffer.from(syncSecret(), "utf8"));
   return createHmac("sha256", signingKey)
@@ -34,6 +35,7 @@ function signature(body: string): string {
     .digest("base64url");
 }
 
+/** Compare credential signatures without leaking a matching prefix by timing. */
 function signaturesMatch(expected: string, actual: string): boolean {
   const expectedBuffer = Buffer.from(expected);
   const actualBuffer = Buffer.from(actual);

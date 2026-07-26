@@ -58,4 +58,50 @@ describe("oauth callback harnesses", () => {
       await expect(run()).rejects.toThrow(expectedError);
     },
   );
+
+  it.each([
+    {
+      label: "generic OAuth",
+      run: () =>
+        runOauthCallbackRoute({
+          provider: "eval-oauth",
+          state: "oauth-state-1",
+          code: "eval-oauth-code",
+          expectBackgroundWork: false,
+        }),
+      expectedError:
+        'OAuth callback route registered unexpected waitUntil() work for provider "eval-oauth"',
+    },
+    {
+      label: "MCP OAuth",
+      run: () =>
+        runMcpOauthCallbackRoute({
+          provider: "eval-auth",
+          state: "auth-session-1",
+          code: "eval-auth-code",
+          expectBackgroundWork: false,
+        }),
+      expectedError:
+        'MCP OAuth callback route registered unexpected waitUntil() work for provider "eval-auth"',
+    },
+  ])(
+    "fails when the $label callback unexpectedly schedules background work",
+    async ({ run, expectedError }) => {
+      const response = new Response("ok", { status: 200 });
+      oauthCallbackGetMock.mockImplementation(
+        async (_request, _provider, waitUntil) => {
+          waitUntil(Promise.resolve());
+          return response;
+        },
+      );
+      mcpOauthCallbackGetMock.mockImplementation(
+        async (_request, _provider, waitUntil) => {
+          waitUntil(Promise.resolve());
+          return response;
+        },
+      );
+
+      await expect(run()).rejects.toThrow(expectedError);
+    },
+  );
 });

@@ -1,10 +1,21 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
+import { z } from "zod";
 
 const LOCAL_OAUTH_STATE_PREFIX = "jr-local";
 const LOCAL_OAUTH_TOKEN_CONTEXT = "junior.local-oauth-relay.v1";
 const LOCAL_OAUTH_TOKEN_TTL = "10m";
+const localOAuthRelayPayloadSchema = z
+  .object({
+    aud: z.literal(LOCAL_OAUTH_TOKEN_CONTEXT),
+    exp: z.number().int(),
+    iss: z.literal(LOCAL_OAUTH_TOKEN_CONTEXT),
+    jti: z.string().min(1),
+    port: z.number().int().min(1).max(65_535),
+  })
+  .strict();
 
+/** Derive the HMAC key used only for signed local OAuth relay state. */
 function relayKey(): Uint8Array {
   const secret = process.env.JUNIOR_SECRET?.trim();
   if (!secret) {
@@ -46,13 +57,8 @@ export async function localOAuthRelayPort(
         audience: LOCAL_OAUTH_TOKEN_CONTEXT,
       },
     );
-    const port = payload.port;
-    return typeof port === "number" &&
-      Number.isSafeInteger(port) &&
-      port >= 1 &&
-      port <= 65_535
-      ? port
-      : undefined;
+    const parsed = localOAuthRelayPayloadSchema.safeParse(payload);
+    return parsed.success ? parsed.data.port : undefined;
   } catch {
     return undefined;
   }

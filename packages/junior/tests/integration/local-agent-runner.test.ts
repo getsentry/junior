@@ -190,7 +190,7 @@ describe("local agent runner", () => {
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "hello" }),
         policy: expect.objectContaining({
-          authorizationFlowMode: "interactive",
+          authorizationFlowMode: "disabled",
         }),
         routing: expect.objectContaining({
           credentialContext: {
@@ -280,8 +280,9 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
     const requests: Parameters<AgentRunner["run"]>[0][] = [];
     const deliverAuthorizationRequest =
-      vi.fn<NonNullable<LocalAgentTurnDeps["deliverAuthorizationRequest"]>>();
+      vi.fn<NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]>();
     const waitForAuthorization = vi.fn(async () => undefined);
+    const completeDeliveredTurn = vi.fn(async () => undefined);
 
     await runLocalAgentTurn(
       {
@@ -311,13 +312,26 @@ describe("local agent runner", () => {
               };
             }
             await deliverAssistantText(request, "uploaded");
-            return completedAgentRun(successReply("uploaded"));
+            return completedAgentRun(
+              successReply("uploaded", {
+                piMessages: [
+                  {
+                    role: "assistant",
+                    content: [{ type: "text", text: "uploaded" }],
+                  },
+                ] as PiMessage[],
+              }),
+            );
           },
         },
-        deliverAuthorizationRequest,
+        authorization: {
+          callbackPort: 43123,
+          cancel: vi.fn(),
+          deliver: deliverAuthorizationRequest,
+          wait: waitForAuthorization,
+        },
+        completeDeliveredTurn,
         deliverReply: async () => undefined,
-        oauthCallbackPort: 43123,
-        waitForAuthorization,
       },
     );
 
@@ -326,6 +340,9 @@ describe("local agent runner", () => {
     expect(requests).toHaveLength(2);
     expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
     expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
+    expect(completeDeliveredTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sliceId: 2 }),
+    );
     expect(requests[0]?.policy).toMatchObject({
       authorizationFlowMode: "interactive",
       localOAuthCallbackPort: 43123,
@@ -473,7 +490,12 @@ describe("local agent runner", () => {
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          cancelAuthorization,
+          authorization: {
+            callbackPort: 43123,
+            cancel: cancelAuthorization,
+            deliver: vi.fn(),
+            wait: vi.fn(),
+          },
           agentRunner: {
             run: async () => {
               throw new Error(rawError);
@@ -492,6 +514,9 @@ describe("local agent runner", () => {
       eventId,
     });
     expect(capture).toHaveBeenCalledOnce();
+    expect(capture.mock.calls[0]?.[2]).toMatchObject({
+      runId: expect.stringMatching(/^local-run-[0-9a-f-]{36}$/),
+    });
     expect(cancelAuthorization).toHaveBeenCalledOnce();
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);
   });

@@ -8,7 +8,14 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { syncLocalOAuthCredential } from "@/chat/local/credential-sync";
 
 const LOCAL_OAUTH_TIMEOUT_MS = 10 * 60 * 1000;
+const LOCAL_OAUTH_CALLBACK_TIMEOUT_MS = 60 * 1000;
 
+/**
+ * Own one loopback callback listener and at most one active authorization.
+ *
+ * Call `beginAuthorization` before waiting. Success, cancellation, timeout,
+ * and `close` all settle that wait exactly once.
+ */
 export interface LocalOAuthCallbackServer {
   beginAuthorization: (authorizationUrl: string) => void;
   cancelAuthorization: () => void;
@@ -24,6 +31,18 @@ interface PendingAuthorization {
   settled: boolean;
   state: string;
   timeout: NodeJS.Timeout;
+}
+
+function decodeProvider(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const provider = decodeURIComponent(value);
+    return /^[a-z][a-z0-9-]*$/.test(provider) ? provider : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Start the loopback callback that completes OAuth in the local CLI process. */
@@ -57,16 +76,20 @@ export async function startLocalOAuthCallbackServer(
 
   const server = createServer(async (incoming, outgoing) => {
     const host = incoming.headers.host ?? "127.0.0.1";
-    const requestUrl = new URL(incoming.url ?? "/", `http://${host}`);
+    let requestUrl: URL;
+    try {
+      requestUrl = new URL(incoming.url ?? "/", `http://${host}`);
+    } catch {
+      outgoing.writeHead(400).end("Invalid callback request");
+      return;
+    }
     const mcpMatch = requestUrl.pathname.match(
       /^\/api\/oauth\/callback\/mcp\/([^/]+)$/,
     );
     const pluginMatch = requestUrl.pathname.match(
       /^\/api\/oauth\/callback\/([^/]+)$/,
     );
-    const provider = decodeURIComponent(
-      mcpMatch?.[1] ?? pluginMatch?.[1] ?? "",
-    );
+    const provider = decodeProvider(mcpMatch?.[1] ?? pluginMatch?.[1]);
     if (!provider) {
       outgoing.writeHead(404).end("Not found");
       return;
@@ -82,6 +105,16 @@ export async function startLocalOAuthCallbackServer(
       return;
     }
     authorization.callbackStarted = true;
+    clearTimeout(authorization.timeout);
+    authorization.timeout = setTimeout(() => {
+      if (!outgoing.headersSent) {
+        outgoing.writeHead(504).end("Authorization callback timed out");
+      }
+      completeAuthorization(
+        authorization,
+        new Error("Timed out completing OAuth authorization"),
+      );
+    }, LOCAL_OAUTH_CALLBACK_TIMEOUT_MS);
 
     const backgroundTasks: Promise<unknown>[] = [];
     const waitUntil: WaitUntilFn = (task) => {
@@ -114,8 +147,14 @@ export async function startLocalOAuthCallbackServer(
           }
           await syncLocalOAuthCredential(provider, tokens);
         }
+        if (authorization.settled) {
+          return;
+        }
         completeAuthorization(authorization, true);
       } else {
+        if (authorization.settled) {
+          return;
+        }
         completeAuthorization(
           authorization,
           new Error(

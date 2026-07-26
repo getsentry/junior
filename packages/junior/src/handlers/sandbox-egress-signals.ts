@@ -5,6 +5,8 @@ import {
   parseSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
 
+const SANDBOX_EGRESS_TOKEN_HEADER = "x-junior-sandbox-egress-token";
+
 function isLoopbackDevelopmentRequest(request: Request): boolean {
   const hostname = new URL(request.url).hostname;
   return (
@@ -14,14 +16,13 @@ function isLoopbackDevelopmentRequest(request: Request): boolean {
 }
 
 /** Clear command-scoped sandbox egress signals through the loopback dev server. */
-export async function DELETE(
-  request: Request,
-  token: string,
-): Promise<Response> {
+export async function DELETE(request: Request): Promise<Response> {
   if (!isLoopbackDevelopmentRequest(request)) {
     return new Response(null, { status: 404 });
   }
-  const context = parseSandboxEgressCredentialToken(token);
+  const context = parseSandboxEgressCredentialToken(
+    request.headers.get(SANDBOX_EGRESS_TOKEN_HEADER) ?? "",
+  );
   if (!context) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -30,11 +31,13 @@ export async function DELETE(
 }
 
 /** Consume command-scoped sandbox egress signals through the loopback dev server. */
-export async function GET(request: Request, token: string): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   if (!isLoopbackDevelopmentRequest(request)) {
     return new Response(null, { status: 404 });
   }
-  const context = parseSandboxEgressCredentialToken(token);
+  const context = parseSandboxEgressCredentialToken(
+    request.headers.get(SANDBOX_EGRESS_TOKEN_HEADER) ?? "",
+  );
   if (!context) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

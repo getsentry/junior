@@ -1,4 +1,5 @@
 import path from "node:path";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
@@ -22,6 +23,8 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { mswServer } from "../msw/server";
 
 /**
  * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
@@ -109,6 +112,7 @@ describe("oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_SECRET: "test-local-oauth-secret",
     };
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
     vi.resetModules();
@@ -198,6 +202,131 @@ describe("oauth callback slack integration", () => {
       expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
     );
     expect(executeAgentRunMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it("resumes a parked local turn through the real loopback callback", async () => {
+    mswServer.use(
+      http.post(
+        "http://127.0.0.1:3000/api/internal/local-oauth-credentials",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { startLocalOAuthCallbackServer } =
+      await import("@/chat/local/oauth-callback-server");
+    const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
+    const { runLocalAgentTurn } = await import("@/chat/local/runner");
+    const { persistAuthPauseSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const conversationId = "local:oauth:loopback";
+    const requests: Parameters<typeof testAgentRunner.run>[0][] = [];
+    const localAgentRunner = {
+      run: vi.fn(async (request: Parameters<typeof testAgentRunner.run>[0]) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          await request.durability?.recordPendingAuth?.({
+            actorId: "local-cli",
+            kind: "plugin",
+            linkSentAtMs: Date.now(),
+            provider: "eval-oauth",
+            sessionId: request.turnId,
+          });
+          await persistAuthPauseSessionRecord({
+            actor: request.routing.actor,
+            conversationId,
+            currentSliceId: 1,
+            destination: request.routing.destination,
+            errorMessage: "eval-oauth authorization required",
+            logContext: {},
+            messages: [],
+            modelId: "fake-local-oauth",
+            sessionId: request.turnId,
+            source: request.routing.source,
+            surface: request.routing.surface,
+          });
+          await request.delivery?.onAuthorizationRequest?.({
+            authorizationUrl: authorizationUrl!,
+            completionText: "Junior will continue after authorization.",
+            label: "Connect Eval OAuth",
+          });
+          return {
+            status: "awaiting_auth" as const,
+            providerDisplayName: "Eval OAuth",
+          };
+        }
+        await deliverAssistantMessagesForTest(request, [{ text: "uploaded" }]);
+        return completedAgentRun({
+          text: "uploaded",
+          piMessages: [
+            ...(request.input.piMessages ?? []),
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "uploaded" }],
+            },
+          ] as NonNullable<AgentRunResult["piMessages"]>,
+          diagnostics: makeDiagnostics(),
+        });
+      }),
+    };
+    const callback = await startLocalOAuthCallbackServer(localAgentRunner);
+    let authorizationUrl: string | undefined;
+    let callbackRequest: Promise<Response> | undefined;
+
+    try {
+      const state = await createLocalOAuthState(callback.port);
+      authorizationUrl = `https://example.com/authorize?state=${encodeURIComponent(state)}`;
+      await stateAdapterModule.getStateAdapter().set(`oauth-state:${state}`, {
+        userId: "local-cli",
+        provider: "eval-oauth",
+        destination: {
+          platform: "local",
+          conversationId,
+        },
+        source: createLocalSource(conversationId),
+        resumeConversationId: conversationId,
+        resumeSessionId: "local-turn-loopback",
+        scope: "read",
+      });
+      await runLocalAgentTurn(
+        { conversationId, message: "upload the image" },
+        {
+          agentRunner: localAgentRunner,
+          authorization: {
+            callbackPort: callback.port,
+            cancel: callback.cancelAuthorization,
+            deliver: (request) => {
+              callback.beginAuthorization(request.authorizationUrl);
+              callbackRequest = fetch(
+                `http://127.0.0.1:${callback.port}/api/oauth/callback/eval-oauth?state=${encodeURIComponent(state)}&code=eval-oauth-code&jr_local_relay=complete`,
+              );
+            },
+            wait: callback.waitForAuthorization,
+          },
+          deliverReply: async () => undefined,
+        },
+      );
+
+      await expect(callbackRequest).resolves.toMatchObject({ status: 200 });
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+      await expect(
+        capabilitiesFactoryModule
+          .createUserTokenStore()
+          .get("local-cli", "eval-oauth"),
+      ).resolves.toEqual(
+        expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
+      );
+      await expect(
+        turnSessionStoreModule.getAgentTurnSessionRecord(
+          conversationId,
+          requests[0]!.turnId,
+        ),
+      ).resolves.toMatchObject({
+        sliceId: 2,
+        state: "completed",
+      });
+    } finally {
+      await callback.close();
+    }
   }, 20_000);
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {

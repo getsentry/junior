@@ -1,10 +1,11 @@
 /**
  * MCP OAuth callback handler.
  *
- * This handler finalizes provider OAuth, updates pending-auth/event-log state,
- * and resumes the exact Slack turn that parked on MCP auth. Stale callbacks
- * must not resume newer thread work after another user message has superseded
- * the paused request.
+ * Public signed callbacks relay to the owning CLI. The loopback callback
+ * finalizes local MCP authorization and leaves continuation to that CLI.
+ * Slack callbacks finalize authorization, update pending-auth/event-log state,
+ * and resume the exact parked turn. Stale callbacks must not resume newer
+ * thread work after another user message supersedes the paused request.
  */
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";

@@ -673,12 +673,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  app.get("/api/internal/sandbox-egress/:token/signals", (c) => {
-    return sandboxEgressSignalsGET(c.req.raw, c.req.param("token"));
+  app.get("/api/internal/sandbox-egress/signals", (c) => {
+    return sandboxEgressSignalsGET(c.req.raw);
   });
 
-  app.delete("/api/internal/sandbox-egress/:token/signals", (c) => {
-    return sandboxEgressSignalsDELETE(c.req.raw, c.req.param("token"));
+  app.delete("/api/internal/sandbox-egress/signals", (c) => {
+    return sandboxEgressSignalsDELETE(c.req.raw);
   });
 
   app.post("/api/internal/local-oauth-credentials", (c) => {

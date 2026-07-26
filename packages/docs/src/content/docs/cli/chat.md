@@ -42,7 +42,7 @@ Every `junior chat` invocation creates a fresh local conversation. Interactive m
 
 When neither `JUNIOR_STATE_ADAPTER` nor `REDIS_URL` is set, the command uses the in-memory state adapter so a new project can start a local session without Redis. Set `REDIS_URL` when you want local run state stored for diagnostics or to match your deployed app state behavior; the CLI still starts a new conversation on each invocation.
 
-The local actor is the `local-cli` system actor. Provider OAuth prompts are disabled for this local command, so tests that require user-bound provider credentials should use already configured credentials or a deployed Slack flow.
+The local actor is the `local-cli` user. When a provider needs user OAuth, the command prints the authorization link, waits for the browser callback, and then continues the same request. Keep the command running while you authorize. The public development URL and local dev server must be reachable for this relay; see [Local Agent Validation](/contribute/local-agent-validation/) for the setup and troubleshooting steps.
 
 ## Verification
 

@@ -45,9 +45,10 @@ describe("sandbox egress signal route", () => {
     });
 
     const request = new Request(
-      "http://127.0.0.1:3000/api/internal/sandbox-egress/token/signals",
+      "http://127.0.0.1:3000/api/internal/sandbox-egress/signals",
+      { headers: { "x-junior-sandbox-egress-token": token } },
     );
-    const response = await handler.GET(request, token);
+    const response = await handler.GET(request);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -65,21 +66,21 @@ describe("sandbox egress signal route", () => {
       },
     });
     await expect(
-      handler.GET(request, token).then((result) => result.json()),
+      handler.GET(request).then((result) => result.json()),
     ).resolves.toEqual({});
   });
 
   it("rejects an unsigned signal request", async () => {
     const handler = await import("@/handlers/sandbox-egress-signals");
     const request = new Request(
-      "http://127.0.0.1:3000/api/internal/sandbox-egress/token/signals",
+      "http://127.0.0.1:3000/api/internal/sandbox-egress/signals",
     );
 
     await expect(
-      handler.GET(request, "not-a-token").then((result) => result.status),
+      handler.GET(request).then((result) => result.status),
     ).resolves.toBe(401);
     await expect(
-      handler.DELETE(request, "not-a-token").then((result) => result.status),
+      handler.DELETE(request).then((result) => result.status),
     ).resolves.toBe(401);
   });
 
@@ -90,9 +91,8 @@ describe("sandbox egress signal route", () => {
       handler
         .GET(
           new Request(
-            "https://junior.example/api/internal/sandbox-egress/token/signals",
+            "https://junior.example/api/internal/sandbox-egress/signals",
           ),
-          "not-a-token",
         )
         .then((result) => result.status),
     ).resolves.toBe(404);
@@ -101,9 +101,8 @@ describe("sandbox egress signal route", () => {
       handler
         .GET(
           new Request(
-            "http://127.0.0.1:3000/api/internal/sandbox-egress/token/signals",
+            "http://127.0.0.1:3000/api/internal/sandbox-egress/signals",
           ),
-          "not-a-token",
         )
         .then((result) => result.status),
     ).resolves.toBe(404);

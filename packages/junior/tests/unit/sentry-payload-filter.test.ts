@@ -16,6 +16,92 @@ function messageAttribute(text: string): string {
 }
 
 describe("Sentry private payload filtering", () => {
+  it("removes OAuth query secrets from URL attributes", () => {
+    const span = {
+      attributes: {
+        "http.target":
+          "/api/oauth/callback/github?code=secret&state=signed-state",
+        "url.full":
+          "http://127.0.0.1/api/oauth/callback/github?code=secret&state=signed-state",
+        "url.query": "code=secret&state=signed-state",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "http.server",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+
+    scrubPrivateSentrySpan(span);
+
+    expect(span.attributes?.["http.target"]).toBe("/api/oauth/callback/github");
+    expect(span.attributes?.["url.full"]).toBe(
+      "http://127.0.0.1/api/oauth/callback/github",
+    );
+    expect(span.attributes?.["url.query"]).toBeUndefined();
+  });
+
+  it("removes OAuth secrets from captured request data", () => {
+    const event = {
+      type: "transaction",
+      request: {
+        data: "credential-body",
+        headers: {
+          "X-Junior-Local-Credential-Signature": "signature",
+          "x-junior-sandbox-egress-token": "token",
+        },
+        query_string: "code=secret&state=signed-state",
+        url: "https://junior.example/api/oauth/callback/github?code=secret&state=signed-state",
+      },
+    } as SentryTransaction;
+
+    scrubPrivateSentryTransaction(event);
+
+    expect(event.request?.url).toBe(
+      "https://junior.example/api/oauth/callback/github",
+    );
+    expect(event.request?.query_string).toBeUndefined();
+    expect(event.request?.headers).toEqual({});
+  });
+
+  it("removes local credential bodies and normalized secret header spans", () => {
+    const event = {
+      type: "transaction",
+      request: {
+        data: '{"tokens":{"accessToken":"secret"}}',
+        headers: {
+          "x-junior-local-credential-signature": "signature",
+        },
+        url: "http://127.0.0.1/api/internal/local-oauth-credentials",
+      },
+    } as SentryTransaction;
+    const span = {
+      attributes: {
+        "http.request.body.data": '{"tokens":{"accessToken":"span-secret"}}',
+        "http.request.header.x_junior_sandbox_egress_token": "token",
+        "url.path": "/api/internal/local-oauth-credentials",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "http.client",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+
+    scrubPrivateSentryTransaction(event);
+    scrubPrivateSentrySpan(span);
+
+    expect(event.request?.data).toBeUndefined();
+    expect(event.request?.headers).toEqual({});
+    expect(span.attributes).toEqual({
+      "url.path": "/api/internal/local-oauth-credentials",
+    });
+  });
+
   it("removes private span payload attributes", () => {
     const span = {
       attributes: {

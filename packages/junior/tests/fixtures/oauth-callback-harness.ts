@@ -24,6 +24,11 @@ export async function runOauthCallbackRoute(args: {
     { agentRunner: args.agentRunner ?? realAgentRunner },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
+  if (args.expectBackgroundWork === false && callbacks.length > 0) {
+    throw new Error(
+      `OAuth callback route registered unexpected waitUntil() work for provider "${args.provider}"`,
+    );
+  }
   for (const callback of callbacks) {
     await callback();
   }
