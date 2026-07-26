@@ -95,7 +95,7 @@ let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
 
-describe("oauth callback slack integration", () => {
+describe("oauth callback integration", () => {
   beforeEach(async () => {
     executeAgentRunMock.mockReset();
     executeAgentRunMock.mockImplementation(async (request) => {
@@ -243,7 +243,7 @@ describe("oauth callback slack integration", () => {
             source: request.routing.source,
             surface: request.routing.surface,
           });
-          await request.delivery?.onAuthorizationRequest?.({
+          await request.authorization?.deliver({
             authorizationUrl: authorizationUrl!,
             completionText: "Junior will continue after authorization.",
             label: "Connect Eval OAuth",
@@ -291,8 +291,8 @@ describe("oauth callback slack integration", () => {
         {
           agentRunner: localAgentRunner,
           authorization: {
-            callbackPort: callback.port,
             cancel: callback.cancelAuthorization,
+            createState: async () => state,
             deliver: (request) => {
               callback.beginAuthorization(request.authorizationUrl);
               callbackRequest = fetch(

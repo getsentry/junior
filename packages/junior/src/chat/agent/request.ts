@@ -19,8 +19,9 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
-import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization-message";
+import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -102,10 +103,6 @@ export interface AgentRunPolicy {
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
   authorizationFlowMode?: AuthorizationFlowMode;
-  /** Loopback callback owned by an interactive local CLI process. */
-  localOAuthCallbackPort?: number;
-  /** Read sandbox egress signals from the loopback dev server. */
-  devServerEgressSignals?: boolean;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;
@@ -113,6 +110,8 @@ export interface AgentRunPolicy {
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
+  /** Per-slice sandbox egress signal storage override. */
+  sandboxEgressSignals?: SandboxEgressSignalTransport;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;
@@ -150,10 +149,6 @@ export interface AgentAssistantMessage {
 /** Delivers completed tool-free assistant messages in model order. */
 export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
-  /** Deliver a private authorization request on non-provider chat surfaces. */
-  onAuthorizationRequest?: (
-    request: OAuthAuthorizationRequest,
-  ) => void | Promise<void>;
 }
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
@@ -191,6 +186,8 @@ export interface AgentRunRequest {
   runId?: string;
   input: AgentRunInput;
   routing: AgentRunRouting;
+  /** Surface-owned OAuth state and private delivery capabilities. */
+  authorization?: OAuthAuthorization;
   policy?: AgentRunPolicy;
   state?: AgentRunState;
   observers?: AgentRunObservers;

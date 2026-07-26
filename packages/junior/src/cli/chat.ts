@@ -225,10 +225,13 @@ function newRunConversationId(): string {
   return conversationId;
 }
 
-async function hasLocalDevServer(): Promise<boolean> {
-  const port = process.env.PORT?.trim() || "3000";
+function localDevServerUrl(): string {
+  return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+}
+
+async function hasLocalDevServer(baseUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+    const response = await fetch(`${baseUrl}/health`, {
       signal: AbortSignal.timeout(1_000),
     });
     await response.body?.cancel();
@@ -248,14 +251,20 @@ async function prepareLocalChatRun(
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
+  const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const agentRunner = createAgentRunner(executeAgentRun);
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
-  const devServerEgressSignals = await hasLocalDevServer();
+  const devServerUrl = localDevServerUrl();
+  const sandboxEgressSignals = (await hasLocalDevServer(devServerUrl))
+    ? (
+        await import("@/chat/local/sandbox-egress-signals")
+      ).createLocalSandboxEgressSignalTransport(devServerUrl)
+    : undefined;
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {
-      callbackPort: oauthCallback.port,
       cancel: oauthCallback.cancelAuthorization,
+      createState: async () => await createLocalOAuthState(oauthCallback.port),
       deliver: async (request) => {
         oauthCallback.beginAuthorization(request.authorizationUrl);
         await reportStatus(
@@ -265,7 +274,7 @@ async function prepareLocalChatRun(
       },
       wait: oauthCallback.waitForAuthorization,
     },
-    devServerEgressSignals,
+    sandboxEgressSignals,
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },

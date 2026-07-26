@@ -119,8 +119,8 @@ resume behavior:
 
 ```sh
 pnpm --filter @sentry/junior exec vitest run tests/integration/local-agent-runner.test.ts
-pnpm --filter @sentry/junior exec vitest run tests/integration/oauth-callback-slack.test.ts
-pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callback-slack.test.ts tests/integration/mcp-auth-runtime-slack.test.ts
+pnpm --filter @sentry/junior exec vitest run tests/integration/oauth-callback.test.ts
+pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callback.test.ts tests/integration/mcp-auth-runtime-slack.test.ts
 ```
 
 For SQL conversation storage changes, verify the resumed turn rebuilds context

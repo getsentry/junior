@@ -2,9 +2,9 @@
  * MCP authorization pause orchestration.
  *
  * This module turns an MCP client auth challenge into Junior's paused-run
- * model: create provider auth state, deliver or reuse a private Slack link,
- * record pending auth, and abort the agent so the OAuth callback can resume the
- * same session.
+ * model: create provider auth state, privately present or reuse its link,
+ * record pending auth, and abort the agent so the OAuth callback can resume
+ * the same session.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
@@ -14,11 +14,11 @@ import {
   getMcpAuthSession,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
+import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 import {
-  formatOAuthAuthorizationMessage,
-  type OAuthAuthorizationRequest,
-} from "@/chat/oauth-authorization-message";
-import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
+  deliverOAuthAuthorization,
+  formatProviderLabel,
+} from "@/chat/oauth-flow";
 import {
   abandonReplacedPendingAuth,
   canReusePendingAuthLink,
@@ -63,10 +63,7 @@ export interface McpAuthOrchestrationInput {
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
-  localCallbackPort?: number;
-  deliverAuthorization?: (
-    request: OAuthAuthorizationRequest,
-  ) => void | Promise<void>;
+  authorization?: OAuthAuthorization;
 }
 
 export interface McpAuthOrchestration {
@@ -120,9 +117,7 @@ export function createMcpAuthOrchestration(
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       configuration: input.getConfiguration(),
       artifactState: input.getArtifactState(),
-      ...(input.localCallbackPort
-        ? { localCallbackPort: input.localCallbackPort }
-        : {}),
+      createAuthorizationState: input.authorization?.createState,
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
     return provider;
@@ -202,22 +197,14 @@ export function createMcpAuthOrchestration(
         authorizationUrl: authSession.authorizationUrl,
         label: `Click here to link your ${providerLabel} MCP access`,
         completionText:
-          input.localCallbackPort === undefined
-            ? "Once you've authorized, this thread will continue automatically."
-            : "Once you've authorized, this local request will continue automatically.",
+          "Once you've authorized, Junior will continue automatically.",
       };
-      let delivery: Awaited<ReturnType<typeof deliverPrivateMessage>>;
-      if (input.deliverAuthorization) {
-        await input.deliverAuthorization(authorizationRequest);
-        delivery = "in_context";
-      } else {
-        delivery = await deliverPrivateMessage({
-          channelId: authSession.channelId,
-          threadTs: authSession.threadTs,
-          userId: authSession.userId,
-          text: formatOAuthAuthorizationMessage(authorizationRequest),
-        });
-      }
+      const delivery = await deliverOAuthAuthorization(authorizationRequest, {
+        authorization: input.authorization,
+        channelId: authSession.channelId,
+        threadTs: authSession.threadTs,
+        userId: authSession.userId,
+      });
       if (!delivery) {
         await deleteMcpAuthSession(authSessionId);
         await recordPendingAuth(input.pendingAuth);

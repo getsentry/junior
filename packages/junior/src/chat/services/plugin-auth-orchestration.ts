@@ -26,7 +26,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
-import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization-message";
+import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -65,10 +65,7 @@ export interface PluginAuthOrchestrationInput {
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
   userTokenStore?: UserTokenStore;
-  localCallbackPort?: number;
-  deliverAuthorization?: (
-    request: OAuthAuthorizationRequest,
-  ) => void | Promise<void>;
+  authorization?: OAuthAuthorization;
 }
 
 export interface PluginAuthOrchestration {
@@ -181,12 +178,7 @@ export function createPluginAuthOrchestration(
         ...(options?.scope ? { scope: options.scope } : {}),
         resumeConversationId: input.conversationId,
         resumeSessionId: input.sessionId,
-        ...(input.localCallbackPort
-          ? { localCallbackPort: input.localCallbackPort }
-          : {}),
-        ...(input.deliverAuthorization
-          ? { deliverAuthorization: input.deliverAuthorization }
-          : {}),
+        authorization: input.authorization,
       });
 
       if (!oauthResult.ok) {

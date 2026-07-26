@@ -286,6 +286,10 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
 vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
+  deliverOAuthAuthorization: async (
+    _request: unknown,
+    input: { channelId?: string; threadTs?: string; userId: string },
+  ) => await deliverPrivateMessageMock(input),
   deliverPrivateMessage: deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
   resolveBaseUrl: () => "https://junior.example.com",

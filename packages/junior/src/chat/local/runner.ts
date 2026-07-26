@@ -56,7 +56,8 @@ import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
-import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization-message";
+import type { OAuthAuthorization } from "@/chat/oauth-authorization";
+import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
@@ -86,16 +87,14 @@ export type LocalToolResult = ToolExecutionReport;
 export interface LocalAgentTurnDeps {
   agentRunner: AgentRunner;
   /** Complete local OAuth callback lifecycle; omit to disable interactive auth. */
-  authorization?: {
-    callbackPort: number;
+  authorization?: OAuthAuthorization & {
     cancel: () => void;
-    deliver: (request: OAuthAuthorizationRequest) => void | Promise<void>;
     wait: () => Promise<void>;
   };
   /** Post-delivery Pi/session persistence boundary. */
   completeDeliveredTurn?: typeof completeDeliveredTurn;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
-  devServerEgressSignals?: boolean;
+  sandboxEgressSignals?: SandboxEgressSignalTransport;
   /** Pre-agent durable Pi projection boundary. */
   loadPiMessages?: typeof loadLocalPiMessages;
   /** Injectable failure capture boundary for deterministic runtime integration tests. */
@@ -288,6 +287,12 @@ export async function runLocalAgentTurn(
     failureCode = "agent_run_failed";
     const runAgent = async (messages: PiMessage[] | undefined) => {
       currentRunId = localRunId();
+      const authorization = deps.authorization
+        ? {
+            createState: deps.authorization.createState,
+            deliver: deps.authorization.deliver,
+          }
+        : undefined;
       return await deps.agentRunner.run({
         conversationId: input.conversationId,
         turnId,
@@ -308,14 +313,12 @@ export async function runLocalAgentTurn(
           actor: localActor,
           surface: "internal",
         },
+        authorization,
         policy: {
           authorizationFlowMode: deps.authorization
             ? "interactive"
             : "disabled",
-          devServerEgressSignals: deps.devServerEgressSignals,
-          ...(deps.authorization
-            ? { localOAuthCallbackPort: deps.authorization.callbackPort }
-            : {}),
+          sandboxEgressSignals: deps.sandboxEgressSignals,
         },
         state: {
           artifactState: artifacts,
@@ -335,11 +338,6 @@ export async function runLocalAgentTurn(
         },
         delivery: {
           onAssistantMessage: deliverAssistantMessage,
-          ...(deps.authorization
-            ? {
-                onAuthorizationRequest: deps.authorization.deliver,
-              }
-            : {}),
         },
         durability: {
           onArtifactStateUpdated: async (nextArtifacts) => {

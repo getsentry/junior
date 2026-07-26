@@ -1,11 +1,5 @@
 import { formatSlackLink } from "@/chat/slack/mrkdwn";
-
-/** User-facing link and guidance for one OAuth authorization attempt. */
-export interface OAuthAuthorizationRequest {
-  authorizationUrl: string;
-  completionText: string;
-  label: string;
-}
+import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 
 /** Format the private OAuth authorization prompt for Slack delivery. */
 export function formatOAuthAuthorizationMessage(

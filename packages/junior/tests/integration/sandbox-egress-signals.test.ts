@@ -16,6 +16,7 @@ describe("sandbox egress signal route", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
+    vi.unstubAllGlobals();
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -43,16 +44,22 @@ describe("sandbox egress signal route", () => {
         provider: "github",
       },
     });
-
-    const request = new Request(
-      "http://127.0.0.1:3000/api/internal/sandbox-egress/signals",
-      { headers: { "x-junior-sandbox-egress-token": token } },
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(url, init);
+        return request.method === "DELETE"
+          ? await handler.DELETE(request)
+          : await handler.GET(request);
+      }),
     );
-    const response = await handler.GET(request);
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      auth_required: {
+    const { createLocalSandboxEgressSignalTransport } =
+      await import("@/chat/local/sandbox-egress-signals");
+    const signals = createLocalSandboxEgressSignalTransport(
+      "http://127.0.0.1:3000",
+    );
+    await expect(signals.consume(token)).resolves.toMatchObject({
+      authRequired: {
         provider: "github",
         grant: {
           name: "user-write",
@@ -65,9 +72,8 @@ describe("sandbox egress signal route", () => {
         },
       },
     });
-    await expect(
-      handler.GET(request).then((result) => result.json()),
-    ).resolves.toEqual({});
+    await expect(signals.consume(token)).resolves.toEqual({});
+    await signals.clear(token);
   });
 
   it("rejects an unsigned signal request", async () => {

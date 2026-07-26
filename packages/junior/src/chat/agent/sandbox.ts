@@ -14,6 +14,7 @@ import { listReferenceFiles } from "@/chat/discovery";
 import type { LogContext } from "@/chat/logging";
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -26,7 +27,7 @@ export interface AgentSandboxOptions {
   skills: SkillMetadata[];
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
-  devServerEgressSignals?: boolean;
+  egressSignals?: SandboxEgressSignalTransport;
   credentialEgress?: CredentialContext;
   actor?: Actor;
   channelConfiguration?: ChannelConfigurationService;
@@ -64,7 +65,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     referenceFiles: listReferenceFiles(),
     traceContext: options.traceContext,
     tracePropagation: options.tracePropagation,
-    devServerEgressSignals: options.devServerEgressSignals,
+    egressSignals: options.egressSignals,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
     onSandboxRefChanged: async (sandboxRef) => {

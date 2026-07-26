@@ -37,6 +37,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -44,7 +45,6 @@ import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import {
   toolInvocationDestination,
-  type AgentRunDelivery,
   type AgentRunDurability,
   type AgentRunObservers,
   type AgentRunPolicy,
@@ -67,7 +67,7 @@ interface ToolWiringArgs {
   connectedMcpProviders: Set<string>;
   conversationPrivacy?: ConversationPrivacy;
   durability: AgentRunDurability;
-  delivery?: AgentRunDelivery;
+  authorization?: OAuthAuthorization;
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
   observers: AgentRunObservers;
@@ -123,7 +123,7 @@ export async function wireAgentTools(
     skills: args.availableSkills,
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
-    devServerEgressSignals: args.policy.devServerEgressSignals,
+    egressSignals: args.policy.sandboxEgressSignals,
     credentialEgress: args.routing.credentialContext,
     actor: args.currentActor,
     channelConfiguration: args.policy.channelConfiguration,
@@ -164,8 +164,7 @@ export async function wireAgentTools(
       ),
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,
-    localCallbackPort: args.policy.localOAuthCallbackPort,
-    deliverAuthorization: args.delivery?.onAuthorizationRequest,
+    authorization: args.authorization,
   });
   const pluginAuth = createPluginAuthOrchestration({
     abortAgent: args.abortAgent,
@@ -184,8 +183,7 @@ export async function wireAgentTools(
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,
     userTokenStore,
-    localCallbackPort: args.policy.localOAuthCallbackPort,
-    deliverAuthorization: args.delivery?.onAuthorizationRequest,
+    authorization: args.authorization,
   });
 
   const mcpToolManager = new McpToolManager(

@@ -245,6 +245,7 @@ async function executeAgentRunInPrivacyContext(
   const state = request.state ?? {};
   const observers = request.observers ?? {};
   const delivery = request.delivery;
+  const authorization = request.authorization;
   const durability = request.durability ?? {};
 
   signal?.throwIfAborted();
@@ -702,7 +703,7 @@ async function executeAgentRunInPrivacyContext(
       connectedMcpProviders,
       conversationPrivacy,
       durability,
-      delivery,
+      authorization,
       generatedFiles,
       invokedSkill,
       observers,

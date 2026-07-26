@@ -199,7 +199,7 @@ async function createAwaitingMcpTurnRecord(args: {
   });
 }
 
-describe("mcp oauth callback slack integration", () => {
+describe("mcp oauth callback integration", () => {
   beforeEach(async () => {
     executeAgentRunMock.mockReset();
     executeAgentRunMock.mockImplementation(async (request) => {
@@ -258,7 +258,7 @@ describe("mcp oauth callback slack integration", () => {
       sessionId,
       userId: "local-cli",
       userMessage: "list my projects",
-      localCallbackPort: 43123,
+      createAuthorizationState: async () => "local-mcp-oauth-state",
       source: createLocalSource(conversationId),
     });
     const plugin =

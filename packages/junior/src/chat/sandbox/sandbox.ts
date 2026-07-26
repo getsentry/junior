@@ -12,16 +12,12 @@ import {
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress/policy";
 import {
-  sandboxEgressSignalsResponseSchema,
-  type SandboxEgressAuthRequiredSignal,
-  type SandboxEgressPermissionDeniedSignal,
-} from "@/chat/sandbox/egress/schemas";
-import {
   clearSandboxEgressSignals,
   consumeSandboxEgressAuthRequiredSignal,
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
+import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -84,7 +80,7 @@ export interface SandboxOptions {
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
-  devServerEgressSignals?: boolean;
+  egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
@@ -157,70 +153,25 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     return token;
   };
-  const devServerSignalRequest = (
-    egressId: string,
-  ): {
-    headers: HeadersInit;
-    url: string;
-  } => {
-    const port = process.env.PORT?.trim() || "3000";
-    return {
-      headers: {
-        "x-junior-sandbox-egress-token":
-          sandboxEgressCredentialTokenFor(egressId),
-      },
-      url: `http://127.0.0.1:${port}/api/internal/sandbox-egress/signals`,
-    };
-  };
   const clearEgressSignals = async (egressId: string): Promise<void> => {
-    if (!options.devServerEgressSignals) {
+    if (!options.egressSignals) {
       await clearSandboxEgressSignals(egressId);
       return;
     }
-    const request = devServerSignalRequest(egressId);
-    const response = await fetch(request.url, {
-      headers: request.headers,
-      method: "DELETE",
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Could not clear dev-server sandbox egress signals: HTTP ${response.status}`,
-      );
-    }
-  };
-  const consumeEgressSignals = async (
-    egressId: string,
-  ): Promise<{
-    authRequired?: SandboxEgressAuthRequiredSignal;
-    permissionDenied?: SandboxEgressPermissionDeniedSignal;
-  }> => {
-    if (!options.devServerEgressSignals) {
-      const [authRequired, permissionDenied] = await Promise.all([
-        consumeSandboxEgressAuthRequiredSignal(egressId),
-        consumeSandboxEgressPermissionDeniedSignal(egressId),
-      ]);
-      return {
-        ...(authRequired ? { authRequired } : {}),
-        ...(permissionDenied ? { permissionDenied } : {}),
-      };
-    }
-    const request = devServerSignalRequest(egressId);
-    const response = await fetch(request.url, {
-      headers: request.headers,
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Could not consume dev-server sandbox egress signals: HTTP ${response.status}`,
-      );
-    }
-    const value = sandboxEgressSignalsResponseSchema.safeParse(
-      await response.json(),
+    await options.egressSignals.clear(
+      sandboxEgressCredentialTokenFor(egressId),
     );
-    if (!value.success) {
-      throw new Error("Dev-server sandbox egress signals were invalid");
+  };
+  const consumeEgressSignals = async (egressId: string) => {
+    if (options.egressSignals) {
+      return await options.egressSignals.consume(
+        sandboxEgressCredentialTokenFor(egressId),
+      );
     }
-    const authRequired = value.data.auth_required;
-    const permissionDenied = value.data.permission_denied;
+    const [authRequired, permissionDenied] = await Promise.all([
+      consumeSandboxEgressAuthRequiredSignal(egressId),
+      consumeSandboxEgressPermissionDeniedSignal(egressId),
+    ]);
     return {
       ...(authRequired ? { authRequired } : {}),
       ...(permissionDenied ? { permissionDenied } : {}),
@@ -348,7 +299,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
     // preventing the signal from ever being read. The egress signal is a
     // side-channel from the network layer — not a property of shell exit status —
-    // and `clearSandboxEgressSignals` runs before each execution to prevent
+    // and the signal store is cleared before each execution to prevent
     // cross-command leakage.
     const { authRequired, permissionDenied } =
       await consumeEgressSignals(activeSessionId);

@@ -301,7 +301,7 @@ describe("local agent runner", () => {
                 sessionId: request.turnId,
                 linkSentAtMs: Date.now(),
               });
-              await request.delivery?.onAuthorizationRequest?.({
+              await request.authorization?.deliver({
                 authorizationUrl: "https://github.com/login/oauth/authorize",
                 completionText: "Once authorized, this request will continue.",
                 label: "Connect GitHub",
@@ -325,8 +325,8 @@ describe("local agent runner", () => {
           },
         },
         authorization: {
-          callbackPort: 43123,
           cancel: vi.fn(),
+          createState: vi.fn(async () => "local-oauth-state"),
           deliver: deliverAuthorizationRequest,
           wait: waitForAuthorization,
         },
@@ -345,8 +345,8 @@ describe("local agent runner", () => {
     );
     expect(requests[0]?.policy).toMatchObject({
       authorizationFlowMode: "interactive",
-      localOAuthCallbackPort: 43123,
     });
+    expect(requests[0]?.authorization).toBeDefined();
     expect(requests[1]?.state?.pendingAuth).toMatchObject({
       kind: "plugin",
       provider: "github",
@@ -491,8 +491,8 @@ describe("local agent runner", () => {
         { conversationId: conversationId!, message: "please try" },
         {
           authorization: {
-            callbackPort: 43123,
             cancel: cancelAuthorization,
+            createState: vi.fn(async () => "local-oauth-state"),
             deliver: vi.fn(),
             wait: vi.fn(),
           },

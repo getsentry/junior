@@ -33,6 +33,10 @@ vi.mock("@/chat/mcp/auth-store", () => ({
 }));
 
 vi.mock("@/chat/oauth-flow", () => ({
+  deliverOAuthAuthorization: async (
+    _request: unknown,
+    input: { channelId?: string; threadTs?: string; userId: string },
+  ) => await deliverPrivateMessage(input),
   deliverPrivateMessage,
   formatProviderLabel,
 }));

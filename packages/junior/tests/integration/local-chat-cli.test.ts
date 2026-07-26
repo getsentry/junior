@@ -114,11 +114,13 @@ export const plugins = {
       ).toContain("local-chat-plugin");
       expect(executeAgentRunMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          authorization: expect.objectContaining({
+            createState: expect.any(Function),
+            deliver: expect.any(Function),
+          }),
           input: expect.objectContaining({ messageText: "hello" }),
           policy: expect.objectContaining({
             authorizationFlowMode: "interactive",
-            localOAuthCallbackPort: expect.any(Number),
-            devServerEgressSignals: false,
           }),
           routing: expect.objectContaining({
             credentialContext: {
