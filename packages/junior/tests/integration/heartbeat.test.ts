@@ -6,7 +6,6 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
-import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
 import {
   createSchedulerSqlStore,
   schedulerPlugin,
@@ -15,14 +14,10 @@ import {
 } from "@sentry/junior-scheduler";
 import { getDb } from "@/chat/db";
 import {
-  createOrGetDispatch,
   getDispatchRecord,
   getDispatchStorageKey,
-  listIncompleteDispatchIds,
-  updateDispatchRecord,
-  withDispatchLock,
+  markDispatchCompleted,
 } from "@/chat/agent-dispatch/store";
-import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -62,6 +57,31 @@ function slackDmSource(channelId = "D123"): Source {
 }
 
 let schedulerDb: SchedulerDb | undefined;
+let conversationWorkQueue = createConversationWorkQueueTestAdapter();
+
+function createTestHeartbeatContext(
+  args: Omit<
+    Parameters<typeof createHeartbeatContext>[0],
+    "conversationWorkQueue"
+  >,
+) {
+  return createHeartbeatContext({
+    ...args,
+    conversationWorkQueue,
+  });
+}
+
+function testHeartbeat(
+  request: Parameters<typeof heartbeat>[0],
+  waitUntil: Parameters<typeof heartbeat>[1],
+  options: Parameters<typeof heartbeat>[2] = {},
+) {
+  return heartbeat(request, waitUntil, {
+    ...options,
+    conversationWorkQueue:
+      options.conversationWorkQueue ?? conversationWorkQueue,
+  });
+}
 
 async function useSchedulerSqlStore() {
   schedulerDb = getDb() as unknown as SchedulerDb;
@@ -119,24 +139,6 @@ function createDailyTask(
   });
 }
 
-function mockDispatchCallbackFetch(originalFetch: typeof fetch) {
-  const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
-    const input = args[0];
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    if (url.startsWith("https://slack.com/api/")) {
-      return await originalFetch(...args);
-    }
-    return new Response("Accepted", { status: 202 });
-  });
-  global.fetch = fetchMock as typeof fetch;
-  return fetchMock;
-}
-
 function createCredentialSubject(
   input: {
     channelId?: string;
@@ -185,6 +187,7 @@ describe("plugin heartbeat", () => {
   const originalFetch = global.fetch;
 
   beforeEach(async () => {
+    conversationWorkQueue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ now: TEST_NOW_MS });
     process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -208,7 +211,7 @@ describe("plugin heartbeat", () => {
 
   it("rejects unauthenticated heartbeat requests", async () => {
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat"),
       waitUntil.fn,
     );
@@ -234,7 +237,7 @@ describe("plugin heartbeat", () => {
       }),
     ]);
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -282,7 +285,7 @@ describe("plugin heartbeat", () => {
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -342,7 +345,7 @@ describe("plugin heartbeat", () => {
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -392,7 +395,7 @@ describe("plugin heartbeat", () => {
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -434,7 +437,7 @@ describe("plugin heartbeat", () => {
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -456,7 +459,7 @@ describe("plugin heartbeat", () => {
     });
     global.fetch = fetchMock as typeof fetch;
 
-    const schedulerCtx = createHeartbeatContext({
+    const schedulerCtx = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -474,7 +477,7 @@ describe("plugin heartbeat", () => {
       status: "pending",
     });
     await expect(
-      createHeartbeatContext({
+      createTestHeartbeatContext({
         plugin: "other-plugin",
         nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       }).agent.get(result.id),
@@ -489,11 +492,11 @@ describe("plugin heartbeat", () => {
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {
-    const first = createHeartbeatContext({
+    const first = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
-    const second = createHeartbeatContext({
+    const second = createTestHeartbeatContext({
       plugin: "scheduler:run",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -511,7 +514,7 @@ describe("plugin heartbeat", () => {
     });
     global.fetch = fetchMock as typeof fetch;
 
-    const ctx = createHeartbeatContext({
+    const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -543,7 +546,7 @@ describe("plugin heartbeat", () => {
     });
     global.fetch = fetchMock as typeof fetch;
 
-    const ctx = createHeartbeatContext({
+    const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -576,9 +579,7 @@ describe("plugin heartbeat", () => {
   });
 
   it("rejects plugin credential subjects that include runtime bindings", async () => {
-    mockDispatchCallbackFetch(originalFetch);
-
-    const ctx = createHeartbeatContext({
+    const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -606,12 +607,10 @@ describe("plugin heartbeat", () => {
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
-    await expect(listIncompleteDispatchIds()).resolves.toEqual([]);
   });
 
   it("binds delegated credential subjects before persistence", async () => {
-    mockDispatchCallbackFetch(originalFetch);
-    const ctx = createHeartbeatContext({
+    const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
@@ -645,187 +644,6 @@ describe("plugin heartbeat", () => {
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
 
-  it("fails stale dispatches that exceed retry attempts", async () => {
-    const created = await createOrGetDispatch({
-      plugin: "scheduler",
-      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      options: {
-        idempotencyKey: "run-exhausted",
-        destination: SLACK_DESTINATION,
-        destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
-      },
-    });
-    await withDispatchLock(created.record.id, async (state) => {
-      const record = await state.get<DispatchRecord>(
-        getDispatchStorageKey(created.record.id),
-      );
-      if (!record) {
-        throw new Error("Expected dispatch record to exist");
-      }
-      await updateDispatchRecord(state, {
-        ...record,
-        attempt: record.maxAttempts,
-        lastCallbackAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      });
-    });
-
-    await expect(
-      recoverStaleDispatches({
-        nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
-      }),
-    ).resolves.toBe(0);
-    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
-      status: "failed",
-      errorMessage: "Dispatch exceeded retry attempts.",
-    });
-  });
-
-  it("fails stale dispatches when the locked row no longer parses", async () => {
-    const created = await createOrGetDispatch({
-      plugin: "scheduler",
-      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      options: {
-        idempotencyKey: "run-exhausted-corrupt-row",
-        destination: SLACK_DESTINATION,
-        destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
-      },
-    });
-    await withDispatchLock(created.record.id, async (state) => {
-      const record = await state.get<DispatchRecord>(
-        getDispatchStorageKey(created.record.id),
-      );
-      if (!record) {
-        throw new Error("Expected dispatch record to exist");
-      }
-      await updateDispatchRecord(state, {
-        ...record,
-        attempt: record.maxAttempts,
-        lastCallbackAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      });
-    });
-
-    const state = getStateAdapter();
-    await state.connect();
-    const storageKey = getDispatchStorageKey(created.record.id);
-    const current = await state.get<DispatchRecord>(storageKey);
-    if (!current) {
-      throw new Error("Expected dispatch record to exist");
-    }
-    const corruptRecord = {
-      ...(current as unknown as Record<string, unknown>),
-    };
-    delete corruptRecord.destination;
-    const originalGet = state.get.bind(state);
-    let recordReads = 0;
-    state.get = (async (key: string) => {
-      if (key === storageKey && recordReads++ === 1) {
-        return corruptRecord;
-      }
-      return await originalGet(key);
-    }) as typeof state.get;
-
-    try {
-      await expect(
-        recoverStaleDispatches({
-          nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
-        }),
-      ).resolves.toBe(0);
-    } finally {
-      state.get = originalGet;
-    }
-
-    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
-      status: "failed",
-      errorMessage: "Dispatch exceeded retry attempts.",
-    });
-  });
-
-  it("removes terminal dispatches from the recovery index", async () => {
-    const created = await createOrGetDispatch({
-      plugin: "scheduler",
-      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      options: {
-        idempotencyKey: "run-terminal-index",
-        destination: SLACK_DESTINATION,
-        destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
-      },
-    });
-
-    await expect(listIncompleteDispatchIds()).resolves.toContain(
-      created.record.id,
-    );
-
-    await withDispatchLock(created.record.id, async (state) => {
-      const record = await state.get<DispatchRecord>(
-        getDispatchStorageKey(created.record.id),
-      );
-      if (!record) {
-        throw new Error("missing dispatch record");
-      }
-      await updateDispatchRecord(state, {
-        ...record,
-        status: "completed",
-      });
-    });
-
-    await expect(listIncompleteDispatchIds()).resolves.not.toContain(
-      created.record.id,
-    );
-  });
-
-  it("rejects a malformed persisted dispatch recovery index", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await state.set("junior:agent_dispatch:incomplete", { invalid: true });
-
-    await expect(listIncompleteDispatchIds()).rejects.toThrow("expected array");
-  });
-
-  it("does not fail an active leased dispatch that reached max attempts", async () => {
-    const created = await createOrGetDispatch({
-      plugin: "scheduler",
-      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      options: {
-        idempotencyKey: "run-active-max-attempts",
-        destination: SLACK_DESTINATION,
-        destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
-      },
-    });
-    await withDispatchLock(created.record.id, async (state) => {
-      const record = await state.get<DispatchRecord>(
-        getDispatchStorageKey(created.record.id),
-      );
-      if (!record) {
-        throw new Error("Expected dispatch record to exist");
-      }
-      await updateDispatchRecord(state, {
-        ...record,
-        attempt: record.maxAttempts,
-        lastCallbackAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-        leaseExpiresAtMs: Date.parse("2026-05-26T12:10:00.000Z"),
-        status: "running",
-      });
-    });
-
-    await expect(
-      recoverStaleDispatches({
-        nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
-      }),
-    ).resolves.toBe(0);
-    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
-      status: "running",
-      attempt: created.record.maxAttempts,
-    });
-  });
-
   it("dispatches and reconciles scheduled runs from the scheduler plugin", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
@@ -849,7 +667,7 @@ describe("plugin heartbeat", () => {
     );
 
     const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await heartbeat(
+    const firstResponse = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -863,7 +681,8 @@ describe("plugin heartbeat", () => {
       status: "running",
       dispatchId: expect.any(String),
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toBe(
       "Post a digest. Summarize the latest state.",
@@ -890,22 +709,10 @@ describe("plugin heartbeat", () => {
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
 
-    await withDispatchLock(running!.dispatchId!, async (state) => {
-      const record = await state.get<DispatchRecord>(
-        getDispatchStorageKey(running!.dispatchId!),
-      );
-      if (!record) {
-        throw new Error("Expected dispatch record to exist");
-      }
-      await updateDispatchRecord(state, {
-        ...record,
-        resultMessageTs: "1700000000.000001",
-        status: "completed",
-      });
-    });
+    await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");
 
     const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await heartbeat(
+    const secondResponse = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -1052,7 +859,6 @@ describe("plugin heartbeat", () => {
   ])(
     "binds creator credentials to the scheduled task dispatch in a $label",
     async ({ conversationAccess, destination }) => {
-      mockDispatchCallbackFetch(originalFetch);
       setPlugins([schedulerPlugin()]);
       const store = await useSchedulerSqlStore();
       await store.saveTask(
@@ -1064,7 +870,7 @@ describe("plugin heartbeat", () => {
       );
 
       const waitUntil = createWaitUntilCollector();
-      const response = await heartbeat(
+      const response = await testHeartbeat(
         new Request("https://example.invalid/api/internal/heartbeat", {
           headers: { authorization: "Bearer heartbeat-secret" },
         }),
@@ -1107,7 +913,7 @@ describe("plugin heartbeat", () => {
     await store.saveTask(createTask());
 
     const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await heartbeat(
+    const firstResponse = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -1126,7 +932,7 @@ describe("plugin heartbeat", () => {
     await state.delete(getDispatchStorageKey(running!.dispatchId!));
 
     const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await heartbeat(
+    const secondResponse = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -1160,7 +966,7 @@ describe("plugin heartbeat", () => {
     });
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -1199,7 +1005,7 @@ describe("plugin heartbeat", () => {
     await store.saveTask(task);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),
@@ -1240,7 +1046,7 @@ describe("plugin heartbeat", () => {
     await store.saveTask(duplicate);
 
     const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
+    const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {
         headers: { authorization: "Bearer heartbeat-secret" },
       }),

@@ -9,37 +9,20 @@ import {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createOrGetDispatch,
   getPluginDispatchProjection,
   isTerminalDispatchStatus,
 } from "./store";
-import { scheduleDispatchCallback } from "./signing";
-import type {
-  BoundDispatchOptions,
-  DispatchRecord,
-  SlackDispatchOptions,
-} from "./types";
+import { enqueueAgentDispatch } from "./work";
+import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
 } from "./validation";
 
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
-
-function shouldScheduleDispatch(
-  record: DispatchRecord,
-  nowMs: number,
-): boolean {
-  if (isTerminalDispatchStatus(record.status)) {
-    return false;
-  }
-  return (
-    record.status !== "running" ||
-    typeof record.leaseExpiresAtMs !== "number" ||
-    record.leaseExpiresAtMs <= nowMs
-  );
-}
 
 function bindDispatchCredentialSubject(
   options: SlackDispatchOptions,
@@ -76,6 +59,7 @@ function bindDispatchCredentialSubject(
 
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
+  conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
@@ -108,10 +92,10 @@ export function createHeartbeatContext(args: {
           nowMs: args.nowMs,
         });
         dispatchCount += 1;
-        if (shouldScheduleDispatch(result.record, args.nowMs)) {
-          await scheduleDispatchCallback({
-            id: result.record.id,
-            expectedVersion: result.record.version,
+        if (!isTerminalDispatchStatus(result.record.status)) {
+          await enqueueAgentDispatch(result.record, {
+            queue: args.conversationWorkQueue,
+            nowMs: args.nowMs,
           });
         }
         return {

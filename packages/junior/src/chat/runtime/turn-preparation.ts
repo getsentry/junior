@@ -184,13 +184,16 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
-    const channelConfiguration = getChannelConfigurationService(args.thread);
+    const channelConfiguration =
+      args.channelConfiguration ?? getChannelConfigurationService(args.thread);
     const configuration = await channelConfiguration.resolveValues();
 
-    await seedConversationBackfill(args.thread, conversation, {
-      messageId: args.message.id,
-      messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-    });
+    if (!args.skipBackfill) {
+      await seedConversationBackfill(args.thread, conversation, {
+        messageId: args.message.id,
+        messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+      });
+    }
     for (const queued of args.queuedMessages ?? []) {
       const queuedMessage = toConversationMessage({
         entry: queued.message,

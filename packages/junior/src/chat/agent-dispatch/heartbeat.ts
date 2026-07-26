@@ -4,71 +4,18 @@ import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
-import { scheduleDispatchCallback } from "./signing";
 import {
-  getDispatchStorageKey,
+  confirmDispatchMailboxAppend,
   getDispatchRecord,
   isTerminalDispatchStatus,
-  listIncompleteDispatchIds,
-  parseDispatchRecord,
-  updateDispatchRecord,
-  withDispatchLock,
+  listPendingDispatchMailboxAppends,
+  markDispatchFailed,
 } from "./store";
-import type { DispatchRecord } from "./types";
+import { AGENT_DISPATCH_MAX_AGE_MS, enqueueAgentDispatch } from "./work";
 
-const DEFAULT_RECOVERY_LIMIT = 25;
 const DEFAULT_PLUGIN_LIMIT = 25;
-const DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
-
-function isStaleDispatch(args: {
-  nowMs: number;
-  record: {
-    lastCallbackAtMs?: number;
-    leaseExpiresAtMs?: number;
-    status: string;
-  };
-}): boolean {
-  if (args.record.status === "running") {
-    return (
-      typeof args.record.leaseExpiresAtMs === "number" &&
-      args.record.leaseExpiresAtMs <= args.nowMs
-    );
-  }
-  if (args.record.status === "awaiting_resume") {
-    return (
-      typeof args.record.leaseExpiresAtMs !== "number" ||
-      args.record.leaseExpiresAtMs <= args.nowMs
-    );
-  }
-  if (args.record.status === "pending") {
-    return (
-      typeof args.record.lastCallbackAtMs !== "number" ||
-      args.record.lastCallbackAtMs + 60_000 <= args.nowMs
-    );
-  }
-  return false;
-}
-
-async function failDispatch(args: {
-  errorMessage: string;
-  record: DispatchRecord;
-}): Promise<void> {
-  await withDispatchLock(args.record.id, async (state) => {
-    const current =
-      parseDispatchRecord(
-        await state.get(getDispatchStorageKey(args.record.id)),
-      ) ?? args.record;
-    if (isTerminalDispatchStatus(current.status)) {
-      return;
-    }
-    await updateDispatchRecord(state, {
-      ...current,
-      errorMessage: args.errorMessage,
-      status: "failed",
-    });
-  });
-}
+const DISPATCH_MAILBOX_APPEND_LIMIT = 100;
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -90,59 +37,9 @@ async function runWithTimeout<T>(
   }
 }
 
-/** Re-drive stale core dispatches before invoking plugin heartbeat hooks. */
-export async function recoverStaleDispatches(args: {
-  limit?: number;
-  nowMs: number;
-}): Promise<number> {
-  const ids = await listIncompleteDispatchIds();
-  let recovered = 0;
-  for (const id of ids) {
-    if (recovered >= (args.limit ?? DEFAULT_RECOVERY_LIMIT)) {
-      break;
-    }
-    const record = await getDispatchRecord(id);
-    if (!record || isTerminalDispatchStatus(record.status)) {
-      continue;
-    }
-    try {
-      if (!isStaleDispatch({ record, nowMs: args.nowMs })) {
-        continue;
-      }
-      if (record.createdAtMs + DISPATCH_MAX_AGE_MS <= args.nowMs) {
-        await failDispatch({
-          record,
-          errorMessage: "Dispatch expired before completion.",
-        });
-        continue;
-      }
-      if (record.attempt >= record.maxAttempts) {
-        await failDispatch({
-          record,
-          errorMessage: "Dispatch exceeded retry attempts.",
-        });
-        continue;
-      }
-      await scheduleDispatchCallback({
-        id: record.id,
-        expectedVersion: record.version,
-      });
-      recovered += 1;
-    } catch (error) {
-      logException(
-        error,
-        "agent_dispatch_recovery_failed",
-        { runId: record.id },
-        { "app.plugin.name": record.plugin },
-        "Agent dispatch recovery failed",
-      );
-    }
-  }
-  return recovered;
-}
-
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runPluginHeartbeats(args: {
+  conversationWorkQueue: ConversationWorkQueue;
   limit?: number;
   nowMs: number;
 }): Promise<void> {
@@ -162,6 +59,7 @@ export async function runPluginHeartbeats(args: {
         Promise.resolve(
           heartbeat(
             createHeartbeatContext({
+              conversationWorkQueue: args.conversationWorkQueue,
               plugin,
               nowMs: args.nowMs,
             }),
@@ -195,15 +93,67 @@ export async function runPluginHeartbeats(args: {
   }
 }
 
+/**
+ * Repair bounded dispatch mailbox appends, including pre-cutover records.
+ *
+ * This index is only an ingress receipt; conversation work owns execution,
+ * leases, retries, and continuation after the mailbox append succeeds.
+ */
+export async function recoverPendingDispatchMailboxAppends(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+}): Promise<void> {
+  const ids = (await listPendingDispatchMailboxAppends()).slice(
+    0,
+    DISPATCH_MAILBOX_APPEND_LIMIT,
+  );
+  for (const id of ids) {
+    try {
+      const dispatch = await getDispatchRecord(id);
+      if (!dispatch || isTerminalDispatchStatus(dispatch.status)) {
+        await confirmDispatchMailboxAppend(id);
+        continue;
+      }
+      if (args.nowMs - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
+        await markDispatchFailed(
+          id,
+          "Dispatch expired before its conversation mailbox append completed",
+        );
+        await confirmDispatchMailboxAppend(id);
+        continue;
+      }
+      await enqueueAgentDispatch(dispatch, {
+        nowMs: args.nowMs,
+        queue: args.conversationWorkQueue,
+      });
+    } catch (error) {
+      logException(
+        error,
+        "dispatch_mailbox_append_recovery_failed",
+        {},
+        { "app.dispatch.id": id },
+        "Pending dispatch mailbox append recovery failed",
+      );
+    }
+  }
+}
+
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
   nowMs: number;
 }): Promise<void> {
+  const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
   await recoverConversationWork({
     nowMs: args.nowMs,
-    queue: args.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+    queue,
   });
-  await recoverStaleDispatches({ nowMs: args.nowMs });
-  await runPluginHeartbeats({ nowMs: args.nowMs });
+  await recoverPendingDispatchMailboxAppends({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
+  await runPluginHeartbeats({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
 }

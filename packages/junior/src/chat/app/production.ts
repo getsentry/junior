@@ -18,9 +18,39 @@ import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-r
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
+import {
+  buildDispatchRoutingContext,
+  createAgentDispatchConversationWorker,
+  resolveAgentDispatchId,
+} from "@/chat/agent-dispatch/work";
+import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
+
+/** Route leased conversation work using the same dispatch identity rules as production. */
+export function createConversationWorkRouter(options: {
+  dispatchWorker: (
+    context: ConversationWorkerContext,
+    dispatchId: string,
+  ) => Promise<ConversationWorkerResult>;
+  slackWorker: (
+    context: ConversationWorkerContext,
+  ) => Promise<ConversationWorkerResult>;
+}) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const dispatchId = await resolveAgentDispatchId(context);
+    return dispatchId
+      ? await options.dispatchWorker(context, dispatchId)
+      : await options.slackWorker(context);
+  };
+}
 
 function createProductionSlackAdapter(): SlackAdapter {
   const signingSecret = getSlackSigningSecret();
@@ -112,23 +142,40 @@ export function createProductionConversationWorkOptions(options: {
     getSlackAdapter: getProductionSlackAdapter,
     services,
   });
+  const queue = getVercelConversationWorkQueue();
+  const slackWorker = createSlackConversationWorker({
+    getSlackAdapter: getProductionSlackAdapter,
+    conversationStore,
+    resumeAwaitingContinuation: async (conversationId, runOptions) =>
+      await resumeAwaitingSlackContinuation(
+        conversationId,
+        {
+          agentRunner,
+          scheduleSessionCompletedPluginTasks:
+            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
+        },
+        runOptions,
+      ),
+    runtime,
+  });
+  const dispatchWorker = createAgentDispatchConversationWorker({
+    resumeTurn: async (dispatch, hooks) => {
+      await resumeAwaitingSlackContinuation(
+        getDispatchConversationId(dispatch),
+        {
+          agentRunner,
+          routingContext: buildDispatchRoutingContext(dispatch),
+          scheduleSessionCompletedPluginTasks:
+            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
+        },
+        { shouldYield: hooks.shouldYield },
+      );
+    },
+    runTurn: runtime.runDispatchTurn,
+  });
   return {
     conversationStore,
-    queue: getVercelConversationWorkQueue(),
-    run: createSlackConversationWorker({
-      getSlackAdapter: getProductionSlackAdapter,
-      conversationStore,
-      resumeAwaitingContinuation: async (conversationId, runOptions) =>
-        await resumeAwaitingSlackContinuation(
-          conversationId,
-          {
-            agentRunner,
-            scheduleSessionCompletedPluginTasks:
-              services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-          },
-          runOptions,
-        ),
-      runtime,
-    }),
+    queue,
+    run: createConversationWorkRouter({ dispatchWorker, slackWorker }),
   };
 }

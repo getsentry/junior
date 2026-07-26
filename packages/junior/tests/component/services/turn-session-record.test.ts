@@ -58,6 +58,28 @@ describe("persistAuthPauseSessionRecord", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("keeps dispatch correlation write-once across session summaries", async () => {
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    await recordAgentTurnSessionSummary({
+      conversationId: "agent-dispatch:dispatch_one",
+      dispatchId: "dispatch_one",
+      sessionId: "dispatch:dispatch_one",
+      sliceId: 1,
+      state: "running",
+    });
+
+    await expect(
+      recordAgentTurnSessionSummary({
+        conversationId: "agent-dispatch:dispatch_one",
+        dispatchId: "dispatch_other",
+        sessionId: "dispatch:dispatch_one",
+        sliceId: 1,
+        state: "completed",
+      }),
+    ).rejects.toThrow("dispatchId cannot be changed");
+  });
+
   it("reuses the latest stored transcript when the auth pause captured no messages", async () => {
     const { persistAuthPauseSessionRecord } =
       await import("@/chat/services/turn-session-record");
@@ -980,6 +1002,40 @@ describe("persistAuthPauseSessionRecord", () => {
           content: [{ type: "text", text: "done" }],
         },
       ],
+    });
+  });
+
+  it("commits dispatch outcome and delivery receipt with terminal state", async () => {
+    const { persistCompletedSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { getAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    await persistCompletedSessionRecord({
+      modelId: "test-model",
+      conversationId: "agent-dispatch:dispatch_atomic",
+      sessionId: "dispatch:dispatch_atomic",
+      sliceId: 4,
+      allMessages: [userMessage("done")],
+      destination: SLACK_DESTINATION,
+      dispatchId: "dispatch_atomic",
+      dispatchOutcome: "failed",
+      resultMessageId: "1700000000.002",
+      source: SLACK_SOURCE,
+      surface: "api",
+    });
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "agent-dispatch:dispatch_atomic",
+        "dispatch:dispatch_atomic",
+      ),
+    ).resolves.toMatchObject({
+      dispatchId: "dispatch_atomic",
+      dispatchOutcome: "failed",
+      resultMessageId: "1700000000.002",
+      sliceId: 4,
+      state: "completed",
     });
   });
 

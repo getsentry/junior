@@ -31,6 +31,7 @@ import {
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
@@ -86,7 +87,7 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
 
 async function postSlackMessageBestEffort(
   channelId: string,
-  threadTs: string,
+  threadTs: string | undefined,
   text: string,
   conversationId?: string,
 ): Promise<void> {
@@ -151,8 +152,10 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
   turnId: string;
+  /** Active durable execution slice being resumed. */
+  sliceId?: number;
   channelId: string;
-  threadTs: string;
+  threadTs?: string;
   messageTs?: SlackMessageTs;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
@@ -185,6 +188,8 @@ type ResumeReplyContext = Omit<
 
 interface ResumePreparedTurn {
   messageText: string;
+  /** Active durable execution slice being resumed. */
+  sliceId?: number;
   messageTs?: SlackMessageTs;
   inputMessageIds?: string[];
   initialStatus?: AssistantStatusSpec;
@@ -196,8 +201,11 @@ interface ResumePreparedTurn {
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
-function getDefaultLockKey(channelId: string, threadTs: string): string {
-  return `slack:${channelId}:${threadTs}`;
+function getDefaultLockKey(
+  channelId: string,
+  threadTs: string | undefined,
+): string {
+  return threadTs ? `slack:${channelId}:${threadTs}` : `slack:${channelId}`;
 }
 
 function getResumeLogContext(
@@ -219,7 +227,7 @@ function getResumeLogContext(
 
 async function postResumeFailureReply(args: {
   channelId: string;
-  threadTs: string;
+  threadTs?: string;
   eventId: string;
   error: unknown;
 }): Promise<void> {
@@ -340,9 +348,6 @@ function createResumeReplyContext(
     throw new TypeError("Slack resume requires a reply context source");
   }
   const source = replyContext.routing.source;
-  if (source.platform !== "slack") {
-    throw new TypeError("Slack resume requires a Slack source");
-  }
   if (replyContext.routing.destination.platform !== "slack") {
     throw new TypeError("Slack resume requires a Slack destination");
   }
@@ -364,11 +369,14 @@ function createResumeReplyContext(
     },
     routing: {
       ...replyContext.routing,
-      source: {
-        ...source,
-        channelId: args.channelId,
-        threadTs: args.threadTs,
-      },
+      source:
+        source.platform === "slack"
+          ? {
+              ...source,
+              channelId: args.channelId,
+              ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+            }
+          : source,
     },
     policy: {
       ...replyContext.policy,
@@ -507,6 +515,7 @@ export async function resumeSlackTurn(
     let deliveryConversation:
       | ReturnType<typeof coerceThreadConversationState>
       | undefined;
+    let acceptedDeliveryId: string | undefined;
     /** Load the resumed conversation once for ordered delivery recording. */
     const getDeliveryConversation = async () => {
       if (deliveryConversation) {
@@ -560,6 +569,7 @@ export async function resumeSlackTurn(
         throw error;
       }
       assistantMessageDelivered = true;
+      acceptedDeliveryId = messageTs;
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
@@ -586,6 +596,34 @@ export async function resumeSlackTurn(
           { "error.type": error instanceof Error ? error.name : typeof error },
           "Failed to persist an accepted resumed assistant message",
         );
+      }
+      const routing = runArgs.replyContext?.routing;
+      const dispatchId = routing?.dispatch?.id;
+      if (messageTs && dispatchId && routing) {
+        try {
+          await persistWithRetry(() =>
+            recordAgentTurnSessionSummary({
+              conversationId: runArgs.conversationId,
+              destination: routing.destination,
+              destinationVisibility: routing.destinationVisibility,
+              dispatchId,
+              resultMessageId: messageTs,
+              sessionId: runArgs.turnId,
+              sliceId: runArgs.sliceId ?? 1,
+              source: routing.source,
+              state: "running",
+              surface: routing.surface ?? "slack",
+            }),
+          );
+        } catch (error) {
+          logException(
+            error,
+            "agent_turn_delivery_receipt_persist_failed",
+            getResumeLogContext(runArgs, lockKey),
+            {},
+            "Failed to persist accepted resumed turn delivery receipt",
+          );
+        }
       }
       failureCode = "agent_run_failed";
     };
@@ -688,9 +726,35 @@ export async function resumeSlackTurn(
           currentDurationMs: reply.diagnostics.durationMs,
           currentUsage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
+          destinationVisibility: replyContext.routing.destinationVisibility,
+          dispatchId: replyContext.routing.dispatch?.id,
+          dispatchOutcome:
+            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : {}),
           source: replyContext.routing.source,
           actor: resumeActor,
-          surface: "slack",
+          surface: replyContext.routing.surface ?? "slack",
+          sliceId: runArgs.sliceId,
+        });
+      } else if (replyContext.routing.dispatch?.id) {
+        await recordAgentTurnSessionSummary({
+          conversationId: runArgs.conversationId,
+          destination: replyContext.routing.destination,
+          destinationVisibility: replyContext.routing.destinationVisibility,
+          dispatchId: replyContext.routing.dispatch?.id,
+          dispatchOutcome:
+            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : {}),
+          sessionId: runArgs.turnId,
+          sliceId: runArgs.sliceId ?? 1,
+          source: replyContext.routing.source,
+          state:
+            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          surface: replyContext.routing.surface ?? "slack",
         });
       }
       await runArgs.commitResult?.(reply);

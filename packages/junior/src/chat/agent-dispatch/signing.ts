@@ -1,14 +1,19 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
-import type { DispatchCallback } from "./types";
+import { z } from "zod";
 
-const DISPATCH_CALLBACK_PATH = "/api/internal/agent-dispatch";
 const DISPATCH_HMAC_CONTEXT = "junior.agent_dispatch.v1";
 const DISPATCH_SIGNATURE_VERSION = "v1";
 const DISPATCH_MAX_SKEW_MS = 5 * 60 * 1000;
-const DISPATCH_CALLBACK_TIMEOUT_MS = 10_000;
 const DISPATCH_TIMESTAMP_HEADER = "x-junior-dispatch-timestamp";
 const DISPATCH_SIGNATURE_HEADER = "x-junior-dispatch-signature";
+
+const legacyDispatchCallbackSchema = z
+  .object({
+    expectedVersion: z.number().int().positive(),
+    id: z.string().min(1),
+  })
+  .strict();
+type LegacyDispatchCallback = z.infer<typeof legacyDispatchCallbackSchema>;
 
 function getDispatchSecret(): string | undefined {
   return process.env.JUNIOR_SECRET?.trim() || undefined;
@@ -34,64 +39,15 @@ function timingSafeMatch(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-function parseDispatchCallback(value: unknown): DispatchCallback | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.id !== "string" ||
-    typeof record.expectedVersion !== "number"
-  ) {
-    return undefined;
-  }
-  return {
-    id: record.id,
-    expectedVersion: record.expectedVersion,
-  };
-}
-
-/** Schedule an authenticated internal callback to run a dispatched agent slice. */
-export async function scheduleDispatchCallback(
-  callback: DispatchCallback,
-): Promise<void> {
-  const baseUrl = resolveBaseUrl();
-  if (!baseUrl) {
-    throw new Error(
-      "Cannot determine base URL for agent dispatch callback (set JUNIOR_BASE_URL or deploy to Vercel)",
-    );
-  }
-
-  const secret = getDispatchSecret();
-  if (!secret) {
-    throw new Error(
-      "Cannot determine agent dispatch secret (set JUNIOR_SECRET)",
-    );
-  }
-
-  const body = JSON.stringify(callback);
-  const timestamp = Date.now().toString();
-  const response = await fetch(`${baseUrl}${DISPATCH_CALLBACK_PATH}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [DISPATCH_TIMESTAMP_HEADER]: timestamp,
-      [DISPATCH_SIGNATURE_HEADER]: signBody(secret, timestamp, body),
-    },
-    signal: AbortSignal.timeout(DISPATCH_CALLBACK_TIMEOUT_MS),
-    body,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Agent dispatch callback failed with status ${response.status}`,
-    );
-  }
-}
-
-/** Verify and parse an authenticated agent dispatch callback request. */
+/**
+ * Verify callbacks emitted before dispatches moved to conversation work.
+ *
+ * TODO(v0.115.0): Remove the legacy callback route after v0.114.x callbacks
+ * can no longer arrive.
+ */
 export async function verifyDispatchCallbackRequest(
   request: Request,
-): Promise<DispatchCallback | undefined> {
+): Promise<LegacyDispatchCallback | undefined> {
   const timestamp =
     request.headers.get(DISPATCH_TIMESTAMP_HEADER)?.trim() ?? "";
   const signature =
@@ -116,7 +72,8 @@ export async function verifyDispatchCallbackRequest(
   }
 
   try {
-    return parseDispatchCallback(JSON.parse(body));
+    const parsed = legacyDispatchCallbackSchema.safeParse(JSON.parse(body));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }

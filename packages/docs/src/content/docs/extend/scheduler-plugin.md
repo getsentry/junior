@@ -80,7 +80,7 @@ For recurring or non-reminder scheduled work, Junior should show the proposed ta
 ## Failure modes
 
 - No due tasks run: confirm `/api/internal/heartbeat` is called every minute and the route secret matches the configured bearer token.
-- Tasks list but never complete: check scheduler and dispatch logs for missing Slack destination fields or stale dispatch recovery errors.
+- Tasks list but never complete: check scheduler logs for missing Slack destination fields, then check conversation work logs for mailbox append, lease, or delivery failures.
 - Unexpected timezone: set `JUNIOR_TIMEZONE` to the deployment default, or include the timezone in the user's schedule request.
 
 ## Next step

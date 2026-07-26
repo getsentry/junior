@@ -391,6 +391,7 @@ async function resumeOAuthSessionRecordTurn(
       const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);
       return {
         messageText: lockedUserMessage.text,
+        sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
         replyContext: {

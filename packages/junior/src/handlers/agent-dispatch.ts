@@ -1,14 +1,17 @@
-import { logException } from "@/chat/logging";
-import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  getDispatchRecord,
+  isTerminalDispatchStatus,
+} from "@/chat/agent-dispatch/store";
+import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface AgentDispatchHandlerOptions {
-  agentRunner: AgentRunner;
+  conversationWorkQueue: ConversationWorkQueue;
 }
 
-/** Handle the authenticated internal agent-dispatch callback. */
+/** Convert a legacy authenticated dispatch callback into conversation work. */
 export async function POST(
   request: Request,
   waitUntil: WaitUntilFn,
@@ -19,18 +22,17 @@ export async function POST(
     return new Response("Unauthorized", { status: 401 });
   }
 
-  waitUntil(() =>
-    runAgentDispatchSlice(payload, {
-      agentRunner: options.agentRunner,
-    }).catch((error) => {
-      logException(
-        error,
-        "agent_dispatch_handler_failed",
-        {},
-        { "app.dispatch.id": payload.id },
-        "Agent dispatch handler failed",
-      );
-    }),
-  );
+  waitUntil(async () => {
+    const dispatch = await getDispatchRecord(payload.id);
+    if (!dispatch) {
+      throw new Error(`Dispatch record is missing for ${payload.id}`);
+    }
+    if (isTerminalDispatchStatus(dispatch.status)) {
+      return;
+    }
+    await enqueueAgentDispatch(dispatch, {
+      queue: options.conversationWorkQueue,
+    });
+  });
   return new Response("Accepted", { status: 202 });
 }

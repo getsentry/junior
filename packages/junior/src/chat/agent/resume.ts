@@ -51,6 +51,7 @@ type SessionRecordLogContext = NonNullable<
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
+  dispatchId?: string;
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
   getModelId: () => string;
@@ -94,6 +95,7 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     conversationId: args.conversationId,
     destination: args.destination,
+    ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     source: args.runSource,
     sessionId: args.turnId,
     loadedSkillNames: args.getLoadedSkillNames(),

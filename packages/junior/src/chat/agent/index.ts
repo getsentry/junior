@@ -394,6 +394,7 @@ async function executeAgentRunInPrivacyContext(
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       destination: routing.destination,
+      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
       durability,
       getLoadedSkillNames: () => loadedSkillNamesForResume,
       getReasoningLevel: () => turnRoute?.reasoningLevel,

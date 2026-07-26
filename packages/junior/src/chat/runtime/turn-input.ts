@@ -1,4 +1,5 @@
 import type { Message, Thread } from "chat";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
 
 export interface TurnContext {
   channelId?: string;
@@ -23,10 +24,12 @@ export interface QueuedTurnMessage extends TurnMessageText {
 }
 
 export interface PrepareTurnStateInput {
+  channelConfiguration?: ChannelConfigurationService;
   context: TurnContext;
   explicitMention: boolean;
   message: Message;
   queuedMessages?: QueuedTurnMessage[];
+  skipBackfill?: boolean;
   text: TurnMessageText;
   thread: Thread;
 }

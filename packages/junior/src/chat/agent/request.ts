@@ -90,6 +90,7 @@ export interface AgentRunRouting {
   surface?: AgentTurnSurface;
   dispatch?: {
     actor?: SystemActor;
+    id: string;
     metadata?: Record<string, string>;
     plugin?: string;
   };

@@ -241,6 +241,41 @@ describe("agent dispatch validation", () => {
     expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
   });
 
+  it("strips bounded callback-owned fields from rollout-era records", () => {
+    expect(
+      parseDispatchRecord({
+        actor: { platform: "system", name: "scheduler" },
+        attempt: 2,
+        createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+        destination: validOptions.destination,
+        destinationVisibility: "private",
+        id: "dispatch_legacy",
+        idempotencyKey: "run-legacy",
+        input: "Run the scheduled task.",
+        lastCallbackAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
+        leaseExpiresAtMs: Date.parse("2026-05-26T12:02:00.000Z"),
+        maxAttempts: 5,
+        plugin: "scheduler",
+        source: validOptions.source,
+        status: "running",
+        updatedAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
+        version: 3,
+      }),
+    ).toEqual({
+      actor: { platform: "system", name: "scheduler" },
+      createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      destination: validOptions.destination,
+      destinationVisibility: "private",
+      id: "dispatch_legacy",
+      idempotencyKey: "run-legacy",
+      input: "Run the scheduled task.",
+      plugin: "scheduler",
+      source: validOptions.source,
+      status: "running",
+      updatedAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
+    });
+  });
+
   it("bounds durable idempotency and metadata keys", () => {
     expect(() =>
       validateDispatchOptions({

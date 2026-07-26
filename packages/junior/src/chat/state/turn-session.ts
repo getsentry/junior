@@ -62,6 +62,7 @@ export type AgentTurnSessionStatus =
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield" | "retry";
+export type AgentDispatchOutcome = "blocked" | "completed" | "failed";
 
 interface ConversationMessageProjection {
   messages: PiMessage[];
@@ -75,6 +76,10 @@ export interface AgentTurnSessionRecord {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  dispatchId?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  /** Provider-owned identifier returned after visible delivery is accepted. */
+  resultMessageId?: string;
   source?: Source;
   errorMessage?: string;
   lastProgressAtMs: number;
@@ -167,6 +172,9 @@ const agentTurnSessionSummarySchema = z
     cumulativeDurationMs: nonNegativeNumberSchema,
     cumulativeUsage: agentTurnUsageSchema.optional(),
     destination: destinationSchema.optional(),
+    dispatchId: z.string().min(1).optional(),
+    dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
+    resultMessageId: z.string().min(1).optional(),
     source: sourceSchema.optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     loadedSkillNames: z.array(z.string()).optional(),
@@ -313,6 +321,13 @@ function materializeAgentTurnSessionRecord(
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
+    ...(stored.dispatchId ? { dispatchId: stored.dispatchId } : {}),
+    ...(stored.dispatchOutcome
+      ? { dispatchOutcome: stored.dispatchOutcome }
+      : {}),
+    ...(stored.resultMessageId
+      ? { resultMessageId: stored.resultMessageId }
+      : {}),
     ...(stored.source ? { source: stored.source } : {}),
     ...(stored.cumulativeUsage
       ? { cumulativeUsage: stored.cumulativeUsage }
@@ -464,6 +479,9 @@ function buildStoredRecord(args: {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  dispatchId?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  resultMessageId?: string;
   source?: Source;
   committedSeq: number;
   historyVersion?: number;
@@ -510,6 +528,9 @@ function buildStoredRecord(args: {
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.destination ? { destination: args.destination } : {}),
+    ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
+    ...(args.dispatchOutcome ? { dispatchOutcome: args.dispatchOutcome } : {}),
+    ...(args.resultMessageId ? { resultMessageId: args.resultMessageId } : {}),
     ...(args.source ? { source: args.source } : {}),
     ...(args.actor ? { actor: args.actor } : {}),
     ...(args.actors ? { actors: args.actors } : {}),
@@ -622,6 +643,15 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.destination
         ? { destination: args.existing.destination }
         : {}),
+      ...(args.existing.dispatchId
+        ? { dispatchId: args.existing.dispatchId }
+        : {}),
+      ...(args.existing.dispatchOutcome
+        ? { dispatchOutcome: args.existing.dispatchOutcome }
+        : {}),
+      ...(args.existing.resultMessageId
+        ? { resultMessageId: args.existing.resultMessageId }
+        : {}),
       ...(args.existing.source ? { source: args.existing.source } : {}),
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
@@ -654,6 +684,9 @@ export async function upsertAgentTurnSessionRecord(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  dispatchId?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  resultMessageId?: string;
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
@@ -682,6 +715,20 @@ export async function upsertAgentTurnSessionRecord(args: {
     args.conversationId,
     args.sessionId,
   );
+  const existingDispatchId =
+    existingRecord?.dispatchId ??
+    (
+      await listAgentTurnSessionSummariesForConversation(args.conversationId)
+    ).find((summary) => summary.sessionId === args.sessionId)?.dispatchId;
+  if (
+    existingDispatchId &&
+    args.dispatchId &&
+    existingDispatchId !== args.dispatchId
+  ) {
+    throw new Error(
+      `Turn session ${args.sessionId} dispatchId cannot be changed`,
+    );
+  }
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
   // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
@@ -761,6 +808,21 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...((args.destination ?? existingRecord?.destination)
         ? { destination: args.destination ?? existingRecord?.destination }
         : {}),
+      ...((args.dispatchId ?? existingRecord?.dispatchId)
+        ? { dispatchId: args.dispatchId ?? existingRecord?.dispatchId }
+        : {}),
+      ...((args.dispatchOutcome ?? existingRecord?.dispatchOutcome)
+        ? {
+            dispatchOutcome:
+              args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
+          }
+        : {}),
+      ...((args.resultMessageId ?? existingRecord?.resultMessageId)
+        ? {
+            resultMessageId:
+              args.resultMessageId ?? existingRecord?.resultMessageId,
+          }
+        : {}),
       ...((args.source ?? existingRecord?.source)
         ? { source: args.source ?? existingRecord?.source }
         : {}),
@@ -804,6 +866,9 @@ export async function recordAgentTurnSessionSummary(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  dispatchId?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  resultMessageId?: string;
   /**
    * Source-confirmed destination visibility from the current event's signal
    * (Slack `channel_type`). Leave unset when no live signal exists so an
@@ -826,10 +891,28 @@ export async function recordAgentTurnSessionSummary(args: {
   traceId?: string;
   ttlMs?: number;
 }): Promise<void> {
-  const existing = await getStoredAgentTurnSessionRecord(
+  const stored = await getStoredAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
+  const priorSummary = (
+    await listAgentTurnSessionSummariesForConversation(args.conversationId)
+  ).find((summary) => summary.sessionId === args.sessionId);
+  const existing = stored ?? priorSummary;
+  const existingDispatchId = existing?.dispatchId;
+  const existingDispatchOutcome =
+    priorSummary?.dispatchOutcome ?? stored?.dispatchOutcome;
+  const existingResultMessageId =
+    priorSummary?.resultMessageId ?? stored?.resultMessageId;
+  if (
+    existingDispatchId &&
+    args.dispatchId &&
+    existingDispatchId !== args.dispatchId
+  ) {
+    throw new Error(
+      `Turn session ${args.sessionId} dispatchId cannot be changed`,
+    );
+  }
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
   const summary: AgentTurnSessionSummary = {
@@ -851,6 +934,15 @@ export async function recordAgentTurnSessionSummary(args: {
       : {}),
     ...((args.destination ?? existing?.destination)
       ? { destination: args.destination ?? existing?.destination }
+      : {}),
+    ...((args.dispatchId ?? existingDispatchId)
+      ? { dispatchId: args.dispatchId ?? existingDispatchId }
+      : {}),
+    ...((args.dispatchOutcome ?? existingDispatchOutcome)
+      ? { dispatchOutcome: args.dispatchOutcome ?? existingDispatchOutcome }
+      : {}),
+    ...((args.resultMessageId ?? existingResultMessageId)
+      ? { resultMessageId: args.resultMessageId ?? existingResultMessageId }
       : {}),
     ...((args.source ?? existing?.source)
       ? { source: args.source ?? existing?.source }

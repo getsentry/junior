@@ -57,14 +57,16 @@ import {
 } from "@sentry/junior-scheduler";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
-import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
+import {
+  buildDispatchRoutingContext,
+  createAgentDispatchConversationWorker,
+  resolveAgentDispatchId,
+} from "@/chat/agent-dispatch/work";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
-import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -1930,7 +1932,6 @@ async function processEvents(args: {
   scenario: EvalScenario;
   env: HarnessEnvironment;
   agentRunner: AgentRunner;
-  turnLifecycle: ConversationTurnLifecycle;
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
@@ -1944,7 +1945,6 @@ async function processEvents(args: {
     scenario,
     env,
     agentRunner,
-    turnLifecycle,
     getSlackAdapter,
     conversationWorkQueue,
     slackRuntime,
@@ -2020,6 +2020,54 @@ async function processEvents(args: {
   };
 
   const drainQueuedConversationWork = async (): Promise<void> => {
+    const slackWorker = createSlackConversationWorker({
+      getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
+      resumeAwaitingContinuation: async (conversationId) =>
+        await resumeAwaitingSlackContinuation(conversationId, {
+          agentRunner,
+          scheduleAgentContinue: async (request) => {
+            await scheduleAgentContinue(request, {
+              queue: conversationWorkQueue,
+              state: env.stateAdapter,
+            });
+          },
+          scheduleSessionCompletedPluginTasks: async (params) => {
+            await scheduleSessionCompletedPluginTasks(params, {
+              send: async (message) => {
+                await processEvalPluginTask(message);
+              },
+            });
+          },
+        }),
+      runtime: workerRuntime,
+      state: env.stateAdapter,
+    });
+    const dispatchWorker = createAgentDispatchConversationWorker({
+      resumeTurn: async (dispatch, hooks) => {
+        await resumeAwaitingSlackContinuation(
+          `agent-dispatch:${dispatch.id}`,
+          {
+            agentRunner,
+            routingContext: buildDispatchRoutingContext(dispatch),
+            scheduleAgentContinue: async (request) => {
+              await scheduleAgentContinue(request, {
+                queue: conversationWorkQueue,
+                state: env.stateAdapter,
+              });
+            },
+            scheduleSessionCompletedPluginTasks: async (params) => {
+              await scheduleSessionCompletedPluginTasks(params, {
+                send: async (message) => {
+                  await processEvalPluginTask(message);
+                },
+              });
+            },
+          },
+          { shouldYield: hooks.shouldYield },
+        );
+      },
+      runTurn: workerRuntime.runDispatchTurn,
+    });
     let processed = 0;
     while (conversationWorkQueue.hasQueuedMessages()) {
       processed += 1;
@@ -2030,28 +2078,12 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: createSlackConversationWorker({
-            getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-            resumeAwaitingContinuation: async (conversationId) =>
-              await resumeAwaitingSlackContinuation(conversationId, {
-                agentRunner,
-                scheduleAgentContinue: async (request) => {
-                  await scheduleAgentContinue(request, {
-                    queue: conversationWorkQueue,
-                    state: env.stateAdapter,
-                  });
-                },
-                scheduleSessionCompletedPluginTasks: async (params) => {
-                  await scheduleSessionCompletedPluginTasks(params, {
-                    send: async (message) => {
-                      await processEvalPluginTask(message);
-                    },
-                  });
-                },
-              }),
-            runtime: workerRuntime,
-            state: env.stateAdapter,
-          }),
+          run: async (context) => {
+            const dispatchId = await resolveAgentDispatchId(context);
+            return dispatchId
+              ? await dispatchWorker(context, dispatchId)
+              : await slackWorker(context);
+          },
           state: env.stateAdapter,
         },
       );
@@ -2172,41 +2204,10 @@ async function processEvents(args: {
     );
     await schedulerStore.saveTask(task);
 
-    const callbacks: DispatchCallback[] = [];
-    const expectedCallbackUrl = new URL(
-      "/api/internal/agent-dispatch",
-      process.env.JUNIOR_BASE_URL,
-    ).href;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input, init) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      if (new URL(url).href === expectedCallbackUrl) {
-        const callback = await verifyDispatchCallbackRequest(
-          new Request(input, init),
-        );
-        if (!callback) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-        callbacks.push(callback);
-        return new Response("Accepted", { status: 202 });
-      }
-      return await originalFetch(input, init);
-    }) as typeof fetch;
-    try {
-      await runPluginHeartbeats({ nowMs });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-    if (callbacks.length === 0) {
-      throw new Error(
-        "Scheduled eval task did not enqueue a dispatch callback.",
-      );
-    }
+    await runPluginHeartbeats({
+      conversationWorkQueue,
+      nowMs,
+    });
 
     const dispatchedRuns = (await schedulerStore.listIncompleteRuns()).filter(
       (run) => run.taskId === taskId && run.dispatchId,
@@ -2225,14 +2226,8 @@ async function processEvents(args: {
       if (!dispatch) {
         throw new Error("Scheduled eval dispatch record was not found.");
       }
-      const callback = callbacks.find(
-        (candidate) => candidate.id === dispatch.id,
-      );
-      if (!callback) {
-        throw new Error("Scheduled eval dispatch callback was not captured.");
-      }
-      await runAgentDispatchSlice(callback, { agentRunner, turnLifecycle });
     }
+    await drainQueuedConversationWork();
   };
 
   const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
@@ -2531,7 +2526,6 @@ export async function runEvalScenario(
       scenario,
       env,
       agentRunner: evalAgentRunner,
-      turnLifecycle,
       getSlackAdapter: () => slackAdapter,
       conversationWorkQueue,
       slackRuntime,

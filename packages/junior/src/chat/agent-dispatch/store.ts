@@ -5,11 +5,9 @@ import {
   destinationVisibilitySchema,
   isSlackDestination,
   sourceSchema,
-  type SlackDestination,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
-import { destinationKey } from "@/chat/destination";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type {
@@ -22,9 +20,8 @@ import type {
 
 const DISPATCH_PREFIX = "junior:agent_dispatch";
 const DISPATCH_LOCK_TTL_MS = 10 * 60 * 1000;
-const DISPATCH_INDEX_LOCK_TTL_MS = 10_000;
-const DISPATCH_INDEX_MAX_LENGTH = 10_000;
-const DEFAULT_MAX_ATTEMPTS = 5;
+const DISPATCH_MAILBOX_APPEND_INDEX_LOCK_TTL_MS = 10_000;
+const DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH = 10_000;
 
 const nonEmptyExactStringSchema = z
   .string()
@@ -32,7 +29,9 @@ const nonEmptyExactStringSchema = z
   .refine(
     (value) => value === value.trim() && value.toLowerCase() !== "unknown",
   );
-const incompleteDispatchIndexSchema = z.array(nonEmptyExactStringSchema);
+const pendingDispatchMailboxAppendIndexSchema = z.array(
+  nonEmptyExactStringSchema,
+);
 const dispatchStatusSchema = z.enum([
   "pending",
   "running",
@@ -50,7 +49,6 @@ const dispatchActorSchema = z
 const dispatchRecordSchema = z
   .object({
     actor: dispatchActorSchema,
-    attempt: z.number().int().nonnegative(),
     createdAtMs: z.number().finite(),
     credentialSubject: credentialSubjectSchema.optional(),
     destination: destinationSchema,
@@ -59,16 +57,12 @@ const dispatchRecordSchema = z
     id: nonEmptyExactStringSchema,
     idempotencyKey: z.string().min(1),
     input: z.string().min(1),
-    lastCallbackAtMs: z.number().finite().optional(),
-    leaseExpiresAtMs: z.number().finite().optional(),
-    maxAttempts: z.number().int().positive(),
     metadata: z.record(z.string(), z.string()).optional(),
     plugin: nonEmptyExactStringSchema,
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
-    version: z.number().int().positive(),
   })
   .strict()
   .superRefine((record, ctx) => {
@@ -120,28 +114,33 @@ const dispatchRecordSchema = z
     }
   });
 
-/** Keep dispatch persistence keys consistent across callback and recovery paths. */
+// TODO(v0.115.0): Remove legacy dispatch execution fields after records written
+// by the callback-owned lifecycle have expired.
+const storedDispatchRecordSchema = dispatchRecordSchema.extend({
+  attempt: z.number().int().nonnegative().optional(),
+  lastCallbackAtMs: z.number().finite().optional(),
+  leaseExpiresAtMs: z.number().finite().optional(),
+  maxAttempts: z.number().int().positive().optional(),
+  version: z.number().int().positive().optional(),
+});
+
+/** Return the durable key for one plugin-facing dispatch projection. */
 export function getDispatchStorageKey(id: string): string {
   return `${DISPATCH_PREFIX}:record:${id}`;
 }
 
-function incompleteDispatchIndexKey(): string {
+function dispatchLockKey(id: string): string {
+  return `${DISPATCH_PREFIX}:lock:${id}`;
+}
+
+function pendingDispatchMailboxAppendIndexKey(): string {
+  // TODO(v0.115.0): Rename after the old callback-owned incomplete index has
+  // aged out. Reusing the key preserves pending pre-cutover mailbox appends.
   return `${DISPATCH_PREFIX}:incomplete`;
 }
 
-function incompleteDispatchIndexLockKey(): string {
+function pendingDispatchMailboxAppendIndexLockKey(): string {
   return `${DISPATCH_PREFIX}:incomplete:lock`;
-}
-
-/** Parse the persisted recovery index without hiding malformed state. */
-function parseIncompleteDispatchIndex(value: unknown): string[] {
-  return value === undefined || value === null
-    ? []
-    : incompleteDispatchIndexSchema.parse(value);
-}
-
-function dispatchLockKey(id: string): string {
-  return `${DISPATCH_PREFIX}:lock:${id}`;
 }
 
 function normalizeMetadata(
@@ -167,19 +166,38 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
   return `dispatch_${digest}`;
 }
 
-/** Parse persisted dispatch records before recovery, callbacks, or projections use them. */
+/** Parse current and rollout-compatible dispatch projection records. */
 export function parseDispatchRecord(
   value: unknown,
 ): DispatchRecord | undefined {
-  const parsed = dispatchRecordSchema.safeParse(value);
-  return parsed.success ? (parsed.data as DispatchRecord) : undefined;
+  const parsed = parseStoredDispatchRecord(value);
+  return parsed?.record;
 }
 
-/** Map a dispatch destination to the lock key that serializes Slack delivery. */
-export function getDispatchDestinationLockId(
-  destination: SlackDestination,
-): string {
-  return destinationKey(destination);
+function parseStoredDispatchRecord(value: unknown):
+  | {
+      legacyLeaseExpiresAtMs?: number;
+      record: DispatchRecord;
+    }
+  | undefined {
+  const parsed = storedDispatchRecordSchema.safeParse(value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const {
+    attempt: _attempt,
+    lastCallbackAtMs: _lastCallbackAtMs,
+    leaseExpiresAtMs: _leaseExpiresAtMs,
+    maxAttempts: _maxAttempts,
+    version: _version,
+    ...record
+  } = parsed.data;
+  return {
+    ...(typeof parsed.data.leaseExpiresAtMs === "number"
+      ? { legacyLeaseExpiresAtMs: parsed.data.leaseExpiresAtMs }
+      : {}),
+    record: record as DispatchRecord,
+  };
 }
 
 /** Return the isolated persisted conversation key for one dispatch run. */
@@ -210,10 +228,10 @@ export function isTerminalDispatchStatus(status: DispatchStatus): boolean {
   return status === "completed" || status === "failed" || status === "blocked";
 }
 
-/** Serialize mutations for a dispatch so callbacks and heartbeats stay idempotent. */
-export async function withDispatchLock<T>(
+/** Serialize dispatch projection mutations. */
+async function withDispatchLock<T>(
   dispatchId: string,
-  callback: (state: StateAdapter) => Promise<T>,
+  task: (state: StateAdapter) => Promise<T>,
 ): Promise<T> {
   const state = getStateAdapter();
   await state.connect();
@@ -226,62 +244,10 @@ export async function withDispatchLock<T>(
   }
 
   try {
-    return await callback(state);
+    return await task(state);
   } finally {
     await state.releaseLock(lock);
   }
-}
-
-async function withIncompleteDispatchIndexLock<T>(
-  state: StateAdapter,
-  callback: () => Promise<T>,
-): Promise<T> {
-  const lock: Lock | null = await state.acquireLock(
-    incompleteDispatchIndexLockKey(),
-    DISPATCH_INDEX_LOCK_TTL_MS,
-  );
-  if (!lock) {
-    throw new Error("Could not acquire incomplete dispatch index lock");
-  }
-
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
-}
-
-async function syncIncompleteDispatchIndex(
-  state: StateAdapter,
-  record: DispatchRecord,
-): Promise<void> {
-  await withIncompleteDispatchIndexLock(state, async () => {
-    const ids = [
-      ...new Set(
-        parseIncompleteDispatchIndex(
-          await state.get(incompleteDispatchIndexKey()),
-        ),
-      ),
-    ];
-    const next = isTerminalDispatchStatus(record.status)
-      ? ids.filter((id) => id !== record.id)
-      : ids.includes(record.id)
-        ? ids
-        : [...ids, record.id];
-
-    if (
-      next.length === ids.length &&
-      next.every((id, index) => id === ids[index])
-    ) {
-      return;
-    }
-
-    await state.set(
-      incompleteDispatchIndexKey(),
-      next.slice(-DISPATCH_INDEX_MAX_LENGTH),
-      JUNIOR_THREAD_STATE_TTL_MS,
-    );
-  });
 }
 
 async function putRecord(
@@ -302,10 +268,45 @@ async function putRecord(
     next,
     JUNIOR_THREAD_STATE_TTL_MS,
   );
-  await syncIncompleteDispatchIndex(state, next);
 }
 
-/** Load dispatch state for callback, recovery, and plugin projection paths. */
+async function updatePendingDispatchMailboxAppendIndex(
+  state: StateAdapter,
+  update: (ids: string[]) => string[],
+): Promise<void> {
+  const lock = await state.acquireLock(
+    pendingDispatchMailboxAppendIndexLockKey(),
+    DISPATCH_MAILBOX_APPEND_INDEX_LOCK_TTL_MS,
+  );
+  if (!lock) {
+    throw new Error("Could not acquire dispatch mailbox append index lock");
+  }
+  try {
+    const stored = await state.get(pendingDispatchMailboxAppendIndexKey());
+    const ids =
+      stored === undefined || stored === null
+        ? []
+        : pendingDispatchMailboxAppendIndexSchema.parse(stored);
+    const next = [...new Set(update([...new Set(ids)]))].slice(
+      -DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH,
+    );
+    if (
+      next.length === ids.length &&
+      next.every((id, index) => id === ids[index])
+    ) {
+      return;
+    }
+    await state.set(
+      pendingDispatchMailboxAppendIndexKey(),
+      next,
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+/** Load dispatch state for conversation work and plugin projections. */
 export async function getDispatchRecord(
   id: string,
 ): Promise<DispatchRecord | undefined> {
@@ -332,7 +333,6 @@ export async function createOrGetDispatch(args: {
     const metadata = normalizeMetadata(args.options.metadata);
     const record: DispatchRecord = {
       actor: { platform: "system", name: args.plugin },
-      attempt: 0,
       createdAtMs: args.nowMs,
       ...(args.options.credentialSubject
         ? { credentialSubject: args.options.credentialSubject }
@@ -342,44 +342,144 @@ export async function createOrGetDispatch(args: {
       id,
       idempotencyKey: args.options.idempotencyKey,
       input: args.options.input,
-      maxAttempts: DEFAULT_MAX_ATTEMPTS,
       ...(metadata ? { metadata } : {}),
       plugin: args.plugin,
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,
-      version: 1,
     };
+    // Index first: a crash can leave a harmless dangling id, while writing the
+    // record first could lose the only durable reminder to enqueue it.
+    await updatePendingDispatchMailboxAppendIndex(state, (ids) =>
+      ids.includes(id) ? ids : [...ids, id],
+    );
     await putRecord(state, record);
     return { record, status: "created" };
   });
 }
 
-/** Advance dispatch versions so stale callbacks cannot overwrite newer state. */
-export async function updateDispatchRecord(
-  state: StateAdapter,
-  record: DispatchRecord,
-): Promise<DispatchRecord> {
-  const next = {
-    ...record,
-    updatedAtMs: Date.now(),
-    version: record.version + 1,
-  };
-  await putRecord(state, next);
-  return next;
+async function transitionDispatch(
+  id: string,
+  transition: (record: DispatchRecord) => DispatchRecord,
+): Promise<DispatchRecord | undefined> {
+  return await withDispatchLock(id, async (state) => {
+    const current = parseDispatchRecord(
+      await state.get(getDispatchStorageKey(id)),
+    );
+    if (!current) {
+      return undefined;
+    }
+    const next = {
+      ...transition(current),
+      updatedAtMs: Date.now(),
+    };
+    await putRecord(state, next);
+    return next;
+  });
 }
 
-/** Feed heartbeat recovery from the durable incomplete-dispatch index. */
-export async function listIncompleteDispatchIds(): Promise<string[]> {
+/** Mark a dispatch projection as actively running. */
+export async function markDispatchRunning(
+  id: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : { ...record, status: "running", errorMessage: undefined },
+  );
+}
+
+/** Project a durable awaiting-resume turn state to the plugin API. */
+export async function markDispatchAwaitingResume(
+  id: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) => ({
+    ...record,
+    status: "awaiting_resume",
+  }));
+}
+
+/** Project a blocked turn to the plugin API. */
+export async function markDispatchBlocked(
+  id: string,
+  errorMessage: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) => ({
+    ...record,
+    errorMessage,
+    status: "blocked",
+  }));
+}
+
+/** Project a completed turn and its accepted Slack message to the plugin API. */
+export async function markDispatchCompleted(
+  id: string,
+  resultMessageTs?: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) => ({
+    ...record,
+    errorMessage: undefined,
+    ...(resultMessageTs ? { resultMessageTs } : {}),
+    status: "completed",
+  }));
+}
+
+/** Project a terminal conversation turn failure to the plugin API. */
+export async function markDispatchFailed(
+  id: string,
+  errorMessage: string,
+  resultMessageTs?: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) => ({
+    ...record,
+    errorMessage,
+    ...(resultMessageTs ? { resultMessageTs } : {}),
+    status: "failed",
+  }));
+}
+
+/** Remove a dispatch after its durable mailbox append has succeeded. */
+export async function confirmDispatchMailboxAppend(id: string): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  return [
-    ...new Set(
-      parseIncompleteDispatchIndex(
-        await state.get(incompleteDispatchIndexKey()),
-      ),
-    ),
-  ];
+  await updatePendingDispatchMailboxAppendIndex(state, (ids) =>
+    ids.filter((candidate) => candidate !== id),
+  );
+}
+
+/** List dispatches whose durable mailbox append may not have completed. */
+export async function listPendingDispatchMailboxAppends(): Promise<string[]> {
+  const state = getStateAdapter();
+  await state.connect();
+  const stored = await state.get(pendingDispatchMailboxAppendIndexKey());
+  return stored === undefined || stored === null
+    ? []
+    : [...new Set(pendingDispatchMailboxAppendIndexSchema.parse(stored))];
+}
+
+/**
+ * Atomically move a rollout-era record behind conversation-owned execution.
+ *
+ * Rewriting the canonical record under the dispatch lock removes the callback
+ * version/lease claim before mailbox work can become visible.
+ */
+export async function claimDispatchMailboxAppend(
+  id: string,
+  nowMs: number,
+): Promise<DispatchRecord | undefined> {
+  return await withDispatchLock(id, async (state) => {
+    const stored = parseStoredDispatchRecord(
+      await state.get(getDispatchStorageKey(id)),
+    );
+    if (
+      !stored ||
+      (stored.legacyLeaseExpiresAtMs && stored.legacyLeaseExpiresAtMs > nowMs)
+    ) {
+      return undefined;
+    }
+    await putRecord(state, stored.record);
+    return stored.record;
+  });
 }
 
 /** Return a plugin-scoped dispatch projection without exposing raw runtime state. */

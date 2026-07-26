@@ -1,8 +1,10 @@
 # Task Execution
 
-This module owns durable mailbox execution for provider-backed conversations.
+This module owns durable mailbox execution for asynchronous conversations.
 Queue messages are wake-up hints; persisted mailbox and lease state are the
-source of truth.
+source of truth. Slack input and plugin dispatches use the same worker loop;
+their adapters only prepare input, restore task-specific authority, and accept
+the completed result.
 
 ## State Model
 
@@ -11,6 +13,9 @@ source of truth.
 - A queue payload identifies the conversation to wake; persisted conversation
   work owns destination and delivery.
 - A lease grants one worker temporary execution ownership.
+- Dispatch projection updates take a short dispatch lock only while the
+  conversation lease is already held. They never wait for conversation work,
+  which keeps lock ordering one-way.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
@@ -27,6 +32,9 @@ require a valid delivery value and reject invalid pending work.
 3. While it owns the lease, the worker reloads durable state and runs the next
    work: `interrupt` mailbox delivery first, then a paused turn, then `defer`
    mailbox delivery. Each iteration gets a fresh mailbox delivery attempt.
+   New dispatch input identifies its dispatch in mailbox metadata; later slices
+   restore that identifier from the turn session rather than queue payloads,
+   conversation source, or conversation-id conventions.
 4. Runtime advances the turn until completion, auth pause, cooperative yield,
    or terminal failure, delivering and recording completed tool-free assistant
    messages as it advances. A requested turn resume is durable state, not an

@@ -30,7 +30,6 @@ export interface BoundDispatchOptions extends Omit<
 
 export interface DispatchRecord {
   actor: CredentialSystemActor;
-  attempt: number;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
@@ -39,16 +38,12 @@ export interface DispatchRecord {
   id: string;
   idempotencyKey: string;
   input: string;
-  lastCallbackAtMs?: number;
-  leaseExpiresAtMs?: number;
-  maxAttempts: number;
   metadata?: Record<string, string>;
   plugin: string;
   resultMessageTs?: string;
   source: Source;
   status: DispatchStatus;
   updatedAtMs: number;
-  version: number;
 }
 
 export interface DispatchProjection {
@@ -56,11 +51,6 @@ export interface DispatchProjection {
   id: string;
   resultMessageTs?: string;
   status: DispatchStatus;
-}
-
-export interface DispatchCallback {
-  expectedVersion: number;
-  id: string;
 }
 
 export interface DispatchCreateResult {

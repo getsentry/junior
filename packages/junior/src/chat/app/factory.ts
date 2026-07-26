@@ -3,7 +3,6 @@ import type { Message } from "chat";
 import {
   createSlackTurnRuntime,
   type AssistantLifecycleEvent,
-  type SlackTurnRuntime,
 } from "@/chat/runtime/slack-runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
@@ -43,6 +42,7 @@ import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-p
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
+import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -99,9 +99,7 @@ function upsertSkippedConversationMessage(
   });
 }
 
-export function createSlackRuntime(
-  options: CreateSlackRuntimeOptions,
-): SlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent> {
+export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   const services = createJuniorRuntimeServices(options.services);
   const prepareTurnState = createPrepareTurnState({
     compactConversationIfNeeded:
@@ -116,7 +114,10 @@ export function createSlackRuntime(
     services: services.replyExecutor,
   });
 
-  return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
+  const runtime = createSlackTurnRuntime<
+    PreparedTurnState,
+    AssistantLifecycleEvent
+  >({
     assistantUserName: botConfig.userName,
     cancelEventSubscriptions,
     modelId: standardModelId(botConfig),
@@ -240,4 +241,11 @@ export function createSlackRuntime(
       });
     },
   });
+  return {
+    ...runtime,
+    runDispatchTurn: createSlackDispatchTurnRunner({
+      getSlackAdapter: options.getSlackAdapter,
+      replyToThread,
+    }),
+  };
 }
