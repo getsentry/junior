@@ -25,6 +25,7 @@ const dashboardPackageDir = path.join(
   "junior-dashboard",
 );
 const exampleDir = path.join(workspaceRoot, "apps", "example");
+const useProcessGroups = process.platform !== "win32";
 
 process.env.NODE_ENV = nodeEnv;
 process.env.PORT = devPort;
@@ -39,11 +40,13 @@ if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
 loadEnvFiles([workspaceRoot, exampleDir]);
 
 const children = new Set();
+const stoppedChildren = new WeakSet();
 
 function spawnChild(command, args, options = {}) {
   const child = spawn(command, args, {
     stdio: "inherit",
     env: process.env,
+    detached: useProcessGroups,
     ...options,
   });
 
@@ -55,13 +58,31 @@ function spawnChild(command, args, options = {}) {
   return child;
 }
 
+function stopChild(child, signal) {
+  if (child.killed || stoppedChildren.has(child)) {
+    return;
+  }
+  stoppedChildren.add(child);
+
+  // Long-lived commands launch wrappers. Stop their process group so a
+  // restarted wrapper cannot leave the server that owns its port behind.
+  if (useProcessGroups && child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+    } catch (error) {
+      if (error?.code !== "ESRCH") {
+        throw error;
+      }
+    }
+    return;
+  }
+
+  child.kill(signal);
+}
+
 function terminateChildren(signal = "SIGTERM") {
   for (const child of children) {
-    if (child.killed) {
-      continue;
-    }
-
-    child.kill(signal);
+    stopChild(child, signal);
   }
 }
 
@@ -176,7 +197,7 @@ function clearExampleVercelOutput() {
 }
 
 function startNitroDev() {
-  nitroChild = spawnChild("pnpm", [
+  const child = spawnChild("pnpm", [
     "exec",
     "sentry",
     "local",
@@ -191,8 +212,11 @@ function startNitroDev() {
     "nitro",
     "dev",
   ]);
+  nitroChild = child;
 
-  nitroChild.on("exit", (code, signal) => {
+  child.on("exit", (code, signal) => {
+    stopChild(child, signal ?? "SIGTERM");
+
     if (restartingNitro) {
       return;
     }
@@ -221,7 +245,7 @@ function restartNitroDev() {
     restartingNitro = false;
     startNitroDev();
   });
-  nitroChild.kill("SIGTERM");
+  stopChild(nitroChild, "SIGTERM");
 }
 
 function watchDistForNitroRestart() {

@@ -106,6 +106,24 @@ callback, and resumes the same turn as the `local-cli` user. Keep `pnpm dev`
 running so the configured public callback and tunnel can verify the signed
 local state and redirect the browser to the CLI's loopback listener.
 
+Before starting the chat command:
+
+1. Keep one `pnpm dev` process running in the foreground.
+2. Confirm only one Cloudflare tunnel for this development hostname is active.
+3. Probe both callback hops. Each request should reach Junior and return `400`
+   because the probe intentionally omits OAuth state:
+
+```sh
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:3000/api/oauth/callback/mcp/linear
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://junior-dev.sentry.cool/api/oauth/callback/mcp/linear
+```
+
+Do not present an authorization URL until both probes return `400`. A public
+`502` means the tunnel is running without a reachable local server; restart the
+dev command and re-run both probes before creating a fresh OAuth attempt.
+
 ```sh
 pnpm cli -- chat -p "Use the linear skill to list Linear teams."
 ```
@@ -142,6 +160,10 @@ SQL conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.
+If OAuth returns `502`, verify port 3000 is listening and remove stale duplicate
+dev servers or tunnel clients before retrying. If the provider says the
+authorization expired, discard that URL and start a fresh chat attempt after
+the callback health checks pass.
 
 If the model answer is too loose to prove the behavior, use a narrower prompt,
 an exact-output prompt, interactive mode, or a direct plugin CLI command. If the
