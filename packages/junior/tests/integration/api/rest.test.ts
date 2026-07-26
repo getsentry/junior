@@ -13,7 +13,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   pluginOperationalReportFeedSchema,
-  pluginReportsSchema,
+  pluginsSchema,
   runtimeInfoReportSchema,
   skillReportsSchema,
 } from "@/api/schema";
@@ -37,7 +37,7 @@ describe("Junior REST API", () => {
   test.each([
     ["/api/health", healthReportSchema],
     ["/api/runtime", runtimeInfoReportSchema],
-    ["/api/plugins", pluginReportsSchema],
+    ["/api/plugins", pluginsSchema],
     ["/api/skills", skillReportsSchema],
     ["/api/plugin-reports", pluginOperationalReportFeedSchema],
   ] as const)("serves %s through its response schema", async (path, schema) => {
@@ -67,7 +67,7 @@ describe("Junior REST API", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(pluginReportsSchema.parse(await response.json())).toEqual([
+    expect(pluginsSchema.parse(await response.json())).toEqual([
       {
         capabilities: ["github.issues", "github.pull-requests"],
         configKeys: ["github.organization"],

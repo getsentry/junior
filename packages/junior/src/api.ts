@@ -14,10 +14,10 @@ import { apiErrorSchema } from "./api/schema/common";
 import {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
-  pluginReportsSchema,
+  pluginsSchema,
   readHealthReport,
   readPluginOperationalReportFeed,
-  readPluginReports,
+  readPlugins,
   readRuntimeInfoReport,
   readSkillReports,
   runtimeInfoReportSchema,
@@ -43,8 +43,8 @@ const routes = [
   defineApiRoute({
     method: "get",
     path: "/api/plugins",
-    responseSchema: pluginReportsSchema,
-    handler: readPluginReports,
+    responseSchema: pluginsSchema,
+    handler: readPlugins,
   }),
   defineApiRoute({
     method: "get",

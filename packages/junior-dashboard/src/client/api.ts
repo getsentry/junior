@@ -13,7 +13,7 @@ import {
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
-  pluginReportsSchema,
+  pluginsSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 
@@ -117,7 +117,7 @@ export function useSystemData() {
   });
   const pluginsQuery = useQuery({
     queryKey: ["dashboard", "plugins"],
-    queryFn: () => fetchDashboardJson(pluginReportsSchema, "/api/plugins"),
+    queryFn: () => fetchDashboardJson(pluginsSchema, "/api/plugins"),
     retry: false,
   });
   const skillsQuery = useQuery({

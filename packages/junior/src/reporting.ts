@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   pluginOperationalReportFeedSchema,
-  pluginReportsSchema,
+  pluginsSchema,
   runtimeInfoReportSchema,
   skillReportsSchema,
 } from "./reporting-schema";
 import type {
   PluginOperationalReportFeed,
-  PluginReport,
+  Plugin,
   RuntimeInfoReport,
   SkillReport,
 } from "./reporting-schema";
@@ -19,8 +19,8 @@ export {
   pluginOperationalReportSchema,
   pluginPackageContentItemReportSchema,
   pluginPackageContentReportSchema,
-  pluginReportSchema,
-  pluginReportsSchema,
+  pluginSchema,
+  pluginsSchema,
   runtimeInfoReportSchema,
   skillReportSchema,
   skillReportsSchema,
@@ -32,8 +32,8 @@ export type {
   PluginOperationalReportFeed,
   PluginPackageContentItemReport,
   PluginPackageContentReport,
-  PluginReport,
-  PluginReports,
+  Plugin,
+  Plugins,
   RuntimeInfoReport,
   SkillReport,
   SkillReports,
@@ -61,10 +61,10 @@ export async function readSkillReports(): Promise<SkillReport[]> {
 }
 
 /** Read safe configured plugin metadata for authenticated runtime diagnostics. */
-export async function readPluginReports(): Promise<PluginReport[]> {
+export async function readPlugins(): Promise<Plugin[]> {
   const { pluginCatalogRuntime } =
     await import("@/chat/plugins/catalog-runtime");
-  return pluginReportsSchema.parse(
+  return pluginsSchema.parse(
     pluginCatalogRuntime.getProviders().map((plugin) => ({
       capabilities: plugin.manifest.capabilities ?? [],
       configKeys: plugin.manifest.configKeys ?? [],
@@ -81,7 +81,7 @@ export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
     await Promise.all([
       import("@/chat/discovery"),
       import("@/chat/plugins/catalog-runtime"),
-      readPluginReports(),
+      readPlugins(),
       readSkillReports(),
     ]);
   const home = homeDir();

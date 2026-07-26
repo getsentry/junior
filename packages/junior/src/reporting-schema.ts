@@ -8,7 +8,7 @@ export const healthReportSchema = z
   })
   .strict();
 
-export const pluginReportSchema = z
+export const pluginSchema = z
   .object({
     capabilities: z.array(z.string()),
     configKeys: z.array(z.string()),
@@ -17,7 +17,7 @@ export const pluginReportSchema = z
     name: z.string(),
   })
   .strict();
-export const pluginReportsSchema = z.array(pluginReportSchema);
+export const pluginsSchema = z.array(pluginSchema);
 
 export const skillReportSchema = z
   .object({
@@ -154,8 +154,8 @@ export const pluginOperationalReportFeedSchema = z
   .strict();
 
 export type HealthReport = z.infer<typeof healthReportSchema>;
-export type PluginReport = z.infer<typeof pluginReportSchema>;
-export type PluginReports = z.infer<typeof pluginReportsSchema>;
+export type Plugin = z.infer<typeof pluginSchema>;
+export type Plugins = z.infer<typeof pluginsSchema>;
 export type SkillReport = z.infer<typeof skillReportSchema>;
 export type SkillReports = z.infer<typeof skillReportsSchema>;
 export type RuntimeInfoReport = z.infer<typeof runtimeInfoReportSchema>;

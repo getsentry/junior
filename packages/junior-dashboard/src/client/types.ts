@@ -1,7 +1,7 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   PluginOperationalReportFeed,
-  PluginReport,
+  Plugin,
   SkillReport,
 } from "@sentry/junior/api/schema";
 import type {
@@ -122,7 +122,7 @@ export type SystemData = DashboardCoreData & {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
-  plugins: PluginReport[];
+  plugins: Plugin[];
   skills: SkillReport[];
 };
 

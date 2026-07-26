@@ -111,7 +111,12 @@ function PluginSystemPage(props: {
       ) : null}
       <PluginDetails plugin={props.plugin} />
       <PluginReports
-        emptyText="This plugin does not expose operational activity yet."
+        {...(!props.data.pluginReportsLoading && !props.data.pluginReportsError
+          ? {
+              emptyText:
+                "This plugin does not expose operational activity yet.",
+            }
+          : {})}
         range={props.range}
         reports={reports}
       />

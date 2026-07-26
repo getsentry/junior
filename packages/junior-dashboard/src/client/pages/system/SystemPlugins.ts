@@ -1,17 +1,17 @@
 import type {
   PluginOperationalReport,
-  PluginReport,
+  Plugin,
   SkillReport,
 } from "@sentry/junior/api/schema";
 
-export type SystemPlugin = PluginReport & {
+export type SystemPlugin = Plugin & {
   reports: PluginOperationalReport[];
   skills: SkillReport[];
 };
 
 /** Combine plugin inventory, skills, and operational reports for System UI. */
 export function buildSystemPlugins(input: {
-  plugins: PluginReport[];
+  plugins: Plugin[];
   reports: PluginOperationalReport[];
   skills: SkillReport[];
 }): SystemPlugin[] {

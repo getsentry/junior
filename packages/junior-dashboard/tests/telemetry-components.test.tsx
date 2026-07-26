@@ -9,7 +9,7 @@ import type {
   ConversationSummaryReport,
   LocationDetailReport,
   LocationDirectoryReport,
-  PluginReport,
+  Plugin,
 } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../src/client/code";
@@ -128,10 +128,7 @@ function systemData(): SystemData {
   };
 }
 
-function pluginReport(
-  name: string,
-  overrides: Partial<PluginReport> = {},
-): PluginReport {
+function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
   return {
     capabilities: [],
     configKeys: [],
@@ -1056,18 +1053,21 @@ describe("dashboard canonical-event components", () => {
   it("keeps plugin loading, failure, and stale data states distinct", () => {
     const loading = systemData();
     loading.pluginReportsLoading = true;
-    loading.plugins = [pluginReport("github")];
+    loading.plugins = [plugin("github")];
     const loadingHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
+      <MemoryRouter initialEntries={["/system/plugins/github"]}>
         <SystemPage data={loading} />
       </MemoryRouter>,
     );
     expect(loadingHtml).not.toContain("Loading plugin stats.");
     expect(loadingHtml).toContain(">GitHub<");
+    expect(loadingHtml).not.toContain(
+      "This plugin does not expose operational activity yet.",
+    );
 
     const stale = systemData();
     stale.pluginReportsError = true;
-    stale.plugins = [pluginReport("scheduler")];
+    stale.plugins = [plugin("scheduler")];
     stale.pluginReports!.reports = [
       {
         metrics: [{ label: "active", value: "1" }],
@@ -1076,17 +1076,21 @@ describe("dashboard canonical-event components", () => {
       },
     ];
     const staleHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
+      <MemoryRouter initialEntries={["/system/plugins/scheduler"]}>
         <SystemPage data={stale} />
       </MemoryRouter>,
     );
     expect(staleHtml).toContain("Plugin stats failed to load.");
     expect(staleHtml).toContain("Scheduler");
+    expect(staleHtml).toContain("active");
+    expect(staleHtml).not.toContain(
+      "This plugin does not expose operational activity yet.",
+    );
   });
 
   it("renders system metrics and capability inventories", () => {
     const data = systemData();
-    data.plugins = [pluginReport("github")];
+    data.plugins = [plugin("github")];
     data.skills = [{ name: "triage", pluginProvider: "github" }];
 
     const systemHtml = renderToStaticMarkup(
@@ -1121,11 +1125,11 @@ describe("dashboard canonical-event components", () => {
   it("renders each plugin as a dedicated System route", () => {
     const data = systemData();
     data.plugins = [
-      pluginReport("github", {
+      plugin("github", {
         capabilities: ["github.issues", "github.pull-requests"],
         configKeys: ["github.organization"],
       }),
-      pluginReport("scheduler", {
+      plugin("scheduler", {
         capabilities: ["scheduler.scheduled-tasks"],
       }),
     ];
