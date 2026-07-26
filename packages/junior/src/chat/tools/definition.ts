@@ -1,7 +1,7 @@
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { Kind, type Static, type TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
-import type { ToolApprovalBehavior } from "@sentry/junior-plugin-api";
+import type { ToolApprovalMode } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 /**
@@ -22,8 +22,8 @@ export interface ToolExecuteOptions {
 }
 
 interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
-  /** Declares the core action-review behavior for this tool. */
-  approval?: ToolApprovalBehavior;
+  /** Declares when this tool requires approval before execution. */
+  approvalMode?: ToolApprovalMode;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -69,8 +69,8 @@ export interface ToolDefinition<
  * Schema-erased view for heterogeneous registries after Pi validates tool input.
  */
 export interface AnyToolDefinition {
-  /** Declares the core action-review behavior for this tool. */
-  approval?: ToolApprovalBehavior;
+  /** Declares when this tool requires approval before execution. */
+  approvalMode?: ToolApprovalMode;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

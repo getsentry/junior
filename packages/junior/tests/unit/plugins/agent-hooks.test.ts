@@ -30,10 +30,10 @@ const demoToolResultSchema = pluginToolResultSchema.extend({
 
 function demoPluginTool(
   description = "Demo tool",
-  approval?: "none" | "guardian" | "always_ask",
+  approvalMode?: "auto" | "prompt" | "approve",
 ) {
   return definePluginTool({
-    approval,
+    approvalMode,
     description,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
@@ -416,7 +416,7 @@ describe("agent plugin hooks", () => {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
             return {
-              demoTool: demoPluginTool("Demo tool", "guardian"),
+              demoTool: demoPluginTool("Demo tool", "prompt"),
             };
           },
         },
@@ -442,7 +442,7 @@ describe("agent plugin hooks", () => {
         id: "agent-demo",
         description: "Agent demo",
       });
-      expect(tools.agentDemo_demoTool?.approval).toBe("guardian");
+      expect(tools.agentDemo_demoTool?.approvalMode).toBe("prompt");
     } finally {
       setPlugins(previous);
     }

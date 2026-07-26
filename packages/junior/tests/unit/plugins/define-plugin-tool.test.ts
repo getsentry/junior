@@ -3,7 +3,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolResultSchema,
-  toolApprovalBehaviorSchema,
+  toolApprovalModeSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -16,9 +16,9 @@ const countResultSchema = pluginToolResultSchema.extend({
 });
 
 describe("definePluginTool", () => {
-  it("preserves the declared approval behavior", () => {
+  it("preserves the declared approval mode", () => {
     const tool = definePluginTool({
-      approval: "guardian",
+      approvalMode: "prompt",
       description: "Schedule a meeting.",
       inputSchema: z.object({}),
       outputSchema: countResultSchema,
@@ -31,10 +31,8 @@ describe("definePluginTool", () => {
         }) as const,
     });
 
-    expect(tool.approval).toBe("guardian");
-    expect(toolApprovalBehaviorSchema.safeParse("unexpected").success).toBe(
-      false,
-    );
+    expect(tool.approvalMode).toBe("prompt");
+    expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });
 
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {
