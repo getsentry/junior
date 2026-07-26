@@ -1,0 +1,128 @@
+import { Boxes, KeyRound, Sparkles, Wrench } from "lucide-react";
+
+import { Card } from "../../components/layout/Card";
+import type { SystemPlugin } from "./SystemPlugins";
+
+/** Render non-reporting plugin metadata and declared capabilities. */
+export function PluginDetails(props: { plugin: SystemPlugin }) {
+  return (
+    <section aria-labelledby="plugin-details-heading" className="grid gap-3">
+      <div className="px-1">
+        <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          Plugin information
+        </div>
+        <h2
+          className="mt-1 mb-0 font-display text-xl font-medium text-white"
+          id="plugin-details-heading"
+        >
+          Details and capabilities
+        </h2>
+      </div>
+      <Card>
+        <div className="grid grid-cols-2 gap-px bg-white/[0.055] lg:grid-cols-4">
+          <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
+          <Detail
+            icon={Sparkles}
+            label="Skills"
+            value={String(props.plugin.skills.length)}
+          />
+          <Detail
+            icon={Wrench}
+            label="Capabilities"
+            value={String(props.plugin.capabilities.length)}
+          />
+          <Detail
+            icon={KeyRound}
+            label="Configuration"
+            value={String(props.plugin.configKeys.length)}
+          />
+        </div>
+        <div className="grid gap-5 border-t border-white/[0.06] p-4 sm:p-5 lg:grid-cols-2">
+          <CapabilityList
+            emptyText="No capabilities are declared in this plugin's manifest."
+            items={props.plugin.capabilities}
+            title="Declared capabilities"
+          />
+          <CapabilityList
+            emptyText="No plugin-provided skills were discovered."
+            items={props.plugin.skills.map((skill) => skill.name)}
+            title="Skills"
+          />
+          {props.plugin.configKeys.length ? (
+            <div className="lg:col-span-2">
+              <CapabilityList
+                emptyText=""
+                items={props.plugin.configKeys}
+                title="Configuration keys"
+              />
+            </div>
+          ) : null}
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+/** Render the plugin identity header shared by plugin System pages. */
+export function PluginHeader(props: { plugin: SystemPlugin }) {
+  return (
+    <header className="border-b border-white/[0.06] pb-4 sm:pb-5">
+      <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        Plugin
+      </div>
+      <h2 className="mt-1 mb-0 font-display text-2xl font-medium tracking-[-0.02em] text-white sm:text-3xl">
+        {props.plugin.displayName}
+      </h2>
+      <p className="mt-2 mb-0 max-w-2xl font-mono text-[0.7rem] leading-relaxed text-white/45">
+        {props.plugin.description}
+      </p>
+    </header>
+  );
+}
+
+function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
+  const Icon = props.icon;
+  return (
+    <div className="flex items-center gap-3 bg-[#09090b] px-4 py-3.5">
+      <Icon aria-hidden="true" className="text-cyan-200/60" size={15} />
+      <div className="min-w-0">
+        <div className="truncate font-display text-base font-medium text-white/85">
+          {props.value}
+        </div>
+        <div className="mt-0.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+          {props.label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CapabilityList(props: {
+  emptyText: string;
+  items: string[];
+  title: string;
+}) {
+  return (
+    <div>
+      <h3 className="m-0 font-mono text-[0.6rem] font-medium uppercase tracking-[0.12em] text-white/40">
+        {props.title}
+      </h3>
+      {props.items.length ? (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {props.items.map((item) => (
+            <span
+              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.65rem] text-white/55"
+              key={item}
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 mb-0 font-mono text-[0.65rem] leading-relaxed text-white/25">
+          {props.emptyText}
+        </p>
+      )}
+    </div>
+  );
+}

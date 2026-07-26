@@ -378,6 +378,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     peoplePath,
     `${peoplePath}/*`,
     pagePath("system"),
+    `${pagePath("system")}/*`,
   ];
   if (dashboard.componentGallery) {
     pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);

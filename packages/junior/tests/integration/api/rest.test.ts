@@ -23,12 +23,14 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { juniorDestinations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 describe("Junior REST API", () => {
   afterEach(async () => {
     vi.useRealTimers();
+    pluginCatalogRuntime.setConfig(undefined);
     await closeDb();
   });
 
@@ -43,6 +45,37 @@ describe("Junior REST API", () => {
 
     expect(response.status).toBe(200);
     schema.parse(await response.json());
+  });
+
+  test("projects configured plugin metadata", async () => {
+    pluginCatalogRuntime.setConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            capabilities: ["issues", "pull-requests"],
+            configKeys: ["github.organization"],
+            description: "GitHub development workflows.",
+            displayName: "GitHub",
+            name: "github",
+          },
+        },
+      ],
+    });
+
+    const response = await createJuniorApi().request(
+      "http://localhost/api/plugins",
+    );
+
+    expect(response.status).toBe(200);
+    expect(pluginReportsSchema.parse(await response.json())).toEqual([
+      {
+        capabilities: ["github.issues", "github.pull-requests"],
+        configKeys: ["github.organization"],
+        description: "GitHub development workflows.",
+        displayName: "GitHub",
+        name: "github",
+      },
+    ]);
   });
 
   test("serves conversation and People resources from migrated SQL", async () => {

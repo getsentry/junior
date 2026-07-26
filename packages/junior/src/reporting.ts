@@ -60,12 +60,16 @@ export async function readSkillReports(): Promise<SkillReport[]> {
   );
 }
 
-/** Read configured plugin names for authenticated runtime diagnostics. */
+/** Read safe configured plugin metadata for authenticated runtime diagnostics. */
 export async function readPluginReports(): Promise<PluginReport[]> {
   const { pluginCatalogRuntime } =
     await import("@/chat/plugins/catalog-runtime");
   return pluginReportsSchema.parse(
     pluginCatalogRuntime.getProviders().map((plugin) => ({
+      capabilities: plugin.manifest.capabilities ?? [],
+      configKeys: plugin.manifest.configKeys ?? [],
+      description: plugin.manifest.description,
+      displayName: plugin.manifest.displayName,
       name: plugin.manifest.name,
     })),
   );

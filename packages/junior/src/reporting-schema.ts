@@ -8,7 +8,15 @@ export const healthReportSchema = z
   })
   .strict();
 
-export const pluginReportSchema = z.object({ name: z.string() }).strict();
+export const pluginReportSchema = z
+  .object({
+    capabilities: z.array(z.string()),
+    configKeys: z.array(z.string()),
+    description: z.string(),
+    displayName: z.string(),
+    name: z.string(),
+  })
+  .strict();
 export const pluginReportsSchema = z.array(pluginReportSchema);
 
 export const skillReportSchema = z

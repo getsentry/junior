@@ -9,6 +9,7 @@ import type {
   ConversationSummaryReport,
   LocationDetailReport,
   LocationDirectoryReport,
+  PluginReport,
 } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../src/client/code";
@@ -124,6 +125,21 @@ function systemData(): SystemData {
     pluginReportsLoading: false,
     plugins: [],
     skills: [],
+  };
+}
+
+function pluginReport(
+  name: string,
+  overrides: Partial<PluginReport> = {},
+): PluginReport {
+  return {
+    capabilities: [],
+    configKeys: [],
+    description: `${name} plugin description`,
+    displayName:
+      name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
+    name,
+    ...overrides,
   };
 }
 
@@ -1040,17 +1056,18 @@ describe("dashboard canonical-event components", () => {
   it("keeps plugin loading, failure, and stale data states distinct", () => {
     const loading = systemData();
     loading.pluginReportsLoading = true;
-    loading.plugins = [{ name: "github" }];
+    loading.plugins = [pluginReport("github")];
     const loadingHtml = renderToStaticMarkup(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/system"]}>
         <SystemPage data={loading} />
       </MemoryRouter>,
     );
     expect(loadingHtml).not.toContain("Loading plugin stats.");
-    expect(loadingHtml).toContain(">github<");
+    expect(loadingHtml).toContain(">GitHub<");
 
     const stale = systemData();
     stale.pluginReportsError = true;
+    stale.plugins = [pluginReport("scheduler")];
     stale.pluginReports!.reports = [
       {
         metrics: [{ label: "active", value: "1" }],
@@ -1059,7 +1076,7 @@ describe("dashboard canonical-event components", () => {
       },
     ];
     const staleHtml = renderToStaticMarkup(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/system"]}>
         <SystemPage data={stale} />
       </MemoryRouter>,
     );
@@ -1069,11 +1086,11 @@ describe("dashboard canonical-event components", () => {
 
   it("renders system metrics and capability inventories", () => {
     const data = systemData();
-    data.plugins = [{ name: "github" }];
+    data.plugins = [pluginReport("github")];
     data.skills = [{ name: "triage", pluginProvider: "github" }];
 
     const systemHtml = renderToStaticMarkup(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/system"]}>
         <SystemPage data={data} />
       </MemoryRouter>,
     );
@@ -1084,22 +1101,58 @@ describe("dashboard canonical-event components", () => {
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
-    expect(systemHtml).toContain('role="tablist"');
-    expect(systemHtml).toContain('aria-selected="true"');
     expect(systemHtml).toContain(">Plugins<");
     expect(systemHtml).toContain(">Skills<");
-    expect(systemHtml).toContain(">github<");
+    expect(systemHtml).toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
-    expect(systemHtml).not.toContain(">triage<");
+    expect(systemHtml).not.toContain(">1 loaded<");
+    expect(systemHtml).toContain(">triage<");
 
     const skillsHtml = renderToStaticMarkup(
       <SkillInventory skills={data.skills} />,
     );
     expect(skillsHtml).toContain(">github<");
     expect(skillsHtml).toContain(">triage<");
+  });
+
+  it("renders each plugin as a dedicated System route", () => {
+    const data = systemData();
+    data.plugins = [
+      pluginReport("github", {
+        capabilities: ["github.issues", "github.pull-requests"],
+        configKeys: ["github.organization"],
+      }),
+      pluginReport("scheduler", {
+        capabilities: ["scheduler.scheduled-tasks"],
+      }),
+    ];
+    data.skills = [{ name: "scheduled-tasks", pluginProvider: "scheduler" }];
+    data.pluginReports!.reports = [
+      {
+        metrics: [{ label: "active tasks", value: "4" }],
+        pluginName: "scheduler",
+        title: "Scheduler",
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins/scheduler"]}>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('aria-label="System navigation"');
+    expect(html).toContain('href="/system/plugins/github"');
+    expect(html).toContain('href="/system/plugins/scheduler"');
+    expect(html).toContain(">Scheduler<");
+    expect(html).toContain(">active tasks<");
+    expect(html).toContain(">scheduler.scheduled-tasks<");
+    expect(html).toContain(">scheduled-tasks<");
+    expect(html).not.toContain(">1 reporting<");
+    expect(html).not.toContain("Usage over time");
   });
 
   it("renders plugin chart widgets with accessible values", () => {
@@ -1134,60 +1187,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="Chart legend"');
     expect(html).toContain('aria-label="30d, Created: 4.5"');
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
-  });
-
-  it("prioritizes plugin report content at mobile widths", () => {
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            generatedAt: "2026-07-24T21:15:00.000Z",
-            metrics: [
-              { label: "Primary", value: "1" },
-              { label: "Secondary", value: "2" },
-            ],
-            pluginName: "github",
-            recordSets: [
-              {
-                fields: [
-                  { key: "repository", label: "Repository" },
-                  { key: "created", label: "Created" },
-                  { key: "juniorOnly", label: "Junior-only merges" },
-                  { key: "merged", label: "Merged" },
-                ],
-                records: [
-                  {
-                    id: "getsentry/junior",
-                    values: {
-                      created: "2",
-                      juniorOnly: "1",
-                      merged: "1",
-                      repository: "getsentry/junior",
-                    },
-                  },
-                ],
-                title: "Pull request repositories · 30d",
-              },
-            ],
-            title: "GitHub activity",
-          },
-        ]}
-      />,
-    );
-
-    expect(html).toContain(
-      'class="mt-1 hidden font-mono text-[0.62rem] text-white/30 sm:block"',
-    );
-    expect(html).toContain(
-      'class="hidden shrink-0 font-mono text-[0.62rem] text-white/30 sm:block"',
-    );
-    expect(html).toContain(
-      'class="min-w-0 bg-[#09090b] px-4 py-4 hidden sm:block"',
-    );
-    expect(html).toContain(
-      'class="w-full table-fixed border-collapse text-left sm:min-w-[36rem] sm:table-auto"',
-    );
-    expect(html.match(/hidden sm:table-cell/g) ?? []).toHaveLength(2);
   });
 
   it("formats fractional chart ticks without floating-point noise", () => {

@@ -437,7 +437,10 @@ function dashboardPagePaths(
       nested: true,
       path: basePath === "/" ? "/locations" : `${basePath}/locations`,
     },
-    { path: basePath === "/" ? "/system" : `${basePath}/system` },
+    {
+      nested: true,
+      path: basePath === "/" ? "/system" : `${basePath}/system`,
+    },
   ];
   if (options.componentGallery) {
     paths.push({

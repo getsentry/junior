@@ -1,0 +1,109 @@
+import { ArrowRight, Boxes, Sparkles, Wrench } from "lucide-react";
+import { Link } from "react-router";
+
+import { Card } from "../../components/layout/Card";
+import { systemPluginPath, type SystemPlugin } from "./SystemPlugins";
+
+/** Render loaded plugins as useful System overview launch panels. */
+export function PluginPanels(props: { plugins: SystemPlugin[] }) {
+  return (
+    <section aria-labelledby="system-plugins-heading" className="grid gap-3">
+      <div className="px-1">
+        <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          Loaded capabilities
+        </div>
+        <h2
+          className="mt-1 mb-0 font-display text-xl font-medium text-white"
+          id="system-plugins-heading"
+        >
+          Plugins
+        </h2>
+      </div>
+      {props.plugins.length ? (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {props.plugins.map((plugin) => (
+            <PluginPanel key={plugin.name} plugin={plugin} />
+          ))}
+        </div>
+      ) : (
+        <Card padding="md">
+          <div className="font-mono text-[0.72rem] text-white/30">
+            No plugin inventory has been reported yet.
+          </div>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+function PluginPanel(props: { plugin: SystemPlugin }) {
+  const metrics = props.plugin.reports.flatMap(
+    (report) => report.metrics ?? [],
+  );
+  return (
+    <Link
+      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-[#09090b]/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
+      to={systemPluginPath(props.plugin.name)}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="grid size-9 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
+            <Boxes aria-hidden="true" size={16} strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="m-0 truncate font-display text-lg font-medium text-white">
+              {props.plugin.displayName}
+            </h3>
+            <p className="mt-1 mb-0 line-clamp-2 font-mono text-[0.66rem] leading-relaxed text-white/35">
+              {props.plugin.description}
+            </p>
+          </div>
+        </div>
+        <ArrowRight
+          aria-hidden="true"
+          className="mt-1 shrink-0 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200/70"
+          size={16}
+        />
+      </div>
+
+      {metrics.length ? (
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+          {metrics.slice(0, 2).map((metric) => (
+            <div
+              className="min-w-0 bg-[#09090b] px-3 py-2.5"
+              key={metric.label}
+            >
+              <div className="truncate font-display text-lg font-light text-white/90">
+                {metric.value}
+              </div>
+              <div className="mt-1 truncate font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+                {metric.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[0.055] pt-3">
+        <PanelFact
+          icon={Sparkles}
+          label={`${props.plugin.skills.length} skills`}
+        />
+        <PanelFact
+          icon={Wrench}
+          label={`${props.plugin.capabilities.length} capabilities`}
+        />
+      </div>
+    </Link>
+  );
+}
+
+function PanelFact(props: { icon: typeof Sparkles; label: string }) {
+  const Icon = props.icon;
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-white/25">
+      <Icon aria-hidden="true" size={11} />
+      {props.label}
+    </span>
+  );
+}

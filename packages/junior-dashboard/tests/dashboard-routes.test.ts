@@ -106,6 +106,7 @@ describe("dashboard routes", () => {
       "/locations",
       "/locations/destination-1",
       "/system",
+      "/system/plugins/github",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -411,6 +412,7 @@ describe("dashboard routes", () => {
       "/people",
       "/people/person%40sentry.io",
       "/system",
+      "/system/plugins/github",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
 

@@ -83,14 +83,15 @@ The dashboard package owns these routes:
 | `/locations/:location`          | Public location activity detail.        |
 | `/people`                       | Actor directory.                        |
 | `/people/:email`                | Actor activity profile.                 |
-| `/system`                       | Aggregate metrics and plugin reporting. |
+| `/system`                       | Aggregate metrics and loaded plugins.   |
+| `/system/plugins/:plugin`       | Plugin details and operational reports. |
 | `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle. |
 | `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.     |
 | `/auth/login`                   | Dashboard Google login starter.         |
 | `/api/auth/*`                   | Better Auth Google login and callbacks. |
 
-When the GitHub plugin is enabled, its GitHub work outcome report appears on
-`/system` with pull request and issue analytics.
+When the GitHub plugin is enabled, open `/system/plugins/github` for its pull
+request and issue analytics.
 
 `/health` remains the public minimal Junior runtime health response.
 
@@ -117,7 +118,7 @@ The current authenticated product API slices are:
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Conversation summary resources report that match through `isParticipant`; event-page resources apply the same authorization decision through their projected events and `eventHistory`. Other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/locations` provides aggregate browsing for public destinations without exposing private destination identity, while `/system` shows 90-day aggregate conversation metrics, loaded plugin inventory, and operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/locations` provides aggregate browsing for public destinations without exposing private destination identity, while `/system` shows 90-day aggregate conversation metrics and the loaded plugin inventory. Each `/system/plugins/:plugin` page shows that plugin's details and operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.
 When dashboard auth is explicitly disabled for local or demo use, the workspace shows the global feed because there is no authenticated actor to filter by.
 The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail returns the latest 500 reporting events by default and a `previousCursor` when earlier events remain. The `limit` query parameter can select between 1 and 1,000 events. Cursors are signed for one conversation; consumers should treat them as opaque.

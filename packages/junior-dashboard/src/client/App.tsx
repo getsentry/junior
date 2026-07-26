@@ -181,7 +181,7 @@ export function DashboardShell() {
           element={
             loading ? <LoadingView label="Loading system" /> : <SystemRoute />
           }
-          path="/system"
+          path="/system/*"
         />
         <Route
           element={

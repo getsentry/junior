@@ -99,6 +99,26 @@ test.afterAll(async () => {
 });
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/plugins", async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          capabilities: ["github.issues", "github.pull-requests"],
+          configKeys: ["github.organization"],
+          description: "GitHub repository and development workflow context.",
+          displayName: "GitHub",
+          name: "github",
+        },
+        {
+          capabilities: ["scheduler.scheduled-tasks"],
+          configKeys: [],
+          description: "Recurring and deferred Junior tasks.",
+          displayName: "Scheduler",
+          name: "scheduler",
+        },
+      ],
+    });
+  });
   await page.route("**/api/people", async (route) => {
     const activityDays = Array.from({ length: 90 }, (_, index) => {
       const date = new Date("2026-03-15T00:00:00.000Z");
@@ -193,18 +213,22 @@ test("hydrates the built dashboard client in a real browser", async ({
   await page.getByRole("link", { name: "System", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/system`);
   await expect(page.getByText("Usage over time")).toBeVisible();
-  const pluginsTab = page.getByRole("tab", { name: "Plugins" });
-  const skillsTab = page.getByRole("tab", { name: "Skills" });
-  await expect(pluginsTab).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
-  await skillsTab.click();
-  await expect(skillsTab).toHaveAttribute("aria-selected", "true");
-  await expect(
-    page.getByRole("heading", { name: "Skills", exact: true }),
-  ).toBeVisible();
   await expect(page.getByText("Model spend")).toBeVisible();
+  await page
+    .getByLabel("System navigation")
+    .getByRole("link", { name: "GitHub", exact: true })
+    .click();
+  await expect(page).toHaveURL(`${baseURL}/system/plugins/github`);
+  await expect(
+    page.getByRole("heading", { name: "GitHub", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("This plugin does not expose operational activity yet."),
+  ).toBeVisible();
+  await expect(page.getByText("github.organization")).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
 
   await page.goto(`${baseURL}/people`);
@@ -285,6 +309,69 @@ test("opens and closes a conversation in the mobile workspace", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test("navigates plugin information and activity on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.route("**/api/plugin-reports", async (route) => {
+    await route.fulfill({
+      json: {
+        generatedAt: "2026-06-12T00:00:00.000Z",
+        reports: [
+          {
+            metrics: [
+              { label: "Active tasks", value: "4" },
+              { label: "Runs today", value: "12" },
+            ],
+            pluginName: "scheduler",
+            recordSets: [
+              {
+                fields: [
+                  { key: "task", label: "Task" },
+                  { key: "next", label: "Next run" },
+                  { key: "owner", label: "Owner" },
+                  { key: "status", label: "Status" },
+                ],
+                records: [
+                  {
+                    id: "daily-triage",
+                    values: {
+                      next: "Tomorrow, 9:00 AM",
+                      owner: "Junior",
+                      status: "Ready",
+                      task: "Daily issue triage",
+                    },
+                  },
+                ],
+                title: "Upcoming",
+              },
+            ],
+            title: "Scheduler",
+          },
+        ],
+        source: "plugins",
+      },
+    });
+  });
+
+  await page.goto(`${baseURL}/system`);
+  await page
+    .getByLabel("System view")
+    .selectOption("/system/plugins/scheduler");
+
+  await expect(page).toHaveURL(`${baseURL}/system/plugins/scheduler`);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Scheduler", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Runs today")).toBeVisible();
+  await expect(page.getByText("12", { exact: true })).toBeVisible();
+  await expect(page.getByText("Daily issue triage").first()).toBeVisible();
+  await expect(page.getByText("Tomorrow, 9:00 AM").first()).toBeVisible();
+  await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("Reporting period")).toHaveCount(0);
 });
 
 test("loads earlier transcript events without dropping the current page", async ({

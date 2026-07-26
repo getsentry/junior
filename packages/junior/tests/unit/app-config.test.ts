@@ -823,6 +823,12 @@ describe("createApp plugin config", () => {
     expect(systemPage.status).toBe(200);
     await expect(systemPage.text()).resolves.toBe("dashboard");
 
+    const pluginSystemPage = await app.fetch(
+      new Request("http://localhost/system/plugins/github"),
+    );
+    expect(pluginSystemPage.status).toBe(200);
+    await expect(pluginSystemPage.text()).resolves.toBe("dashboard");
+
     const componentGallery = await app.fetch(
       new Request("http://localhost/dev"),
     );
@@ -860,6 +866,7 @@ describe("createApp plugin config", () => {
       "/locations/*",
       "/people/*",
       "/system",
+      "/system/*",
       "/*",
       "/api/*",
       "/:slug",
