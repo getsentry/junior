@@ -14,7 +14,10 @@ import {
   getMcpAuthSession,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
-import type { OAuthAuthorization } from "@/chat/oauth-authorization";
+import {
+  authorizationId,
+  type OAuthAuthorization,
+} from "@/chat/oauth-authorization";
 import {
   deliverOAuthAuthorization,
   formatProviderLabel,
@@ -72,14 +75,6 @@ export interface McpAuthOrchestration {
   ) => Promise<OAuthClientProvider | undefined>;
   onAuthorizationRequired: (provider: string) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
-}
-
-function authorizationId(args: {
-  kind: "mcp";
-  provider: string;
-  sessionId: string;
-}): string {
-  return `${args.sessionId}:${args.kind}:${args.provider}`;
 }
 
 /** Create MCP authorization orchestration for a single agent run. */

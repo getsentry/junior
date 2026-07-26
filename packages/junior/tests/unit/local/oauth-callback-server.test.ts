@@ -10,8 +10,16 @@ vi.mock("@/handlers/mcp-oauth-callback", () => ({
   GET: mcpCallback,
 }));
 
+import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
+
 describe("local OAuth callback server", () => {
   let close: (() => Promise<void>) | undefined;
+
+  async function startCallback() {
+    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
+    close = callback.close;
+    return callback;
+  }
 
   afterEach(async () => {
     await close?.();
@@ -21,10 +29,7 @@ describe("local OAuth callback server", () => {
   });
 
   it("ignores a duplicate callback from an earlier authorization", async () => {
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     callback.beginAuthorization(
       "https://provider.example/authorize?state=first",
@@ -52,10 +57,7 @@ describe("local OAuth callback server", () => {
   });
 
   it("lets a later authorization replace a canceled wait", async () => {
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     callback.beginAuthorization(
       "https://provider.example/authorize?state=first",
@@ -79,10 +81,7 @@ describe("local OAuth callback server", () => {
   });
 
   it("rejects a malformed provider path without invoking a callback", async () => {
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     callback.beginAuthorization(
       "https://provider.example/authorize?state=valid-state",
@@ -97,10 +96,7 @@ describe("local OAuth callback server", () => {
   });
 
   it("bounds a malformed Host header to a client error", async () => {
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     const status = await new Promise<number | undefined>((resolve, reject) => {
       const request = httpRequest(
@@ -133,10 +129,7 @@ describe("local OAuth callback server", () => {
     );
     const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     callback.beginAuthorization(
       "https://provider.example/authorize?state=processing",
@@ -162,10 +155,7 @@ describe("local OAuth callback server", () => {
         }),
     );
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const { startLocalOAuthCallbackServer } =
-      await import("@/chat/local/oauth-callback-server");
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
-    close = callback.close;
+    const callback = await startCallback();
 
     callback.beginAuthorization(
       "https://provider.example/authorize?state=processing-timeout",

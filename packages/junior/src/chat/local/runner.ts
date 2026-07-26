@@ -56,7 +56,10 @@ import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
-import type { OAuthAuthorization } from "@/chat/oauth-authorization";
+import {
+  authorizationId,
+  type OAuthAuthorization,
+} from "@/chat/oauth-authorization";
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
@@ -388,7 +391,11 @@ export async function runLocalAgentTurn(
         kind: pendingAuth.kind,
         provider: pendingAuth.provider,
         actorId: pendingAuth.actorId,
-        authorizationId: `${turnId}:${pendingAuth.kind}:${pendingAuth.provider}`,
+        authorizationId: authorizationId({
+          sessionId: turnId,
+          kind: pendingAuth.kind,
+          provider: pendingAuth.provider,
+        }),
       });
       // Resuming after authorization starts the next durable session slice.
       completionSliceId += 1;

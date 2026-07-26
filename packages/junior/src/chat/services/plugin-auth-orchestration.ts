@@ -26,7 +26,10 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
-import type { OAuthAuthorization } from "@/chat/oauth-authorization";
+import {
+  authorizationId,
+  type OAuthAuthorization,
+} from "@/chat/oauth-authorization";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -114,14 +117,6 @@ function pluginAuthRequiredSignal(details: unknown):
       ? { authorization: parsedSignal.authorization }
       : {}),
   };
-}
-
-function authorizationId(args: {
-  kind: "plugin";
-  provider: string;
-  sessionId: string;
-}): string {
-  return `${args.sessionId}:${args.kind}:${args.provider}`;
 }
 
 /**

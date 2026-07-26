@@ -167,43 +167,6 @@ describe("oauth callback integration", () => {
     ]);
   }, 20_000);
 
-  it("stores a local CLI credential without attempting Slack resume", async () => {
-    const conversationId = "local:oauth:callback";
-    const destination = {
-      platform: "local",
-      conversationId,
-    } as const;
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-local-state", {
-        userId: "local-cli",
-        provider: "eval-oauth",
-        destination,
-        source: createLocalSource(conversationId),
-        resumeConversationId: conversationId,
-        resumeSessionId: "local-turn-oauth",
-        scope: "read",
-      });
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-local-state",
-      code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
-      expectBackgroundWork: false,
-    });
-
-    expect(response.status).toBe(200);
-    await expect(
-      capabilitiesFactoryModule
-        .createUserTokenStore()
-        .get("local-cli", "eval-oauth"),
-    ).resolves.toEqual(
-      expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
-    );
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
-  }, 20_000);
-
   it("resumes a parked local turn through the real loopback callback", async () => {
     mswServer.use(
       http.post(
@@ -308,6 +271,7 @@ describe("oauth callback integration", () => {
       await expect(callbackRequest).resolves.toMatchObject({ status: 200 });
       expect(requests).toHaveLength(2);
       expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+      expect(getCapturedSlackApiCalls("views.publish")).toEqual([]);
       await expect(
         capabilitiesFactoryModule
           .createUserTokenStore()

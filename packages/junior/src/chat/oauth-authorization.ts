@@ -10,3 +10,12 @@ export interface OAuthAuthorization {
   createState: () => Promise<string>;
   deliver: (request: OAuthAuthorizationRequest) => void | Promise<void>;
 }
+
+/** Build the stable event identity shared by authorization request and completion. */
+export function authorizationId(args: {
+  kind: "mcp" | "plugin";
+  provider: string;
+  sessionId: string;
+}): string {
+  return `${args.sessionId}:${args.kind}:${args.provider}`;
+}

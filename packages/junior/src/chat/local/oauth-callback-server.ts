@@ -147,14 +147,13 @@ export async function startLocalOAuthCallbackServer(
           }
           await syncLocalOAuthCredential(provider, tokens);
         }
-        if (authorization.settled) {
-          return;
-        }
+      }
+      if (authorization.settled) {
+        return;
+      }
+      if (response.ok) {
         completeAuthorization(authorization, true);
       } else {
-        if (authorization.settled) {
-          return;
-        }
         completeAuthorization(
           authorization,
           new Error(
