@@ -16,7 +16,7 @@ const LOCAL_OAUTH_CALLBACK_TIMEOUT_MS = 60 * 1000;
  * Call `beginAuthorization` before waiting. Success, cancellation, timeout,
  * and `close` all settle that wait exactly once.
  */
-export interface LocalOAuthCallbackServer {
+interface LocalOAuthCallbackServer {
   beginAuthorization: (authorizationUrl: string) => void;
   cancelAuthorization: () => void;
   close: () => Promise<void>;

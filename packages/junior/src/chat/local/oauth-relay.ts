@@ -40,9 +40,7 @@ export async function createLocalOAuthState(port: number): Promise<string> {
 }
 
 /** Resolve a signed local OAuth state to its loopback callback port. */
-export async function localOAuthRelayPort(
-  state: string,
-): Promise<number | undefined> {
+async function localOAuthRelayPort(state: string): Promise<number | undefined> {
   const prefix = `${LOCAL_OAUTH_STATE_PREFIX}.`;
   if (!state.startsWith(prefix)) {
     return undefined;

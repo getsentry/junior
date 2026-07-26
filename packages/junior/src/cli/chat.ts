@@ -229,18 +229,6 @@ function localDevServerUrl(): string {
   return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
 }
 
-async function hasLocalDevServer(baseUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${baseUrl}/health`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-    await response.body?.cancel();
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
 async function prepareLocalChatRun(
   io: ChatIo,
@@ -252,14 +240,10 @@ async function prepareLocalChatRun(
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
+  const { createLocalSandboxEgressSignalTransport } =
+    await import("@/chat/local/sandbox-egress-signals");
   const agentRunner = createAgentRunner(executeAgentRun);
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
-  const devServerUrl = localDevServerUrl();
-  const sandboxEgressSignals = (await hasLocalDevServer(devServerUrl))
-    ? (
-        await import("@/chat/local/sandbox-egress-signals")
-      ).createLocalSandboxEgressSignalTransport(devServerUrl)
-    : undefined;
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {
@@ -274,7 +258,8 @@ async function prepareLocalChatRun(
       },
       wait: oauthCallback.waitForAuthorization,
     },
-    sandboxEgressSignals,
+    sandboxEgressSignals:
+      createLocalSandboxEgressSignalTransport(localDevServerUrl()),
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },

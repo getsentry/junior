@@ -2,6 +2,7 @@ import { sandboxEgressSignalsResponseSchema } from "@/chat/sandbox/egress/schema
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 
 const SANDBOX_EGRESS_SIGNALS_PATH = "/api/internal/sandbox-egress/signals";
+const LOCAL_DEV_SERVER_TIMEOUT_MS = 1_000;
 
 function signalRequest(
   baseUrl: string,
@@ -15,6 +16,23 @@ function signalRequest(
   };
 }
 
+async function requestLocalDevServer(
+  request: ReturnType<typeof signalRequest>,
+  init?: RequestInit,
+): Promise<Response | undefined> {
+  try {
+    return await fetch(request.url, {
+      ...init,
+      headers: request.headers,
+      signal: AbortSignal.timeout(LOCAL_DEV_SERVER_TIMEOUT_MS),
+    });
+  } catch {
+    // Ordinary sandbox commands do not require the dev server. The next
+    // command probes again, so a later OAuth signal still uses its owner.
+    return undefined;
+  }
+}
+
 /** Create authenticated sandbox egress signal transport to the loopback dev server. */
 export function createLocalSandboxEgressSignalTransport(
   baseUrl: string,
@@ -22,10 +40,12 @@ export function createLocalSandboxEgressSignalTransport(
   return {
     clear: async (credentialToken) => {
       const request = signalRequest(baseUrl, credentialToken);
-      const response = await fetch(request.url, {
-        headers: request.headers,
+      const response = await requestLocalDevServer(request, {
         method: "DELETE",
       });
+      if (!response) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(
           `Could not clear dev-server sandbox egress signals: HTTP ${response.status}`,
@@ -34,9 +54,10 @@ export function createLocalSandboxEgressSignalTransport(
     },
     consume: async (credentialToken) => {
       const request = signalRequest(baseUrl, credentialToken);
-      const response = await fetch(request.url, {
-        headers: request.headers,
-      });
+      const response = await requestLocalDevServer(request);
+      if (!response) {
+        return {};
+      }
       if (!response.ok) {
         throw new Error(
           `Could not consume dev-server sandbox egress signals: HTTP ${response.status}`,

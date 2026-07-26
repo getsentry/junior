@@ -76,6 +76,23 @@ describe("sandbox egress signal route", () => {
     await signals.clear(token);
   });
 
+  it("does not require the dev server for ordinary sandbox commands", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("dev server unavailable");
+      }),
+    );
+    const { createLocalSandboxEgressSignalTransport } =
+      await import("@/chat/local/sandbox-egress-signals");
+    const signals = createLocalSandboxEgressSignalTransport(
+      "http://127.0.0.1:3000",
+    );
+
+    await expect(signals.clear("unused")).resolves.toBeUndefined();
+    await expect(signals.consume("unused")).resolves.toEqual({});
+  });
+
   it("rejects an unsigned signal request", async () => {
     const handler = await import("@/handlers/sandbox-egress-signals");
     const request = new Request(

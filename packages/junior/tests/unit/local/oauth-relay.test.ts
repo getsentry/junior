@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLocalOAuthState,
-  localOAuthRelayPort,
   relayLocalOAuthCallback,
 } from "@/chat/local/oauth-relay";
 
@@ -25,7 +24,6 @@ describe("local OAuth relay", () => {
 
     const response = await relayLocalOAuthCallback(request);
 
-    expect(await localOAuthRelayPort(state)).toBe(43123);
     expect(response?.status).toBe(302);
     expect(response?.headers.get("location")).toBe(
       `http://127.0.0.1:43123/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(state)}&jr_local_relay=complete`,
@@ -37,7 +35,6 @@ describe("local OAuth relay", () => {
     const state = await createLocalOAuthState(43123);
     const tampered = `${state.slice(0, -1)}${state.endsWith("a") ? "b" : "a"}`;
 
-    expect(await localOAuthRelayPort(tampered)).toBeUndefined();
     expect(
       await relayLocalOAuthCallback(
         new Request(

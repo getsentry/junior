@@ -93,10 +93,6 @@ export type SandboxEgressAuthRequiredSignal = z.output<
 export type SandboxEgressPermissionDeniedSignal = z.output<
   typeof sandboxEgressPermissionDeniedSignalSchema
 >;
-export type SandboxEgressSignalsResponse = z.output<
-  typeof sandboxEgressSignalsResponseSchema
->;
-
 /** Parse a host-owned sandbox egress auth signal from state or tool results. */
 export function parseSandboxEgressAuthRequiredSignal(
   value: unknown,

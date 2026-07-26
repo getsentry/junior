@@ -121,6 +121,10 @@ export const plugins = {
           input: expect.objectContaining({ messageText: "hello" }),
           policy: expect.objectContaining({
             authorizationFlowMode: "interactive",
+            sandboxEgressSignals: expect.objectContaining({
+              clear: expect.any(Function),
+              consume: expect.any(Function),
+            }),
           }),
           routing: expect.objectContaining({
             credentialContext: {
