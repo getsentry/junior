@@ -6,7 +6,7 @@ import {
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
 const workspaceRoot = path.resolve(
@@ -43,8 +43,8 @@ export default async function setup(
     migrateTemplate: async (connectionString) => {
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
-        await migrateSchema(executor);
-        await migratePluginSchemas(executor, [
+        await migrateSchema(executor, { mode: "schema-bootstrap" });
+        await bootstrapPluginSchemas(executor, [
           {
             dir: path.resolve(
               workspaceRoot,

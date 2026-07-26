@@ -327,8 +327,8 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
@@ -343,7 +343,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -397,7 +397,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const store = createSqlConversationEventStore(fixture.sql);
       const firstEvent = {
         data: { type: "agent_step" as const, message: userMessage("first") },
@@ -470,7 +470,7 @@ describe("SQL conversation storage", () => {
     const store = createSqlConversationEventStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.append(CONVERSATION_ID, [
         {
           idempotencyKey: "event:repeated",
@@ -511,7 +511,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       const lifecycle = new ConversationTurnLifecycleService(store);
@@ -555,7 +555,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -588,7 +588,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -628,7 +628,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -697,7 +697,7 @@ describe("SQL conversation storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
@@ -737,7 +737,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -788,7 +788,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       const conversation = coerceThreadConversationState({});
@@ -860,7 +860,7 @@ WHERE conversation_id = $1 AND seq = 0
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       const data = {
@@ -882,7 +882,7 @@ WHERE conversation_id = $1 AND seq = 0
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
@@ -939,7 +939,7 @@ WHERE conversation_id = $1 AND seq = 0
       const fixture = await createLocalJuniorSqlFixture();
 
       try {
-        await migrateSchema(fixture.sql);
+        await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
         await seedConversation(fixture, CONVERSATION_ID);
         const store = createSqlConversationEventStore(fixture.sql);
 
@@ -983,7 +983,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -1016,7 +1016,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
@@ -1055,7 +1055,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
@@ -1137,7 +1137,7 @@ INSERT INTO junior_conversation_events (
     }
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       // Seed an old activity clock; content writes must refresh the window.
       await seedConversation(fixture, CONVERSATION_ID);
       await fixture.sql
@@ -1206,7 +1206,7 @@ INSERT INTO junior_conversation_events (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await seedConversation(fixture, CONVERSATION_ID);
       await seedConversation(fixture, CHILD_CONVERSATION_ID, CONVERSATION_ID);
       const events = createSqlConversationEventStore(fixture.sql);

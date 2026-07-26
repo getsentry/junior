@@ -13,6 +13,7 @@
     "src/app.ts",
     "src/handlers/**/*.ts",
     "src/instrumentation.ts",
+    "src/migration-helpers/**/*.ts",
     "src/nitro.ts",
     "src/reporting.ts",
     "src/vercel.ts",

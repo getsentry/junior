@@ -6,7 +6,7 @@ import type { LocalJuniorSqlFixture } from "../../../fixtures/sql";
 /** Seed representative verified and untrusted people rows for people API tests. */
 export async function seedPeople(fixture: LocalJuniorSqlFixture) {
   const store = createSqlStore(fixture.sql);
-  await migrateSchema(fixture.sql);
+  await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
   await store.recordActivity({
     conversationId: "slack:C1:123",

@@ -25,6 +25,7 @@
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
+    "db:generate:data": "pnpm exec junior-migrations generate --config drizzle.config.ts --out migrations",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
@@ -39,6 +40,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@sentry/junior-migrations": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "drizzle-kit": "catalog:",

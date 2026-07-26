@@ -2,16 +2,13 @@ import path from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createSchedulerSqlStore,
-  schedulerPlugin,
   type SchedulerDb,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
-import { defineJuniorPlugins } from "@/plugins";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
-import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
@@ -30,7 +27,7 @@ function memoryMigrationsDir(): string {
 async function migrateSchedulerSchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
@@ -125,7 +122,7 @@ INSERT INTO junior_scheduler_tasks (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -158,7 +155,7 @@ ORDER BY created_at
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -193,11 +190,13 @@ ORDER BY created_at
     );
 
     try {
-      await expect(migratePluginSchemas(fixture.sql, roots)).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        scanned: migrationCount,
-      });
+      await expect(bootstrapPluginSchemas(fixture.sql, roots)).resolves.toEqual(
+        {
+          existing: 0,
+          migrated: migrationCount,
+          scanned: migrationCount,
+        },
+      );
       const migrationTables = await fixture.sql.query<{ tablename: string }>(`
 SELECT tablename
 FROM pg_tables
@@ -206,19 +205,13 @@ WHERE schemaname = 'drizzle'
 ORDER BY tablename
 `);
       expect(migrationTables).toHaveLength(2);
-      const migrationLock = vi.spyOn(fixture.sql, "withMigrationLock");
-      const summaries: string[] = [];
       await expect(
-        migratePluginSchemas(fixture.sql, [...roots].reverse(), {
-          onPluginMigration: ({ pluginName }) => summaries.push(pluginName),
-        }),
+        bootstrapPluginSchemas(fixture.sql, [...roots].reverse()),
       ).resolves.toEqual({
         existing: migrationCount,
         migrated: 0,
         scanned: migrationCount,
       });
-      expect(migrationLock).not.toHaveBeenCalled();
-      expect(summaries).toEqual(["memory", "scheduler"]);
     } finally {
       await fixture.close();
     }
@@ -237,12 +230,12 @@ ORDER BY tablename
 
     try {
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: missingJournal, pluginName: "missing" },
         ]),
       ).rejects.toThrow("Can't find meta/_journal.json file");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: invalidJournal, pluginName: "invalid" },
         ]),
       ).rejects.toThrow("Expected property name");
@@ -455,74 +448,6 @@ ORDER BY tablename
       await fixture.close();
     }
   }, 15_000);
-
-  it("does not apply scheduler SQL migrations from package-only config", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await expect(
-        migratePluginsToSql({
-          pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
-          sqlExecutor: fixture.sql,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        scanned: 0,
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("applies scheduler SQL migrations from registration-only config", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await expect(
-        migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([schedulerPlugin()]),
-          sqlExecutor: fixture.sql,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 2,
-        scanned: 2,
-      });
-
-      const db = fixture.sql.db() as unknown as SchedulerDb;
-      const store = createSchedulerSqlStore(db);
-      const task = createTask({ id: "sched_schema_registration_config" });
-      await store.saveTask(task);
-      await expect(store.getTask(task.id)).resolves.toMatchObject({
-        id: task.id,
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("does not duplicate scheduler SQL migrations for explicit registrations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await expect(
-        migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([
-            "@sentry/junior-scheduler",
-            schedulerPlugin(),
-          ]),
-          sqlExecutor: fixture.sql,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 2,
-        scanned: 2,
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
 
   it("skips malformed SQL records while claiming due runs", async () => {
     const fixture = await createLocalJuniorSqlFixture();

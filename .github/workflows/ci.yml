@@ -49,6 +49,7 @@ jobs:
               - .github/actions/**
             core:
               - packages/junior/**
+              - packages/junior-migrations/**
               - packages/junior-plugin-api/**
               - packages/junior-scheduler/**
               - packages/junior-testing/**
@@ -216,6 +217,7 @@ jobs:
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
       - run: pnpm --filter @sentry/junior-vercel build
+      - run: pnpm --filter @sentry/junior-migrations test
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-github test
       - run: pnpm --filter @sentry/junior-vercel test
@@ -343,6 +345,7 @@ jobs:
         run: |
           mkdir -p artifacts
           pnpm --filter @sentry/junior pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-migrations pack --pack-destination artifacts
           pnpm --filter @sentry/junior-plugin-api pack --pack-destination artifacts
           pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
           pnpm --filter @sentry/junior-amplitude pack --pack-destination artifacts

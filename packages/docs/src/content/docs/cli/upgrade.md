@@ -1,6 +1,6 @@
 ---
 title: "junior upgrade"
-description: "Apply Junior and plugin SQL schema migrations."
+description: "Apply Junior and plugin schema or data migrations."
 type: reference
 summary: Bring the configured Junior SQL database up to the installed schema.
 prerequisites:
@@ -12,7 +12,8 @@ related:
 ---
 
 Use `junior upgrade` after installing a new Junior release. The command applies
-pending Drizzle migrations to the database configured by `DATABASE_URL`.
+pending SQL schema and TypeScript data entries from the ordered Drizzle journals
+owned by Junior and its enabled plugins.
 
 ## Usage
 
@@ -22,9 +23,8 @@ Run the command from your Junior app:
 pnpm exec junior upgrade
 ```
 
-The command takes no arguments. It migrates the core Junior schema first, then
-the schemas owned by enabled plugins. Already-applied migrations are recognized
-as up to date and are not rerun.
+The command takes no arguments. It migrates Junior first, then enabled plugins.
+Already-applied entries are recognized as up to date and are not rerun.
 
 ## Upgrade bridge for older databases
 

@@ -36,7 +36,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const at = new Date(1);
       await fixture.sql.db().insert(juniorConversations).values({
         conversationId: "parent-without-root",
@@ -77,7 +77,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -210,7 +210,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       const identity = await upsertIdentity(
         fixture.sql,
@@ -319,7 +319,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -355,7 +355,7 @@ describe("conversation SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await fixture.sql
         .db()
@@ -428,7 +428,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -475,7 +475,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const destination = inboundMessage("visibility").destination;
 
       // Slack reports this C-prefixed channel private (channel_type: group).
@@ -542,7 +542,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       // A write without a live source signal fails closed to private even
       // though the channel id is C-prefixed.
@@ -572,7 +572,7 @@ describe("conversation SQL store", () => {
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await fixture.sql.execute(
         `
 INSERT INTO junior_conversations (
@@ -632,7 +632,7 @@ INSERT INTO junior_conversations (
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
@@ -685,7 +685,7 @@ INSERT INTO junior_conversations (
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -762,7 +762,7 @@ WHERE conversation_id = $1
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
@@ -812,7 +812,7 @@ WHERE conversation_id = $1
 
     try {
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -848,7 +848,7 @@ WHERE conversation_id = $1
     try {
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -882,7 +882,7 @@ WHERE conversation_id = $1
       vi.useFakeTimers({ now: 302_000 });
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -917,7 +917,7 @@ WHERE conversation_id = $1
       vi.useFakeTimers({ now: 2_000 });
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -955,7 +955,7 @@ WHERE conversation_id = $1
       vi.useFakeTimers({ now: 600_000 });
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -1009,7 +1009,7 @@ WHERE conversation_id = $1
       await disconnectStateAdapter();
       const state = getStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await appendInboundMessage({
         message: inboundMessage("check-in"),
         conversationStore: store,
@@ -1062,7 +1062,7 @@ WHERE conversation_id = $1
       await disconnectStateAdapter();
       const state = getStateAdapter();
       const store = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await appendInboundMessage({
         message: inboundMessage("drain-sql"),
         conversationStore: store,

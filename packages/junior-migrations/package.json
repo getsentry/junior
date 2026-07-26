@@ -1,0 +1,47 @@
+{
+  "name": "@sentry/junior-migrations",
+  "version": "0.109.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-migrations"
+  },
+  "bin": {
+    "junior-migrations": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "drizzle-kit": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "drizzle-kit": "catalog:",
+    "drizzle-orm": "catalog:",
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

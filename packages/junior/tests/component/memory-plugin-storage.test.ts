@@ -13,11 +13,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
-import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
-import { runUpgrade } from "@/cli/upgrade";
+import { runUpgrade, runUpgradeMigrations } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
@@ -40,7 +39,6 @@ vi.mock("@/db/executor", () => ({
       db: NEON.sql.db.bind(NEON.sql),
       execute: NEON.sql.execute.bind(NEON.sql),
       query: NEON.sql.query.bind(NEON.sql),
-      migrate: NEON.sql.migrate.bind(NEON.sql),
       transaction: NEON.sql.transaction.bind(NEON.sql),
       withLock: NEON.sql.withLock.bind(NEON.sql),
       withMigrationLock: NEON.sql.withMigrationLock.bind(NEON.sql),
@@ -88,7 +86,7 @@ function memoryMigrationFiles(): string[] {
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: memoryMigrationsDir(),
       pluginName: "memory",
@@ -132,7 +130,7 @@ CREATE TABLE junior_schema_migrations (
       }
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -170,7 +168,7 @@ CREATE TABLE junior_schema_migrations (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -186,40 +184,6 @@ CREATE TABLE junior_schema_migrations (
     }
   });
 
-  it("applies packaged migrations through plugin discovery", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    NEON.sql = fixture.sql;
-
-    try {
-      const migrationCount = readMigrationFiles({
-        migrationsFolder: memoryMigrationsDir(),
-      }).length;
-      await expect(
-        migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
-          sqlExecutor: fixture.sql,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        scanned: migrationCount,
-      });
-
-      await expect(
-        fixture.sql.query<{ table_name: string }>(
-          `
-SELECT table_name
-FROM information_schema.tables
-WHERE table_name = 'junior_memory_memories'
-`,
-        ),
-      ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
-    } finally {
-      NEON.sql = undefined;
-      await fixture.close();
-    }
-  }, 15_000);
-
   it("reports core and nonempty plugin migration journals", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     NEON.sql = fixture.sql;
@@ -231,7 +195,6 @@ WHERE table_name = 'junior_memory_memories'
       const memoryMigrationCount = readMigrationFiles({
         migrationsFolder: memoryMigrationsDir(),
       }).length;
-      const totalMigrationCount = coreMigrationCount + memoryMigrationCount;
       const lines: string[] = [];
       const pluginSet = defineJuniorPlugins([
         createMemoryPlugin(),
@@ -246,20 +209,46 @@ WHERE table_name = 'junior_memory_memories'
 
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
       expect(lines).toEqual([
-        "Checking database migrations...",
-        `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
-        `  junior-memory: applied ${memoryMigrationCount} migrations (${memoryMigrationCount} total)`,
-        `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
+        "Running Junior upgrade migrations...",
+        "Running migration core-migrations...",
+        `Finished migration core-migrations: scanned=${coreMigrationCount} migrated=${coreMigrationCount} existing=0 missing=0 skipped=0`,
+        "Running migration plugin-migrations...",
+        `Finished migration plugin-migrations: scanned=${memoryMigrationCount} migrated=${memoryMigrationCount} existing=0 missing=0`,
+        "Junior upgrade complete.",
       ]);
 
       lines.length = 0;
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
       expect(lines).toEqual([
-        "Checking database migrations...",
-        `  junior: up to date (${coreMigrationCount} migrations)`,
-        `  junior-memory: up to date (${memoryMigrationCount} migrations)`,
-        `Database is up to date (${totalMigrationCount} migrations).`,
+        "Running Junior upgrade migrations...",
+        "Running migration core-migrations...",
+        `Finished migration core-migrations: scanned=${coreMigrationCount} migrated=0 existing=${coreMigrationCount} missing=0 skipped=0`,
+        "Running migration plugin-migrations...",
+        `Finished migration plugin-migrations: scanned=${memoryMigrationCount} migrated=0 existing=${memoryMigrationCount} missing=0`,
+        "Junior upgrade complete.",
       ]);
+    } finally {
+      NEON.sql = undefined;
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not connect state for SQL-only migration journals", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    NEON.sql = fixture.sql;
+
+    try {
+      const getStateContext = vi.fn(async () => {
+        throw new Error("SQL-only migrations must not connect state");
+      });
+      await expect(
+        runUpgradeMigrations({
+          getStateContext,
+          io: { info: () => {} },
+          pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
+        }),
+      ).resolves.toHaveLength(2);
+      expect(getStateContext).not.toHaveBeenCalled();
     } finally {
       NEON.sql = undefined;
       await fixture.close();

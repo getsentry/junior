@@ -178,6 +178,10 @@ export default defineConfig({
           label: "Contribute",
           items: [
             { label: "Development", link: "/contribute/development/" },
+            {
+              label: "Database Migrations",
+              link: "/contribute/database-migrations/",
+            },
             { label: "Testing", link: "/contribute/testing/" },
             {
               label: "Local Agent Validation",
@@ -191,10 +195,7 @@ export default defineConfig({
           ],
         },
       ],
-      plugins: [
-        sentryStarlightTheme(),
-        sentryAgentMarkdown(),
-      ],
+      plugins: [sentryStarlightTheme(), sentryAgentMarkdown()],
     }),
   ],
   markdown: {

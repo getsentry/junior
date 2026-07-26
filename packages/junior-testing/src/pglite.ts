@@ -21,11 +21,16 @@ export interface LocalPgliteFixture<TDatabase> {
   ): Promise<T[]>;
   transaction<T>(callback: () => Promise<T>): Promise<T>;
   withLock<T>(lockName: string, callback: () => Promise<T>): Promise<T>;
+  withMigrationLock<T>(
+    lockName: string,
+    callback: () => Promise<T>,
+  ): Promise<T>;
   close(): Promise<void>;
 }
 
 class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   private activeTransaction: Transaction | undefined;
+  private readonly migrationLocks = new Map<string, Promise<void>>();
 
   constructor(
     readonly client: PGlite,
@@ -83,6 +88,30 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
       );
       return await callback();
     });
+  }
+
+  async withMigrationLock<T>(
+    lockName: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    if (!lockName) {
+      throw new Error("Migration lock name is required");
+    }
+    const previous = this.migrationLocks.get(lockName) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.migrationLocks.set(lockName, current);
+    await previous;
+    try {
+      return await callback();
+    } finally {
+      release();
+      if (this.migrationLocks.get(lockName) === current) {
+        this.migrationLocks.delete(lockName);
+      }
+    }
   }
 
   close(): Promise<void> {

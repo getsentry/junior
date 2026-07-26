@@ -18,7 +18,7 @@ import {
   type SchedulerDb,
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -43,7 +43,7 @@ function schedulerMigrationsDir(): string {
 
 async function useSchedulerSqlPlugin() {
   const fixture = await createLocalJuniorSqlFixture();
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",

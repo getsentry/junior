@@ -24,6 +24,10 @@
       "types": "./dist/instrumentation.d.ts",
       "default": "./dist/instrumentation.js"
     },
+    "./migration-helpers/v1": {
+      "types": "./dist/migration-helpers/v1.d.ts",
+      "default": "./dist/migration-helpers/v1.js"
+    },
     "./nitro": {
       "types": "./dist/nitro.d.ts",
       "default": "./dist/nitro.js"
@@ -55,6 +59,7 @@
     "prepack": "pnpm run build",
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
+    "db:generate:data": "pnpm exec junior-migrations generate --config drizzle.config.ts --out migrations",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
     "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsup.config.ts",
     "test": "vitest run --maxWorkers=4",
@@ -74,6 +79,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@neondatabase/serverless": "^1.1.0",
     "@sentry/junior-plugin-api": "workspace:*",
+    "@sentry/junior-migrations": "workspace:*",
     "@sentry/node": "catalog:",
     "@sinclair/typebox": "^0.34.49",
     "@slack/web-api": "^7.16.0",

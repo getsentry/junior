@@ -19,7 +19,7 @@ describe("locations API", () => {
     const store = createSqlStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const nowMs = Date.parse("2026-06-15T11:00:00.000Z");
       await store.recordActivity({
         conversationId: "slack:C1:seed",

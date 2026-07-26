@@ -5,12 +5,13 @@ exported TypeScript types and runtime validators are authoritative.
 
 ## Registration
 
-Use `defineJuniorPlugin({ manifest, hooks, tasks, cli, model })`. A plugin name
-is a lowercase identifier and is unique within the enabled app plugin set.
+Use `defineJuniorPlugin({ manifest, hooks, tasks, cli, model })`.
+A plugin name is a lowercase identifier and is unique within the enabled app
+plugin set.
 
 A plugin may instead be a declarative `plugin.yaml` package when it has no
-host-executed hooks. Do not combine an inline manifest with a second YAML
-definition for the same plugin.
+host-executed hooks, tasks, CLI, or model implementation. Do not combine an
+inline manifest with a second YAML definition for the same plugin.
 
 ## Manifest
 
@@ -58,6 +59,8 @@ reports, and other typed hook surfaces exported by this package.
 
 - Packaged migrations create plugin-owned tables through the host migration
   runner.
+- TypeScript journal entries contain their complete durable implementation and
+  execute through the versioned migration capability API.
 - Generate migration artifacts from the package schema; do not hand-maintain a
   second schema contract.
 - Runtime hooks and CLI actions use host-provided `ctx.db`.

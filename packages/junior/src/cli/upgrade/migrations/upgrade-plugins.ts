@@ -7,14 +7,14 @@ import {
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
-import type { UpgradeContext } from "../types";
+import type { MigrationContext } from "../types";
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
 function baseCatalogConfig(
-  context: UpgradeContext,
+  context: MigrationContext,
 ): PluginCatalogConfig | undefined {
   return (
     context.pluginCatalogConfig ??
@@ -69,7 +69,7 @@ function mergeCatalogConfig(
 }
 
 function packageNamesFromContext(
-  context: UpgradeContext,
+  context: MigrationContext,
   catalog: PluginCatalogConfig | undefined,
 ): string[] {
   return unique([
@@ -80,7 +80,7 @@ function packageNamesFromContext(
 
 /** Resolve the plugin catalog used by SQL upgrade migrations. */
 export async function resolveUpgradePluginCatalog(
-  context: UpgradeContext,
+  context: MigrationContext,
 ): Promise<PluginCatalogConfig | undefined> {
   const catalog = baseCatalogConfig(context);
   const packageNames = packageNamesFromContext(context, catalog);
