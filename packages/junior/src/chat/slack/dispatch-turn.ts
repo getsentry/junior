@@ -6,7 +6,6 @@ import type {
 } from "@/chat/runtime/reply-executor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
-import { getChannelConfigurationServiceById } from "@/chat/runtime/thread-state";
 import {
   getDispatchConversationId,
   getDispatchInputMessageId,
@@ -35,6 +34,9 @@ interface DispatchReplyToThread {
 
 /** Build the Slack provider adapter for plugin-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
+  getChannelConfiguration: (
+    channelId: string,
+  ) => TurnExecutionContext["channelConfiguration"];
   getSlackAdapter: () => SlackAdapter;
   replyToThread: DispatchReplyToThread;
 }) {
@@ -101,7 +103,7 @@ export function createSlackDispatchTurnRunner(options: {
       destination: dispatch.destination,
       execution: {
         authorizationFlowMode: "disabled",
-        channelConfiguration: getChannelConfigurationServiceById(
+        channelConfiguration: options.getChannelConfiguration(
           dispatch.destination.channelId,
         ),
         credentialContext: routing.credentialContext,

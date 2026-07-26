@@ -5,6 +5,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { logException } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface AgentDispatchHandlerOptions {
@@ -22,17 +23,27 @@ export async function POST(
     return new Response("Unauthorized", { status: 401 });
   }
 
-  waitUntil(async () => {
-    const dispatch = await getDispatchRecord(payload.id);
-    if (!dispatch) {
-      throw new Error(`Dispatch record is missing for ${payload.id}`);
-    }
-    if (isTerminalDispatchStatus(dispatch.status)) {
-      return;
-    }
-    await enqueueAgentDispatch(dispatch, {
-      queue: options.conversationWorkQueue,
-    });
-  });
+  waitUntil(
+    (async () => {
+      const dispatch = await getDispatchRecord(payload.id);
+      if (!dispatch) {
+        throw new Error(`Dispatch record is missing for ${payload.id}`);
+      }
+      if (isTerminalDispatchStatus(dispatch.status)) {
+        return;
+      }
+      await enqueueAgentDispatch(dispatch, {
+        queue: options.conversationWorkQueue,
+      });
+    })().catch((error) => {
+      logException(
+        error,
+        "agent_dispatch_callback_failed",
+        {},
+        { "app.dispatch.id": payload.id },
+        "Legacy dispatch callback failed",
+      );
+    }),
+  );
   return new Response("Accepted", { status: 202 });
 }

@@ -584,10 +584,6 @@ async function failStrandedSessionWithFallback(args: {
   });
   await persistThreadStateById(args.conversationId, { conversation });
 
-  const thread = parseSlackThreadId(args.conversationId);
-  if (!thread) {
-    return;
-  }
   const eventName = "agent_turn_stranded_session_failed";
   const eventId = logException(
     new Error(args.errorMessage),
@@ -599,9 +595,16 @@ async function failStrandedSessionWithFallback(args: {
     },
     "Stranded running agent session terminally failed",
   );
+  const thread = parseSlackThreadId(args.conversationId);
+  const channelId =
+    thread?.channelId ??
+    requireSlackDestination(
+      args.sessionRecord.destination,
+      "Stranded agent continuation",
+    ).channelId;
   await postSlackMessage({
-    channelId: thread.channelId,
-    threadTs: thread.threadTs,
+    channelId,
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
     text: buildTurnFailureResponse(
       requireTurnFailureEventId(eventId, eventName),
     ),

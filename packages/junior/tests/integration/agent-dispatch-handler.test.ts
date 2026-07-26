@@ -75,4 +75,52 @@ describe("legacy agent dispatch callback", () => {
       },
     });
   });
+
+  it("contains a background enqueue failure after accepting the callback", async () => {
+    const created = await createOrGetDispatch({
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        destinationVisibility: "private",
+        idempotencyKey: "legacy-callback-failure",
+        input: "Run the scheduled task.",
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "C123",
+          type: "priv",
+        }),
+      },
+      plugin: "scheduler",
+    });
+    const waitUntil = createWaitUntilCollector();
+    const queue = createConversationWorkQueueTestAdapter();
+    queue.rejectSends();
+
+    await expect(
+      POST(
+        createSignedDispatchCallbackRequest({
+          id: created.record.id,
+          expectedVersion: 1,
+        }),
+        waitUntil.fn,
+        { conversationWorkQueue: queue },
+      ),
+    ).resolves.toMatchObject({ status: 202 });
+
+    await expect(waitUntil.flush()).resolves.toBeUndefined();
+    await expect(
+      getConversationWorkState({
+        conversationId: `agent-dispatch:${created.record.id}`,
+      }),
+    ).resolves.toMatchObject({
+      execution: {
+        pendingCount: 1,
+        status: "pending",
+      },
+    });
+  });
 });
