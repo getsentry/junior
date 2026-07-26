@@ -130,7 +130,7 @@ describe("mcp oauth callback handler", () => {
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).toContain(
-      "Junior could not finish the authorization callback. Return to Slack and retry the original request.",
+      "Junior could not finish the authorization callback. Return to Junior and retry the original request.",
     );
     expect(body).not.toContain("<img src=x onerror=alert(1)>");
     expect(waitUntil.pendingCount()).toBe(0);

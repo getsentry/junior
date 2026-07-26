@@ -11,7 +11,7 @@ export function htmlCallbackResponse(
   <div style="text-align: center; max-width: 480px;">
     <h1>${title}</h1>
     <p>${message}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack.</p>
+    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Junior.</p>
   </div>
 </body>
 </html>`;

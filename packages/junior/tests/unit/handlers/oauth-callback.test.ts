@@ -290,7 +290,7 @@ describe("oauth callback handler", () => {
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("expired");
     expect(body).toContain(
-      "ask Junior to connect your Sentry account again to get a new link",
+      "connect your Sentry account again to get a new link",
     );
   });
 
@@ -649,7 +649,7 @@ describe("oauth callback handler", () => {
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("declined");
     expect(body).toContain(
-      "ask Junior to connect your Sentry account again if you change your mind",
+      "connect your Sentry account again if you change your mind",
     );
     expect(body).not.toContain("auth command");
     expect(await getStoredState(stateKey)).toBeFalsy();
