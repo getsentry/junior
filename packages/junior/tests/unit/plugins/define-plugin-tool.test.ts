@@ -18,7 +18,7 @@ const countResultSchema = pluginToolResultSchema.extend({
 describe("definePluginTool", () => {
   it("preserves the declared approval mode", () => {
     const tool = definePluginTool({
-      approvalMode: "prompt",
+      approvalMode: "review",
       description: "Schedule a meeting.",
       inputSchema: z.object({}),
       outputSchema: countResultSchema,
@@ -31,7 +31,7 @@ describe("definePluginTool", () => {
         }) as const,
     });
 
-    expect(tool.approvalMode).toBe("prompt");
+    expect(tool.approvalMode).toBe("review");
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });
 

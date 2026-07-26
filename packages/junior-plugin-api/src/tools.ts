@@ -132,14 +132,14 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
 /**
  * Tool-declared approval mode.
  *
- * `auto` delegates to core policy, `prompt` enters approval review, and
+ * `auto` delegates to core policy, `review` enters approval review, and
  * `approve` permits execution without review. Omission delegates to core
  * defaults. These values do not select the reviewer.
  *
  * This is declaration metadata only; current tool execution is unchanged.
  * TODO(#1053): Enforce effective approval modes before tool execution.
  */
-export const toolApprovalModeSchema = z.enum(["auto", "prompt", "approve"]);
+export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
