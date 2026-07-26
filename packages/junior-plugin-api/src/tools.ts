@@ -129,12 +129,19 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
   ): Promise<TOutput> | TOutput;
 }["bivarianceHack"];
 
+/**
+ * Tool-declared approval mode.
+ *
+ * `auto` delegates to core policy, `prompt` enters approval review, and
+ * `approve` permits execution without review. Omission delegates to core
+ * defaults. These values do not select the reviewer.
+ */
 export const toolApprovalModeSchema = z.enum(["auto", "prompt", "approve"]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
 export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
-  /** Declares when this tool requires approval before execution. */
+  /** Optional declared approval mode; omission delegates to core defaults. */
   approvalMode?: ToolApprovalMode;
   annotations?: unknown;
   description: string;

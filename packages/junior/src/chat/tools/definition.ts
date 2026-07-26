@@ -22,7 +22,7 @@ export interface ToolExecuteOptions {
 }
 
 interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
-  /** Declares when this tool requires approval before execution. */
+  /** Optional declared approval mode; omission delegates to core defaults. */
   approvalMode?: ToolApprovalMode;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
@@ -69,7 +69,7 @@ export interface ToolDefinition<
  * Schema-erased view for heterogeneous registries after Pi validates tool input.
  */
 export interface AnyToolDefinition {
-  /** Declares when this tool requires approval before execution. */
+  /** Optional declared approval mode; omission delegates to core defaults. */
   approvalMode?: ToolApprovalMode;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
