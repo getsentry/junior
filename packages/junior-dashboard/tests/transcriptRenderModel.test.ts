@@ -4,7 +4,10 @@ import type {
   ConversationReportEventData,
 } from "@sentry/junior/api/schema";
 
-import { groupTranscriptMessages } from "../src/client/components/transcriptRenderModel";
+import {
+  groupTranscriptMessages,
+  messageRawText,
+} from "../src/client/components/transcriptRenderModel";
 import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import type {
@@ -127,6 +130,7 @@ describe("canonical event transcript reduction", () => {
           modelProfile: "review",
           modelId: "openai/gpt-5.6-review",
           triggeringToolCallId: "handoff-1",
+          summary: "Continue with the regression review.",
         }),
       ]),
     );
@@ -154,9 +158,14 @@ describe("canonical event transcript reduction", () => {
           type: "handoff",
           modelProfile: "review",
           modelId: "openai/gpt-5.6-review",
+          summary: "Continue with the regression review.",
         },
       },
     });
+    expect(entryMatchesSearch(entries[1]!, "regression review")).toBe(true);
+    expect(messageRawText(messages[1]!)).toContain(
+      "Continue with the regression review.",
+    );
   });
 
   it("preserves resource event type for special rendering", () => {
@@ -376,6 +385,7 @@ describe("canonical event transcript reduction", () => {
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
           type: "compaction",
+          summary: "Preserve the release checklist.",
         }),
         event(1, "2026-01-01T00:00:01.000Z", {
           type: "handoff",
@@ -420,6 +430,10 @@ describe("canonical event transcript reduction", () => {
         status: "completed",
       },
     });
+    expect(entryMatchesSearch(entries[0]!, "release checklist")).toBe(true);
+    expect(messageRawText(messages[0]!)).toContain(
+      "Preserve the release checklist.",
+    );
   });
 
   it("correlates repeated child outcomes by start sequence", () => {

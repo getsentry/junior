@@ -375,6 +375,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "compaction",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
+      summary:
+        "The release is complete. Preserve the published version and continue by checking the update pull request.",
       details: {
         reason: "capacity",
         estimatedInputTokens: 364_200,
@@ -391,6 +393,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
       modelProfile: "fast",
       modelId: "openai/gpt-5-mini",
       reasoningLevel: "medium",
+      summary:
+        "Investigate the remaining deployment checks and report any actionable failure.",
     }),
     reportEvent(16, iso(Date.parse(startedAt), 166_000), {
       type: "message",

@@ -251,6 +251,9 @@ function reportEventData(args: {
         type: "compaction",
         modelProfile: data.modelProfile,
         modelId: data.modelId,
+        ...(args.canExposePayload && data.summary
+          ? { summary: data.summary }
+          : {}),
         ...(data.details ? { details: data.details } : {}),
       };
     default:
@@ -387,6 +390,9 @@ export function projectConversationReportEventPage(args: {
           : {}),
         ...(event.data.triggeringToolCallId
           ? { triggeringToolCallId: event.data.triggeringToolCallId }
+          : {}),
+        ...(args.canExposePayload && event.data.summary
+          ? { summary: event.data.summary }
           : {}),
       };
     } else {

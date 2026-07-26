@@ -177,6 +177,7 @@ const conversationReportCompactionEventDataSchema = z
     type: z.literal("compaction"),
     modelProfile: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
+    summary: z.string().min(1).optional(),
     details: z
       .object({
         reason: z.literal("capacity"),
@@ -200,6 +201,7 @@ const conversationReportHandoffEventDataSchema = z
     modelId: z.string().min(1),
     reasoningLevel: z.string().min(1).optional(),
     triggeringToolCallId: z.string().min(1).optional(),
+    summary: z.string().min(1).optional(),
   })
   .strict();
 

@@ -22,7 +22,9 @@ resource events:
 - `subagent` carries a stable child reference, canonical start position, and
   current status.
 - message, turn lifecycle, compaction, and handoff events expose only the
-  fields owned by the reporting API.
+  fields owned by the reporting API. Authorized compaction and handoff events
+  include the generated continuation summary, but never the full replacement
+  history.
 
 The projection is append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by

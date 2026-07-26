@@ -176,6 +176,7 @@ export function conversationTranscriptMessages(
                     createdAt: event.createdAt,
                     modelId: data.modelId,
                     modelProfile: data.modelProfile,
+                    ...(data.summary ? { summary: data.summary } : {}),
                     ...(data.reasoningLevel
                       ? { reasoningLevel: data.reasoningLevel }
                       : {}),
@@ -187,6 +188,7 @@ export function conversationTranscriptMessages(
                     ...(data.modelProfile
                       ? { modelProfile: data.modelProfile }
                       : {}),
+                    ...(data.summary ? { summary: data.summary } : {}),
                     ...(data.details ? { details: data.details } : {}),
                   },
           },

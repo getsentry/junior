@@ -384,6 +384,7 @@ describe("context compaction projection reset", () => {
       type: "compaction",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
+      summary: "The edit completed; verify the result.",
       details: {
         reason: "capacity",
         triggerTokens: 360_000,
@@ -573,6 +574,7 @@ describe("context compaction projection reset", () => {
       modelProfile: "handoff",
       modelId: botConfig.profiles.handoff!.modelId,
       triggeringToolCallId: "handoff-call-1",
+      summary: "Continue the multi-file implementation.",
       replacementHistory: [
         {
           message: durableHandoffMessages[0],
@@ -614,21 +616,24 @@ describe("context compaction projection reset", () => {
         (entry) => entry.type === "handoff" || entry.type === "compaction",
       );
     expect(
-      replacements.map(({ type, modelProfile, modelId }) => ({
+      replacements.map(({ type, modelProfile, modelId, summary }) => ({
         type,
         modelProfile,
         modelId,
+        summary,
       })),
     ).toEqual([
       {
         type: "handoff",
         modelProfile: "handoff",
         modelId: botConfig.profiles.handoff!.modelId,
+        summary: "Continue the multi-file implementation.",
       },
       {
         type: "compaction",
         modelProfile: "handoff",
         modelId: botConfig.profiles.handoff!.modelId,
+        summary: "Continue the handed-off implementation.",
       },
     ]);
   });

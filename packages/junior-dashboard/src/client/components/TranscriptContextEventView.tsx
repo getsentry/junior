@@ -1,5 +1,6 @@
 import { formatCompactNumber, formatMessageTimestamp } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
+import { TranscriptText } from "./TranscriptText";
 
 /** Render a structural context change from the privacy-safe event API. */
 export function TranscriptContextEventView(props: {
@@ -43,6 +44,21 @@ export function TranscriptContextEventView(props: {
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
+      {event.summary ? (
+        <details className="mt-2 border-t border-white/[0.06] pt-2">
+          <summary className="cursor-pointer select-none text-[0.78rem] font-medium text-white/55">
+            Continuation summary
+          </summary>
+          <div className="mt-2 text-[0.8rem] leading-relaxed text-white/60">
+            <TranscriptText
+              firstChildIndex={0}
+              lastChildIndex={0}
+              role="system"
+              text={event.summary}
+            />
+          </div>
+        </details>
+      ) : null}
     </article>
   );
 }

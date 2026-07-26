@@ -162,8 +162,11 @@ export function entryMatchesSearch(
           event.modelProfile,
           event.modelId,
           event.reasoningLevel,
+          event.summary,
         ].some((value) => textContains(value, normalizedQuery))
-      : textContains("context compacted", normalizedQuery);
+      : ["context compacted", event.summary].some((value) =>
+          textContains(value, normalizedQuery),
+        );
   }
 
   return false;

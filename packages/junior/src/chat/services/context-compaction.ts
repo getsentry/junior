@@ -512,6 +512,7 @@ async function writeCompactedThreadContext(
         retainedMessageCount: replacement.length - 1,
         summaryChars: summary.length,
       },
+      summary,
       replacementHistory: replacement.map((message, index) => {
         const sourceEventSeq =
           index < retained.length
@@ -563,7 +564,8 @@ export async function compactContextForHandoff(
   if (!runtimeMessage) {
     throw new Error("Handoff requires the current runtime turn context");
   }
-  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${await summarizeContext(args, deps)}`;
+  const generatedSummary = await summarizeContext(args, deps);
+  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${generatedSummary}`;
   const message = {
     ...runtimeMessage,
     content: [
@@ -586,6 +588,7 @@ export async function compactContextForHandoff(
       ...(args.triggeringToolCallId
         ? { triggeringToolCallId: args.triggeringToolCallId }
         : {}),
+      summary: generatedSummary,
       replacementHistory: replacementMessages.map((replacementMessage) => ({
         message: replacementMessage,
         provenance: contextProvenance,
@@ -700,6 +703,7 @@ export async function compactActiveContextIfNeeded(
         retainedMessageCount: pendingMessages.length,
         summaryChars: summary.length,
       },
+      summary,
       replacementHistory: replacementMessages.map((message, index) => ({
         message,
         provenance:

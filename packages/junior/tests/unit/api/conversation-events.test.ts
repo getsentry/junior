@@ -468,6 +468,83 @@ describe("conversation report event projection", () => {
     }
   });
 
+  it("exposes only generated continuation summaries to authorized viewers", () => {
+    const events = [
+      event(1, {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.4",
+        summary: "Continue monitoring CI.",
+        replacementHistory: [
+          {
+            message: {
+              role: "user",
+              content: "Private retained user message.",
+              timestamp: 1,
+            } as ConversationAgentStepPayload,
+          },
+          {
+            message: {
+              role: "user",
+              content: "Other private replacement context.",
+              timestamp: 1,
+            } as ConversationAgentStepPayload,
+          },
+        ],
+      }),
+      event(2, {
+        type: "handoff",
+        modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
+        summary: "Fix the remaining test.",
+        replacementHistory: [
+          {
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "More private replacement context.",
+                },
+              ],
+              timestamp: 2,
+            } as ConversationAgentStepPayload,
+          },
+        ],
+      }),
+    ];
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events,
+      }).map((entry) => entry.data),
+    ).toEqual([
+      {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.4",
+        summary: "Continue monitoring CI.",
+      },
+      {
+        type: "handoff",
+        modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
+        summary: "Fix the remaining test.",
+      },
+    ]);
+
+    const redacted = JSON.stringify(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events,
+      }),
+    );
+    expect(redacted).not.toContain("Private retained user message.");
+    expect(redacted).not.toContain("Continue monitoring CI.");
+    expect(redacted).not.toContain("Fix the remaining test.");
+  });
+
   it("emits only safe structural lifecycle, context, and child references", () => {
     const projected = projectConversationReportEventPage({
       canExposePayload: true,

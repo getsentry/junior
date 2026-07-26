@@ -25,6 +25,7 @@ describe("transcript context events", () => {
               createdAt: "2026-01-01T00:00:02.000Z",
               modelProfile: "standard",
               modelId: "openai/gpt-5.4",
+              summary: "Preserve the release state and monitor **CI**.",
               details: {
                 reason: "capacity",
                 estimatedInputTokens: 361_000,
@@ -45,6 +46,9 @@ describe("transcript context events", () => {
     expect(html).toContain("Context compacted");
     expect(html).toContain("approximately 361k estimated tokens");
     expect(html).toContain("standard profile (openai/gpt-5.4)");
+    expect(html).toContain("Continuation summary");
+    expect(html).toContain("Preserve the release state and monitor");
+    expect(html).toContain("CI");
   });
 
   it("renders a model handoff as a structural event", () => {
@@ -59,6 +63,7 @@ describe("transcript context events", () => {
               modelId: "openai/gpt-5.4",
               modelProfile: "coding",
               reasoningLevel: "high",
+              summary: "Continue the implementation from the failing test.",
             },
           }}
         />,
@@ -68,6 +73,10 @@ describe("transcript context events", () => {
     expect(html).toContain("Model handoff");
     expect(html).toContain(
       "Execution continued with the coding profile (openai/gpt-5.4, high).",
+    );
+    expect(html).toContain("Continuation summary");
+    expect(html).toContain(
+      "Continue the implementation from the failing test.",
     );
   });
 });

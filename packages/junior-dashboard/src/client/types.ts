@@ -40,6 +40,7 @@ export type TranscriptViewContextEventPart = {
         type: "compaction";
         modelId?: string;
         modelProfile?: string;
+        summary?: string;
         details?: {
           reason: "capacity";
           estimatedInputTokens: number;
@@ -56,6 +57,7 @@ export type TranscriptViewContextEventPart = {
         modelId: string;
         modelProfile: string;
         reasoningLevel?: string;
+        summary?: string;
         type: "handoff";
       };
   type: "context_event";

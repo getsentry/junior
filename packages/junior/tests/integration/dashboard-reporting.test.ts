@@ -190,7 +190,17 @@ async function appendVisibleHistory(
       type: "compaction",
       modelProfile: "standard",
       modelId: "private-model-id",
-      replacementHistory: [{ message: modelMessage }],
+      summary: "Continue monitoring CI.",
+      replacementHistory: [
+        { message: modelMessage },
+        {
+          message: {
+            role: "user",
+            content: "Private replacement context.",
+            timestamp: 15,
+          } as PiMessage,
+        },
+      ],
     },
   });
   await getConversationEventStore().replaceHistory(conversationId, {
@@ -201,7 +211,21 @@ async function appendVisibleHistory(
       modelId: "private-handoff-model-id",
       reasoningLevel: "high",
       triggeringToolCallId: `${conversationId}:handoff-tool-call`,
-      replacementHistory: [],
+      summary: "Fix the remaining test.",
+      replacementHistory: [
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "More private replacement context.",
+              },
+            ],
+            timestamp: 16,
+          } as PiMessage,
+        },
+      ],
     },
   });
 }
@@ -398,6 +422,7 @@ describe("dashboard canonical event reporting", () => {
         type: "compaction",
         modelProfile: "standard",
         modelId: "private-model-id",
+        summary: "Continue monitoring CI.",
       },
       {
         type: "handoff",
@@ -405,12 +430,19 @@ describe("dashboard canonical event reporting", () => {
         modelId: "private-handoff-model-id",
         reasoningLevel: "high",
         triggeringToolCallId: `${conversationId}:handoff-tool-call`,
+        summary: "Fix the remaining test.",
       },
     ]);
     const eventSeqs = detail.events.map((event) => event.seq);
     expect(eventSeqs).toEqual(eventSeqs.slice().sort((a, b) => a - b));
     expect(JSON.stringify(detail)).not.toContain(
       "private model-only duplicate",
+    );
+    expect(JSON.stringify(detail)).not.toContain(
+      "Private replacement context.",
+    );
+    expect(JSON.stringify(detail)).not.toContain(
+      "More private replacement context.",
     );
     expect(JSON.stringify(detail)).toContain("private-model-id");
     expect(JSON.stringify(detail)).toContain("private-handoff-model-id");

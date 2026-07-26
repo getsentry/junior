@@ -398,6 +398,7 @@ describe("executeAgentRun model handoff", () => {
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
+        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
@@ -456,6 +457,7 @@ describe("executeAgentRun model handoff", () => {
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
+        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
@@ -768,6 +770,7 @@ describe("executeAgentRun model handoff", () => {
         modelId: "openai/gpt-5.4",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
+        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
@@ -847,6 +850,7 @@ describe("executeAgentRun model handoff", () => {
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
+        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);

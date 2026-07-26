@@ -74,6 +74,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
       modelId: z.string().min(1),
       reasoningLevel: z.string().min(1).optional(),
       triggeringToolCallId: z.string().min(1).optional(),
+      summary: z.string().min(1).optional(),
       replacementHistory: replacementHistorySchema,
     })
     .strict(),
@@ -83,6 +84,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       details: compactionDetailsSchema.optional(),
+      summary: z.string().min(1).optional(),
       replacementHistory: replacementHistorySchema,
     })
     .strict(),

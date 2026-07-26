@@ -219,6 +219,9 @@ function appendContextEvent(
       );
     }
   }
+  if (event.summary) {
+    lines.push("", "#### Continuation summary", "", event.summary);
+  }
 }
 
 function appendResourceEvent(

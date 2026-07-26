@@ -125,11 +125,16 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
-      if (part.event.type !== "handoff") return "context compacted";
+      if (part.event.type !== "handoff") {
+        return ["context compacted", part.event.summary]
+          .filter((line): line is string => line !== undefined)
+          .join("\n");
+      }
       return [
         "model handoff",
         `profile ${part.event.modelProfile}`,
         `model ${part.event.modelId}`,
+        part.event.summary,
         part.event.reasoningLevel
           ? `reasoning ${part.event.reasoningLevel}`
           : undefined,
