@@ -48,4 +48,31 @@ describe("local OAuth callback server", () => {
     expect(secondResponse.status).toBe(200);
     expect(mcpCallback).toHaveBeenCalledTimes(2);
   });
+
+  it("lets a later authorization replace a canceled wait", async () => {
+    const { startLocalOAuthCallbackServer } =
+      await import("@/chat/local/oauth-callback-server");
+    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
+    close = callback.close;
+
+    callback.beginAuthorization(
+      "https://provider.example/authorize?state=first",
+    );
+    callback.cancelAuthorization();
+    callback.beginAuthorization(
+      "https://provider.example/authorize?state=second",
+    );
+
+    const staleResponse = await fetch(
+      `http://127.0.0.1:${callback.port}/api/oauth/callback/mcp/github?state=first`,
+    );
+    const secondResponse = await fetch(
+      `http://127.0.0.1:${callback.port}/api/oauth/callback/mcp/github?state=second`,
+    );
+    await callback.waitForAuthorization();
+
+    expect(staleResponse.status).toBe(409);
+    expect(secondResponse.status).toBe(200);
+    expect(mcpCallback).toHaveBeenCalledOnce();
+  });
 });

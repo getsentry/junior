@@ -467,11 +467,13 @@ describe("local agent runner", () => {
     const rawError = "raw-run-error-sentinel token=secret";
     const eventId = "11111111111111111111111111111111";
     const capture = vi.fn().mockReturnValue(eventId);
+    const cancelAuthorization = vi.fn();
 
     await expect(
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
+          cancelAuthorization,
           agentRunner: {
             run: async () => {
               throw new Error(rawError);
@@ -490,6 +492,7 @@ describe("local agent runner", () => {
       eventId,
     });
     expect(capture).toHaveBeenCalledOnce();
+    expect(cancelAuthorization).toHaveBeenCalledOnce();
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);
   });
 

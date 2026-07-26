@@ -43,6 +43,12 @@ describe("local chat CLI integration", () => {
   beforeEach(() => {
     vi.resetModules();
     executeAgentRunMock.mockReset();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("dev server unavailable");
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -51,6 +57,7 @@ describe("local chat CLI integration", () => {
     restoreEnv("REDIS_URL", ORIGINAL_REDIS_URL);
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
+    vi.unstubAllGlobals();
     vi.resetModules();
   });
 
@@ -111,7 +118,7 @@ export const plugins = {
           policy: expect.objectContaining({
             authorizationFlowMode: "interactive",
             localOAuthCallbackPort: expect.any(Number),
-            devServerEgressSignals: true,
+            devServerEgressSignals: false,
           }),
           routing: expect.objectContaining({
             credentialContext: {

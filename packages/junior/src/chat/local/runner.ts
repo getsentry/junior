@@ -85,12 +85,14 @@ export type LocalToolResult = ToolExecutionReport;
 
 export interface LocalAgentTurnDeps {
   agentRunner: AgentRunner;
+  cancelAuthorization?: () => void;
   /** Post-delivery Pi/session persistence boundary. */
   completeDeliveredTurn?: typeof completeDeliveredTurn;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   deliverAuthorizationRequest?: (
     request: OAuthAuthorizationRequest,
   ) => void | Promise<void>;
+  devServerEgressSignals?: boolean;
   /** Pre-agent durable Pi projection boundary. */
   loadPiMessages?: typeof loadLocalPiMessages;
   /** Injectable failure capture boundary for deterministic runtime integration tests. */
@@ -301,7 +303,7 @@ export async function runLocalAgentTurn(
         },
         policy: {
           authorizationFlowMode: "interactive",
-          devServerEgressSignals: true,
+          devServerEgressSignals: deps.devServerEgressSignals,
           ...(deps.oauthCallbackPort
             ? { localOAuthCallbackPort: deps.oauthCallbackPort }
             : {}),
@@ -418,6 +420,7 @@ export async function runLocalAgentTurn(
       userMessageId,
     });
   } catch (error) {
+    deps.cancelAuthorization?.();
     const failureEventId =
       modelFailureCaptureAttempted && failureCode === "agent_run_failed"
         ? modelFailureEventId
@@ -472,6 +475,7 @@ export async function runLocalAgentTurn(
     throw error;
   }
 
+  deps.cancelAuthorization?.();
   try {
     await persistThreadStateById(input.conversationId, {
       artifacts: completedState.artifacts ?? artifacts,

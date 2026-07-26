@@ -11,6 +11,7 @@ const LOCAL_OAUTH_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface LocalOAuthCallbackServer {
   beginAuthorization: (authorizationUrl: string) => void;
+  cancelAuthorization: () => void;
   close: () => Promise<void>;
   port: number;
   waitForAuthorization: () => Promise<void>;
@@ -41,6 +42,17 @@ export async function startLocalOAuthCallbackServer(
     authorization.settled = true;
     clearTimeout(authorization.timeout);
     authorization.finish(result);
+  };
+  const cancelAuthorization = (): void => {
+    const authorization = pendingAuthorization;
+    if (!authorization) {
+      return;
+    }
+    pendingAuthorization = undefined;
+    completeAuthorization(
+      authorization,
+      new Error("Local OAuth authorization canceled"),
+    );
   };
 
   const server = createServer(async (incoming, outgoing) => {
@@ -164,6 +176,7 @@ export async function startLocalOAuthCallbackServer(
       };
       pendingAuthorization = authorization;
     },
+    cancelAuthorization,
     port: address.port,
     waitForAuthorization: async () => {
       const authorization = pendingAuthorization;
@@ -179,10 +192,7 @@ export async function startLocalOAuthCallbackServer(
       }
     },
     close: async () => {
-      if (pendingAuthorization) {
-        clearTimeout(pendingAuthorization.timeout);
-        pendingAuthorization = undefined;
-      }
+      cancelAuthorization();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });

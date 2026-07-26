@@ -225,6 +225,19 @@ function newRunConversationId(): string {
   return conversationId;
 }
 
+async function hasLocalDevServer(): Promise<boolean> {
+  const port = process.env.PORT?.trim() || "3000";
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(1_000),
+    });
+    await response.body?.cancel();
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
 async function prepareLocalChatRun(
   io: ChatIo,
@@ -237,8 +250,11 @@ async function prepareLocalChatRun(
     await import("@/chat/local/oauth-callback-server");
   const agentRunner = createAgentRunner(executeAgentRun);
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+  const devServerEgressSignals = await hasLocalDevServer();
   const deps: LocalAgentTurnDeps = {
     agentRunner,
+    cancelAuthorization: oauthCallback.cancelAuthorization,
+    devServerEgressSignals,
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },
