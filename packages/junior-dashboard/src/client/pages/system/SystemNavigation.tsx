@@ -2,7 +2,11 @@ import { Boxes, ChevronDown, Gauge } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
 import { cn } from "../../styles";
-import { systemPluginPath, type SystemPlugin } from "./SystemPlugins";
+import {
+  normalizeSystemPath,
+  systemPluginPath,
+  type SystemPlugin,
+} from "./SystemPlugins";
 
 /** Render route-backed navigation for the System overview and loaded plugins. */
 export function SystemNavigation(props: { plugins: SystemPlugin[] }) {
@@ -79,8 +83,9 @@ function systemNavigationValue(
   pathname: string,
   plugins: SystemPlugin[],
 ): string {
+  const normalizedPath = normalizeSystemPath(pathname);
   const plugin = plugins.find(
-    (candidate) => systemPluginPath(candidate.name) === pathname,
+    (candidate) => systemPluginPath(candidate.name) === normalizedPath,
   );
   return plugin ? systemPluginPath(plugin.name) : "/system";
 }

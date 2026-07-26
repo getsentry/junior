@@ -51,3 +51,8 @@ export function buildSystemPlugins(input: {
 export function systemPluginPath(name: string): string {
   return `/system/plugins/${encodeURIComponent(name)}`;
 }
+
+/** Treat trailing slashes as equivalent on System routes. */
+export function normalizeSystemPath(pathname: string): string {
+  return pathname.replace(/\/+$/, "") || "/";
+}

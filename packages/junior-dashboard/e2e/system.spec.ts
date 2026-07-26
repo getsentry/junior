@@ -52,6 +52,12 @@ test("shows system usage and plugin details", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
 
+  await page.goto(`${server.baseURL}/system/plugins/github/`);
+  await expect(page).toHaveURL(`${server.baseURL}/system/plugins/github/`);
+  await expect(
+    page.getByRole("heading", { name: "GitHub", exact: true }),
+  ).toBeVisible();
+
   const containerBounds = await page
     .locator("main > div")
     .evaluate((element) => {

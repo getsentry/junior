@@ -18,6 +18,7 @@ import { SystemActivity } from "./SystemActivity";
 import { SystemNavigation } from "./SystemNavigation";
 import {
   buildSystemPlugins,
+  normalizeSystemPath,
   systemPluginPath,
   type SystemPlugin,
 } from "./SystemPlugins";
@@ -35,11 +36,11 @@ export function SystemPage(props: { data: SystemData }) {
     reports,
     skills: props.data.skills,
   });
+  const pathname = normalizeSystemPath(location.pathname);
   const plugin = plugins.find(
-    (candidate) => systemPluginPath(candidate.name) === location.pathname,
+    (candidate) => systemPluginPath(candidate.name) === pathname,
   );
-  const pluginPath =
-    location.pathname !== "/system" && location.pathname !== "/system/";
+  const pluginPath = pathname !== "/system";
   const rangeRelevant =
     !plugin ||
     plugin.reports.some((report) =>
