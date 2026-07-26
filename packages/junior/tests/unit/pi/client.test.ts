@@ -226,6 +226,7 @@ describe("completeText", () => {
     mocks.generateObject.mockResolvedValue({
       object: { ok: true },
       finishReason: "stop",
+      response: { modelId: "anthropic/claude-haiku-4.5" },
       usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
     });
 
@@ -239,7 +240,10 @@ describe("completeText", () => {
       system: "structured only",
     });
 
-    expect(result).toEqual({ object: { ok: true } });
+    expect(result).toEqual({
+      modelId: "anthropic/claude-haiku-4.5",
+      object: { ok: true },
+    });
     expect(mocks.generateObject).toHaveBeenCalledWith(
       expect.objectContaining({
         model: { modelId: "openai/gpt-4o-mini" },
@@ -251,6 +255,7 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
         "gen_ai.response.finish_reasons": ["stop"],
+        "gen_ai.response.model": "anthropic/claude-haiku-4.5",
       }),
     );
   });

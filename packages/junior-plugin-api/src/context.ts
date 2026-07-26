@@ -38,13 +38,16 @@ export interface PluginLogger {
 }
 
 export interface PluginModel {
-  /** Run a host-owned structured model call without exposing provider credentials. */
+  /**
+   * Run a host-owned structured model call without exposing credentials.
+   * The result includes the exact model id when the provider reports it.
+   */
   completeObject<TSchema extends ZodTypeAny>(input: {
     maxTokens?: number;
     prompt: string;
     schema: TSchema;
     system?: string;
-  }): Promise<{ object: z.infer<TSchema> }>;
+  }): Promise<{ modelId?: string; object: z.infer<TSchema> }>;
 }
 
 export interface PluginEmbedder {

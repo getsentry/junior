@@ -18,21 +18,22 @@ behavior.
 
 ## Choose a plugin
 
-| Plugin                                         | Use it for                                    |
-| ---------------------------------------------- | --------------------------------------------- |
-| [Agent Browser](/extend/agent-browser-plugin/) | Browser automation                            |
-| [Amplitude](/extend/amplitude-plugin/)         | Product analytics queries                     |
-| [Cloudflare](/extend/cloudflare-plugin/)       | Cloudflare resources and APIs                 |
-| [Datadog](/extend/datadog-plugin/)             | Logs, metrics, and incidents                  |
-| [GitHub](/extend/github-plugin/)               | Repository, issue, and pull-request workflows |
-| [Hex](/extend/hex-plugin/)                     | Hex projects and runs                         |
-| [Linear](/extend/linear-plugin/)               | Issues and projects                           |
-| [Maintenance](/extend/maintenance-plugin/)     | Repository maintenance workflows              |
-| [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
-| [Notion](/extend/notion-plugin/)               | Notion content                                |
-| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled tasks                       |
-| [Sentry](/extend/sentry-plugin/)               | Sentry issues and telemetry                   |
-| [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
+| Plugin                                                                     | Use it for                                    |
+| -------------------------------------------------------------------------- | --------------------------------------------- |
+| [Agent Browser](/extend/agent-browser-plugin/)                             | Browser automation                            |
+| [Amplitude](/extend/amplitude-plugin/)                                     | Product analytics queries                     |
+| [Cloudflare](/extend/cloudflare-plugin/)                                   | Cloudflare resources and APIs                 |
+| [Conversation Classification](/extend/conversation-classification-plugin/) | Initial-intent product analytics              |
+| [Datadog](/extend/datadog-plugin/)                                         | Logs, metrics, and incidents                  |
+| [GitHub](/extend/github-plugin/)                                           | Repository, issue, and pull-request workflows |
+| [Hex](/extend/hex-plugin/)                                                 | Hex projects and runs                         |
+| [Linear](/extend/linear-plugin/)                                           | Issues and projects                           |
+| [Maintenance](/extend/maintenance-plugin/)                                 | Repository maintenance workflows              |
+| [Memory](/extend/memory-plugin/)                                           | Long-term scoped memory                       |
+| [Notion](/extend/notion-plugin/)                                           | Notion content                                |
+| [Scheduler](/extend/scheduler-plugin/)                                     | Durable scheduled tasks                       |
+| [Sentry](/extend/sentry-plugin/)                                           | Sentry issues and telemetry                   |
+| [Vercel](/extend/vercel-plugin/)                                           | Vercel projects and deployments               |
 
 ## Install packaged plugins
 

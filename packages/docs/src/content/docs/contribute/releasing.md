@@ -16,6 +16,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-amplitude`
 - `@sentry/junior-cloudflare`
+- `@sentry/junior-conversation-classification`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
 - `@sentry/junior-github`

@@ -374,6 +374,7 @@ function completedRun(
     actors: [runtime.actor],
     runId: "local-turn-1",
     source: runtime.source,
+    visibility: "private",
     ...overrides,
   };
 }

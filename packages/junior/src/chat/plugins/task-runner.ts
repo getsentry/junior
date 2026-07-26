@@ -17,7 +17,7 @@ import {
   isPrivateSource,
   pluginRunContextSchema,
 } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
@@ -368,6 +368,17 @@ async function loadPluginRun(
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
+  let visibility: "public" | "private" = "private";
+  if (record.source.platform === "slack") {
+    if (record.source.type === "pub") {
+      visibility = "public";
+    } else {
+      const conversation = await getConversationStore().get({
+        conversationId: record.conversationId,
+      });
+      visibility = conversation?.visibility ?? "private";
+    }
+  }
   return pluginRunContextSchema.parse({
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
@@ -379,6 +390,7 @@ async function loadPluginRun(
     runId: record.sessionId,
     source: record.source,
     transcript: [...contextEntries, ...runEntries],
+    visibility,
   });
 }
 

@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784838100309,
+      "tag": "0000_remarkable_the_initiative",
+      "breakpoints": true
+    }
+  ]
+}

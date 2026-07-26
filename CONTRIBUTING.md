@@ -123,6 +123,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-amplitude`
 - `@sentry/junior-cloudflare`
+- `@sentry/junior-conversation-classification`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
 - `@sentry/junior-github`
