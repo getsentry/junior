@@ -25,6 +25,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Use `/commit` for commits, `/pr-writer` for pull requests, and `/skill-writer` for skill changes.
 - For non-trivial changes: discover, implement the smallest vertical slice, verify, and summarize.
 - Search every consumer before changing a shared signature, error contract, or name; use a hard cutover unless compatibility is explicitly required.
+- When adding or renaming a shared export, search its exact name and the canonical domain terms a maintainer would use. The owner and consumers should be easy to distinguish without knowing the file path first.
 - Let unexpected failures reach the owning boundary; retry only expected transient failures. Follow `policies/error-handling.md`.
 - Exported functions need brief intent-focused JSDoc; follow `policies/code-comments.md`.
 - Run applicable checks, move durable explanations beside the owning code, and delete completed plans.
@@ -42,20 +43,21 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Read `packages/junior/src/chat/README.md` before changing shared chat runtime behavior; it owns flow, module boundaries, vocabulary, and invariants.
 - Follow `policies/provider-boundaries.md`; provider modules do not import runtime orchestration, and shared modules do not expose provider SDK types.
 - Group files by feature and import feature files directly; do not add feature-directory barrels.
+- Code files may not exceed 1,000 lines unless `scripts/file-length-exceptions.mjs` names the file and explains why it should stay large.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.
 
 ## Where Rules Live
 
-| Need                    | Source                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| Repo-wide policy index  | `policies/README.md`                                                                                    |
-| Runtime vocabulary      | `TERMINOLOGY.md`                                                                                        |
-| Design and failures     | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`       |
-| Provider boundaries     | `policies/provider-boundaries.md`                                                                       |
-| Comments and telemetry  | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                 |
-| Chat architecture       | `packages/junior/src/chat/README.md`                                                                    |
-| Testing and evals       | `policies/testing.md`, `policies/evals.md`, `packages/junior/tests/README.md`, `packages/junior-evals/README.md` |
-| Local agent validation  | `packages/docs/src/content/docs/contribute/local-agent-validation.md`                                   |
-| Temporary plans         | `openspec/changes/<slug>/`                                                                              |
+| Need                   | Source                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Repo-wide policy index | `policies/README.md`                                                                                             |
+| Runtime vocabulary     | `TERMINOLOGY.md`                                                                                                 |
+| Design and failures    | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`               |
+| Provider boundaries    | `policies/provider-boundaries.md`                                                                                |
+| Comments and telemetry | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                         |
+| Chat architecture      | `packages/junior/src/chat/README.md`                                                                             |
+| Testing and evals      | `policies/testing.md`, `policies/evals.md`, `packages/junior/tests/README.md`, `packages/junior-evals/README.md` |
+| Local agent validation | `packages/docs/src/content/docs/contribute/local-agent-validation.md`                                            |
+| Temporary plans        | `openspec/changes/<slug>/`                                                                                       |
 
 Feature architecture and non-obvious invariants belong in the owning package or module `README.md`. Code, schemas, exported types, and tests are authoritative. Plans cannot override policy; update the policy for an exception.

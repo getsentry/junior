@@ -5,7 +5,8 @@
 - `intercom/2x-skills@59213af`, `plugins/pr-tools/skills/attach-github-assets/SKILL.md` — upstream runtime intent and supported use cases; primary source; high confidence; MIT.
 - `intercom/2x-skills@59213af`, `plugins/pr-tools/skills/attach-github-assets/scripts/upload.sh` — upstream endpoint, MIME mapping, and response contract; primary implementation source; high confidence; MIT.
 - `intercom/2x-skills@59213af`, `plugins/pr-tools/LICENSE` — upstream copyright and license notice; authoritative legal source; high confidence.
-- `packages/junior-github/src/index.ts` — local GitHub credential and egress boundary; authoritative local source; high confidence.
+- `packages/junior-github/src/credential-support.ts` — local GitHub credential boundary; authoritative local source; high confidence.
+- `packages/junior-github/src/plugin.ts` — local GitHub egress boundary; authoritative local source; high confidence.
 - `packages/junior-github/skills/github-code/SKILL.md` — local repository targeting and credential guidance; authoritative local convention; high confidence.
 - GitHub REST API documentation — no documented user-attachment upload operation found; official source; medium confidence for absence.
 

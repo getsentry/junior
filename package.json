@@ -12,8 +12,9 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm --filter @sentry/junior-github lint && pnpm --filter @sentry/junior-vercel lint && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm file-length:check && pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm --filter @sentry/junior-github lint && pnpm --filter @sentry/junior-vercel lint && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
+    "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "ast-grep:lint": "ast-grep scan",
     "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build",
@@ -38,7 +39,10 @@
   },
   "lint-staged": {
     "packages/junior/**/*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm --filter @sentry/junior exec oxlint --config .oxlintrc.json --deny-warnings --fix",
-    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": "pnpm exec prettier --write --ignore-unknown"
+    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": [
+      "pnpm file-length:check",
+      "pnpm exec prettier --write --ignore-unknown"
+    ]
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.43.0",

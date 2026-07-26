@@ -34,7 +34,11 @@ Interfaces should expose the smallest useful capability while keeping ownership,
 - Keep exported interfaces role-shaped and small. A bounded legacy-import port
   with only `read` is clearer than a broad adapter that exposes unrelated state,
   Redis, or queue details.
-- Prefer import-site readability over globally unique names. If a name is only clear because it includes five qualifiers, the module boundary is probably doing too little work.
+- Prefer import-site readability over globally unique names. Shared exported
+  names should include a canonical domain term when an exact repository search
+  would otherwise mix unrelated concepts. Do not add qualifiers merely to
+  repeat the module path; if a name needs five qualifiers, the module boundary
+  is probably doing too little work.
 - When a term is overloaded in the product or platform, define it once in the
   owning module documentation and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable boundary.

@@ -17,6 +17,9 @@ They are not there to narrate obvious code.
   handlers/factories, wire or storage formats, signing, durable state changes,
   reply gates, or retry/resume/compaction/session policy.
 - Comment non-obvious invariants, tradeoffs, and policy-driven behavior.
+- When an owning boundary intentionally omits behavior a maintainer would
+  reasonably expect, document that absence when it affects correctness,
+  security, privacy, delivery, or recovery.
 - Transitional compatibility branches and fallbacks require a removal TODO in
   the form `TODO(vX.Y.Z): Remove ...` where `vX.Y.Z` is the next release after
   the compatibility path is introduced. The comment must name the legacy state
