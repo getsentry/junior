@@ -16,37 +16,37 @@ afterEach(() => {
 });
 
 describe("local OAuth relay", () => {
-  it("redirects a signed provider callback to the owning loopback server", () => {
+  it("redirects a signed provider callback to the owning loopback server", async () => {
     process.env.JUNIOR_SECRET = "test-secret";
-    const state = createLocalOAuthState(43123);
+    const state = await createLocalOAuthState(43123);
     const request = new Request(
       `https://junior.example.com/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(state)}`,
     );
 
-    const response = relayLocalOAuthCallback(request);
+    const response = await relayLocalOAuthCallback(request);
 
-    expect(localOAuthRelayPort(state)).toBe(43123);
+    expect(await localOAuthRelayPort(state)).toBe(43123);
     expect(response?.status).toBe(302);
     expect(response?.headers.get("location")).toBe(
       `http://127.0.0.1:43123/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(state)}&jr_local_relay=complete`,
     );
   });
 
-  it("rejects tampered and already-relayed state", () => {
+  it("rejects tampered and already-relayed state", async () => {
     process.env.JUNIOR_SECRET = "test-secret";
-    const state = createLocalOAuthState(43123);
-    const tampered = state.replace("43123", "43124");
+    const state = await createLocalOAuthState(43123);
+    const tampered = `${state.slice(0, -1)}${state.endsWith("a") ? "b" : "a"}`;
 
-    expect(localOAuthRelayPort(tampered)).toBeUndefined();
+    expect(await localOAuthRelayPort(tampered)).toBeUndefined();
     expect(
-      relayLocalOAuthCallback(
+      await relayLocalOAuthCallback(
         new Request(
           `https://junior.example.com/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(tampered)}`,
         ),
       ),
     ).toBeUndefined();
     expect(
-      relayLocalOAuthCallback(
+      await relayLocalOAuthCallback(
         new Request(
           `http://127.0.0.1:43123/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(state)}&jr_local_relay=complete`,
         ),

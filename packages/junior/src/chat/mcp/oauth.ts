@@ -47,7 +47,7 @@ export async function createMcpOAuthClientProvider(input: {
   }
 
   const authSessionId = input.localCallbackPort
-    ? createLocalOAuthState(input.localCallbackPort)
+    ? await createLocalOAuthState(input.localCallbackPort)
     : randomUUID();
 
   return new StateBackedMcpOAuthClientProvider(

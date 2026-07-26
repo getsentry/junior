@@ -489,7 +489,7 @@ export async function GET(
   waitUntil: WaitUntilFn,
   options: OAuthCallbackOptions,
 ): Promise<Response> {
-  const localRelay = relayLocalOAuthCallback(request);
+  const localRelay = await relayLocalOAuthCallback(request);
   if (localRelay) {
     return localRelay;
   }

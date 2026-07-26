@@ -248,7 +248,7 @@ export async function startOAuthFlow(
   }
 
   const state = input.localCallbackPort
-    ? createLocalOAuthState(input.localCallbackPort)
+    ? await createLocalOAuthState(input.localCallbackPort)
     : randomBytes(32).toString("hex");
   const requestedScope = input.scope ?? providerConfig.scope;
 
