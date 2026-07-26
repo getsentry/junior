@@ -129,7 +129,17 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
   ): Promise<TOutput> | TOutput;
 }["bivarianceHack"];
 
+export const toolApprovalBehaviorSchema = z.enum([
+  "none",
+  "guardian",
+  "always_ask",
+]);
+
+export type ToolApprovalBehavior = z.output<typeof toolApprovalBehaviorSchema>;
+
 export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
+  /** Declares the core action-review behavior for this tool. */
+  approval?: ToolApprovalBehavior;
   annotations?: unknown;
   description: string;
   executionMode?: unknown;

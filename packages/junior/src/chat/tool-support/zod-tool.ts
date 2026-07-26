@@ -13,6 +13,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   AnyToolDefinition,
+  | "approval"
   | "identity"
   | "source"
   | "description"

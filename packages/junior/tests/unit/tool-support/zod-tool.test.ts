@@ -5,6 +5,18 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 describe("zodTool", () => {
+  it("preserves the declared approval behavior", () => {
+    const tool = zodTool({
+      approval: "always_ask",
+      description: "Delete a record.",
+      inputSchema: z.object({}),
+      outputSchema: juniorToolResultSchema,
+      execute: async () => ({ ok: true, status: "success" as const }),
+    });
+
+    expect(tool.approval).toBe("always_ask");
+  });
+
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {
     const execute = vi.fn(
       async (input: { count: number }, _options: unknown) => input.count,
