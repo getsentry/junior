@@ -10,6 +10,7 @@ import { Card } from "./layout/Card";
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
+  fallbackTitle?: string;
   range?: TimeRangeDays;
   reports: PluginOperationalReport[];
 }) {
@@ -48,6 +49,7 @@ export function PluginReports(props: {
       </div>
       {props.reports.map((report) => (
         <PluginReportView
+          fallbackTitle={props.fallbackTitle}
           key={report.pluginName}
           range={props.range}
           report={report}
@@ -58,10 +60,16 @@ export function PluginReports(props: {
 }
 
 function PluginReportView(props: {
+  fallbackTitle?: string;
   range?: TimeRangeDays;
   report: PluginOperationalReport;
 }) {
-  const title = props.report.title ?? props.report.pluginName;
+  const reportTitle =
+    props.report.title === props.report.pluginName
+      ? undefined
+      : props.report.title;
+  const title = reportTitle ?? props.fallbackTitle ?? props.report.pluginName;
+  const metrics = props.report.metrics ?? [];
   return (
     <Card>
       <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
@@ -79,22 +87,27 @@ function PluginReportView(props: {
           </div>
         ) : null}
       </div>
-      {props.report.metrics?.length ? (
+      {metrics.length ? (
         <div
           className={cn(
-            "grid grid-cols-2 gap-px bg-white/[0.055]",
-            props.report.metrics.length === 1 && "grid-cols-1",
-            props.report.metrics.length === 3
+            "grid gap-px bg-white/[0.055]",
+            metrics.length === 1 ? "grid-cols-1" : "grid-cols-2",
+            metrics.length === 3
               ? "lg:grid-cols-3"
-              : props.report.metrics.length >= 4
-                ? "lg:grid-cols-4"
-                : "lg:grid-cols-2",
+              : metrics.length === 5
+                ? "lg:grid-cols-5"
+                : metrics.length >= 4
+                  ? "lg:grid-cols-4"
+                  : undefined,
           )}
         >
-          {props.report.metrics.map((metric) => (
+          {metrics.map((metric) => (
             <div
               className={cn(
                 "min-w-0 bg-[#09090b] px-4 py-4",
+                metrics.length > 1 &&
+                  metrics.length % 2 === 1 &&
+                  "last:col-span-2 lg:last:col-span-1",
                 summaryToneClass(metric.tone),
               )}
               key={metric.label}

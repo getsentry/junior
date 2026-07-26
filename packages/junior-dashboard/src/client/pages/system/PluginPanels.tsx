@@ -67,7 +67,11 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
       </div>
 
       {metrics.length ? (
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+        <div
+          className={`grid ${
+            metrics.length === 1 ? "grid-cols-1" : "grid-cols-2"
+          } gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]`}
+        >
           {metrics.slice(0, 2).map((metric) => (
             <div
               className="min-w-0 bg-[#09090b] px-3 py-2.5"

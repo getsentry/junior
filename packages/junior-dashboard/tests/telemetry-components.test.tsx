@@ -1086,6 +1086,19 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).not.toContain(
       "This plugin does not expose operational activity yet.",
     );
+
+    const overviewHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage data={stale} />
+      </MemoryRouter>,
+    );
+    expect(overviewHtml).toContain(
+      "Plugin details and capabilities are still available.",
+    );
+    expect(overviewHtml).not.toContain(
+      "Showing the last operational reports Junior received.",
+    );
+    expect(overviewHtml).toContain("grid-cols-1");
   });
 
   it("renders system metrics and capability inventories", () => {
@@ -1191,6 +1204,45 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="Chart legend"');
     expect(html).toContain('aria-label="30d, Created: 4.5"');
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
+  });
+
+  it("uses the plugin display name and full width for a single metric", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        fallbackTitle="GitHub"
+        reports={[
+          {
+            metrics: [{ label: "report", value: "failed" }],
+            pluginName: "github",
+            title: "github",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(">GitHub<");
+    expect(html).toContain("grid-cols-1");
+    expect(html).not.toContain("grid-cols-2");
+  });
+
+  it("balances odd metric counts across mobile and desktop grids", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            metrics: Array.from({ length: 5 }, (_, index) => ({
+              label: `metric ${index + 1}`,
+              value: String(index + 1),
+            })),
+            pluginName: "scheduler",
+            title: "Scheduler",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("lg:grid-cols-5");
+    expect(html.match(/last:col-span-2 lg:last:col-span-1/g)).toHaveLength(5);
   });
 
   it("formats fractional chart ticks without floating-point noise", () => {

@@ -82,7 +82,7 @@ export function SystemPage(props: { data: SystemData }) {
                 stats={props.data.conversationStats}
               />
               {props.data.pluginReportsError ? (
-                <PluginReportError hasReports={Boolean(reports.length)} />
+                <PluginReportError showingReports={false} />
               ) : null}
               <PluginPanels plugins={plugins} />
               {props.data.skills.length ? (
@@ -107,10 +107,11 @@ function PluginSystemPage(props: {
     <>
       <PluginHeader plugin={props.plugin} />
       {props.data.pluginReportsError ? (
-        <PluginReportError hasReports={Boolean(reports.length)} />
+        <PluginReportError showingReports={Boolean(reports.length)} />
       ) : null}
       <PluginDetails plugin={props.plugin} />
       <PluginReports
+        fallbackTitle={props.plugin.displayName}
         {...(!props.data.pluginReportsLoading && !props.data.pluginReportsError
           ? {
               emptyText:
@@ -124,7 +125,7 @@ function PluginSystemPage(props: {
   );
 }
 
-function PluginReportError(props: { hasReports: boolean }) {
+function PluginReportError(props: { showingReports: boolean }) {
   return (
     <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
       <div className="flex items-center gap-3">
@@ -136,7 +137,7 @@ function PluginReportError(props: { hasReports: boolean }) {
             Plugin stats failed to load.
           </div>
           <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
-            {props.hasReports
+            {props.showingReports
               ? "Showing the last operational reports Junior received."
               : "Plugin details and capabilities are still available."}
           </div>
