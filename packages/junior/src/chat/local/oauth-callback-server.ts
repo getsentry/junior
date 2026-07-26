@@ -10,30 +10,37 @@ import { syncLocalOAuthCredential } from "@/chat/local/credential-sync";
 const LOCAL_OAUTH_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface LocalOAuthCallbackServer {
+  beginAuthorization: (authorizationUrl: string) => void;
   close: () => Promise<void>;
   port: number;
   waitForAuthorization: () => Promise<void>;
+}
+
+interface PendingAuthorization {
+  callbackStarted: boolean;
+  finish: (result: Error | true) => void;
+  result: Promise<Error | true>;
+  settled: boolean;
+  state: string;
+  timeout: NodeJS.Timeout;
 }
 
 /** Start the loopback callback that completes OAuth in the local CLI process. */
 export async function startLocalOAuthCallbackServer(
   agentRunner: AgentRunner,
 ): Promise<LocalOAuthCallbackServer> {
-  let settleAuthorization:
-    | { reject: (error: Error) => void; resolve: () => void }
-    | undefined;
-  let pendingResult: Error | true | undefined;
+  let pendingAuthorization: PendingAuthorization | undefined;
 
-  const completeAuthorization = (result: Error | true): void => {
-    if (!settleAuthorization) {
-      pendingResult = result;
+  const completeAuthorization = (
+    authorization: PendingAuthorization,
+    result: Error | true,
+  ): void => {
+    if (authorization.settled) {
       return;
     }
-    if (result === true) {
-      settleAuthorization.resolve();
-    } else {
-      settleAuthorization.reject(result);
-    }
+    authorization.settled = true;
+    clearTimeout(authorization.timeout);
+    authorization.finish(result);
   };
 
   const server = createServer(async (incoming, outgoing) => {
@@ -52,6 +59,17 @@ export async function startLocalOAuthCallbackServer(
       outgoing.writeHead(404).end("Not found");
       return;
     }
+    const authorization = pendingAuthorization;
+    if (
+      !authorization ||
+      authorization.callbackStarted ||
+      authorization.settled ||
+      requestUrl.searchParams.get("state") !== authorization.state
+    ) {
+      outgoing.writeHead(409).end("No matching authorization request");
+      return;
+    }
+    authorization.callbackStarted = true;
 
     const backgroundTasks: Promise<unknown>[] = [];
     const waitUntil: WaitUntilFn = (task) => {
@@ -82,11 +100,12 @@ export async function startLocalOAuthCallbackServer(
               `${provider} authorization completed without a stored credential`,
             );
           }
-          await syncLocalOAuthCredential(provider, "local-cli", tokens);
+          await syncLocalOAuthCredential(provider, tokens);
         }
-        completeAuthorization(true);
+        completeAuthorization(authorization, true);
       } else {
         completeAuthorization(
+          authorization,
           new Error(
             `${provider} authorization callback failed with HTTP ${response.status}`,
           ),
@@ -102,6 +121,7 @@ export async function startLocalOAuthCallbackServer(
         outgoing.writeHead(500).end("Authorization callback failed");
       }
       completeAuthorization(
+        authorization,
         error instanceof Error ? error : new Error(String(error)),
       );
     }
@@ -117,38 +137,55 @@ export async function startLocalOAuthCallbackServer(
   const address = server.address() as AddressInfo;
 
   return {
+    beginAuthorization: (authorizationUrl) => {
+      if (pendingAuthorization) {
+        throw new Error("Local OAuth already has an active authorization");
+      }
+      const state = new URL(authorizationUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Local OAuth authorization URL is missing state");
+      }
+      let finish: (result: Error | true) => void = () => undefined;
+      const result = new Promise<Error | true>((resolve) => {
+        finish = resolve;
+      });
+      const authorization: PendingAuthorization = {
+        callbackStarted: false,
+        finish,
+        result,
+        settled: false,
+        state,
+        timeout: setTimeout(() => {
+          completeAuthorization(
+            authorization,
+            new Error("Timed out waiting for OAuth authorization"),
+          );
+        }, LOCAL_OAUTH_TIMEOUT_MS),
+      };
+      pendingAuthorization = authorization;
+    },
     port: address.port,
     waitForAuthorization: async () => {
-      if (pendingResult) {
-        const result = pendingResult;
-        pendingResult = undefined;
-        if (result instanceof Error) {
-          throw result;
-        }
-        return;
+      const authorization = pendingAuthorization;
+      if (!authorization) {
+        throw new Error("Local OAuth has no active authorization");
+      }
+      const result = await authorization.result;
+      if (pendingAuthorization === authorization) {
+        pendingAuthorization = undefined;
+      }
+      if (result instanceof Error) {
+        throw result;
+      }
+    },
+    close: async () => {
+      if (pendingAuthorization) {
+        clearTimeout(pendingAuthorization.timeout);
+        pendingAuthorization = undefined;
       }
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          settleAuthorization = undefined;
-          reject(new Error("Timed out waiting for OAuth authorization"));
-        }, LOCAL_OAUTH_TIMEOUT_MS);
-        settleAuthorization = {
-          reject: (error) => {
-            clearTimeout(timeout);
-            settleAuthorization = undefined;
-            reject(error);
-          },
-          resolve: () => {
-            clearTimeout(timeout);
-            settleAuthorization = undefined;
-            resolve();
-          },
-        };
+        server.close((error) => (error ? reject(error) : resolve()));
       });
     },
-    close: async () =>
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      }),
   };
 }

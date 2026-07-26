@@ -1,6 +1,12 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  createSecretKey,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
 const LOCAL_OAUTH_STATE_PREFIX = "jr-local";
+const LOCAL_OAUTH_SIGNATURE_CONTEXT = "junior.local-oauth-relay.v1";
 
 function relaySecret(): string {
   const secret = process.env.JUNIOR_SECRET?.trim();
@@ -11,8 +17,9 @@ function relaySecret(): string {
 }
 
 function relaySignature(port: number, nonce: string): string {
-  return createHmac("sha256", relaySecret())
-    .update(`${port}:${nonce}`)
+  const signingKey = createSecretKey(Buffer.from(relaySecret(), "utf8"));
+  return createHmac("sha256", signingKey)
+    .update(`${LOCAL_OAUTH_SIGNATURE_CONTEXT}:${port}:${nonce}`)
     .digest("base64url");
 }
 

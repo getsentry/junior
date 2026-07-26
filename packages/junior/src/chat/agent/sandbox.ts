@@ -26,7 +26,7 @@ export interface AgentSandboxOptions {
   skills: SkillMetadata[];
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
-  remoteEgressSignals?: boolean;
+  devServerEgressSignals?: boolean;
   credentialEgress?: CredentialContext;
   actor?: Actor;
   channelConfiguration?: ChannelConfigurationService;
@@ -64,7 +64,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     referenceFiles: listReferenceFiles(),
     traceContext: options.traceContext,
     tracePropagation: options.tracePropagation,
-    remoteEgressSignals: options.remoteEgressSignals,
+    devServerEgressSignals: options.devServerEgressSignals,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
     onSandboxRefChanged: async (sandboxRef) => {

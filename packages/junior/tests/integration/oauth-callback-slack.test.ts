@@ -186,6 +186,7 @@ describe("oauth callback slack integration", () => {
       state: "eval-oauth-local-state",
       code: "eval-oauth-code",
       agentRunner: testAgentRunner,
+      expectBackgroundWork: false,
     });
 
     expect(response.status).toBe(200);

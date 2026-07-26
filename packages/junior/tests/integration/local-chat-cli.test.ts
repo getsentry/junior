@@ -111,7 +111,7 @@ export const plugins = {
           policy: expect.objectContaining({
             authorizationFlowMode: "interactive",
             localOAuthCallbackPort: expect.any(Number),
-            remoteSandboxEgressSignals: true,
+            devServerEgressSignals: true,
           }),
           routing: expect.objectContaining({
             credentialContext: {

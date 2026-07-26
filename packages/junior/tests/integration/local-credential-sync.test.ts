@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
-describe("local OAuth credential sync", () => {
+describe("local OAuth credential sync integration", () => {
   beforeEach(() => {
     process.env = {
       ...ORIGINAL_ENV,
@@ -32,7 +32,7 @@ describe("local OAuth credential sync", () => {
       ),
     );
 
-    await credentialSync.syncLocalOAuthCredential("github", "local-cli", {
+    await credentialSync.syncLocalOAuthCredential("github", {
       accessToken: "ghu_local_user_token",
       expiresAt: Date.now() + 60 * 60_000,
       refreshToken: "ghr_local_refresh_token",
@@ -64,7 +64,6 @@ describe("local OAuth credential sync", () => {
           body: JSON.stringify({
             createdAtMs: Date.now(),
             provider: "github",
-            userId: "local-cli",
             tokens: { accessToken: "secret" },
           }),
         },

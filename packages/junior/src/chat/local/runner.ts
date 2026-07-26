@@ -56,6 +56,7 @@ import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
+import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization-message";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
@@ -87,11 +88,9 @@ export interface LocalAgentTurnDeps {
   /** Post-delivery Pi/session persistence boundary. */
   completeDeliveredTurn?: typeof completeDeliveredTurn;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
-  deliverAuthorizationRequest?: (request: {
-    authorizationUrl: string;
-    completionText: string;
-    label: string;
-  }) => void | Promise<void>;
+  deliverAuthorizationRequest?: (
+    request: OAuthAuthorizationRequest,
+  ) => void | Promise<void>;
   /** Pre-agent durable Pi projection boundary. */
   loadPiMessages?: typeof loadLocalPiMessages;
   /** Injectable failure capture boundary for deterministic runtime integration tests. */
@@ -124,6 +123,10 @@ function localDestination(conversationId: string): LocalDestination {
 
 function localTurnId(): string {
   return `local-turn-${randomUUID()}`;
+}
+
+function localRunId(): string {
+  return `local-run-${randomUUID()}`;
 }
 
 function captureLocalBoundaryFailure(args: {
@@ -279,7 +282,7 @@ export async function runLocalAgentTurn(
       await deps.agentRunner.run({
         conversationId: input.conversationId,
         turnId,
-        runId: turnId,
+        runId: localRunId(),
         input: {
           messageText: text,
           conversationContext: buildConversationContext(conversation, {
@@ -298,7 +301,7 @@ export async function runLocalAgentTurn(
         },
         policy: {
           authorizationFlowMode: "interactive",
-          remoteSandboxEgressSignals: true,
+          devServerEgressSignals: true,
           ...(deps.oauthCallbackPort
             ? { localOAuthCallbackPort: deps.oauthCallbackPort }
             : {}),

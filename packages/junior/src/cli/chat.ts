@@ -243,6 +243,7 @@ async function prepareLocalChatRun(
       await deliverReply(io, reply);
     },
     deliverAuthorizationRequest: async (request) => {
+      oauthCallback.beginAuthorization(request.authorizationUrl);
       await reportStatus(
         io,
         `${request.label}:\n${request.authorizationUrl}\n${request.completionText}`,

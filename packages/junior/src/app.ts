@@ -674,11 +674,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.get("/api/internal/sandbox-egress/:token/signals", (c) => {
-    return sandboxEgressSignalsGET(c.req.param("token"));
+    return sandboxEgressSignalsGET(c.req.raw, c.req.param("token"));
   });
 
   app.delete("/api/internal/sandbox-egress/:token/signals", (c) => {
-    return sandboxEgressSignalsDELETE(c.req.param("token"));
+    return sandboxEgressSignalsDELETE(c.req.raw, c.req.param("token"));
   });
 
   app.post("/api/internal/local-oauth-credentials", (c) => {

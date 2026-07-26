@@ -85,7 +85,7 @@ export interface SandboxOptions {
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
-  remoteEgressSignals?: boolean;
+  devServerEgressSignals?: boolean;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
@@ -158,26 +158,23 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     return token;
   };
-  const remoteSignalUrl = (egressId: string): string => {
-    const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
-    if (!baseUrl) {
-      throw new Error("Remote sandbox egress signals require JUNIOR_BASE_URL");
-    }
-    return `${baseUrl.replace(/\/+$/, "")}/api/internal/sandbox-egress/${encodeURIComponent(
+  const devServerSignalUrl = (egressId: string): string => {
+    const port = process.env.PORT?.trim() || "3000";
+    return `http://127.0.0.1:${port}/api/internal/sandbox-egress/${encodeURIComponent(
       sandboxEgressCredentialTokenFor(egressId),
     )}/signals`;
   };
   const clearEgressSignals = async (egressId: string): Promise<void> => {
-    if (!options.remoteEgressSignals) {
+    if (!options.devServerEgressSignals) {
       await clearSandboxEgressSignals(egressId);
       return;
     }
-    const response = await fetch(remoteSignalUrl(egressId), {
+    const response = await fetch(devServerSignalUrl(egressId), {
       method: "DELETE",
     });
     if (!response.ok) {
       throw new Error(
-        `Could not clear remote sandbox egress signals: HTTP ${response.status}`,
+        `Could not clear dev-server sandbox egress signals: HTTP ${response.status}`,
       );
     }
   };
@@ -187,7 +184,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     authRequired?: SandboxEgressAuthRequiredSignal;
     permissionDenied?: SandboxEgressPermissionDeniedSignal;
   }> => {
-    if (!options.remoteEgressSignals) {
+    if (!options.devServerEgressSignals) {
       const [authRequired, permissionDenied] = await Promise.all([
         consumeSandboxEgressAuthRequiredSignal(egressId),
         consumeSandboxEgressPermissionDeniedSignal(egressId),
@@ -197,10 +194,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         ...(permissionDenied ? { permissionDenied } : {}),
       };
     }
-    const response = await fetch(remoteSignalUrl(egressId));
+    const response = await fetch(devServerSignalUrl(egressId));
     if (!response.ok) {
       throw new Error(
-        `Could not consume remote sandbox egress signals: HTTP ${response.status}`,
+        `Could not consume dev-server sandbox egress signals: HTTP ${response.status}`,
       );
     }
     const value = (await response.json()) as Record<string, unknown>;

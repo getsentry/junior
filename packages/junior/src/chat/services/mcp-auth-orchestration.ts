@@ -14,7 +14,10 @@ import {
   getMcpAuthSession,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
-import { formatOAuthAuthorizationMessage } from "@/chat/oauth-authorization-message";
+import {
+  formatOAuthAuthorizationMessage,
+  type OAuthAuthorizationRequest,
+} from "@/chat/oauth-authorization-message";
 import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import {
   abandonReplacedPendingAuth,
@@ -61,11 +64,9 @@ export interface McpAuthOrchestrationInput {
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
   localCallbackPort?: number;
-  deliverAuthorization?: (request: {
-    authorizationUrl: string;
-    completionText: string;
-    label: string;
-  }) => void | Promise<void>;
+  deliverAuthorization?: (
+    request: OAuthAuthorizationRequest,
+  ) => void | Promise<void>;
 }
 
 export interface McpAuthOrchestration {

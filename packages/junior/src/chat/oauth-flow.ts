@@ -16,7 +16,10 @@ import {
   postSlackEphemeralMessage,
   postSlackMessage,
 } from "@/chat/slack/outbound";
-import { formatOAuthAuthorizationMessage } from "@/chat/oauth-authorization-message";
+import {
+  formatOAuthAuthorizationMessage,
+  type OAuthAuthorizationRequest,
+} from "@/chat/oauth-authorization-message";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -46,11 +49,9 @@ type OAuthFlowInput = {
   resumeSessionId?: string;
   scope?: string;
   localCallbackPort?: number;
-  deliverAuthorization?: (request: {
-    authorizationUrl: string;
-    completionText: string;
-    label: string;
-  }) => void | Promise<void>;
+  deliverAuthorization?: (
+    request: OAuthAuthorizationRequest,
+  ) => void | Promise<void>;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;

@@ -81,7 +81,7 @@ const CALLBACK_PAGES = {
   expired: {
     title: "Authorization expired",
     message:
-      "This authorization link is no longer active. Return to Slack and retry the original request.",
+      "This authorization link is no longer active. Return to Junior and retry the original request.",
     status: 400,
   },
   success: {
@@ -93,7 +93,7 @@ const CALLBACK_PAGES = {
   failure: {
     title: "Authorization failed",
     message:
-      "Junior could not finish the authorization callback. Return to Slack and retry the original request.",
+      "Junior could not finish the authorization callback. Return to Junior and retry the original request.",
     status: 500,
   },
 } as const;
@@ -482,12 +482,7 @@ async function isCurrentMcpAuthorizationAttempt(
   authSession: McpAuthSessionState,
   provider: string,
 ): Promise<boolean> {
-  const conversationId =
-    authSession.destination?.platform === "local"
-      ? authSession.conversationId
-      : authSession.channelId && authSession.threadTs
-        ? `slack:${authSession.channelId}:${authSession.threadTs}`
-        : undefined;
+  const conversationId = mcpConversationId(authSession);
   if (!conversationId) {
     return false;
   }
@@ -507,18 +502,25 @@ async function isCurrentMcpAuthorizationAttempt(
   );
 }
 
+function mcpConversationId(
+  authSession: McpAuthSessionState,
+): string | undefined {
+  if (authSession.destination?.platform === "local") {
+    return authSession.conversationId;
+  }
+  if (authSession.channelId && authSession.threadTs) {
+    return `slack:${authSession.channelId}:${authSession.threadTs}`;
+  }
+  return undefined;
+}
+
 /** Commit one shared credential mutation only while this attempt owns the thread. */
 async function runCurrentMcpCredentialMutation<T>(
   authSession: McpAuthSessionState,
   provider: string,
   mutation: () => Promise<T>,
 ): Promise<T> {
-  const conversationId =
-    authSession.destination?.platform === "local"
-      ? authSession.conversationId
-      : authSession.channelId && authSession.threadTs
-        ? `slack:${authSession.channelId}:${authSession.threadTs}`
-        : undefined;
+  const conversationId = mcpConversationId(authSession);
   if (!conversationId) {
     throw new McpOAuthAttemptExpiredError();
   }
@@ -602,13 +604,15 @@ export async function GET(
       );
     }
 
-    waitUntil(() =>
-      resumeAuthorizedMcpTurn({
-        authSession,
-        agentRunner: options.agentRunner,
-        provider,
-      }),
-    );
+    if (authSession.destination?.platform !== "local") {
+      waitUntil(() =>
+        resumeAuthorizedMcpTurn({
+          authSession,
+          agentRunner: options.agentRunner,
+          provider,
+        }),
+      );
+    }
 
     return htmlResponse("success", {
       local: authSession.destination?.platform === "local",

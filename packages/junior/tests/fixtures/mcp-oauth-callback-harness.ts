@@ -10,6 +10,7 @@ export async function runMcpOauthCallbackRoute(args: {
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
   waitUntilCallbacks.length = 0;
@@ -27,7 +28,11 @@ export async function runMcpOauthCallbackRoute(args: {
   for (const callback of callbacks) {
     await callback();
   }
-  if (response.status === 200 && callbacks.length === 0) {
+  if (
+    response.status === 200 &&
+    callbacks.length === 0 &&
+    args.expectBackgroundWork !== false
+  ) {
     throw new Error(
       `MCP OAuth callback route returned 200 without registering waitUntil() work for provider "${args.provider}"`,
     );
@@ -40,6 +45,7 @@ export async function completeMcpOauthCallbackRoute(args: {
   provider: string;
   authSessionId: string;
   agentRunner?: AgentRunner;
+  expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
   const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
@@ -65,6 +71,9 @@ export async function completeMcpOauthCallbackRoute(args: {
     state,
     code,
     ...(args.agentRunner ? { agentRunner: args.agentRunner } : {}),
+    ...(args.expectBackgroundWork === false
+      ? { expectBackgroundWork: false }
+      : {}),
     ...(args.relayed ? { relayed: true } : {}),
   });
 }

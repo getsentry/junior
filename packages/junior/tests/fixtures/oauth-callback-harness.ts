@@ -10,6 +10,7 @@ export async function runOauthCallbackRoute(args: {
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  expectBackgroundWork?: boolean;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/oauth-callback");
@@ -26,7 +27,11 @@ export async function runOauthCallbackRoute(args: {
   for (const callback of callbacks) {
     await callback();
   }
-  if (response.status === 200 && callbacks.length === 0) {
+  if (
+    response.status === 200 &&
+    callbacks.length === 0 &&
+    args.expectBackgroundWork !== false
+  ) {
     throw new Error(
       `OAuth callback route returned 200 without registering waitUntil() work for provider "${args.provider}"`,
     );

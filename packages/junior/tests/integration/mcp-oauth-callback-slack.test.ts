@@ -296,6 +296,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         authSessionId: authProvider.authSessionId,
         agentRunner: testAgentRunner,
+        expectBackgroundWork: false,
         relayed: true,
       });
 

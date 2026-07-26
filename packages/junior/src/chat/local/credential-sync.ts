@@ -1,19 +1,23 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createSecretKey, timingSafeEqual } from "node:crypto";
 import {
   pluginStoredTokensSchema,
   type PluginStoredTokens,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 
 const LOCAL_CREDENTIAL_SYNC_CONTEXT = "junior.local-credential-sync.v1";
 const LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS = 60_000;
 
-interface LocalCredentialSyncPayload {
-  createdAtMs: number;
-  provider: string;
-  tokens: PluginStoredTokens;
-  userId: string;
-}
+const localCredentialSyncSchema = z
+  .object({
+    createdAtMs: z.number().finite(),
+    provider: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    tokens: pluginStoredTokensSchema,
+  })
+  .strict();
+
+type LocalCredentialSyncPayload = z.infer<typeof localCredentialSyncSchema>;
 
 function syncSecret(): string {
   const secret = process.env.JUNIOR_SECRET?.trim();
@@ -24,7 +28,8 @@ function syncSecret(): string {
 }
 
 function signature(body: string): string {
-  return createHmac("sha256", syncSecret())
+  const signingKey = createSecretKey(Buffer.from(syncSecret(), "utf8"));
+  return createHmac("sha256", signingKey)
     .update(`${LOCAL_CREDENTIAL_SYNC_CONTEXT}:${body}`)
     .digest("base64url");
 }
@@ -41,14 +46,12 @@ function signaturesMatch(expected: string, actual: string): boolean {
 /** Copy a local user's provider credential to the loopback dev-server broker. */
 export async function syncLocalOAuthCredential(
   provider: string,
-  userId: string,
   tokens: PluginStoredTokens,
 ): Promise<void> {
   const body = JSON.stringify({
     createdAtMs: Date.now(),
     provider,
     tokens,
-    userId,
   } satisfies LocalCredentialSyncPayload);
   const port = process.env.PORT?.trim() || "3000";
   const response = await fetch(
@@ -93,27 +96,18 @@ export async function receiveLocalOAuthCredential(
   } catch {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return Response.json({ error: "Invalid request" }, { status: 400 });
-  }
-  const payload = value as Partial<LocalCredentialSyncPayload>;
-  const tokens = pluginStoredTokensSchema.safeParse(payload.tokens);
+  const payload = localCredentialSyncSchema.safeParse(value);
   if (
-    typeof payload.createdAtMs !== "number" ||
-    Math.abs(Date.now() - payload.createdAtMs) >
-      LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS ||
-    typeof payload.provider !== "string" ||
-    !payload.provider.trim() ||
-    typeof payload.userId !== "string" ||
-    !payload.userId.trim() ||
-    !tokens.success
+    !payload.success ||
+    Math.abs(Date.now() - payload.data.createdAtMs) >
+      LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS
   ) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
   await createUserTokenStore().set(
-    payload.userId,
-    payload.provider,
-    tokens.data,
+    "local-cli",
+    payload.data.provider,
+    payload.data.tokens,
   );
   return new Response(null, { status: 204 });
 }

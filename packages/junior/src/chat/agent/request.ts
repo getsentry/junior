@@ -20,6 +20,7 @@ import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
+import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization-message";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -103,8 +104,8 @@ export interface AgentRunPolicy {
   authorizationFlowMode?: AuthorizationFlowMode;
   /** Loopback callback owned by an interactive local CLI process. */
   localOAuthCallbackPort?: number;
-  /** Consume egress auth signals from a separate local dev-server process. */
-  remoteSandboxEgressSignals?: boolean;
+  /** Read sandbox egress signals from the loopback dev server. */
+  devServerEgressSignals?: boolean;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;
@@ -150,11 +151,9 @@ export interface AgentAssistantMessage {
 export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
   /** Deliver a private authorization request on non-provider chat surfaces. */
-  onAuthorizationRequest?: (request: {
-    authorizationUrl: string;
-    completionText: string;
-    label: string;
-  }) => void | Promise<void>;
+  onAuthorizationRequest?: (
+    request: OAuthAuthorizationRequest,
+  ) => void | Promise<void>;
 }
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */

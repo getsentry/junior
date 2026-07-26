@@ -325,6 +325,7 @@ describe("local agent runner", () => {
     expect(waitForAuthorization).toHaveBeenCalledOnce();
     expect(requests).toHaveLength(2);
     expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+    expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
     expect(requests[0]?.policy).toMatchObject({
       authorizationFlowMode: "interactive",
       localOAuthCallbackPort: 43123,

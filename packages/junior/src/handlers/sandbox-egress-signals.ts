@@ -5,8 +5,22 @@ import {
   parseSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
 
-/** Clear command-scoped sandbox egress signals through a signed context token. */
-export async function DELETE(token: string): Promise<Response> {
+function isLoopbackDevelopmentRequest(request: Request): boolean {
+  const hostname = new URL(request.url).hostname;
+  return (
+    process.env.NODE_ENV === "development" &&
+    (hostname === "127.0.0.1" || hostname === "localhost")
+  );
+}
+
+/** Clear command-scoped sandbox egress signals through the loopback dev server. */
+export async function DELETE(
+  request: Request,
+  token: string,
+): Promise<Response> {
+  if (!isLoopbackDevelopmentRequest(request)) {
+    return new Response(null, { status: 404 });
+  }
   const context = parseSandboxEgressCredentialToken(token);
   if (!context) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,8 +29,11 @@ export async function DELETE(token: string): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
-/** Consume command-scoped sandbox egress signals through a signed context token. */
-export async function GET(token: string): Promise<Response> {
+/** Consume command-scoped sandbox egress signals through the loopback dev server. */
+export async function GET(request: Request, token: string): Promise<Response> {
+  if (!isLoopbackDevelopmentRequest(request)) {
+    return new Response(null, { status: 404 });
+  }
   const context = parseSandboxEgressCredentialToken(token);
   if (!context) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

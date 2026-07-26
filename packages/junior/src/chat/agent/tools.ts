@@ -123,7 +123,7 @@ export async function wireAgentTools(
     skills: args.availableSkills,
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
-    remoteEgressSignals: args.policy.remoteSandboxEgressSignals,
+    devServerEgressSignals: args.policy.devServerEgressSignals,
     credentialEgress: args.routing.credentialContext,
     actor: args.currentActor,
     channelConfiguration: args.policy.channelConfiguration,
