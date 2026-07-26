@@ -277,6 +277,7 @@ export function slackEnvelope(input: {
   text?: string;
   threadTs?: string;
   ts?: string;
+  user?: string;
 }) {
   const channel = input.channel ?? "C123";
   const ts = input.ts ?? "1712345.0001";
@@ -285,7 +286,7 @@ export function slackEnvelope(input: {
     type: "event_callback",
     event: {
       type: input.eventType ?? "app_mention",
-      user: "U123",
+      user: input.user ?? "U123",
       text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
       channel,
       ts,

@@ -356,6 +356,25 @@ describe("chat config", () => {
     );
   });
 
+  it("defaults cross-actor mid-run messages to follow-up", async () => {
+    delete process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE;
+    const { botConfig } = await loadConfig();
+    expect(botConfig.crossActorMidRunMode).toBe("follow_up");
+  });
+
+  it("supports collaborative cross-actor steering", async () => {
+    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "steer";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.crossActorMidRunMode).toBe("steer");
+  });
+
+  it("rejects unsupported cross-actor mid-run modes", async () => {
+    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "router";
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer",
+    );
+  });
+
   it("sets max slices per turn from core config", async () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.maxSlicesPerTurn).toBe(100);

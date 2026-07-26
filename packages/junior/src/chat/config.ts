@@ -45,6 +45,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 
 export interface BotConfig {
   contextWindowTokens: number;
+  crossActorMidRunMode: CrossActorMidRunMode;
   embeddingModelId: string;
   fastModelId: string;
   imageGenerationModelId: string;
@@ -57,6 +58,8 @@ export interface BotConfig {
   userName: string;
   webSearchModelId: string;
 }
+
+export type CrossActorMidRunMode = "follow_up" | "steer";
 
 export type SqlDriver = "neon" | "postgres";
 
@@ -171,6 +174,16 @@ function parseSlashCommand(rawValue: string | undefined): string {
   return command;
 }
 
+function parseCrossActorMidRunMode(
+  rawValue: string | undefined,
+): CrossActorMidRunMode {
+  const value = toOptionalTrimmed(rawValue) ?? "follow_up";
+  if (value === "follow_up" || value === "steer") {
+    return value;
+  }
+  throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
+}
+
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
@@ -283,6 +296,9 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    crossActorMidRunMode: parseCrossActorMidRunMode(
+      env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
+    ),
     profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
     contextWindowTokens:
       parseOptionalPositiveInteger(

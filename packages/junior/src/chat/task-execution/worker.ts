@@ -82,16 +82,34 @@ function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
 }
 
-/** Prioritize the interrupt batch; otherwise process the deferred batch. */
+function selectContiguousActorBatch(
+  messages: readonly InboundMessage[],
+): InboundMessage[] {
+  const first = messages[0];
+  if (!first) {
+    return [];
+  }
+  const nextActorIndex = messages.findIndex(
+    (message) => message.input.authorId !== first.input.authorId,
+  );
+  return messages.slice(
+    0,
+    nextActorIndex === -1 ? messages.length : nextActorIndex,
+  );
+}
+
+/** Prioritize interrupts while keeping each attempt scoped to one actor. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
   const interrupts = messages.filter(
     (message) => message.delivery === "interrupt",
   );
   if (interrupts.length > 0) {
-    return interrupts;
+    return selectContiguousActorBatch(interrupts);
   }
-  return work.execution.status === "awaiting_resume" ? [] : messages;
+  return work.execution.status === "awaiting_resume"
+    ? []
+    : selectContiguousActorBatch(messages);
 }
 
 function nudgeIdempotencyKey(
@@ -325,6 +343,8 @@ export async function processConversationWork(
     (options.softYieldAfterMs ??
       getChatConfig().conversationWorkSoftYieldAfterMs);
   let attemptMessageIds: string[] = [];
+  let attemptSelectedMessageIds = new Set<string>();
+  let attemptStartMessageIds = new Set<string>();
   let leaseLost = false;
   const markLeaseLost = (): void => {
     leaseLost = true;
@@ -353,8 +373,14 @@ export async function processConversationWork(
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
       handle: async (messages) => {
+        // Pending work that was not selected when the attempt started belongs
+        // to a later actor-scoped attempt. Selected or newly arrived
+        // interrupts remain eligible for this attempt's drain.
         const candidates = messages.filter(
-          (message) => message.delivery === "interrupt",
+          (message) =>
+            message.delivery === "interrupt" &&
+            (attemptSelectedMessageIds.has(message.inboundMessageId) ||
+              !attemptStartMessageIds.has(message.inboundMessageId)),
         );
         if (candidates.length === 0) {
           return [];
@@ -442,6 +468,9 @@ export async function processConversationWork(
 
       const resumePending = leasedWork.execution.status === "awaiting_resume";
       const attemptMessages = selectAttemptMessages(leasedWork);
+      attemptStartMessageIds = new Set(
+        leasedWork.messages.map((message) => message.inboundMessageId),
+      );
 
       if (hasRun && shouldYield()) {
         if (resumePending) {
@@ -474,6 +503,7 @@ export async function processConversationWork(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
+      attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
           conversationId,

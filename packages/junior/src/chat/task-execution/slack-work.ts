@@ -38,11 +38,17 @@ import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
+import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
+import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
   typeof slackConversationRouteSchema
 >;
+
+function hasSteeringOverride(text: string): boolean {
+  return stripLeadingSteeringOverride(text) !== text;
+}
 
 const serializedDateSchema = z.iso.datetime();
 const mdastPointSchema = z
@@ -445,6 +451,7 @@ interface SlackResourceEventInboundInput {
 }
 
 export interface CreateSlackConversationWorkerOptions {
+  crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
     teamId: string,
@@ -740,6 +747,8 @@ function getPendingRecords(
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
+  const crossActorMidRunMode =
+    options.crossActorMidRunMode ?? botConfig.crossActorMidRunMode;
   return async (context) => {
     const adapter = options.getSlackAdapter();
     const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
@@ -817,6 +826,7 @@ export function createSlackConversationWorker(
           skipped,
           totalSinceLastHandler: messages.length,
         };
+        const activeAuthorId = requireSlackAuthorId(latestMessage);
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -839,12 +849,18 @@ export function createSlackConversationWorker(
           ) => Promise<readonly string[]>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            return await accept(
-              pendingRecords.map((record) => ({
+            const candidates = pendingRecords
+              .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({ adapter, record }),
-              })),
-            );
+              }))
+              .filter(
+                (candidate) =>
+                  crossActorMidRunMode === "steer" ||
+                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
+                  hasSteeringOverride(candidate.message.text),
+              );
+            return candidates.length > 0 ? await accept(candidates) : [];
           });
         };
         try {
@@ -914,6 +930,7 @@ export function buildSlackInboundMessage(args: {
   if (!destination) {
     throw new Error("Slack inbound message requires destination context");
   }
+  const hasInterruptOverride = hasSteeringOverride(args.message.text);
   return {
     conversationId: args.conversationId,
     destination,
@@ -923,7 +940,8 @@ export function buildSlackInboundMessage(args: {
       args.conversationId,
       args.message.id,
     ].join(":"),
-    delivery: args.message.isMention ? "interrupt" : "defer",
+    delivery:
+      args.message.isMention || hasInterruptOverride ? "interrupt" : "defer",
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,

@@ -28,6 +28,8 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { isUserActor } from "@/chat/actor";
+import type { CrossActorMidRunMode } from "@/chat/config";
 import {
   createResourceEventSubscription,
   listResourceEventSubscriptions,
@@ -44,6 +46,7 @@ function makeMessageEvent(args: {
   eventType: "app_mention" | "message";
   text: string;
   ts: string;
+  user?: string;
 }) {
   return slackEnvelope({
     channel: CHANNEL_ID,
@@ -51,6 +54,7 @@ function makeMessageEvent(args: {
     text: args.text,
     threadTs: args.ts === THREAD_TS ? undefined : THREAD_TS,
     ts: args.ts,
+    user: args.user,
   });
 }
 
@@ -113,6 +117,7 @@ function completeObjectWithDecision(
 
 function createTurnHarness(args: {
   completeObject?: CompleteObjectOverride;
+  crossActorMidRunMode?: CrossActorMidRunMode;
   agentRunner: AgentRunner;
   services?: Parameters<typeof createSlackRuntime>[0]["services"];
   state: StateAdapter;
@@ -158,6 +163,7 @@ function createTurnHarness(args: {
     return processConversationQueueMessage(message, {
       queue,
       run: createSlackConversationWorker({
+        crossActorMidRunMode: args.crossActorMidRunMode,
         getSlackAdapter: () => adapter,
         resumeAwaitingContinuation: async () => false,
         runtime,
@@ -241,7 +247,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
   });
 
-  it("steers with explicit mentions and then processes follow-up messages", async () => {
+  it("steers same-actor explicit mentions and then processes follow-up messages", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
     let blockingCallReleased = false;
@@ -429,6 +435,231 @@ describe("Slack behavior: durable turn steering", () => {
     expect(reactionTargetsByName("white_check_mark")).toEqual(
       expectedCompletedReactions,
     );
+  });
+
+  it("isolates cross-actor mentions into actor-scoped follow-up turns unless !! overrides", async () => {
+    const agentEntered = deferred();
+    const releaseAgent = deferred();
+    const calls: Array<{
+      actorId: string | undefined;
+      context: string | undefined;
+      prompt: string;
+      steering: AgentRunSteeringMessage[];
+    }> = [];
+    const state = getStateAdapter();
+    let isFirstRun = true;
+    const executeAgentRun: AgentRunner["run"] = async (request) => {
+      await request.durability?.onInputCommitted?.();
+      if (isFirstRun) {
+        isFirstRun = false;
+        agentEntered.resolve();
+        await releaseAgent.promise;
+      }
+
+      const steering: AgentRunSteeringMessage[] = [];
+      const drained = await request.durability?.drainSteeringMessages?.(
+        async (messages) => {
+          steering.push(...messages);
+        },
+      );
+      if (steering.length === 0 && drained) {
+        steering.push(...drained);
+      }
+      calls.push({
+        actorId: isUserActor(request.routing.actor)
+          ? request.routing.actor.userId
+          : undefined,
+        context: request.input.conversationContext,
+        prompt: request.input.messageText,
+        steering,
+      });
+      await deliverAssistantMessagesForTest(request, [{ text: "Done." }]);
+      return completedAgentRun({
+        text: "Done.",
+        diagnostics: makeDiagnostics(),
+      });
+    };
+    const { conversationId, runNextQueuedWork, services } = createTurnHarness({
+      agentRunner: { run: executeAgentRun },
+      state,
+    });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+            user: "U123",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const activeTurn = runNextQueuedWork();
+    await agentEntered.promise;
+
+    for (const message of [
+      {
+        text: `<@${SLACK_BOT_USER_ID}> add customer impact`,
+        ts: "1712345.000200",
+        user: "U456",
+      },
+      {
+        text: `<@${SLACK_BOT_USER_ID}> add the rollback owner`,
+        ts: "1712345.000300",
+        user: "U456",
+      },
+      {
+        text: `<@${SLACK_BOT_USER_ID}> add the next action`,
+        ts: "1712345.000400",
+        user: "U789",
+      },
+      {
+        text: `<@${SLACK_BOT_USER_ID}> add one more customer`,
+        ts: "1712345.000500",
+        user: "U456",
+      },
+      {
+        text: `  !! <@${SLACK_BOT_USER_ID}> stop and reconsider`,
+        ts: "1712345.000600",
+        user: "U999",
+      },
+    ]) {
+      await expect(
+        handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            makeMessageEvent({
+              eventType: "app_mention",
+              ...message,
+            }),
+          ),
+          services,
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+    }
+
+    releaseAgent.resolve();
+    await expect(activeTurn).resolves.toEqual({ status: "completed" });
+
+    expect(
+      calls.map(({ actorId, prompt, steering }) => ({
+        actorId,
+        prompt,
+        steeringActors: steering.map((message) =>
+          isUserActor(message.provenance.actor)
+            ? message.provenance.actor.userId
+            : undefined,
+        ),
+        steeringTexts: steering.map((message) => message.text),
+      })),
+    ).toEqual([
+      {
+        actorId: "U123",
+        prompt: "start the incident summary",
+        steeringActors: ["U999"],
+        steeringTexts: ["stop and reconsider"],
+      },
+      {
+        actorId: "U456",
+        prompt: "add the rollback owner",
+        steeringActors: [],
+        steeringTexts: [],
+      },
+      {
+        actorId: "U789",
+        prompt: "add the next action",
+        steeringActors: [],
+        steeringTexts: [],
+      },
+      {
+        actorId: "U456",
+        prompt: "add one more customer",
+        steeringActors: [],
+        steeringTexts: [],
+      },
+    ]);
+    expect(calls[1]?.context).toContain("add customer impact");
+
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work?.messages).toEqual([]);
+    expect(work?.execution.inboundMessageIds).toHaveLength(6);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(work?.needsRun).toBe(false);
+  });
+
+  it("supports configured cross-actor steering", async () => {
+    const agentEntered = deferred();
+    const releaseAgent = deferred();
+    const steering: AgentRunSteeringMessage[] = [];
+    const state = getStateAdapter();
+    const { runNextQueuedWork, services } = createTurnHarness({
+      crossActorMidRunMode: "steer",
+      agentRunner: {
+        run: async (request) => {
+          await request.durability?.onInputCommitted?.();
+          agentEntered.resolve();
+          await releaseAgent.promise;
+          await request.durability?.drainSteeringMessages?.(
+            async (messages) => {
+              steering.push(...messages);
+            },
+          );
+          await deliverAssistantMessagesForTest(request, [{ text: "Done." }]);
+          return completedAgentRun({
+            text: "Done.",
+            diagnostics: makeDiagnostics(),
+          });
+        },
+      },
+      state,
+    });
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        makeMessageEvent({
+          eventType: "app_mention",
+          text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+          ts: THREAD_TS,
+          user: "U123",
+        }),
+      ),
+      services,
+    });
+    const activeTurn = runNextQueuedWork();
+    await agentEntered.promise;
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        makeMessageEvent({
+          eventType: "app_mention",
+          text: `<@${SLACK_BOT_USER_ID}> include the rollback owner`,
+          ts: "1712345.000200",
+          user: "U456",
+        }),
+      ),
+      services,
+    });
+
+    releaseAgent.resolve();
+    await expect(activeTurn).resolves.toEqual({ status: "completed" });
+    expect(
+      steering.map((message) => ({
+        actorId: isUserActor(message.provenance.actor)
+          ? message.provenance.actor.userId
+          : undefined,
+        text: message.text,
+      })),
+    ).toEqual([
+      {
+        actorId: "U456",
+        text: "include the rollback owner",
+      },
+    ]);
   });
 
   it("consumes subscribed messages skipped by reply policy", async () => {

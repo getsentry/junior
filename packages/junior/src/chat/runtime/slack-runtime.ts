@@ -35,6 +35,7 @@ import {
   type ProcessingReactionSession,
 } from "@/chat/runtime/processing-reaction";
 import { getMessageTs } from "@/chat/runtime/thread-context";
+import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
   combineTurnText,
   type PrepareTurnStateInput,
@@ -220,10 +221,13 @@ function getQueuedMessages(
   },
 ): QueuedTurnMessage[] {
   return (context?.skipped ?? []).map((message) => {
-    const stripped = options.stripLeadingBotMention(message.text, {
-      stripLeadingSlackMentionToken:
-        options.explicitMention || Boolean(message.isMention),
-    });
+    const stripped = options.stripLeadingBotMention(
+      stripLeadingSteeringOverride(message.text),
+      {
+        stripLeadingSlackMentionToken:
+          options.explicitMention || Boolean(message.isMention),
+      },
+    );
     return {
       explicitMention: Boolean(message.isMention),
       message,
@@ -524,9 +528,12 @@ export function createSlackTurnRuntime<
       runId: deps.getRunId(thread, message),
     };
     const legacyAttachmentText = renderSlackLegacyAttachmentText(message.raw);
-    const strippedUserText = deps.stripLeadingBotMention(message.text, {
-      stripLeadingSlackMentionToken: Boolean(message.isMention),
-    });
+    const strippedUserText = deps.stripLeadingBotMention(
+      stripLeadingSteeringOverride(message.text),
+      {
+        stripLeadingSlackMentionToken: Boolean(message.isMention),
+      },
+    );
     const text: TurnMessageText = {
       rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
       userText: appendSlackLegacyAttachmentText(strippedUserText, message.raw),
@@ -945,9 +952,12 @@ export function createSlackTurnRuntime<
           const legacyAttachmentText = renderSlackLegacyAttachmentText(
             message.raw,
           );
-          const strippedUserText = deps.stripLeadingBotMention(message.text, {
-            stripLeadingSlackMentionToken: Boolean(message.isMention),
-          });
+          const strippedUserText = deps.stripLeadingBotMention(
+            stripLeadingSteeringOverride(message.text),
+            {
+              stripLeadingSlackMentionToken: Boolean(message.isMention),
+            },
+          );
           const currentText: TurnMessageText = {
             rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
             userText: appendSlackLegacyAttachmentText(

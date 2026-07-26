@@ -175,6 +175,7 @@ minimumReleaseAgeExclude:
     );
     expect(envExample).toContain("CRON_SECRET=");
     expect(envExample).toContain("JUNIOR_SLASH_COMMAND=");
+    expect(envExample).toContain("JUNIOR_CROSS_ACTOR_MID_RUN_MODE=");
     expect(envExample).toContain("DATABASE_URL=");
     expect(envExample).toContain("JUNIOR_DATABASE_DRIVER=");
 
