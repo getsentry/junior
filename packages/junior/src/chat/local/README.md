@@ -8,8 +8,9 @@ provider mailbox worker.
 - `junior chat -p <prompt>` executes one turn; interactive mode reuses one
   process-scoped conversation until exit.
 - Conversation IDs use `local:<workspace-key>:<conversation-slug>`.
-- Source context is local, the credential actor is the `local-cli` system actor,
-  and Slack-only authorization or delivery surfaces are disabled.
+- Source context is local and the credential actor is the `local-cli` user.
+  OAuth authorization links are printed in the terminal; the CLI waits for the
+  callback and resumes the same turn.
 - User input is persisted before execution; each completed tool-free assistant
   message is written to stdout and recorded in conversation order. Text emitted
   alongside tool calls remains internal. Post-delivery state is attempted
@@ -27,6 +28,12 @@ provider mailbox worker.
   message order.
 - Local file requests use paths named by the user. The adapter does not
   synthesize Slack attachments or file-delivery tools.
+- Local OAuth uses the configured public `JUNIOR_BASE_URL` callback, then a
+  signed redirect to a loopback listener owned by the CLI process. Keep the
+  local dev server and tunnel running so the provider callback can reach that
+  relay. Plugin credentials are copied back to the dev server over a signed
+  loopback request so sandbox egress can issue a lease after the turn resumes;
+  the credential is never sent to the sandbox.
 
 `conversation.ts` owns identity normalization and `runner.ts` owns the direct
 runtime path. Manual validation is documented in

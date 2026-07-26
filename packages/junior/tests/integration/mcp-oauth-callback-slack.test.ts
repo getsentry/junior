@@ -1,6 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createLocalSource,
   createSlackSource,
   type Actor,
   type Source,
@@ -219,6 +220,7 @@ describe("mcp oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_SECRET: "test-secret",
     };
     pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
@@ -243,6 +245,70 @@ describe("mcp oauth callback slack integration", () => {
     await pluginApp?.cleanup();
     pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("finalizes local MCP OAuth without attempting Slack resume", async () => {
+    const conversationId = "local:oauth:mcp-callback";
+    const sessionId = "local-turn-mcp-oauth";
+    const destination = { platform: "local", conversationId } as const;
+    const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      conversationId,
+      destination,
+      sessionId,
+      userId: "local-cli",
+      userMessage: "list my projects",
+      localCallbackPort: 43123,
+      source: createLocalSource(conversationId),
+    });
+    const plugin =
+      pluginCatalogRuntimeModule.pluginCatalogRuntime.getDefinition(
+        EVAL_MCP_AUTH_PROVIDER,
+      );
+    expect(plugin).toBeDefined();
+    const client = new mcpClientModule.PluginMcpClient(plugin!, {
+      authProvider,
+    });
+    await expect(client.listTools()).rejects.toBeInstanceOf(
+      mcpClientModule.McpAuthorizationRequiredError,
+    );
+    await client.close();
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [],
+          processing: {
+            pendingAuth: {
+              authSessionId: authProvider.authSessionId,
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              actorId: "local-cli",
+              sessionId,
+              linkSentAtMs: Date.now(),
+            },
+          },
+        },
+      });
+
+    const response =
+      await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        authSessionId: authProvider.authSessionId,
+        agentRunner: testAgentRunner,
+        relayed: true,
+      });
+
+    expect(response.status).toBe(200);
+    await expect(
+      mcpAuthStoreModule.getMcpStoredOAuthCredentials(
+        "local-cli",
+        EVAL_MCP_AUTH_PROVIDER,
+      ),
+    ).resolves.toMatchObject({
+      tokens: expect.objectContaining({ access_token: expect.any(String) }),
+    });
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
   });
 
   it("finalizes MCP OAuth and resumes the stored thread with persisted context", async () => {

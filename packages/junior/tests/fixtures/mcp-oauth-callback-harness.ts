@@ -10,12 +10,13 @@ export async function runMcpOauthCallbackRoute(args: {
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  relayed?: boolean;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
   const response = await GET(
     new Request(
-      `https://junior.example.com/api/oauth/callback/mcp/${args.provider}?state=${encodeURIComponent(args.state)}&code=${encodeURIComponent(args.code)}`,
+      `https://junior.example.com/api/oauth/callback/mcp/${args.provider}?state=${encodeURIComponent(args.state)}&code=${encodeURIComponent(args.code)}${args.relayed ? "&jr_local_relay=complete" : ""}`,
       { method: "GET" },
     ),
     args.provider,
@@ -39,6 +40,7 @@ export async function completeMcpOauthCallbackRoute(args: {
   provider: string;
   authSessionId: string;
   agentRunner?: AgentRunner;
+  relayed?: boolean;
 }) {
   const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
   const session = await getMcpAuthSession(args.authSessionId);
@@ -63,5 +65,6 @@ export async function completeMcpOauthCallbackRoute(args: {
     state,
     code,
     ...(args.agentRunner ? { agentRunner: args.agentRunner } : {}),
+    ...(args.relayed ? { relayed: true } : {}),
   });
 }

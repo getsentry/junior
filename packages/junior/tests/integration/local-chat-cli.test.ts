@@ -109,9 +109,14 @@ export const plugins = {
         expect.objectContaining({
           input: expect.objectContaining({ messageText: "hello" }),
           policy: expect.objectContaining({
-            authorizationFlowMode: "disabled",
+            authorizationFlowMode: "interactive",
+            localOAuthCallbackPort: expect.any(Number),
+            remoteSandboxEgressSignals: true,
           }),
           routing: expect.objectContaining({
+            credentialContext: {
+              actor: { type: "user", userId: "local-cli" },
+            },
             destination: expect.objectContaining({ platform: "local" }),
           }),
         }),

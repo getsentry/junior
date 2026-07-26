@@ -12,6 +12,12 @@ import {
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress/policy";
 import {
+  parseSandboxEgressAuthRequiredSignal,
+  parseSandboxEgressPermissionDeniedSignal,
+  type SandboxEgressAuthRequiredSignal,
+  type SandboxEgressPermissionDeniedSignal,
+} from "@/chat/sandbox/egress/schemas";
+import {
   clearSandboxEgressSignals,
   consumeSandboxEgressAuthRequiredSignal,
   consumeSandboxEgressPermissionDeniedSignal,
@@ -79,6 +85,7 @@ export interface SandboxOptions {
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
+  remoteEgressSignals?: boolean;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
@@ -150,6 +157,63 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       token,
     });
     return token;
+  };
+  const remoteSignalUrl = (egressId: string): string => {
+    const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
+    if (!baseUrl) {
+      throw new Error("Remote sandbox egress signals require JUNIOR_BASE_URL");
+    }
+    return `${baseUrl.replace(/\/+$/, "")}/api/internal/sandbox-egress/${encodeURIComponent(
+      sandboxEgressCredentialTokenFor(egressId),
+    )}/signals`;
+  };
+  const clearEgressSignals = async (egressId: string): Promise<void> => {
+    if (!options.remoteEgressSignals) {
+      await clearSandboxEgressSignals(egressId);
+      return;
+    }
+    const response = await fetch(remoteSignalUrl(egressId), {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Could not clear remote sandbox egress signals: HTTP ${response.status}`,
+      );
+    }
+  };
+  const consumeEgressSignals = async (
+    egressId: string,
+  ): Promise<{
+    authRequired?: SandboxEgressAuthRequiredSignal;
+    permissionDenied?: SandboxEgressPermissionDeniedSignal;
+  }> => {
+    if (!options.remoteEgressSignals) {
+      const [authRequired, permissionDenied] = await Promise.all([
+        consumeSandboxEgressAuthRequiredSignal(egressId),
+        consumeSandboxEgressPermissionDeniedSignal(egressId),
+      ]);
+      return {
+        ...(authRequired ? { authRequired } : {}),
+        ...(permissionDenied ? { permissionDenied } : {}),
+      };
+    }
+    const response = await fetch(remoteSignalUrl(egressId));
+    if (!response.ok) {
+      throw new Error(
+        `Could not consume remote sandbox egress signals: HTTP ${response.status}`,
+      );
+    }
+    const value = (await response.json()) as Record<string, unknown>;
+    const authRequired = parseSandboxEgressAuthRequiredSignal(
+      value.auth_required,
+    );
+    const permissionDenied = parseSandboxEgressPermissionDeniedSignal(
+      value.permission_denied,
+    );
+    return {
+      ...(authRequired ? { authRequired } : {}),
+      ...(permissionDenied ? { permissionDenied } : {}),
+    };
   };
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
@@ -225,7 +289,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     const { bash: executeBash, sessionId: activeSessionId } =
       await runtime.tools();
-    await clearSandboxEgressSignals(activeSessionId);
+    await clearEgressSignals(activeSessionId);
     const result = await withSandboxToolSpan(
       "bash",
       "process.exec",
@@ -275,10 +339,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     // side-channel from the network layer — not a property of shell exit status —
     // and `clearSandboxEgressSignals` runs before each execution to prevent
     // cross-command leakage.
-    const authRequired =
-      await consumeSandboxEgressAuthRequiredSignal(activeSessionId);
-    const permissionDenied =
-      await consumeSandboxEgressPermissionDeniedSignal(activeSessionId);
+    const { authRequired, permissionDenied } =
+      await consumeEgressSignals(activeSessionId);
 
     return formatSandboxCommandResult({
       ok: result.exitCode === 0,

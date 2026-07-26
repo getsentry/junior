@@ -101,6 +101,10 @@ export interface AgentRunPolicy {
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
   authorizationFlowMode?: AuthorizationFlowMode;
+  /** Loopback callback owned by an interactive local CLI process. */
+  localOAuthCallbackPort?: number;
+  /** Consume egress auth signals from a separate local dev-server process. */
+  remoteSandboxEgressSignals?: boolean;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;
@@ -145,6 +149,12 @@ export interface AgentAssistantMessage {
 /** Delivers completed tool-free assistant messages in model order. */
 export interface AgentRunDelivery {
   onAssistantMessage: (message: AgentAssistantMessage) => void | Promise<void>;
+  /** Deliver a private authorization request on non-provider chat surfaces. */
+  onAuthorizationRequest?: (request: {
+    authorizationUrl: string;
+    completionText: string;
+    label: string;
+  }) => void | Promise<void>;
 }
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */

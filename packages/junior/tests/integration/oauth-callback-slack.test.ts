@@ -1,6 +1,9 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -158,6 +161,42 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     ]);
+  }, 20_000);
+
+  it("stores a local CLI credential without attempting Slack resume", async () => {
+    const conversationId = "local:oauth:callback";
+    const destination = {
+      platform: "local",
+      conversationId,
+    } as const;
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-local-state", {
+        userId: "local-cli",
+        provider: "eval-oauth",
+        destination,
+        source: createLocalSource(conversationId),
+        resumeConversationId: conversationId,
+        resumeSessionId: "local-turn-oauth",
+        scope: "read",
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-local-state",
+      code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      capabilitiesFactoryModule
+        .createUserTokenStore()
+        .get("local-cli", "eval-oauth"),
+    ).resolves.toEqual(
+      expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
+    );
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
   }, 20_000);
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {

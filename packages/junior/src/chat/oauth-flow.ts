@@ -19,6 +19,7 @@ import {
 import { formatOAuthAuthorizationMessage } from "@/chat/oauth-authorization-message";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { createLocalOAuthState } from "@/chat/local/oauth-relay";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 
@@ -44,6 +45,12 @@ type OAuthFlowInput = {
   resumeConversationId?: string;
   resumeSessionId?: string;
   scope?: string;
+  localCallbackPort?: number;
+  deliverAuthorization?: (request: {
+    authorizationUrl: string;
+    completionText: string;
+    label: string;
+  }) => void | Promise<void>;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -239,7 +246,9 @@ export async function startOAuthFlow(
     };
   }
 
-  const state = randomBytes(32).toString("hex");
+  const state = input.localCallbackPort
+    ? createLocalOAuthState(input.localCallbackPort)
+    : randomBytes(32).toString("hex");
   const requestedScope = input.scope ?? providerConfig.scope;
 
   await getStateAdapter().set(
@@ -290,18 +299,25 @@ export async function startOAuthFlow(
   );
 
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
+  const authorizationRequest = {
+    authorizationUrl,
+    label: `Click here to link your ${formatProviderLabel(provider)} account`,
+    completionText:
+      input.localCallbackPort === undefined
+        ? "Once you've authorized, you'll see a confirmation in Slack."
+        : "Once you've authorized, this local request will continue automatically.",
+  };
+  if (input.deliverAuthorization) {
+    await input.deliverAuthorization(authorizationRequest);
+    return { ok: true, delivery: "in_context" };
+  }
   return {
     ok: true,
     delivery: await deliverPrivateMessage({
       channelId: input.channelId,
       threadTs: input.threadTs,
       userId: input.actorId,
-      text: formatOAuthAuthorizationMessage({
-        authorizationUrl,
-        label: `Click here to link your ${formatProviderLabel(provider)} account`,
-        completionText:
-          "Once you've authorized, you'll see a confirmation in Slack.",
-      }),
+      text: formatOAuthAuthorizationMessage(authorizationRequest),
     }),
   };
 }

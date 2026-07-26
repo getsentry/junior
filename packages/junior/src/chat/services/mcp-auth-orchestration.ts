@@ -60,6 +60,12 @@ export interface McpAuthOrchestrationInput {
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
+  localCallbackPort?: number;
+  deliverAuthorization?: (request: {
+    authorizationUrl: string;
+    completionText: string;
+    label: string;
+  }) => void | Promise<void>;
 }
 
 export interface McpAuthOrchestration {
@@ -113,6 +119,9 @@ export function createMcpAuthOrchestration(
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       configuration: input.getConfiguration(),
       artifactState: input.getArtifactState(),
+      ...(input.localCallbackPort
+        ? { localCallbackPort: input.localCallbackPort }
+        : {}),
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
     return provider;
@@ -188,17 +197,26 @@ export function createMcpAuthOrchestration(
         );
       }
       await recordPendingAuth(nextPendingAuth);
-      const delivery = await deliverPrivateMessage({
-        channelId: authSession.channelId,
-        threadTs: authSession.threadTs,
-        userId: authSession.userId,
-        text: formatOAuthAuthorizationMessage({
-          authorizationUrl: authSession.authorizationUrl,
-          label: `Click here to link your ${providerLabel} MCP access`,
-          completionText:
-            "Once you've authorized, this thread will continue automatically.",
-        }),
-      });
+      const authorizationRequest = {
+        authorizationUrl: authSession.authorizationUrl,
+        label: `Click here to link your ${providerLabel} MCP access`,
+        completionText:
+          input.localCallbackPort === undefined
+            ? "Once you've authorized, this thread will continue automatically."
+            : "Once you've authorized, this local request will continue automatically.",
+      };
+      let delivery: Awaited<ReturnType<typeof deliverPrivateMessage>>;
+      if (input.deliverAuthorization) {
+        await input.deliverAuthorization(authorizationRequest);
+        delivery = "in_context";
+      } else {
+        delivery = await deliverPrivateMessage({
+          channelId: authSession.channelId,
+          threadTs: authSession.threadTs,
+          userId: authSession.userId,
+          text: formatOAuthAuthorizationMessage(authorizationRequest),
+        });
+      }
       if (!delivery) {
         await deleteMcpAuthSession(authSessionId);
         await recordPendingAuth(input.pendingAuth);

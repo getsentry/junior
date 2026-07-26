@@ -50,6 +50,10 @@ import { GET as retentionGET } from "@/handlers/retention";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
+import {
+  DELETE as sandboxEgressSignalsDELETE,
+  GET as sandboxEgressSignalsGET,
+} from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import { JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE } from "@/deployment";
 import {
@@ -69,6 +73,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 
 export { defineJuniorPlugins } from "./plugins";
 export { JUNIOR_VERSION } from "./version";
@@ -666,6 +671,18 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
     });
+  });
+
+  app.get("/api/internal/sandbox-egress/:token/signals", (c) => {
+    return sandboxEgressSignalsGET(c.req.param("token"));
+  });
+
+  app.delete("/api/internal/sandbox-egress/:token/signals", (c) => {
+    return sandboxEgressSignalsDELETE(c.req.param("token"));
+  });
+
+  app.post("/api/internal/local-oauth-credentials", (c) => {
+    return receiveLocalOAuthCredential(c.req.raw);
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {

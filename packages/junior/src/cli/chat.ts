@@ -233,11 +233,23 @@ async function prepareLocalChatRun(
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
+  const { startLocalOAuthCallbackServer } =
+    await import("@/chat/local/oauth-callback-server");
+  const agentRunner = createAgentRunner(executeAgentRun);
+  const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
   const deps: LocalAgentTurnDeps = {
-    agentRunner: createAgentRunner(executeAgentRun),
+    agentRunner,
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },
+    deliverAuthorizationRequest: async (request) => {
+      await reportStatus(
+        io,
+        `${request.label}:\n${request.authorizationUrl}\n${request.completionText}`,
+      );
+    },
+    oauthCallbackPort: oauthCallback.port,
+    waitForAuthorization: oauthCallback.waitForAuthorization,
     onStatus: async (status) => {
       await reportStatus(io, status);
     },
@@ -245,7 +257,12 @@ async function prepareLocalChatRun(
       await reportToolResult(io, result);
     },
   };
-  return { conversationId: newRunConversationId(), runLocalAgentTurn, deps };
+  return {
+    close: oauthCallback.close,
+    conversationId: newRunConversationId(),
+    runLocalAgentTurn,
+    deps,
+  };
 }
 
 async function runPrompt(
@@ -253,28 +270,28 @@ async function runPrompt(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
-  const { conversationId, runLocalAgentTurn, deps } = await prepareLocalChatRun(
-    io,
-    pluginSet,
-  );
-  const result = await runLocalAgentTurn(
-    {
-      conversationId,
-      message: options.message,
-    },
-    deps,
-  );
-  return result.outcome === "success" ? 0 : 1;
+  const { close, conversationId, runLocalAgentTurn, deps } =
+    await prepareLocalChatRun(io, pluginSet);
+  try {
+    const result = await runLocalAgentTurn(
+      {
+        conversationId,
+        message: options.message,
+      },
+      deps,
+    );
+    return result.outcome === "success" ? 0 : 1;
+  } finally {
+    await close();
+  }
 }
 
 async function runInteractive(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<void> {
-  const { conversationId, runLocalAgentTurn, deps } = await prepareLocalChatRun(
-    io,
-    pluginSet,
-  );
+  const { close, conversationId, runLocalAgentTurn, deps } =
+    await prepareLocalChatRun(io, pluginSet);
   const rl = readline.createInterface({
     input: io.input,
     output: io.output,
@@ -306,6 +323,7 @@ async function runInteractive(
     }
   } finally {
     rl.close();
+    await close();
   }
 }
 

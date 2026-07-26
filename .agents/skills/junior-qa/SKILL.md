@@ -92,8 +92,7 @@ not replace local QA evidence from running the client or agent.
 
 ## OAuth Flow QA (MCP and Plugin)
 
-Junior has two OAuth pause/resume flows, both resumed by HTTP callbacks into a
-Slack thread:
+Junior has two OAuth pause/resume flows:
 
 - Plugin (non-MCP) OAuth: sandbox egress `auth_required` signal resumes via
   `/api/oauth/callback/<provider>`. In `apps/example` the `sentry` plugin is
@@ -102,20 +101,24 @@ Slack thread:
   `/api/oauth/callback/mcp/<provider>`. In `apps/example` the `linear`,
   `notion`, and `hex` plugins use remote MCP URLs.
 
-The local CLI cannot exercise the pause or the resume: the local runner sets
-`authorizationFlowMode: "disabled"`, so an auth challenge ends the turn with a
-terminal authorization failure instead of a private link plus `pendingAuth`.
-Local chat only proves that terminal surface, for example:
+The local CLI prints the private authorization URL, waits for the provider
+callback, and resumes the same turn as the `local-cli` user. Keep `pnpm dev`
+running so the configured public callback and tunnel can verify the signed
+local state and redirect the browser to the CLI's loopback listener.
 
 ```sh
 pnpm cli -- chat -p "Use the linear skill to list Linear teams."
 ```
 
-Expect a reply reporting that authorization failed, with no OAuth link.
+Expect an authorization URL on stderr. Complete the provider flow in a browser;
+the same CLI process should then continue the blocked request and print its
+reply without requiring the prompt again.
 
-Use the integration tests as the deterministic check for resume behavior:
+Use the integration tests as the deterministic check for both local and Slack
+resume behavior:
 
 ```sh
+pnpm --filter @sentry/junior exec vitest run tests/integration/local-agent-runner.test.ts
 pnpm --filter @sentry/junior exec vitest run tests/integration/oauth-callback-slack.test.ts
 pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callback-slack.test.ts tests/integration/mcp-auth-runtime-slack.test.ts
 ```

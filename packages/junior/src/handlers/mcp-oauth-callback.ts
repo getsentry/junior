@@ -60,6 +60,7 @@ import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
+import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -115,8 +116,18 @@ function mcpAuthorizationId(args: {
   return `${args.sessionId}:mcp:${args.provider}`;
 }
 
-function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
-  const page = CALLBACK_PAGES[kind];
+function htmlResponse(
+  kind: keyof typeof CALLBACK_PAGES,
+  options?: { local?: boolean },
+): Response {
+  const page =
+    kind === "success" && options?.local
+      ? {
+          ...CALLBACK_PAGES.success,
+          message:
+            "Your MCP access is connected. Junior will continue the paused request in the local client.",
+        }
+      : CALLBACK_PAGES[kind];
   return htmlCallbackResponse(page.title, page.message, page.status);
 }
 
@@ -471,12 +482,17 @@ async function isCurrentMcpAuthorizationAttempt(
   authSession: McpAuthSessionState,
   provider: string,
 ): Promise<boolean> {
-  if (!authSession.channelId || !authSession.threadTs) {
+  const conversationId =
+    authSession.destination?.platform === "local"
+      ? authSession.conversationId
+      : authSession.channelId && authSession.threadTs
+        ? `slack:${authSession.channelId}:${authSession.threadTs}`
+        : undefined;
+  if (!conversationId) {
     return false;
   }
 
-  const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
-  const currentState = await getPersistedThreadState(threadId);
+  const currentState = await getPersistedThreadState(conversationId);
   const conversation = coerceThreadConversationState(currentState);
   const pendingAuth = getConversationPendingAuth({
     conversation,
@@ -497,17 +513,22 @@ async function runCurrentMcpCredentialMutation<T>(
   provider: string,
   mutation: () => Promise<T>,
 ): Promise<T> {
-  if (!authSession.channelId || !authSession.threadTs) {
+  const conversationId =
+    authSession.destination?.platform === "local"
+      ? authSession.conversationId
+      : authSession.channelId && authSession.threadTs
+        ? `slack:${authSession.channelId}:${authSession.threadTs}`
+        : undefined;
+  if (!conversationId) {
     throw new McpOAuthAttemptExpiredError();
   }
 
-  const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const lock = await acquireActiveLock(stateAdapter, threadId);
+  const lock = await acquireActiveLock(stateAdapter, conversationId);
   if (!lock) {
     throw new Error(
-      `Could not acquire MCP OAuth callback lock for ${threadId}`,
+      `Could not acquire MCP OAuth callback lock for ${conversationId}`,
     );
   }
   try {
@@ -526,6 +547,10 @@ export async function GET(
   waitUntil: WaitUntilFn,
   options: McpOAuthCallbackOptions,
 ): Promise<Response> {
+  const localRelay = relayLocalOAuthCallback(request);
+  if (localRelay) {
+    return localRelay;
+  }
   const url = new URL(request.url);
   const state = url.searchParams.get("state")?.trim();
   const code = url.searchParams.get("code")?.trim();
@@ -585,7 +610,9 @@ export async function GET(
       }),
     );
 
-    return htmlResponse("success");
+    return htmlResponse("success", {
+      local: authSession.destination?.platform === "local",
+    });
   } catch (callbackError) {
     if (callbackError instanceof McpOAuthAttemptExpiredError) {
       await deleteMcpAuthSession(state);

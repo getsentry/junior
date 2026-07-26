@@ -104,9 +104,13 @@ Local validation proves that the shared agent path can run without Slack:
 Keep the usual focused tests for deterministic contracts. Use Slack-specific
 tests only when the change is about Slack event routing, Slack outbound payloads,
 Slack markdown, Slack files, Slack retry behavior, or Slack authorization UI.
-User-bound OAuth and credential issuance flows are not validated by local chat
-because the local agent runs as the `local-cli` system actor with authorization
-prompts disabled.
+Local chat can validate user-bound OAuth and credential issuance: it prints the
+private authorization URL, waits for the callback, and resumes the same turn as
+the `local-cli` user.
+
+Keep `pnpm dev` running for OAuth checks. The configured public callback reaches
+the dev server first, which verifies the signed local state and redirects the
+browser to the CLI's loopback listener.
 
 ## Failure Checks
 
@@ -116,6 +120,7 @@ If local validation fails, use the first matching symptom:
 | ------------------------------- | --------------------------------------------------------------------------- |
 | Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.                |
 | Missing provider credentials    | Configure the plugin/provider env required by the changed path.             |
+| OAuth callback cannot connect   | Keep `pnpm dev` and its configured tunnel running while the CLI waits.      |
 | Context resets between commands | Expected; use one interactive `junior chat` process for context.            |
 | File-send UX needs validation   | Local validation cannot verify it; the local adapter has no file-send tool. |
 | Slack-specific behavior changed | Use the Slack adapter README, Slack skill, and integration tests instead.   |

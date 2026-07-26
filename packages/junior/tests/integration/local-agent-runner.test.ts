@@ -189,10 +189,12 @@ describe("local agent runner", () => {
     expect(generateReply).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "hello" }),
-        policy: expect.objectContaining({ authorizationFlowMode: "disabled" }),
+        policy: expect.objectContaining({
+          authorizationFlowMode: "interactive",
+        }),
         routing: expect.objectContaining({
           credentialContext: {
-            actor: { platform: "system", name: "local-cli" },
+            actor: { type: "user", userId: "local-cli" },
           },
           destination: {
             platform: "local",
@@ -267,6 +269,70 @@ describe("local agent runner", () => {
     expect(history[completed]?.data).toMatchObject({
       type: "turn_completed",
       outcome: "success",
+    });
+  });
+
+  it("waits for local OAuth and resumes the same turn", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "oauth-resume",
+      cwd: "/tmp/local-agent-runner-oauth-resume",
+    });
+    expect(conversationId).toBeDefined();
+    const requests: Parameters<AgentRunner["run"]>[0][] = [];
+    const deliverAuthorizationRequest =
+      vi.fn<NonNullable<LocalAgentTurnDeps["deliverAuthorizationRequest"]>>();
+    const waitForAuthorization = vi.fn(async () => undefined);
+
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "upload the image",
+      },
+      {
+        agentRunner: {
+          run: async (request) => {
+            requests.push(request);
+            if (requests.length === 1) {
+              await request.durability?.recordPendingAuth?.({
+                kind: "plugin",
+                provider: "github",
+                actorId: "local-cli",
+                sessionId: request.turnId,
+                linkSentAtMs: Date.now(),
+              });
+              await request.delivery?.onAuthorizationRequest?.({
+                authorizationUrl: "https://github.com/login/oauth/authorize",
+                completionText: "Once authorized, this request will continue.",
+                label: "Connect GitHub",
+              });
+              return {
+                status: "awaiting_auth",
+                providerDisplayName: "GitHub",
+              };
+            }
+            await deliverAssistantText(request, "uploaded");
+            return completedAgentRun(successReply("uploaded"));
+          },
+        },
+        deliverAuthorizationRequest,
+        deliverReply: async () => undefined,
+        oauthCallbackPort: 43123,
+        waitForAuthorization,
+      },
+    );
+
+    expect(deliverAuthorizationRequest).toHaveBeenCalledOnce();
+    expect(waitForAuthorization).toHaveBeenCalledOnce();
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+    expect(requests[0]?.policy).toMatchObject({
+      authorizationFlowMode: "interactive",
+      localOAuthCallbackPort: 43123,
+    });
+    expect(requests[1]?.state?.pendingAuth).toMatchObject({
+      kind: "plugin",
+      provider: "github",
+      actorId: "local-cli",
     });
   });
 

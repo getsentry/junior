@@ -65,6 +65,7 @@ import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
+import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -488,6 +489,10 @@ export async function GET(
   waitUntil: WaitUntilFn,
   options: OAuthCallbackOptions,
 ): Promise<Response> {
+  const localRelay = relayLocalOAuthCallback(request);
+  if (localRelay) {
+    return localRelay;
+  }
   const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
@@ -649,13 +654,19 @@ export async function GET(
     ...(account ? { account } : {}),
   });
 
-  waitUntil(async () => {
-    try {
-      await publishAppHomeView(getSlackClient(), stored.userId, userTokenStore);
-    } catch {
-      // best effort
-    }
-  });
+  if (stored.destination?.platform !== "local") {
+    waitUntil(async () => {
+      try {
+        await publishAppHomeView(
+          getSlackClient(),
+          stored.userId,
+          userTokenStore,
+        );
+      } catch {
+        // best effort
+      }
+    });
+  }
 
   const resumesAgentTurn = Boolean(
     stored.resumeConversationId && stored.resumeSessionId,
@@ -701,9 +712,12 @@ export async function GET(
     );
   }
 
-  const statusMessage = resumesAgentTurn
-    ? "Your request is being processed in Slack."
-    : "You can close this tab and return to Slack.";
+  const statusMessage =
+    stored.destination?.platform === "local"
+      ? "Your request is continuing in the local Junior client."
+      : resumesAgentTurn
+        ? "Your request is being processed in Slack."
+        : "You can close this tab and return to Slack.";
   const html = `<!DOCTYPE html>
 <html>
 <head><title>${providerLabel} Connected</title></head>

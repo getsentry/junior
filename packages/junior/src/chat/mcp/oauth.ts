@@ -7,6 +7,7 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
+import { createLocalOAuthState } from "@/chat/local/oauth-relay";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
   return `/api/oauth/callback/mcp/${provider}`;
@@ -34,6 +35,7 @@ export async function createMcpOAuthClientProvider(input: {
   toolChannelId?: string;
   configuration?: Record<string, unknown>;
   artifactState?: ThreadArtifactsState;
+  localCallbackPort?: number;
 }): Promise<StateBackedMcpOAuthClientProvider> {
   requirePluginWithMcp(input.provider);
 
@@ -44,7 +46,9 @@ export async function createMcpOAuthClientProvider(input: {
     );
   }
 
-  const authSessionId = randomUUID();
+  const authSessionId = input.localCallbackPort
+    ? createLocalOAuthState(input.localCallbackPort)
+    : randomUUID();
 
   return new StateBackedMcpOAuthClientProvider(
     authSessionId,

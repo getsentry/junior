@@ -16,6 +16,7 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { githubPlugin } from "@sentry/junior-github";
+import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { mswServer } from "../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -31,6 +32,7 @@ const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
 const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
+const GITHUB_UPLOAD_HOST = "uploads.github.com";
 
 const managedEgressReadResultSchema = pluginToolResultSchema.extend({
   ok: z.literal(true),
@@ -934,6 +936,71 @@ describe("sandbox egress proxy integration", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("Bearer installation-token");
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads GitHub user attachments with the requesting user's credential", async () => {
+    await registerGitHubPlugin({ additionalUserScopes: ["repo"] });
+    const tokenStore = new StateAdapterTokenStore(
+      modules.state.getStateAdapter(),
+    );
+    await tokenStore.set(ACTOR_ID, "github", {
+      account: {
+        id: "12345",
+        label: "actor",
+        url: "https://github.com/actor",
+      },
+      accessToken: "ghu_user-token",
+      expiresAt: Date.now() + 60 * 60_000,
+      refreshToken: "github-refresh-token",
+      scope: "repo",
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_UPLOAD_HOST);
+    const file = new Uint8Array([137, 80, 78, 71]);
+    const assetUrl =
+      "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000000";
+    const upstreamFetch = vi.fn(
+      async (url: URL | string, init?: RequestInit) => {
+        expect(String(url)).toBe(
+          "https://uploads.github.com/user-attachments/assets?name=screenshot.png&content_type=image%2Fpng&repository_id=123",
+        );
+        expect(init?.method).toBe("POST");
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer ghu_user-token");
+        expect(headers.get("content-type")).toBe("application/octet-stream");
+        await expect(
+          new Response(init?.body).arrayBuffer(),
+        ).resolves.toStrictEqual(file.buffer);
+        return Response.json({ url: assetUrl }, { status: 201 });
+      },
+    );
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: file,
+        forwardURL,
+        headers: { "content-type": "application/octet-stream" },
+        method: "POST",
+        upstreamHost: GITHUB_UPLOAD_HOST,
+        upstreamPath:
+          "/user-attachments/assets?name=screenshot.png&content_type=image%2Fpng&repository_id=123",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ url: assetUrl });
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 

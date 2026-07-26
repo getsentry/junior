@@ -702,6 +702,7 @@ async function executeAgentRunInPrivacyContext(
       connectedMcpProviders,
       conversationPrivacy,
       durability,
+      delivery,
       generatedFiles,
       invokedSkill,
       observers,

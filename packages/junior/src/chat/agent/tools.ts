@@ -44,6 +44,7 @@ import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import {
   toolInvocationDestination,
+  type AgentRunDelivery,
   type AgentRunDurability,
   type AgentRunObservers,
   type AgentRunPolicy,
@@ -66,6 +67,7 @@ interface ToolWiringArgs {
   connectedMcpProviders: Set<string>;
   conversationPrivacy?: ConversationPrivacy;
   durability: AgentRunDurability;
+  delivery?: AgentRunDelivery;
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
   observers: AgentRunObservers;
@@ -121,6 +123,7 @@ export async function wireAgentTools(
     skills: args.availableSkills,
     traceContext: args.spanContext,
     tracePropagation: args.policy.sandboxTracePropagation,
+    remoteEgressSignals: args.policy.remoteSandboxEgressSignals,
     credentialEgress: args.routing.credentialContext,
     actor: args.currentActor,
     channelConfiguration: args.policy.channelConfiguration,
@@ -161,6 +164,8 @@ export async function wireAgentTools(
       ),
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,
+    localCallbackPort: args.policy.localOAuthCallbackPort,
+    deliverAuthorization: args.delivery?.onAuthorizationRequest,
   });
   const pluginAuth = createPluginAuthOrchestration({
     abortAgent: args.abortAgent,
@@ -179,6 +184,8 @@ export async function wireAgentTools(
     recordPendingAuth: args.durability.recordPendingAuth,
     authorizationFlowMode: args.policy.authorizationFlowMode,
     userTokenStore,
+    localCallbackPort: args.policy.localOAuthCallbackPort,
+    deliverAuthorization: args.delivery?.onAuthorizationRequest,
   });
 
   const mcpToolManager = new McpToolManager(

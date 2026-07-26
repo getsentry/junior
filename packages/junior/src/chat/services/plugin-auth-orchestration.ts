@@ -64,6 +64,12 @@ export interface PluginAuthOrchestrationInput {
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
   userTokenStore?: UserTokenStore;
+  localCallbackPort?: number;
+  deliverAuthorization?: (request: {
+    authorizationUrl: string;
+    completionText: string;
+    label: string;
+  }) => void | Promise<void>;
 }
 
 export interface PluginAuthOrchestration {
@@ -176,6 +182,12 @@ export function createPluginAuthOrchestration(
         ...(options?.scope ? { scope: options.scope } : {}),
         resumeConversationId: input.conversationId,
         resumeSessionId: input.sessionId,
+        ...(input.localCallbackPort
+          ? { localCallbackPort: input.localCallbackPort }
+          : {}),
+        ...(input.deliverAuthorization
+          ? { deliverAuthorization: input.deliverAuthorization }
+          : {}),
       });
 
       if (!oauthResult.ok) {
