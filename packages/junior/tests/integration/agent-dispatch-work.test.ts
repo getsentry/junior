@@ -7,10 +7,16 @@ import {
 import {
   createOrGetDispatch,
   getDispatchConversationId,
+  getDispatchInputMessageId,
   getDispatchRecord,
   getDispatchStorageKey,
   getDispatchTurnId,
   listPendingDispatchMailboxAppends,
+  markDispatchAwaitingResume,
+  markDispatchBlocked,
+  markDispatchCompleted,
+  markDispatchFailed,
+  markDispatchRunning,
 } from "@/chat/agent-dispatch/store";
 import {
   buildDispatchRoutingContext,
@@ -291,6 +297,177 @@ describe("agent dispatch conversation work", () => {
     expect(ack).toHaveBeenCalledOnce();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "blocked",
+    });
+  });
+
+  it("resumes durable paused work even when cutover recovery has mailbox input", async () => {
+    const dispatch = await createDispatch("cutover-resume");
+    const conversationId = getDispatchConversationId(dispatch);
+    const sessionId = getDispatchTurnId(dispatch.id);
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const nowMs = Date.now();
+    await state.set(
+      getDispatchStorageKey(dispatch.id),
+      {
+        ...dispatch,
+        attempt: 1,
+        lastCallbackAtMs: nowMs - 2_000,
+        leaseExpiresAtMs: nowMs - 1_000,
+        maxAttempts: 5,
+        status: "awaiting_resume",
+        version: 2,
+      },
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+    await recordAgentTurnSessionSummary({
+      actor: dispatch.actor,
+      conversationId,
+      destination: dispatch.destination,
+      destinationVisibility: dispatch.destinationVisibility,
+      dispatchId: dispatch.id,
+      sessionId,
+      sliceId: 2,
+      source: dispatch.source,
+      state: "awaiting_resume",
+      surface: "api",
+    });
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn(async () => {
+      await recordAgentTurnSessionSummary({
+        actor: dispatch.actor,
+        conversationId,
+        destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
+        dispatchId: dispatch.id,
+        dispatchOutcome: "completed",
+        sessionId,
+        sliceId: 2,
+        source: dispatch.source,
+        state: "completed",
+        surface: "api",
+      });
+    });
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+
+    await recoverPendingDispatchMailboxAppends({
+      conversationWorkQueue: queue,
+      nowMs,
+    });
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId,
+        idempotencyKey: `agent-dispatch:${dispatch.id}`,
+      },
+    ]);
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run: async (context) => await worker(context, dispatch.id),
+      state,
+    });
+
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).toHaveBeenCalledOnce();
+    expect(queue.hasQueuedMessages()).toBe(false);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
+  it("projects a previously delivered reply without running the agent again", async () => {
+    const dispatch = await createDispatch("delivered-replay");
+    const conversationId = getDispatchConversationId(dispatch);
+    const turnId = getDispatchTurnId(dispatch.id);
+    const conversation = coerceThreadConversationState({});
+    conversation.messages.push(
+      {
+        id: getDispatchInputMessageId(dispatch.id),
+        role: "user",
+        text: dispatch.input,
+        createdAtMs: dispatch.createdAtMs,
+        author: { isBot: true, userName: "scheduler" },
+        meta: { replied: true },
+      },
+      {
+        id: `${turnId}:assistant:1`,
+        role: "assistant",
+        text: "Already delivered digest",
+        createdAtMs: dispatch.createdAtMs + 1,
+        author: { isBot: true, userName: "junior" },
+        meta: {
+          replied: true,
+          slackTs: "1700000000.000009",
+        },
+      },
+    );
+    await persistConversationMessages({ conversation, conversationId });
+    const agentRunner = { run: vi.fn() };
+    const runtime = createSlackRuntime({
+      getSlackAdapter: () =>
+        createJuniorSlackAdapter({
+          botToken: "xoxb-test",
+          botUserId: "U0BOT",
+          signingSecret: "test-signing-secret",
+        }),
+      services: {
+        replyExecutor: { agentRunner },
+      },
+    });
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn: vi.fn(),
+      runTurn: runtime.runDispatchTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(agentRunner.run).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      resultMessageTs: "1700000000.000009",
+      status: "completed",
+    });
+  });
+
+  it("uses a durable delivery receipt when the worker died before outcome persistence", async () => {
+    const dispatch = await createDispatch("delivery-receipt-fence");
+    await recordAgentTurnSessionSummary({
+      actor: dispatch.actor,
+      conversationId: getDispatchConversationId(dispatch),
+      destination: dispatch.destination,
+      destinationVisibility: dispatch.destinationVisibility,
+      dispatchId: dispatch.id,
+      resultMessageId: "1700000000.000012",
+      sessionId: getDispatchTurnId(dispatch.id),
+      sliceId: 1,
+      source: dispatch.source,
+      state: "running",
+      surface: "api",
+    });
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn();
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      resultMessageTs: "1700000000.000012",
+      status: "completed",
     });
   });
 
@@ -669,6 +846,98 @@ describe("agent dispatch conversation work", () => {
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "provider unavailable",
       status: "failed",
+    });
+  });
+
+  it("retries when the runtime returns without a semantic or durable outcome", async () => {
+    const dispatch = await createDispatch("missing-outcome");
+    const runTurn = vi.fn(async () => ({}));
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn: vi.fn(),
+      runTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).rejects.toThrow(
+      "returned without a durable outcome",
+    );
+
+    expect(runTurn).toHaveBeenCalledOnce();
+    expect(ack).not.toHaveBeenCalled();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "running",
+    });
+  });
+
+  it.each(["blocked", "completed", "failed"] as const)(
+    "does not overwrite a terminal %s projection with stale transitions",
+    async (terminalStatus) => {
+      const dispatch = await createDispatch(`terminal-${terminalStatus}`);
+      if (terminalStatus === "blocked") {
+        await markDispatchBlocked(dispatch.id, "Authorization required");
+      } else if (terminalStatus === "completed") {
+        await markDispatchCompleted(dispatch.id, "1700000000.000010");
+      } else {
+        await markDispatchFailed(dispatch.id, "Provider failed");
+      }
+      const terminalRecord = await getDispatchRecord(dispatch.id);
+
+      await markDispatchRunning(dispatch.id);
+      await markDispatchAwaitingResume(dispatch.id);
+      await markDispatchBlocked(dispatch.id, "Stale blocked projection");
+      await markDispatchCompleted(dispatch.id, "1700000000.000011");
+      await markDispatchFailed(dispatch.id, "Stale failed projection");
+
+      await expect(getDispatchRecord(dispatch.id)).resolves.toEqual(
+        terminalRecord,
+      );
+    },
+  );
+
+  it("does not execute when terminal projection wins before running claim", async () => {
+    const dispatch = await createDispatch("terminal-claim-race");
+    const state = getStateAdapter();
+    await state.connect();
+    const storageKey = getDispatchStorageKey(dispatch.id);
+    const originalGet = state.get.bind(state);
+    let dispatchReads = 0;
+    state.get = (async (key: string) => {
+      const value = await originalGet(key);
+      if (
+        key === storageKey &&
+        dispatchReads++ === 0 &&
+        value &&
+        typeof value === "object"
+      ) {
+        await state.set(
+          storageKey,
+          { ...(value as Record<string, unknown>), status: "completed" },
+          JUNIOR_THREAD_STATE_TTL_MS,
+        );
+      }
+      return value;
+    }) as typeof state.get;
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn();
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    try {
+      await expect(worker(context, dispatch.id)).resolves.toEqual({
+        status: "completed",
+      });
+    } finally {
+      state.get = originalGet;
+    }
+
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
     });
   });
 

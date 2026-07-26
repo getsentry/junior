@@ -292,6 +292,14 @@ async function readDispatchTurnResult(
       ...(resultMessageTs ? { resultMessageTs } : {}),
     };
   }
+  if (resultMessageTs) {
+    // Provider acceptance is the delivery fence. A worker may die before the
+    // terminal outcome write, but redelivery must never regenerate that reply.
+    return {
+      outcome: "completed",
+      resultMessageTs,
+    };
+  }
   if (!session) {
     return {};
   }
@@ -441,18 +449,49 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
 
-    await markDispatchRunning(dispatch.id);
+    const runningDispatch = await markDispatchRunning(dispatch.id);
+    if (!runningDispatch) {
+      throw new Error(`Dispatch record disappeared for ${dispatch.id}`);
+    }
+    if (isTerminalDispatchStatus(runningDispatch.status)) {
+      await acknowledge();
+      return { status: "completed" };
+    }
     try {
-      const result =
-        context.attempt.messages.length === 0
-          ? (await options.resumeTurn(dispatch, {
-              shouldYield: context.shouldYield,
-            }),
-            await readDispatchTurnResult(dispatch))
-          : await options.runTurn(dispatch, {
-              ack: acknowledge,
-              shouldYield: context.shouldYield,
-            });
+      const resumesDurableTurn =
+        durableResult.outcome === "awaiting_resume" ||
+        context.attempt.messages.length === 0;
+      if (
+        durableResult.outcome === "awaiting_resume" &&
+        context.attempt.messages.length > 0
+      ) {
+        // A durable pause proves the original input was already committed.
+        // The mailbox item is only a cutover wake-up and must not restart it.
+        await acknowledge();
+      }
+      let result: DispatchTurnResult;
+      if (resumesDurableTurn) {
+        await options.resumeTurn(dispatch, {
+          shouldYield: context.shouldYield,
+        });
+        result = await readDispatchTurnResult(dispatch);
+      } else {
+        const runtimeResult = await options.runTurn(dispatch, {
+          ack: acknowledge,
+          shouldYield: context.shouldYield,
+        });
+        result = runtimeResult.outcome
+          ? runtimeResult
+          : {
+              ...runtimeResult,
+              ...(await readDispatchTurnResult(dispatch)),
+            };
+      }
+      if (!result.outcome) {
+        throw new Error(
+          `Dispatch turn ${dispatch.id} returned without a durable outcome`,
+        );
+      }
       await projectDispatchTurnResult(dispatch.id, result);
       if (result.outcome && !acknowledged) {
         await acknowledge();

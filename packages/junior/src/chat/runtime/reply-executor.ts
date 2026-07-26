@@ -802,6 +802,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           return drainParkedInputToEventLog(parkedPairs);
         };
         if (preparedState.userMessageAlreadyReplied) {
+          const deliveredMessage = [...preparedState.conversation.messages]
+            .reverse()
+            .find(
+              (candidate) =>
+                candidate.role === "assistant" &&
+                candidate.id.startsWith(`${turnId}:assistant:`) &&
+                candidate.meta?.replied === true,
+            );
+          options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
+          options.onTurnOutcome?.("completed");
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });

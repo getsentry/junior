@@ -374,8 +374,12 @@ async function transitionDispatch(
     if (!current) {
       return undefined;
     }
+    const transitioned = transition(current);
+    if (transitioned === current) {
+      return current;
+    }
     const next = {
-      ...transition(current),
+      ...transitioned,
       updatedAtMs: Date.now(),
     };
     await putRecord(state, next);
@@ -398,10 +402,14 @@ export async function markDispatchRunning(
 export async function markDispatchAwaitingResume(
   id: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) => ({
-    ...record,
-    status: "awaiting_resume",
-  }));
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : {
+          ...record,
+          status: "awaiting_resume",
+        },
+  );
 }
 
 /** Project a blocked turn to the plugin API. */
@@ -409,11 +417,15 @@ export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) => ({
-    ...record,
-    errorMessage,
-    status: "blocked",
-  }));
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : {
+          ...record,
+          errorMessage,
+          status: "blocked",
+        },
+  );
 }
 
 /** Project a completed turn and its accepted Slack message to the plugin API. */
@@ -421,12 +433,16 @@ export async function markDispatchCompleted(
   id: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) => ({
-    ...record,
-    errorMessage: undefined,
-    ...(resultMessageTs ? { resultMessageTs } : {}),
-    status: "completed",
-  }));
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : {
+          ...record,
+          errorMessage: undefined,
+          ...(resultMessageTs ? { resultMessageTs } : {}),
+          status: "completed",
+        },
+  );
 }
 
 /** Project a terminal conversation turn failure to the plugin API. */
@@ -435,12 +451,16 @@ export async function markDispatchFailed(
   errorMessage: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) => ({
-    ...record,
-    errorMessage,
-    ...(resultMessageTs ? { resultMessageTs } : {}),
-    status: "failed",
-  }));
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : {
+          ...record,
+          errorMessage,
+          ...(resultMessageTs ? { resultMessageTs } : {}),
+          status: "failed",
+        },
+  );
 }
 
 /** Remove a dispatch after its durable mailbox append has succeeded. */
