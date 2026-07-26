@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
+import { createJuniorApi } from "@/api";
 import {
   readConversationFeedFromSql,
   readConversationRecordFromSql,
 } from "@/api/conversations/list";
+import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
@@ -14,6 +16,28 @@ import {
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API", () => {
+  test("serves the route and validates its filters", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const app = createJuniorApi();
+
+      const response = await app.request("http://localhost/api/conversations");
+      expect(response.status).toBe(200);
+      conversationFeedSchema.parse(await response.json());
+
+      const invalid = await app.request(
+        "http://localhost/api/conversations?actorEmail=not-an-email",
+      );
+      expect(invalid.status).toBe(400);
+      expect(apiErrorSchema.parse(await invalid.json())).toEqual({
+        error: "Invalid query parameters.",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("uses canonical and fallback actor names with provider identity fields", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);

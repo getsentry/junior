@@ -1,17 +1,30 @@
 import { describe, expect, test, vi } from "vitest";
-import {
-  readLocationDetailFromSql,
-  readLocationDirectoryFromSql,
-} from "@/api/locations/query";
+import { createJuniorApi } from "@/api";
+import { readLocationDirectoryFromSql } from "@/api/locations/query";
+import { locationDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
-} from "../../fixtures/sql";
+} from "../../../fixtures/sql";
 
 describe("locations API", () => {
+  test("serves the route through its response schema", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const response = await createJuniorApi().request(
+        "http://localhost/api/locations",
+      );
+      expect(response.status).toBe(200);
+      locationDirectoryReportSchema.parse(await response.json());
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("aggregates every location conversation and bounds only recent rows", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
@@ -111,27 +124,6 @@ describe("locations API", () => {
       });
       expect(directory.windowStart).toBe("2026-03-18T00:00:00.000Z");
       expect(directory.windowEnd).toBe("2026-06-15T00:00:00.000Z");
-
-      const detail = await readLocationDetailFromSql(destination?.id ?? "");
-      expect(detail).toMatchObject({
-        conversations: 5_001,
-        durationMs: 10_004,
-        tokens: 15_007,
-      });
-      expect(detail?.recentConversations).toHaveLength(25);
-      expect(detail?.recentConversations[0]).toMatchObject({
-        conversationId: "slack:C1:seed",
-        cumulativeDurationMs: 4,
-        cumulativeUsage: { totalTokens: 7 },
-      });
-      expect(detail?.activityDays).toHaveLength(90);
-      expect(
-        detail?.activityDays.find((day) => day.date === "2026-06-15"),
-      ).toMatchObject({
-        conversations: 5_001,
-        durationMs: 10_004,
-        tokens: 15_007,
-      });
     } finally {
       vi.useRealTimers();
       await fixture.close();

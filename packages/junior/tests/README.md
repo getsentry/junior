@@ -8,6 +8,8 @@ documents the package-local harness and commands.
 - `unit/`: local deterministic logic and algorithms.
 - `component/`: deterministic contracts crossing a small number of modules.
 - `integration/`: product/runtime behavior through real wiring.
+- `integration/api/`: mirrors `src/api/`; each HTTP route module has one
+  corresponding test module instead of a cross-route API suite.
 - `msw/`: shared outbound HTTP interception and captured request helpers.
 - `fixtures/slack/`: canonical Slack payload and identifier factories.
 

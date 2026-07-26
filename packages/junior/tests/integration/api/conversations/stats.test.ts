@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, test, vi } from "vitest";
+import { createJuniorApi } from "@/api";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
+import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
@@ -10,6 +12,20 @@ import {
 } from "../../../fixtures/sql";
 
 describe("conversation stats API", () => {
+  test("serves the route through its response schema", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const response = await createJuniorApi().request(
+        "http://localhost/api/conversations/stats",
+      );
+      expect(response.status).toBe(200);
+      conversationStatsReportSchema.parse(await response.json());
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("aggregates normalized SQL conversation dimensions", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));

@@ -69,34 +69,9 @@ function textAgentStep(createdAtMs: number, inputTokens = 0) {
   };
 }
 
-describe("conversation event REST resources", () => {
+describe("conversation event list API", () => {
   afterEach(async () => {
     await closeDb();
-  });
-
-  it("returns newly appended events when detail is refreshed", async () => {
-    const conversationId = "internal:refreshed-detail";
-    await recordConversation(conversationId);
-
-    const app = createJuniorApi();
-    const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}`,
-    );
-    const detail = conversationDetailReportSchema.parse(
-      await detailResponse.json(),
-    );
-    expect(detail.events).toEqual([]);
-
-    await getConversationEventStore().append(conversationId, [
-      message("first-message", 2),
-    ]);
-    const refreshedResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}`,
-    );
-    const refreshed = conversationDetailReportSchema.parse(
-      await refreshedResponse.json(),
-    );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
   });
 
   it("pages backward without gaps", async () => {

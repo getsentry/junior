@@ -1,185 +1,31 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
-import type { AddressInfo } from "node:net";
-import { Readable } from "node:stream";
 import { expect, test } from "@playwright/test";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import {
+  collectBrowserErrors,
+  type DashboardE2eServer,
+  mockDashboardApis,
+  startDashboardE2eServer,
+} from "./harness";
 
-let server: ReturnType<typeof createServer> | undefined;
-let baseURL = "http://127.0.0.1";
-
-function requestFromNode(req: IncomingMessage): Request {
-  const url = new URL(req.url ?? "/", baseURL);
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        headers.append(name, item);
-      }
-    } else if (value !== undefined) {
-      headers.set(name, value);
-    }
-  }
-
-  const method = req.method ?? "GET";
-  return new Request(url, {
-    body:
-      method === "GET" || method === "HEAD"
-        ? undefined
-        : (Readable.toWeb(req) as BodyInit),
-    duplex: method === "GET" || method === "HEAD" ? undefined : "half",
-    headers,
-    method,
-  });
-}
-
-async function writeResponse(res: ServerResponse, response: Response) {
-  res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
-    res.setHeader(name, value);
-  });
-  res.end(Buffer.from(await response.arrayBuffer()));
-}
+let server: DashboardE2eServer;
 
 test.beforeAll(async () => {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  const { createDashboardApp } = await import("../dist/app.js");
-  const app = createDashboardApp({
-    allowedEmails: ["morgan@sentry.io"],
-    auth: {
-      async getSession() {
-        return {
-          user: {
-            email: "morgan@sentry.io",
-            emailVerified: true,
-            name: "Dashboard User",
-          },
-        };
-      },
-      async handler() {
-        return Response.json({ ok: true });
-      },
-      async signInWithGoogle() {
-        return Response.redirect("https://accounts.google.com", 302);
-      },
-    },
-    mockConversations: true,
-  });
-
-  server = createServer((req, res) => {
-    void app
-      .fetch(requestFromNode(req))
-      .then((response) => writeResponse(res, response))
-      .catch((error) => {
-        res.statusCode = 500;
-        res.end(error instanceof Error ? error.stack : String(error));
-      });
-  });
-
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address() as AddressInfo;
-      baseURL = `http://127.0.0.1:${address.port}`;
-      resolve();
-    });
-  });
+  server = await startDashboardE2eServer();
 });
 
 test.afterAll(async () => {
-  if (!server) {
-    return;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
+  await server.close();
 });
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/plugins", async (route) => {
-    await route.fulfill({
-      json: [
-        {
-          capabilities: ["github.issues", "github.pull-requests"],
-          configKeys: ["github.organization"],
-          description: "GitHub repository and development workflow context.",
-          displayName: "GitHub",
-          name: "github",
-        },
-        {
-          capabilities: ["scheduler.scheduled-tasks"],
-          configKeys: [],
-          description: "Recurring and deferred Junior tasks.",
-          displayName: "Scheduler",
-          name: "scheduler",
-        },
-      ],
-    });
-  });
-  await page.route("**/api/people", async (route) => {
-    const activityDays = Array.from({ length: 90 }, (_, index) => {
-      const date = new Date("2026-03-15T00:00:00.000Z");
-      date.setUTCDate(date.getUTCDate() + index);
-      return {
-        activePeople: (index % 4) + 1,
-        conversations: (index % 6) + 2,
-        date: date.toISOString().slice(0, 10),
-      };
-    });
-    await route.fulfill({
-      json: {
-        activityDays,
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        people: [
-          {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
-            firstSeenAt: "2026-03-15T00:00:00.000Z",
-            lastSeenAt: "2026-06-12T00:00:00.000Z",
-            actor: {
-              email: "avery@example.com",
-              fullName: "Avery Example",
-            },
-          },
-        ],
-        source: "conversation_index",
-        windowEnd: "2026-06-12T00:00:00.000Z",
-        windowStart: "2026-03-15T00:00:00.000Z",
-      },
-    });
-  });
-  await page.route("**/api/plugin-reports", async (route) => {
-    await route.fulfill({
-      json: {
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        reports: [],
-        source: "plugins",
-      },
-    });
-  });
+  await mockDashboardApis(page);
 });
 
-test("hydrates the built dashboard client in a real browser", async ({
-  page,
-}) => {
+test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors: string[] = [];
-  page.on("pageerror", (error) => {
-    browserErrors.push(error.stack ?? error.message);
-  });
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      browserErrors.push(message.text());
-    }
-  });
+  const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(baseURL);
+  await page.goto(server.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
@@ -187,7 +33,7 @@ test("hydrates the built dashboard client in a real browser", async ({
   ).toBeVisible();
   await page.getByRole("link", { name: /Checkout latency triage/ }).click();
   await expect(page).toHaveURL(
-    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
@@ -210,73 +56,6 @@ test("hydrates the built dashboard client in a real browser", async ({
     0,
   );
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
-  await page.getByRole("link", { name: "System", exact: true }).click();
-  await expect(page).toHaveURL(`${baseURL}/system`);
-  await expect(page.getByText("Usage over time")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Plugins", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Model spend")).toBeVisible();
-  await page
-    .getByLabel("System navigation")
-    .getByRole("link", { name: "GitHub", exact: true })
-    .click();
-  await expect(page).toHaveURL(`${baseURL}/system/plugins/github`);
-  await expect(
-    page.getByRole("heading", { name: "GitHub", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("This plugin does not expose operational activity yet."),
-  ).toBeVisible();
-  await expect(page.getByText("github.organization")).toBeVisible();
-  expect(await containerBounds()).toEqual(headerBounds);
-
-  await page.goto(`${baseURL}/people`);
-  await expect(
-    page.locator("main > div").getByText("People", { exact: true }),
-  ).toBeVisible();
-  expect(await containerBounds()).toEqual(headerBounds);
-
-  await expect(
-    page.getByRole("img", { name: "Active people per day" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
-    "conversations",
-  );
-  await page.getByRole("button", { name: "7d" }).click();
-  await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.getByRole("button", { name: "90d" }).click();
-  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-
-  await page.goto(`${baseURL}/locations`);
-  await expect(
-    page.locator("main > div").getByText("Locations", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("img", { name: "Public and private conversations per day" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.getByRole("button", { name: "7d" }).click();
-  await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(
-    page.getByRole("combobox", { name: "Sort locations" }),
-  ).toHaveValue("conversations");
   expect(await containerBounds()).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
 });
@@ -285,93 +64,25 @@ test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(`${baseURL}/conversations`);
-  await expect(page).toHaveURL(`${baseURL}/`);
+  await page.goto(`${server.baseURL}/conversations`);
+  await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: /Checkout latency triage/ }).click();
   await expect(page).toHaveURL(
-    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
-  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
-
-  await page.goto(`${baseURL}/system`);
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-  ).toBeLessThanOrEqual(390);
-});
-
-test("navigates plugin information and activity on mobile", async ({
-  page,
-}) => {
-  await page.setViewportSize({ height: 844, width: 390 });
-  await page.route("**/api/plugin-reports", async (route) => {
-    await route.fulfill({
-      json: {
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        reports: [
-          {
-            metrics: [
-              { label: "Active tasks", value: "4" },
-              { label: "Runs today", value: "12" },
-            ],
-            pluginName: "scheduler",
-            recordSets: [
-              {
-                fields: [
-                  { key: "task", label: "Task" },
-                  { key: "next", label: "Next run" },
-                  { key: "owner", label: "Owner" },
-                  { key: "status", label: "Status" },
-                ],
-                records: [
-                  {
-                    id: "daily-triage",
-                    values: {
-                      next: "Tomorrow, 9:00 AM",
-                      owner: "Junior",
-                      status: "Ready",
-                      task: "Daily issue triage",
-                    },
-                  },
-                ],
-                title: "Upcoming",
-              },
-            ],
-            title: "Scheduler",
-          },
-        ],
-        source: "plugins",
-      },
-    });
-  });
-
-  await page.goto(`${baseURL}/system`);
-  await page
-    .getByLabel("System view")
-    .selectOption("/system/plugins/scheduler");
-
-  await expect(page).toHaveURL(`${baseURL}/system/plugins/scheduler`);
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { level: 2, name: "Scheduler", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Runs today")).toBeVisible();
-  await expect(page.getByText("12", { exact: true })).toBeVisible();
-  await expect(page.getByText("Daily issue triage").first()).toBeVisible();
-  await expect(page.getByText("Tomorrow, 9:00 AM").first()).toBeVisible();
-  await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible();
-  await expect(page.getByLabel("Reporting period")).toHaveCount(0);
 });
 
 test("loads earlier transcript events without dropping the current page", async ({
@@ -418,7 +129,7 @@ test("loads earlier transcript events without dropping the current page", async 
     await route.continue();
   });
   await page.goto(
-    `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
 
   await expect(
@@ -519,7 +230,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     });
   });
 
-  await page.goto(`${baseURL}/conversations/long-0`);
+  await page.goto(`${server.baseURL}/conversations/long-0`);
   await expect(
     page.getByRole("heading", { name: "Long transcript" }),
   ).toBeVisible();
@@ -570,7 +281,7 @@ test("scrolls long conversation and transcript panes independently", async ({
 test("groups the signed-in profile and session actions in the header", async ({
   page,
 }) => {
-  await page.goto(baseURL);
+  await page.goto(server.baseURL);
 
   const trigger = page.getByRole("button", {
     name: "Open profile menu for Dashboard User",
@@ -603,10 +314,10 @@ test("groups the signed-in profile and session actions in the header", async ({
 test("inspects and copies an advisor transcript", async ({ context, page }) => {
   const childConversationId = "junior:internal:dashboard-qa:advisor-plan";
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: baseURL,
+    origin: server.baseURL,
   });
   await page.goto(
-    `${baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+    `${server.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
 
   await expect(
@@ -650,7 +361,7 @@ test("archives and restores a conversation from the sidebar", async ({
   await page.route("**/api/conversations/*/archive", async (route) => {
     await route.fulfill({ json: { archived: true } });
   });
-  await page.goto(baseURL);
+  await page.goto(server.baseURL);
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();

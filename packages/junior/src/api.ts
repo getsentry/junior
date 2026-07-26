@@ -1,63 +1,30 @@
 import { Hono } from "hono";
 import { createConversationRoutes } from "./api/conversations/routes";
+import healthRoute from "./api/health";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
+import pluginReportsRoute from "./api/plugin-reports";
+import pluginsRoute from "./api/plugins";
 import {
-  defineApiRoute,
   registerApiRoutes,
   type ApiRoute,
   type JuniorApiEnv,
   type JuniorApiVariables,
 } from "./api/route";
+import runtimeRoute from "./api/runtime";
 import { apiErrorSchema } from "./api/schema/common";
-import {
-  healthReportSchema,
-  pluginOperationalReportFeedSchema,
-  pluginsSchema,
-  readHealthReport,
-  readPluginOperationalReportFeed,
-  readPlugins,
-  readRuntimeInfoReport,
-  readSkillReports,
-  runtimeInfoReportSchema,
-  skillReportsSchema,
-} from "./reporting";
+import skillsRoute from "./api/skills";
 
 export type { JuniorApiVariables };
 export { jsonResponse };
 
 const routes = [
-  defineApiRoute({
-    method: "get",
-    path: "/api/health",
-    responseSchema: healthReportSchema,
-    handler: readHealthReport,
-  }),
-  defineApiRoute({
-    method: "get",
-    path: "/api/runtime",
-    responseSchema: runtimeInfoReportSchema,
-    handler: readRuntimeInfoReport,
-  }),
-  defineApiRoute({
-    method: "get",
-    path: "/api/plugins",
-    responseSchema: pluginsSchema,
-    handler: readPlugins,
-  }),
-  defineApiRoute({
-    method: "get",
-    path: "/api/skills",
-    responseSchema: skillReportsSchema,
-    handler: readSkillReports,
-  }),
-  defineApiRoute({
-    method: "get",
-    path: "/api/plugin-reports",
-    responseSchema: pluginOperationalReportFeedSchema,
-    handler: readPluginOperationalReportFeed,
-  }),
+  healthRoute,
+  runtimeRoute,
+  pluginsRoute,
+  skillsRoute,
+  pluginReportsRoute,
 ] satisfies readonly ApiRoute[];
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */

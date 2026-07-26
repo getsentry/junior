@@ -1,10 +1,27 @@
 import { describe, expect, test, vi } from "vitest";
+import { createJuniorApi } from "@/api";
 import { readPeopleListFromSql } from "@/api/people/list.query";
+import { actorDirectoryReportSchema } from "@/api/schema";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { seedPeople } from "./fixture";
 
 describe("people list API", () => {
+  test("serves the route through its response schema", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const response = await createJuniorApi().request(
+        "http://localhost/api/people",
+      );
+      expect(response.status).toBe(200);
+      actorDirectoryReportSchema.parse(await response.json());
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("lists people by shared verified actor identity", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));

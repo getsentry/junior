@@ -1,8 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import { createJuniorApi } from "@/api";
 import { readPeopleListFromSql } from "@/api/people/list.query";
 import { readPeopleProfileFromSql } from "@/api/people/profile.query";
 import { readConversationDetail } from "@/api/conversations/detail";
+import { actorProfileReportSchema, apiErrorSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations, juniorIdentities } from "@/db/schema";
@@ -13,6 +15,32 @@ import {
 import { seedDisplayNameBackfill, seedPeople } from "./fixture";
 
 describe("people profile API", () => {
+  test("validates and decodes profile identifiers", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const app = createJuniorApi();
+
+      const invalid = await app.request("http://localhost/api/people/%20");
+      expect(invalid.status).toBe(400);
+      expect(apiErrorSchema.parse(await invalid.json())).toEqual({
+        error: "Invalid route parameters.",
+      });
+
+      const encoded = await app.request(
+        "http://localhost/api/people/person%25tag%40example.com",
+      );
+      expect(encoded.status).toBe(200);
+      expect(
+        actorProfileReportSchema.parse(await encoded.json()),
+      ).toMatchObject({
+        actor: { email: "person%tag@example.com" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("derives child participation and visibility from its root", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);

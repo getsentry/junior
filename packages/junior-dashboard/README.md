@@ -26,6 +26,11 @@ state.
 Mock reporting data exists for local UI development only and must not be
 reachable as a production fallback.
 
+Browser journeys live in `e2e/`, with one Playwright spec per user-facing page.
+Shared server and API setup belongs in `e2e/harness.ts`; page behavior does not
+belong in a cross-page aggregate spec. Tests under `tests/` cover modules and
+component integration without standing in for browser E2E.
+
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
