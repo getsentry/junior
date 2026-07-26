@@ -233,6 +233,9 @@ function startNitroDev() {
 }
 
 function restartNitroDev() {
+  if (restartingNitro) {
+    return;
+  }
   if (!nitroChild || nitroChild.killed) {
     clearExampleVercelOutput();
     startNitroDev();
