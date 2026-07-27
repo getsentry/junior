@@ -4,10 +4,7 @@ import path from "node:path";
 import {
   authenticatePersonalToken,
   createJuniorApi,
-  createPersonalToken,
   jsonResponse,
-  listPersonalTokens,
-  revokePersonalToken,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -17,13 +14,7 @@ import type {
   PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
-import {
-  createPersonalTokenBodySchema,
-  createdPersonalTokenSchema,
-  dashboardConfigSchema,
-  dashboardIdentitySchema,
-  personalTokenListSchema,
-} from "./api/schema";
+import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
@@ -682,6 +673,7 @@ export function createDashboardApp(
         options.mockConversations ? "morgan@sentry.io" : undefined,
       );
       c.set("authSession", session);
+      c.set("verifiedViewerEmail", verifiedViewerEmail(session));
       await next();
       return;
     }
@@ -698,7 +690,7 @@ export function createDashboardApp(
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
       new URL(c.req.url).pathname.startsWith("/api/") &&
-      !new URL(c.req.url).pathname.startsWith("/api/tokens")
+      !new URL(c.req.url).pathname.startsWith("/api/personal-tokens")
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
@@ -757,45 +749,6 @@ export function createDashboardApp(
   });
   app.get("/api/me", (c) => {
     return jsonResponse(dashboardIdentitySchema, c.get("authSession"));
-  });
-  app.get("/api/tokens", async (c) => {
-    const email = verifiedViewerEmail(c.get("authSession"));
-    if (!email) return forbidden(c.req.raw);
-    return jsonResponse(personalTokenListSchema, {
-      tokens: await listPersonalTokens(email),
-    });
-  });
-  app.post("/api/tokens", async (c) => {
-    const email = verifiedViewerEmail(c.get("authSession"));
-    if (!email) return forbidden(c.req.raw);
-    const parsed = createPersonalTokenBodySchema.safeParse(await c.req.json());
-    if (!parsed.success) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Invalid token name." },
-        { status: 400 },
-      );
-    }
-    return jsonResponse(
-      createdPersonalTokenSchema,
-      await createPersonalToken({ email, name: parsed.data.name }),
-      { status: 201 },
-    );
-  });
-  app.delete("/api/tokens/:id", async (c) => {
-    const email = verifiedViewerEmail(c.get("authSession"));
-    if (!email) return forbidden(c.req.raw);
-    const revoked = await revokePersonalToken({
-      email,
-      id: c.req.param("id"),
-    });
-    return revoked
-      ? new Response(null, { status: 204 })
-      : jsonResponse(
-          apiErrorSchema,
-          { error: "Resource not found." },
-          { status: 404 },
-        );
   });
   app.get(DASHBOARD_CLIENT_PATH, () => {
     return new Response(readDashboardClient(), {

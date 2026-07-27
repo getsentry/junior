@@ -4,7 +4,7 @@ import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
   type PersonalTokenMetadata,
-} from "../../api/schema";
+} from "@sentry/junior/api/schema";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { Button } from "./Button";
 
@@ -16,25 +16,32 @@ type PersonalTokensDialogProps = {
 export function PersonalTokensDialog({ onClose }: PersonalTokensDialogProps) {
   const [tokens, setTokens] = useState<PersonalTokenMetadata[]>([]);
   const [name, setName] = useState("Local agent");
-  const [createdToken, setCreatedToken] = useState<string>();
+  const [createdToken, setCreatedToken] = useState<{
+    id: string;
+    token: string;
+  }>();
   const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void fetchDashboardJson(personalTokenListSchema, "/api/tokens")
+    void fetchDashboardJson(personalTokenListSchema, "/api/personal-tokens")
       .then((result) => setTokens(result.tokens))
-      .catch(() => setError("Could not load API tokens. Try again."));
+      .catch(() => setError("Could not load API tokens. Try again."))
+      .finally(() => setLoading(false));
   }, []);
 
   async function createToken() {
     setBusy(true);
     setError(undefined);
     try {
-      const token = await post(createdPersonalTokenSchema, "/api/tokens", {
-        name,
-      });
+      const token = await post(
+        createdPersonalTokenSchema,
+        "/api/personal-tokens",
+        { name },
+      );
       setTokens((current) => [token, ...current]);
-      setCreatedToken(token.token);
+      setCreatedToken({ id: token.id, token: token.token });
     } catch {
       setError("Could not create the API token. Try again.");
     } finally {
@@ -47,9 +54,12 @@ export function PersonalTokensDialog({ onClose }: PersonalTokensDialogProps) {
     setError(undefined);
     try {
       await deleteDashboardResource(
-        `/api/tokens/${encodeURIComponent(token.id)}`,
+        `/api/personal-tokens/${encodeURIComponent(token.id)}`,
       );
       setTokens((current) => current.filter((item) => item.id !== token.id));
+      setCreatedToken((current) =>
+        current?.id === token.id ? undefined : current,
+      );
     } catch {
       setError("Could not revoke the API token. Try again.");
     } finally {
@@ -94,7 +104,7 @@ export function PersonalTokensDialog({ onClose }: PersonalTokensDialogProps) {
               Copy this token now. It won't be shown again.
             </p>
             <code className="block overflow-x-auto rounded bg-black p-2 text-xs text-emerald-300">
-              {createdToken}
+              {createdToken.token}
             </code>
           </div>
         ) : (
@@ -107,7 +117,7 @@ export function PersonalTokensDialog({ onClose }: PersonalTokensDialogProps) {
               value={name}
             />
             <Button
-              disabled={busy || !name.trim()}
+              disabled={loading || busy || !name.trim()}
               onClick={() => void createToken()}
             >
               Create token
@@ -118,7 +128,9 @@ export function PersonalTokensDialog({ onClose }: PersonalTokensDialogProps) {
         {error ? <p className="mb-0 text-sm text-rose-300">{error}</p> : null}
 
         <div className="mt-5 space-y-2">
-          {tokens.length === 0 ? (
+          {loading ? (
+            <p className="text-sm text-[#888]">Loading API tokens…</p>
+          ) : tokens.length === 0 ? (
             <p className="text-sm text-[#888]">No active API tokens.</p>
           ) : (
             tokens.map((token) => (

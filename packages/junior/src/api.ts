@@ -5,16 +5,7 @@ import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import pluginReportsRoute from "./api/plugin-reports";
-export {
-  authenticatePersonalToken,
-  createPersonalToken,
-  listPersonalTokens,
-  revokePersonalToken,
-} from "./api/personal-tokens";
-export type {
-  CreatedPersonalToken,
-  PersonalTokenMetadata,
-} from "./api/personal-tokens";
+import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import pluginsRoute from "./api/plugins";
 import {
   registerApiRoutes,
@@ -26,6 +17,7 @@ import runtimeRoute from "./api/runtime";
 import { apiErrorSchema } from "./api/schema/common";
 import skillsRoute from "./api/skills";
 
+export { authenticatePersonalToken } from "./personal-tokens/store";
 export type { JuniorApiVariables };
 export { jsonResponse };
 
@@ -44,6 +36,7 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
   registerApiRoutes(app, routes);
 
   app.route("/api/conversations", createConversationRoutes());
+  app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.notFound(() =>
