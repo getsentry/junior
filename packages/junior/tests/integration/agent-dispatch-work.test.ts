@@ -306,83 +306,86 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
-  it("resumes durable paused work even when cutover recovery has mailbox input", async () => {
-    const dispatch = await createDispatch("cutover-resume");
-    const conversationId = getDispatchConversationId(dispatch);
-    const sessionId = getDispatchTurnId(dispatch.id);
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const nowMs = Date.now();
-    await state.set(
-      getDispatchStorageKey(dispatch.id),
-      {
-        ...dispatch,
-        attempt: 1,
-        lastCallbackAtMs: nowMs - 2_000,
-        leaseExpiresAtMs: nowMs - 1_000,
-        maxAttempts: 5,
-        status: "awaiting_resume",
-        version: 2,
-      },
-      JUNIOR_THREAD_STATE_TTL_MS,
-    );
-    await recordAgentTurnSessionSummary({
-      actor: dispatch.actor,
-      conversationId,
-      destination: dispatch.destination,
-      destinationVisibility: dispatch.destinationVisibility,
-      dispatchId: dispatch.id,
-      sessionId,
-      sliceId: 2,
-      source: dispatch.source,
-      state: "awaiting_resume",
-      surface: "api",
-    });
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn(async () => {
+  it.each(["awaiting_resume", "running"] as const)(
+    "resumes durable %s work even when recovery has mailbox input",
+    async (sessionState) => {
+      const dispatch = await createDispatch("cutover-resume");
+      const conversationId = getDispatchConversationId(dispatch);
+      const sessionId = getDispatchTurnId(dispatch.id);
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const nowMs = Date.now();
+      await state.set(
+        getDispatchStorageKey(dispatch.id),
+        {
+          ...dispatch,
+          attempt: 1,
+          lastCallbackAtMs: nowMs - 2_000,
+          leaseExpiresAtMs: nowMs - 1_000,
+          maxAttempts: 5,
+          status: sessionState,
+          version: 2,
+        },
+        JUNIOR_THREAD_STATE_TTL_MS,
+      );
       await recordAgentTurnSessionSummary({
         actor: dispatch.actor,
         conversationId,
         destination: dispatch.destination,
         destinationVisibility: dispatch.destinationVisibility,
         dispatchId: dispatch.id,
-        dispatchOutcome: "completed",
         sessionId,
         sliceId: 2,
         source: dispatch.source,
-        state: "completed",
+        state: sessionState,
         surface: "api",
       });
-    });
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
+      const runTurn = vi.fn();
+      const resumeTurn = vi.fn(async () => {
+        await recordAgentTurnSessionSummary({
+          actor: dispatch.actor,
+          conversationId,
+          destination: dispatch.destination,
+          destinationVisibility: dispatch.destinationVisibility,
+          dispatchId: dispatch.id,
+          dispatchOutcome: "completed",
+          sessionId,
+          sliceId: 2,
+          source: dispatch.source,
+          state: "completed",
+          surface: "api",
+        });
+      });
+      const worker = createAgentDispatchConversationWorker({
+        resumeTurn,
+        runTurn,
+      });
 
-    await recoverPendingDispatchMailboxAppends({
-      conversationWorkQueue: queue,
-      nowMs,
-    });
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId,
-        idempotencyKey: `agent-dispatch:${dispatch.id}`,
-      },
-    ]);
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run: async (context) => await worker(context, dispatch.id),
-      state,
-    });
+      await recoverPendingDispatchMailboxAppends({
+        conversationWorkQueue: queue,
+        nowMs,
+      });
+      expect(queue.sentRecords()).toEqual([
+        {
+          conversationId,
+          idempotencyKey: `agent-dispatch:${dispatch.id}`,
+        },
+      ]);
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run: async (context) => await worker(context, dispatch.id),
+        state,
+      });
 
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).toHaveBeenCalledOnce();
-    expect(queue.hasQueuedMessages()).toBe(false);
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "completed",
-    });
-  });
+      expect(runTurn).not.toHaveBeenCalled();
+      expect(resumeTurn).toHaveBeenCalledOnce();
+      expect(queue.hasQueuedMessages()).toBe(false);
+      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+        status: "completed",
+      });
+    },
+  );
 
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");

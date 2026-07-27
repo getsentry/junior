@@ -465,16 +465,10 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
     try {
-      const resumesDurableTurn =
-        durableResult.outcome === "awaiting_resume" ||
-        (context.attempt.messages.length === 0 &&
-          durableResult.hasResumableRun === true);
-      if (
-        durableResult.outcome === "awaiting_resume" &&
-        context.attempt.messages.length > 0
-      ) {
-        // A durable pause proves the original input was already committed.
-        // The mailbox item is only a cutover wake-up and must not restart it.
+      const resumesDurableTurn = durableResult.hasResumableRun === true;
+      if (resumesDurableTurn && context.attempt.messages.length > 0) {
+        // A durable run proves the original input was already committed. The
+        // mailbox item is only a redelivery wake-up and must not restart it.
         await acknowledge();
       }
       let result: DispatchTurnResult;
