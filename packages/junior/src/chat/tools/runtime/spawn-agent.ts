@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { AgentInvocationBusyError } from "@/chat/agent-invocations/errors";
-import {
-  agentInvocationStatusSchema,
-  agentNameSchema,
-} from "@/chat/agent-invocations/types";
+import { agentNameSchema } from "@/chat/agent-invocations/types";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -37,10 +34,6 @@ export function createSpawnAgentTool(
       .strict(),
     outputSchema: juniorToolResultSchema.extend({
       invocation_id: z.string().min(1),
-      child_conversation_id: z.string().min(1),
-      agent_name: agentNameSchema.optional(),
-      invocation_status: agentInvocationStatusSchema,
-      replayed: z.boolean(),
     }),
     execute: async (input, options) => {
       if (!options.toolCallId) {
@@ -48,7 +41,7 @@ export function createSpawnAgentTool(
       }
       let result;
       try {
-        result = await spawnAgent.execute(
+        result = await spawnAgent(
           {
             task: input.task,
             ...(input.name ? { name: input.name } : {}),
@@ -74,10 +67,6 @@ export function createSpawnAgentTool(
         ok: true,
         status: "success" as const,
         invocation_id: result.invocationId,
-        child_conversation_id: result.childConversationId,
-        ...(result.agentName ? { agent_name: result.agentName } : {}),
-        invocation_status: result.status,
-        replayed: result.replayed,
       };
     },
   });

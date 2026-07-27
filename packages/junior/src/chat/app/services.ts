@@ -33,10 +33,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
-import {
-  bindAgentSpawnControl,
-  createAgentInvocationCreator,
-} from "@/chat/agent-invocations/spawn";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export interface JuniorRuntimeServices {
@@ -76,14 +73,11 @@ export function createJuniorRuntimeServices(
     downloadFile:
       overrides.visionContext?.downloadFile ?? downloadPrivateSlackFile,
   });
-  const agentInvocationCreator = createAgentInvocationCreator({
-    queue: getVercelConversationWorkQueue,
-  });
   const agentRunner =
     overrides.replyExecutor?.agentRunner ??
     createAgentRunner(executeAgentRunImpl, {
       bindSpawnAgent: (request) =>
-        bindAgentSpawnControl(request, agentInvocationCreator),
+        bindSpawnAgent(request, { queue: getVercelConversationWorkQueue }),
       tracePropagation: overrides.sandbox?.tracePropagation,
     });
 

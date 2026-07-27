@@ -46,6 +46,8 @@ Interfaces should expose the smallest useful capability while keeping ownership,
   arguments, options, or dependencies. Call the owning capability directly
   unless the intermediate function enforces an invariant, translates a boundary,
   or owns a lifecycle transition.
+- TODO(dcramer): Review why this policy did not prevent the one-method
+  creator/control wrappers in #1065 and add an enforceable check if practical.
 - If a helper exists only to hide parameter threading, inline it or move the
   repeated call shape to the owner that actually defines the contract.
 

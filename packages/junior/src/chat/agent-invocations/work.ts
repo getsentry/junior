@@ -58,12 +58,12 @@ const agentInvocationMailboxMetadataSchema = z
   })
   .strict();
 
-interface AgentInvocationWorkOptions {
+type EnqueueOptions = {
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-}
+};
 
 /** Build destinationless mailbox work that references one durable invocation. */
 export function buildAgentInvocationInboundMessage(
@@ -91,7 +91,7 @@ export function buildAgentInvocationInboundMessage(
 /** Append one invocation to its child mailbox and send the normal queue wake. */
 export async function enqueueAgentInvocation(
   invocation: AgentInvocation,
-  options: AgentInvocationWorkOptions,
+  options: EnqueueOptions,
 ): Promise<void> {
   if (invocation.mailboxStatus === "appended") {
     return;
@@ -110,19 +110,11 @@ export async function enqueueAgentInvocation(
 /** Create or replay an invocation, then durably schedule its child work. */
 export async function createAndEnqueueAgentInvocation(
   input: CreateAgentInvocationInput,
-  options: AgentInvocationWorkOptions,
-): Promise<{
-  invocation: AgentInvocation;
-  status: "created" | "existing";
-}> {
-  const created = await createAgentInvocation(input, options.nowMs);
-  await enqueueAgentInvocation(created.invocation, options);
-  return {
-    ...created,
-    invocation:
-      (await getAgentInvocation(created.invocation.invocationId)) ??
-      created.invocation,
-  };
+  options: EnqueueOptions,
+): Promise<AgentInvocation> {
+  const invocation = await createAgentInvocation(input, options.nowMs);
+  await enqueueAgentInvocation(invocation, options);
+  return (await getAgentInvocation(invocation.invocationId)) ?? invocation;
 }
 
 /** Require one invocation metadata reference for one leased mailbox attempt. */
@@ -295,7 +287,7 @@ function isInvocationInputCommitLost(error: unknown): boolean {
 }
 
 /** Build the invocation consumer that advances work through the shared runner. */
-export function createAgentInvocationConversationWorker(options: {
+export function createAgentInvocationWorker(options: {
   agentRunner: AgentRunner;
 }) {
   return async (
@@ -542,7 +534,7 @@ export function createAgentInvocationConversationWorker(options: {
 }
 
 /** Route invocation-backed work before falling through to existing consumers. */
-export function createAgentInvocationWorkRouter(options: {
+export function routeAgentInvocationWork(options: {
   fallbackWorker: (
     context: ConversationWorkerContext,
   ) => Promise<ConversationWorkerResult>;

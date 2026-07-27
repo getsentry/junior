@@ -18,20 +18,16 @@ const exactStringSchema = z
 
 export const agentNameSchema = exactStringSchema.max(64);
 
-export const agentInvocationStatusSchema = z.enum(AGENT_INVOCATION_STATUSES);
-
-export const agentInvocationMailboxStatusSchema = z.enum(
+const agentInvocationMailboxStatusSchema = z.enum(
   AGENT_INVOCATION_MAILBOX_STATUSES,
 );
 
 export const agentBindingSchema = z
   .object({
     childConversationId: exactStringSchema,
-    createdAtMs: z.number().finite(),
     name: agentNameSchema,
     parentConversationId: exactStringSchema,
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
-    updatedAtMs: z.number().finite(),
   })
   .strict();
 
@@ -44,7 +40,6 @@ const agentInvocationBaseSchema = z
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
     destinationVisibility: z.enum(["public", "private"]).optional(),
-    idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,
@@ -88,12 +83,7 @@ export const createAgentInvocationSchema = z
 
 export type AgentBinding = z.output<typeof agentBindingSchema>;
 export type AgentInvocation = z.output<typeof agentInvocationSchema>;
-export type AgentInvocationStatus = z.output<
-  typeof agentInvocationStatusSchema
->;
-export type AgentInvocationMailboxStatus = z.output<
-  typeof agentInvocationMailboxStatusSchema
->;
+export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type CreateAgentInvocationInput = z.input<
   typeof createAgentInvocationSchema
 >;

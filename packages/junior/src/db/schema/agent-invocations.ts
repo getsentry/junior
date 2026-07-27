@@ -38,8 +38,6 @@ export const juniorAgentBindings = pgTable(
       .notNull()
       .references(() => juniorConversations.conversationId),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
-    createdAt: timestamptz("created_at").notNull(),
-    updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
     primaryKey({
@@ -55,7 +53,6 @@ export const juniorAgentInvocations = pgTable(
   "junior_agent_invocations",
   {
     invocationId: text("invocation_id").primaryKey(),
-    idempotencyKey: text("idempotency_key").notNull(),
     parentConversationId: text("parent_conversation_id")
       .notNull()
       .references(() => juniorConversations.conversationId),
@@ -87,10 +84,6 @@ export const juniorAgentInvocations = pgTable(
     terminalAt: timestamptz("terminal_at"),
   },
   (table) => [
-    uniqueIndex("junior_agent_invocations_idempotency_idx").on(
-      table.parentConversationId,
-      table.idempotencyKey,
-    ),
     index("junior_agent_invocations_child_idx").on(table.childConversationId),
     index("junior_agent_invocations_mailbox_idx").on(
       table.mailboxStatus,

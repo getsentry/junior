@@ -19,7 +19,7 @@ import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { AgentSpawnControl } from "@/chat/agent/request";
+import type { SpawnAgent } from "@/chat/agent/request";
 
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */
@@ -77,7 +77,7 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   handoff?: HandoffControl;
-  spawnAgent?: AgentSpawnControl;
+  spawnAgent?: SpawnAgent;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

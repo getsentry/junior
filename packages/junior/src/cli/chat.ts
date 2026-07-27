@@ -242,12 +242,9 @@ async function prepareLocalChatRun(
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
-  const { bindAgentSpawnControl, createAgentInvocationCreator } =
-    await import("@/chat/agent-invocations/spawn");
-  const {
-    createAgentInvocationConversationWorker,
-    createAgentInvocationWorkRouter,
-  } = await import("@/chat/agent-invocations/work");
+  const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
+  const { createAgentInvocationWorker, routeAgentInvocationWork } =
+    await import("@/chat/agent-invocations/work");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
   const { processConversationWork } =
@@ -257,11 +254,11 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const run = createAgentInvocationWorkRouter({
+    const run = routeAgentInvocationWork({
       fallbackWorker: async () => {
         throw new Error("Local child queue received non-invocation work");
       },
-      invocationWorker: createAgentInvocationConversationWorker({
+      invocationWorker: createAgentInvocationWorker({
         agentRunner,
       }),
     });
@@ -270,12 +267,9 @@ async function prepareLocalChatRun(
       run,
     });
   });
-  const agentInvocationCreator = createAgentInvocationCreator({
-    queue: localConversationWork.queue,
-  });
   agentRunner = createAgentRunner(executeAgentRun, {
     bindSpawnAgent: (request) =>
-      bindAgentSpawnControl(request, agentInvocationCreator),
+      bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
   const deps: LocalAgentTurnDeps = {

@@ -21,7 +21,7 @@ const request = {
 
 describe("agent runner controls", () => {
   it("binds spawnAgent into the active run durability context", async () => {
-    const spawnAgent = { execute: vi.fn() };
+    const spawnAgent = vi.fn();
     const bindSpawnAgent = vi.fn(() => spawnAgent);
     const run = vi.fn(async () => ({
       status: "suspended" as const,

@@ -24,8 +24,8 @@ import {
   createAgentDispatchConversationWorker,
 } from "@/chat/agent-dispatch/work";
 import {
-  createAgentInvocationConversationWorker,
-  createAgentInvocationWorkRouter,
+  createAgentInvocationWorker,
+  routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
 import {
   getDispatchConversationId,
@@ -164,8 +164,8 @@ export function createProductionConversationWorkOptions(options: {
   return {
     conversationStore,
     queue,
-    run: createAgentInvocationWorkRouter({
-      invocationWorker: createAgentInvocationConversationWorker({
+    run: routeAgentInvocationWork({
+      invocationWorker: createAgentInvocationWorker({
         agentRunner,
       }),
       fallbackWorker: providerWorker,

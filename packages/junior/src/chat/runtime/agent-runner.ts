@@ -1,4 +1,4 @@
-import type { AgentRunRequest, AgentSpawnControl } from "@/chat/agent/request";
+import type { AgentRunRequest, SpawnAgent } from "@/chat/agent/request";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
@@ -11,9 +11,7 @@ export interface AgentRunner {
 export function createAgentRunner(
   run: AgentRunner["run"],
   options?: {
-    bindSpawnAgent?: (
-      request: AgentRunRequest,
-    ) => AgentSpawnControl | undefined;
+    bindSpawnAgent?: (request: AgentRunRequest) => SpawnAgent | undefined;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {

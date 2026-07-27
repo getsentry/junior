@@ -31,7 +31,6 @@ import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { AgentInvocationStatus } from "@/chat/agent-invocations/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -64,28 +63,22 @@ export interface AgentRunSteeringMessage {
 }
 
 /** Model-safe input for one asynchronously delegated child-agent task. */
-export interface AgentSpawnInput {
+export type SpawnAgentInput = {
   name?: string;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
-}
+};
 
-/** Stable projection returned after a child-agent task is durably scheduled. */
-export interface AgentSpawnResult {
-  agentName?: string;
-  childConversationId: string;
+/** Handle returned after a child-agent task is durably scheduled. */
+export type SpawnAgentResult = {
   invocationId: string;
-  replayed: boolean;
-  status: AgentInvocationStatus;
-}
+};
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */
-export interface AgentSpawnControl {
-  execute(
-    input: AgentSpawnInput,
-    options: { signal?: AbortSignal; toolCallId: string },
-  ): Promise<AgentSpawnResult>;
-}
+export type SpawnAgent = (
+  input: SpawnAgentInput,
+  options: { signal?: AbortSignal; toolCallId: string },
+) => Promise<SpawnAgentResult>;
 
 /** Carries the user-visible content and prior transcript for one agent-run slice. */
 export interface AgentRunInput {
@@ -193,7 +186,7 @@ export class RetryableDeliveryError extends Error {
 /** Carries durable-worker ports that commit or update resumable run state. */
 export interface AgentRunDurability {
   /** Schedule delegated work with authority bound by the active parent run. */
-  spawnAgent?: AgentSpawnControl;
+  spawnAgent?: SpawnAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;

@@ -4,8 +4,8 @@ import type { AgentRunRequest } from "@/chat/agent/request";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
-  createAgentInvocationConversationWorker,
-  createAgentInvocationWorkRouter,
+  createAgentInvocationWorker,
+  routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
@@ -101,9 +101,9 @@ async function createHarness(
   const state = getStateAdapter();
   await state.connect();
   const queue = createConversationWorkQueueTestAdapter();
-  const route = createAgentInvocationWorkRouter({
+  const route = routeAgentInvocationWork({
     fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-    invocationWorker: createAgentInvocationConversationWorker({
+    invocationWorker: createAgentInvocationWorker({
       agentRunner: { run },
     }),
   });
@@ -181,22 +181,20 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      expect(second.invocation.childConversationId).not.toBe(
-        first.invocation.childConversationId,
-      );
+      expect(second.childConversationId).not.toBe(first.childConversationId);
       expect(requests).toHaveLength(2);
       expect(requests.map((request) => request.input.piMessages)).toEqual([
         [],
         [],
       ]);
       await expect(
-        getAgentInvocation(first.invocation.invocationId),
+        getAgentInvocation(first.invocationId),
       ).resolves.toMatchObject({
         result: "result:first unnamed task",
         status: "completed",
       });
       await expect(
-        getAgentInvocation(second.invocation.invocationId),
+        getAgentInvocation(second.invocationId),
       ).resolves.toMatchObject({
         result: "result:second unnamed task",
         status: "completed",
@@ -231,9 +229,7 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      expect(second.invocation.childConversationId).toBe(
-        first.invocation.childConversationId,
-      );
+      expect(second.childConversationId).toBe(first.childConversationId);
       expect(requests).toHaveLength(2);
       expect(requests[0]?.input.piMessages).toEqual([]);
       expect(requests[0]?.policy?.reasoningLevel).toBe("high");
@@ -248,7 +244,7 @@ describe("agent invocation identity and concurrency", () => {
         "result:first named task",
       );
       await expect(
-        getAgentInvocation(second.invocation.invocationId),
+        getAgentInvocation(second.invocationId),
       ).resolves.toMatchObject({
         reasoningLevel: "high",
         result: "result:second named task",
@@ -309,19 +305,17 @@ describe("agent invocation identity and concurrency", () => {
         "parallel first": [],
         "parallel second": [],
       });
-      expect(first.invocation.childConversationId).not.toBe(
-        second.invocation.childConversationId,
-      );
+      expect(first.childConversationId).not.toBe(second.childConversationId);
       release?.();
       await processing;
       await expect(
-        getAgentInvocation(first.invocation.invocationId),
+        getAgentInvocation(first.invocationId),
       ).resolves.toMatchObject({
         result: "result:parallel first",
         status: "completed",
       });
       await expect(
-        getAgentInvocation(second.invocation.invocationId),
+        getAgentInvocation(second.invocationId),
       ).resolves.toMatchObject({
         result: "result:parallel second",
         status: "completed",
@@ -349,9 +343,7 @@ describe("agent invocation identity and concurrency", () => {
         harness.spawn(replayInput),
       ]);
 
-      expect(replay.invocation.invocationId).toBe(
-        first.invocation.invocationId,
-      );
+      expect(replay.invocationId).toBe(first.invocationId);
       expect(harness.queue.sentRecords()).toHaveLength(1);
 
       const contention = await Promise.allSettled([
@@ -415,13 +407,13 @@ describe("agent invocation identity and concurrency", () => {
         CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
       );
       await expect(
-        getAgentInvocation(successful.invocation.invocationId),
+        getAgentInvocation(successful.invocationId),
       ).resolves.toMatchObject({
         result: "successful sibling result",
         status: "completed",
       });
       await expect(
-        getAgentInvocation(failing.invocation.invocationId),
+        getAgentInvocation(failing.invocationId),
       ).resolves.toMatchObject({
         errorMessage: "sibling failed",
         status: "failed",

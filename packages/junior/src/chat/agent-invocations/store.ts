@@ -42,7 +42,7 @@ export function getAgentInvocationId(
 }
 
 /** Return the stable child identity for one invocation without a named binding. */
-export function getEphemeralAgentConversationId(invocationId: string): string {
+export function getUnnamedAgentConversationId(invocationId: string): string {
   return stableId("agent", invocationId);
 }
 
@@ -69,11 +69,9 @@ function bindingFromRow(
 ): AgentBinding {
   return agentBindingSchema.parse({
     childConversationId: row.childConversationId,
-    createdAtMs: row.createdAt.getTime(),
     name: row.name,
     parentConversationId: row.parentConversationId,
     ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
-    updatedAtMs: row.updatedAt.getTime(),
   });
 }
 
@@ -93,7 +91,6 @@ function invocationFromRow(
       ? { destinationVisibility: row.destinationVisibility }
       : {}),
     ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
-    idempotencyKey: row.idempotencyKey,
     input: row.input,
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
@@ -114,7 +111,6 @@ function sameCreateInput(
 ): boolean {
   return (
     invocation.parentConversationId === input.parentConversationId &&
-    invocation.idempotencyKey === input.idempotencyKey &&
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
     invocation.reasoningLevel === input.reasoningLevel &&
@@ -129,7 +125,7 @@ function sameCreateInput(
 }
 
 /** Read one named child binding in its parent-agent scope. */
-export async function getAgentBinding(args: {
+async function getAgentBinding(args: {
   name: string;
   parentConversationId: string;
 }): Promise<AgentBinding | undefined> {
@@ -205,12 +201,12 @@ async function getNonTerminalAgentInvocationForConversation(
 
 /**
  * Create or replay one invocation, reusing named child conversations and
- * keeping ephemeral child identities scoped to the invocation.
+ * keeping unnamed child identities scoped to the invocation.
  */
 export async function createAgentInvocation(
   rawInput: CreateAgentInvocationInput,
   nowMs = Date.now(),
-): Promise<{ invocation: AgentInvocation; status: "created" | "existing" }> {
+): Promise<AgentInvocation> {
   const input = createAgentInvocationSchema.parse(rawInput);
   const invocationId = getAgentInvocationId(
     input.parentConversationId,
@@ -218,7 +214,7 @@ export async function createAgentInvocation(
   );
   const childConversationId = input.agentName
     ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
-    : getEphemeralAgentConversationId(invocationId);
+    : getUnnamedAgentConversationId(invocationId);
   const lockName = `${CREATE_LOCK_PREFIX}:${
     input.agentName ? childConversationId : invocationId
   }`;
@@ -248,7 +244,7 @@ export async function createAgentInvocation(
           `Agent invocation idempotency key was reused with different input for ${invocationId}`,
         );
       }
-      return { invocation: existing, status: "existing" };
+      return existing;
     }
 
     await getConversationStore().createChild({
@@ -264,11 +260,9 @@ export async function createAgentInvocation(
         .insert(juniorAgentBindings)
         .values({
           childConversationId,
-          createdAt: new Date(nowMs),
           name: input.agentName,
           parentConversationId: input.parentConversationId,
           reasoningLevel: effectiveInput.reasoningLevel ?? null,
-          updatedAt: new Date(nowMs),
         })
         .onConflictDoNothing();
       const binding = await getAgentBinding({
@@ -297,7 +291,6 @@ export async function createAgentInvocation(
       .insert(juniorAgentInvocations)
       .values({
         invocationId,
-        idempotencyKey: input.idempotencyKey,
         parentConversationId: input.parentConversationId,
         childConversationId,
         agentName: input.agentName ?? null,
@@ -319,7 +312,7 @@ export async function createAgentInvocation(
     if (!invocation || !sameCreateInput(invocation, effectiveInput)) {
       throw new Error(`Agent invocation creation raced for ${invocationId}`);
     }
-    return { invocation, status: "created" };
+    return invocation;
   });
 }
 

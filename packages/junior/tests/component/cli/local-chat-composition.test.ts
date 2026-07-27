@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunRequest, AgentSpawnResult } from "@/chat/agent/request";
+import type { AgentRunRequest, SpawnAgentResult } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
@@ -155,7 +155,7 @@ export const plugins = {
       if (!spawnAgent) {
         throw new Error("parent run requires spawnAgent");
       }
-      const spawned = await spawnAgent.execute(
+      const spawned = await spawnAgent(
         {
           name: "local-test-child",
           reasoningLevel: "medium",
@@ -163,7 +163,7 @@ export const plugins = {
         },
         { toolCallId: "spawn-1" },
       );
-      expect(spawned).toMatchObject({ status: "pending" });
+      expect(spawned.invocationId).toBeTruthy();
       await deliverAssistantMessagesForTest(request, [
         { text: "child scheduled" },
       ]);
@@ -199,7 +199,7 @@ export const plugins = {
   it("runs successive work through the same completed named child", async () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
     const childTasks: string[] = [];
-    const spawns: AgentSpawnResult[] = [];
+    const spawns: SpawnAgentResult[] = [];
     const { getAgentInvocation } =
       await import("@/chat/agent-invocations/store");
     executeAgentRunMock.mockImplementation(async (request) => {
@@ -214,7 +214,7 @@ export const plugins = {
       if (!spawnAgent) {
         throw new Error("parent run requires named child dependencies");
       }
-      const first = await spawnAgent.execute(
+      const first = await spawnAgent(
         {
           name: "reused-child",
           task: "first named task",
@@ -232,7 +232,7 @@ export const plugins = {
         },
         { timeout: 5_000 },
       );
-      const second = await spawnAgent.execute(
+      const second = await spawnAgent(
         {
           name: "reused-child",
           task: "second named task",
@@ -261,16 +261,19 @@ export const plugins = {
     ).resolves.toBe(0);
 
     expect(spawns).toHaveLength(2);
-    expect(spawns[1]?.childConversationId).toBe(spawns[0]?.childConversationId);
     expect(spawns[1]?.invocationId).not.toBe(spawns[0]?.invocationId);
     expect(childTasks).toEqual(["first named task", "second named task"]);
     const secondSpawn = spawns[1];
     if (!secondSpawn) {
       throw new Error("Expected second named spawn");
     }
-    await expect(
-      getAgentInvocation(secondSpawn.invocationId),
-    ).resolves.toMatchObject({
+    const [firstInvocation, secondInvocation] = await Promise.all(
+      spawns.map(async (spawn) => await getAgentInvocation(spawn.invocationId)),
+    );
+    expect(secondInvocation?.childConversationId).toBe(
+      firstInvocation?.childConversationId,
+    );
+    expect(secondInvocation).toMatchObject({
       result: "completed:second named task",
       status: "completed",
     });
@@ -278,7 +281,7 @@ export const plugins = {
 
   it("runs independent spawned children concurrently and drains both", async () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
-    const spawns: AgentSpawnResult[] = [];
+    const spawns: SpawnAgentResult[] = [];
     let activeChildren = 0;
     let maxActiveChildren = 0;
     let releaseBoth: (() => void) | undefined;
@@ -305,11 +308,11 @@ export const plugins = {
       }
       spawns.push(
         ...(await Promise.all([
-          spawnAgent.execute(
+          spawnAgent(
             { name: "parallel-a", task: "parallel task a" },
             { toolCallId: "parallel-1" },
           ),
-          spawnAgent.execute(
+          spawnAgent(
             { name: "parallel-b", task: "parallel task b" },
             { toolCallId: "parallel-2" },
           ),
@@ -339,16 +342,13 @@ export const plugins = {
 
     expect(maxActiveChildren).toBe(2);
     expect(spawns).toHaveLength(2);
-    expect(spawns[0]?.childConversationId).not.toBe(
-      spawns[1]?.childConversationId,
+    const invocations = await Promise.all(
+      spawns.map(async (spawn) => await getAgentInvocation(spawn.invocationId)),
     );
-    await expect(
-      Promise.all(
-        spawns.map(
-          async (spawn) => await getAgentInvocation(spawn.invocationId),
-        ),
-      ),
-    ).resolves.toEqual([
+    expect(invocations[0]?.childConversationId).not.toBe(
+      invocations[1]?.childConversationId,
+    );
+    expect(invocations).toEqual([
       expect.objectContaining({
         result: "completed:parallel task a",
         status: "completed",

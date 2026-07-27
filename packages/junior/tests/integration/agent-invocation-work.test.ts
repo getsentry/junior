@@ -4,19 +4,15 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
   createAgentInvocation,
-  getAgentBinding,
   getAgentInvocation,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
 import {
-  createAgentInvocationConversationWorker,
-  createAgentInvocationWorkRouter,
+  createAgentInvocationWorker,
+  routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import {
-  bindAgentSpawnControl,
-  createAgentInvocationCreator,
-} from "@/chat/agent-invocations/spawn";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -87,7 +83,7 @@ describe("agent invocation conversation work", () => {
         3_000,
       );
       await completeAgentInvocation({
-        invocationId: first.invocation.invocationId,
+        invocationId: first.invocationId,
         result: "Finished.",
         status: "completed",
       });
@@ -99,56 +95,39 @@ describe("agent invocation conversation work", () => {
         },
         4_000,
       );
-      const ephemeral = await createAgentInvocation(
+      const unnamed = await createAgentInvocation(
         {
           ...invocationInput,
-          idempotencyKey: "ephemeral-1",
+          idempotencyKey: "unnamed-1",
         },
         5_000,
       );
-      const ephemeralReplay = await createAgentInvocation(
+      const unnamedReplay = await createAgentInvocation(
         {
           ...invocationInput,
-          idempotencyKey: "ephemeral-1",
+          idempotencyKey: "unnamed-1",
         },
         6_000,
       );
-      const otherEphemeral = await createAgentInvocation(
+      const otherUnnamed = await createAgentInvocation(
         {
           ...invocationInput,
-          idempotencyKey: "ephemeral-2",
+          idempotencyKey: "unnamed-2",
         },
         7_000,
       );
 
-      expect(first.status).toBe("created");
-      expect(replay).toEqual({
-        invocation: first.invocation,
-        status: "existing",
-      });
-      expect(next.invocation.invocationId).not.toBe(
-        first.invocation.invocationId,
+      expect(replay).toEqual(first);
+      expect(next.invocationId).not.toBe(first.invocationId);
+      expect(next.childConversationId).toBe(first.childConversationId);
+      expect(unnamedReplay.childConversationId).toBe(
+        unnamed.childConversationId,
       );
-      expect(next.invocation.childConversationId).toBe(
-        first.invocation.childConversationId,
+      expect(otherUnnamed.childConversationId).not.toBe(
+        unnamed.childConversationId,
       );
-      expect(ephemeralReplay.invocation.childConversationId).toBe(
-        ephemeral.invocation.childConversationId,
-      );
-      expect(otherEphemeral.invocation.childConversationId).not.toBe(
-        ephemeral.invocation.childConversationId,
-      );
-      await expect(
-        getAgentBinding({
-          name: "researcher",
-          parentConversationId,
-        }),
-      ).resolves.toMatchObject({
-        childConversationId: first.invocation.childConversationId,
-        reasoningLevel: "medium",
-      });
       const child = await conversationStore.get({
-        conversationId: first.invocation.childConversationId,
+        conversationId: first.childConversationId,
       });
       expect(child).toMatchObject({
         lineage: { parentConversationId },
@@ -175,7 +154,7 @@ describe("agent invocation conversation work", () => {
         createAgentInvocation({
           ...invocationInput,
           idempotencyKey: "recursive",
-          parentConversationId: first.invocation.childConversationId,
+          parentConversationId: first.childConversationId,
         }),
       ).rejects.toThrow("Recursive agent delegation is not enabled");
     } finally {
@@ -203,13 +182,10 @@ describe("agent invocation conversation work", () => {
           source: createLocalSource(parentConversationId),
         },
       } satisfies AgentRunRequest;
-      const spawnAgent = bindAgentSpawnControl(
-        request,
-        createAgentInvocationCreator({
-          conversationStore,
-          queue,
-        }),
-      );
+      const spawnAgent = bindSpawnAgent(request, {
+        conversationStore,
+        queue,
+      });
       expect(spawnAgent).toBeDefined();
       const tool = createSpawnAgentTool(spawnAgent!);
       const input = tool.prepareArguments!({
@@ -221,16 +197,8 @@ describe("agent invocation conversation work", () => {
       const first = await tool.execute!(input, { toolCallId: "call-1" });
       const replay = await tool.execute!(input, { toolCallId: "call-1" });
 
-      expect(first).toMatchObject({
-        agent_name: "reviewer",
-        invocation_status: "pending",
-        replayed: false,
-      });
-      expect(replay).toMatchObject({
-        invocation_id: first.invocation_id,
-        child_conversation_id: first.child_conversation_id,
-        replayed: true,
-      });
+      expect(first.invocation_id).toBeTruthy();
+      expect(replay.invocation_id).toBe(first.invocation_id);
       await expect(
         getAgentInvocation(first.invocation_id),
       ).resolves.toMatchObject({
@@ -241,7 +209,6 @@ describe("agent invocation conversation work", () => {
         },
         destination,
         destinationVisibility: "private",
-        idempotencyKey: "parent-turn:call-1",
         input: "Inspect the failing checks.",
         parentConversationId,
         reasoningLevel: "high",
@@ -287,7 +254,7 @@ describe("agent invocation conversation work", () => {
       );
       const run = vi.fn(async (request) => {
         expect(request).toMatchObject({
-          conversationId: created.invocation.childConversationId,
+          conversationId: created.childConversationId,
           input: { messageText: invocationInput.input },
           policy: {
             authorizationFlowMode: "disabled",
@@ -300,7 +267,7 @@ describe("agent invocation conversation work", () => {
             source: invocationInput.source,
             surface: "internal",
           },
-          runId: created.invocation.invocationId,
+          runId: created.invocationId,
         });
         await request.durability.onInputCommitted?.();
         return completedAgentRun({
@@ -319,9 +286,9 @@ describe("agent invocation conversation work", () => {
       const fallbackWorker = vi.fn(async () => ({
         status: "completed" as const,
       }));
-      const route = createAgentInvocationWorkRouter({
+      const route = routeAgentInvocationWork({
         fallbackWorker,
-        invocationWorker: createAgentInvocationConversationWorker({
+        invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
         }),
       });
@@ -347,25 +314,23 @@ describe("agent invocation conversation work", () => {
       expect(run).toHaveBeenCalledOnce();
       expect(fallbackWorker).not.toHaveBeenCalled();
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         mailboxStatus: "appended",
         result: "Durable child result",
         status: "completed",
         terminalAtMs: expect.any(Number),
       });
-      const completed = await getAgentInvocation(
-        created.invocation.invocationId,
-      );
+      const completed = await getAgentInvocation(created.invocationId);
       await completeAgentInvocation({
         errorMessage: "late conflicting failure",
-        invocationId: created.invocation.invocationId,
+        invocationId: created.invocationId,
         nowMs: Date.now() + 1_000,
         status: "failed",
       });
-      await expect(
-        getAgentInvocation(created.invocation.invocationId),
-      ).resolves.toEqual(completed);
+      await expect(getAgentInvocation(created.invocationId)).resolves.toEqual(
+        completed,
+      );
     } finally {
       await fixture.close();
     }
@@ -390,7 +355,7 @@ describe("agent invocation conversation work", () => {
         },
       );
       let runCount = 0;
-      const invocationWorker = createAgentInvocationConversationWorker({
+      const invocationWorker = createAgentInvocationWorker({
         agentRunner: {
           run: vi.fn(async (request) => {
             runCount += 1;
@@ -413,7 +378,7 @@ describe("agent invocation conversation work", () => {
           }),
         },
       });
-      const route = createAgentInvocationWorkRouter({
+      const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
         invocationWorker,
       });
@@ -427,7 +392,7 @@ describe("agent invocation conversation work", () => {
         }),
       ).resolves.toMatchObject({ status: "yielded" });
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({ status: "awaiting_resume" });
 
       await expect(
@@ -440,7 +405,7 @@ describe("agent invocation conversation work", () => {
       ).resolves.toMatchObject({ status: "completed" });
       expect(runCount).toBe(2);
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         result: "Resumed child result",
         status: "completed",
@@ -475,100 +440,8 @@ describe("agent invocation conversation work", () => {
 
       expect(queue.sentRecords()).toHaveLength(1);
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({ mailboxStatus: "appended" });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("loads prior history when a named child receives another invocation", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const first = await createAgentInvocation(
-        {
-          ...invocationInput,
-          agentName: "historian",
-          idempotencyKey: "history-1",
-        },
-        2_000,
-      );
-      const priorMessages = [
-        {
-          role: "user",
-          content: [{ type: "text", text: "First task" }],
-          timestamp: 1,
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Remembered answer" }],
-          timestamp: 2,
-        },
-      ] as unknown as PiMessage[];
-      await upsertAgentTurnSessionRecord({
-        actor: invocationInput.actor,
-        conversationId: first.invocation.childConversationId,
-        destination,
-        modelId: "test-model",
-        piMessages: priorMessages,
-        sessionId: getAgentInvocationTurnId(first.invocation.invocationId),
-        sliceId: 1,
-        source: invocationInput.source,
-        state: "completed",
-        surface: "internal",
-      });
-      await completeAgentInvocation({
-        invocationId: first.invocation.invocationId,
-        result: "Remembered answer",
-        status: "completed",
-      });
-      const next = await createAndEnqueueAgentInvocation(
-        {
-          ...invocationInput,
-          agentName: "historian",
-          idempotencyKey: "history-2",
-        },
-        { conversationStore, queue, state },
-      );
-      const run = vi.fn(async (request) => {
-        expect(request.input.piMessages).toEqual(priorMessages);
-        await request.durability.onInputCommitted?.();
-        return completedAgentRun({
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-          text: "Continued answer",
-        });
-      });
-      const route = createAgentInvocationWorkRouter({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationConversationWorker({
-          agentRunner: { run },
-        }),
-      });
-
-      await processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: route,
-        state,
-      });
-
-      expect(run).toHaveBeenCalledOnce();
-      await expect(
-        conversationStore.get({
-          conversationId: next.invocation.childConversationId,
-        }),
-      ).resolves.not.toHaveProperty("destination");
     } finally {
       await fixture.close();
     }
@@ -587,10 +460,10 @@ describe("agent invocation conversation work", () => {
         },
         { conversationStore, queue, state },
       );
-      const turnId = getAgentInvocationTurnId(created.invocation.invocationId);
+      const turnId = getAgentInvocationTurnId(created.invocationId);
       await upsertAgentTurnSessionRecord({
         actor: invocationInput.actor,
-        conversationId: created.invocation.childConversationId,
+        conversationId: created.childConversationId,
         destination,
         modelId: "test-model",
         piMessages: [
@@ -608,10 +481,7 @@ describe("agent invocation conversation work", () => {
       });
       const run = vi.fn(async (request) => {
         await expect(
-          getAgentTurnSessionRecord(
-            created.invocation.childConversationId,
-            turnId,
-          ),
+          getAgentTurnSessionRecord(created.childConversationId, turnId),
         ).resolves.toMatchObject({ state: "awaiting_resume" });
         await request.durability.onInputCommitted?.();
         return completedAgentRun({
@@ -627,9 +497,9 @@ describe("agent invocation conversation work", () => {
           text: "Recovered answer",
         });
       });
-      const route = createAgentInvocationWorkRouter({
+      const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationConversationWorker({
+        invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
         }),
       });
@@ -644,7 +514,7 @@ describe("agent invocation conversation work", () => {
       expect(run).toHaveBeenCalledOnce();
       await expect(
         conversationStore.get({
-          conversationId: created.invocation.childConversationId,
+          conversationId: created.childConversationId,
         }),
       ).resolves.not.toHaveProperty("destination");
     } finally {
@@ -667,7 +537,7 @@ describe("agent invocation conversation work", () => {
       );
       await upsertAgentTurnSessionRecord({
         actor: invocationInput.actor,
-        conversationId: created.invocation.childConversationId,
+        conversationId: created.childConversationId,
         destination,
         modelId: "test-model",
         piMessages: [
@@ -699,7 +569,7 @@ describe("agent invocation conversation work", () => {
             content: [{ type: "text", text: "Recovered visible result" }],
           },
         ] as unknown as PiMessage[],
-        sessionId: getAgentInvocationTurnId(created.invocation.invocationId),
+        sessionId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: invocationInput.source,
         state: "completed",
@@ -708,9 +578,9 @@ describe("agent invocation conversation work", () => {
       const run = vi.fn(async () => {
         throw new Error("completed sessions must not rerun");
       });
-      const route = createAgentInvocationWorkRouter({
+      const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationConversationWorker({
+        invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
         }),
       });
@@ -726,7 +596,7 @@ describe("agent invocation conversation work", () => {
 
       expect(run).not.toHaveBeenCalled();
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         result: "Recovered visible result",
         status: "completed",
@@ -753,10 +623,10 @@ describe("agent invocation conversation work", () => {
         throw new Error("model unavailable");
       });
       const deliveryAttempts: Array<number | undefined> = [];
-      const invocationWorker = createAgentInvocationConversationWorker({
+      const invocationWorker = createAgentInvocationWorker({
         agentRunner: { run },
       });
-      const route = createAgentInvocationWorkRouter({
+      const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
         invocationWorker: async (context, invocationId) => {
           deliveryAttempts.push(context.attempt.messages[0]?.attemptCount);
@@ -789,7 +659,7 @@ describe("agent invocation conversation work", () => {
       );
       expect(deliveryAttempts).toEqual([undefined, 1, 2, 3, 4]);
       await expect(
-        getAgentInvocation(created.invocation.invocationId),
+        getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         errorMessage: "model unavailable",
         status: "failed",

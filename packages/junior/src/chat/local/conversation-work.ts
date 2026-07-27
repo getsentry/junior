@@ -4,11 +4,6 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 
-export interface LocalConversationWork {
-  drain(): Promise<void>;
-  queue: ConversationWorkQueue;
-}
-
 /**
  * Run local conversation work in this process and wait for every accepted wake.
  *
@@ -18,7 +13,7 @@ export interface LocalConversationWork {
  */
 export function createLocalConversationWork(
   processMessage: (message: ConversationQueueMessage) => Promise<void>,
-): LocalConversationWork {
+) {
   const acceptedWakeIds = new Map<string, string>();
   const pending = new Set<Promise<void>>();
   let firstError: unknown;
@@ -45,25 +40,27 @@ export function createLocalConversationWork(
     pending.add(work);
   }
 
-  return {
-    queue: {
-      async send(message, options) {
-        const idempotencyKey = options?.idempotencyKey;
-        const acceptedWakeId = idempotencyKey
-          ? acceptedWakeIds.get(idempotencyKey)
-          : undefined;
-        if (acceptedWakeId) {
-          return { messageId: acceptedWakeId };
-        }
-        const messageId = `local-conversation-work:${nextWakeId}`;
-        nextWakeId += 1;
-        if (idempotencyKey) {
-          acceptedWakeIds.set(idempotencyKey, messageId);
-        }
-        schedule(message, options);
-        return { messageId };
-      },
+  const queue: ConversationWorkQueue = {
+    async send(message, options) {
+      const idempotencyKey = options?.idempotencyKey;
+      const acceptedWakeId = idempotencyKey
+        ? acceptedWakeIds.get(idempotencyKey)
+        : undefined;
+      if (acceptedWakeId) {
+        return { messageId: acceptedWakeId };
+      }
+      const messageId = `local-conversation-work:${nextWakeId}`;
+      nextWakeId += 1;
+      if (idempotencyKey) {
+        acceptedWakeIds.set(idempotencyKey, messageId);
+      }
+      schedule(message, options);
+      return { messageId };
     },
+  };
+
+  return {
+    queue,
     async drain() {
       while (pending.size > 0) {
         await Promise.all(pending);

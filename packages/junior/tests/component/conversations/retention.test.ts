@@ -259,7 +259,6 @@ describe("retention purge job", () => {
         createdAt: new Date(BASE_MS),
         destination: { conversationId: "root", platform: "local" },
         destinationVisibility: "private",
-        idempotencyKey: "retained-invocation",
         input: "private delegated input",
         invocationId: "agent-invocation:retained",
         mailboxStatus: "appended",
@@ -440,17 +439,12 @@ describe("retention purge job", () => {
       .update(juniorConversations)
       .set({ actor: null })
       .where(eq(juniorConversations.conversationId, "binding-child"));
-    await fixture.sql
-      .db()
-      .insert(juniorAgentBindings)
-      .values({
-        childConversationId: "binding-child",
-        createdAt: new Date(BASE_MS),
-        name: "retained-name",
-        parentConversationId: "binding-root",
-        reasoningLevel: "high",
-        updatedAt: new Date(BASE_MS),
-      });
+    await fixture.sql.db().insert(juniorAgentBindings).values({
+      childConversationId: "binding-child",
+      name: "retained-name",
+      parentConversationId: "binding-root",
+      reasoningLevel: "high",
+    });
 
     const result = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 30 * DAY_MS,
