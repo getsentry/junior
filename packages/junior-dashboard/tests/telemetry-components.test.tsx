@@ -499,6 +499,37 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("missing result");
   });
 
+  it("renders a running tool as failed when its turn fails", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+        }),
+        event(1, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
+        }),
+        event(2, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "failed",
+          failureKind: "agent",
+        }),
+      ]),
+    );
+
+    expect(html).toContain('aria-label="Tool failed"');
+    expect(html).not.toContain('aria-label="search (running)"');
+  });
+
   it("replaces the running treatment with details on the same completed row", () => {
     const html = renderTranscript(
       conversation([
