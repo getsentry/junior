@@ -745,23 +745,6 @@ describe("createTestSandbox", () => {
     expect(stillRecovered).toBe(recovered);
   });
 
-  it("replaces a hollow restored sandbox", async () => {
-    const hollowSandbox = makeSandbox("sbx_hollow");
-    hollowSandbox.fs.stat.mockRejectedValueOnce(new Error("not found"));
-    const freshSandbox = makeSandbox("sbx_fresh_after_hollow");
-    sandboxGetMock.mockResolvedValueOnce(hollowSandbox);
-    sandboxCreateMock.mockResolvedValueOnce(freshSandbox);
-
-    const executor = createTestSandboxRuntime({ sandboxId: "sbx_hollow" });
-    executor.configureSkills([]);
-
-    const sandbox = await executor.createSandbox();
-
-    expect(sandbox.sandboxId).toBe("sbx_fresh_after_hollow");
-    expect(sandboxGetMock).toHaveBeenCalledTimes(1);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-  });
-
   it("does not report a reference change when restoring the same sandbox", async () => {
     const restoredSandbox = makeSandbox("sbx_restored");
     const onSandboxAcquired = vi.fn();
@@ -1841,7 +1824,6 @@ describe("createTestSandbox", () => {
       markStaleOperationStarted = resolve;
     });
     staleSandbox.fs.stat
-      .mockResolvedValueOnce({ isDirectory: () => true })
       .mockImplementationOnce(
         async () =>
           await new Promise<never>((_resolve, reject) => {

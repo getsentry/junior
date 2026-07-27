@@ -43,7 +43,6 @@ const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
-const SANDBOX_CONTINUITY_MARKER = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
@@ -283,20 +282,6 @@ export function createSandboxRuntime(
   ): Promise<void> => {
     await syncSkills(targetSandbox);
     await options.onSandboxPrepare?.(targetSandbox);
-  };
-
-  const hasContinuityMarker = async (
-    targetSandbox: SandboxSession,
-  ): Promise<boolean> => {
-    try {
-      await targetSandbox.fs.stat(SANDBOX_CONTINUITY_MARKER);
-      return true;
-    } catch (error) {
-      if (isSandboxUnavailableError(error)) {
-        throw error;
-      }
-      return false;
-    }
   };
 
   const applyNetworkPolicy = async (
@@ -592,21 +577,6 @@ export function createSandboxRuntime(
         throw error;
       }
       throw new Error("sandbox restore failed", { cause: error });
-    }
-
-    if (!(await hasContinuityMarker(hintedSandbox))) {
-      setSpanAttributes({
-        "app.sandbox.reused": false,
-        "app.sandbox.recreate.reason": "continuity_marker_missing",
-      });
-      logInfo(
-        "sandbox_hint_discarded_continuity_marker_missing",
-        traceContext,
-        { "app.sandbox.previous_id": ref.id },
-        "Restored sandbox is missing its continuity marker; creating a fresh session",
-      );
-      sandboxRef = undefined;
-      return null;
     }
 
     let networkPolicyKey: string | undefined;

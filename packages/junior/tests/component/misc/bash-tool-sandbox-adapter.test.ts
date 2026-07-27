@@ -5,28 +5,13 @@ const { sandboxGetMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@vercel/sandbox", () => ({
-  FileSystem: class {
-    private readonly fs: { stat(path: string): Promise<unknown> };
-
-    constructor(session: { fs: { stat(path: string): Promise<unknown> } }) {
-      this.fs = session.fs;
-    }
-
-    stat(path: string) {
-      return this.fs.stat(path);
-    }
-  },
+  FileSystem: class {},
   Sandbox: {
     get: sandboxGetMock,
   },
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
-  resolveRuntimeDependencySnapshot: vi.fn(async () => ({
-    dependencyCount: 0,
-    cacheHit: false,
-    resolveOutcome: "no_profile",
-  })),
   getRuntimeDependencyProfileHash: () => "current-profile",
 }));
 
@@ -54,14 +39,10 @@ function makeSandbox() {
     snapshotId: "snap_adapter_contract",
   }));
   const update = vi.fn(async () => {});
-  const fs = {
-    stat: vi.fn(async () => ({ isDirectory: () => true })),
-  };
   return {
     name: "sbx_adapter_contract",
     currentSession: vi.fn(() => ({
       sessionId: "sbx_adapter_contract_session",
-      fs,
       mkDir,
       writeFiles,
       readFileToBuffer,
@@ -79,7 +60,7 @@ function makeSandbox() {
     extendTimeout,
     snapshot,
     update,
-    fs,
+    fs: {},
   };
 }
 
