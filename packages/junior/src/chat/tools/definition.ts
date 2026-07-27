@@ -1,7 +1,6 @@
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { Kind, type Static, type TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
-import type { ToolApprovalMode } from "@sentry/junior-plugin-api";
+import type { ToolApprovalMetadata } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 /**
@@ -21,9 +20,10 @@ export interface ToolExecuteOptions {
   toolCallId?: string;
 }
 
-interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
-  /** Optional declared approval mode; omission delegates to core defaults. */
-  approvalMode?: ToolApprovalMode;
+interface BaseToolDefinition<
+  TInput,
+  TInputSchema extends ToolInputSchema,
+> extends ToolApprovalMetadata<TInput> {
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -40,7 +40,6 @@ interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
   inputSchema: TInputSchema;
   outputSchema?: ToolInputSchema;
   privateTraceResult?(result: unknown): unknown;
-  annotations?: ToolAnnotations;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
    * and parameter descriptions. Retained for plugin compatibility; may be
@@ -68,9 +67,7 @@ export interface ToolDefinition<
 /**
  * Schema-erased view for heterogeneous registries after Pi validates tool input.
  */
-export interface AnyToolDefinition {
-  /** Optional declared approval mode; omission delegates to core defaults. */
-  approvalMode?: ToolApprovalMode;
+export interface AnyToolDefinition extends ToolApprovalMetadata {
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -87,7 +84,6 @@ export interface AnyToolDefinition {
   inputSchema: ToolInputSchema;
   outputSchema?: ToolInputSchema;
   privateTraceResult?(result: unknown): unknown;
-  annotations?: ToolAnnotations;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
    * and parameter descriptions. Retained for plugin compatibility; may be

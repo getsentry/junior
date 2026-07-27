@@ -143,10 +143,46 @@ export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
-export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
+/**
+ * Reviewer signals describing a tool's side-effect behavior.
+ *
+ * These hints follow the MCP tool annotation contract. Approval review may use
+ * them as signals, but they never grant authority or override deterministic
+ * authorization.
+ */
+export interface ToolAnnotations {
+  [key: string]: unknown;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+  readOnlyHint?: boolean;
+  title?: string;
+}
+
+/**
+ * Canonical approval metadata declared by core and plugin tools.
+ *
+ * This metadata is declaration-only until #1053 adds approval enforcement.
+ * Current tool execution is unchanged.
+ */
+export interface ToolApprovalMetadata<TInput = unknown> {
   /** Optional declared approval mode; omission delegates to core defaults. */
   approvalMode?: ToolApprovalMode;
-  annotations?: unknown;
+  annotations?: ToolAnnotations;
+  /**
+   * Describe the exact validated invocation for future approval presentation.
+   *
+   * Core owns authoritative tool, actor, source, destination, conversation,
+   * credential, and input data. This description adds domain-specific context
+   * only and is never an authorization grant.
+   */
+  describeProposal?(input: TInput): string;
+}
+
+export interface PluginToolDefinition<
+  TInput = unknown,
+  TOutput = unknown,
+> extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
   inputSchema: unknown;
@@ -156,7 +192,7 @@ export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
    * Returning `undefined` suppresses private result capture.
    */
   privateTraceResult?(result: TOutput): unknown;
-  prepareArguments?: (args: unknown) => unknown;
+  prepareArguments?: (args: unknown) => TInput;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
    * and parameter descriptions. Retained for compatibility; may be removed in a

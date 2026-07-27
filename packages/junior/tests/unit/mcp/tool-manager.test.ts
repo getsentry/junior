@@ -103,6 +103,11 @@ describe("McpToolManager", () => {
             query: { type: "string" },
           },
         },
+        annotations: {
+          destructiveHint: false,
+          openWorldHint: true,
+          readOnlyHint: true,
+        },
       },
     ]);
     callToolMock.mockResolvedValue({
@@ -137,6 +142,11 @@ describe("McpToolManager", () => {
     expect(tools[0]?.name).toBe("mcp__demo__ping");
     expect(tools[0]?.rawName).toBe("ping");
     expect(tools[0]?.description).toBe("[demo] Ping the remote MCP server");
+    expect(tools[0]?.annotations).toEqual({
+      destructiveHint: false,
+      openWorldHint: true,
+      readOnlyHint: true,
+    });
 
     const resolvedTools = manager.getResolvedActiveTools();
     expect(resolvedTools).toHaveLength(1);

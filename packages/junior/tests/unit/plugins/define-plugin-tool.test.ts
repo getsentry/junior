@@ -16,11 +16,17 @@ const countResultSchema = pluginToolResultSchema.extend({
 });
 
 describe("definePluginTool", () => {
-  it("preserves the declared approval mode", () => {
+  it("preserves approval metadata", () => {
     const tool = definePluginTool({
       approvalMode: "review",
+      annotations: {
+        destructiveHint: false,
+        openWorldHint: true,
+        readOnlyHint: true,
+      },
+      describeProposal: ({ query }) => `Search for ${query}.`,
       description: "Schedule a meeting.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
       execute: async () =>
         ({
@@ -32,6 +38,13 @@ describe("definePluginTool", () => {
     });
 
     expect(tool.approvalMode).toBe("review");
+    expect(tool.annotations).toEqual({
+      destructiveHint: false,
+      openWorldHint: true,
+      readOnlyHint: true,
+    });
+    const input = tool.prepareArguments?.({ query: "errors" });
+    expect(tool.describeProposal?.(input!)).toBe("Search for errors.");
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });
 

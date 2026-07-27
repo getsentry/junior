@@ -8,6 +8,7 @@
  */
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { ToolAnnotations } from "@sentry/junior-plugin-api";
 import {
   logWarn,
   serializeGenAiAttribute,
@@ -277,7 +278,7 @@ export interface ManagedMcpToolDescriptor {
   description: string;
   parameters: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
-  annotations?: Record<string, unknown>;
+  annotations?: ToolAnnotations;
   provider: string;
 }
 
@@ -475,7 +476,7 @@ export class McpToolManager {
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
     const outputSchema = toOptionalRecord(tool.outputSchema);
-    const annotations = toOptionalRecord(tool.annotations);
+    const annotations = tool.annotations;
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),

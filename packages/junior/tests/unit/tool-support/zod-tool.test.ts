@@ -5,16 +5,24 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 describe("zodTool", () => {
-  it("preserves the declared approval mode", () => {
+  it("preserves approval metadata", () => {
     const tool = zodTool({
       approvalMode: "approve",
+      annotations: { destructiveHint: true, readOnlyHint: false },
+      describeProposal: ({ recordId }) => `Delete record ${recordId}.`,
       description: "Delete a record.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({ recordId: z.coerce.string() }),
       outputSchema: juniorToolResultSchema,
       execute: async () => ({ ok: true, status: "success" as const }),
     });
 
     expect(tool.approvalMode).toBe("approve");
+    expect(tool.annotations).toEqual({
+      destructiveHint: true,
+      readOnlyHint: false,
+    });
+    const input = tool.prepareArguments!({ recordId: 42 });
+    expect(tool.describeProposal?.(input)).toBe("Delete record 42.");
   });
 
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {

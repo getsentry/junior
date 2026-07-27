@@ -34,6 +34,7 @@ function demoPluginTool(
 ) {
   return definePluginTool({
     approvalMode,
+    describeProposal: () => `${description} proposal`,
     description,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
@@ -443,6 +444,9 @@ describe("agent plugin hooks", () => {
         description: "Agent demo",
       });
       expect(tools.agentDemo_demoTool?.approvalMode).toBe("review");
+      expect(tools.agentDemo_demoTool?.describeProposal?.({})).toBe(
+        "Demo tool proposal",
+      );
     } finally {
       setPlugins(previous);
     }
