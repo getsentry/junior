@@ -43,20 +43,27 @@ describe("active context compaction instruction recovery", () => {
     const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "active-compaction-instruction-recovery";
-    const instruction = user("Make the requested edit.", 1);
+    const instruction = user(
+      '<current-instruction author_id="U123" author_name="Alice Example" slack_ts="1712345.000100">\nMake the requested edit.\n</current-instruction>',
+      1,
+    );
+    const repeatedContext = user("Make the requested edit.", 2);
     await commitMessages({
       conversationId,
-      messages: [instruction],
-      newMessageProvenance: {
-        authority: "instruction",
-        actor: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "alice",
-          fullName: "Alice Example",
+      messages: [instruction, repeatedContext],
+      provenance: [
+        {
+          authority: "instruction",
+          actor: {
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+            userName: "alice",
+            fullName: "Alice Example",
+          },
         },
-      },
+        { authority: "context" },
+      ],
     });
 
     const result = await compactActiveContextIfNeeded(
@@ -66,13 +73,14 @@ describe("active context compaction instruction recovery", () => {
         modelProfile: "standard",
         piMessages: [
           instruction,
+          repeatedContext,
           {
             role: "toolResult",
             toolCallId: "edit-1",
             toolName: "editFile",
             content: [{ type: "text", text: "x".repeat(1_600_000) }],
             isError: false,
-            timestamp: 2,
+            timestamp: 3,
           } as PiMessage,
         ],
       },
@@ -88,12 +96,12 @@ describe("active context compaction instruction recovery", () => {
       "<current-instruction>",
     );
     expect(textOf(result.piMessages![1]!)).toBe(
-      '<current-instruction author_id="U123" author_name="Alice Example">\nMake the requested edit.\n</current-instruction>',
+      '<current-instruction author_id="U123" author_name="Alice Example" slack_ts="1712345.000100">\nMake the requested edit.\n</current-instruction>',
     );
 
     const projection = await loadConversationProjection({ conversationId });
     expect(textOf(projection.messages[1]!)).toBe(
-      '<current-instruction author_id="U123" author_name="Alice Example">\nMake the requested edit.\n</current-instruction>',
+      '<current-instruction author_id="U123" author_name="Alice Example" slack_ts="1712345.000100">\nMake the requested edit.\n</current-instruction>',
     );
     expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",

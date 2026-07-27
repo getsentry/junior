@@ -9,6 +9,7 @@
  */
 import { botConfig } from "@/chat/config";
 import {
+  extractCurrentInstruction,
   renderCurrentInstruction,
   unwrapCurrentInstruction,
 } from "@/chat/current-instruction";
@@ -403,21 +404,39 @@ function instructionAttrs(
   };
 }
 
-function findInstructionProvenance(args: {
-  message: PiMessage;
+function latestInstructionEntry(args: {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
-}): ConversationMessageProvenance {
-  const retainedText = messageText(args.message);
+}):
+  | { message: PiMessage; provenance: ConversationMessageProvenance }
+  | undefined {
   for (let index = args.messages.length - 1; index >= 0; index -= 1) {
+    const provenance = args.provenance[index];
+    const message = args.messages[index];
     if (
-      messageText(args.messages[index]!) === retainedText &&
-      args.provenance[index]?.authority === "instruction"
+      message &&
+      provenance?.authority === "instruction" &&
+      (message as { role?: unknown }).role === "user"
     ) {
-      return args.provenance[index]!;
+      return { message, provenance };
     }
   }
-  return contextProvenance;
+  return undefined;
+}
+
+function renderRetainedInstruction(
+  message: PiMessage,
+  provenance: ConversationMessageProvenance,
+): string {
+  const text = messageText(message);
+  return (
+    extractCurrentInstruction(
+      (message as { content?: Array<{ type?: string; text?: string }> }).content
+        ?.filter((part) => part.type === "text")
+        .map((part) => part.text ?? "")
+        .join("\n") ?? "",
+    ) ?? renderCurrentInstruction(text, instructionAttrs(provenance))
+  );
 }
 
 type CompactionSource =
@@ -707,35 +726,30 @@ export async function compactActiveContextIfNeeded(
         } as PiMessage,
       ]
     : [userMessage(summaryText)];
-  const retainedInstruction =
+  const sourceProjection =
     pendingMessages.length === 0
-      ? selectRetainedUserMessages(args.piMessages).at(-1)
-      : undefined;
-  const sourceProjection = retainedInstruction
-    ? await loadConversationProjection({ conversationId: args.conversationId })
-    : undefined;
-  const retainedInstructionProvenance =
-    retainedInstruction && sourceProjection
-      ? findInstructionProvenance({
-          message: retainedInstruction,
-          messages: sourceProjection.messages,
-          provenance: sourceProjection.provenance,
+      ? await loadConversationProjection({
+          conversationId: args.conversationId,
         })
       : undefined;
+  const retainedInstruction = sourceProjection
+    ? latestInstructionEntry({
+        messages: sourceProjection.messages,
+        provenance: sourceProjection.provenance,
+      })
+    : undefined;
   const instructionMessages = retainedInstruction
     ? [
         userMessage(
-          renderCurrentInstruction(
-            messageText(retainedInstruction),
-            retainedInstructionProvenance
-              ? instructionAttrs(retainedInstructionProvenance)
-              : undefined,
+          renderRetainedInstruction(
+            retainedInstruction.message,
+            retainedInstruction.provenance,
           ),
         ),
       ]
     : pendingMessages.map((entry) => entry.message);
-  const instructionProvenance = retainedInstructionProvenance
-    ? [retainedInstructionProvenance]
+  const instructionProvenance = retainedInstruction
+    ? [retainedInstruction.provenance]
     : pendingMessages.map((entry) => entry.provenance);
   const messages = [...summaryMessages, ...instructionMessages];
   const replacementInputTokens = estimateHistoryTokens(messages);
