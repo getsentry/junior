@@ -387,6 +387,39 @@ function buildReplacementProvenance(args: {
   ];
 }
 
+function instructionAttrs(
+  provenance: ConversationMessageProvenance,
+): { authorId?: string; authorName?: string } | undefined {
+  const actor = provenance.actor;
+  if (!actor) {
+    return undefined;
+  }
+  if (actor.platform === "system") {
+    return { authorName: actor.name };
+  }
+  return {
+    authorId: actor.userId,
+    authorName: actor.fullName ?? actor.userName,
+  };
+}
+
+function findInstructionProvenance(args: {
+  message: PiMessage;
+  messages: PiMessage[];
+  provenance: ConversationMessageProvenance[];
+}): ConversationMessageProvenance {
+  const retainedText = messageText(args.message);
+  for (let index = args.messages.length - 1; index >= 0; index -= 1) {
+    if (
+      messageText(args.messages[index]!) === retainedText &&
+      args.provenance[index]?.authority === "instruction"
+    ) {
+      return args.provenance[index]!;
+    }
+  }
+  return contextProvenance;
+}
+
 type CompactionSource =
   | {
       estimatedTokens: number;
@@ -678,9 +711,32 @@ export async function compactActiveContextIfNeeded(
     pendingMessages.length === 0
       ? selectRetainedUserMessages(args.piMessages).at(-1)
       : undefined;
+  const sourceProjection = retainedInstruction
+    ? await loadConversationProjection({ conversationId: args.conversationId })
+    : undefined;
+  const retainedInstructionProvenance =
+    retainedInstruction && sourceProjection
+      ? findInstructionProvenance({
+          message: retainedInstruction,
+          messages: sourceProjection.messages,
+          provenance: sourceProjection.provenance,
+        })
+      : undefined;
   const instructionMessages = retainedInstruction
-    ? [userMessage(renderCurrentInstruction(messageText(retainedInstruction)))]
+    ? [
+        userMessage(
+          renderCurrentInstruction(
+            messageText(retainedInstruction),
+            retainedInstructionProvenance
+              ? instructionAttrs(retainedInstructionProvenance)
+              : undefined,
+          ),
+        ),
+      ]
     : pendingMessages.map((entry) => entry.message);
+  const instructionProvenance = retainedInstructionProvenance
+    ? [retainedInstructionProvenance]
+    : pendingMessages.map((entry) => entry.provenance);
   const messages = [...summaryMessages, ...instructionMessages];
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
@@ -713,7 +769,7 @@ export async function compactActiveContextIfNeeded(
         provenance:
           index === 0
             ? contextProvenance
-            : (pendingMessages[index - 1]?.provenance ?? contextProvenance),
+            : (instructionProvenance[index - 1] ?? contextProvenance),
       })),
     },
   });
