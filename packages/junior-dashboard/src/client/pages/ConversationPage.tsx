@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { ExternalLink } from "lucide-react";
+import {
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  TriangleAlert,
+} from "lucide-react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationFeed } from "@sentry/junior/api/schema";
@@ -194,17 +199,51 @@ function ConversationAnnotations(props: {
             rel="noreferrer"
             target="_blank"
           >
+            {link.status ? <PullRequestStatus status={link.status} /> : null}
             <span>{link.label}</span>
-            {link.status ? (
-              <span className="font-mono text-[0.62rem] uppercase text-white/50">
-                {link.status}
-              </span>
-            ) : null}
-            <ExternalLink aria-hidden="true" size={13} />
           </a>
         ))}
       </div>
     </div>
+  );
+}
+
+function PullRequestStatus(props: {
+  status: "open" | "draft" | "closed" | "merged" | "warning";
+}) {
+  const status = {
+    open: {
+      className: "text-[#3fb950]",
+      Icon: GitPullRequest,
+      label: "Open pull request",
+    },
+    draft: {
+      className: "text-[#8c959f]",
+      Icon: GitPullRequest,
+      label: "Draft pull request",
+    },
+    closed: {
+      className: "text-[#f85149]",
+      Icon: GitPullRequestClosed,
+      label: "Closed pull request",
+    },
+    merged: {
+      className: "text-[#a371f7]",
+      Icon: GitMerge,
+      label: "Merged pull request",
+    },
+    warning: {
+      className: "text-[#d29922]",
+      Icon: TriangleAlert,
+      label: "Pull request needs attention",
+    },
+  }[props.status];
+
+  return (
+    <span className={status.className} title={status.label}>
+      <status.Icon aria-hidden="true" size={16} strokeWidth={2.25} />
+      <span className="sr-only">{status.label}</span>
+    </span>
   );
 }
 
