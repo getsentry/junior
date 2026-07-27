@@ -7,10 +7,10 @@ import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
   type ConversationEventPage,
-  type ConversationEventStore,
   type KnownConversationEventType,
 } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -32,34 +32,8 @@ const queryConversationEventsOutputSchema = juniorToolResultSchema.extend({
   events: z.array(z.unknown()),
   has_older: z.boolean(),
   has_newer: z.boolean(),
-  include_replacement_history: z.boolean(),
   types: z.array(knownEventTypeSchema).optional(),
 });
-
-interface QueryConversationEventsToolDeps {
-  conversationStore?: ConversationStore;
-  eventStore?: ConversationEventStore;
-}
-
-/** Resolve injectable stores, loading the process DB only when needed. */
-async function resolveStores(deps: QueryConversationEventsToolDeps): Promise<{
-  conversationStore: ConversationStore;
-  eventStore: ConversationEventStore;
-}> {
-  if (deps.conversationStore && deps.eventStore) {
-    return {
-      conversationStore: deps.conversationStore,
-      eventStore: deps.eventStore,
-    };
-  }
-  const { getConversationEventStore, getConversationStore } = await import(
-    "@/chat/db"
-  );
-  return {
-    conversationStore: deps.conversationStore ?? getConversationStore(),
-    eventStore: deps.eventStore ?? getConversationEventStore(),
-  };
-}
 
 interface QueryAccessScope {
   currentConversationId: string;
@@ -69,13 +43,10 @@ interface QueryAccessScope {
 }
 
 /** Create a deferred tool that returns a bounded raw conversation event page. */
-export function createQueryConversationEventsTool(
-  context: ToolRuntimeContext,
-  deps: QueryConversationEventsToolDeps = {},
-) {
+export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
-      "Query Junior's durable raw conversation events for a conversation ID. Use when debugging Junior behavior from stored turns, tool calls, handoffs, or compaction. Catalog-only by default. Returns events for the current conversation tree, or for another retained public conversation in the same Slack workspace. Defaults to the newest matching page.",
+      "Inspect Junior's stored turns, tool calls, handoffs, and compaction events when debugging its behavior. Returns events from the current conversation tree or another retained public conversation in the same Slack workspace, newest first by default.",
     exposure: "deferred",
     source: CONVERSATION_EVENTS_TOOL_SOURCE,
     annotations: { readOnlyHint: true, destructiveHint: false },
@@ -124,13 +95,6 @@ export function createQueryConversationEventsTool(
             "Optional event-type filter. Omit to return every durable event type.",
           )
           .optional(),
-        include_replacement_history: z
-          .boolean()
-          .nullable()
-          .describe(
-            "Include full replacementHistory on compaction/handoff events. Defaults to false because those payloads are large.",
-          )
-          .optional(),
       })
       .strict(),
     outputSchema: queryConversationEventsOutputSchema,
@@ -147,9 +111,6 @@ export function createQueryConversationEventsTool(
       const beforeSeq = input.before_seq ?? undefined;
       const limit = input.limit ?? DEFAULT_LIMIT;
       const types = input.types ?? undefined;
-      const includeReplacementHistory =
-        input.include_replacement_history === true;
-
       if (
         afterSeq !== undefined &&
         beforeSeq !== undefined &&
@@ -160,7 +121,7 @@ export function createQueryConversationEventsTool(
         );
       }
 
-      const { conversationStore, eventStore } = await resolveStores(deps);
+      const conversationStore = getConversationStore();
       const target = await conversationStore.get({ conversationId });
       if (!target) {
         throw new ToolInputError(`Conversation not found: ${conversationId}`);
@@ -196,13 +157,13 @@ export function createQueryConversationEventsTool(
         targetDestination: targetRoot?.destination ?? target.destination,
       });
 
-      const page = await eventStore.query(conversationId, {
+      const page = await getConversationEventStore().query(conversationId, {
         limit,
         ...(afterSeq === undefined ? {} : { afterSeq }),
         ...(beforeSeq === undefined ? {} : { beforeSeq }),
         ...(types === undefined ? {} : { types }),
       });
-      const events = projectEventsForTool(page, includeReplacementHistory);
+      const events = projectEventsForTool(page);
 
       return {
         ok: true,
@@ -212,7 +173,6 @@ export function createQueryConversationEventsTool(
         events,
         has_older: page.hasOlder,
         has_newer: page.hasNewer,
-        include_replacement_history: includeReplacementHistory,
         ...(types ? { types: [...types] } : {}),
       };
     },
@@ -348,18 +308,12 @@ function assertCanQueryConversationEvents(args: {
 
 function projectEventsForTool(
   page: ConversationEventPage,
-  includeReplacementHistory: boolean,
 ): Array<Record<string, unknown>> {
-  return page.events.map((event) => projectEvent(event, includeReplacementHistory));
+  return page.events.map(projectEvent);
 }
 
-function projectEvent(
-  event: ConversationEvent,
-  includeReplacementHistory: boolean,
-): Record<string, unknown> {
-  const data = includeReplacementHistory
-    ? event.data
-    : stripReplacementHistory(event.data);
+function projectEvent(event: ConversationEvent): Record<string, unknown> {
+  const data = stripReplacementHistory(event.data);
   return {
     seq: event.seq,
     history_version: event.historyVersion,
@@ -387,15 +341,11 @@ function stripReplacementHistory(
       replacement_history_count: Array.isArray(
         (data as { replacementHistory?: unknown }).replacementHistory,
       )
-        ? ((data as { replacementHistory: unknown[] }).replacementHistory
-            .length)
+        ? (data as { replacementHistory: unknown[] }).replacementHistory.length
         : 0,
     };
   }
   return data;
 }
 
-/** Exported for unit tests that need the known type list without DB access. */
-export const QUERY_CONVERSATION_EVENTS_DEFAULT_LIMIT = DEFAULT_LIMIT;
-export const QUERY_CONVERSATION_EVENTS_MAX_LIMIT = MAX_LIMIT;
 export type { KnownConversationEventType };
