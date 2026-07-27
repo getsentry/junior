@@ -70,6 +70,7 @@ export interface SandboxAccess {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  close(): void;
 }
 
 export interface SandboxOptions {
@@ -674,6 +675,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     },
     sandboxRef() {
       return runtime.sandboxRef();
+    },
+    close() {
+      runtime.close();
     },
   };
 }

@@ -214,6 +214,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
         ReturnType<typeof createSandboxRuntime>["refreshNetworkPolicy"]
       >
     ) => await getRuntime().refreshNetworkPolicy(...args),
+    close: () => getRuntime().close(),
   };
 }
 
@@ -2002,6 +2003,64 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+  });
+
+  it("extends sandbox keepalive while the turn is active", async () => {
+    vi.useFakeTimers();
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const sandbox = makeSandbox("sbx_active_keepalive");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const runtime = createTestSandboxRuntime();
+    runtime.configureSkills([]);
+    await runtime.ensureToolExecutors();
+
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
+
+    runtime.close();
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reschedule keepalive when closed during an extension", async () => {
+    vi.useFakeTimers();
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const sandbox = makeSandbox("sbx_close_during_keepalive");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const runtime = createTestSandboxRuntime();
+    runtime.configureSkills([]);
+    await runtime.ensureToolExecutors();
+
+    let finishExtension!: () => void;
+    sandbox.extendTimeout.mockImplementationOnce(
+      async () =>
+        await new Promise<void>((resolve) => {
+          finishExtension = resolve;
+        }),
+    );
+    vi.advanceTimersByTime(2500);
+    await Promise.resolve();
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
+
+    runtime.close();
+    finishExtension();
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
   });
 
   it("extends sandbox keepalive for each tool execution", async () => {

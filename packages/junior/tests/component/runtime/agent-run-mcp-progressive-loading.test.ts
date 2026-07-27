@@ -455,6 +455,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       },
     },
     sandboxRef: () => ({ id: "sandbox-test", profileHash: "hash-test" }),
+    close: vi.fn(),
   }),
 }));
 

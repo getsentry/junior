@@ -36,10 +36,6 @@ import {
   type Skill,
 } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import {
-  getMcpAwareTelemetryMessage,
-  getMcpProviderErrorAttributes,
-} from "@/chat/mcp/errors";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
@@ -272,6 +268,7 @@ async function executeAgentRunInPrivacyContext(
   let resume: ResumeState | undefined;
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
+  let closeTools: (() => Promise<void>) | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -733,6 +730,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
     });
     mcpToolManager = wiring.mcpToolManager;
+    closeTools = wiring.close;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools;
 
@@ -1455,21 +1453,6 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
-    try {
-      await mcpToolManager?.close();
-    } catch (closeError) {
-      logWarn(
-        "mcp_tool_manager_close_failed",
-        {},
-        {
-          ...getMcpProviderErrorAttributes(closeError),
-          "exception.message": getMcpAwareTelemetryMessage(
-            closeError,
-            undefined,
-          ),
-        },
-        "Failed to close MCP tool manager",
-      );
-    }
+    await closeTools?.();
   }
 }

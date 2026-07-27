@@ -64,6 +64,7 @@ describe("createAgentSandbox", () => {
       return {
         workspace,
         sandboxRef: () => input.sandboxRef,
+        close: vi.fn(),
         tools: {
           supports: () => true,
           execute: executeSandboxToolMock,
