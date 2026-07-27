@@ -75,7 +75,11 @@ import {
 } from "@/chat/services/turn-result";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
-import { enforceTurnSpendLimit } from "@/chat/services/spend-limit";
+import {
+  enforceTurnSpendLimit,
+  isTurnSpendLimitError,
+  TURN_SPEND_LIMIT_RESPONSE,
+} from "@/chat/services/spend-limit";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -1390,6 +1394,33 @@ async function executeAgentRunInPrivacyContext(
       result,
     };
   } catch (error) {
+    if (isTurnSpendLimitError(error)) {
+      if (delivery) {
+        await delivery.onAssistantMessage({ text: TURN_SPEND_LIMIT_RESPONSE });
+      }
+      return {
+        status: "completed",
+        result: {
+          text: TURN_SPEND_LIMIT_RESPONSE,
+          sandboxRef: lastKnownSandboxRef,
+          diagnostics: {
+            outcome: "success",
+            modelId: activeModelId,
+            assistantMessageCount: 1,
+            ...(turnRoute
+              ? {
+                  reasoningLevel: turnRoute.reasoningLevel,
+                }
+              : {}),
+            toolCalls: [],
+            toolResultCount: 0,
+            toolErrorCount: 0,
+            usedPrimaryText: true,
+            durationMs: Date.now() - replyStartedAtMs,
+          },
+        },
+      };
+    }
     if (
       error instanceof AssistantMessageDeliveryError &&
       !(error.originalError instanceof RetryableDeliveryError)

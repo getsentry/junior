@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentTurnCostUsd,
   enforceTurnSpendLimit,
+  TurnSpendCostUnavailableError,
   TurnSpendLimitExceededError,
 } from "@/chat/services/spend-limit";
 
@@ -38,6 +39,24 @@ describe("turn spend limit", () => {
         usage: { cost: { total: 1 } },
       }),
     ).toThrow(TurnSpendLimitExceededError);
+  });
+
+  it("hard-stops when provider usage omits cost data", () => {
+    expect(() =>
+      enforceTurnSpendLimit({
+        maxSpendUsd: 1,
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }),
+    ).toThrow(TurnSpendCostUnavailableError);
+  });
+
+  it("allows an empty turn before provider usage exists", () => {
+    expect(() =>
+      enforceTurnSpendLimit({
+        maxSpendUsd: 1,
+        usage: undefined,
+      }),
+    ).not.toThrow();
   });
 
   it("is disabled without a configured cap", () => {
