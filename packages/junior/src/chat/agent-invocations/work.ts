@@ -298,16 +298,6 @@ export function createAgentInvocationWorker(options: {
     if (!invocation) {
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
-    if (invocation.childConversationId !== context.conversationId) {
-      throw new Error(
-        `Agent invocation ${invocationId} belongs to ${invocation.childConversationId}, not ${context.conversationId}`,
-      );
-    }
-    if (context.destination) {
-      throw new Error(
-        `Agent invocation conversation ${context.conversationId} must not own a provider destination`,
-      );
-    }
 
     let acknowledged = context.attempt.messages.length === 0;
     const acknowledge = async (): Promise<void> => {
@@ -332,6 +322,16 @@ export function createAgentInvocationWorker(options: {
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     try {
+      if (invocation.childConversationId !== context.conversationId) {
+        throw new Error(
+          `Agent invocation ${invocationId} belongs to ${invocation.childConversationId}, not ${context.conversationId}`,
+        );
+      }
+      if (context.destination) {
+        throw new Error(
+          `Agent invocation conversation ${context.conversationId} must not own a provider destination`,
+        );
+      }
       if (isTerminalAgentInvocation(invocation)) {
         await persistTerminalLifecycle(invocation);
         await acknowledge();

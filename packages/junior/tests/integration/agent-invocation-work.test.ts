@@ -8,6 +8,7 @@ import {
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
 import {
+  buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
   routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
@@ -22,6 +23,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
+import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
@@ -663,6 +665,61 @@ describe("agent invocation conversation work", () => {
       ).resolves.toMatchObject({
         errorMessage: "model unavailable",
         status: "failed",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("persists invariant failures on the final delivery attempt", async () => {
+    const { fixture } = await prepareParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...invocationInput,
+        agentName: "researcher",
+        idempotencyKey: "invalid-child-1",
+      });
+      const run = vi.fn();
+      const ack = vi.fn();
+      const worker = createAgentInvocationWorker({ agentRunner: { run } });
+      const context = {
+        attempt: {
+          ack,
+          conversationId: created.childConversationId,
+          destination,
+          drain: vi.fn(),
+          isFinalAttempt: true,
+          messages: [buildAgentInvocationInboundMessage(created)],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        destination,
+        shouldYield: () => false,
+      } satisfies ConversationWorkerContext;
+
+      await expect(worker(context, created.invocationId)).resolves.toEqual({
+        status: "completed",
+      });
+
+      expect(run).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledOnce();
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        errorMessage: expect.stringContaining(
+          "must not own a provider destination",
+        ),
+        status: "failed",
+      });
+      await expect(
+        createAgentInvocation({
+          ...invocationInput,
+          agentName: "researcher",
+          idempotencyKey: "invalid-child-2",
+        }),
+      ).resolves.toMatchObject({
+        childConversationId: created.childConversationId,
+        status: "pending",
       });
     } finally {
       await fixture.close();
