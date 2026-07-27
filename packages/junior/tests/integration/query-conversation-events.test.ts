@@ -116,7 +116,7 @@ describe("queryConversationEvents", () => {
       status: "success",
       conversation_id: CURRENT_CONVERSATION_ID,
       count: 2,
-      has_older: true,
+      has_older: false,
       has_newer: false,
       events: [
         { seq: 1, data: { type: "message", text: "second" } },
