@@ -244,12 +244,36 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindAgentSpawnControl, createAgentInvocationCreator } =
     await import("@/chat/agent-invocations/spawn");
-  const { getVercelConversationWorkQueue } =
-    await import("@/chat/task-execution/vercel-queue");
-  const agentInvocationCreator = createAgentInvocationCreator({
-    queue: getVercelConversationWorkQueue,
+  const {
+    createAgentInvocationConversationWorker,
+    createAgentInvocationWorkRouter,
+  } = await import("@/chat/agent-invocations/work");
+  const { createLocalConversationWork } =
+    await import("@/chat/local/conversation-work");
+  const { processConversationWork } =
+    await import("@/chat/task-execution/worker");
+  let agentRunner: ReturnType<typeof createAgentRunner> | undefined;
+  const localConversationWork = createLocalConversationWork(async (message) => {
+    if (!agentRunner) {
+      throw new Error("Local agent runner is not ready");
+    }
+    const run = createAgentInvocationWorkRouter({
+      fallbackWorker: async () => {
+        throw new Error("Local child queue received non-invocation work");
+      },
+      invocationWorker: createAgentInvocationConversationWorker({
+        agentRunner,
+      }),
+    });
+    await processConversationWork(message, {
+      queue: localConversationWork.queue,
+      run,
+    });
   });
-  const agentRunner = createAgentRunner(executeAgentRun, {
+  const agentInvocationCreator = createAgentInvocationCreator({
+    queue: localConversationWork.queue,
+  });
+  agentRunner = createAgentRunner(executeAgentRun, {
     bindSpawnAgent: (request) =>
       bindAgentSpawnControl(request, agentInvocationCreator),
   });
@@ -281,7 +305,13 @@ async function prepareLocalChatRun(
     },
   };
   return {
-    close: oauthCallback.close,
+    close: async () => {
+      try {
+        await localConversationWork.drain();
+      } finally {
+        await oauthCallback.close();
+      }
+    },
     conversationId: newRunConversationId(),
     runLocalAgentTurn,
     deps,

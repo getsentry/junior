@@ -24,6 +24,10 @@ provider mailbox worker.
   and SQL persistence are not one transaction. A process death in that interval
   can strand a started turn; lifecycle history does not claim otherwise.
 - New CLI invocations do not promise restoration of prior interactive history.
+- Child-agent work uses the shared invocation mailbox worker in the CLI
+  process. Prompt mode drains accepted child work before exit; interactive mode
+  drains it when the session exits. It does not depend on a Vercel Queue dev
+  consumer, and a process death can still strand process-local mailbox state.
 - Status and diagnostics go to stderr; assistant messages go to stdout in model
   message order.
 - Local file requests use paths named by the user. The adapter does not

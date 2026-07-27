@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentRunRequest } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
@@ -139,5 +140,59 @@ export const plugins = {
       process.chdir(ORIGINAL_CWD);
       rmSync(tempDir, { force: true, recursive: true });
     }
+  }, 30_000);
+
+  it("finishes spawned child work in process before prompt mode exits", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    const requests: AgentRunRequest[] = [];
+    executeAgentRunMock.mockImplementation(async (request) => {
+      requests.push(request);
+      if (request.policy?.agentSpawning === "disabled") {
+        await request.durability.onInputCommitted?.();
+        return completedAgentRun(successReply("child finished"));
+      }
+      const spawnAgent = request.durability.spawnAgent;
+      if (!spawnAgent) {
+        throw new Error("parent run requires spawnAgent");
+      }
+      const spawned = await spawnAgent.execute(
+        {
+          name: "local-test-child",
+          reasoningLevel: "medium",
+          task: "Finish the child task.",
+        },
+        { toolCallId: "spawn-1" },
+      );
+      expect(spawned).toMatchObject({ status: "pending" });
+      await deliverAssistantMessagesForTest(request, [
+        { text: "child scheduled" },
+      ]);
+      return completedAgentRun(successReply("child scheduled"));
+    });
+    const output: string[] = [];
+
+    const { runChat } = await import("@/cli/chat");
+    await expect(
+      runChat(
+        ["-p", "delegate this"],
+        {
+          error: vi.fn(),
+          input: process.stdin,
+          output: process.stdout,
+          write: (text) => {
+            output.push(text);
+          },
+        },
+        { pluginSet: null },
+      ),
+    ).resolves.toBe(0);
+
+    expect(executeAgentRunMock).toHaveBeenCalledTimes(2);
+    expect(requests[0]?.durability?.spawnAgent).toBeDefined();
+    expect(requests[1]).toMatchObject({
+      policy: { agentSpawning: "disabled" },
+    });
+    expect(requests[1]?.durability?.spawnAgent).toBeUndefined();
+    expect(output).toEqual(["child scheduled\n"]);
   }, 30_000);
 });

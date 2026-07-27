@@ -51,7 +51,7 @@ import {
   commitAcceptedReply,
   loadProjection,
 } from "@/chat/conversations/projection";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
@@ -207,6 +207,12 @@ async function runLocalAgentTurnInContext(
     new ConversationTurnLifecycleService(getConversationEventStore());
 
   const now = deps.now ?? (() => Date.now());
+  await getConversationStore().recordActivity({
+    conversationId: input.conversationId,
+    destination,
+    nowMs: now(),
+    source: "local",
+  });
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
   await hydrateConversationMessages({
