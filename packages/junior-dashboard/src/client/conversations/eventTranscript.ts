@@ -57,23 +57,9 @@ export function conversationTranscriptMessages(
   >();
   const messages: TranscriptViewMessage[] = [];
   const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
-  const runningToolIdsByTurn = new Map<string, Set<string>>();
-  let activeTurnId: string | undefined;
   let latestUserMessage: TranscriptViewMessage | undefined;
 
-  const trackTool = (toolCallId: string, status: ToolCall["status"]): void => {
-    if (status === "running") {
-      if (!activeTurnId) return;
-      const ids = runningToolIdsByTurn.get(activeTurnId) ?? new Set<string>();
-      ids.add(toolCallId);
-      runningToolIdsByTurn.set(activeTurnId, ids);
-      return;
-    }
-    for (const ids of runningToolIdsByTurn.values()) ids.delete(toolCallId);
-  };
-
   const ensureTool = (event: ConversationReportEvent, call: ToolCall): void => {
-    trackTool(call.toolCallId, call.status);
     if (replacedToolIds.has(call.toolCallId)) return;
     const existing = tools.get(call.toolCallId);
     if (existing) {
@@ -128,7 +114,6 @@ export function conversationTranscriptMessages(
     }
 
     if (data.type === "turn_lifecycle" && data.state === "started") {
-      activeTurnId = data.turnId;
       if (latestUserMessage) {
         latestUserMessageByTurn.set(data.turnId, latestUserMessage);
       }
@@ -212,26 +197,21 @@ export function conversationTranscriptMessages(
       continue;
     }
 
-    if (data.type === "turn_lifecycle") {
-      if (data.state === "failed") {
-        for (const toolCallId of runningToolIdsByTurn.get(data.turnId) ?? []) {
-          const tool = tools.get(toolCallId);
-          if (tool?.status === "running") {
-            tool.status = "error";
-            tool.resultTimestamp = eventTimestamp(event);
-          }
+    if (data.type === "turn_lifecycle" && data.state === "failed") {
+      for (const toolCallId of data.toolCallIds ?? []) {
+        const tool = tools.get(toolCallId);
+        if (tool?.status === "running") {
+          tool.status = "error";
+          tool.resultTimestamp = eventTimestamp(event);
         }
-        messages.push({
-          role: data.failureKind === "delivery" ? "system" : "assistant",
-          outcome:
-            data.failureKind === "delivery" ? "delivery_failed" : "error",
-          parts: [],
-          sourceSeq: event.seq,
-          timestamp: eventTimestamp(event),
-        });
       }
-      runningToolIdsByTurn.delete(data.turnId);
-      if (activeTurnId === data.turnId) activeTurnId = undefined;
+      messages.push({
+        role: data.failureKind === "delivery" ? "system" : "assistant",
+        outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
+        parts: [],
+        sourceSeq: event.seq,
+        timestamp: eventTimestamp(event),
+      });
       continue;
     }
   }

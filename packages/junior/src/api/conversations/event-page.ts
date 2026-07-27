@@ -35,13 +35,14 @@ async function readConversationEventRows(
     beforeSeq?: number;
     conversationId: string;
     direction: "backward" | "forward";
-    limit: number;
+    limit?: number;
     subagentInvocationIds?: string[];
     toolCallIds?: string[];
+    turnIds?: string[];
     types?: ConversationEvent["data"]["type"][];
   },
 ) {
-  return executor
+  const query = executor
     .db()
     .select({
       ...conversationEventColumns,
@@ -76,8 +77,17 @@ async function readConversationEventRows(
         args.toolCallIds === undefined
           ? undefined
           : inArray(
-              sql<string>`${juniorConversationEvents.payload}->>'toolCallId'`,
+              sql<string>`coalesce(
+                ${juniorConversationEvents.payload}->>'toolCallId',
+                ${juniorConversationEvents.payload}->'message'->>'toolCallId'
+              )`,
               args.toolCallIds,
+            ),
+        args.turnIds === undefined
+          ? undefined
+          : inArray(
+              sql<string>`${juniorConversationEvents.payload}->>'turnId'`,
+              args.turnIds,
             ),
       ),
     )
@@ -85,8 +95,8 @@ async function readConversationEventRows(
       args.direction === "forward"
         ? asc(juniorConversationEvents.seq)
         : desc(juniorConversationEvents.seq),
-    )
-    .limit(args.limit);
+    );
+  return args.limit === undefined ? query : query.limit(args.limit);
 }
 
 function decodeConversationEventRow(
@@ -134,22 +144,56 @@ async function projectConversationEventRows(
           subagentInvocationIds: endedInvocationIds,
           types: ["subagent_started"],
         });
-  const toolResultIds = conversationReportToolResultIds(events);
-  const toolStartRows =
-    toolResultIds.length === 0
+  const failedTurnIds = [
+    ...new Set(
+      events.flatMap((event) =>
+        event.data.type === "turn_failed" ? [event.data.turnId] : [],
+      ),
+    ),
+  ];
+  const failedTurnToolStartRows =
+    failedTurnIds.length === 0
       ? []
       : await readConversationEventRows(executor, {
           conversationId: args.conversationId,
           direction: "forward",
-          limit: toolResultIds.length,
-          toolCallIds: toolResultIds,
+          turnIds: failedTurnIds,
           types: ["tool_execution_started"],
+        });
+  const toolResultIds = conversationReportToolResultIds(events);
+  const toolStartIds = [
+    ...new Set([
+      ...toolResultIds,
+      ...failedTurnToolStartRows.map((row) => row.payload.toolCallId as string),
+    ]),
+  ];
+  const toolStartRows =
+    toolStartIds.length === 0
+      ? []
+      : await readConversationEventRows(executor, {
+          conversationId: args.conversationId,
+          direction: "forward",
+          limit: toolStartIds.length,
+          toolCallIds: toolStartIds,
+          types: ["tool_execution_started"],
+        });
+  const toolResultRows =
+    failedTurnToolStartRows.length === 0
+      ? []
+      : await readConversationEventRows(executor, {
+          conversationId: args.conversationId,
+          direction: "forward",
+          toolCallIds: failedTurnToolStartRows.map(
+            (row) => row.payload.toolCallId as string,
+          ),
+          types: ["agent_step"],
         });
 
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
     events,
     subagentStartEvents: subagentStartRows.map(decodeConversationEventRow),
+    toolResultEvents: toolResultRows.map(decodeConversationEventRow),
     toolStartEvents: toolStartRows.map(decodeConversationEventRow),
   });
 }
