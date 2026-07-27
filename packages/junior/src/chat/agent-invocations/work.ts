@@ -410,6 +410,7 @@ export function createAgentInvocationConversationWorker(options: {
           surface: "internal",
         },
         policy: {
+          agentSpawning: "disabled",
           authorizationFlowMode: "disabled",
           reasoningLevel: invocation.reasoningLevel,
         },

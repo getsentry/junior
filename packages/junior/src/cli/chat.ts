@@ -242,7 +242,17 @@ async function prepareLocalChatRun(
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
-  const agentRunner = createAgentRunner(executeAgentRun);
+  const { bindAgentSpawnControl, createAgentInvocationCreator } =
+    await import("@/chat/agent-invocations/spawn");
+  const { getVercelConversationWorkQueue } =
+    await import("@/chat/task-execution/vercel-queue");
+  const agentInvocationCreator = createAgentInvocationCreator({
+    queue: getVercelConversationWorkQueue,
+  });
+  const agentRunner = createAgentRunner(executeAgentRun, {
+    bindSpawnAgent: (request) =>
+      bindAgentSpawnControl(request, agentInvocationCreator),
+  });
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
   const deps: LocalAgentTurnDeps = {
     agentRunner,

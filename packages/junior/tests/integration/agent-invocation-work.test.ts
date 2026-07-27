@@ -13,6 +13,12 @@ import {
   createAgentInvocationWorkRouter,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
+import {
+  bindAgentSpawnControl,
+  createAgentInvocationCreator,
+} from "@/chat/agent-invocations/spawn";
+import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import type { AgentRunRequest } from "@/chat/agent/request";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -80,6 +86,11 @@ describe("agent invocation conversation work", () => {
         },
         3_000,
       );
+      await completeAgentInvocation({
+        invocationId: first.invocation.invocationId,
+        result: "Finished.",
+        status: "completed",
+      });
       const next = await createAgentInvocation(
         {
           ...invocationInput,
@@ -159,6 +170,90 @@ describe("agent invocation conversation work", () => {
           parentConversationId: first.invocation.childConversationId,
         }),
       ).rejects.toThrow("Recursive agent delegation is not enabled");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("derives spawn authority from the parent run and replays one tool call", async () => {
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    try {
+      const request = {
+        conversationId: parentConversationId,
+        turnId: "parent-turn",
+        input: {
+          messageText: "Delegate the investigation.",
+        },
+        routing: {
+          actor: { platform: "local", userId: "local-user" },
+          credentialContext: {
+            actor: { type: "user", userId: "local-user" },
+          },
+          destination,
+          destinationVisibility: "private",
+          source: createLocalSource(parentConversationId),
+        },
+      } satisfies AgentRunRequest;
+      const spawnAgent = bindAgentSpawnControl(
+        request,
+        createAgentInvocationCreator({
+          conversationStore,
+          queue,
+        }),
+      );
+      expect(spawnAgent).toBeDefined();
+      const tool = createSpawnAgentTool(spawnAgent!);
+      const input = tool.prepareArguments!({
+        task: "Inspect the failing checks.",
+        name: "reviewer",
+        reasoning_level: "high",
+      });
+
+      const first = await tool.execute!(input, { toolCallId: "call-1" });
+      const replay = await tool.execute!(input, { toolCallId: "call-1" });
+
+      expect(first).toMatchObject({
+        agent_name: "reviewer",
+        invocation_status: "pending",
+        replayed: false,
+      });
+      expect(replay).toMatchObject({
+        invocation_id: first.invocation_id,
+        child_conversation_id: first.child_conversation_id,
+        replayed: true,
+      });
+      await expect(
+        getAgentInvocation(first.invocation_id),
+      ).resolves.toMatchObject({
+        actor: { platform: "local", userId: "local-user" },
+        agentName: "reviewer",
+        credentialContext: {
+          actor: { type: "user", userId: "local-user" },
+        },
+        destination,
+        destinationVisibility: "private",
+        idempotencyKey: "parent-turn:call-1",
+        input: "Inspect the failing checks.",
+        parentConversationId,
+        reasoningLevel: "high",
+        source: createLocalSource(parentConversationId),
+      });
+      expect(queue.sentRecords()).toHaveLength(1);
+      await expect(
+        tool.execute!(
+          tool.prepareArguments!({
+            task: "Start overlapping work.",
+            name: "reviewer",
+            reasoning_level: "high",
+          }),
+          { toolCallId: "call-2" },
+        ),
+      ).rejects.toMatchObject({
+        name: "ToolInputError",
+        message:
+          'Named agent "reviewer" already has active work. Wait for it to finish or use a different name.',
+      });
     } finally {
       await fixture.close();
     }
@@ -416,6 +511,11 @@ describe("agent invocation conversation work", () => {
         source: invocationInput.source,
         state: "completed",
         surface: "internal",
+      });
+      await completeAgentInvocation({
+        invocationId: first.invocation.invocationId,
+        result: "Remembered answer",
+        status: "completed",
       });
       const next = await createAndEnqueueAgentInvocation(
         {

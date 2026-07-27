@@ -11,6 +11,7 @@ import {
   type AgentInvocationStatus,
   type CreateAgentInvocationInput,
 } from "./types";
+import { AgentInvocationBusyError } from "./errors";
 
 const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
 const TERMINAL_AGENT_INVOCATION_STATUSES = [
@@ -181,6 +182,27 @@ export async function getActiveAgentInvocationForConversation(
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
+async function getNonTerminalAgentInvocationForConversation(
+  childConversationId: string,
+): Promise<AgentInvocation | undefined> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.childConversationId, childConversationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
+    .orderBy(asc(juniorAgentInvocations.createdAt))
+    .limit(1);
+  return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
 /**
  * Create or replay one invocation, reusing named child conversations and
  * keeping ephemeral child identities scoped to the invocation.
@@ -194,7 +216,12 @@ export async function createAgentInvocation(
     input.parentConversationId,
     input.idempotencyKey,
   );
-  const lockName = `${CREATE_LOCK_PREFIX}:${invocationId}`;
+  const childConversationId = input.agentName
+    ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
+    : getEphemeralAgentConversationId(invocationId);
+  const lockName = `${CREATE_LOCK_PREFIX}:${
+    input.agentName ? childConversationId : invocationId
+  }`;
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
@@ -206,9 +233,6 @@ export async function createAgentInvocation(
       return { invocation: existing, status: "existing" };
     }
 
-    const childConversationId = input.agentName
-      ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
-      : getEphemeralAgentConversationId(invocationId);
     await getConversationStore().createChild({
       childConversationId,
       parentConversationId: input.parentConversationId,
@@ -242,6 +266,11 @@ export async function createAgentInvocation(
         throw new Error(
           `Named agent binding policy changed for ${input.agentName}`,
         );
+      }
+      if (
+        await getNonTerminalAgentInvocationForConversation(childConversationId)
+      ) {
+        throw new AgentInvocationBusyError(input.agentName);
       }
     }
 

@@ -64,6 +64,10 @@ import {
 } from "@/chat/task-execution/vercel-callback";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import {
+  bindAgentSpawnControl,
+  createAgentInvocationCreator,
+} from "@/chat/agent-invocations/spawn";
+import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
 } from "@/chat/plugins/task-callback";
@@ -632,7 +636,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
+  const conversationWorkQueue = getVercelConversationWorkQueue();
+  const agentInvocationCreator = createAgentInvocationCreator({
+    queue: conversationWorkQueue,
+  });
   const agentRunner = createAgentRunner(executeAgentRun, {
+    bindSpawnAgent: (request) =>
+      bindAgentSpawnControl(request, agentInvocationCreator),
     tracePropagation,
   });
   const runtimeServiceOverrides = {

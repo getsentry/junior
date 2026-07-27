@@ -31,6 +31,7 @@ import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
+import type { AgentInvocationStatus } from "@/chat/agent-invocations/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -60,6 +61,30 @@ export interface AgentRunSteeringMessage {
   text: string;
   timestampMs?: number;
   userAttachments?: AgentRunAttachment[];
+}
+
+/** Model-safe input for one asynchronously delegated child-agent task. */
+export interface AgentSpawnInput {
+  name?: string;
+  reasoningLevel?: TurnReasoningLevel;
+  task: string;
+}
+
+/** Stable projection returned after a child-agent task is durably scheduled. */
+export interface AgentSpawnResult {
+  agentName?: string;
+  childConversationId: string;
+  invocationId: string;
+  replayed: boolean;
+  status: AgentInvocationStatus;
+}
+
+/** Runtime-bound child-agent capability exposed to model-facing tool wiring. */
+export interface AgentSpawnControl {
+  execute(
+    input: AgentSpawnInput,
+    options: { signal?: AbortSignal; toolCallId: string },
+  ): Promise<AgentSpawnResult>;
 }
 
 /** Carries the user-visible content and prior transcript for one agent-run slice. */
@@ -101,6 +126,8 @@ export interface AgentRunRouting {
 
 /** Carries execution limits and dependency overrides for one run slice. */
 export interface AgentRunPolicy {
+  /** Disable child-agent spawning for runs that are already delegated work. */
+  agentSpawning?: "disabled";
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
@@ -165,6 +192,8 @@ export class RetryableDeliveryError extends Error {
 
 /** Carries durable-worker ports that commit or update resumable run state. */
 export interface AgentRunDurability {
+  /** Schedule delegated work with authority bound by the active parent run. */
+  spawnAgent?: AgentSpawnControl;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
@@ -228,16 +257,20 @@ export function assertRunRoutingConsistency(
     if (source.teamId !== destination.teamId) {
       throw new TypeError("Slack source and destination teams do not match");
     }
-  } else if (
-    source.platform === "local" &&
-    destination.platform === "local" &&
-    request.routing.surface !== "internal" &&
-    (source.conversationId !== request.conversationId ||
-      destination.conversationId !== request.conversationId)
-  ) {
-    throw new TypeError(
-      "Local source, destination, and run conversation IDs do not match",
-    );
+  } else if (source.platform === "local" && destination.platform === "local") {
+    if (source.conversationId !== destination.conversationId) {
+      throw new TypeError(
+        "Local source and destination conversation IDs do not match",
+      );
+    }
+    if (
+      request.routing.surface !== "internal" &&
+      destination.conversationId !== request.conversationId
+    ) {
+      throw new TypeError(
+        "Local source, destination, and run conversation IDs do not match",
+      );
+    }
   }
 
   const actor = request.routing.dispatch?.actor ?? request.routing.actor;

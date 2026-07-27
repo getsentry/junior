@@ -42,8 +42,12 @@ by the parent-facing runtime.
 
 ## Current Boundary
 
-This slice provides durable storage and execution plumbing. It does not yet
-expose model tools for creating or waiting on invocations, inject child results
-into a parent turn, support recursive children, or implement cancellation.
-Those behaviors should build on the invocation record rather than introducing
-another scheduler or execution loop.
+`spawnAgent` exposes durable creation to a parent agent. The tool receives only
+the delegated task, optional child name, and optional reasoning level. The
+runtime derives actor, credentials, destination, visibility, source, parent
+conversation, and idempotency from the active tool call.
+
+This slice does not yet expose result recovery, inject child results into a
+parent turn, support recursive children, or implement cancellation. Those
+behaviors should build on the invocation record rather than introducing another
+scheduler or execution loop.

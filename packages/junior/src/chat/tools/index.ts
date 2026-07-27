@@ -14,6 +14,7 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
@@ -153,6 +154,10 @@ export function createTools(
 
   if (context.handoff) {
     tools.handoff = createHandoffTool(context.handoff);
+  }
+
+  if (context.spawnAgent) {
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
   }
 
   if (context.mcpToolManager) {

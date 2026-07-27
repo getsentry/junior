@@ -35,4 +35,20 @@ describe("agent run routing", () => {
       "Local source, destination, and run conversation IDs do not match",
     );
   });
+
+  it("rejects contradictory local parent routing for internal child work", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "local:test:child",
+        routing: {
+          destination: {
+            conversationId: "local:test:other-parent",
+            platform: "local",
+          },
+          source: createLocalSource("local:test:parent"),
+          surface: "internal",
+        },
+      }),
+    ).toThrow("Local source and destination conversation IDs do not match");
+  });
 });

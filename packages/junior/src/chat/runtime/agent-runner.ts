@@ -1,4 +1,4 @@
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRunRequest, AgentSpawnControl } from "@/chat/agent/request";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
@@ -10,21 +10,40 @@ export interface AgentRunner {
 /** Adapt the Pi-facing agent-run executor behind the runtime-owned runner seam. */
 export function createAgentRunner(
   run: AgentRunner["run"],
-  options?: { tracePropagation?: SandboxEgressTracePropagationConfig },
+  options?: {
+    bindSpawnAgent?: (
+      request: AgentRunRequest,
+    ) => AgentSpawnControl | undefined;
+    tracePropagation?: SandboxEgressTracePropagationConfig;
+  },
 ): AgentRunner {
   const tracePropagation = options?.tracePropagation;
-  if (!tracePropagation) {
+  const bindSpawnAgent = options?.bindSpawnAgent;
+  if (!tracePropagation && !bindSpawnAgent) {
     return { run };
   }
   return {
-    run: async (request) =>
-      await run({
+    run: async (request) => {
+      const spawnAgent =
+        bindSpawnAgent && request.policy?.agentSpawning !== "disabled"
+          ? bindSpawnAgent(request)
+          : undefined;
+      return await run({
         ...request,
         policy: {
           ...request.policy,
           sandboxTracePropagation:
             request.policy?.sandboxTracePropagation ?? tracePropagation,
         },
-      }),
+        ...(spawnAgent
+          ? {
+              durability: {
+                ...request.durability,
+                spawnAgent,
+              },
+            }
+          : {}),
+      });
+    },
   };
 }

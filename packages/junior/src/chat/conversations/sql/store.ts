@@ -50,6 +50,18 @@ interface DestinationUpsert {
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
+/** Serialize one conversation's durable mutations inside a SQL transaction. */
+export async function withConversationMutationLock<T>(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  return await executor.withLock(
+    `${CONVERSATION_MUTATION_LOCK_PREFIX}:${conversationId}`,
+    async () => await executor.transaction(callback),
+  );
+}
+
 function now(): number {
   return Date.now();
 }
@@ -486,42 +498,48 @@ export class SqlStore implements ConversationStore {
     source?: ConversationSource;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
-    await this.withConversationMutation(args.childConversationId, async () => {
-      const existing = await this.get({
-        conversationId: args.childConversationId,
-      });
-      if (existing) {
-        if (
-          existing.lineage?.parentConversationId !== args.parentConversationId
-        ) {
-          throw new Error(
-            `Conversation lineage changed for ${args.childConversationId}`,
-          );
-        }
-        return;
-      }
-      const parent = await this.get({
-        conversationId: args.parentConversationId,
-      });
-      if (!parent) {
-        throw new Error(
-          `Conversation parent is missing for ${args.childConversationId}`,
-        );
-      }
-      if (parent.lineage) {
-        throw new Error("Recursive agent delegation is not enabled");
-      }
-      const child: Conversation = {
-        ...emptyConversation({
-          conversationId: args.childConversationId,
-          nowMs,
-          source: args.source,
-        }),
-        lineage: {
-          parentConversationId: args.parentConversationId,
+    await this.withConversationMutation(args.parentConversationId, async () => {
+      await this.withConversationMutation(
+        args.childConversationId,
+        async () => {
+          const existing = await this.get({
+            conversationId: args.childConversationId,
+          });
+          if (existing) {
+            if (
+              existing.lineage?.parentConversationId !==
+              args.parentConversationId
+            ) {
+              throw new Error(
+                `Conversation lineage changed for ${args.childConversationId}`,
+              );
+            }
+            return;
+          }
+          const parent = await this.get({
+            conversationId: args.parentConversationId,
+          });
+          if (!parent) {
+            throw new Error(
+              `Conversation parent is missing for ${args.childConversationId}`,
+            );
+          }
+          if (parent.lineage) {
+            throw new Error("Recursive agent delegation is not enabled");
+          }
+          const child: Conversation = {
+            ...emptyConversation({
+              conversationId: args.childConversationId,
+              nowMs,
+              source: args.source,
+            }),
+            lineage: {
+              parentConversationId: args.parentConversationId,
+            },
+          };
+          await this.upsertConversation({ conversation: child });
         },
-      };
-      await this.upsertConversation({ conversation: child });
+      );
     });
   }
 
@@ -746,9 +764,10 @@ export class SqlStore implements ConversationStore {
     conversationId: string,
     callback: () => Promise<T>,
   ): Promise<T> {
-    return await this.executor.withLock(
-      `${CONVERSATION_MUTATION_LOCK_PREFIX}:${conversationId}`,
-      async () => await this.executor.transaction(callback),
+    return await withConversationMutationLock(
+      this.executor,
+      conversationId,
+      callback,
     );
   }
 

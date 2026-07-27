@@ -265,6 +265,9 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(args.durability.spawnAgent
+      ? { spawnAgent: args.durability.spawnAgent }
+      : {}),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
   const toolDestination = toolInvocationDestination(args.routing);
