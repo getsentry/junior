@@ -26,13 +26,47 @@ const CONVERSATION_EVENTS_TOOL_SOURCE = {
 
 const knownEventTypeSchema = z.enum(KNOWN_CONVERSATION_EVENT_TYPES);
 
+const projectedEventSchema = z
+  .object({
+    seq: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Stable event position; use it for pagination bounds."),
+    history_version: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe(
+        "Model-history generation. It increments when handoff or compaction replaces active model context.",
+      ),
+    created_at: z.iso.datetime().describe("When the event was recorded."),
+    idempotency_key: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Retry-stable event identity, when one was assigned."),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe(
+        "Event payload. The type field identifies the event; replacement-history events report replacement_history_count instead of replaying the full model context.",
+      ),
+  })
+  .strict();
+
 const queryConversationEventsOutputSchema = juniorToolResultSchema.extend({
   conversation_id: z.string().min(1),
-  count: z.number().int().nonnegative(),
-  events: z.array(z.unknown()),
-  has_older: z.boolean(),
-  has_newer: z.boolean(),
-  types: z.array(knownEventTypeSchema).optional(),
+  events: z.array(projectedEventSchema),
+  has_older: z
+    .boolean()
+    .describe(
+      "Whether matching events exist before this page; request them with before_seq set to the first returned seq.",
+    ),
+  has_newer: z
+    .boolean()
+    .describe(
+      "Whether matching events exist after this page; request them with after_seq set to the last returned seq.",
+    ),
 });
 
 interface QueryAccessScope {
@@ -169,11 +203,9 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
         ok: true,
         status: "success" as const,
         conversation_id: conversationId,
-        count: events.length,
         events,
         has_older: page.hasOlder,
         has_newer: page.hasNewer,
-        ...(types ? { types: [...types] } : {}),
       };
     },
   });
@@ -306,18 +338,15 @@ function assertCanQueryConversationEvents(args: {
   );
 }
 
-function projectEventsForTool(
-  page: ConversationEventPage,
-): Array<Record<string, unknown>> {
+function projectEventsForTool(page: ConversationEventPage) {
   return page.events.map(projectEvent);
 }
 
-function projectEvent(event: ConversationEvent): Record<string, unknown> {
+function projectEvent(event: ConversationEvent) {
   const data = stripReplacementHistory(event.data);
   return {
     seq: event.seq,
     history_version: event.historyVersion,
-    schema_version: event.schemaVersion,
     created_at: new Date(event.createdAtMs).toISOString(),
     ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : {}),
     data,
@@ -337,7 +366,6 @@ function stripReplacementHistory(
     } & Record<string, unknown>;
     return {
       ...rest,
-      replacement_history_omitted: true,
       replacement_history_count: Array.isArray(
         (data as { replacementHistory?: unknown }).replacementHistory,
       )

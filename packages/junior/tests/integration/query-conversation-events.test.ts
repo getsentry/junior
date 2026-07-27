@@ -115,7 +115,6 @@ describe("queryConversationEvents", () => {
       ok: true,
       status: "success",
       conversation_id: CURRENT_CONVERSATION_ID,
-      count: 2,
       has_older: false,
       has_newer: false,
       events: [
@@ -124,7 +123,6 @@ describe("queryConversationEvents", () => {
           seq: 2,
           data: {
             type: "handoff",
-            replacement_history_omitted: true,
             replacement_history_count: 1,
           },
         },
@@ -164,7 +162,9 @@ describe("queryConversationEvents", () => {
         conversation_id: publicConversationId,
         types: ["turn_started"],
       }),
-    ).resolves.toMatchObject({ count: 1, types: ["turn_started"] });
+    ).resolves.toMatchObject({
+      events: [{ data: { type: "turn_started" } }],
+    });
 
     const privateConversationId = "slack:D999:1700000000.300000";
     await recordSlackConversation({
