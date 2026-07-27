@@ -8,12 +8,7 @@
  */
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import {
-  createSlackSource,
-  type Destination,
-  type DestinationVisibility,
-  type Source,
-} from "@sentry/junior-plugin-api";
+import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import {
   modelIdForProfile,
@@ -45,7 +40,6 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
-  type AgentRunRouting,
   type AgentRunSteeringMessage,
 } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -132,7 +126,6 @@ import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
-  type AgentTurnSurface,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import { getConversationStore } from "@/chat/db";
@@ -156,7 +149,10 @@ import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type {
+  DispatchTurnContext,
+  DispatchTurnResult,
+} from "@/chat/agent-dispatch/types";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -438,29 +434,6 @@ interface ReplyExecutorDeps {
   services: ReplyExecutorServices;
 }
 
-export type TurnExecutionOutcome =
-  | "awaiting_resume"
-  | "blocked"
-  | "completed"
-  | "failed";
-
-export interface TurnExecutionResult {
-  errorMessage?: string;
-  outcome: TurnExecutionOutcome;
-}
-
-export interface TurnExecutionContext {
-  authorizationFlowMode?: "disabled";
-  channelConfiguration?: ChannelConfigurationService;
-  credentialContext: CredentialContext;
-  destinationVisibility: DestinationVisibility;
-  dispatch?: AgentRunRouting["dispatch"];
-  skipProviderDefaultConfig?: boolean;
-  source: Source;
-  surface: AgentTurnSurface;
-  turnId: string;
-}
-
 /** Build the shared reply handler that prepares, advances, and commits a turn. */
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
@@ -474,11 +447,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (result: TurnExecutionResult) => void;
+      onTurnOutcome?: (result: DispatchTurnResult) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
-      execution?: TurnExecutionContext;
+      execution?: DispatchTurnContext;
       skipBackfill?: boolean;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
@@ -1604,7 +1577,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             finalizedFailureEventId = finalized.eventId;
             await deliverAssistantMessage({ text: reply.text });
           }
-          const turnResult: TurnExecutionResult =
+          const turnResult: DispatchTurnResult =
             reply.diagnostics.outcome === "success"
               ? { outcome: "completed" }
               : {

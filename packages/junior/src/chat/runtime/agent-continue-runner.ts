@@ -77,16 +77,14 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
-import {
-  getDispatchInputMessageId,
-  getLegacyDispatchInputMessageId,
-} from "@/chat/agent-dispatch/store";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
 /** Runtime ports for agent continuation scheduling. */
 export interface AgentContinueRunnerOptions {
   agentRunner: AgentRunner;
+  /** Exact persisted input ids accepted for a non-interactive continuation. */
+  inputMessageIds?: readonly string[];
   routingContext?: Pick<
     AgentRunRouting,
     | "actor"
@@ -372,8 +370,7 @@ export async function continueSlackAgentRun(
           ? conversation.messages.find(
               (message) =>
                 message.role === "user" &&
-                (message.id === getDispatchInputMessageId(dispatchId) ||
-                  message.id === getLegacyDispatchInputMessageId(dispatchId)),
+                options.inputMessageIds?.includes(message.id),
             )
           : undefined;
         const userMessage =

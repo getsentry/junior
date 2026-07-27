@@ -114,7 +114,7 @@ const dispatchRecordSchema = z
     }
   });
 
-// TODO(v0.115.0): Remove legacy dispatch execution fields after records written
+// TODO(v0.116.0): Remove legacy dispatch execution fields after records written
 // by the callback-owned lifecycle have expired.
 const storedDispatchRecordSchema = dispatchRecordSchema.extend({
   attempt: z.number().int().nonnegative().optional(),
@@ -134,7 +134,7 @@ function dispatchLockKey(id: string): string {
 }
 
 function pendingDispatchMailboxAppendIndexKey(): string {
-  // TODO(v0.115.0): Rename after the old callback-owned incomplete index has
+  // TODO(v0.116.0): Rename after the old callback-owned incomplete index has
   // aged out. Reusing the key preserves pending pre-cutover mailbox appends.
   return `${DISPATCH_PREFIX}:incomplete`;
 }
@@ -200,7 +200,7 @@ function parseStoredDispatchRecord(value: unknown):
   };
 }
 
-/** Return the isolated persisted conversation key for one dispatch run. */
+/** Return the isolated durable conversation id for one dispatch. */
 export function getDispatchConversationId(
   dispatch: Pick<DispatchRecord, "id">,
 ): string {
@@ -212,12 +212,26 @@ export function getDispatchInputMessageId(dispatchId: string): string {
   return `agent-dispatch:${dispatchId}`;
 }
 
-/** Return the synthetic input id written by the pre-conversation-work runner. */
+/**
+ * Return the synthetic input id written by the pre-conversation-work runner.
+ *
+ * TODO(v0.116.0): Remove after v0.114 dispatch sessions can no longer resume.
+ */
 export function getLegacyDispatchInputMessageId(dispatchId: string): string {
   return `dispatch:${dispatchId}:user`;
 }
 
-/** Give dispatch slices stable turn ids for resumability and trace correlation. */
+/** Return every persisted input id accepted while resuming one dispatch. */
+export function getDispatchInputMessageIds(
+  dispatchId: string,
+): readonly string[] {
+  return [
+    getDispatchInputMessageId(dispatchId),
+    getLegacyDispatchInputMessageId(dispatchId),
+  ];
+}
+
+/** Return the stable turn id used by every run of one dispatch. */
 export function getDispatchTurnId(dispatchId: string): string {
   return `dispatch:${dispatchId}`;
 }

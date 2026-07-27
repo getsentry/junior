@@ -12,7 +12,11 @@ interface AgentDispatchHandlerOptions {
   conversationWorkQueue: ConversationWorkQueue;
 }
 
-/** Convert a legacy authenticated dispatch callback into conversation work. */
+/**
+ * Convert a legacy authenticated dispatch callback into conversation work.
+ *
+ * TODO(v0.116.0): Remove with the v0.114 callback verification route.
+ */
 export async function POST(
   request: Request,
   waitUntil: WaitUntilFn,

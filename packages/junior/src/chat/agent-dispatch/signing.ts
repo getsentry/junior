@@ -42,7 +42,7 @@ function timingSafeMatch(expected: string, actual: string): boolean {
 /**
  * Verify callbacks emitted before dispatches moved to conversation work.
  *
- * TODO(v0.115.0): Remove the legacy callback route after v0.114.x callbacks
+ * TODO(v0.116.0): Remove the legacy callback route after v0.114.x callbacks
  * can no longer arrive.
  */
 export async function verifyDispatchCallbackRequest(

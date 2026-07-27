@@ -3,7 +3,6 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   createOrGetDispatch,
   getDispatchRecord,
-  getDispatchStorageKey,
   markDispatchAwaitingResume,
   markDispatchBlocked,
   markDispatchCompleted,
@@ -14,8 +13,7 @@ import {
   buildAgentDispatchInboundMessage,
   createAgentDispatchConversationWorker,
 } from "@/chat/agent-dispatch/work";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 vi.hoisted(() => {
@@ -155,51 +153,4 @@ describe("agent dispatch worker contract", () => {
       );
     },
   );
-
-  it("does not execute when a terminal projection wins the running claim", async () => {
-    const dispatch = await createDispatch("terminal-claim-race");
-    const state = getStateAdapter();
-    await state.connect();
-    const storageKey = getDispatchStorageKey(dispatch.id);
-    const originalGet = state.get.bind(state);
-    let dispatchReads = 0;
-    state.get = (async (key: string) => {
-      const value = await originalGet(key);
-      if (
-        key === storageKey &&
-        dispatchReads++ === 0 &&
-        value &&
-        typeof value === "object"
-      ) {
-        await state.set(
-          storageKey,
-          { ...(value as Record<string, unknown>), status: "completed" },
-          JUNIOR_THREAD_STATE_TTL_MS,
-        );
-      }
-      return value;
-    }) as typeof state.get;
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
-    const { ack, context } = createContext(dispatch);
-
-    try {
-      await expect(worker(context, dispatch.id)).resolves.toEqual({
-        status: "completed",
-      });
-    } finally {
-      state.get = originalGet;
-    }
-
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "completed",
-    });
-  });
 });

@@ -1,9 +1,9 @@
 import { Message, ThreadImpl } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type {
-  TurnExecutionContext,
-  TurnExecutionResult,
-} from "@/chat/runtime/reply-executor";
+  DispatchTurnContext,
+  DispatchTurnResult,
+} from "@/chat/agent-dispatch/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import {
@@ -11,10 +11,7 @@ import {
   getDispatchInputMessageId,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
-import {
-  buildDispatchRoutingContext,
-  type DispatchTurnResult,
-} from "@/chat/agent-dispatch/work";
+import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 
 interface DispatchReplyToThread {
   (
@@ -23,9 +20,9 @@ interface DispatchReplyToThread {
     options: {
       ack?: () => Promise<void>;
       destination: DispatchRecord["destination"];
-      execution: TurnExecutionContext;
+      execution: DispatchTurnContext;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (result: TurnExecutionResult) => void;
+      onTurnOutcome?: (result: DispatchTurnResult) => void;
       shouldYield?: () => boolean;
       skipBackfill?: boolean;
     },
@@ -36,7 +33,7 @@ interface DispatchReplyToThread {
 export function createSlackDispatchTurnRunner(options: {
   getChannelConfiguration: (
     channelId: string,
-  ) => TurnExecutionContext["channelConfiguration"];
+  ) => DispatchTurnContext["channelConfiguration"];
   getSlackAdapter: () => SlackAdapter;
   replyToThread: DispatchReplyToThread;
 }) {
@@ -95,7 +92,7 @@ export function createSlackDispatchTurnRunner(options: {
       isSubscribedContext: true,
     });
 
-    let outcome: TurnExecutionResult["outcome"] | undefined;
+    let outcome: DispatchTurnResult["outcome"] | undefined;
     let errorMessage: string | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);

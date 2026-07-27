@@ -22,7 +22,6 @@ import {
 } from "@/chat/state/turn-session";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
-import type { AgentRunRouting } from "@/chat/agent/request";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
@@ -46,7 +45,11 @@ import {
   markDispatchFailed,
   markDispatchRunning,
 } from "./store";
-import type { DispatchRecord } from "./types";
+import type {
+  DispatchRecord,
+  DispatchTurnContext,
+  DispatchTurnResult,
+} from "./types";
 
 const agentDispatchMailboxMetadataSchema = z
   .object({
@@ -57,30 +60,19 @@ const agentDispatchMailboxMetadataSchema = z
 
 export const AGENT_DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** Provider-neutral outcome projected from the shared turn runtime. */
-export interface DispatchTurnResult {
-  errorMessage?: string;
-  outcome?: "awaiting_resume" | "blocked" | "completed" | "failed";
-  resultMessageTs?: string;
-}
-
 interface DurableDispatchTurnResult extends DispatchTurnResult {
   hasResumableRun?: boolean;
 }
 
+type DispatchRoutingContext = Pick<
+  DispatchTurnContext,
+  "credentialContext" | "destinationVisibility" | "dispatch" | "surface"
+> & { actor: DispatchRecord["actor"] };
+
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
 export function buildDispatchRoutingContext(
   dispatch: DispatchRecord,
-): Required<
-  Pick<
-    AgentRunRouting,
-    | "actor"
-    | "credentialContext"
-    | "destinationVisibility"
-    | "dispatch"
-    | "surface"
-  >
-> {
+): DispatchRoutingContext {
   return {
     actor: dispatch.actor,
     credentialContext: {
@@ -263,7 +255,7 @@ export async function resolveAgentDispatchId(
     }
   }
 
-  // TODO(v0.115.0): Remove conversation-id recovery for session records
+  // TODO(v0.116.0): Remove conversation-id recovery for session records
   // written before dispatchId became durable active-turn state.
   const prefix = "agent-dispatch:";
   if (!context.conversationId.startsWith(prefix)) {
@@ -275,6 +267,30 @@ export async function resolveAgentDispatchId(
     return undefined;
   }
   return isTerminalDispatchStatus(dispatch.status) ? undefined : dispatch.id;
+}
+
+/**
+ * Route leased work through dispatch execution when durable metadata owns it.
+ *
+ * The fallback retains ownership of every other conversation source.
+ */
+export function createAgentDispatchWorkRouter(options: {
+  dispatchWorker: (
+    context: ConversationWorkerContext,
+    dispatchId: string,
+  ) => Promise<ConversationWorkerResult>;
+  fallbackWorker: (
+    context: ConversationWorkerContext,
+  ) => Promise<ConversationWorkerResult>;
+}) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const dispatchId = await resolveAgentDispatchId(context);
+    return dispatchId
+      ? await options.dispatchWorker(context, dispatchId)
+      : await options.fallbackWorker(context);
+  };
 }
 
 async function readDispatchTurnResult(

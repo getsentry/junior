@@ -60,13 +60,16 @@ import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
-  resolveAgentDispatchId,
+  createAgentDispatchWorkRouter,
 } from "@/chat/agent-dispatch/work";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchInputMessageIds,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -2048,6 +2051,7 @@ async function processEvents(args: {
           `agent-dispatch:${dispatch.id}`,
           {
             agentRunner,
+            inputMessageIds: getDispatchInputMessageIds(dispatch.id),
             routingContext: buildDispatchRoutingContext(dispatch),
             scheduleAgentContinue: async (request) => {
               await scheduleAgentContinue(request, {
@@ -2078,12 +2082,10 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: async (context) => {
-            const dispatchId = await resolveAgentDispatchId(context);
-            return dispatchId
-              ? await dispatchWorker(context, dispatchId)
-              : await slackWorker(context);
-          },
+          run: createAgentDispatchWorkRouter({
+            dispatchWorker,
+            fallbackWorker: slackWorker,
+          }),
           state: env.stateAdapter,
         },
       );

@@ -8,6 +8,7 @@ import {
   createOrGetDispatch,
   getDispatchConversationId,
   getDispatchInputMessageId,
+  getDispatchInputMessageIds,
   getLegacyDispatchInputMessageId,
   getDispatchRecord,
   getDispatchStorageKey,
@@ -18,12 +19,12 @@ import {
   buildDispatchRoutingContext,
   buildAgentDispatchInboundMessage,
   createAgentDispatchConversationWorker,
+  createAgentDispatchWorkRouter,
   enqueueAgentDispatch,
 } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
-import { createConversationWorkRouter } from "@/chat/app/production";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -50,6 +51,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { agentTurnSessionKey } from "@/chat/state/turn-session-keys";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -60,6 +62,20 @@ const destination = {
   teamId: "T123",
   channelId: "C123",
 } as const;
+
+function createDispatchRuntime(
+  replyExecutor: NonNullable<JuniorRuntimeServiceOverrides["replyExecutor"]>,
+) {
+  return createSlackRuntime({
+    getSlackAdapter: () =>
+      createJuniorSlackAdapter({
+        botToken: "xoxb-test",
+        botUserId: "U0BOT",
+        signingSecret: "test-signing-secret",
+      }),
+    services: { replyExecutor },
+  });
+}
 
 async function createDispatch(
   idempotencyKey: string,
@@ -161,17 +177,7 @@ describe("agent dispatch conversation work", () => {
         },
       });
     });
-    const adapter = createJuniorSlackAdapter({
-      botToken: "xoxb-test",
-      botUserId: "U0BOT",
-      signingSecret: "test-signing-secret",
-    });
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () => adapter,
-      services: {
-        replyExecutor: { agentRunner: { run } },
-      },
-    });
+    const runtime = createDispatchRuntime({ agentRunner: { run } });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: vi.fn(),
       runTurn: runtime.runDispatchTurn,
@@ -179,9 +185,9 @@ describe("agent dispatch conversation work", () => {
     const slackWorker = vi.fn(async () => ({
       status: "completed" as const,
     }));
-    const route = createConversationWorkRouter({
+    const route = createAgentDispatchWorkRouter({
       dispatchWorker,
-      slackWorker,
+      fallbackWorker: slackWorker,
     });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
@@ -244,23 +250,15 @@ describe("agent dispatch conversation work", () => {
         });
       }),
     };
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () =>
-        createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: "U0BOT",
-          signingSecret: "test-signing-secret",
-        }),
-      services: {
-        replyExecutor: { agentRunner },
-      },
-    });
-    const route = createConversationWorkRouter({
+    const runtime = createDispatchRuntime({ agentRunner });
+    const route = createAgentDispatchWorkRouter({
       dispatchWorker: createAgentDispatchConversationWorker({
         resumeTurn: vi.fn(),
         runTurn: runtime.runDispatchTurn,
       }),
-      slackWorker: vi.fn(async () => ({ status: "completed" as const })),
+      fallbackWorker: vi.fn(async () => ({
+        status: "completed" as const,
+      })),
     });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
@@ -415,17 +413,7 @@ describe("agent dispatch conversation work", () => {
     );
     await persistConversationMessages({ conversation, conversationId });
     const agentRunner = { run: vi.fn() };
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () =>
-        createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: "U0BOT",
-          signingSecret: "test-signing-secret",
-        }),
-      services: {
-        replyExecutor: { agentRunner },
-      },
-    });
+    const runtime = createDispatchRuntime({ agentRunner });
     const worker = createAgentDispatchConversationWorker({
       resumeTurn: vi.fn(),
       runTurn: runtime.runDispatchTurn,
@@ -528,6 +516,7 @@ describe("agent dispatch conversation work", () => {
           getDispatchConversationId(_dispatch),
           {
             agentRunner,
+            inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
             routingContext: buildDispatchRoutingContext(_dispatch),
           },
           { shouldYield: hooks.shouldYield },
@@ -570,26 +559,16 @@ describe("agent dispatch conversation work", () => {
 
   it("projects a canvas recovery as a blocked dispatch", async () => {
     const dispatch = await createDispatch("auth-projection-lag");
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () =>
-        createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: "U0BOT",
-          signingSecret: "test-signing-secret",
+    const runtime = createDispatchRuntime({
+      agentRunner: {
+        run: vi.fn(async (request) => {
+          await request.durability.onInputCommitted?.();
+          await request.durability.onArtifactStateUpdated?.({
+            lastCanvasId: "F_DISPATCH_CANVAS",
+            lastCanvasUrl: "https://slack.example/docs/T/F_DISPATCH_CANVAS",
+          });
+          throw new AuthorizationFlowDisabledError("plugin", "github");
         }),
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: vi.fn(async (request) => {
-              await request.durability.onInputCommitted?.();
-              await request.durability.onArtifactStateUpdated?.({
-                lastCanvasId: "F_DISPATCH_CANVAS",
-                lastCanvasUrl: "https://slack.example/docs/T/F_DISPATCH_CANVAS",
-              });
-              throw new AuthorizationFlowDisabledError("plugin", "github");
-            }),
-          },
-        },
       },
     });
 
@@ -645,41 +624,31 @@ describe("agent dispatch conversation work", () => {
 
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () =>
-        createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: "U0BOT",
-          signingSecret: "test-signing-secret",
+    const runtime = createDispatchRuntime({
+      agentRunner: {
+        run: vi.fn(async (request) => {
+          await request.durability.onInputCommitted?.();
+          return completedAgentRun({
+            text: "",
+            piMessages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: dispatch.input }],
+                timestamp: dispatch.createdAtMs,
+              },
+            ],
+            diagnostics: {
+              assistantMessageCount: 0,
+              errorMessage: "Model provider quota exhausted",
+              modelId: "test-model",
+              outcome: "provider_error",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: false,
+            },
+          });
         }),
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: vi.fn(async (request) => {
-              await request.durability.onInputCommitted?.();
-              return completedAgentRun({
-                text: "",
-                piMessages: [
-                  {
-                    role: "user",
-                    content: [{ type: "text", text: dispatch.input }],
-                    timestamp: dispatch.createdAtMs,
-                  },
-                ],
-                diagnostics: {
-                  assistantMessageCount: 0,
-                  errorMessage: "Model provider quota exhausted",
-                  modelId: "test-model",
-                  outcome: "provider_error",
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: false,
-                },
-              });
-            }),
-          },
-        },
       },
     });
     await expect(
@@ -816,20 +785,10 @@ describe("agent dispatch conversation work", () => {
         });
       }),
     };
-    const runtime = createSlackRuntime({
-      getSlackAdapter: () =>
-        createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: "U0BOT",
-          signingSecret: "test-signing-secret",
-        }),
-      services: {
-        replyExecutor: {
-          agentRunner,
-          scheduleAgentContinue: async (request) => {
-            await scheduleAgentContinue(request, { queue, state });
-          },
-        },
+    const runtime = createDispatchRuntime({
+      agentRunner,
+      scheduleAgentContinue: async (request) => {
+        await scheduleAgentContinue(request, { queue, state });
       },
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
@@ -838,6 +797,7 @@ describe("agent dispatch conversation work", () => {
           `agent-dispatch:${_dispatch.id}`,
           {
             agentRunner,
+            inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
             routingContext: buildDispatchRoutingContext(_dispatch),
             scheduleAgentContinue: async (request) => {
               await scheduleAgentContinue(request, { queue, state });
@@ -849,9 +809,9 @@ describe("agent dispatch conversation work", () => {
       runTurn: runtime.runDispatchTurn,
     });
     const slackWorker = vi.fn(async () => ({ status: "completed" as const }));
-    const route = createConversationWorkRouter({
+    const route = createAgentDispatchWorkRouter({
       dispatchWorker,
-      slackWorker,
+      fallbackWorker: slackWorker,
     });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
