@@ -87,6 +87,11 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("searchConversationHistory");
+    expect(tools).toHaveProperty("queryConversationEvents");
+    expect(tools.queryConversationEvents?.exposure).toBe("deferred");
+    expect(tools.queryConversationEvents?.source?.id).toBe(
+      "conversation-events",
+    );
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -99,11 +104,16 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationHistory");
+    expect(tools).toHaveProperty("queryConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listResourceEventSubscriptions");
     expect(tools.searchConversationHistory?.exposure).toBe("deferred");
     expect(tools.searchConversationHistory?.source?.id).toBe(
       "conversation-history",
+    );
+    expect(tools.queryConversationEvents?.exposure).toBe("deferred");
+    expect(tools.queryConversationEvents?.source?.id).toBe(
+      "conversation-events",
     );
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
     expect(tools.listResourceEventSubscriptions?.exposure).toBe("deferred");
@@ -241,6 +251,7 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).not.toHaveProperty("stopWatchingResources");
+    expect(tools).not.toHaveProperty("queryConversationEvents");
   });
 
   it("registers image generation only when artifact persistence is available", () => {
