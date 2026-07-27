@@ -2,6 +2,64 @@ import { describe, expect, it, vi } from "vitest";
 import { createLocalConversationWork } from "@/chat/local/conversation-work";
 
 describe("local conversation work", () => {
+  it("does not consume a wake before the producer finishes enqueueing it", async () => {
+    let processed = false;
+    const localWork = createLocalConversationWork(async () => {
+      processed = true;
+    });
+
+    await localWork.queue.send({ conversationId: "deferred-start" });
+
+    expect(processed).toBe(false);
+    await localWork.drain();
+    expect(processed).toBe(true);
+  });
+
+  it("deduplicates accepted wakes by idempotency key", async () => {
+    const processed: string[] = [];
+    const localWork = createLocalConversationWork(async (message) => {
+      processed.push(message.conversationId);
+    });
+
+    const [first, replay] = await Promise.all([
+      localWork.queue.send(
+        { conversationId: "replayed" },
+        { idempotencyKey: "same-wake" },
+      ),
+      localWork.queue.send(
+        { conversationId: "replayed" },
+        { idempotencyKey: "same-wake" },
+      ),
+    ]);
+    await localWork.drain();
+
+    expect(replay).toEqual(first);
+    expect(processed).toEqual(["replayed"]);
+  });
+
+  it("runs independent conversation wakes concurrently", async () => {
+    const started = new Set<string>();
+    let release: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const localWork = createLocalConversationWork(async (message) => {
+      started.add(message.conversationId);
+      await blocked;
+    });
+
+    await Promise.all([
+      localWork.queue.send({ conversationId: "first" }),
+      localWork.queue.send({ conversationId: "second" }),
+    ]);
+    const draining = localWork.drain();
+    await vi.waitFor(() => {
+      expect(started).toEqual(new Set(["first", "second"]));
+    });
+    release?.();
+    await draining;
+  });
+
   it("drains accepted work and follow-up wakes", async () => {
     const processed: string[] = [];
     let releaseFirst: (() => void) | undefined;
@@ -42,7 +100,9 @@ describe("local conversation work", () => {
 
     await expect(
       localWork.queue.send({ conversationId: "failed" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      messageId: "local-conversation-work:1",
+    });
     await expect(localWork.drain()).rejects.toThrow("local worker failed");
   });
 });

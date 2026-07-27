@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRunRequest, AgentSpawnResult } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
@@ -194,5 +194,169 @@ export const plugins = {
     });
     expect(requests[1]?.durability?.spawnAgent).toBeUndefined();
     expect(output).toEqual(["child scheduled\n"]);
+  }, 30_000);
+
+  it("runs successive work through the same completed named child", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    const childTasks: string[] = [];
+    const spawns: AgentSpawnResult[] = [];
+    const { getAgentInvocation } =
+      await import("@/chat/agent-invocations/store");
+    executeAgentRunMock.mockImplementation(async (request) => {
+      if (request.policy?.agentSpawning === "disabled") {
+        childTasks.push(request.input.messageText);
+        await request.durability.onInputCommitted?.();
+        return completedAgentRun(
+          successReply(`completed:${request.input.messageText}`),
+        );
+      }
+      const spawnAgent = request.durability.spawnAgent;
+      if (!spawnAgent) {
+        throw new Error("parent run requires named child dependencies");
+      }
+      const first = await spawnAgent.execute(
+        {
+          name: "reused-child",
+          task: "first named task",
+        },
+        { toolCallId: "named-1" },
+      );
+      spawns.push(first);
+      await vi.waitFor(
+        async () => {
+          await expect(
+            getAgentInvocation(first.invocationId),
+          ).resolves.toMatchObject({
+            status: "completed",
+          });
+        },
+        { timeout: 5_000 },
+      );
+      const second = await spawnAgent.execute(
+        {
+          name: "reused-child",
+          task: "second named task",
+        },
+        { toolCallId: "named-2" },
+      );
+      spawns.push(second);
+      await deliverAssistantMessagesForTest(request, [
+        { text: "named work scheduled" },
+      ]);
+      return completedAgentRun(successReply("named work scheduled"));
+    });
+
+    const { runChat } = await import("@/cli/chat");
+    await expect(
+      runChat(
+        ["-p", "reuse one named child"],
+        {
+          error: vi.fn(),
+          input: process.stdin,
+          output: process.stdout,
+          write: vi.fn(),
+        },
+        { pluginSet: null },
+      ),
+    ).resolves.toBe(0);
+
+    expect(spawns).toHaveLength(2);
+    expect(spawns[1]?.childConversationId).toBe(spawns[0]?.childConversationId);
+    expect(spawns[1]?.invocationId).not.toBe(spawns[0]?.invocationId);
+    expect(childTasks).toEqual(["first named task", "second named task"]);
+    const secondSpawn = spawns[1];
+    if (!secondSpawn) {
+      throw new Error("Expected second named spawn");
+    }
+    await expect(
+      getAgentInvocation(secondSpawn.invocationId),
+    ).resolves.toMatchObject({
+      result: "completed:second named task",
+      status: "completed",
+    });
+  }, 30_000);
+
+  it("runs independent spawned children concurrently and drains both", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    const spawns: AgentSpawnResult[] = [];
+    let activeChildren = 0;
+    let maxActiveChildren = 0;
+    let releaseBoth: (() => void) | undefined;
+    const bothStarted = new Promise<void>((resolve) => {
+      releaseBoth = resolve;
+    });
+    executeAgentRunMock.mockImplementation(async (request) => {
+      if (request.policy?.agentSpawning === "disabled") {
+        activeChildren += 1;
+        maxActiveChildren = Math.max(maxActiveChildren, activeChildren);
+        if (activeChildren === 2) {
+          releaseBoth?.();
+        }
+        await bothStarted;
+        await request.durability.onInputCommitted?.();
+        activeChildren -= 1;
+        return completedAgentRun(
+          successReply(`completed:${request.input.messageText}`),
+        );
+      }
+      const spawnAgent = request.durability.spawnAgent;
+      if (!spawnAgent) {
+        throw new Error("parent run requires spawnAgent");
+      }
+      spawns.push(
+        ...(await Promise.all([
+          spawnAgent.execute(
+            { name: "parallel-a", task: "parallel task a" },
+            { toolCallId: "parallel-1" },
+          ),
+          spawnAgent.execute(
+            { name: "parallel-b", task: "parallel task b" },
+            { toolCallId: "parallel-2" },
+          ),
+        ])),
+      );
+      await deliverAssistantMessagesForTest(request, [
+        { text: "parallel work scheduled" },
+      ]);
+      return completedAgentRun(successReply("parallel work scheduled"));
+    });
+
+    const { runChat } = await import("@/cli/chat");
+    const { getAgentInvocation } =
+      await import("@/chat/agent-invocations/store");
+    await expect(
+      runChat(
+        ["-p", "run two children in parallel"],
+        {
+          error: vi.fn(),
+          input: process.stdin,
+          output: process.stdout,
+          write: vi.fn(),
+        },
+        { pluginSet: null },
+      ),
+    ).resolves.toBe(0);
+
+    expect(maxActiveChildren).toBe(2);
+    expect(spawns).toHaveLength(2);
+    expect(spawns[0]?.childConversationId).not.toBe(
+      spawns[1]?.childConversationId,
+    );
+    await expect(
+      Promise.all(
+        spawns.map(
+          async (spawn) => await getAgentInvocation(spawn.invocationId),
+        ),
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        result: "completed:parallel task a",
+        status: "completed",
+      }),
+      expect.objectContaining({
+        result: "completed:parallel task b",
+        status: "completed",
+      }),
+    ]);
   }, 30_000);
 });

@@ -12,14 +12,17 @@ export interface LocalConversationWork {
 /**
  * Run local conversation work in this process and wait for every accepted wake.
  *
- * Delayed and follow-up wakes remain tracked so CLI shutdown cannot abandon
- * child work that was accepted while an earlier wake was running.
+ * Wakes start on a later event-loop turn so their producer can persist the
+ * accepted marker first. Idempotent, delayed, and follow-up wakes remain
+ * tracked so CLI shutdown cannot abandon accepted child work.
  */
 export function createLocalConversationWork(
   processMessage: (message: ConversationQueueMessage) => Promise<void>,
 ): LocalConversationWork {
+  const acceptedWakeIds = new Map<string, string>();
   const pending = new Set<Promise<void>>();
   let firstError: unknown;
+  let nextWakeId = 1;
 
   function schedule(
     message: ConversationQueueMessage,
@@ -28,11 +31,9 @@ export function createLocalConversationWork(
     const delayMs = Math.max(0, options?.delayMs ?? 0);
     let work: Promise<void>;
     work = (async () => {
-      if (delayMs > 0) {
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, delayMs);
-        });
-      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, delayMs);
+      });
       await processMessage(message);
     })()
       .catch((error: unknown) => {
@@ -47,7 +48,20 @@ export function createLocalConversationWork(
   return {
     queue: {
       async send(message, options) {
+        const idempotencyKey = options?.idempotencyKey;
+        const acceptedWakeId = idempotencyKey
+          ? acceptedWakeIds.get(idempotencyKey)
+          : undefined;
+        if (acceptedWakeId) {
+          return { messageId: acceptedWakeId };
+        }
+        const messageId = `local-conversation-work:${nextWakeId}`;
+        nextWakeId += 1;
+        if (idempotencyKey) {
+          acceptedWakeIds.set(idempotencyKey, messageId);
+        }
         schedule(message, options);
+        return { messageId };
       },
     },
     async drain() {
