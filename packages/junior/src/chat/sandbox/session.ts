@@ -719,6 +719,9 @@ export function createSandboxRuntime(
           invalidateSession(session.sessionId);
           return;
         }
+        if (closed || activeSandbox?.session !== session) {
+          return;
+        }
         schedule();
       }, intervalMs);
       keepAliveTimer.unref?.();
