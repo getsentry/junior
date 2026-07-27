@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
+const ORIGINAL_FETCH = globalThis.fetch;
+const closeMock = vi.fn();
+const finishAuthMock = vi.fn();
+const transportOptions: Array<{ fetch?: typeof fetch }> = [];
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -39,6 +43,25 @@ describe("createMcpOAuthClientProvider", () => {
           provider === "demo" ? buildPlugin() : undefined,
       },
     }));
+    vi.doMock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
+      StreamableHTTPClientTransport: class StreamableHTTPClientTransport {
+        constructor(_url: URL, options: { fetch?: typeof fetch } = {}) {
+          transportOptions.push(options);
+        }
+
+        async finishAuth(code: string) {
+          return await finishAuthMock(code, transportOptions.at(-1));
+        }
+
+        async close() {
+          return await closeMock();
+        }
+      },
+    }));
+    closeMock.mockReset();
+    closeMock.mockResolvedValue(undefined);
+    finishAuthMock.mockReset();
+    transportOptions.length = 0;
 
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -48,7 +71,9 @@ describe("createMcpOAuthClientProvider", () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.doUnmock("@/chat/plugins/catalog-runtime");
+    vi.doUnmock("@modelcontextprotocol/sdk/client/streamableHttp.js");
     vi.resetModules();
+    globalThis.fetch = ORIGINAL_FETCH;
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -115,5 +140,68 @@ describe("createMcpOAuthClientProvider", () => {
     await expect(
       getMcpAuthSession(secondProvider.authSessionId),
     ).resolves.toBeUndefined();
+  });
+
+  it("sanitizes and bounds provider errors from the callback exchange", async () => {
+    const secrets = [
+      "https://auth.example.com/authorize?code=authorization-code",
+      "access-token-value",
+      "client-secret-value",
+      "<script>alert('provider')</script>",
+    ];
+    let cancelled = false;
+    const prefix = new TextEncoder().encode(secrets.join(" "));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(prefix);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 502 }),
+    ) as unknown as typeof fetch;
+    finishAuthMock.mockImplementation(
+      async (_code: string, options: { fetch?: typeof fetch } | undefined) => {
+        const response = await options?.fetch?.("https://mcp.example.com/token");
+        const error = new Error(await response?.text());
+        Object.assign(error, { status: response?.status });
+        throw error;
+      },
+    );
+
+    const { createMcpOAuthClientProvider, finalizeMcpAuthorization } =
+      await import("@/chat/mcp/oauth");
+    const { McpProviderError } = await import("@/chat/mcp/errors");
+    const authProvider = await createMcpOAuthClientProvider({
+      provider: "demo",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userId: "U123",
+      userMessage: "use /demo",
+    });
+    await authProvider.saveCodeVerifier("code-verifier");
+
+    const error = await finalizeMcpAuthorization(
+      "demo",
+      authProvider.authSessionId,
+      "authorization-code",
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(McpProviderError);
+    expect(error).toMatchObject({
+      phase: "oauth_callback",
+      provider: "demo",
+      resourceHost: "mcp.example.com",
+      status: 502,
+    });
+    expect((error as Error & { cause?: unknown }).cause).toBeUndefined();
+    for (const secret of secrets) {
+      expect((error as Error).message).not.toContain(secret);
+      expect(JSON.stringify(error)).not.toContain(secret);
+    }
+    expect(cancelled).toBe(true);
+    expect(closeMock).toHaveBeenCalledOnce();
   });
 });

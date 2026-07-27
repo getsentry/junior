@@ -7,6 +7,10 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
+import {
+  OAuthProviderError,
+  readBoundedOAuthErrorBody,
+} from "@/chat/oauth-response";
 import type {
   StoredTokens,
   UserTokenStore,
@@ -49,6 +53,7 @@ function parseRefreshError(text: string): string | undefined {
 }
 
 async function refreshAccessToken(
+  provider: string,
   refreshToken: string,
   oauth: NonNullable<PluginManifest["oauth"]>,
   requestedScope?: string,
@@ -77,30 +82,51 @@ async function refreshAccessToken(
     tokenAuthMethod: oauth.tokenAuthMethod,
     tokenExtraHeaders: oauth.tokenExtraHeaders,
   });
-  const response = await fetch(oauth.tokenEndpoint, {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
-    signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const errorCode = parseRefreshError(await response.text());
-    if (errorCode === "invalid_grant" || errorCode === "bad_refresh_token") {
-      throw new OAuthRefreshRejectedError(
-        `Token refresh rejected: ${errorCode}`,
-      );
-    }
-    throw new Error(
-      `Token refresh failed: ${response.status}${errorCode ? ` ${errorCode}` : ""}`,
-    );
+  const errorDetails = {
+    phase: "token_refresh" as const,
+    provider,
+    resourceHost: new URL(oauth.tokenEndpoint).hostname,
+  };
+  let response: Response;
+  try {
+    response = await fetch(oauth.tokenEndpoint, {
+      method: "POST",
+      headers: request.headers,
+      body: request.body,
+      signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new OAuthProviderError(errorDetails);
   }
 
-  const data = (await response.json()) as Record<string, unknown>;
-  return parseOAuthTokenResponse(data, requestedScope, {
-    treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
-    refreshToken,
-  });
+  if (!response.ok) {
+    let errorCode: string | undefined;
+    try {
+      errorCode = parseRefreshError(await readBoundedOAuthErrorBody(response));
+    } catch {
+      throw new OAuthProviderError({
+        ...errorDetails,
+        status: response.status,
+      });
+    }
+    if (errorCode === "invalid_grant" || errorCode === "bad_refresh_token") {
+      throw new OAuthRefreshRejectedError("Token refresh was rejected");
+    }
+    throw new OAuthProviderError({
+      ...errorDetails,
+      status: response.status,
+    });
+  }
+
+  try {
+    const data = (await response.json()) as Record<string, unknown>;
+    return parseOAuthTokenResponse(data, requestedScope, {
+      treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
+      refreshToken,
+    });
+  } catch {
+    throw new OAuthProviderError(errorDetails);
+  }
 }
 
 function getLeaseExpiry(expiresAt?: number): number {
@@ -223,6 +249,7 @@ export function createOAuthBearerBroker(
                   }
 
                   const refreshed = await refreshAccessToken(
+                    provider,
                     latest.refreshToken,
                     oauth,
                     latest.scope ?? oauth.scope,

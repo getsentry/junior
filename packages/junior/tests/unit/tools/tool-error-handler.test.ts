@@ -16,6 +16,7 @@ vi.mock("@/chat/logging", () => ({
 }));
 
 import { McpToolError } from "@/chat/mcp/errors";
+import { OAuthProviderError } from "@/chat/oauth-response";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 
@@ -60,6 +61,45 @@ describe("handleToolExecutionError", () => {
       "remote tool failed",
     );
     expect(logExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("reports only safe OAuth provider diagnostics", () => {
+    const error = new OAuthProviderError({
+      phase: "token_refresh",
+      provider: "sentry",
+      resourceHost: "sentry.io",
+      status: 503,
+    });
+
+    expect(() =>
+      handleToolExecutionError(error, "bash", "tool-call-id", true, {}),
+    ).toThrow(error);
+
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "agent_tool_call_failed",
+      {},
+      expect.objectContaining({
+        "app.credential.provider": "sentry",
+        "app.oauth.error.phase": "token_refresh",
+        "error.type": "oauth_provider_error",
+        "exception.message": "OAuth provider token refresh failed",
+        "http.response.status_code": 503,
+        "server.address": "sentry.io",
+      }),
+      "Agent tool call failed",
+    );
+    expect(logExceptionMock).toHaveBeenCalledWith(
+      error,
+      "agent_tool_call_failed",
+      {},
+      expect.objectContaining({
+        "app.credential.provider": "sentry",
+        "app.oauth.error.phase": "token_refresh",
+        "http.response.status_code": 503,
+        "server.address": "sentry.io",
+      }),
+      "Agent tool call failed",
+    );
   });
 
   it("logs plugin credential failures as credential events", () => {

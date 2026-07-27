@@ -88,6 +88,19 @@ function htmlErrorResponse(
   return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
 }
 
+function oauthTokenErrorAttributes(
+  provider: string,
+  endpoint: string,
+  status?: number,
+): Record<string, string | number> {
+  return {
+    "app.credential.provider": provider,
+    "app.oauth.error.phase": "token_exchange",
+    "server.address": new URL(endpoint).hostname,
+    ...(status !== undefined ? { "http.response.status_code": status } : {}),
+  };
+}
+
 async function persistCompletedOAuthReplyState(args: {
   conversationId: string;
   sessionId: string;
@@ -601,6 +614,12 @@ export async function GET(
       body: tokenRequest.body,
     });
   } catch {
+    logWarn(
+      "oauth_token_exchange_failed",
+      {},
+      oauthTokenErrorAttributes(provider, providerConfig.tokenEndpoint),
+      "OAuth token exchange request failed",
+    );
     return htmlErrorResponse(
       "Connection failed",
       "Failed to exchange the authorization code. Please try again.",
@@ -609,6 +628,16 @@ export async function GET(
   }
 
   if (!tokenResponse.ok) {
+    logWarn(
+      "oauth_token_exchange_failed",
+      {},
+      oauthTokenErrorAttributes(
+        provider,
+        providerConfig.tokenEndpoint,
+        tokenResponse.status,
+      ),
+      "OAuth token exchange was rejected",
+    );
     return htmlErrorResponse(
       "Connection failed",
       "The token exchange with the provider failed. Please try again.",
@@ -623,6 +652,16 @@ export async function GET(
       treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported,
     });
   } catch {
+    logWarn(
+      "oauth_token_exchange_failed",
+      {},
+      oauthTokenErrorAttributes(
+        provider,
+        providerConfig.tokenEndpoint,
+        tokenResponse.status,
+      ),
+      "OAuth token exchange returned an invalid response",
+    );
     return htmlErrorResponse(
       "Connection failed",
       "The provider returned an incomplete token response. Please try again.",
@@ -723,19 +762,9 @@ export async function GET(
       : resumesAgentTurn
         ? "Your request is being processed in Slack."
         : "You can close this tab and return to Slack.";
-  const html = `<!DOCTYPE html>
-<html>
-<head><title>${providerLabel} Connected</title></head>
-<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center;">
-    <h1>${providerLabel} account connected</h1>
-    <p>${statusMessage}</p>
-  </div>
-</body>
-</html>`;
-
-  return new Response(html, {
-    status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  return htmlCallbackResponse(
+    escapeXml(`${providerLabel} account connected`),
+    escapeXml(statusMessage),
+    200,
+  );
 }

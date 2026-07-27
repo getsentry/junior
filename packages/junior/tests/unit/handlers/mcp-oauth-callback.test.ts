@@ -5,11 +5,18 @@ const {
   finalizeMcpAuthorizationMock,
   getMcpAuthSessionMock,
   getPersistedThreadStateMock,
+  logExceptionMock,
 } = vi.hoisted(() => ({
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   getMcpAuthSessionMock: vi.fn(),
   getPersistedThreadStateMock: vi.fn(),
+  logExceptionMock: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logException: logExceptionMock,
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({
@@ -28,6 +35,7 @@ vi.mock("@/chat/runtime/thread-state", async (importOriginal) => ({
 }));
 
 import { GET } from "@/handlers/mcp-oauth-callback";
+import { McpProviderError } from "@/chat/mcp/errors";
 import {
   createWaitUntilCollector,
   type WaitUntilCollector,
@@ -48,6 +56,7 @@ describe("mcp oauth callback handler", () => {
     finalizeMcpAuthorizationMock.mockReset();
     getMcpAuthSessionMock.mockReset();
     getPersistedThreadStateMock.mockReset();
+    logExceptionMock.mockReset();
     getMcpAuthSessionMock.mockResolvedValue({
       schemaVersion: 2,
       authSessionId: "state-123",
@@ -91,6 +100,12 @@ describe("mcp oauth callback handler", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
     expect(await response.text()).toContain("Missing state parameter");
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
     expect(waitUntil.pendingCount()).toBe(0);
@@ -113,9 +128,14 @@ describe("mcp oauth callback handler", () => {
     expect(waitUntil.pendingCount()).toBe(0);
   });
 
-  it("does not reflect callback exception text in the HTML response", async () => {
+  it("logs safe metadata for callback provider failures", async () => {
     finalizeMcpAuthorizationMock.mockRejectedValueOnce(
-      new Error("<img src=x onerror=alert(1)>"),
+      new McpProviderError({
+        phase: "oauth_callback",
+        provider: "demo",
+        resourceHost: "mcp.example.com",
+        status: 502,
+      }),
     );
 
     const response = await GET(
@@ -132,7 +152,18 @@ describe("mcp oauth callback handler", () => {
     expect(body).toContain(
       "Junior could not finish the authorization callback. Return to Junior and retry the original request.",
     );
-    expect(body).not.toContain("<img src=x onerror=alert(1)>");
+    expect(logExceptionMock).toHaveBeenCalledWith(
+      expect.any(McpProviderError),
+      "mcp_oauth_callback_failed",
+      {},
+      expect.objectContaining({
+        "app.credential.provider": "demo",
+        "app.mcp.error.phase": "oauth_callback",
+        "http.response.status_code": 502,
+        "server.address": "mcp.example.com",
+      }),
+      "Failed to process MCP OAuth callback",
+    );
     expect(waitUntil.pendingCount()).toBe(0);
   });
 

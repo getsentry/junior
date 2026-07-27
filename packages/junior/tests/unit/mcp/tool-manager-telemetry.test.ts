@@ -95,4 +95,27 @@ describe("McpToolManager telemetry", () => {
       "private result",
     );
   });
+
+  it.each(["private", "public"] as const)(
+    "keeps provider tool error text out of %s telemetry",
+    async (conversationPrivacy) => {
+      const providerText = "SENSITIVE_CANARY";
+      resultMock.mockResolvedValue({
+        content: [{ type: "text", text: providerText }],
+        isError: true,
+      });
+      const manager = new McpToolManager([buildPlugin()]);
+      await manager.activateProvider("demo");
+      const [tool] = manager.getResolvedActiveTools();
+
+      await expect(tool!.execute({}, { conversationPrivacy })).rejects.toThrow(
+        providerText,
+      );
+
+      expect(endAttributes.value["exception.message"]).toBe(
+        "MCP tool call failed",
+      );
+      expect(JSON.stringify(endAttributes.value)).not.toContain(providerText);
+    },
+  );
 });

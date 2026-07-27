@@ -5,6 +5,7 @@ import type {
   PluginManifest,
 } from "@/chat/plugins/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { OAuthProviderError } from "@/chat/oauth-response";
 import type {
   StoredTokens,
   UserTokenStore,
@@ -367,20 +368,112 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
+    const providerText = "SENSITIVE_CANARY";
     globalThis.fetch = vi.fn(
       async () =>
-        new Response(JSON.stringify({ error: "server_error" }), {
+        new Response(JSON.stringify({ error: providerText }), {
           status: 500,
         }),
+    ) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    const error = await broker
+      .issue({
+        context: USER_CREDENTIAL_CONTEXT,
+        reason: "test:refresh-failure",
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(OAuthProviderError);
+    expect(error).toMatchObject({
+      phase: "token_refresh",
+      provider: "sentry",
+      resourceHost: "sentry.io",
+      status: 500,
+    });
+    expect((error as Error & { cause?: unknown }).cause).toBeUndefined();
+    expect((error as Error).message).not.toContain(providerText);
+    expect(JSON.stringify(error)).not.toContain(providerText);
+  });
+
+  it("bounds oversized token refresh error bodies", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(1024).fill(65));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 500 }),
     ) as unknown as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await expect(
       broker.issue({
         context: USER_CREDENTIAL_CONTEXT,
-        reason: "test:refresh-failure",
+        reason: "test:oversized-refresh-failure",
       }),
-    ).rejects.toThrow("Token refresh failed: 500 server_error");
+    ).rejects.toThrow("OAuth provider token refresh failed");
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(100);
+  });
+
+  it("sanitizes provider failures while reading refresh error bodies", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+    const providerText = "SENSITIVE_STREAM_CANARY";
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error(providerText));
+      },
+    });
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    const error = await broker
+      .issue({
+        context: USER_CREDENTIAL_CONTEXT,
+        reason: "test:refresh-read-failure",
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(OAuthProviderError);
+    expect(error).toMatchObject({
+      phase: "token_refresh",
+      provider: "sentry",
+      resourceHost: "sentry.io",
+      status: 500,
+    });
+    expect((error as Error & { cause?: unknown }).cause).toBeUndefined();
+    expect((error as Error).message).not.toContain(providerText);
+    expect(JSON.stringify(error)).not.toContain(providerText);
   });
 
   it("requires stored tokens to include the configured OAuth scope", async () => {

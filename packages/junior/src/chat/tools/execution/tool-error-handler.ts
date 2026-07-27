@@ -8,7 +8,16 @@ import {
 } from "@/chat/logging";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { getMcpAwareTelemetryMessage, McpToolError } from "@/chat/mcp/errors";
+import {
+  getOAuthProviderErrorAttributes,
+  OAuthProviderError,
+} from "@/chat/oauth-response";
+import {
+  getMcpAwareTelemetryMessage,
+  getMcpProviderErrorAttributes,
+  McpProviderError,
+  McpToolError,
+} from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -23,6 +32,8 @@ function isPluginToolInputError(error: unknown): boolean {
 /** Classify tool errors into stable observability types. */
 function getToolErrorType(error: unknown): string {
   if (error instanceof McpToolError) return "tool_error";
+  if (error instanceof McpProviderError) return "mcp_provider_error";
+  if (error instanceof OAuthProviderError) return "oauth_provider_error";
   if (error instanceof ToolInputError || isPluginToolInputError(error)) {
     return "tool_input_error";
   }
@@ -61,6 +72,8 @@ export function handleToolExecutionError(
   const errorMessage = getMcpAwareTelemetryMessage(error, conversationPrivacy);
   const errorAttributes = {
     "error.type": errorType,
+    ...getMcpProviderErrorAttributes(error),
+    ...getOAuthProviderErrorAttributes(error),
     ...(error instanceof PluginCredentialFailureError
       ? { "app.credential.provider": error.provider }
       : {}),
@@ -97,7 +110,7 @@ export function handleToolExecutionError(
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        "error.type": errorType,
+        ...errorAttributes,
         "exception.message": errorMessage,
       },
       "Agent tool call failed",
@@ -118,6 +131,7 @@ export function handleToolExecutionError(
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+        ...errorAttributes,
         ...getToolErrorAttributes(error),
       },
       "Agent tool call failed",

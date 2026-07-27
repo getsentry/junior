@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
+import { toMcpProviderError } from "./errors";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
   return `/api/oauth/callback/mcp/${provider}`;
@@ -112,12 +114,30 @@ export async function finalizeMcpAuthorization(
   const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
     ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
     authProvider,
+    fetch: fetchWithBoundedOAuthErrorBodies(),
   });
 
+  let failure: unknown;
   try {
     await transport.finishAuth(authorizationCode);
-  } finally {
+  } catch (error) {
+    failure = toMcpProviderError(error, {
+      phase: "oauth_callback",
+      provider,
+      resourceHost: new URL(mcp.url).hostname,
+    });
+  }
+  try {
     await transport.close();
+  } catch (error) {
+    failure ??= toMcpProviderError(error, {
+      phase: "oauth_callback",
+      provider,
+      resourceHost: new URL(mcp.url).hostname,
+    });
+  }
+  if (failure) {
+    throw failure;
   }
 
   const nextSession = await getMcpAuthSession(authSessionId);

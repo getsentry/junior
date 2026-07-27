@@ -36,6 +36,10 @@ import {
   type Skill,
 } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
+import {
+  getMcpAwareTelemetryMessage,
+  getMcpProviderErrorAttributes,
+} from "@/chat/mcp/errors";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
@@ -1458,10 +1462,11 @@ async function executeAgentRunInPrivacyContext(
         "mcp_tool_manager_close_failed",
         {},
         {
-          "exception.message":
-            closeError instanceof Error
-              ? closeError.message
-              : String(closeError),
+          ...getMcpProviderErrorAttributes(closeError),
+          "exception.message": getMcpAwareTelemetryMessage(
+            closeError,
+            undefined,
+          ),
         },
         "Failed to close MCP tool manager",
       );

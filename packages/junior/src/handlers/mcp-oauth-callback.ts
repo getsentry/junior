@@ -17,6 +17,7 @@ import {
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
+import { getMcpProviderErrorAttributes } from "@/chat/mcp/errors";
 import { logException, logWarn } from "@/chat/logging";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -628,7 +629,10 @@ export async function GET(
       callbackError,
       "mcp_oauth_callback_failed",
       {},
-      { "app.credential.provider": provider },
+      {
+        "app.credential.provider": provider,
+        ...getMcpProviderErrorAttributes(callbackError),
+      },
       "Failed to process MCP OAuth callback",
     );
     return htmlResponse("failure");

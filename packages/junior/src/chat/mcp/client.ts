@@ -8,7 +8,13 @@ import {
   StreamableHTTPError,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { setSpanAttributes } from "@/chat/logging";
+import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  McpProviderError,
+  type McpProviderErrorPhase,
+  toMcpProviderError,
+} from "./errors";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -63,17 +69,28 @@ type HostManagedSessionProvider = OAuthClientProvider & {
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
 };
 
+function isMissingSessionError(error: unknown): boolean {
+  return (
+    error instanceof StreamableHTTPError &&
+    (error.code === 404 || /Session not found/i.test(error.message))
+  );
+}
+
 export class PluginMcpClient {
   private client?: Client;
   private clientPromise?: Promise<Client>;
   private lastAttemptedTransportSessionId?: string;
   private transport?: StreamableHTTPClientTransport;
   private listedTools?: ListedTool[];
+  private readonly resourceHost?: string;
 
   constructor(
     private readonly plugin: PluginDefinition,
     private readonly options: PluginMcpClientOptions = {},
-  ) {}
+  ) {
+    const url = plugin.manifest.mcp?.url;
+    this.resourceHost = url ? new URL(url).hostname : undefined;
+  }
 
   async listTools(): Promise<ListedTool[]> {
     if (this.listedTools) {
@@ -89,6 +106,7 @@ export class PluginMcpClient {
       do {
         const result = await this.wrapAuth(
           client.listTools(cursor ? { cursor } : undefined),
+          "list_tools",
         );
         await this.syncTransportSessionId();
         for (const tool of result.tools) {
@@ -134,6 +152,7 @@ export class PluginMcpClient {
           name,
           arguments: args ?? {},
         }),
+        "call_tool",
       );
       await this.syncTransportSessionId();
       return result;
@@ -197,7 +216,7 @@ export class PluginMcpClient {
     this.lastAttemptedTransportSessionId = sessionId;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
       ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
-      ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
+      fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch),
       ...(this.options.authProvider
         ? { authProvider: this.options.authProvider }
         : {}),
@@ -210,7 +229,7 @@ export class PluginMcpClient {
     this.transport = transport;
 
     try {
-      await this.wrapAuth(client.connect(transport));
+      await this.wrapAuth(client.connect(transport), "connect");
       this.client = client;
       await this.syncTransportSessionId();
       return client;
@@ -221,7 +240,10 @@ export class PluginMcpClient {
     }
   }
 
-  private async wrapAuth<T>(promise: Promise<T>): Promise<T> {
+  private async wrapAuth<T>(
+    promise: Promise<T>,
+    phase: McpProviderErrorPhase,
+  ): Promise<T> {
     try {
       return await promise;
     } catch (error) {
@@ -234,15 +256,20 @@ export class PluginMcpClient {
           `MCP authorization required for plugin "${this.plugin.manifest.name}"`,
         );
       }
-      throw error;
+      throw toMcpProviderError(error, {
+        phase,
+        provider: this.plugin.manifest.name,
+        missingSession: isMissingSessionError(error) || undefined,
+        resourceHost: this.resourceHost,
+      });
     }
   }
 
   private async shouldResetMissingSession(error: unknown): Promise<boolean> {
     if (
       !(
-        error instanceof StreamableHTTPError &&
-        (error.code === 404 || /Session not found/i.test(error.message))
+        (error instanceof McpProviderError && error.missingSession) ||
+        isMissingSessionError(error)
       )
     ) {
       return false;
@@ -263,7 +290,15 @@ export class PluginMcpClient {
     this.clientPromise = undefined;
 
     if (transport) {
-      await transport.close();
+      try {
+        await transport.close();
+      } catch (error) {
+        throw toMcpProviderError(error, {
+          phase: "close",
+          provider: this.plugin.manifest.name,
+          resourceHost: this.resourceHost,
+        });
+      }
     }
   }
 

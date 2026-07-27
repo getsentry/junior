@@ -28,6 +28,7 @@ import {
 import {
   getMcpAwareTelemetryMessage,
   getMcpAwareErrorType,
+  getMcpProviderErrorAttributes,
   McpToolError,
 } from "./errors";
 
@@ -562,6 +563,7 @@ export class McpToolManager {
               }
               const errorAttributes = {
                 ...baseAttributes,
+                ...getMcpProviderErrorAttributes(error),
                 "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
                 "exception.message": getMcpAwareTelemetryMessage(
                   error,

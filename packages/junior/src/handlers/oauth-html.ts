@@ -1,4 +1,4 @@
-/** Build a simple centered HTML callback page. Callers must pre-escape dynamic strings. */
+/** Build pre-escaped callback HTML with the shared response security policy. */
 export function htmlCallbackResponse(
   title: string,
   message: string,
@@ -17,6 +17,13 @@ export function htmlCallbackResponse(
 </html>`;
   return new Response(html, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
