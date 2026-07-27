@@ -706,6 +706,11 @@ export async function resumeSlackTurn(
         context: getResumeLogContext(runArgs, lockKey),
       });
       const reply = finalized.reply;
+      const dispatchErrorMessage =
+        replyContext.routing.dispatch && reply.diagnostics.outcome !== "success"
+          ? (reply.diagnostics.errorMessage ??
+            `Agent turn ended with ${reply.diagnostics.outcome}.`)
+          : undefined;
       if (reply.diagnostics.outcome !== "success") {
         await deliverAssistantMessage({ text: reply.text });
       }
@@ -730,6 +735,9 @@ export async function resumeSlackTurn(
           dispatchId: replyContext.routing.dispatch?.id,
           dispatchOutcome:
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          ...(dispatchErrorMessage
+            ? { errorMessage: dispatchErrorMessage }
+            : {}),
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
             : {}),

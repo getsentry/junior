@@ -444,6 +444,11 @@ export type TurnExecutionOutcome =
   | "completed"
   | "failed";
 
+export interface TurnExecutionResult {
+  errorMessage?: string;
+  outcome: TurnExecutionOutcome;
+}
+
 export interface TurnExecutionContext {
   authorizationFlowMode?: "disabled";
   channelConfiguration?: ChannelConfigurationService;
@@ -469,7 +474,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (outcome: TurnExecutionOutcome) => void;
+      onTurnOutcome?: (result: TurnExecutionResult) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
@@ -811,7 +816,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 candidate.meta?.replied === true,
             );
           options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
-          options.onTurnOutcome?.("completed");
+          options.onTurnOutcome?.({ outcome: "completed" });
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });
@@ -1092,7 +1097,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
         let finalizedFailureEventId: string | undefined;
-        let terminalDispatchFailureOutcome: "blocked" | "failed" = "failed";
+        let terminalDispatchFailureOutcome: "blocked" | undefined;
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
             return;
@@ -1479,7 +1484,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           if (outcome.status === "awaiting_auth") {
             await recordDispatchOutcome("blocked", "failed");
-            options.onTurnOutcome?.("blocked");
+            options.onTurnOutcome?.({ outcome: "blocked" });
             if (!actor) {
               const authFailureEventId = logException(
                 new Error(
@@ -1533,7 +1538,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           if (outcome.status === "suspended") {
-            options.onTurnOutcome?.("awaiting_resume");
+            options.onTurnOutcome?.({ outcome: "awaiting_resume" });
             // A cooperative yield only occurs when this caller's own
             // shouldYield() fired, so the predicate — not the outcome —
             // decides the resume route: hand the lease back to the queue
@@ -1595,6 +1600,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             finalizedFailureEventId = finalized.eventId;
             await deliverAssistantMessage({ text: reply.text });
           }
+          const turnResult: TurnExecutionResult =
+            reply.diagnostics.outcome === "success"
+              ? { outcome: "completed" }
+              : {
+                  errorMessage:
+                    reply.diagnostics.errorMessage ??
+                    `Agent turn ended with ${reply.diagnostics.outcome}.`,
+                  outcome: "failed",
+                };
           runResultHandled = true;
           shouldPersistFailureState = false;
           boundaryFailureCode = "agent_run_failed";
@@ -1636,6 +1650,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   reply.diagnostics.outcome === "success"
                     ? "completed"
                     : "failed",
+                ...(options.execution?.dispatch && turnResult.errorMessage
+                  ? { errorMessage: turnResult.errorMessage }
+                  : {}),
                 ...(acceptedDeliveryId
                   ? { resultMessageId: acceptedDeliveryId }
                   : {}),
@@ -1715,9 +1732,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
-          options.onTurnOutcome?.(
-            reply.diagnostics.outcome === "success" ? "completed" : "failed",
-          );
+          options.onTurnOutcome?.(turnResult);
           if (!lifecycleTerminalized && conversationId) {
             if (reply.diagnostics.outcome === "success") {
               await deps.services.turnLifecycle.complete({
@@ -1891,7 +1906,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   source,
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
-                  ...(options.execution?.dispatch
+                  ...(options.execution?.dispatch &&
+                  terminalDispatchFailureOutcome
                     ? {
                         dispatchOutcome: terminalDispatchFailureOutcome,
                       }

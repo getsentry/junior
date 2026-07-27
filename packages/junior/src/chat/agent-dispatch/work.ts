@@ -59,8 +59,13 @@ export const AGENT_DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Provider-neutral outcome projected from the shared turn runtime. */
 export interface DispatchTurnResult {
+  errorMessage?: string;
   outcome?: "awaiting_resume" | "blocked" | "completed" | "failed";
   resultMessageTs?: string;
+}
+
+interface DurableDispatchTurnResult extends DispatchTurnResult {
+  hasResumableRun?: boolean;
 }
 
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
@@ -274,7 +279,7 @@ export async function resolveAgentDispatchId(
 
 async function readDispatchTurnResult(
   dispatch: DispatchRecord,
-): Promise<DispatchTurnResult> {
+): Promise<DurableDispatchTurnResult> {
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
   const storedSession = await getAgentTurnSessionRecord(conversationId, turnId);
@@ -286,8 +291,10 @@ async function readDispatchTurnResult(
     summary?.dispatchOutcome ?? storedSession?.dispatchOutcome;
   const resultMessageTs =
     summary?.resultMessageId ?? storedSession?.resultMessageId;
+  const errorMessage = storedSession?.errorMessage;
   if (dispatchOutcome) {
     return {
+      ...(errorMessage ? { errorMessage } : {}),
       outcome: dispatchOutcome,
       ...(resultMessageTs ? { resultMessageTs } : {}),
     };
@@ -304,17 +311,16 @@ async function readDispatchTurnResult(
     return {};
   }
   if (session.state === "awaiting_resume") {
-    return { outcome: "awaiting_resume" };
+    return { hasResumableRun: true, outcome: "awaiting_resume" };
   }
-  if (
-    session.state !== "completed" &&
-    session.state !== "failed" &&
-    session.state !== "abandoned"
-  ) {
+  if (session.state === "running") {
+    return { hasResumableRun: true };
+  }
+  if (session.state !== "completed") {
     return {};
   }
   return {
-    outcome: session.state === "completed" ? "completed" : "failed",
+    outcome: "completed",
     ...(resultMessageTs ? { resultMessageTs } : {}),
   };
 }
@@ -336,7 +342,7 @@ async function projectDispatchTurnResult(
     case "failed":
       await markDispatchFailed(
         dispatchId,
-        "Agent turn failed",
+        result.errorMessage ?? "Agent turn failed",
         result.resultMessageTs,
       );
       break;
@@ -460,7 +466,8 @@ export function createAgentDispatchConversationWorker(
     try {
       const resumesDurableTurn =
         durableResult.outcome === "awaiting_resume" ||
-        context.attempt.messages.length === 0;
+        (context.attempt.messages.length === 0 &&
+          durableResult.hasResumableRun === true);
       if (
         durableResult.outcome === "awaiting_resume" &&
         context.attempt.messages.length > 0

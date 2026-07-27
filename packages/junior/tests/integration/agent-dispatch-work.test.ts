@@ -212,6 +212,98 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
+  it("retries a transient runtime failure instead of treating it as terminal", async () => {
+    const dispatch = await createDispatch("runtime-retry");
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    let runCount = 0;
+    const agentRunner = {
+      run: vi.fn(async (request) => {
+        runCount += 1;
+        if (runCount === 1) {
+          throw new Error("provider temporarily unavailable");
+        }
+        await request.durability.onInputCommitted?.();
+        await request.delivery.onAssistantMessage({
+          text: "Recovered scheduled digest",
+        });
+        return completedAgentRun({
+          text: "Recovered scheduled digest",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        });
+      }),
+    };
+    const runtime = createSlackRuntime({
+      getSlackAdapter: () =>
+        createJuniorSlackAdapter({
+          botToken: "xoxb-test",
+          botUserId: "U0BOT",
+          signingSecret: "test-signing-secret",
+        }),
+      services: {
+        replyExecutor: { agentRunner },
+      },
+    });
+    const route = createConversationWorkRouter({
+      dispatchWorker: createAgentDispatchConversationWorker({
+        resumeTurn: vi.fn(),
+        runTurn: runtime.runDispatchTurn,
+      }),
+      slackWorker: vi.fn(async () => ({ status: "completed" as const })),
+    });
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run: route,
+        state,
+      }),
+    ).resolves.toEqual({ status: "failed" });
+
+    expect(agentRunner.run).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "running",
+    });
+    await expect(
+      listAgentTurnSessionSummariesForConversation(
+        getDispatchConversationId(dispatch),
+      ),
+    ).resolves.toEqual([
+      expect.not.objectContaining({ dispatchOutcome: expect.anything() }),
+    ]);
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run: route,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(agentRunner.run).toHaveBeenCalledTimes(2);
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: destination.channelId,
+          text: "Recovered scheduled digest",
+        }),
+      }),
+    ]);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
   it("resumes durable paused work even when cutover recovery has mailbox input", async () => {
     const dispatch = await createDispatch("cutover-resume");
     const conversationId = getDispatchConversationId(dispatch);
@@ -525,6 +617,85 @@ describe("agent dispatch conversation work", () => {
     expect(resumeTurn).not.toHaveBeenCalled();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "blocked",
+    });
+  });
+
+  it("projects the diagnostic from a terminal model failure", async () => {
+    const dispatch = await createDispatch("model-failure-detail");
+    const runtime = createSlackRuntime({
+      getSlackAdapter: () =>
+        createJuniorSlackAdapter({
+          botToken: "xoxb-test",
+          botUserId: "U0BOT",
+          signingSecret: "test-signing-secret",
+        }),
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: vi.fn(async (request) => {
+              await request.durability.onInputCommitted?.();
+              return completedAgentRun({
+                text: "",
+                piMessages: [
+                  {
+                    role: "user",
+                    content: [{ type: "text", text: dispatch.input }],
+                    timestamp: dispatch.createdAtMs,
+                  },
+                ],
+                diagnostics: {
+                  assistantMessageCount: 0,
+                  errorMessage: "Model provider quota exhausted",
+                  modelId: "test-model",
+                  outcome: "provider_error",
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: false,
+                },
+              });
+            }),
+          },
+        },
+      },
+    });
+    await expect(
+      runtime.runDispatchTurn(dispatch, { ack: vi.fn(async () => {}) }),
+    ).resolves.toMatchObject({
+      errorMessage: "Model provider quota exhausted",
+      outcome: "failed",
+      resultMessageTs: expect.any(String),
+    });
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "pending",
+    });
+    await expect(
+      getAgentTurnSessionRecord(
+        getDispatchConversationId(dispatch),
+        getDispatchTurnId(dispatch.id),
+      ),
+    ).resolves.toMatchObject({
+      dispatchOutcome: "failed",
+      errorMessage: "Model provider quota exhausted",
+    });
+
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn();
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+    const replay = createContext(dispatch);
+    await expect(worker(replay.context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).not.toHaveBeenCalled();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      errorMessage: "Model provider quota exhausted",
+      resultMessageTs: expect.any(String),
+      status: "failed",
     });
   });
 

@@ -2,7 +2,7 @@ import { Message, ThreadImpl } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type {
   TurnExecutionContext,
-  TurnExecutionOutcome,
+  TurnExecutionResult,
 } from "@/chat/runtime/reply-executor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
@@ -25,7 +25,7 @@ interface DispatchReplyToThread {
       destination: DispatchRecord["destination"];
       execution: TurnExecutionContext;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (outcome: TurnExecutionOutcome) => void;
+      onTurnOutcome?: (result: TurnExecutionResult) => void;
       shouldYield?: () => boolean;
       skipBackfill?: boolean;
     },
@@ -95,7 +95,8 @@ export function createSlackDispatchTurnRunner(options: {
       isSubscribedContext: true,
     });
 
-    let outcome: TurnExecutionOutcome | undefined;
+    let outcome: TurnExecutionResult["outcome"] | undefined;
+    let errorMessage: string | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);
     await options.replyToThread(thread, message, {
@@ -117,13 +118,15 @@ export function createSlackDispatchTurnRunner(options: {
       onTurnDeliveryAccepted: (messageId) => {
         resultMessageTs = messageId;
       },
-      onTurnOutcome: (nextOutcome) => {
-        outcome = nextOutcome;
+      onTurnOutcome: (result) => {
+        outcome = result.outcome;
+        errorMessage = result.errorMessage;
       },
       shouldYield: hooks.shouldYield,
       skipBackfill: true,
     });
     return {
+      ...(errorMessage ? { errorMessage } : {}),
       ...(outcome ? { outcome } : {}),
       ...(resultMessageTs ? { resultMessageTs } : {}),
     };

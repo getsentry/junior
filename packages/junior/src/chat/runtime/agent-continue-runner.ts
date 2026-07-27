@@ -165,6 +165,7 @@ async function failSessionRecordBestEffort(args: {
 /** Persist failed thread and session state after a continuation cannot finish. */
 async function persistFailedReplyState(
   sessionRecord: AgentTurnSessionRecord,
+  errorMessage = "Paused agent run failed while continuing",
 ): Promise<void> {
   const currentState = await getPersistedThreadState(
     sessionRecord.conversationId,
@@ -188,7 +189,7 @@ async function persistFailedReplyState(
 
   await failSessionRecordBestEffort({
     sessionRecord,
-    errorMessage: "Paused agent run failed while continuing",
+    errorMessage,
   });
   await persistThreadStateById(sessionRecord.conversationId, {
     conversation,
@@ -288,6 +289,20 @@ async function failUnresumableContinuation(args: {
     sessionId: args.summary.sessionId,
     errorMessage: args.errorMessage,
   });
+  if (args.summary.dispatchId) {
+    await recordAgentTurnSessionSummary({
+      actor: args.summary.actor,
+      conversationId: args.conversationId,
+      destination: args.summary.destination,
+      dispatchId: args.summary.dispatchId,
+      dispatchOutcome: "failed",
+      sessionId: args.summary.sessionId,
+      sliceId: args.summary.sliceId,
+      source: args.summary.source,
+      state: "failed",
+      surface: args.summary.surface,
+    });
+  }
 }
 
 /**
@@ -502,8 +517,11 @@ export async function continueSlackAgentRun(
               reply,
             });
           },
-          onFailure: async () => {
-            await persistFailedReplyState(activeSessionRecord);
+          onFailure: async (error) => {
+            await persistFailedReplyState(
+              activeSessionRecord,
+              error instanceof Error ? error.message : String(error),
+            );
             await recordDispatchOutcome("failed");
           },
           onPostDeliveryCommitFailure: async () => {
@@ -565,6 +583,20 @@ async function failStrandedSessionWithFallback(args: {
     sessionId: args.sessionRecord.sessionId,
     errorMessage: args.errorMessage,
   });
+  if (args.sessionRecord.dispatchId) {
+    await recordAgentTurnSessionSummary({
+      actor: args.sessionRecord.actor,
+      conversationId: args.conversationId,
+      destination: args.sessionRecord.destination,
+      dispatchId: args.sessionRecord.dispatchId,
+      dispatchOutcome: "failed",
+      sessionId: args.sessionRecord.sessionId,
+      sliceId: args.sessionRecord.sliceId,
+      source: args.sessionRecord.source,
+      state: "failed",
+      surface: args.sessionRecord.surface,
+    });
+  }
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({

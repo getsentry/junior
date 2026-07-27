@@ -113,37 +113,6 @@ describe("agent dispatch worker contract", () => {
     expect(runTurn).not.toHaveBeenCalled();
   });
 
-  it("retries unexpected failures and projects only the final failure", async () => {
-    const dispatch = await createDispatch("retry");
-    const runTurn = vi.fn(async () => {
-      throw new Error("provider unavailable");
-    });
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn: vi.fn(),
-      runTurn,
-    });
-    const first = createContext(dispatch);
-
-    await expect(worker(first.context, dispatch.id)).rejects.toThrow(
-      "provider unavailable",
-    );
-    expect(first.ack).not.toHaveBeenCalled();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "running",
-    });
-
-    const final = createContext(dispatch);
-    final.context.attempt.isFinalAttempt = true;
-    await expect(worker(final.context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-    expect(final.ack).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      errorMessage: "provider unavailable",
-      status: "failed",
-    });
-  });
-
   it("retries when the runtime returns without a durable outcome", async () => {
     const dispatch = await createDispatch("missing-outcome");
     const runTurn = vi.fn(async () => ({}));

@@ -227,6 +227,7 @@ export async function persistCompletedSessionRecord(args: {
   destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
+  errorMessage?: string;
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
   /** Provider-owned identifier returned after visible delivery is accepted. */
@@ -286,6 +287,7 @@ export async function persistCompletedSessionRecord(args: {
             args.dispatchOutcome ?? latestSessionRecord?.dispatchOutcome,
         }
       : {}),
+    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
     ...((args.resultMessageId ?? latestSessionRecord?.resultMessageId)
       ? {
           resultMessageId:
@@ -341,6 +343,7 @@ export async function completeDeliveredTurn(args: {
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
+  errorMessage?: string;
   durationMs?: number;
   loadedSkillNames?: string[];
   messages: PiMessage[];
@@ -364,6 +367,7 @@ export async function completeDeliveredTurn(args: {
     destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
     dispatchOutcome: args.dispatchOutcome,
+    errorMessage: args.errorMessage,
     resultMessageId: args.resultMessageId,
     source: args.source,
     sessionId: args.sessionId,
