@@ -2,8 +2,12 @@ import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  authenticatePersonalToken,
   createJuniorApi,
+  createPersonalToken,
   jsonResponse,
+  listPersonalTokens,
+  revokePersonalToken,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -13,7 +17,13 @@ import type {
   PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
-import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
+import {
+  createPersonalTokenBodySchema,
+  createdPersonalTokenSchema,
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+  personalTokenListSchema,
+} from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
@@ -353,6 +363,22 @@ function localAuthBypassSession(
   };
 }
 
+function personalBearerToken(request: Request): string | undefined {
+  const authorization = request.headers.get("authorization");
+  if (!authorization) return undefined;
+  const match = /^Bearer ([^\s]+)$/.exec(authorization);
+  return match?.[1];
+}
+
+function bearerSession(email: string): DashboardSession {
+  return {
+    user: {
+      email,
+      emailVerified: true,
+    },
+  };
+}
+
 function verifiedViewerEmail(session: DashboardSession): string | undefined {
   return session.user.emailVerified === true
     ? session.user.email.trim().toLowerCase()
@@ -665,7 +691,18 @@ export function createDashboardApp(
         componentGallery: options.componentGallery,
       });
     }
-    const session = await auth.getSession(c.req.raw);
+    const browserSession = await auth.getSession(c.req.raw);
+    const token = personalBearerToken(c.req.raw);
+    const tokenEmail =
+      !browserSession &&
+      token &&
+      (c.req.method === "GET" || c.req.method === "HEAD") &&
+      new URL(c.req.url).pathname.startsWith("/api/") &&
+      !new URL(c.req.url).pathname.startsWith("/api/tokens")
+        ? await authenticatePersonalToken(token)
+        : undefined;
+    const session =
+      browserSession ?? (tokenEmail ? bearerSession(tokenEmail) : null);
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         componentGallery: options.componentGallery,
@@ -720,6 +757,45 @@ export function createDashboardApp(
   });
   app.get("/api/me", (c) => {
     return jsonResponse(dashboardIdentitySchema, c.get("authSession"));
+  });
+  app.get("/api/tokens", async (c) => {
+    const email = verifiedViewerEmail(c.get("authSession"));
+    if (!email) return forbidden(c.req.raw);
+    return jsonResponse(personalTokenListSchema, {
+      tokens: await listPersonalTokens(email),
+    });
+  });
+  app.post("/api/tokens", async (c) => {
+    const email = verifiedViewerEmail(c.get("authSession"));
+    if (!email) return forbidden(c.req.raw);
+    const parsed = createPersonalTokenBodySchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Invalid token name." },
+        { status: 400 },
+      );
+    }
+    return jsonResponse(
+      createdPersonalTokenSchema,
+      await createPersonalToken({ email, name: parsed.data.name }),
+      { status: 201 },
+    );
+  });
+  app.delete("/api/tokens/:id", async (c) => {
+    const email = verifiedViewerEmail(c.get("authSession"));
+    if (!email) return forbidden(c.req.raw);
+    const revoked = await revokePersonalToken({
+      email,
+      id: c.req.param("id"),
+    });
+    return revoked
+      ? new Response(null, { status: 204 })
+      : jsonResponse(
+          apiErrorSchema,
+          { error: "Resource not found." },
+          { status: 404 },
+        );
   });
   app.get(DASHBOARD_CLIENT_PATH, () => {
     return new Response(readDashboardClient(), {

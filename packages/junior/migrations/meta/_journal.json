@@ -57,6 +57,13 @@
       "when": 1784783172749,
       "tag": "0007_thick_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785191902140,
+      "tag": "0008_sticky_rage",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,16 @@ import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import pluginReportsRoute from "./api/plugin-reports";
+export {
+  authenticatePersonalToken,
+  createPersonalToken,
+  listPersonalTokens,
+  revokePersonalToken,
+} from "./api/personal-tokens";
+export type {
+  CreatedPersonalToken,
+  PersonalTokenMetadata,
+} from "./api/personal-tokens";
 import pluginsRoute from "./api/plugins";
 import {
   registerApiRoutes,
