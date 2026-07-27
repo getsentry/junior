@@ -873,6 +873,7 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
+    let pendingTurnSpendLimitError: Error | undefined;
     /** Deliver one completed tool-free visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
@@ -1047,7 +1048,15 @@ async function executeAgentRunInPrivacyContext(
         if (containsHandoff) {
           return;
         }
-        enforceSpendLimit(currentAgentMessages());
+        try {
+          enforceSpendLimit(currentAgentMessages());
+        } catch (error) {
+          if (!isTurnSpendLimitError(error)) {
+            throw error;
+          }
+          pendingTurnSpendLimitError = error;
+          return;
+        }
         return deliverAssistantMessage(event.message);
       }
     });
@@ -1255,6 +1264,9 @@ async function executeAgentRunInPrivacyContext(
           try {
             for (let attempt = 0; ; attempt += 1) {
               await runAgentStep(run);
+              if (pendingTurnSpendLimitError) {
+                throw pendingTurnSpendLimitError;
+              }
               if (assistantMessageDeliveryError) {
                 throw assistantMessageDeliveryError;
               }
