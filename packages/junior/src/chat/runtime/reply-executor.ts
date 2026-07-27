@@ -1106,9 +1106,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           turnCompletionNotified = true;
         };
         /** Post and record one completed assistant message in the active thread. */
-        const deliverAssistantMessage = async (assistantMessage: {
-          text: string;
-        }): Promise<void> => {
+        const deliverAssistantMessage = async (
+          assistantMessage: { text: string },
+          terminalDispatchOutcome?: "blocked" | "failed",
+        ): Promise<void> => {
           if (!assistantMessage.text.trim()) {
             return;
           }
@@ -1200,7 +1201,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   sliceId: 1,
                   source,
                   startedAtMs: message.metadata.dateSent.getTime(),
-                  state: "running",
+                  ...(terminalDispatchOutcome
+                    ? { dispatchOutcome: terminalDispatchOutcome }
+                    : {}),
+                  state: terminalDispatchOutcome ? "failed" : "running",
                   surface: options.execution?.surface ?? "slack",
                 }),
               );
@@ -1848,8 +1852,34 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             after: latestArtifacts,
           });
           if (createdCanvasUrl) {
+            const dispatchOutcome = terminalDispatchFailureOutcome ?? "failed";
+            const errorMessage =
+              failureCause instanceof Error
+                ? failureCause.message
+                : "Agent turn failed after creating a canvas";
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
-            await deliverAssistantMessage({ text: recoveryText });
+            await deliverAssistantMessage(
+              { text: recoveryText },
+              dispatchOutcome,
+            );
+            if (conversationId) {
+              const sessionRecord = await getAgentTurnSessionRecord(
+                conversationId,
+                turnId,
+              );
+              if (sessionRecord) {
+                await failAgentTurnSessionRecord({
+                  conversationId,
+                  expectedVersion: sessionRecord.version,
+                  sessionId: turnId,
+                  errorMessage,
+                });
+              }
+            }
+            options.onTurnOutcome?.({
+              errorMessage,
+              outcome: dispatchOutcome,
+            });
             markTurnClosed({
               conversation: preparedState.conversation,
               nowMs: Date.now(),

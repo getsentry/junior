@@ -212,6 +212,11 @@ export function getDispatchInputMessageId(dispatchId: string): string {
   return `agent-dispatch:${dispatchId}`;
 }
 
+/** Return the synthetic input id written by the pre-conversation-work runner. */
+export function getLegacyDispatchInputMessageId(dispatchId: string): string {
+  return `dispatch:${dispatchId}:user`;
+}
+
 /** Give dispatch slices stable turn ids for resumability and trace correlation. */
 export function getDispatchTurnId(dispatchId: string): string {
   return `dispatch:${dispatchId}`;
@@ -416,6 +421,7 @@ export async function markDispatchAwaitingResume(
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
+  resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   return await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
@@ -423,6 +429,7 @@ export async function markDispatchBlocked(
       : {
           ...record,
           errorMessage,
+          ...(resultMessageTs ? { resultMessageTs } : {}),
           status: "blocked",
         },
   );

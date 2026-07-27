@@ -8,6 +8,7 @@ import {
   createOrGetDispatch,
   getDispatchConversationId,
   getDispatchInputMessageId,
+  getLegacyDispatchInputMessageId,
   getDispatchRecord,
   getDispatchStorageKey,
   getDispatchTurnId,
@@ -48,6 +49,7 @@ import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { agentTurnSessionKey } from "@/chat/state/turn-session-keys";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -563,7 +565,7 @@ describe("agent dispatch conversation work", () => {
     );
   });
 
-  it("recovers an auth block persisted before plugin projection", async () => {
+  it("projects a canvas recovery as a blocked dispatch", async () => {
     const dispatch = await createDispatch("auth-projection-lag");
     const runtime = createSlackRuntime({
       getSlackAdapter: () =>
@@ -577,6 +579,10 @@ describe("agent dispatch conversation work", () => {
           agentRunner: {
             run: vi.fn(async (request) => {
               await request.durability.onInputCommitted?.();
+              await request.durability.onArtifactStateUpdated?.({
+                lastCanvasId: "F_DISPATCH_CANVAS",
+                lastCanvasUrl: "https://slack.example/docs/T/F_DISPATCH_CANVAS",
+              });
               throw new AuthorizationFlowDisabledError("plugin", "github");
             }),
           },
@@ -586,7 +592,10 @@ describe("agent dispatch conversation work", () => {
 
     await expect(
       runtime.runDispatchTurn(dispatch, { ack: vi.fn(async () => {}) }),
-    ).rejects.toThrow("Authorization is required for github");
+    ).resolves.toMatchObject({
+      outcome: "blocked",
+      resultMessageTs: expect.any(String),
+    });
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
@@ -598,6 +607,7 @@ describe("agent dispatch conversation work", () => {
       expect.arrayContaining([
         expect.objectContaining({
           dispatchOutcome: "blocked",
+          resultMessageId: expect.any(String),
           sessionId: getDispatchTurnId(dispatch.id),
         }),
       ]),
@@ -616,8 +626,18 @@ describe("agent dispatch conversation work", () => {
     expect(runTurn).not.toHaveBeenCalled();
     expect(resumeTurn).not.toHaveBeenCalled();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      resultMessageTs: expect.any(String),
       status: "blocked",
     });
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: expect.stringContaining(
+            "https://slack.example/docs/T/F_DISPATCH_CANVAS",
+          ),
+        }),
+      }),
+    ]);
   });
 
   it("projects the diagnostic from a terminal model failure", async () => {
@@ -699,7 +719,7 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
-  it("resumes a dispatch from durable session identity through production routing", async () => {
+  it("resumes pre-cutover dispatch state through production routing", async () => {
     const dispatch = await createDispatch(
       "resume",
       {
@@ -848,6 +868,13 @@ describe("agent dispatch conversation work", () => {
         const persisted = await getPersistedThreadState(conversationId);
         const conversation = coerceThreadConversationState(persisted);
         await hydrateConversationMessages({ conversation, conversationId });
+        const inputMessage = conversation.messages.find(
+          (message) => message.id === getDispatchInputMessageId(dispatch.id),
+        );
+        if (!inputMessage) {
+          throw new Error("Expected the persisted dispatch input");
+        }
+        inputMessage.id = getLegacyDispatchInputMessageId(dispatch.id);
         conversation.messages.push({
           id: "attacker-message",
           role: "user",
@@ -859,6 +886,21 @@ describe("agent dispatch conversation work", () => {
           conversation,
           conversationId,
         });
+        const sessionKey = agentTurnSessionKey(
+          conversationId,
+          getDispatchTurnId(dispatch.id),
+        );
+        const storedSession = await state.get(sessionKey);
+        if (!storedSession || typeof storedSession !== "object") {
+          throw new Error("Expected the persisted dispatch session");
+        }
+        const { dispatchId: _dispatchId, ...preCutoverSession } =
+          storedSession as Record<string, unknown>;
+        await state.set(
+          sessionKey,
+          preCutoverSession,
+          JUNIOR_THREAD_STATE_TTL_MS,
+        );
       }
     }
 
@@ -883,7 +925,6 @@ describe("agent dispatch conversation work", () => {
         `dispatch:${dispatch.id}`,
       ),
     ).resolves.toMatchObject({
-      dispatchId: dispatch.id,
       dispatchOutcome: "completed",
       resultMessageId: expect.any(String),
       sliceId: 3,

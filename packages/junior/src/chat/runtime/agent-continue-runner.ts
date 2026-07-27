@@ -77,7 +77,10 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
-import { getDispatchInputMessageId } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchInputMessageId,
+  getLegacyDispatchInputMessageId,
+} from "@/chat/agent-dispatch/store";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -362,12 +365,15 @@ export async function continueSlackAgentRun(
           conversationId: payload.conversationId,
         });
         const artifacts = coerceThreadArtifactsState(currentState);
-        const dispatchId = activeSessionRecord.dispatchId;
+        const dispatchId =
+          activeSessionRecord.dispatchId ??
+          options.routingContext?.dispatch?.id;
         const dispatchUserMessage = dispatchId
           ? conversation.messages.find(
               (message) =>
                 message.role === "user" &&
-                message.id === getDispatchInputMessageId(dispatchId),
+                (message.id === getDispatchInputMessageId(dispatchId) ||
+                  message.id === getLegacyDispatchInputMessageId(dispatchId)),
             )
           : undefined;
         const userMessage =
