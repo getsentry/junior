@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
-import { createBashTool } from "bash-tool";
 import {
   logInfo,
   setSpanAttributes,
@@ -68,43 +67,7 @@ interface SandboxToolExecutors {
     aborted?: boolean;
     timedOut?: boolean;
   }>;
-  readFile: (input: { path: string }) => Promise<{ content: string }>;
-  writeFile: (input: {
-    path: string;
-    content: string;
-  }) => Promise<{ success: boolean }>;
   fs: SandboxFileSystem;
-}
-
-function createBashToolSandboxAdapter(sandbox: SandboxSession) {
-  return {
-    async executeCommand(command: string) {
-      const result = await sandbox.runCommand({
-        cmd: "bash",
-        args: ["-c", command],
-      });
-      return {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
-    },
-    async readFile(filePath: string) {
-      const content = await sandbox.readFileToBuffer({ path: filePath });
-      if (content == null) {
-        throw new Error(`File not found: ${filePath}`);
-      }
-      return content.toString("utf8");
-    },
-    async writeFiles(files: Array<{ path: string; content: string | Buffer }>) {
-      await sandbox.writeFiles(
-        files.map((file) => ({
-          path: file.path,
-          content: file.content,
-        })),
-      );
-    },
-  };
 }
 
 interface SandboxRuntime {
@@ -117,8 +80,6 @@ interface SandboxRuntime {
 
 interface ActiveSandbox {
   session: SandboxSession;
-  toolExecutors?: SandboxToolExecutors;
-  loadingToolExecutors?: Promise<SandboxToolExecutors>;
   networkPolicyKey?: string;
 }
 
@@ -729,29 +690,9 @@ export function createSandboxRuntime(
     schedule();
   };
 
-  const buildToolExecutors = async (
+  const createToolExecutors = (
     sandboxInstance: SandboxSession,
-  ): Promise<SandboxToolExecutors> => {
-    const toolkit = await withSandboxSpan(
-      "sandbox.bash_tool.init",
-      "sandbox.tool.init",
-      {
-        "app.sandbox.tool_name": "bash",
-        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT,
-      },
-      async () =>
-        await createBashTool({
-          sandbox: createBashToolSandboxAdapter(sandboxInstance),
-          destination: SANDBOX_WORKSPACE_ROOT,
-        }),
-    );
-
-    const executeReadFile = toolkit.tools.readFile.execute;
-    const executeWriteFile = toolkit.tools.writeFile.execute;
-    if (!executeReadFile || !executeWriteFile) {
-      throw new Error("bash-tool did not return executable tool handlers");
-    }
-
+  ): SandboxToolExecutors => {
     return {
       sessionId: sandboxInstance.sessionId,
       bash: async (input) => {
@@ -826,16 +767,6 @@ export function createSandboxRuntime(
           }
         }
       },
-      readFile: async (input) =>
-        (await executeReadFile(input, {
-          toolCallId: "sandbox-read-file",
-          messages: [],
-        })) as { content: string },
-      writeFile: async (input) =>
-        (await executeWriteFile(input, {
-          toolCallId: "sandbox-write-file",
-          messages: [],
-        })) as { success: boolean },
       fs: sandboxInstance.fs as SandboxFileSystem,
     };
   };
@@ -848,40 +779,6 @@ export function createSandboxRuntime(
     return activeSandbox;
   };
 
-  const loadToolExecutors = async (
-    session: SandboxSession,
-  ): Promise<SandboxToolExecutors> => {
-    const active = activeSandbox;
-    if (!active || active.session !== session) {
-      throw new Error("sandbox session changed before tool initialization");
-    }
-    if (active.toolExecutors) {
-      return active.toolExecutors;
-    }
-    if (active.loadingToolExecutors) {
-      return await active.loadingToolExecutors;
-    }
-
-    let nextToolExecutors: Promise<SandboxToolExecutors>;
-    nextToolExecutors = buildToolExecutors(session).then((executors) => {
-      if (
-        activeSandbox === active &&
-        active.loadingToolExecutors === nextToolExecutors
-      ) {
-        active.toolExecutors = executors;
-      }
-      return executors;
-    });
-    active.loadingToolExecutors = nextToolExecutors;
-    try {
-      return await nextToolExecutors;
-    } finally {
-      if (active.loadingToolExecutors === nextToolExecutors) {
-        active.loadingToolExecutors = undefined;
-      }
-    }
-  };
-
   return {
     sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
@@ -890,7 +787,7 @@ export function createSandboxRuntime(
       return await getOrAcquireSandbox();
     },
     async tools() {
-      return await loadToolExecutors(await ensureReadySandbox());
+      return createToolExecutors(await ensureReadySandbox());
     },
     async refreshNetworkPolicy(traceHeaders) {
       const active = activeSandbox;

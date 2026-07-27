@@ -27,15 +27,50 @@ export interface SandboxFileStat {
 export interface SandboxFileSystem {
   readFile(
     filePath: string,
-    options: { encoding: BufferEncoding },
+    options: { encoding: BufferEncoding; signal?: AbortSignal },
   ): Promise<string>;
   writeFile(
     filePath: string,
     content: string,
-    options?: { encoding?: BufferEncoding },
+    options?: { encoding?: BufferEncoding; signal?: AbortSignal },
   ): Promise<void>;
-  readdir(filePath: string): Promise<string[]>;
-  stat(filePath: string): Promise<SandboxFileStat>;
+  readdir(
+    filePath: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<string[]>;
+  stat(
+    filePath: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SandboxFileStat>;
+}
+
+/** Bind one tool call's cancellation to every sandbox filesystem operation. */
+export function bindSandboxFileSystem(
+  fs: SandboxFileSystem,
+  signal?: AbortSignal,
+): SandboxFileSystem {
+  if (!signal) {
+    return fs;
+  }
+
+  return {
+    readFile(filePath, options) {
+      signal.throwIfAborted();
+      return fs.readFile(filePath, { ...options, signal });
+    },
+    writeFile(filePath, content, options) {
+      signal.throwIfAborted();
+      return fs.writeFile(filePath, content, { ...options, signal });
+    },
+    readdir(filePath) {
+      signal.throwIfAborted();
+      return fs.readdir(filePath, { signal });
+    },
+    stat(filePath) {
+      signal.throwIfAborted();
+      return fs.stat(filePath, { signal });
+    },
+  };
 }
 
 export interface SandboxWorkspace {
@@ -92,10 +127,10 @@ export function createSandboxSession(
       await run(
         async () => await fileSystem.writeFile(filePath, content, writeOptions),
       ),
-    readdir: async (filePath) =>
-      await run(async () => await fileSystem.readdir(filePath)),
-    stat: async (filePath) =>
-      await run(async () => await fileSystem.stat(filePath)),
+    readdir: async (filePath, readOptions) =>
+      await run(async () => await fileSystem.readdir(filePath, readOptions)),
+    stat: async (filePath, statOptions) =>
+      await run(async () => await fileSystem.stat(filePath, statOptions)),
   };
 
   return {
