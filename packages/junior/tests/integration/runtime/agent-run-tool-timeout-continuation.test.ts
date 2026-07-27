@@ -214,6 +214,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       },
     },
     sandboxRef: () => undefined,
+    close: vi.fn(),
   }),
 }));
 

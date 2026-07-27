@@ -369,6 +369,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               profileHash: "hash-test",
             }
           : undefined,
+      close: vi.fn(),
     };
   },
 }));
