@@ -58,7 +58,7 @@ export function ToolFrame(props: {
           </TranscriptHeadingMeta>
         ) : undefined
       }
-      rightClassName="min-w-0 max-md:hidden"
+      rightClassName="ml-3 min-w-0 max-md:hidden"
     />
   );
   const mobileMeta =

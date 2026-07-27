@@ -101,6 +101,16 @@ export function formatMs(value: number | undefined): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+/** Format a serialized payload size for compact transcript metadata. */
+export function formatPayloadSize(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  if (serialized === undefined) return undefined;
+  const bytes = new TextEncoder().encode(serialized).byteLength;
+  if (bytes < 1_000) return `${bytes}b`;
+  return `${Math.round(bytes / 1_000)}kb`;
+}
+
 /** Format the elapsed duration between two transcript event timestamps. */
 export function formatElapsedDuration(
   startedAt: number | undefined,

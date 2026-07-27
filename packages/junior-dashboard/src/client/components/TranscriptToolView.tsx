@@ -5,6 +5,7 @@ import { HighlightedCode } from "../code";
 import {
   formatElapsedDuration,
   formatMessageTimestamp,
+  formatPayloadSize,
   stringifyPartValue,
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
@@ -26,8 +27,10 @@ export function TranscriptToolView(props: {
   );
   const hasDetails =
     props.part.input !== undefined || props.part.output !== undefined;
-  const meta = [duration, timestamp].filter(isString);
-  const mobileSummary = duration;
+  const responseSize = formatPayloadSize(props.part.output);
+  const executionMeta = [duration, responseSize].filter(isString).join(" · ");
+  const meta = [executionMeta, timestamp].filter(isString);
+  const mobileSummary = executionMeta;
   const preview = toolCallPreview(props.part.name, props.part.input);
   const signature = (
     <ToolSignature

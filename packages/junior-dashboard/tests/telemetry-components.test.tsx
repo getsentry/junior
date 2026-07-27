@@ -234,7 +234,31 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="webSearch (running)"');
+    expect(html).toContain("query");
+    expect(html).toContain("regression");
     expect(html).toContain("<mark");
+  });
+
+  it("shows response size beside tool duration", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <TranscriptToolView
+            part={{
+              id: "tool-1",
+              name: "webSearch",
+              output: "x".repeat(5_100),
+              resultTimestamp: 6_000,
+              status: "completed",
+              type: "tool_call",
+            }}
+            timestamp={1_000}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("5.0s · 5kb");
   });
 
   it("exposes pressed state for transcript view controls", () => {
