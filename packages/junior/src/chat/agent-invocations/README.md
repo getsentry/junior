@@ -7,13 +7,15 @@ stores the terminal result for its parent to read later.
 ## Records
 
 - An **agent binding** maps one name within a parent agent conversation to one
-  destinationless child conversation. Reusing the name reuses that child's
-  history.
+  destinationless child conversation and its reasoning policy. Reusing the
+  name reuses that child's history; an omitted reasoning level inherits the
+  binding, while an explicit mismatch is rejected.
 - An **agent invocation** is one retry-safe task sent to a child. Its
   `invocationId` is derived from the parent conversation and caller-supplied
   idempotency key.
 - An invocation without a name gets an invocation-scoped child conversation.
-- Child conversation lineage is immutable. Recursive delegation is disabled
+- Child conversation lineage is immutable. Bindings and invocation content are
+  purged with their root conversation tree. Recursive delegation is disabled
   until depth, cancellation, and authority rules are defined.
 
 SQL owns bindings, invocation status, bounded execution authority, and terminal

@@ -5,6 +5,7 @@ import {
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
+  juniorAgentBindings,
   juniorAgentInvocations,
 } from "@/db/schema";
 import { withConversationEventLock } from "./event-lock";
@@ -110,6 +111,11 @@ export async function selectExpiredRoots(
         select 1 from junior_agent_invocations invocations
         where invocations.parent_conversation_id = tree.conversation_id
            or invocations.child_conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_agent_bindings bindings
+        where bindings.parent_conversation_id = tree.conversation_id
+           or bindings.child_conversation_id = tree.conversation_id
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
@@ -272,6 +278,15 @@ export async function purgeConversationTree(
               or(
                 inArray(juniorAgentInvocations.parentConversationId, ids),
                 inArray(juniorAgentInvocations.childConversationId, ids),
+              ),
+            );
+          await executor
+            .db()
+            .delete(juniorAgentBindings)
+            .where(
+              or(
+                inArray(juniorAgentBindings.parentConversationId, ids),
+                inArray(juniorAgentBindings.childConversationId, ids),
               ),
             );
           await executor

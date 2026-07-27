@@ -223,9 +223,27 @@ export async function createAgentInvocation(
     input.agentName ? childConversationId : invocationId
   }`;
   return await getSqlExecutor().withLock(lockName, async () => {
+    const existingBinding = input.agentName
+      ? await getAgentBinding({
+          name: input.agentName,
+          parentConversationId: input.parentConversationId,
+        })
+      : undefined;
+    if (
+      existingBinding &&
+      input.reasoningLevel !== undefined &&
+      input.reasoningLevel !== existingBinding.reasoningLevel
+    ) {
+      throw new Error(
+        `Named agent binding policy changed for ${input.agentName}`,
+      );
+    }
+    const effectiveInput = existingBinding?.reasoningLevel
+      ? { ...input, reasoningLevel: existingBinding.reasoningLevel }
+      : input;
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
-      if (!sameCreateInput(existing, input)) {
+      if (!sameCreateInput(existing, effectiveInput)) {
         throw new Error(
           `Agent invocation idempotency key was reused with different input for ${invocationId}`,
         );
@@ -249,7 +267,7 @@ export async function createAgentInvocation(
           createdAt: new Date(nowMs),
           name: input.agentName,
           parentConversationId: input.parentConversationId,
-          reasoningLevel: input.reasoningLevel ?? null,
+          reasoningLevel: effectiveInput.reasoningLevel ?? null,
           updatedAt: new Date(nowMs),
         })
         .onConflictDoNothing();
@@ -262,7 +280,7 @@ export async function createAgentInvocation(
           `Named agent binding did not resolve to ${childConversationId}`,
         );
       }
-      if (binding.reasoningLevel !== input.reasoningLevel) {
+      if (binding.reasoningLevel !== effectiveInput.reasoningLevel) {
         throw new Error(
           `Named agent binding policy changed for ${input.agentName}`,
         );
@@ -283,13 +301,13 @@ export async function createAgentInvocation(
         parentConversationId: input.parentConversationId,
         childConversationId,
         agentName: input.agentName ?? null,
-        input: input.input,
-        actor: input.actor,
-        credentialContext: input.credentialContext ?? null,
-        source: input.source,
-        destination: input.destination,
-        destinationVisibility: input.destinationVisibility ?? null,
-        reasoningLevel: input.reasoningLevel ?? null,
+        input: effectiveInput.input,
+        actor: effectiveInput.actor,
+        credentialContext: effectiveInput.credentialContext ?? null,
+        source: effectiveInput.source,
+        destination: effectiveInput.destination,
+        destinationVisibility: effectiveInput.destinationVisibility ?? null,
+        reasoningLevel: effectiveInput.reasoningLevel ?? null,
         status: "pending",
         mailboxStatus: "pending",
         createdAt: new Date(nowMs),
@@ -298,7 +316,7 @@ export async function createAgentInvocation(
       })
       .onConflictDoNothing();
     const invocation = await getAgentInvocation(invocationId);
-    if (!invocation || !sameCreateInput(invocation, input)) {
+    if (!invocation || !sameCreateInput(invocation, effectiveInput)) {
       throw new Error(`Agent invocation creation raced for ${invocationId}`);
     }
     return { invocation, status: "created" };

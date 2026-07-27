@@ -166,6 +166,14 @@ describe("agent invocation conversation work", () => {
       await expect(
         createAgentInvocation({
           ...invocationInput,
+          agentName: "researcher",
+          idempotencyKey: "named-policy-change",
+          reasoningLevel: "high",
+        }),
+      ).rejects.toThrow("Named agent binding policy changed for researcher");
+      await expect(
+        createAgentInvocation({
+          ...invocationInput,
           idempotencyKey: "recursive",
           parentConversationId: first.invocation.childConversationId,
         }),
