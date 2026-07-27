@@ -16,6 +16,7 @@ export default defineConfig({
   },
   noExternal: [
     "@sentry/junior/api/schema",
+    "@sentry/junior-plugin-api",
     "@tanstack/react-query",
     "lucide-react",
     "react",
