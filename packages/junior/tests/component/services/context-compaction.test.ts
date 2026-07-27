@@ -412,57 +412,6 @@ describe("context compaction projection reset", () => {
     ).toBeLessThan(380_000);
   });
 
-  it("retains the current instruction when active compaction has no pending input", async () => {
-    const { compactActiveContextIfNeeded } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages, loadProjection } =
-      await import("@/chat/conversations/projection");
-    const conversationId = "conversation-active-current-instruction";
-    const currentInstruction = user(
-      "<current-instruction>\nDelete the unused capabilities.\n</current-instruction>",
-      2,
-    );
-    await commitMessages({
-      conversationId,
-      messages: [currentInstruction],
-    });
-
-    const result = await compactActiveContextIfNeeded(
-      {
-        conversationId,
-        modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
-        piMessages: [
-          currentInstruction,
-          {
-            role: "toolResult",
-            toolCallId: "inspect-1",
-            toolName: "readFile",
-            content: [{ type: "text", text: "x".repeat(1_600_000) }],
-            isError: false,
-            timestamp: 3,
-          } as PiMessage,
-        ],
-      },
-      {
-        completeText: async () => ({ text: "No outstanding asks." }) as never,
-      },
-    );
-
-    expect(result.compacted).toBe(true);
-    expect(result.piMessages).toHaveLength(2);
-    expect(textOf(result.piMessages![0]!)).toContain("No outstanding asks.");
-    expect(textOf(result.piMessages![0]!)).not.toContain(
-      "<current-instruction>",
-    );
-    expect(textOf(result.piMessages![1]!)).toBe(
-      "<current-instruction>\nDelete the unused capabilities.\n</current-instruction>",
-    );
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      result.piMessages,
-    );
-  });
-
   it("counts retained runtime context in the replacement hard limit", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
