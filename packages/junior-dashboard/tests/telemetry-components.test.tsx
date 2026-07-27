@@ -522,7 +522,6 @@ describe("dashboard canonical-event components", () => {
           turnId: "turn-1",
           state: "failed",
           failureKind: "agent",
-          toolCallIds: ["search-1"],
         }),
       ]),
     );

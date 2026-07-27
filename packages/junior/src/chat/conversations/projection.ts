@@ -446,7 +446,6 @@ export async function recordToolExecutionStarted(args: {
   createdAtMs?: number;
   toolCallId: string;
   toolName: string;
-  turnId: string;
 }): Promise<void> {
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -454,7 +453,6 @@ export async function recordToolExecutionStarted(args: {
         type: "tool_execution_started",
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        turnId: args.turnId,
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },

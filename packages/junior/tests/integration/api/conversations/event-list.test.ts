@@ -263,60 +263,6 @@ describe("conversation event list API", () => {
     ]);
   });
 
-  it("terminalizes a failed turn tool when its start is on an older page", async () => {
-    const conversationId = "internal:paged-failed-tool";
-    await recordConversation(conversationId);
-    await getConversationEventStore().append(conversationId, [
-      {
-        data: {
-          type: "tool_execution_started",
-          toolCallId: "search-before-failure-page",
-          toolName: "search",
-          turnId: "failed-turn",
-        },
-        createdAtMs: 2,
-      },
-      message("page-boundary", 3),
-      {
-        data: {
-          type: "turn_failed",
-          turnId: "failed-turn",
-          failureCode: "model_execution_failed",
-        },
-        createdAtMs: 4,
-      },
-      message("latest-message", 5),
-    ]);
-
-    const app = createJuniorApi();
-    const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}?limit=1`,
-    );
-    const detail = conversationDetailReportSchema.parse(
-      await detailResponse.json(),
-    );
-    if (!detail.previousCursor) throw new Error("Expected a previous cursor");
-
-    const historyResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(detail.previousCursor)}&limit=1`,
-    );
-    expect(historyResponse.status).toBe(200);
-    const history = conversationEventPageSchema.parse(
-      await historyResponse.json(),
-    );
-    expect(history.events).toEqual([
-      expect.objectContaining({
-        data: {
-          type: "turn_lifecycle",
-          turnId: "failed-turn",
-          state: "failed",
-          failureKind: "agent",
-          toolCallIds: ["search-before-failure-page"],
-        },
-      }),
-    ]);
-  });
-
   it("rejects tampered, cross-conversation, and invalid pagination input", async () => {
     const firstConversationId = "internal:first-cursor-owner";
     const secondConversationId = "internal:second-cursor-owner";

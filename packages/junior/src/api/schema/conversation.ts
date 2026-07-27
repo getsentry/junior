@@ -117,7 +117,6 @@ const conversationReportToolCallSchema = z
     toolCallId: z.string().min(1),
     name: z.string().min(1),
     status: z.enum(["running", "completed", "error"]),
-    turnId: z.string().min(1).optional(),
     startedAt: z.string().datetime().optional(),
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
@@ -156,7 +155,6 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         turnId: z.string().min(1),
         state: z.literal("failed"),
         failureKind: z.enum(["agent", "delivery"]),
-        toolCallIds: z.array(z.string().min(1)).optional(),
       })
       .strict(),
   ],

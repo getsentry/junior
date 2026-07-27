@@ -317,47 +317,6 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(prefix)).toBe(JSON.stringify(complete.slice(0, 1)));
   });
 
-  it("projects failed turns with explicit outstanding tool ids", () => {
-    const projected = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: [
-        event(1, {
-          type: "tool_execution_started",
-          toolCallId: "call-running",
-          toolName: "search",
-          turnId: "turn-1",
-        }),
-        event(2, {
-          type: "tool_execution_started",
-          toolCallId: "call-completed",
-          toolName: "fetch",
-          turnId: "turn-1",
-        }),
-        event(3, {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "call-completed",
-            content: [{ type: "text", text: "done" }],
-          } as ConversationAgentStepPayload,
-        }),
-        event(4, {
-          type: "turn_failed",
-          turnId: "turn-1",
-          failureCode: "model_execution_failed",
-        }),
-      ],
-    });
-
-    expect(projected.at(-1)?.data).toEqual({
-      type: "turn_lifecycle",
-      turnId: "turn-1",
-      state: "failed",
-      failureKind: "agent",
-      toolCallIds: ["call-running"],
-    });
-  });
-
   it("does not use future start context to rewrite an earlier tool result", () => {
     const result = event(1, {
       type: "agent_step",

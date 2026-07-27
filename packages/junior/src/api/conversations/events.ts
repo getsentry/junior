@@ -76,7 +76,6 @@ type ToolStart = {
   createdAtMs: number;
   name: string;
   seq: number;
-  turnId?: string;
 };
 
 /** Retain model-visible text and media descriptors, dropping all opaque fields. */
@@ -167,7 +166,6 @@ function reportToolResult(args: {
           ? {
               startedAt: new Date(args.start.createdAtMs).toISOString(),
               startedSeq: args.start.seq,
-              ...(args.start.turnId ? { turnId: args.start.turnId } : {}),
             }
           : {}),
         ...(args.canExposePayload && output !== undefined ? { output } : {}),
@@ -240,6 +238,14 @@ function reportEventData(args: {
         turnId: data.turnId,
         state: data.outcome === "success" ? "succeeded" : "no_reply",
       };
+    case "turn_failed":
+      return {
+        type: "turn_lifecycle",
+        turnId: data.turnId,
+        state: "failed",
+        failureKind:
+          data.failureCode === "delivery_failed" ? "delivery" : "agent",
+      };
     case "compaction":
       return {
         type: "compaction",
@@ -266,7 +272,6 @@ export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
   subagentStartEvents?: ConversationEvent[];
-  toolResultEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
 }): ConversationReportEvent[] {
   const subagentStarts = new Map<
@@ -295,19 +300,8 @@ export function projectConversationReportEventPage(args: {
           createdAtMs: event.createdAtMs,
           name: event.data.toolName,
           seq: event.seq,
-          ...(event.data.turnId ? { turnId: event.data.turnId } : {}),
         });
       }
-    }
-  }
-  const toolResultSeqs = new Map<string, number>();
-  for (const event of [...(args.toolResultEvents ?? []), ...args.events]) {
-    if (event.data.type !== "agent_step") continue;
-    const result = reportingToolResultMessageSchema.safeParse(event.data.message);
-    if (!result.success) continue;
-    const current = toolResultSeqs.get(result.data.toolCallId);
-    if (current === undefined || event.seq < current) {
-      toolResultSeqs.set(result.data.toolCallId, event.seq);
     }
   }
   const projected: ConversationReportEvent[] = [];
@@ -339,7 +333,6 @@ export function projectConversationReportEventPage(args: {
         createdAtMs: event.createdAtMs,
         name: event.data.toolName,
         seq: event.seq,
-        ...(event.data.turnId ? { turnId: event.data.turnId } : {}),
       });
       data = {
         type: "tool_calls",
@@ -350,7 +343,6 @@ export function projectConversationReportEventPage(args: {
             status: "running",
             startedAt: new Date(event.createdAtMs).toISOString(),
             startedSeq: event.seq,
-            ...(event.data.turnId ? { turnId: event.data.turnId } : {}),
           },
         ],
       };
@@ -402,26 +394,6 @@ export function projectConversationReportEventPage(args: {
         ...(args.canExposePayload && event.data.summary
           ? { summary: event.data.summary }
           : {}),
-      };
-    } else if (event.data.type === "turn_failed") {
-      const failedTurn = event.data;
-      const toolCallIds = [...toolStarts.entries()]
-        .filter(([toolCallId, start]) => {
-          const resultSeq = toolResultSeqs.get(toolCallId);
-          return (
-            start.turnId === failedTurn.turnId &&
-            start.seq < event.seq &&
-            (resultSeq === undefined || resultSeq > event.seq)
-          );
-        })
-        .map(([toolCallId]) => toolCallId);
-      data = {
-        type: "turn_lifecycle",
-        turnId: failedTurn.turnId,
-        state: "failed",
-        failureKind:
-          failedTurn.failureCode === "delivery_failed" ? "delivery" : "agent",
-        ...(toolCallIds.length > 0 ? { toolCallIds } : {}),
       };
     } else {
       data = reportEventData({

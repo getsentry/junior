@@ -156,9 +156,6 @@ const toolExecutionStartedEventDataSchema = z
     type: z.literal("tool_execution_started"),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1),
-    // Optional only for decoding events written before tool starts were owned
-    // by a turn. New writes always include this field.
-    turnId: z.string().min(1).optional(),
   })
   .strict();
 

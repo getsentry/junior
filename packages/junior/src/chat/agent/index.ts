@@ -420,7 +420,6 @@ async function executeAgentRunInPrivacyContext(
           conversationId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          turnId,
         });
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
