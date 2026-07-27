@@ -42,6 +42,7 @@ export interface AgentSandbox {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  close(): void;
   writeGeneratedArtifacts(
     files: FileUpload[],
   ): Promise<GeneratedArtifactFileRef[]>;
@@ -77,6 +78,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   return {
     workspace: sandbox.workspace,
     sandboxRef: sandbox.sandboxRef,
+    close: sandbox.close,
     tools: {
       supports: sandbox.tools.supports,
       async execute(params) {

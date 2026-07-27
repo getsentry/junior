@@ -43,6 +43,9 @@ const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
+const SANDBOX_CONTINUITY_MARKER = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
+const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
+const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
 interface SandboxCredentials {
   token?: string;
@@ -110,6 +113,7 @@ interface SandboxRuntime {
   acquire(): Promise<SandboxSession>;
   tools(): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
+  close(): void;
 }
 
 interface ActiveSandbox {
@@ -184,6 +188,8 @@ export function createSandboxRuntime(
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: Promise<SandboxSession> | undefined;
+  let keepAliveTimer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
 
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
@@ -209,6 +215,10 @@ export function createSandboxRuntime(
       return;
     }
     activeSandbox = null;
+    if (keepAliveTimer) {
+      clearTimeout(keepAliveTimer);
+      keepAliveTimer = undefined;
+    }
   };
 
   const adaptSandbox = (
@@ -273,6 +283,20 @@ export function createSandboxRuntime(
   ): Promise<void> => {
     await syncSkills(targetSandbox);
     await options.onSandboxPrepare?.(targetSandbox);
+  };
+
+  const hasContinuityMarker = async (
+    targetSandbox: SandboxSession,
+  ): Promise<boolean> => {
+    try {
+      await targetSandbox.fs.stat(SANDBOX_CONTINUITY_MARKER);
+      return true;
+    } catch (error) {
+      if (isSandboxUnavailableError(error)) {
+        throw error;
+      }
+      return false;
+    }
   };
 
   const applyNetworkPolicy = async (
@@ -570,6 +594,21 @@ export function createSandboxRuntime(
       throw new Error("sandbox restore failed", { cause: error });
     }
 
+    if (!(await hasContinuityMarker(hintedSandbox))) {
+      setSpanAttributes({
+        "app.sandbox.reused": false,
+        "app.sandbox.recreate.reason": "continuity_marker_missing",
+      });
+      logInfo(
+        "sandbox_hint_discarded_continuity_marker_missing",
+        traceContext,
+        { "app.sandbox.previous_id": ref.id },
+        "Restored sandbox is missing its continuity marker; creating a fresh session",
+      );
+      sandboxRef = undefined;
+      return null;
+    }
+
     let networkPolicyKey: string | undefined;
     try {
       await reportSandboxRef(hintedSandbox);
@@ -688,6 +727,35 @@ export function createSandboxRuntime(
     }
   };
 
+  const startKeepAlive = (session: SandboxSession): void => {
+    const keepAliveMs = parseKeepAliveMs();
+    if (keepAliveMs === 0 || closed || keepAliveTimer) {
+      return;
+    }
+
+    const intervalMs = Math.max(
+      MIN_KEEPALIVE_INTERVAL_MS,
+      Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
+    );
+    const schedule = (): void => {
+      keepAliveTimer = setTimeout(async () => {
+        keepAliveTimer = undefined;
+        if (closed || activeSandbox?.session !== session) {
+          return;
+        }
+        try {
+          await extendKeepAlive(session);
+        } catch {
+          invalidateSession(session.sessionId);
+          return;
+        }
+        schedule();
+      }, intervalMs);
+      keepAliveTimer.unref?.();
+    };
+    schedule();
+  };
+
   const buildToolExecutors = async (
     sandboxInstance: SandboxSession,
   ): Promise<SandboxToolExecutors> => {
@@ -803,6 +871,7 @@ export function createSandboxRuntime(
     const activeSandbox = await getOrAcquireSandbox();
     await probeSession(activeSandbox);
     await extendKeepAlive(activeSandbox);
+    startKeepAlive(activeSandbox);
     return activeSandbox;
   };
 
@@ -856,6 +925,13 @@ export function createSandboxRuntime(
         return;
       }
       await applyNetworkPolicy(active.session, traceHeaders);
+    },
+    close() {
+      closed = true;
+      if (keepAliveTimer) {
+        clearTimeout(keepAliveTimer);
+        keepAliveTimer = undefined;
+      }
     },
   };
 }

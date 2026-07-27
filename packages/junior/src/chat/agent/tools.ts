@@ -97,6 +97,7 @@ export interface ToolWiring {
   mcpToolManager: McpToolManager;
   pluginHooks: PluginHookRunner;
   getSandboxRef: () => SandboxRef | undefined;
+  closeSandbox: () => void;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -418,6 +419,7 @@ export async function wireAgentTools(
     mcpToolManager,
     pluginHooks,
     getSandboxRef: agentSandbox.sandboxRef,
+    closeSandbox: agentSandbox.close,
     toolGuidance,
     toolRuntimeContext,
   };

@@ -268,6 +268,7 @@ async function executeAgentRunInPrivacyContext(
   let resume: ResumeState | undefined;
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
+  let closeSandbox: (() => void) | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -729,6 +730,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
     });
     mcpToolManager = wiring.mcpToolManager;
+    closeSandbox = wiring.closeSandbox;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools;
 
@@ -1451,6 +1453,7 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
+    closeSandbox?.();
     try {
       await mcpToolManager?.close();
     } catch (closeError) {
