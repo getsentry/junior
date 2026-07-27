@@ -4,9 +4,11 @@ import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
+  getDb,
 } from "@/chat/db";
 import { createQueryConversationEventsTool } from "@/chat/tools/query-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { juniorConversationEvents } from "@/db/schema";
 
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 
@@ -115,7 +117,7 @@ describe("queryConversationEvents", () => {
       ok: true,
       status: "success",
       conversation_id: CURRENT_CONVERSATION_ID,
-      has_older: false,
+      has_older: true,
       has_newer: false,
       events: [
         { seq: 1, data: { type: "message", text: "second" } },
@@ -131,6 +133,66 @@ describe("queryConversationEvents", () => {
     expect(page.events[1]).not.toMatchObject({
       data: { replacementHistory: expect.anything() },
     });
+
+    await expect(
+      executeTool({
+        conversation_id: CURRENT_CONVERSATION_ID,
+        before_seq: 2,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      events: [{ seq: 1 }],
+      has_older: true,
+      has_newer: true,
+    });
+    await expect(
+      executeTool({
+        conversation_id: CURRENT_CONVERSATION_ID,
+        after_seq: 0,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      events: [{ seq: 1 }],
+      has_older: true,
+      has_newer: true,
+    });
+  });
+
+  it("omits replacement history from unknown event versions", async () => {
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: CURRENT_CONVERSATION_ID,
+      visibility: "public",
+    });
+    await getDb().insert(juniorConversationEvents).values({
+      conversationId: CURRENT_CONVERSATION_ID,
+      seq: 0,
+      historyVersion: 1,
+      schemaVersion: 2,
+      type: "handoff",
+      payload: {
+        modelId: "future/model",
+        replacementHistory: [{ message: { role: "user" } }],
+      },
+      createdAt: new Date(1),
+    });
+
+    const page = await executeTool({
+      conversation_id: CURRENT_CONVERSATION_ID,
+    });
+
+    expect(page.events).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "unknown",
+          originalType: "handoff",
+          payload: {
+            modelId: "future/model",
+            replacement_history_count: 1,
+          },
+        },
+      }),
+    ]);
   });
 
   it("only exposes other public conversations in the same Slack workspace", async () => {

@@ -380,7 +380,6 @@ class SqlConversationEventStore implements ConversationEventStore {
         ? true
         : await this.hasMatchingEvent({
             conversationId,
-            afterSeq: query.afterSeq,
             beforeSeq: firstSeq,
             typeFilter,
           });
@@ -390,7 +389,6 @@ class SqlConversationEventStore implements ConversationEventStore {
         : await this.hasMatchingEvent({
             conversationId,
             afterSeq: lastSeq,
-            beforeSeq: query.beforeSeq,
             typeFilter,
           });
 

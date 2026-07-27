@@ -356,24 +356,36 @@ function projectEvent(event: ConversationEvent) {
 function stripReplacementHistory(
   data: ConversationEvent["data"],
 ): ConversationEvent["data"] | Record<string, unknown> {
+  if (data.type === "unknown") {
+    return {
+      ...data,
+      payload: stripReplacementHistoryField(data.payload),
+    };
+  }
   if (
     data.type === "compaction" ||
     data.type === "handoff" ||
     data.type === "rollback"
   ) {
-    const { replacementHistory: _replacementHistory, ...rest } = data as {
-      replacementHistory?: unknown;
-    } & Record<string, unknown>;
-    return {
-      ...rest,
-      replacement_history_count: Array.isArray(
-        (data as { replacementHistory?: unknown }).replacementHistory,
-      )
-        ? (data as { replacementHistory: unknown[] }).replacementHistory.length
-        : 0,
-    };
+    return stripReplacementHistoryField(data) as Record<string, unknown>;
   }
   return data;
+}
+
+function stripReplacementHistoryField(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const { replacementHistory, ...rest } = value as Record<string, unknown>;
+  if (replacementHistory === undefined) {
+    return value;
+  }
+  return {
+    ...rest,
+    replacement_history_count: Array.isArray(replacementHistory)
+      ? replacementHistory.length
+      : 0,
+  };
 }
 
 export type { KnownConversationEventType };
