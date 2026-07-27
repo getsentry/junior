@@ -380,6 +380,25 @@ describe("chat config", () => {
     expect(botConfig.maxSlicesPerTurn).toBe(100);
   });
 
+  it("leaves the spend cap disabled when MAX_SPEND is unset", async () => {
+    delete process.env.MAX_SPEND;
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxSpendUsd).toBeUndefined();
+  });
+
+  it("parses MAX_SPEND as a positive USD amount", async () => {
+    process.env.MAX_SPEND = "1.25";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxSpendUsd).toBe(1.25);
+  });
+
+  it("rejects an invalid MAX_SPEND", async () => {
+    process.env.MAX_SPEND = "0";
+    await expect(loadConfig()).rejects.toThrow(
+      "MAX_SPEND must be a positive number",
+    );
+  });
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();

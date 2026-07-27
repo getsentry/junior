@@ -335,6 +335,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(source ? { source } : {}),
     ...(row.title ? { title: row.title } : {}),
+    ...(row.usage ? { usage: row.usage } : {}),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : {}),

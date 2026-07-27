@@ -50,6 +50,7 @@ export interface BotConfig {
   fastModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
+  maxSpendUsd?: number;
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
@@ -146,6 +147,22 @@ function parseLoadingMessages(rawValue: string | undefined): string[] {
     }
     return value.trim();
   });
+}
+
+function parseOptionalPositiveNumber(
+  envName: string,
+  rawValue: string | undefined,
+): number | undefined {
+  const trimmed = toOptionalTrimmed(rawValue);
+  if (trimmed === undefined) {
+    return undefined;
+  }
+
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${envName} must be a positive number`);
+  }
+  return value;
 }
 
 function parseOptionalPositiveInteger(
@@ -317,6 +334,7 @@ function readBotConfig(
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    maxSpendUsd: parseOptionalPositiveNumber("MAX_SPEND", env.MAX_SPEND),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     turnTimeoutMs: parseAgentTurnTimeoutMs(

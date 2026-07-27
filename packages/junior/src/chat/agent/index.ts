@@ -13,6 +13,7 @@
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
+import { getConversationStore } from "@/chat/db";
 import {
   extractGenAiUsageAttributes,
   extractGenAiUsageSummary,
@@ -74,6 +75,7 @@ import {
 } from "@/chat/services/turn-result";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
+import { enforceTurnSpendLimit } from "@/chat/services/spend-limit";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -379,6 +381,13 @@ async function executeAgentRunInPrivacyContext(
       conversationId,
       turnId,
     });
+    const conversationUsage = (
+      await getConversationStore().get({ conversationId })
+    )?.usage;
+    enforceTurnSpendLimit({
+      maxSpendUsd: botConfig.maxSpendUsd,
+      usage: conversationUsage,
+    });
     // Mirror the committed provenance prefix the turn session record owns. A
     // fresh run may already include batched parked input committed before the
     // agent starts, then adds the current actor's turn-start instruction.
@@ -597,6 +606,16 @@ async function executeAgentRunInPrivacyContext(
           .filter(isAssistantMessage),
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
+    };
+    const enforceSpendLimit = (messages: PiMessage[]): void => {
+      enforceTurnSpendLimit({
+        maxSpendUsd: botConfig.maxSpendUsd,
+        usage: addAgentTurnUsage(
+          conversationUsage,
+          priorPhaseUsage,
+          usageSinceCurrentBoundary(messages),
+        ),
+      });
     };
     /** Commit the durable handoff epoch before staging its in-memory model swap. */
     const scheduleHandoff = async (args: {
@@ -943,6 +962,7 @@ async function executeAgentRunInPrivacyContext(
       streamFn: createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
+        enforceSpendLimit(currentAgentMessages());
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -964,6 +984,7 @@ async function executeAgentRunInPrivacyContext(
           : undefined,
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
+          enforceSpendLimit(nextTurn.context.messages as PiMessage[]);
           const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
@@ -1022,6 +1043,7 @@ async function executeAgentRunInPrivacyContext(
         if (containsHandoff) {
           return;
         }
+        enforceSpendLimit(currentAgentMessages());
         return deliverAssistantMessage(event.message);
       }
     });
@@ -1220,6 +1242,7 @@ async function executeAgentRunInPrivacyContext(
               freshPromptMessage,
             ]);
           }
+          enforceSpendLimit(currentAgentMessages());
           run =
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)

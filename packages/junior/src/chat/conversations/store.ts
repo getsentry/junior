@@ -46,6 +46,8 @@ export interface Conversation {
   source?: ConversationSource;
   title?: string;
   updatedAtMs: number;
+  /** Cumulative model usage used by reporting and runtime controls. */
+  usage?: AgentTurnUsage;
   /**
    * When retention purged this conversation's content. Set means messages and
    * events were deleted wholesale; reporting presents the transcript as expired
