@@ -46,6 +46,10 @@ Canonical words used across Junior's code and documentation.
 - **Session record**: the persisted read model for one resumable turn.
 - **Conversation execution**: mutable operational state for a conversation,
   such as mailbox state, worker lease, checkpoints, and activity status.
+- **Agent binding**: a named reference, scoped to one parent agent
+  conversation, that reuses one child conversation and its history.
+- **Agent invocation**: one retry-safe delegated task sent from a parent agent
+  conversation to a child conversation, including its durable terminal result.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy
@@ -54,6 +58,9 @@ Canonical words used across Junior's code and documentation.
 ## Naming Guidance
 
 - Use `turn`, `run`, and `slice` only with the meanings above.
+- Use `agent invocation` for delegated child work; do not shorten it to
+  `invocation` where it could be confused with a model or serverless
+  invocation.
 - Use `message` for platform chat content. Use `user_message`,
   `assistant_message`, and `tool_result` for replayable agent history.
 - Use `agent history item` when referring to those three native event types as

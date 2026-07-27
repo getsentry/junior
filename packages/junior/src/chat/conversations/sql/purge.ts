@@ -1,10 +1,11 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
+  juniorAgentInvocations,
 } from "@/db/schema";
 import { withConversationEventLock } from "./event-lock";
 import { resolveRootVisibility } from "./privacy";
@@ -104,6 +105,11 @@ export async function selectExpiredRoots(
       select 1 from junior_conversation_events events
       where events.conversation_id = tree.conversation_id
     )
+      or exists (
+        select 1 from junior_agent_invocations invocations
+        where invocations.parent_conversation_id = tree.conversation_id
+           or invocations.child_conversation_id = tree.conversation_id
+      )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
         and exists (
@@ -255,6 +261,15 @@ export async function purgeConversationTree(
           .db()
           .delete(juniorConversationEvents)
           .where(inArray(juniorConversationEvents.conversationId, ids));
+        await executor
+          .db()
+          .delete(juniorAgentInvocations)
+          .where(
+            or(
+              inArray(juniorAgentInvocations.parentConversationId, ids),
+              inArray(juniorAgentInvocations.childConversationId, ids),
+            ),
+          );
         await executor
           .db()
           .update(juniorConversations)

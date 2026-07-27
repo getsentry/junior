@@ -426,6 +426,7 @@ export function createAgentDispatchConversationWorker(
       );
     }
     if (
+      !context.destination ||
       context.destination.platform !== dispatch.destination.platform ||
       context.destination.teamId !== dispatch.destination.teamId ||
       context.destination.channelId !== dispatch.destination.channelId

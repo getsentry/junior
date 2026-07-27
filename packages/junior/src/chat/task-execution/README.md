@@ -11,7 +11,9 @@ the completed result.
 - A conversation mailbox contains normalized pending work with a durable
   delivery mode: `interrupt` or `defer`.
 - A queue payload identifies the conversation to wake; persisted conversation
-  work owns destination and delivery.
+  work owns delivery. Provider conversations own their destination, while
+  destinationless child work resolves bounded execution authority from its
+  durable agent invocation.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
@@ -29,12 +31,15 @@ require a valid delivery value and reject invalid pending work.
 
 1. Ingress appends mailbox work before sending a queue nudge.
 2. The worker validates the queue callback and acquires the conversation lease.
-3. While it owns the lease, the worker reloads durable state and runs the next
+3. While it owns the lease, the worker reloads durable state and routes the next
    work: `interrupt` mailbox delivery first, then a paused turn, then `defer`
    mailbox delivery. Each iteration gets a fresh mailbox delivery attempt.
    New dispatch input identifies its dispatch in mailbox metadata; later slices
    restore that identifier from the turn session rather than queue payloads,
    conversation source, or conversation-id conventions.
+   Agent invocation input follows the same rule: the mailbox carries its
+   invocation ID, and an empty resume attempt resolves the active invocation
+   from SQL.
 4. Runtime advances the turn until completion, auth pause, cooperative yield,
    or terminal failure, delivering and recording completed tool-free assistant
    messages as it advances. A requested turn resume is durable state, not an
@@ -45,8 +50,8 @@ require a valid delivery value and reject invalid pending work.
    current worker observes it on its next state reload.
 6. Before yielding, the worker commits a safe history boundary, sends another
    nudge, and releases the lease.
-7. Terminal delivery or intentional no-reply completion records the delivered
-   turn before acknowledging work.
+7. Accepted provider delivery, intentional no-reply completion, or a durable
+   internal result records the terminal turn before acknowledging work.
 
 New messages that arrive during a run remain durable. `interrupt` work is
 eligible at the next safe boundary, while `defer` work follows normal ordering

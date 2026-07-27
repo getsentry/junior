@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
+import { assertRunRoutingConsistency } from "@/chat/agent/request";
+
+describe("agent run routing", () => {
+  it("allows an internal child run to borrow its parent's local route", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "local:test:child",
+        routing: {
+          destination: {
+            conversationId: "local:test:parent",
+            platform: "local",
+          },
+          source: createLocalSource("local:test:parent"),
+          surface: "internal",
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects the same local route mismatch outside internal work", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "local:test:child",
+        routing: {
+          destination: {
+            conversationId: "local:test:parent",
+            platform: "local",
+          },
+          source: createLocalSource("local:test:parent"),
+        },
+      }),
+    ).toThrow(
+      "Local source, destination, and run conversation IDs do not match",
+    );
+  });
+});

@@ -1,0 +1,392 @@
+import { createHash } from "node:crypto";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import {
+  agentBindingSchema,
+  agentInvocationSchema,
+  createAgentInvocationSchema,
+  type AgentBinding,
+  type AgentInvocation,
+  type AgentInvocationStatus,
+  type CreateAgentInvocationInput,
+} from "./types";
+
+const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
+const TERMINAL_AGENT_INVOCATION_STATUSES = [
+  "blocked",
+  "completed",
+  "failed",
+] as const satisfies readonly AgentInvocationStatus[];
+const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
+  "pending",
+  "running",
+  "awaiting_resume",
+] as const satisfies readonly AgentInvocationStatus[];
+
+function stableId(prefix: string, ...parts: string[]): string {
+  const digest = createHash("sha256")
+    .update(parts.join("\0"))
+    .digest("hex")
+    .slice(0, 32);
+  return `${prefix}:${digest}`;
+}
+
+/** Return the stable identity for one retry-safe delegated task. */
+export function getAgentInvocationId(
+  parentConversationId: string,
+  idempotencyKey: string,
+): string {
+  return stableId("agent-invocation", parentConversationId, idempotencyKey);
+}
+
+/** Return the stable child identity for one invocation without a named binding. */
+export function getEphemeralAgentConversationId(invocationId: string): string {
+  return stableId("agent", invocationId);
+}
+
+/** Return the stable child identity for one named binding. */
+export function getNamedAgentConversationId(
+  parentConversationId: string,
+  name: string,
+): string {
+  return stableId("agent", parentConversationId, name);
+}
+
+/** Return the stable turn identity advanced by one agent invocation. */
+export function getAgentInvocationTurnId(invocationId: string): string {
+  return `agent-invocation:${invocationId}`;
+}
+
+/** Return the stable mailbox identity for one agent invocation. */
+export function getAgentInvocationMessageId(invocationId: string): string {
+  return `agent-invocation:${invocationId}:input`;
+}
+
+function bindingFromRow(
+  row: typeof juniorAgentBindings.$inferSelect,
+): AgentBinding {
+  return agentBindingSchema.parse({
+    childConversationId: row.childConversationId,
+    createdAtMs: row.createdAt.getTime(),
+    name: row.name,
+    parentConversationId: row.parentConversationId,
+    ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
+    updatedAtMs: row.updatedAt.getTime(),
+  });
+}
+
+function invocationFromRow(
+  row: typeof juniorAgentInvocations.$inferSelect,
+): AgentInvocation {
+  return agentInvocationSchema.parse({
+    actor: row.actor,
+    ...(row.agentName ? { agentName: row.agentName } : {}),
+    childConversationId: row.childConversationId,
+    createdAtMs: row.createdAt.getTime(),
+    ...(row.credentialContext
+      ? { credentialContext: row.credentialContext }
+      : {}),
+    destination: row.destination,
+    ...(row.destinationVisibility
+      ? { destinationVisibility: row.destinationVisibility }
+      : {}),
+    ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
+    idempotencyKey: row.idempotencyKey,
+    input: row.input,
+    invocationId: row.invocationId,
+    mailboxStatus: row.mailboxStatus,
+    parentConversationId: row.parentConversationId,
+    ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
+    ...(row.result !== null ? { result: row.result } : {}),
+    source: row.source,
+    status: row.status,
+    ...(row.terminalAt ? { terminalAtMs: row.terminalAt.getTime() } : {}),
+    updatedAtMs: row.updatedAt.getTime(),
+  });
+}
+
+/** Require every durable creation input to match before replaying one key. */
+function sameCreateInput(
+  invocation: AgentInvocation,
+  input: ReturnType<typeof createAgentInvocationSchema.parse>,
+): boolean {
+  return (
+    invocation.parentConversationId === input.parentConversationId &&
+    invocation.idempotencyKey === input.idempotencyKey &&
+    invocation.agentName === input.agentName &&
+    invocation.input === input.input &&
+    invocation.reasoningLevel === input.reasoningLevel &&
+    JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
+    JSON.stringify(invocation.credentialContext) ===
+      JSON.stringify(input.credentialContext) &&
+    JSON.stringify(invocation.destination) ===
+      JSON.stringify(input.destination) &&
+    invocation.destinationVisibility === input.destinationVisibility &&
+    JSON.stringify(invocation.source) === JSON.stringify(input.source)
+  );
+}
+
+/** Read one named child binding in its parent-agent scope. */
+export async function getAgentBinding(args: {
+  name: string;
+  parentConversationId: string;
+}): Promise<AgentBinding | undefined> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentBindings)
+    .where(
+      and(
+        eq(juniorAgentBindings.parentConversationId, args.parentConversationId),
+        eq(juniorAgentBindings.name, args.name),
+      ),
+    );
+  return rows[0] ? bindingFromRow(rows[0]) : undefined;
+}
+
+/** Read one durable agent invocation. */
+export async function getAgentInvocation(
+  invocationId: string,
+): Promise<AgentInvocation | undefined> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.invocationId, invocationId));
+  return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/** Resolve the single invocation that may resume for one child conversation. */
+export async function getActiveAgentInvocationForConversation(
+  childConversationId: string,
+): Promise<AgentInvocation | undefined> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.childConversationId, childConversationId),
+        inArray(juniorAgentInvocations.status, ["running", "awaiting_resume"]),
+      ),
+    )
+    .orderBy(asc(juniorAgentInvocations.createdAt))
+    .limit(2);
+  if (rows.length > 1) {
+    throw new Error(
+      `Child conversation ${childConversationId} has multiple active agent invocations`,
+    );
+  }
+  return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/**
+ * Create or replay one invocation, reusing named child conversations and
+ * keeping ephemeral child identities scoped to the invocation.
+ */
+export async function createAgentInvocation(
+  rawInput: CreateAgentInvocationInput,
+  nowMs = Date.now(),
+): Promise<{ invocation: AgentInvocation; status: "created" | "existing" }> {
+  const input = createAgentInvocationSchema.parse(rawInput);
+  const invocationId = getAgentInvocationId(
+    input.parentConversationId,
+    input.idempotencyKey,
+  );
+  const lockName = `${CREATE_LOCK_PREFIX}:${invocationId}`;
+  return await getSqlExecutor().withLock(lockName, async () => {
+    const existing = await getAgentInvocation(invocationId);
+    if (existing) {
+      if (!sameCreateInput(existing, input)) {
+        throw new Error(
+          `Agent invocation idempotency key was reused with different input for ${invocationId}`,
+        );
+      }
+      return { invocation: existing, status: "existing" };
+    }
+
+    const childConversationId = input.agentName
+      ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
+      : getEphemeralAgentConversationId(invocationId);
+    await getConversationStore().createChild({
+      childConversationId,
+      parentConversationId: input.parentConversationId,
+      nowMs,
+      source: "internal",
+    });
+
+    if (input.agentName) {
+      await getSqlExecutor()
+        .db()
+        .insert(juniorAgentBindings)
+        .values({
+          childConversationId,
+          createdAt: new Date(nowMs),
+          name: input.agentName,
+          parentConversationId: input.parentConversationId,
+          reasoningLevel: input.reasoningLevel ?? null,
+          updatedAt: new Date(nowMs),
+        })
+        .onConflictDoNothing();
+      const binding = await getAgentBinding({
+        name: input.agentName,
+        parentConversationId: input.parentConversationId,
+      });
+      if (!binding || binding.childConversationId !== childConversationId) {
+        throw new Error(
+          `Named agent binding did not resolve to ${childConversationId}`,
+        );
+      }
+      if (binding.reasoningLevel !== input.reasoningLevel) {
+        throw new Error(
+          `Named agent binding policy changed for ${input.agentName}`,
+        );
+      }
+    }
+
+    await getSqlExecutor()
+      .db()
+      .insert(juniorAgentInvocations)
+      .values({
+        invocationId,
+        idempotencyKey: input.idempotencyKey,
+        parentConversationId: input.parentConversationId,
+        childConversationId,
+        agentName: input.agentName ?? null,
+        input: input.input,
+        actor: input.actor,
+        credentialContext: input.credentialContext ?? null,
+        source: input.source,
+        destination: input.destination,
+        destinationVisibility: input.destinationVisibility ?? null,
+        reasoningLevel: input.reasoningLevel ?? null,
+        status: "pending",
+        mailboxStatus: "pending",
+        createdAt: new Date(nowMs),
+        updatedAt: new Date(nowMs),
+        terminalAt: null,
+      })
+      .onConflictDoNothing();
+    const invocation = await getAgentInvocation(invocationId);
+    if (!invocation || !sameCreateInput(invocation, input)) {
+      throw new Error(`Agent invocation creation raced for ${invocationId}`);
+    }
+    return { invocation, status: "created" };
+  });
+}
+
+/** List bounded invocation records whose mailbox append still needs repair. */
+export async function listPendingAgentInvocationMailboxAppends(
+  limit = 100,
+): Promise<AgentInvocation[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.mailboxStatus, "pending"))
+    .orderBy(asc(juniorAgentInvocations.createdAt))
+    .limit(limit);
+  return rows.map(invocationFromRow);
+}
+
+/** Record that the invocation's idempotent mailbox append completed. */
+export async function markAgentInvocationMailboxAppended(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ mailboxStatus: "appended", updatedAt: new Date(nowMs) })
+    .where(eq(juniorAgentInvocations.invocationId, invocationId));
+}
+
+/** Mark one non-terminal invocation as actively executing. */
+export async function markAgentInvocationRunning(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ status: "running", updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    );
+  return await getAgentInvocation(invocationId);
+}
+
+/** Mark one invocation as waiting for another shared execution slice. */
+export async function markAgentInvocationAwaitingResume(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ status: "awaiting_resume", updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    );
+}
+
+/** Persist one terminal invocation result without overwriting an earlier result. */
+export async function completeAgentInvocation(
+  args:
+    | {
+        invocationId: string;
+        result: string;
+        status: "completed";
+        nowMs?: number;
+      }
+    | {
+        errorMessage: string;
+        invocationId: string;
+        status: "blocked" | "failed";
+        nowMs?: number;
+      },
+): Promise<AgentInvocation | undefined> {
+  const nowMs = args.nowMs ?? Date.now();
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({
+      status: args.status,
+      result: args.status === "completed" ? args.result : null,
+      errorMessage: args.status === "completed" ? null : args.errorMessage,
+      terminalAt: new Date(nowMs),
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, args.invocationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    );
+  return await getAgentInvocation(args.invocationId);
+}
+
+/** Return whether an invocation already owns its immutable terminal result. */
+export function isTerminalAgentInvocation(
+  invocation: AgentInvocation,
+): boolean {
+  return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
+    invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
+  );
+}

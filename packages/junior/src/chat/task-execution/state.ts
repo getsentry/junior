@@ -108,7 +108,7 @@ export const inboundMessageSchema = z
     conversationId: z.string().refine((value) => value.trim().length > 0),
     createdAtMs: z.number().finite(),
     delivery: inboundMessageDeliverySchema,
-    destination: destinationSchema,
+    destination: destinationSchema.optional(),
     inboundMessageId: z.string().refine((value) => value.trim().length > 0),
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
@@ -479,10 +479,11 @@ function normalizeConversation(
   }
   if (
     execution.pendingMessages.length > 0 &&
-    (!destination ||
-      execution.pendingMessages.some(
-        (message) => !sameDestination(message.destination, destination),
-      ))
+    execution.pendingMessages.some((message) =>
+      message.destination
+        ? !destination || !sameDestination(message.destination, destination)
+        : Boolean(destination),
+    )
   ) {
     return undefined;
   }
@@ -1007,6 +1008,22 @@ function assertSameConversationDestination(args: {
   );
 }
 
+function assertSameOptionalConversationDestination(args: {
+  conversationId: string;
+  current: Destination | undefined;
+  next: Destination | undefined;
+}): void {
+  if (!args.current && !args.next) {
+    return;
+  }
+  if (args.current && args.next && sameDestination(args.current, args.next)) {
+    return;
+  }
+  throw new Error(
+    `Conversation destination changed for ${args.conversationId}`,
+  );
+}
+
 function conversationWorkState(
   conversation: Conversation,
 ): ConversationWorkState {
@@ -1071,26 +1088,32 @@ export async function appendInboundMessage(args: {
   return await withConversationMutation(
     { conversationId: args.message.conversationId, state: args.state },
     async (state, lock) => {
+      const existing = await readConversation(
+        state,
+        args.message.conversationId,
+      );
       const current =
-        (await readConversation(state, args.message.conversationId)) ??
+        existing ??
         emptyConversation({
           conversationId: args.message.conversationId,
           destination: args.message.destination,
           nowMs,
           source: args.message.source,
         });
-      assertSameConversationDestination({
-        conversationId: args.message.conversationId,
-        current: current.destination,
-        next: args.message.destination,
-      });
+      if (existing) {
+        assertSameOptionalConversationDestination({
+          conversationId: args.message.conversationId,
+          current: current.destination,
+          next: args.message.destination,
+        });
+      }
       const existingPending = current.execution.pendingMessages.some(
         (message) => message.inboundMessageId === args.message.inboundMessageId,
       );
-      const existing = current.execution.inboundMessageIds.includes(
+      const existingMessage = current.execution.inboundMessageIds.includes(
         args.message.inboundMessageId,
       );
-      if (existing) {
+      if (existingMessage) {
         if (!existingPending) {
           return { status: "duplicate" };
         }
@@ -1159,7 +1182,7 @@ export async function appendInboundMessage(args: {
 /** Mark a conversation runnable when there is no new mailbox message. */
 export async function requestConversationWork(args: {
   conversationId: string;
-  destination: Destination;
+  destination?: Destination;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<RequestConversationWorkResult> {
@@ -1167,7 +1190,7 @@ export async function requestConversationWork(args: {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
     if (existing) {
-      assertSameConversationDestination({
+      assertSameOptionalConversationDestination({
         conversationId: args.conversationId,
         current: existing.destination,
         next: args.destination,
@@ -1605,7 +1628,7 @@ export async function ackMessages(args: {
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestConversationContinuation(args: {
   conversationId: string;
-  destination: Destination;
+  destination?: Destination;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1616,7 +1639,7 @@ export async function requestConversationContinuation(args: {
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return false;
     }
-    assertSameConversationDestination({
+    assertSameOptionalConversationDestination({
       conversationId: args.conversationId,
       current: current.destination,
       next: args.destination,

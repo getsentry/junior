@@ -24,6 +24,10 @@ import {
   createAgentDispatchConversationWorker,
 } from "@/chat/agent-dispatch/work";
 import {
+  createAgentInvocationConversationWorker,
+  createAgentInvocationWorkRouter,
+} from "@/chat/agent-invocations/work";
+import {
   getDispatchConversationId,
   getDispatchInputMessageIds,
 } from "@/chat/agent-dispatch/store";
@@ -153,12 +157,18 @@ export function createProductionConversationWorkOptions(options: {
     },
     runTurn: runtime.runDispatchTurn,
   });
+  const providerWorker = createAgentDispatchWorkRouter({
+    dispatchWorker,
+    fallbackWorker: slackWorker,
+  });
   return {
     conversationStore,
     queue,
-    run: createAgentDispatchWorkRouter({
-      dispatchWorker,
-      fallbackWorker: slackWorker,
+    run: createAgentInvocationWorkRouter({
+      invocationWorker: createAgentInvocationConversationWorker({
+        agentRunner,
+      }),
+      fallbackWorker: providerWorker,
     }),
   };
 }

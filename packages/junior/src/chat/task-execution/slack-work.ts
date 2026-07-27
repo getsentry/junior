@@ -866,7 +866,7 @@ export function createSlackConversationWorker(
         try {
           if (route === "mention") {
             await options.runtime.handleNewMention(thread, latestMessage, {
-              destination: context.destination,
+              destination,
               messageContext,
               drainSteeringMessages,
               ack,
@@ -878,7 +878,7 @@ export function createSlackConversationWorker(
               thread,
               latestMessage,
               {
-                destination: context.destination,
+                destination,
                 messageContext,
                 drainSteeringMessages,
                 ack,

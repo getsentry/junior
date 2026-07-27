@@ -9,7 +9,8 @@ file.
 
 1. `ingress/` parses, classifies, and normalizes source events.
 2. Mailbox-backed sources append work and send a queue nudge through
-   `task-execution/`.
+   `task-execution/`. `agent-invocations/` uses the same mailbox for
+   destinationless child work.
 3. A worker acquires the conversation lease, drains pending input, and restores
    persisted conversation state.
 4. `runtime/` prepares and orchestrates the run; `agent/` owns Pi execution.
@@ -34,6 +35,8 @@ mailbox-backed provider.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
 - `agent-dispatch/`: plugin dispatch authority, mailbox adaptation, and
   plugin-facing outcome projection.
+- `agent-invocations/`: durable parent/child bindings, delegated work, and
+  internal terminal results.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `state/` and `conversations/`: persistence by concern.
@@ -90,8 +93,10 @@ delegation without becoming the execution actor or a general task owner.
   back past delivered assistant output.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
-- Actor, destination, conversation, and credential context remain explicit
-  across asynchronous boundaries.
+- Actor, execution destination, conversation, and credential context remain
+  explicit across asynchronous boundaries. A destinationless child
+  conversation receives its bounded execution destination from its durable
+  agent invocation.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in

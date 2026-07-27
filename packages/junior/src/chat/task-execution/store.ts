@@ -168,9 +168,6 @@ export async function ensureConversationWake(args: {
   if (!conversation || !hasRunnableConversationWork(conversation)) {
     return { status: "no_work" };
   }
-  if (!conversation.destination) {
-    return { status: "no_work" };
-  }
   if (
     args.replaceExistingWake !== true &&
     conversation.execution.lease &&

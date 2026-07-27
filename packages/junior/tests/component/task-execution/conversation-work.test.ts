@@ -66,6 +66,7 @@ const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 
 function failingMetadataStore(): ConversationStore {
   return {
+    createChild: vi.fn(),
     get: vi.fn(async () => undefined),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
@@ -78,6 +79,7 @@ function failingMetadataStore(): ConversationStore {
 
 function metadataEventsStore(events: string[]): ConversationStore {
   return {
+    createChild: vi.fn(),
     get: vi.fn(async () => undefined),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
@@ -690,6 +692,24 @@ describe("conversation work execution", () => {
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
+  it("rejects appending destinationless work to a provider conversation", async () => {
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+    });
+
+    await expect(
+      appendInboundMessage({
+        message: {
+          ...inboundMessage("m2"),
+          destination: undefined,
+          source: "internal",
+        },
+        nowMs: 2_000,
+      }),
+    ).rejects.toThrow("Conversation destination changed");
+  });
+
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -850,6 +870,14 @@ describe("conversation work execution", () => {
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: undefined,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+      }),
+    ).rejects.toThrow("Conversation destination changed");
+    await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
       destination: SLACK_DESTINATION,
@@ -949,7 +977,7 @@ describe("conversation work execution", () => {
             await scheduleAgentContinue(
               {
                 conversationId: context.conversationId,
-                destination: context.destination,
+                destination: context.destination ?? SLACK_DESTINATION,
                 expectedVersion: 2,
                 sessionId: "turn-1",
               },
@@ -989,7 +1017,7 @@ describe("conversation work execution", () => {
             await scheduleAgentContinue(
               {
                 conversationId: context.conversationId,
-                destination: context.destination,
+                destination: context.destination ?? SLACK_DESTINATION,
                 expectedVersion: 2,
                 sessionId: "turn-1",
               },
@@ -1038,7 +1066,7 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination,
+              destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
               sessionId: "turn-1",
             },
@@ -1153,7 +1181,7 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination,
+              destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
               sessionId: "turn-1",
             },
@@ -1985,7 +2013,7 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination,
+              destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
               sessionId: "turn-1",
             },

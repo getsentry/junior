@@ -479,6 +479,52 @@ function updateConversationUsage(args: {
 export class SqlStore implements ConversationStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
+  async createChild(args: {
+    childConversationId: string;
+    parentConversationId: string;
+    nowMs?: number;
+    source?: ConversationSource;
+  }): Promise<void> {
+    const nowMs = args.nowMs ?? now();
+    await this.withConversationMutation(args.childConversationId, async () => {
+      const existing = await this.get({
+        conversationId: args.childConversationId,
+      });
+      if (existing) {
+        if (
+          existing.lineage?.parentConversationId !== args.parentConversationId
+        ) {
+          throw new Error(
+            `Conversation lineage changed for ${args.childConversationId}`,
+          );
+        }
+        return;
+      }
+      const parent = await this.get({
+        conversationId: args.parentConversationId,
+      });
+      if (!parent) {
+        throw new Error(
+          `Conversation parent is missing for ${args.childConversationId}`,
+        );
+      }
+      if (parent.lineage) {
+        throw new Error("Recursive agent delegation is not enabled");
+      }
+      const child: Conversation = {
+        ...emptyConversation({
+          conversationId: args.childConversationId,
+          nowMs,
+          source: args.source,
+        }),
+        lineage: {
+          parentConversationId: args.parentConversationId,
+        },
+      };
+      await this.upsertConversation({ conversation: child });
+    });
+  }
+
   async get(args: {
     conversationId: string;
   }): Promise<Conversation | undefined> {

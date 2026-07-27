@@ -58,6 +58,13 @@ export interface Conversation {
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
+  /** Create one destinationless child with immutable parent lineage. */
+  createChild(args: {
+    childConversationId: string;
+    parentConversationId: string;
+    nowMs?: number;
+    source?: ConversationSource;
+  }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
   /** Read persisted visibility for one destination. Missing rows fail closed. */
   getDestinationVisibility(args: {

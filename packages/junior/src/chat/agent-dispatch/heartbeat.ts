@@ -1,9 +1,11 @@
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { logException, logInfo } from "@/chat/logging";
+import { logException, logInfo, logWarn } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
+import { listPendingAgentInvocationMailboxAppends } from "@/chat/agent-invocations/store";
+import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -16,6 +18,7 @@ import { AGENT_DISPATCH_MAX_AGE_MS, enqueueAgentDispatch } from "./work";
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
 const DISPATCH_MAILBOX_APPEND_LIMIT = 100;
+const AGENT_INVOCATION_MAILBOX_APPEND_LIMIT = 100;
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -125,6 +128,31 @@ export async function recoverPendingDispatchMailboxAppends(args: {
   }
 }
 
+/** Repair invocation creation that stopped before its idempotent mailbox append. */
+export async function recoverPendingAgentInvocationMailboxAppends(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+}): Promise<void> {
+  const invocations = await listPendingAgentInvocationMailboxAppends(
+    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
+  );
+  for (const invocation of invocations) {
+    try {
+      await enqueueAgentInvocation(invocation, {
+        nowMs: args.nowMs,
+        queue: args.conversationWorkQueue,
+      });
+    } catch {
+      logWarn(
+        "agent_invocation_mailbox_append_recovery_failed",
+        {},
+        { "app.agent.invocation_id": invocation.invocationId },
+        "Pending agent invocation mailbox append recovery will retry",
+      );
+    }
+  }
+}
+
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
@@ -136,6 +164,10 @@ export async function runHeartbeat(args: {
     queue,
   });
   await recoverPendingDispatchMailboxAppends({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
+  await recoverPendingAgentInvocationMailboxAppends({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });

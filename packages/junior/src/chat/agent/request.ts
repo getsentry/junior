@@ -231,6 +231,7 @@ export function assertRunRoutingConsistency(
   } else if (
     source.platform === "local" &&
     destination.platform === "local" &&
+    request.routing.surface !== "internal" &&
     (source.conversationId !== request.conversationId ||
       destination.conversationId !== request.conversationId)
   ) {
