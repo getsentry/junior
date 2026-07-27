@@ -1841,6 +1841,7 @@ describe("createTestSandbox", () => {
       markStaleOperationStarted = resolve;
     });
     staleSandbox.fs.stat
+      .mockResolvedValueOnce({ isDirectory: () => true })
       .mockImplementationOnce(
         async () =>
           await new Promise<never>((_resolve, reject) => {

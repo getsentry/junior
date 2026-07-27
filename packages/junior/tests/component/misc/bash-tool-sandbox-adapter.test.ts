@@ -12,6 +12,11 @@ vi.mock("@vercel/sandbox", () => ({
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
+  resolveRuntimeDependencySnapshot: vi.fn(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
   getRuntimeDependencyProfileHash: () => "current-profile",
 }));
 
