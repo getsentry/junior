@@ -19,6 +19,10 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
+import {
+  getMcpAwareTelemetryMessage,
+  getMcpProviderErrorAttributes,
+} from "@/chat/mcp/errors";
 import { inferActiveMcpProvidersFromPiMessages } from "@/chat/pi/derived-state";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -428,10 +432,11 @@ export async function wireAgentTools(
           "mcp_tool_manager_close_failed",
           {},
           {
-            "exception.message":
-              closeError instanceof Error
-                ? closeError.message
-                : String(closeError),
+            ...getMcpProviderErrorAttributes(closeError),
+            "exception.message": getMcpAwareTelemetryMessage(
+              closeError,
+              args.conversationPrivacy,
+            ),
           },
           "Failed to close MCP tool manager",
         );

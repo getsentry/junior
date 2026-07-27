@@ -91,7 +91,13 @@ export function fetchWithBoundedOAuthErrorBodies(
       return response;
     }
 
-    const body = await readBoundedOAuthErrorBody(response);
+    let body = "";
+    try {
+      body = await readBoundedOAuthErrorBody(response);
+    } catch {
+      // Preserve status handling without exposing an unreadable provider body.
+      await response.body.cancel().catch(() => undefined);
+    }
     return new Response(body, {
       headers: response.headers,
       status: response.status,
