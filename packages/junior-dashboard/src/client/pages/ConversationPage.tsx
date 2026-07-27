@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationFeed } from "@sentry/junior/api/schema";
@@ -113,6 +114,7 @@ export function ConversationPage(props: {
             ) : null}
           </div>
           <ConversationStats conversation={conversation} detail={detail.data} />
+          <ConversationAnnotations detail={detail.data} />
         </header>
 
         {detail.isPending ? (
@@ -167,6 +169,41 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+    </div>
+  );
+}
+
+function ConversationAnnotations(props: {
+  detail: ConversationDetailReport | undefined;
+}) {
+  const links = props.detail?.annotations?.filter(
+    (annotation) => annotation.kind === "resource_link",
+  );
+  if (!links?.length) return null;
+  return (
+    <div className="border-t border-white/[0.07] pt-4 md:col-span-2">
+      <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        Pull requests
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => (
+          <a
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-3 py-2 text-sm text-cyan-50 no-underline"
+            href={link.url}
+            key={`${link.plugin}:${link.key}`}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span>{link.label}</span>
+            {link.status ? (
+              <span className="font-mono text-[0.62rem] uppercase text-white/50">
+                {link.status}
+              </span>
+            ) : null}
+            <ExternalLink aria-hidden="true" size={13} />
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

@@ -332,6 +332,21 @@ function gitHubPullRequestToolResult(
   return { ...result, ...(subscribable ? { subscribable } : {}) };
 }
 
+async function annotatePullRequest(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+): Promise<void> {
+  const repo = parseRepo(input.repo);
+  await ctx.annotations?.upsert({
+    kind: "resource_link",
+    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
+    label: `${repo.owner}/${repo.name} #${result.number}: ${nonEmptyString(input.title, "title")}`,
+    url: result.url,
+    status: input.draft ? "draft" : "open",
+  });
+}
+
 function gitHubPullRequestStructuredResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
@@ -370,12 +385,15 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
         async () => {
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
+            const completedInput = state.input ?? parsedInput;
+            const completedResult = {
+              number: state.number,
+              url: state.url,
+            };
+            await annotatePullRequest(ctx, completedInput, completedResult);
             return gitHubPullRequestStructuredResult(
-              state.input ?? parsedInput,
-              {
-                number: state.number,
-                url: state.url,
-              },
+              completedInput,
+              completedResult,
             );
           }
           if (state?.status === "pending") {
@@ -414,6 +432,7 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
                 { cause: error },
               );
             }
+            await annotatePullRequest(ctx, parsedInput, result);
             return gitHubPullRequestStructuredResult(parsedInput, result);
           } catch (error) {
             if (

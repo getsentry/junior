@@ -4,6 +4,7 @@ import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
+import type { PluginConversationAnnotations } from "./annotations";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -113,6 +114,7 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  annotations: PluginConversationAnnotations;
   /** Core-owned delivery boundary for provider webhook events. */
   resourceEvents: ResourceEventPublisher;
 }

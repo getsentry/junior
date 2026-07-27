@@ -22,12 +22,14 @@ import type { ConversationDetailReport } from "../schema/conversation";
 import { defineApiRoute } from "../route";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { conversationParamsSchema } from "../schema/conversation";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   conversation: Conversation;
   durationMs: number;
+  annotations: NonNullable<ConversationDetailReport["annotations"]>;
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
@@ -49,6 +51,7 @@ function projectConversationDetail(args: {
       ...(args.locationId ? { locationId: args.locationId } : {}),
       usage: args.usage,
     }),
+    annotations: args.annotations,
     events: args.events,
     ...(args.previousSeq !== undefined
       ? {
@@ -80,23 +83,25 @@ async function readConversationDetailFromSql(
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
-  const [accessByConversation, modelUsage, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      getDb(),
-      [conversationId],
-      options.verifiedViewerEmail,
-    ),
-    record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationModelUsageFromSql(executor, {
-          conversationId,
-          includeDescendants: includeDescendantMetrics,
-        })
-      : Promise.resolve([]),
-    readRootConversationMetricsFromSql(
-      getDb(),
-      includeDescendantMetrics ? [conversationId] : [],
-    ),
-  ]);
+  const [accessByConversation, annotations, modelUsage, metricsByRoot] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        getDb(),
+        [conversationId],
+        options.verifiedViewerEmail,
+      ),
+      listConversationAnnotations(getDb(), conversationId),
+      record.conversation.transcriptPurgedAtMs === undefined
+        ? readConversationModelUsageFromSql(executor, {
+            conversationId,
+            includeDescendants: includeDescendantMetrics,
+          })
+        : Promise.resolve([]),
+      readRootConversationMetricsFromSql(
+        getDb(),
+        includeDescendantMetrics ? [conversationId] : [],
+      ),
+    ]);
   const access = accessByConversation.get(conversationId);
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
@@ -110,6 +115,7 @@ async function readConversationDetailFromSql(
   return projectConversationDetail({
     ...record,
     access,
+    annotations,
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,

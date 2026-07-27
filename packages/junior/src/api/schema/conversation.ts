@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
+import { conversationAnnotationInputSchema } from "@sentry/junior-plugin-api";
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -327,6 +328,17 @@ function validateConversationEvents(
 
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    annotations: z
+      .array(
+        conversationAnnotationInputSchema.and(
+          z.object({
+            plugin: z.string().min(1),
+            createdAt: z.string().datetime(),
+            updatedAt: z.string().datetime(),
+          }),
+        ),
+      )
+      .optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,

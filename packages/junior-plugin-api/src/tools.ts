@@ -7,6 +7,7 @@ import type {
   SlackInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
+import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
 import type { PluginState } from "./state";
 import { z, type ZodType, type ZodTypeAny } from "zod";
@@ -346,6 +347,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
+  annotations?: PluginAnnotations;
   embedder: PluginEmbedder;
   egress: PluginEgress;
   model: PluginModel;

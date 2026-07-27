@@ -19,6 +19,7 @@ import type {
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -420,6 +421,13 @@ export function getPluginTools(
             ...(credentialSubject ? { credentialSubject } : {}),
           }
         : undefined;
+    const annotations = context.conversationId
+      ? createPluginAnnotations({
+          conversationId: context.conversationId,
+          db: getDb(),
+          plugin: pluginName,
+        })
+      : undefined;
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -431,6 +439,7 @@ export function getPluginTools(
         ...basePluginContext(plugin),
         actor: context.actor?.platform === "slack" ? context.actor : undefined,
         conversationId: context.conversationId,
+        ...(annotations ? { annotations } : {}),
         destination: context.destination,
         slack: slackContext!,
         source: context.source,
@@ -450,6 +459,7 @@ export function getPluginTools(
         ...basePluginContext(plugin),
         actor: context.actor?.platform === "local" ? context.actor : undefined,
         conversationId: context.conversationId,
+        ...(annotations ? { annotations } : {}),
         destination: context.destination,
         source: context.source,
         userText: context.userText,
@@ -535,6 +545,14 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      annotations: {
+        forConversation: (conversationId) =>
+          createPluginAnnotations({
+            conversationId,
+            db: getDb(),
+            plugin: pluginName,
+          }),
+      },
       resourceEvents: {
         async publish(event) {
           const parsed = resourceEventSchema.parse(event);
