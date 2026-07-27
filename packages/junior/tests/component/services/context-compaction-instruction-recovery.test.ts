@@ -37,7 +37,7 @@ describe("active context compaction instruction recovery", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("recovers the current instruction and its actor without pending messages", async () => {
+  it("retains the latest instruction event verbatim without pending messages", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
     const { commitMessages, loadConversationProjection } =
@@ -95,14 +95,10 @@ describe("active context compaction instruction recovery", () => {
     expect(textOf(result.piMessages![0]!)).not.toContain(
       "<current-instruction>",
     );
-    expect(textOf(result.piMessages![1]!)).toBe(
-      '<current-instruction author_id="U123" author_name="Alice Example" slack_ts="1712345.000100">\nMake the requested edit.\n</current-instruction>',
-    );
+    expect(result.piMessages![1]).toEqual(instruction);
 
     const projection = await loadConversationProjection({ conversationId });
-    expect(textOf(projection.messages[1]!)).toBe(
-      '<current-instruction author_id="U123" author_name="Alice Example" slack_ts="1712345.000100">\nMake the requested edit.\n</current-instruction>',
-    );
+    expect(projection.messages[1]).toEqual(instruction);
     expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",
       actor: {

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPromptInput, buildUserTurnText } from "@/chat/agent/prompt";
-import {
-  extractCurrentInstruction,
-  unwrapCurrentInstruction,
-} from "@/chat/current-instruction";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 describe("buildUserTurnText", () => {
   it("wraps input in the current instruction boundary without context", () => {
@@ -46,20 +43,6 @@ describe("buildUserTurnText", () => {
     });
 
     expect(unwrapCurrentInstruction(text)).toBe("hello");
-  });
-
-  it("extracts the exact attributed instruction from composite prompt text", () => {
-    const instruction = buildUserTurnText("hello", undefined, {
-      authorId: "U123",
-      authorName: "Alice Example",
-      slackTs: "1712345.000100",
-    });
-
-    expect(
-      extractCurrentInstruction(
-        `<thread-background>prior</thread-background>\n${instruction}`,
-      ),
-    ).toBe(instruction);
   });
 
   it("keeps only causal thread context around the current instruction", () => {

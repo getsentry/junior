@@ -15,15 +15,6 @@ function isCurrentInstructionOpeningTag(value: string): boolean {
 }
 
 function readCurrentInstructionBody(text: string): string | undefined {
-  const bounds = findCurrentInstructionBounds(text);
-  return bounds ? text.slice(bounds.bodyStart, bounds.bodyEnd) : undefined;
-}
-
-function findCurrentInstructionBounds(
-  text: string,
-):
-  | { start: number; bodyStart: number; bodyEnd: number; end: number }
-  | undefined {
   const start = text.indexOf(CURRENT_INSTRUCTION_OPEN_PREFIX);
   if (start < 0) {
     return undefined;
@@ -41,12 +32,7 @@ function findCurrentInstructionBounds(
   if (bodyEnd < bodyStart) {
     return undefined;
   }
-  return {
-    start,
-    bodyStart,
-    bodyEnd,
-    end: bodyEnd + CURRENT_INSTRUCTION_CLOSE.length,
-  };
+  return text.slice(bodyStart, bodyEnd);
 }
 
 /** Render the active user task in a stable prompt boundary. */
@@ -75,15 +61,6 @@ export function renderCurrentInstruction(
     escapeXml(instruction),
     `</${CURRENT_INSTRUCTION_TAG}>`,
   ].join("\n");
-}
-
-/** Recover the exact current-task prompt boundary, including attribution. */
-export function extractCurrentInstruction(text: string): string | undefined {
-  const bounds = findCurrentInstructionBounds(text);
-  if (!bounds) {
-    return undefined;
-  }
-  return text.slice(bounds.start, bounds.end);
 }
 
 /** Recover display text from the internal current-task prompt boundary. */

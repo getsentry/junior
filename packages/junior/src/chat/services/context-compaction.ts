@@ -9,7 +9,6 @@
  */
 import { botConfig } from "@/chat/config";
 import {
-  extractCurrentInstruction,
   renderCurrentInstruction,
   unwrapCurrentInstruction,
 } from "@/chat/current-instruction";
@@ -388,55 +387,31 @@ function buildReplacementProvenance(args: {
   ];
 }
 
-function instructionAttrs(
-  provenance: ConversationMessageProvenance,
-): { authorId?: string; authorName?: string } | undefined {
-  const actor = provenance.actor;
-  if (!actor) {
-    return undefined;
-  }
-  if (actor.platform === "system") {
-    return { authorName: actor.name };
-  }
-  return {
-    authorId: actor.userId,
-    authorName: actor.fullName ?? actor.userName,
-  };
-}
-
 function latestInstructionEntry(args: {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
+  seqs: number[];
 }):
-  | { message: PiMessage; provenance: ConversationMessageProvenance }
+  | {
+      message: PiMessage;
+      provenance: ConversationMessageProvenance;
+      sourceEventSeq: number;
+    }
   | undefined {
   for (let index = args.messages.length - 1; index >= 0; index -= 1) {
     const provenance = args.provenance[index];
     const message = args.messages[index];
+    const sourceEventSeq = args.seqs[index];
     if (
       message &&
       provenance?.authority === "instruction" &&
+      sourceEventSeq !== undefined &&
       (message as { role?: unknown }).role === "user"
     ) {
-      return { message, provenance };
+      return { message, provenance, sourceEventSeq };
     }
   }
   return undefined;
-}
-
-function renderRetainedInstruction(
-  message: PiMessage,
-  provenance: ConversationMessageProvenance,
-): string {
-  const text = messageText(message);
-  return (
-    extractCurrentInstruction(
-      (message as { content?: Array<{ type?: string; text?: string }> }).content
-        ?.filter((part) => part.type === "text")
-        .map((part) => part.text ?? "")
-        .join("\n") ?? "",
-    ) ?? renderCurrentInstruction(text, instructionAttrs(provenance))
-  );
 }
 
 type CompactionSource =
@@ -736,17 +711,11 @@ export async function compactActiveContextIfNeeded(
     ? latestInstructionEntry({
         messages: sourceProjection.messages,
         provenance: sourceProjection.provenance,
+        seqs: sourceProjection.seqs,
       })
     : undefined;
   const instructionMessages = retainedInstruction
-    ? [
-        userMessage(
-          renderRetainedInstruction(
-            retainedInstruction.message,
-            retainedInstruction.provenance,
-          ),
-        ),
-      ]
+    ? [retainedInstruction.message]
     : pendingMessages.map((entry) => entry.message);
   const instructionProvenance = retainedInstruction
     ? [retainedInstruction.provenance]
@@ -784,6 +753,9 @@ export async function compactActiveContextIfNeeded(
           index === 0
             ? contextProvenance
             : (instructionProvenance[index - 1] ?? contextProvenance),
+        ...(index === 1 && retainedInstruction
+          ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
+          : {}),
       })),
     },
   });
