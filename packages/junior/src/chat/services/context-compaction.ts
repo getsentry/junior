@@ -387,28 +387,19 @@ function buildReplacementProvenance(args: {
   ];
 }
 
-function latestInstructionEntry(args: {
-  messages: PiMessage[];
-  provenance: ConversationMessageProvenance[];
-  seqs: number[];
-}):
-  | {
-      message: PiMessage;
-      provenance: ConversationMessageProvenance;
-      sourceEventSeq: number;
-    }
-  | undefined {
-  for (let index = args.messages.length - 1; index >= 0; index -= 1) {
-    const provenance = args.provenance[index];
-    const message = args.messages[index];
-    const sourceEventSeq = args.seqs[index];
+async function loadLastInstruction(conversationId: string) {
+  const events = await getConversationEventStore().loadHistory(conversationId);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
     if (
-      message &&
-      provenance?.authority === "instruction" &&
-      sourceEventSeq !== undefined &&
-      (message as { role?: unknown }).role === "user"
+      event.data.type === "agent_step" &&
+      event.data.provenance?.authority === "instruction"
     ) {
-      return { message, provenance, sourceEventSeq };
+      return {
+        message: event.data.message as PiMessage,
+        provenance: event.data.provenance,
+        sourceEventSeq: event.seq,
+      };
     }
   }
   return undefined;
@@ -701,19 +692,10 @@ export async function compactActiveContextIfNeeded(
         } as PiMessage,
       ]
     : [userMessage(summaryText)];
-  const sourceProjection =
+  const retainedInstruction =
     pendingMessages.length === 0
-      ? await loadConversationProjection({
-          conversationId: args.conversationId,
-        })
+      ? await loadLastInstruction(args.conversationId)
       : undefined;
-  const retainedInstruction = sourceProjection
-    ? latestInstructionEntry({
-        messages: sourceProjection.messages,
-        provenance: sourceProjection.provenance,
-        seqs: sourceProjection.seqs,
-      })
-    : undefined;
   const instructionMessages = retainedInstruction
     ? [retainedInstruction.message]
     : pendingMessages.map((entry) => entry.message);
