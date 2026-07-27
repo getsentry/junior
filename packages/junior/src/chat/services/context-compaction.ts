@@ -669,15 +669,19 @@ export async function compactActiveContextIfNeeded(
           ...runtimeMessage,
           content: [
             ...runtimeMessage.content,
-            { type: "text", text: renderCurrentInstruction(summaryText) },
+            { type: "text", text: summaryText },
           ],
         } as PiMessage,
       ]
-    : [userMessage(renderCurrentInstruction(summaryText))];
-  const messages = [
-    ...summaryMessages,
-    ...pendingMessages.map((entry) => entry.message),
-  ];
+    : [userMessage(summaryText)];
+  const retainedInstruction =
+    pendingMessages.length === 0
+      ? selectRetainedUserMessages(args.piMessages).at(-1)
+      : undefined;
+  const instructionMessages = retainedInstruction
+    ? [userMessage(renderCurrentInstruction(messageText(retainedInstruction)))]
+    : pendingMessages.map((entry) => entry.message);
+  const messages = [...summaryMessages, ...instructionMessages];
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
     throw new ContextInputLimitExceededError(
@@ -700,7 +704,7 @@ export async function compactActiveContextIfNeeded(
         triggerTokens,
         inputLimitTokens,
         inputMessageCount: source.messages.length,
-        retainedMessageCount: pendingMessages.length,
+        retainedMessageCount: instructionMessages.length,
         summaryChars: summary.length,
       },
       summary,
@@ -716,7 +720,7 @@ export async function compactActiveContextIfNeeded(
   setSpanAttributes({
     "app.compaction.input_messages": source.messages.length,
     "app.compaction.replacement_tokens": replacementInputTokens,
-    "app.compaction.retained_messages": pendingMessages.length,
+    "app.compaction.retained_messages": instructionMessages.length,
     "app.compaction.summary_chars": summary.length,
     "app.compaction.trigger_tokens": triggerTokens,
     "app.context_input_limit_tokens": inputLimitTokens,
