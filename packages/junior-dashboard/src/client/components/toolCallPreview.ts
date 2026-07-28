@@ -63,7 +63,7 @@ function objectPreview(value: unknown): string | null {
 }
 
 function formatValue(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return JSON.stringify(value);
   return stringifyPartValue(value).replace(/\s+/g, " ").trim();
 }
 

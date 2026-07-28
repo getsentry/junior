@@ -209,7 +209,9 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain("webSearch");
-    expect(html).toContain("github_search, query: is:pr is:open, limit: 25");
+    expect(html).toContain(
+      "github_search, query: &quot;is:pr is:open&quot;, limit: 25",
+    );
     expect(html).toContain("jr-rpc config get github.repo");
     expect(html).toContain("junior-qa");
     expect(html).toContain('aria-label="Tool failed"');

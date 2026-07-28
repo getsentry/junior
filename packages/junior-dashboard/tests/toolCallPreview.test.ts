@@ -11,8 +11,18 @@ describe("toolCallPreview", () => {
         options: { archived: false },
       }),
     ).toBe(
-      'query: release regression, limit: 10, options: { "archived": false }',
+      'query: "release regression", limit: 10, options: { "archived": false }',
     );
+  });
+
+  it("JSON stringifies string argument values", () => {
+    expect(
+      toolCallPreview("searchTools", {
+        query: "",
+        source: "memory",
+        note: 'say "hello"',
+      }),
+    ).toBe('query: "", source: "memory", note: "say \\"hello\\""');
   });
 
   it("shows only the bash command", () => {
@@ -30,7 +40,7 @@ describe("toolCallPreview", () => {
         tool_name: "github_search",
         arguments: { query: "is:pr is:open", limit: 25 },
       }),
-    ).toBe("github_search, query: is:pr is:open, limit: 25");
+    ).toBe('github_search, query: "is:pr is:open", limit: 25');
   });
 
   it("shows only the skill name for loadSkill", () => {
