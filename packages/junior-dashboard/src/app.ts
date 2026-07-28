@@ -474,6 +474,11 @@ function dashboardPagePaths(
           ? "/settings/api-tokens"
           : `${basePath}/settings/api-tokens`,
     },
+    {
+      nested: true,
+      path:
+        basePath === "/" ? "/settings/plugins" : `${basePath}/settings/plugins`,
+    },
   ];
   if (options.componentGallery) {
     paths.push({

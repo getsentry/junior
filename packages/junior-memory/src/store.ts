@@ -324,6 +324,8 @@ export interface MemoryStore {
   ): Promise<CreateMemoryResult>;
   /** List active memories visible in the current runtime context. */
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
+  /** List active personal memories owned by the current actor. */
+  listPersonalMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
   /** Search active memories visible in the current runtime context. */
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
 }
@@ -1455,6 +1457,23 @@ export function createMemoryStore(
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      await archiveExpiredMemoryBatch({
+        db,
+        nowMs,
+        scopes,
+      });
+      return await listVisibleMemories({
+        db,
+        limit: input.limit,
+        nowMs,
+        scopes,
+      });
+    },
+
+    async listPersonalMemories(input) {
+      input = listMemoriesInputSchema.parse(input);
+      const nowMs = getNowMs();
+      const scopes = [deriveMemoryScope(runtimeContext, "personal")];
       await archiveExpiredMemoryBatch({
         db,
         nowMs,

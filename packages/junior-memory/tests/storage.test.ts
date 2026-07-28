@@ -9,6 +9,7 @@ import {
 import {
   createLocalSource,
   createSlackSource,
+  pluginUserPageContentSchema,
   PluginToolInputError,
   type PluginLogger,
   type PluginModel,
@@ -1788,6 +1789,9 @@ ORDER BY created_at_ms ASC
         expect.objectContaining({ id: conversation.memory.id }),
         expect.objectContaining({ id: personal.memory.id }),
       ]);
+      await expect(store.listPersonalMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: personal.memory.id }),
+      ]);
 
       const otherActorStore = createMemoryStore(
         memoryDb(fixture),
@@ -1797,6 +1801,49 @@ ORDER BY created_at_ms ASC
       await expect(otherActorStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
+      await expect(otherActorStore.listPersonalMemories({})).resolves.toEqual(
+        [],
+      );
+
+      const memoryPage = createMemoryPlugin().userPages?.[0];
+      if (!memoryPage || !actorContext.actor) {
+        throw new Error("Expected Memory dashboard page and actor context");
+      }
+      const memoryContent = await memoryPage.read({
+        db: memoryDb(fixture),
+        log: noopLogger,
+        plugin: { name: "memory" },
+        viewer: {
+          actors: [actorContext.actor],
+          email: "person@example.com",
+        },
+      });
+      expect(pluginUserPageContentSchema.parse(memoryContent)).toEqual({
+        type: "list",
+        emptyText: "No personal memories yet.",
+        records: [
+          {
+            id: personal.memory.id,
+            title: "Prefers short PR summaries.",
+            metadata: [
+              { label: "Type", value: "Preference" },
+              { label: "Remembered", value: "Jun 19, 2026" },
+            ],
+          },
+        ],
+      });
+      await expect(
+        memoryPage.read({
+          db: memoryDb(fixture),
+          log: noopLogger,
+          plugin: { name: "memory" },
+          viewer: { actors: [], email: "new@example.com" },
+        }),
+      ).resolves.toEqual({
+        type: "list",
+        emptyText: "No personal memories yet.",
+        records: [],
+      });
       const otherConversationStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({

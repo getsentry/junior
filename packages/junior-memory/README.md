@@ -13,6 +13,8 @@ exported types, tools, and tests are authoritative.
   learning.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
+- The dashboard exposes a read-only **Memories** user page for personal
+  memories owned by actors linked to the signed-in user.
 
 ## Scope And Visibility
 

@@ -23,3 +23,4 @@ export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
+export * from "./user-pages";

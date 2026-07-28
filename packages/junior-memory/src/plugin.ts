@@ -13,6 +13,7 @@ import {
 import { processMemorySession } from "./process-session";
 import { createMemoryPromptContributions } from "./recall";
 import type { MemoryDb } from "./store";
+import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
 const MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV =
@@ -107,6 +108,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
         },
       },
     },
+    userPages: [createMemoryUserPage()],
     hooks: {
       tools(ctx) {
         const agent = createMemoryAgent(ctx.model);

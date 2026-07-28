@@ -101,6 +101,34 @@ export async function startDashboardE2eServer(): Promise<DashboardE2eServer> {
 
 /** Stubs APIs shared by dashboard page specs. */
 export async function mockDashboardApis(page: Page) {
+  await page.route("**/api/user-pages", async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          description: "Personal facts Junior remembers about you.",
+          id: "memories",
+          label: "Memories",
+          pluginDisplayName: "Memory",
+          pluginName: "memory",
+        },
+      ],
+    });
+  });
+  await page.route("**/api/user-pages/memory/memories", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "list",
+        emptyText: "No personal memories yet.",
+        records: [
+          {
+            id: "memory-1",
+            title: "I prefer concise summaries.",
+            metadata: [{ label: "Type", value: "Preference" }],
+          },
+        ],
+      },
+    });
+  });
   await page.route("**/api/plugins", async (route) => {
     await route.fulfill({
       json: [

@@ -21,7 +21,8 @@ The manifest declares runtime metadata such as:
 - provider domains, grants, OAuth, API-header transformations, and safe command
   environment placeholders;
 - runtime dependencies and snapshot installation steps;
-- configuration fields.
+- configuration fields;
+- signed-in user pages backed by core-owned discovery and read routes.
 
 Manifest values are validated before runtime activation. Secret deployment
 values remain host-only; sandbox-exposed command environment must be explicitly
@@ -39,6 +40,18 @@ reports, and other typed hook surfaces exported by this package.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
 - Host-owned structured model and embedding calls do not expose provider
   credentials to plugins.
+- User page readers receive the signed-in email plus runtime-owned actors linked
+  to that user. Plugins return bounded data and do not mount their own page
+  routes or browser code.
+
+## User Pages
+
+Register signed-in pages through `userPages` beside `hooks`, `tasks`, and `cli`.
+Each definition owns its navigation metadata and `read(ctx)` function, so a
+page cannot be advertised without an implementation. Core owns discovery,
+authentication, actor resolution, routing, response validation, and rendering.
+The initial response type is the bounded `list` page; add another core-rendered
+type only when a concrete product need proves it.
 
 ## Durable Work
 

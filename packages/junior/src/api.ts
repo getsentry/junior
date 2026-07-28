@@ -6,6 +6,7 @@ import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import pluginReportsRoute from "./api/plugin-reports";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createUserPageRoutes } from "./api/user-pages/routes";
 import pluginsRoute from "./api/plugins";
 import {
   registerApiRoutes,
@@ -41,6 +42,7 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
+  app.route("/api/user-pages", createUserPageRoutes());
   app.notFound(() =>
     jsonResponse(
       apiErrorSchema,

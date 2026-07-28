@@ -16,6 +16,7 @@ import {
   pluginsSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
+import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import { fetchDashboardJson } from "./http";
@@ -35,6 +36,25 @@ export function useDashboardCoreData() {
         me,
       };
     },
+    retry: false,
+  });
+}
+
+/** Fetch safe plugin metadata used by dashboard navigation and System pages. */
+export function usePluginsData() {
+  return useQuery({
+    queryKey: ["dashboard", "plugins"],
+    queryFn: () => fetchDashboardJson(pluginsSchema, "/api/plugins"),
+    retry: false,
+  });
+}
+
+/** Fetch plugin-owned pages shown in the signed-in user menu. */
+export function usePluginUserPagesData() {
+  return useQuery({
+    queryKey: ["dashboard", "plugin-user-pages"],
+    queryFn: () =>
+      fetchDashboardJson(pluginUserPageLinksSchema, "/api/user-pages"),
     retry: false,
   });
 }
@@ -106,6 +126,7 @@ export function useLocationDetailData(locationId: string | undefined) {
 /** Fetch aggregate system metrics, plugin inventory, and operational reports. */
 export function useSystemData() {
   const coreQuery = useDashboardCoreData();
+  const pluginsQuery = usePluginsData();
   const conversationStatsQuery = useQuery({
     queryKey: ["dashboard", "conversation-stats"],
     queryFn: () =>
@@ -113,11 +134,6 @@ export function useSystemData() {
         conversationStatsReportSchema,
         "/api/conversations/stats",
       ),
-    retry: false,
-  });
-  const pluginsQuery = useQuery({
-    queryKey: ["dashboard", "plugins"],
-    queryFn: () => fetchDashboardJson(pluginsSchema, "/api/plugins"),
     retry: false,
   });
   const skillsQuery = useQuery({

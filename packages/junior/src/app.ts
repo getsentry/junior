@@ -386,6 +386,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     `${peoplePath}/*`,
     pagePath("system"),
     `${pagePath("system")}/*`,
+    pagePath("settings/plugins"),
+    `${pagePath("settings/plugins")}/*`,
   ];
   if (dashboard.componentGallery) {
     pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
@@ -403,6 +405,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/plugins",
     "/api/plugins/*",
     "/api/plugin-reports",
+    "/api/user-pages",
+    "/api/user-pages/*",
     "/api/skills",
     "/api/conversations",
     "/api/conversations/*",

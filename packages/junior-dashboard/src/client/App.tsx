@@ -7,7 +7,11 @@ import {
   useLocation,
 } from "react-router";
 
-import { useDashboardCoreData, useSystemData } from "./api";
+import {
+  useDashboardCoreData,
+  usePluginUserPagesData,
+  useSystemData,
+} from "./api";
 import { getDashboardAgentName } from "./agentName";
 import { LoadingView } from "./components/LoadingView";
 import { JuniorLogo } from "./components/JuniorLogo";
@@ -21,6 +25,7 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
+import { PluginUserPage } from "./pages/user/PluginUserPage";
 import {
   cn,
   dashboardContainerClass,
@@ -43,7 +48,9 @@ const dashboardNoise = {
 export function DashboardShell() {
   const location = useLocation();
   const query = useDashboardCoreData();
+  const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
+  const userPages = userPagesQuery.data ?? [];
   if (data) {
     setDashboardTimeZone(data.config.timeZone);
   }
@@ -114,7 +121,11 @@ export function DashboardShell() {
           </nav>
           {loggedIn ? (
             <div className="col-start-2 row-start-1 justify-self-end md:col-start-3">
-              <ProfileMenu identity={data!.me} onSignOut={signOut} />
+              <ProfileMenu
+                identity={data!.me}
+                onSignOut={signOut}
+                userPages={userPages}
+              />
             </div>
           ) : null}
         </div>
@@ -219,6 +230,18 @@ export function DashboardShell() {
             )
           }
           path="/settings/api-tokens"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <LoadingView label="Loading page" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <PluginUserPage pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/settings/plugins/:pluginName/:pageId"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
