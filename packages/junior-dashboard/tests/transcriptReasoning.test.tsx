@@ -9,7 +9,10 @@ describe("transcript reasoning", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
         <TranscriptReasoningView
-          text="Inspect the inputs before searching."
+          part={{
+            type: "reasoning",
+            text: "Inspect the inputs before searching.",
+          }}
           timestamp={1_000}
         />
       </TranscriptSearchProvider>,
@@ -25,7 +28,12 @@ describe("transcript reasoning", () => {
   it("expands matching reasoning while transcript search is active", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="inputs">
-        <TranscriptReasoningView text="Inspect the inputs before searching." />
+        <TranscriptReasoningView
+          part={{
+            type: "reasoning",
+            text: "Inspect the inputs before searching.",
+          }}
+        />
       </TranscriptSearchProvider>,
     );
 

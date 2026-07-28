@@ -1,6 +1,7 @@
 import { Brain } from "lucide-react";
 
 import { formatMessageTimestamp } from "../format";
+import type { TranscriptViewReasoningPart } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -9,12 +10,11 @@ import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
-  redacted?: true;
-  text?: string;
+  part: TranscriptViewReasoningPart;
   timestamp?: number;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const rendered = props.redacted ? "Reasoning redacted" : (props.text ?? "");
+  const rendered = props.part.redacted ? "Reasoning redacted" : props.part.text;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const summary = (
     <>

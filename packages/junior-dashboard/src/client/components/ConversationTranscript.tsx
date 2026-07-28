@@ -76,6 +76,12 @@ type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
+function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
+  return (
+    <TranscriptReasoningView part={entry.part} timestamp={entry.timestamp} />
+  );
+}
+
 /** Render one conversation transcript segment as actor messages and tool events. */
 export function ConversationTranscriptView(props: {
   onOpenSubagentTranscript?: (args: {
@@ -341,13 +347,7 @@ function VisibleTranscriptEntries(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderReasoning={(entry) => (
-        <TranscriptReasoningView
-          redacted={entry.part.redacted}
-          text={entry.part.text}
-          timestamp={entry.timestamp}
-        />
-      )}
+      renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView
           part={entry.part}
@@ -581,13 +581,7 @@ function RedactedTranscriptView(props: {
           />
         </TranscriptRailEvent>
       )}
-      renderReasoning={(entry) => (
-        <TranscriptReasoningView
-          redacted={entry.part.redacted}
-          text={entry.part.text}
-          timestamp={entry.timestamp}
-        />
-      )}
+      renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
       )}
