@@ -340,6 +340,57 @@ function userPromptContentMatches(
   return isDeepStrictEqual(storedContent, currentContent);
 }
 
+function isUserContentPart(value: unknown): value is UserContentPart {
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+  if (value.type === "text") {
+    return "text" in value && typeof value.text === "string";
+  }
+  return (
+    value.type === "image" &&
+    "data" in value &&
+    typeof value.data === "string" &&
+    "mimeType" in value &&
+    typeof value.mimeType === "string"
+  );
+}
+
+// A failed input acknowledgement redelivers the same running checkpoint.
+// Reuse its exact prompt so plugin context cannot diverge from its durable event.
+function checkpointedPromptContent(args: {
+  messages: PiMessage[] | undefined;
+  turnStartMessageIndex: number | undefined;
+  userContentParts: UserContentPart[];
+}): UserContentPart[] | undefined {
+  if (
+    !args.messages ||
+    args.turnStartMessageIndex === undefined ||
+    args.turnStartMessageIndex !== args.messages.length - 1
+  ) {
+    return undefined;
+  }
+  const message = args.messages[args.turnStartMessageIndex] as
+    | { content?: unknown; role?: unknown }
+    | undefined;
+  if (message?.role !== "user" || !Array.isArray(message.content)) {
+    return undefined;
+  }
+  const durableMessage = stripRuntimeTurnContext([message as PiMessage])[0] as
+    | { content?: unknown }
+    | undefined;
+  if (
+    !userPromptContentMatches(durableMessage?.content, args.userContentParts)
+  ) {
+    return undefined;
+  }
+  const content = message.content;
+  if (!content.every(isUserContentPart)) {
+    return undefined;
+  }
+  return content;
+}
+
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
@@ -379,8 +430,18 @@ export async function assemblePrompt(args: {
         args.userContentParts,
       )
     : args.existingSessionPiMessages!;
+  const replayedPromptContent =
+    shouldPromptAgent && !args.resumedFromSessionRecord
+      ? checkpointedPromptContent({
+          messages: args.existingSessionPiMessages,
+          turnStartMessageIndex: args.existingTurnStartMessageIndex,
+          userContentParts: args.userContentParts,
+        })
+      : undefined;
   const needsBootstrapContextForPrompt =
-    shouldPromptAgent && !hasRuntimeTurnContext(promptHistoryMessages);
+    shouldPromptAgent &&
+    !replayedPromptContent &&
+    !hasRuntimeTurnContext(promptHistoryMessages);
   const systemPromptContributions =
     await getPluginSystemPromptContributions(source);
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
@@ -389,11 +450,12 @@ export async function assemblePrompt(args: {
   const baseInstructions = [buildSystemPrompt({ source }), pluginSystemPrompt]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
-  const pluginUserPromptContributions = !shouldPromptAgent
-    ? []
-    : await getPluginUserPromptContributions({
-        context: args.toolRuntimeContext,
-      });
+  const pluginUserPromptContributions =
+    !shouldPromptAgent || replayedPromptContent
+      ? []
+      : await getPluginUserPromptContributions({
+          context: args.toolRuntimeContext,
+        });
   const turnContextPrompt =
     needsBootstrapContextForPrompt || pluginUserPromptContributions.length > 0
       ? buildTurnContextPrompt({
@@ -422,7 +484,10 @@ export async function assemblePrompt(args: {
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];
-  const promptContentParts = [...turnContextParts, ...args.userContentParts];
+  const promptContentParts = replayedPromptContent ?? [
+    ...turnContextParts,
+    ...args.userContentParts,
+  ];
 
   const inputMessages = [
     {

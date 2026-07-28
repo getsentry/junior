@@ -117,6 +117,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getConversationEventStore } from "@/chat/db";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -252,6 +253,83 @@ describe("plugin prompt hooks", () => {
         ),
       ),
     ).not.toContain("Use pnpm.");
+  });
+
+  it("replays checkpointed structured context after input acknowledgement fails", async () => {
+    const recall = definePromptContext({
+      kind: "recall",
+      version: 1,
+      schema: z.object({
+        memories: z.array(z.object({ id: z.string(), content: z.string() })),
+      }),
+      renderPrompt: ({ memories }) => memories[0]!.content,
+    });
+    let recallCount = 0;
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory test plugin",
+        },
+        hooks: {
+          userPrompt() {
+            recallCount += 1;
+            return [
+              recall({
+                memories: [
+                  {
+                    id: `memory-${recallCount}`,
+                    content: `Use pnpm snapshot ${recallCount}.`,
+                  },
+                ],
+              }),
+            ];
+          },
+        },
+      }),
+    ]);
+
+    const turnId = "turn-plugin-context-input-redelivery";
+    const request = {
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId,
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+      },
+    };
+    await expect(
+      executeAgentRun({
+        ...request,
+        durability: {
+          onInputCommitted() {
+            throw new TurnInputCommitLostError();
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(TurnInputCommitLostError);
+
+    await executeAgentRun(request);
+
+    expect(recallCount).toBe(1);
+    expect(JSON.stringify(captured.promptMessages[0])).toContain(
+      "Use pnpm snapshot 1.",
+    );
+    expect(JSON.stringify(captured.promptMessages[0])).not.toContain(
+      "Use pnpm snapshot 2.",
+    );
+    const stored = await getConversationEventStore().loadByIdempotencyKey(
+      LOCAL_DESTINATION.conversationId,
+      `turn:${turnId}:context:memory:0`,
+    );
+    expect(stored?.data).toMatchObject({
+      type: "turn_context",
+      content: {
+        memories: [{ id: "memory-1", content: "Use pnpm snapshot 1." }],
+      },
+    });
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
