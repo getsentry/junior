@@ -1,0 +1,219 @@
+import {
+  definePluginTool,
+  PluginToolInputError,
+  pluginToolResultSchema,
+  subscribableResourceSchema,
+  type PluginToolResult,
+  type SubscribableResource,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
+import { gitHubDeploymentSourceSubscribable } from "../resource-events/deployment.js";
+
+const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
+const inputSchema = z
+  .object({
+    repo: z.string().describe('Repository in "owner/name" format.'),
+    commitSha: commitShaSchema.describe(
+      "Full 40-character Git commit SHA recorded by the deployment.",
+    ),
+    environment: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('GitHub deployment environment, such as "Production".'),
+  })
+  .strict();
+const statusSchema = z.object({
+  createdAt: z.string(),
+  creator: z.string(),
+  description: z.string().nullable(),
+  environmentUrl: z.string().nullable(),
+  id: z.number(),
+  logUrl: z.string().nullable(),
+  state: z.string(),
+});
+const deploymentSchema = z.object({
+  createdAt: z.string(),
+  creator: z.string(),
+  description: z.string().nullable(),
+  environment: z.string(),
+  id: z.number(),
+  latestStatus: statusSchema.nullable(),
+  ref: z.string(),
+  sha: commitShaSchema,
+  updatedAt: z.string(),
+  url: z.string(),
+});
+const deploymentSourceSchema = z.object({
+  commitSha: commitShaSchema,
+  deployment: deploymentSchema.nullable(),
+  environment: z.string(),
+  repo: z.string(),
+  subscribable: subscribableResourceSchema.optional(),
+});
+type DeploymentSource = z.output<typeof deploymentSourceSchema>;
+interface Result extends PluginToolResult, DeploymentSource {
+  data: DeploymentSource;
+  ok: true;
+  status: "success";
+  subscribable?: SubscribableResource;
+  target: "getDeployment";
+}
+const outputSchema = pluginToolResultSchema.extend({
+  data: deploymentSourceSchema,
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.literal("getDeployment"),
+  ...deploymentSourceSchema.shape,
+});
+
+function parseRepo(value: string) {
+  const parts = value.split("/").map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new PluginToolInputError('repo must use "owner/name" format');
+  }
+  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function repositoryUrl(repo: { name: string; owner: string }, path: string) {
+  return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/${path}`;
+}
+
+/** Read deployment metadata and expose its stable subscription identity. */
+export function createGitHubGetDeploymentTool(
+  ctx: ToolRegistrationHookContext,
+) {
+  return definePluginTool({
+    description:
+      "Get the latest GitHub deployment and status for an exact repository, environment, and full commit SHA. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
+    inputSchema,
+    outputSchema,
+    async execute(input): Promise<Result> {
+      const repo = parseRepo(input.repo);
+      const commitSha = input.commitSha.toLowerCase();
+      const deploymentsUrl = new URL(repositoryUrl(repo, "deployments"));
+      deploymentsUrl.searchParams.set("sha", commitSha);
+      deploymentsUrl.searchParams.set("environment", input.environment);
+      deploymentsUrl.searchParams.set("per_page", "1");
+      const deploymentsResponse = await ctx.egress.fetch({
+        provider: "github",
+        operation: "github.deployment.list",
+        request: new Request(deploymentsUrl, {
+          headers: {
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        }),
+      });
+      const deploymentsBody = await readJson(deploymentsResponse);
+      if (!deploymentsResponse.ok) {
+        throw new Error(
+          `GitHub deployment lookup failed with HTTP ${deploymentsResponse.status}`,
+        );
+      }
+      const providerDeployment = z
+        .array(
+          z.object({
+            created_at: z.string(),
+            creator: z.object({ login: z.string() }),
+            description: z.string().nullable(),
+            environment: z.string(),
+            id: z.number(),
+            ref: z.string(),
+            sha: commitShaSchema,
+            updated_at: z.string(),
+          }),
+        )
+        .parse(deploymentsBody)[0];
+
+      let deployment: z.output<typeof deploymentSchema> | null = null;
+      if (providerDeployment) {
+        const statusesResponse = await ctx.egress.fetch({
+          provider: "github",
+          operation: "github.deployment-status.list",
+          request: new Request(
+            `${repositoryUrl(repo, `deployments/${providerDeployment.id}/statuses`)}?per_page=1`,
+            {
+              headers: {
+                Accept: "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+              },
+            },
+          ),
+        });
+        const statusesBody = await readJson(statusesResponse);
+        if (!statusesResponse.ok) {
+          throw new Error(
+            `GitHub deployment status lookup failed with HTTP ${statusesResponse.status}`,
+          );
+        }
+        const providerStatus = z
+          .array(
+            z.object({
+              created_at: z.string(),
+              creator: z.object({ login: z.string() }),
+              description: z.string().nullable(),
+              environment_url: z.string().nullable(),
+              id: z.number(),
+              log_url: z.string().nullable(),
+              state: z.string(),
+            }),
+          )
+          .parse(statusesBody)[0];
+        deployment = {
+          createdAt: providerDeployment.created_at,
+          creator: providerDeployment.creator.login,
+          description: providerDeployment.description,
+          environment: providerDeployment.environment,
+          id: providerDeployment.id,
+          latestStatus: providerStatus
+            ? {
+                createdAt: providerStatus.created_at,
+                creator: providerStatus.creator.login,
+                description: providerStatus.description,
+                environmentUrl: providerStatus.environment_url,
+                id: providerStatus.id,
+                logUrl: providerStatus.log_url,
+                state: providerStatus.state,
+              }
+            : null,
+          ref: providerDeployment.ref,
+          sha: providerDeployment.sha.toLowerCase(),
+          updatedAt: providerDeployment.updated_at,
+          url: `https://github.com/${repo.ref}/deployments`,
+        };
+      }
+
+      const subscribable = gitHubDeploymentSourceSubscribable({
+        commitSha,
+        environment: input.environment,
+        repo: repo.ref,
+      });
+      const data: DeploymentSource = {
+        commitSha,
+        deployment,
+        environment: input.environment,
+        repo: repo.ref,
+        ...(subscribable ? { subscribable } : {}),
+      };
+      return {
+        data,
+        ok: true,
+        status: "success",
+        target: "getDeployment",
+        ...data,
+      };
+    },
+  });
+}

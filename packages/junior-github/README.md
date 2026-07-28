@@ -1,6 +1,7 @@
 # @sentry/junior-github
 
-`@sentry/junior-github` adds GitHub issue, pull request, repository, and user-attachment workflows to Junior using a GitHub App.
+`@sentry/junior-github` adds GitHub deployment, issue, pull request,
+repository, and user-attachment workflows to Junior using a GitHub App.
 
 Install it alongside `@sentry/junior`:
 
@@ -24,6 +25,7 @@ export const plugins = defineJuniorPlugins([
 
 Full setup guide: https://junior.sentry.dev/extend/github-plugin/
 
-The plugin owns its signed webhook route, normalized pull request and issue
-outcome projections, and dashboard operational report. Core only owns delivery
-from plugin-published resource events into matching conversation subscriptions.
+The plugin owns its signed webhook route, deployment and pull request resource
+events, normalized pull request and issue outcome projections, and dashboard
+operational report. Core only owns delivery from plugin-published resource
+events into matching conversation subscriptions.

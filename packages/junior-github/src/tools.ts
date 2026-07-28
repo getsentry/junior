@@ -3,6 +3,7 @@ import type {
   ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { createGitHubIssueTool } from "./tools/create-issue.js";
+import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
 import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
@@ -14,6 +15,7 @@ export function createGitHubTools(
   return {
     createIssue: createGitHubIssueTool(ctx),
     createPullRequest: createGitHubPullRequestTool(ctx),
+    getDeployment: createGitHubGetDeploymentTool(ctx),
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
   };

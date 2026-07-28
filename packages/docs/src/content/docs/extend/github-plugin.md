@@ -2,7 +2,7 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for GitHub repository workflows.
 type: tutorial
-summary: Set up Junior-owned GitHub workflow dispatches, issues, pull requests, and branch pushes.
+summary: Set up Junior-owned GitHub deployments, workflow dispatches, issues, pull requests, and branch pushes.
 prerequisites:
   - /extend/
 related:
@@ -46,16 +46,16 @@ You can optionally declare `appPermissions` when registering the plugin. Junior 
 
 Set these values in the host environment:
 
-| Variable                   | Required | Purpose                                                            |
-| -------------------------- | -------- | ------------------------------------------------------------------ |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                               |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                    |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                            |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                    |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                             |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership. |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for PR watches and outcome reporting.       |
+| Variable                   | Required | Purpose                                                             |
+| -------------------------- | -------- | ------------------------------------------------------------------- |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                     |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                 |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                             |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                     |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                              |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.  |
+| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment and PR watches and reporting. |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
 `GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
@@ -98,6 +98,7 @@ Create and install a GitHub App before you verify GitHub workflows:
 3. Grant repository permissions for:
    - Actions: Read and write
    - Checks: Read
+   - Deployments: Read
    - Issues: Read and write
    - Contents: Read and write
    - Pull requests: Read and write
@@ -111,6 +112,8 @@ Create and install a GitHub App before you verify GitHub workflows:
 
 5. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`, then subscribe the app to these repository events:
    - Check suite
+   - Deployment
+   - Deployment status
    - Issues
    - Issue comment
    - Pull request
@@ -149,6 +152,29 @@ Supported GitHub webhook deliveries become these Junior resource events:
 `state.merged` and `state.closed_unmerged` complete the subscription after Junior accepts the event. Other supported events keep the watch active until the subscription expires, is cancelled, or reaches its configured TTL.
 
 Webhook events are delivered as normal queued conversation messages. They do not interrupt active work, bypass Slack routing, or act as user-authored commands. Junior uses the subscription intent to decide whether to reply, take a follow-up action, or stay silent.
+
+## Watch deployment events
+
+Use `github_getDeployment` when Junior should inspect or watch the deployment
+for an exact repository, environment, and full commit SHA. The result includes
+the latest matching deployment and its latest status when GitHub has created
+one. It also remains subscribable before the deployment exists, which lets
+Junior wait for a deployment that will be created after a branch merge or
+release action.
+
+The GitHub App needs `Deployments: read`, and its webhook must subscribe to
+both Deployment and Deployment status. Junior maps those deliveries to these
+resource events:
+
+| GitHub delivery             | Junior event types                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `deployment` created        | `deployment.created`                                                                                                                 |
+| `deployment_status` created | `deployment.queued`, `deployment.pending`, `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`, `deployment.error` |
+
+Success, failure, and error complete the subscription after Junior accepts the
+event. Creation and progress events keep the watch active. GitHub does not send
+a `deployment_status` webhook for the `inactive` state, so Junior does not
+offer an inactive event.
 
 The GitHub plugin classifies a pull request or issue as Junior-owned on its
 signed `opened` event when the author matches the bot login derived from
@@ -200,6 +226,12 @@ For code changes, a local `git commit` does not call GitHub. The GitHub write ha
 
 To verify PR event watches, create a PR through Junior in Slack and ask Junior to keep an eye on CI, review changes, or merge state. Trigger one configured GitHub webhook event, then confirm GitHub reports a successful delivery to `/api/webhooks/github` and Junior handles the event in the original Slack conversation according to the watch intent.
 
+To verify deployment watches, ask Junior to watch a known repository,
+environment, and commit SHA before the deployment finishes. Confirm the
+conversation has an active deployment-source subscription, then verify that a
+Deployment status delivery reaches `/api/webhooks/github` and produces the
+expected follow-up in the original conversation.
+
 ## Security model
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
@@ -218,8 +250,10 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 - `Access denied` from GitHub: the app is not installed on the target repository or organization. Install the app on that target, then retry.
 - `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
 - PR creation works but Junior never offers to watch the PR: `GITHUB_WEBHOOK_SECRET` is missing from the deployment environment. Set it, redeploy, and create a new PR through Junior.
+- `github_getDeployment` returns `403`: grant the GitHub App `Deployments: read`, approve the updated permission on its installation, and retry.
+- Deployment metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing. Set it, redeploy, and run `github_getDeployment` again.
 - GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
-- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported PR watch event. Use one of the configured event types above.
+- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported deployment or PR watch event. Use one of the configured event types above.
 - GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource event subscription for that PR and event type. A successful webhook alone does not create a subscription.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.

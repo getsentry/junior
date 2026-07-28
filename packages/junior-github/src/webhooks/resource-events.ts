@@ -1,5 +1,6 @@
 import type { ResourceEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { gitHubDeploymentSourceResource } from "../resource-events/deployment.js";
 import { gitHubPullRequestResource } from "../resource-events/pull-request.js";
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {
@@ -10,6 +11,113 @@ const repositorySchema = z.object({ full_name: z.string().min(1) });
 
 // GitHub envelopes contain many additional fields; these schemas intentionally
 // select only the fields used to produce Junior's canonical resource events.
+
+const deploymentSchema = z.object({
+  created_at: z.string().optional(),
+  environment: z.string().min(1),
+  id: z.number(),
+  sha: z.string().regex(/^[0-9a-f]{40}$/i),
+});
+
+const deploymentWebhookSchema = z.object({
+  action: z.string(),
+  deployment: deploymentSchema,
+  repository: repositorySchema,
+});
+
+/** Normalize a newly created GitHub deployment. */
+function normalizeDeploymentEvent(
+  deliveryId: string,
+  body: unknown,
+): ResourceEvent | undefined {
+  const parsed = deploymentWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "created") return undefined;
+  const resource = gitHubDeploymentSourceResource({
+    commitSha: parsed.data.deployment.sha,
+    environment: parsed.data.deployment.environment,
+    repo: parsed.data.repository.full_name,
+  });
+  const eventType = "deployment.created";
+  return {
+    eventKey: gitHubEventKey(deliveryId, eventType),
+    eventType,
+    occurredAtMs: providerTime(parsed.data.deployment.created_at) ?? Date.now(),
+    provider: "github",
+    resourceRef: resource.resourceRef,
+    trustedSummary: `${resource.label} was created (deployment ${parsed.data.deployment.id}).`,
+  };
+}
+
+const deploymentStatusWebhookSchema = z.object({
+  action: z.string(),
+  deployment: deploymentSchema,
+  deployment_status: z.object({
+    created_at: z.string().optional(),
+    description: z.string().optional().nullable(),
+    state: z.string(),
+  }),
+  repository: repositorySchema,
+});
+
+function deploymentStatusEventType(state: string): string | undefined {
+  switch (state) {
+    case "queued":
+    case "pending":
+    case "in_progress":
+      return `deployment.${state}`;
+    case "success":
+      return "deployment.succeeded";
+    case "failure":
+      return "deployment.failed";
+    case "error":
+      return "deployment.error";
+    default:
+      return undefined;
+  }
+}
+
+/** Normalize a GitHub deployment status into a source event. */
+function normalizeDeploymentStatusEvent(
+  deliveryId: string,
+  body: unknown,
+): ResourceEvent | undefined {
+  const parsed = deploymentStatusWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "created") return undefined;
+  const eventType = deploymentStatusEventType(
+    parsed.data.deployment_status.state,
+  );
+  if (!eventType) return undefined;
+  const resource = gitHubDeploymentSourceResource({
+    commitSha: parsed.data.deployment.sha,
+    environment: parsed.data.deployment.environment,
+    repo: parsed.data.repository.full_name,
+  });
+  const outcome =
+    eventType === "deployment.succeeded"
+      ? "succeeded"
+      : eventType === "deployment.failed"
+        ? "failed"
+        : eventType === "deployment.error"
+          ? "reported an error"
+          : eventType === "deployment.in_progress"
+            ? "started"
+            : `is ${parsed.data.deployment_status.state}`;
+  const terminal =
+    eventType === "deployment.succeeded" ||
+    eventType === "deployment.failed" ||
+    eventType === "deployment.error";
+  return {
+    eventKey: gitHubEventKey(deliveryId, eventType),
+    eventType,
+    occurredAtMs:
+      providerTime(parsed.data.deployment_status.created_at) ?? Date.now(),
+    provider: "github",
+    resourceRef: resource.resourceRef,
+    ...(terminal ? { terminal: true } : {}),
+    trustedSummary: `${resource.label} ${outcome} (deployment ${parsed.data.deployment.id}).`,
+    untrustedText: parsed.data.deployment_status.description ?? undefined,
+  };
+}
 
 const checkSuiteWebhookSchema = z.object({
   action: z.string(),
@@ -243,6 +351,14 @@ export function normalizeGitHubResourceEvents(args: {
   eventName: string;
 }): ResourceEvent[] {
   switch (args.eventName) {
+    case "deployment": {
+      const event = normalizeDeploymentEvent(args.deliveryId, args.body);
+      return event ? [event] : [];
+    }
+    case "deployment_status": {
+      const event = normalizeDeploymentStatusEvent(args.deliveryId, args.body);
+      return event ? [event] : [];
+    }
     case "pull_request": {
       const event = normalizePullRequestEvent(args.deliveryId, args.body);
       return event ? [event] : [];

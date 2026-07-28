@@ -14,6 +14,7 @@ In GitHub:
 - Contents: Read and write
 - Pull requests: Read and write
 - Actions: Read and write
+- Deployments: Read
 - Workflows: Write
 - Metadata: Read
 
@@ -77,8 +78,15 @@ the App bot login from that email. Set the GitHub App webhook URL to
 `https://<junior-host>/api/webhooks/github` and subscribe to Pull request
 and Issues events. The secret in GitHub must match the deployment environment.
 
-Conversation watches additionally use Check suite, Issue comment, Pull request
-review, and Pull request review comment events.
+Conversation watches additionally use Check suite, Deployment, Deployment
+status, Issue comment, Pull request review, and Pull request review comment
+events.
+
+`github_getDeployment` reads the latest deployment and status for an exact
+repository, environment, and commit SHA. When webhooks are configured, its
+result can subscribe the current conversation to deployment creation, progress,
+success, failure, and error events. The subscription remains available when
+GitHub has not created the deployment yet.
 
 ```bash
 vercel env add GITHUB_WEBHOOK_SECRET production
@@ -108,6 +116,7 @@ githubPlugin({
   appPermissions: {
     actions: "write",
     contents: "write",
+    deployments: "read",
     issues: "write",
     metadata: "read",
     pull_requests: "write",

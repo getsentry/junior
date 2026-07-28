@@ -615,7 +615,7 @@ export function githubPlugin(
       name: "github",
       displayName: "GitHub",
       description:
-        "GitHub issue, pull request, and repository workflows via GitHub App",
+        "GitHub deployment, issue, pull request, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {
