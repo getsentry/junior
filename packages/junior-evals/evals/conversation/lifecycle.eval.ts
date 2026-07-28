@@ -55,4 +55,37 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     );
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
+
+  it("when active history is compacted, continue the unfinished task", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        active_turn_compaction: {
+          summary:
+            "The deployment diagnostic completed successfully. Checking and reporting the current UTC time remain unfinished.",
+        },
+      },
+      initialEvents: [
+        mention(
+          "After the deployment diagnostic finishes, tell me the current UTC time. Do not reply until you have checked it.",
+        ),
+      ],
+      requireSandboxReady: false,
+      criteria: rubric({
+        pass: [
+          "The assistant checks and reports the current time in UTC after continuing from the completed diagnostic.",
+        ],
+        fail: [
+          "The reply only gives a plan, checkpoint summary, or promise to check the time later.",
+          "The assistant repeats the completed diagnostic instead of finishing the remaining request.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toContainEqual(
+      expect.objectContaining({ name: "systemTime", status: "ok" }),
+    );
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+  });
 });

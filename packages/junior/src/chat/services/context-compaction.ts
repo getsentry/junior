@@ -39,6 +39,7 @@ import {
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
 import {
+  ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
   MODEL_HANDOFF_SUMMARY_PREFIX,
@@ -318,11 +319,36 @@ async function summarizeContext(
     conversationContext?: string;
     piMessages: PiMessage[];
     metadata?: CompactContextArgs["metadata"];
+    purpose?: "active_turn" | "reusable_history";
     signal?: AbortSignal;
   },
   deps: ContextCompactorDeps,
 ): Promise<string> {
   const source = renderSummaryInput(args.piMessages, args.conversationContext);
+  const instructions =
+    args.purpose === "active_turn"
+      ? [
+          "You are performing an ACTIVE-TURN CONTEXT CHECKPOINT COMPACTION for Junior.",
+          "Create concise internal continuation state for the same agent run, which must continue the unfinished task immediately after this checkpoint.",
+          "",
+          "Include:",
+          "- Work completed and concrete outcomes",
+          "- Exact work currently in progress",
+          "- The immediate next action",
+          "- Durable constraints, user preferences, IDs, URLs, artifacts, sandbox references, auth state, and unresolved blockers",
+          "",
+          "Do not write a user-facing reply, announce a plan, or imply that the task is complete unless the source history proves it is complete.",
+        ]
+      : [
+          "You are performing a CONTEXT CHECKPOINT COMPACTION for Junior.",
+          "Create a concise continuation summary for the agent that will continue this Slack thread.",
+          "",
+          "Include:",
+          "- Current outstanding asks",
+          "- Key decisions, completed work, and outcomes",
+          "- Durable constraints, user preferences, IDs, URLs, artifacts, canvas links, sandbox references, and auth state",
+          "- Clear next steps and unresolved blockers",
+        ];
   const result = await deps.completeText({
     modelId: botConfig.fastModelId,
     messageAttributeMode: "metadata",
@@ -332,14 +358,7 @@ async function summarizeContext(
       {
         role: "user",
         content: [
-          "You are performing a CONTEXT CHECKPOINT COMPACTION for Junior.",
-          "Create a concise continuation summary for the agent that will continue this Slack thread.",
-          "",
-          "Include:",
-          "- Current outstanding asks",
-          "- Key decisions, completed work, and outcomes",
-          "- Durable constraints, user preferences, IDs, URLs, artifacts, canvas links, sandbox references, and auth state",
-          "- Clear next steps and unresolved blockers",
+          ...instructions,
           "",
           "Do not invent details. Do not include raw secrets or credentials.",
           "",
@@ -652,6 +671,7 @@ export async function compactActiveContextIfNeeded(
       {
         ...args,
         piMessages: args.piMessages,
+        purpose: "active_turn",
       },
       deps,
     );
@@ -683,21 +703,10 @@ export async function compactActiveContextIfNeeded(
     return { compacted: false, reason: "summary_failed" };
   }
 
-  const summaryText = `${COMPACTION_SUMMARY_PREFIX}\n${summary}`;
-  const runtimeMessage = retainRuntimeTurnContext(args.piMessages).at(-1) as
-    | { content: unknown[] }
-    | undefined;
-  const summaryMessages = runtimeMessage
-    ? [
-        {
-          ...runtimeMessage,
-          content: [
-            ...runtimeMessage.content,
-            { type: "text", text: summaryText },
-          ],
-        } as PiMessage,
-      ]
-    : [userMessage(summaryText)];
+  const summaryMessage = userMessage(
+    `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${summary}`,
+  );
+  const runtimeMessages = retainRuntimeTurnContext(args.piMessages);
   const retainedInstruction =
     pendingMessages.length === 0
       ? await loadLastInstruction(args.conversationId)
@@ -708,7 +717,7 @@ export async function compactActiveContextIfNeeded(
   const instructionProvenance = retainedInstruction
     ? [retainedInstruction.provenance]
     : pendingMessages.map((entry) => entry.provenance);
-  const messages = [...summaryMessages, ...instructionMessages];
+  const messages = [...runtimeMessages, ...instructionMessages, summaryMessage];
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
     throw new ContextInputLimitExceededError(
@@ -741,11 +750,13 @@ export async function compactActiveContextIfNeeded(
       },
       summary,
       replacementHistory: replacementMessages.map((message, index) => {
-        const provenance =
-          index === 0 ? contextProvenance : instructionProvenance[index - 1]!;
+        const isSummary = index === replacementMessages.length - 1;
+        const provenance = isSummary
+          ? contextProvenance
+          : instructionProvenance[index]!;
         return {
           item: historyItemFromPiMessage(message, provenance),
-          ...(index === 1 && retainedInstruction
+          ...(index === 0 && retainedInstruction
             ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
             : {}),
         };

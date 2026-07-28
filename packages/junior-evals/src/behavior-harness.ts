@@ -43,12 +43,16 @@ import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
 import { actorFromRouting } from "@/chat/agent/request";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
+import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   createSchedulerSqlStore,
   schedulerPlugin,
@@ -301,6 +305,9 @@ interface SubscribedDecisionFixture {
 }
 
 export interface EvalOverrides {
+  active_turn_compaction?: {
+    summary: string;
+  };
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
@@ -1646,6 +1653,7 @@ function buildRuntimeServices(
   }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
+  let activeTurnCompactionInjected = false;
   let timeoutResumeInjected = false;
 
   const services: JuniorRuntimeServiceOverrides = {
@@ -1698,6 +1706,66 @@ function buildRuntimeServices(
               }
             : request;
           const timeoutResume = scenario.overrides?.timeout_resume;
+          const activeTurnCompaction =
+            scenario.overrides?.active_turn_compaction;
+          if (activeTurnCompaction && !activeTurnCompactionInjected) {
+            activeTurnCompactionInjected = true;
+            await runRequest.durability?.onInputCommitted?.();
+            const nowMs = Date.now();
+            const piMessages = [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
+                  },
+                ],
+                timestamp: nowMs,
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: renderCurrentInstruction(
+                      runRequest.input.messageText,
+                    ),
+                  },
+                ],
+                timestamp: nowMs,
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
+                  },
+                ],
+                timestamp: nowMs,
+              },
+            ] as PiMessage[];
+            const sessionRecord = await upsertAgentTurnSessionRecord({
+              conversationId: runRequest.conversationId,
+              sessionId: runRequest.turnId,
+              sliceId: 1,
+              state: "awaiting_resume",
+              piMessages,
+              modelId: standardModelId(botConfig),
+              resumeReason: "yield",
+              destination: runRequest.routing.destination,
+              destinationVisibility: runRequest.routing.destinationVisibility,
+              source: runRequest.routing.source,
+              surface: runRequest.routing.surface,
+              actor: actorFromRouting(runRequest.routing),
+              turnStartMessageIndex: 0,
+            });
+            return {
+              status: "suspended",
+              resumeVersion: sessionRecord.version,
+            };
+          }
           if (timeoutResume && !timeoutResumeInjected) {
             timeoutResumeInjected = true;
             await runRequest.durability?.onInputCommitted?.();

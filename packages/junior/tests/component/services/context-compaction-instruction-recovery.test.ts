@@ -91,15 +91,15 @@ describe("active context compaction instruction recovery", () => {
 
     expect(result.compacted).toBe(true);
     expect(result.piMessages).toHaveLength(2);
-    expect(textOf(result.piMessages![0]!)).toContain("No outstanding asks.");
-    expect(textOf(result.piMessages![0]!)).not.toContain(
+    expect(result.piMessages![0]).toEqual(instruction);
+    expect(textOf(result.piMessages![1]!)).toContain("No outstanding asks.");
+    expect(textOf(result.piMessages![1]!)).not.toContain(
       "<current-instruction>",
     );
-    expect(result.piMessages![1]).toEqual(instruction);
 
     const projection = await loadConversationProjection({ conversationId });
-    expect(projection.messages[1]).toEqual(instruction);
-    expect(projection.provenance[1]).toMatchObject({
+    expect(projection.messages[0]).toEqual(instruction);
+    expect(projection.provenance[0]).toMatchObject({
       authority: "instruction",
       actor: {
         platform: "slack",
@@ -109,5 +109,7 @@ describe("active context compaction instruction recovery", () => {
         fullName: "Alice Example",
       },
     });
+    expect(textOf(projection.messages[1]!)).toContain("No outstanding asks.");
+    expect(projection.provenance[1]).toEqual({ authority: "context" });
   });
 });

@@ -3,6 +3,8 @@ import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 export const COMPACTION_SUMMARY_PREFIX =
   "Context compaction summary for future Junior turns:";
+export const ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX =
+  "Active-turn context checkpoint. Continue the same unfinished task now. Treat the user instructions above as authoritative, use this summary as internal continuation state, and do not reply with a plan or summary solely because this checkpoint appeared:";
 export const MODEL_HANDOFF_SUMMARY_PREFIX =
   "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:";
 
@@ -11,6 +13,7 @@ export function isCompactionSummaryText(text: string): boolean {
   const normalized = (unwrapCurrentInstruction(text) ?? text).trimStart();
   return (
     normalized.startsWith(COMPACTION_SUMMARY_PREFIX) ||
+    normalized.startsWith(ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX) ||
     normalized.startsWith(MODEL_HANDOFF_SUMMARY_PREFIX)
   );
 }
