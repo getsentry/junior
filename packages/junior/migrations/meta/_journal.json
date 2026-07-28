@@ -78,6 +78,13 @@
       "when": 1785211716838,
       "tag": "0010_native_conversation_history",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785271740428,
+      "tag": "0011_sour_golden_guardian",
+      "breakpoints": true
     }
   ]
 }

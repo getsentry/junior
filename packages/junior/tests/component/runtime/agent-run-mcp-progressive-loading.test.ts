@@ -17,6 +17,7 @@ const {
   listToolsMock,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
+  incrementStatMock,
   pendingAuthRecords,
   promptCallCount,
   promptMessages,
@@ -43,6 +44,7 @@ const {
   listToolsMock: vi.fn(),
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
+  incrementStatMock: vi.fn(),
   pendingAuthRecords: [] as ConversationPendingAuthState[],
   promptCallCount: { value: 0 },
   promptMessages: [] as unknown[],
@@ -504,6 +506,10 @@ vi.mock("@/chat/skills", async (importOriginal) => {
   };
 });
 
+vi.mock("@/stats", () => ({
+  incrementStat: incrementStatMock,
+}));
+
 vi.mock("@/chat/mcp/client", () => {
   class MockMcpAuthorizationRequiredError extends Error {
     readonly provider: string;
@@ -632,6 +638,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
+    incrementStatMock.mockReset();
     pendingAuthRecords.length = 0;
     promptCallCount.value = 0;
     promptMessages.length = 0;
@@ -727,6 +734,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
     expect(loadSkillExecutionErrorCount.value).toBe(0);
+    expect(incrementStatMock).toHaveBeenCalledWith({
+      namespace: "demo",
+      metric: "skill_load",
+      name: "demo-skill",
+    });
 
     const reply = finalReply(await executeAgentRun(context));
 

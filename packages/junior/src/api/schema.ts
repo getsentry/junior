@@ -76,6 +76,8 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { statSchema, statsReportSchema } from "./schema/stats";
+export type { StatReport, StatsReport } from "./schema/stats";
 export {
   healthReportSchema,
   pluginOperationalReportFeedSchema,

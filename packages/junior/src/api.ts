@@ -16,6 +16,7 @@ import {
 import runtimeRoute from "./api/runtime";
 import { apiErrorSchema } from "./api/schema/common";
 import skillsRoute from "./api/skills";
+import statsRoute from "./api/stats";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export type { JuniorApiVariables };
@@ -27,6 +28,7 @@ const routes = [
   pluginsRoute,
   skillsRoute,
   pluginReportsRoute,
+  statsRoute,
 ] satisfies readonly ApiRoute[];
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */

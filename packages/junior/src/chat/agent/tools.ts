@@ -54,6 +54,7 @@ import {
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
+import { incrementStat } from "@/stats";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -88,6 +89,30 @@ interface ToolWiringArgs {
   syncLoadedSkillNamesForResume: () => void;
   toolCalls: string[];
   userInput: string;
+}
+
+/** Record optional reporting without changing the loadSkill outcome. */
+async function tryRecordSkillLoadStat(skill: Skill, spanContext: LogContext) {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    await incrementStat({
+      namespace: skill.pluginProvider ?? "junior",
+      metric: "skill_load",
+      name: skill.name,
+    });
+  } catch (error) {
+    logWarn(
+      "skill_load_stat_failed",
+      spanContext,
+      {
+        "app.skill.name": skill.name,
+        "app.plugin.name": skill.pluginProvider,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Failed to record skill load stat",
+    );
+  }
 }
 
 export interface ToolWiring {
@@ -285,6 +310,7 @@ export async function wireAgentTools(
         if (await mcpToolManager.activateForSkill(effective)) {
           await args.recordConnectedMcpProvider(effective.pluginProvider!);
         }
+        await tryRecordSkillLoadStat(effective, args.spanContext);
         if (mcpAuth.getPendingPause()) {
           // Auth pause requested — suppress loadSkill failure and let the
           // aborted run park cleanly.

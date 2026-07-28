@@ -178,7 +178,7 @@ A skill/tool is missing, plugin discovery failed, or capability activation looks
 
 Events: `startup_discovery_summary`, `plugin_loaded`,
 `capability_catalog_loaded`, `skill_directory_read_failed`,
-`skill_frontmatter_invalid`, `plugin_root_read_failed`
+`skill_frontmatter_invalid`, `skill_load_stat_failed`, `plugin_root_read_failed`
 
 Spans: active turn spans carry plugin/skill attributes
 
