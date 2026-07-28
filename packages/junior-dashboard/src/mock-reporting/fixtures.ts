@@ -186,7 +186,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       {
         kind: "resource_link",
         key: "getsentry/junior#1081",
-        label: "getsentry/junior #1081: Show conversation pull requests",
+        label: "getsentry/junior#1081",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/junior/pull/1081",

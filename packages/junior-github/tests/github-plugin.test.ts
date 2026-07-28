@@ -702,6 +702,32 @@ describe("github plugin", () => {
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
       labels: ["bug", "high-priority"],
     });
+    expect(ctx.annotationInputs()).toEqual([
+      {
+        kind: "resource_link",
+        key: "getsentry/junior#660",
+        label: "getsentry/junior#660",
+        status: "open",
+        url: "https://github.com/getsentry/junior/issues/660",
+      },
+    ]);
+  });
+
+  it("keeps issue annotation labels compact for long titles", async () => {
+    const ctx = githubToolsContext();
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "x".repeat(256),
+        },
+        { toolCallId: "call-create-issue-long-title" },
+      ),
+    ).resolves.toMatchObject({ number: 660 });
+
+    expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#660");
   });
 
   it("adds a Sentry session link to issue footers when configured", async () => {
@@ -783,7 +809,14 @@ Conversation: \`local:test:old-conversation\`
       url: "https://github.com/getsentry/junior/issues/660",
     });
     await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
+      tool?.execute?.(
+        {
+          ...input,
+          repo: "getsentry/other",
+          title: "Different issue",
+        },
+        { toolCallId: "call-idempotent-create" },
+      ),
     ).resolves.toMatchObject({
       ok: true,
       status: "success",
@@ -793,6 +826,22 @@ Conversation: \`local:test:old-conversation\`
     });
 
     expect(ctx.egressRequests()).toHaveLength(1);
+    expect(ctx.annotationInputs()).toEqual([
+      {
+        kind: "resource_link",
+        key: "getsentry/junior#660",
+        label: "getsentry/junior#660",
+        status: "open",
+        url: "https://github.com/getsentry/junior/issues/660",
+      },
+      {
+        kind: "resource_link",
+        key: "getsentry/junior#660",
+        label: "getsentry/junior#660",
+        status: "open",
+        url: "https://github.com/getsentry/junior/issues/660",
+      },
+    ]);
   });
 
   it("refuses to duplicate issue creation after an uncertain pending attempt", async () => {
@@ -1106,14 +1155,14 @@ Conversation: \`local:test:old-conversation\`
       {
         kind: "resource_link",
         key: "getsentry/junior#691",
-        label: "getsentry/junior #691: Typed PR",
+        label: "getsentry/junior#691",
         status: "draft",
         url: "https://github.com/getsentry/junior/pull/691",
       },
     ]);
   });
 
-  it("bounds pull request annotation labels for maximum-length titles", async () => {
+  it("keeps pull request annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext({
       egressFetch: async () =>
         new Response(
@@ -1138,10 +1187,7 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject({ number: 691 });
 
-    expect(ctx.annotationInputs()[0]?.label).toHaveLength(256);
-    expect(ctx.annotationInputs()[0]?.label).toMatch(
-      /^getsentry\/junior #691: x+$/,
-    );
+    expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#691");
   });
 
   it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {

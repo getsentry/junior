@@ -1,8 +1,9 @@
 import { useState } from "react";
 import {
+  CircleDashed,
+  CircleDot,
+  CircleX,
   GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
   TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router";
@@ -186,10 +187,7 @@ function ConversationAnnotations(props: {
   );
   if (!links?.length) return null;
   return (
-    <div className="border-t border-white/[0.07] pt-4 md:col-span-2">
-      <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Pull requests
-      </div>
+    <div className="md:col-span-2">
       <div className="flex flex-wrap gap-2">
         {links.map((link) => (
           <a
@@ -199,7 +197,7 @@ function ConversationAnnotations(props: {
             rel="noreferrer"
             target="_blank"
           >
-            {link.status ? <PullRequestStatus status={link.status} /> : null}
+            {link.status ? <ResourceStatus status={link.status} /> : null}
             <span>{link.label}</span>
           </a>
         ))}
@@ -208,34 +206,34 @@ function ConversationAnnotations(props: {
   );
 }
 
-function PullRequestStatus(props: {
+function ResourceStatus(props: {
   status: "open" | "draft" | "closed" | "merged" | "warning";
 }) {
   const status = {
     open: {
       className: "text-[#3fb950]",
-      Icon: GitPullRequest,
-      label: "Open pull request",
+      Icon: CircleDot,
+      label: "Open",
     },
     draft: {
       className: "text-[#8c959f]",
-      Icon: GitPullRequest,
-      label: "Draft pull request",
+      Icon: CircleDashed,
+      label: "Draft",
     },
     closed: {
       className: "text-[#f85149]",
-      Icon: GitPullRequestClosed,
-      label: "Closed pull request",
+      Icon: CircleX,
+      label: "Closed",
     },
     merged: {
       className: "text-[#a371f7]",
       Icon: GitMerge,
-      label: "Merged pull request",
+      label: "Merged",
     },
     warning: {
       className: "text-[#d29922]",
       Icon: TriangleAlert,
-      label: "Pull request needs attention",
+      label: "Needs attention",
     },
   }[props.status];
 

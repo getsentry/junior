@@ -17,7 +17,6 @@ import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.j
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
-const RESOURCE_LINK_LABEL_MAX_LENGTH = 256;
 
 class GitHubPullRequestCreateRejectedError extends Error {
   status: number;
@@ -339,15 +338,10 @@ async function annotatePullRequest(
   result: GitHubPullRequestResult,
 ): Promise<void> {
   const repo = parseRepo(input.repo);
-  const label =
-    `${repo.owner}/${repo.name} #${result.number}: ${nonEmptyString(input.title, "title")}`.slice(
-      0,
-      RESOURCE_LINK_LABEL_MAX_LENGTH,
-    );
   await ctx.annotations?.upsert({
     kind: "resource_link",
     key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label,
+    label: `${repo.owner}/${repo.name}#${result.number}`,
     url: result.url,
     status: input.draft ? "draft" : "open",
   });

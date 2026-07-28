@@ -343,6 +343,35 @@ describe("dashboard canonical-event components", () => {
     expect(failedHtml).not.toContain(">error</span>");
   });
 
+  it("renders conversation resource links without pull request assumptions", () => {
+    const queryClient = conversationQueryClient();
+    queryClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
+      conversation([], {
+        annotations: [
+          {
+            kind: "resource_link",
+            key: "getsentry/junior#1081",
+            label: "getsentry/junior#1081",
+            plugin: "github",
+            status: "open",
+            url: "https://github.com/getsentry/junior/issues/1081",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+          },
+        ],
+      }),
+    );
+
+    const html = renderConversationPageWithClient(queryClient);
+
+    expect(html).toContain("getsentry/junior#1081");
+    expect(html).toContain('title="Open"');
+    expect(html).not.toContain("Linked resources");
+    expect(html).not.toContain("Pull requests");
+    expect(html).not.toContain("Open pull request");
+  });
+
   it("distinguishes initial detail failures from stale refresh failures", () => {
     const initialClient = conversationQueryClient();
     const initialError = new Error("initial detail failed");

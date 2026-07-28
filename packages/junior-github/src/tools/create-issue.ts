@@ -67,6 +67,7 @@ const createIssueStateSchema = Type.Union([
   Type.Object(
     {
       createdAtMs: Type.Number(),
+      input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
       status: Type.Literal("completed"),
       url: Type.String(),
@@ -76,6 +77,7 @@ const createIssueStateSchema = Type.Union([
   Type.Object(
     {
       createdAtMs: Type.Number(),
+      input: Type.Optional(createIssueInputSchema),
       status: Type.Literal("pending"),
     },
     { additionalProperties: false },
@@ -273,6 +275,21 @@ async function createGitHubIssue(
   };
 }
 
+async function annotateIssue(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubIssueInput,
+  result: GitHubIssueResult,
+): Promise<void> {
+  const repo = parseRepo(input.repo);
+  await ctx.annotations?.upsert({
+    kind: "resource_link",
+    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
+    label: `${repo.owner}/${repo.name}#${result.number}`,
+    url: result.url,
+    status: "open",
+  });
+}
+
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
@@ -297,10 +314,13 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
         async () => {
           const state = createIssueState(await ctx.state.get(key));
           if (state?.status === "completed") {
-            return gitHubIssueToolResult({
+            const completedInput = state.input ?? parsedInput;
+            const completedResult = {
               number: state.number,
               url: state.url,
-            });
+            };
+            await annotateIssue(ctx, completedInput, completedResult);
+            return gitHubIssueToolResult(completedResult);
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -315,6 +335,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
           const pendingState: CreateIssueState = {
             status: "pending",
             createdAtMs: Date.now(),
+            input: parsedInput,
           };
           await ctx.state.set(
             key,
@@ -336,6 +357,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
                 { cause: error },
               );
             }
+            await annotateIssue(ctx, parsedInput, result);
             return gitHubIssueToolResult(result);
           } catch (error) {
             if (

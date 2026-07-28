@@ -325,7 +325,7 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Open pull request getsentry/junior #1081: Show conversation pull requests",
+      name: "Open getsentry/junior#1081",
     }),
   ).toHaveAttribute("href", "https://github.com/getsentry/junior/pull/1081");
   const subagentRow = page
