@@ -761,10 +761,15 @@ export async function GET(
       ? "Your request is continuing in the local Junior client."
       : resumesAgentTurn
         ? "Your request is being processed in Slack."
-        : "You can close this tab and return to Slack.";
+        : `Your ${providerLabel} account is connected.`;
+  const footerMessage =
+    stored.destination?.platform === "local"
+      ? "You can close this tab and return to Junior."
+      : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(
     escapeXml(`${providerLabel} account connected`),
     escapeXml(statusMessage),
     200,
+    { footerMessage: escapeXml(footerMessage) },
   );
 }

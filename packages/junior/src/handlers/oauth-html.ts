@@ -3,7 +3,10 @@ export function htmlCallbackResponse(
   title: string,
   message: string,
   status: number,
+  options: { footerMessage?: string } = {},
 ): Response {
+  const footerMessage =
+    options.footerMessage ?? "You can close this tab and return to Junior.";
   const html = `<!DOCTYPE html>
 <html>
 <head><title>${title}</title></head>
@@ -11,7 +14,7 @@ export function htmlCallbackResponse(
   <div style="text-align: center; max-width: 480px;">
     <h1>${title}</h1>
     <p>${message}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Junior.</p>
+    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">${footerMessage}</p>
   </div>
 </body>
 </html>`;

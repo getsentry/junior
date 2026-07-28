@@ -250,4 +250,37 @@ describe("mcp oauth callback handler", () => {
     expect(mutation).not.toHaveBeenCalled();
     expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
   });
+
+  it("returns local close guidance after successful local MCP authorization", async () => {
+    const localSession = {
+      schemaVersion: 2,
+      authSessionId: "state-123",
+      provider: "demo",
+      userId: "U123",
+      conversationId: "local:thread",
+      destination: { platform: "local", threadId: "local:thread" },
+      sessionId: "turn-1",
+      userMessage: "use MCP",
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    };
+    getMcpAuthSessionMock.mockResolvedValue(localSession);
+    finalizeMcpAuthorizationMock.mockResolvedValueOnce(localSession);
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      "demo",
+      waitUntil.fn,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Your MCP access is connected");
+    expect(body).toContain("You can close this tab and return to Junior.");
+    expect(body).not.toContain("You can close this tab and return to Slack.");
+    expect(waitUntil.pendingCount()).toBe(0);
+  });
 });

@@ -1,5 +1,34 @@
 const MAX_OAUTH_ERROR_BODY_BYTES = 16 * 1024;
 const MAX_OAUTH_ERROR_BODY_READS = MAX_OAUTH_ERROR_BODY_BYTES;
+const MAX_OAUTH_ERROR_BODY_READ_MS = 5_000;
+const OAUTH_ERROR_BODY_READ_TIMEOUT = Symbol("oauth-error-body-read-timeout");
+
+async function readOAuthErrorBodyChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutResult = new Promise<typeof OAUTH_ERROR_BODY_READ_TIMEOUT>(
+    (resolve) => {
+      timeout = setTimeout(
+        resolve,
+        MAX_OAUTH_ERROR_BODY_READ_MS,
+        OAUTH_ERROR_BODY_READ_TIMEOUT,
+      );
+    },
+  );
+  try {
+    const result = await Promise.race([reader.read(), timeoutResult]);
+    if (result === OAUTH_ERROR_BODY_READ_TIMEOUT) {
+      await reader.cancel();
+      throw new Error("OAuth error body read timed out");
+    }
+    return result;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 export type OAuthProviderErrorPhase = "token_exchange" | "token_refresh";
 
@@ -64,7 +93,7 @@ export async function readBoundedOAuthErrorBody(
       reads < MAX_OAUTH_ERROR_BODY_READS
     ) {
       reads += 1;
-      const { done, value } = await reader.read();
+      const { done, value } = await readOAuthErrorBodyChunk(reader);
       if (done) {
         return text + decoder.decode();
       }
@@ -90,16 +119,15 @@ export async function readBoundedOAuthErrorBody(
 /** Preserve small OAuth error responses while bounding bodies before SDK parsing. */
 export function fetchWithBoundedOAuthErrorBodies(
   fetchFn: typeof fetch = globalThis.fetch,
-  onResponseStatus?: (status: number | undefined) => void,
+  onErrorResponseStatus?: (status: number) => void,
 ): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetchFn(input, init);
     if (response.ok) {
-      onResponseStatus?.(undefined);
       return response;
     }
 
-    onResponseStatus?.(response.status);
+    onErrorResponseStatus?.(response.status);
     if (!response.body) {
       return response;
     }

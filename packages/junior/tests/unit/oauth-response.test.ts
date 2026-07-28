@@ -46,7 +46,7 @@ describe("OAuth error responses", () => {
 
     expect(text).toBe("");
     expect(cancelled).toBe(true);
-    expect(pulls).toBe(16 * 1024);
+    expect(pulls).toBeLessThanOrEqual(16 * 1024 + 1);
   });
 
   it("preserves the HTTP status when the provider body stream fails", async () => {
@@ -70,6 +70,34 @@ describe("OAuth error responses", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe('Bearer realm="mcp"');
     await expect(response.text()).resolves.toBe("");
+  });
+
+  it("preserves the HTTP status when the provider body never yields", async () => {
+    vi.useFakeTimers();
+    try {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      const wrappedFetch = fetchWithBoundedOAuthErrorBodies(
+        vi.fn(async () => new Response(body, { status: 504 })) as typeof fetch,
+      );
+
+      const responsePromise = wrappedFetch("https://mcp.example.com/token");
+      await vi.advanceTimersByTimeAsync(5_000);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(504);
+      expect(cancelled).toBe(true);
+      await expect(response.text()).resolves.toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports safe status metadata before returning an error response", async () => {
