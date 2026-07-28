@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  hasPendingToolActionAsk,
   projectToolActionRejection,
   restoreToolActionReviewState,
   type ToolActionRejectionMarker,
@@ -56,6 +57,32 @@ const PROVENANCE = [
 ];
 
 describe("action review history", () => {
+  it("identifies an ask awaiting the next user reply", () => {
+    const messages = transcript(
+      {
+        actionKey: "a".repeat(64),
+        decision: "ask",
+        reason: "Confirm the deletion.",
+        version: 1,
+      },
+      "Action requires user confirmation: Confirm the deletion.",
+    );
+
+    expect(hasPendingToolActionAsk(messages)).toBe(true);
+
+    messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "Shall I proceed?" }],
+    } as PiMessage);
+    expect(hasPendingToolActionAsk(messages)).toBe(true);
+
+    messages.push({
+      role: "user",
+      content: [{ type: "text", text: "Yes." }],
+    } as PiMessage);
+    expect(hasPendingToolActionAsk(messages)).toBe(false);
+  });
+
   it("replaces tool-supplied marker data with the pending core marker", () => {
     const marker: ToolActionRejectionMarker = {
       actionKey: "a".repeat(64),

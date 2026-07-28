@@ -428,7 +428,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           content: [
             {
               type: "text",
-              text: "I haven't deleted preview-42. Should I permanently delete the workspace and all of its contents?",
+              text: "Deleting preview-42 and all of its contents is permanent. Shall I proceed?",
             },
           ],
           stopReason: "stop",
@@ -1200,7 +1200,7 @@ describe("agent run continuation", () => {
     );
 
     const confirmation =
-      "I haven't deleted preview-42. Should I permanently delete the workspace and all of its contents?";
+      "Deleting preview-42 and all of its contents is permanent. Shall I proceed?";
     expect(result.text).toBe(confirmation);
     expect(delivered).toEqual([{ text: confirmation }]);
     expect(counters.continueCalls).toBe(2);

@@ -92,7 +92,12 @@ describe("action confirmation retry", () => {
       api: "test",
       provider: "test",
       model: "test",
-      content: [{ type: "text", text: "Should I delete preview-42?" }],
+      content: [
+        {
+          type: "text",
+          text: "Deleting preview-42 is permanent. Shall I proceed?",
+        },
+      ],
       usage,
       stopReason: "stop",
       timestamp: 3,

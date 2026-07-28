@@ -4,7 +4,7 @@ import {
   isAssistantMessage,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
-import { getAssistantMessageText } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getToolActionRejectionMarker } from "@/chat/tool-support/action-review-history";
 
 /**
@@ -33,7 +33,10 @@ export function actionConfirmationRetryMessages(
       if (message.role === "user") {
         return true;
       }
-      return isAssistantMessage(message) && getAssistantMessageText(message);
+      return (
+        isAssistantMessage(message) &&
+        getAssistantReplyText(message)
+      );
     })
   ) {
     return undefined;

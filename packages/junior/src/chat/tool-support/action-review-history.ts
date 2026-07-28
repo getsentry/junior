@@ -78,6 +78,23 @@ export function getToolActionRejectionMarker(
   return parsed.success ? parsed.data : undefined;
 }
 
+/** Return whether durable history is awaiting a reply to Guardian's latest ask. */
+export function hasPendingToolActionAsk(
+  messages: readonly PiMessage[],
+): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "user") {
+      return false;
+    }
+    const rejection = getToolActionRejectionMarker(message);
+    if (rejection) {
+      return rejection.decision === "ask";
+    }
+  }
+  return false;
+}
+
 /**
  * Consume and project one core-owned rejection into Pi's durable tool result.
  *
