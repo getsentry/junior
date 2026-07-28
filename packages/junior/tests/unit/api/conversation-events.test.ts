@@ -1004,6 +1004,49 @@ describe("conversation report event projection", () => {
     ).toBe(false);
   });
 
+  it("matches assistant tool references by id count", () => {
+    const envelope = {
+      seq: 1,
+      createdAt: "2026-07-15T12:00:00.000Z",
+    };
+    const call = {
+      toolCallId: "call-1",
+      name: "search",
+      status: "running" as const,
+    };
+
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...envelope,
+        data: {
+          type: "tool_calls",
+          calls: [call, call],
+          assistant: {
+            parts: [
+              { type: "tool_call", toolCallId: "call-1" },
+              { type: "tool_call", toolCallId: "call-1" },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...envelope,
+        data: {
+          type: "tool_calls",
+          calls: [call, { ...call, toolCallId: "call-2" }],
+          assistant: {
+            parts: [
+              { type: "tool_call", toolCallId: "call-1" },
+              { type: "tool_call", toolCallId: "call-1" },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects non-increasing event sequences at the detail boundary", () => {
     const summary = {
       displayTitle: "Report",

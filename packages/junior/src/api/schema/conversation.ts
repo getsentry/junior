@@ -178,13 +178,26 @@ const conversationReportToolCallsEventDataSchema = z
   .strict()
   .superRefine((data, context) => {
     if (!data.assistant) return;
-    const callIds = new Set(data.calls.map((call) => call.toolCallId));
-    const partCallIds = data.assistant.parts.flatMap((part) =>
-      part.type === "tool_call" ? [part.toolCallId] : [],
-    );
+    const callCounts = new Map<string, number>();
+    for (const call of data.calls) {
+      callCounts.set(
+        call.toolCallId,
+        (callCounts.get(call.toolCallId) ?? 0) + 1,
+      );
+    }
+    const partCounts = new Map<string, number>();
+    for (const part of data.assistant.parts) {
+      if (part.type !== "tool_call") continue;
+      partCounts.set(
+        part.toolCallId,
+        (partCounts.get(part.toolCallId) ?? 0) + 1,
+      );
+    }
     if (
-      partCallIds.length !== callIds.size ||
-      partCallIds.some((toolCallId) => !callIds.has(toolCallId))
+      callCounts.size !== partCounts.size ||
+      [...callCounts].some(
+        ([toolCallId, count]) => partCounts.get(toolCallId) !== count,
+      )
     ) {
       context.addIssue({
         code: "custom",
