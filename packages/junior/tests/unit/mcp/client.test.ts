@@ -42,15 +42,18 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => {
   }
 
   class StreamableHTTPClientTransport {
+    fetch?: typeof fetch;
     protocolVersion?: string;
     sessionId?: string;
 
     constructor(
       _url: URL,
       options?: {
+        fetch?: typeof fetch;
         sessionId?: string;
       },
     ) {
+      this.fetch = options?.fetch;
       this.sessionId = options?.sessionId;
       transportOptions.push({ ...(options ?? {}) });
     }
@@ -260,6 +263,68 @@ describe("PluginMcpClient", () => {
     expect(JSON.stringify(error)).not.toContain(closeProviderText);
     expect((error as Error).message).not.toContain(providerText);
     expect((error as Error).message).not.toContain(closeProviderText);
+  });
+
+  it("keeps MCP provider status scoped to each concurrent operation", async () => {
+    const authProvider = buildAuthProvider();
+    authProvider.getMcpServerSessionId.mockResolvedValue(undefined);
+    authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
+    connectMock.mockResolvedValue(undefined);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return new Response("provider failed", {
+        status: url.includes("first") ? 503 : 429,
+      });
+    });
+    let firstFetched: (() => void) | undefined;
+    const firstFetchDone = new Promise<void>((resolve) => {
+      firstFetched = resolve;
+    });
+    let releaseFirst: (() => void) | undefined;
+    const releaseFirstError = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    callToolMock.mockImplementation(
+      async (
+        transport: { fetch?: typeof fetch } | undefined,
+        args: { name: string },
+      ) => {
+        if (!transport?.fetch) {
+          throw new Error("missing fetch");
+        }
+        if (args.name === "first") {
+          await transport.fetch("https://mcp.notion.com/first");
+          firstFetched?.();
+          await releaseFirstError;
+          throw new Error("first failed");
+        }
+
+        await firstFetchDone;
+        await transport.fetch("https://mcp.notion.com/second");
+        releaseFirst?.();
+        throw new Error("second failed");
+      },
+    );
+
+    const client = new PluginMcpClient(buildPlugin(), {
+      authProvider,
+      fetch: fetchMock,
+    });
+
+    const [first, second] = await Promise.allSettled([
+      client.callTool("first", undefined),
+      client.callTool("second", undefined),
+    ]);
+
+    expect(first).toMatchObject({
+      status: "rejected",
+      reason: expect.objectContaining({ status: 503 }),
+    });
+    expect(second).toMatchObject({
+      status: "rejected",
+      reason: expect.objectContaining({ status: 429 }),
+    });
   });
 
   it("sanitizes transport close failures before cleanup telemetry", async () => {
