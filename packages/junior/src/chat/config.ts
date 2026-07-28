@@ -293,7 +293,7 @@ function readBotConfig(
     validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
-    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? fastModelId;
+    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? modelId;
   const handoffModelId =
     validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 

@@ -46,12 +46,13 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("uses the fast model for Guardian when no override is configured", async () => {
+  it("uses the standard model for Guardian when no override is configured", async () => {
+    process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
     delete process.env.AI_GUARDIAN_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.guardianModelId).toBe("anthropic/claude-haiku-4.5");
+    expect(botConfig.guardianModelId).toBe("anthropic/claude-opus-4.6");
   });
 
   it("uses the configured Guardian model override", async () => {
