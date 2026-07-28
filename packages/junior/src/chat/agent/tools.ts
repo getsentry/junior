@@ -61,7 +61,6 @@ import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
 import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
 import type { ToolActionReview } from "@/chat/tool-support/action-review";
@@ -334,7 +333,7 @@ export async function wireAgentTools(
     onUnavailable: args.onFatalToolError,
     reviewer: createGuardianActionReviewer({
       completeObject,
-      modelId: standardModelId(botConfig),
+      modelId: botConfig.guardianModelId,
     }),
   };
   const tools = createTools(
