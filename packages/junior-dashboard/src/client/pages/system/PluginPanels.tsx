@@ -20,7 +20,7 @@ export function PluginPanels(props: { plugins: SystemPlugin[] }) {
         </h2>
       </div>
       {props.plugins.length ? (
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3">
           {props.plugins.map((plugin) => (
             <PluginPanel key={plugin.name} plugin={plugin} />
           ))}

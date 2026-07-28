@@ -39,10 +39,31 @@ test("shows system usage and plugin details", async ({ page }) => {
     });
   expect(headerBounds).toEqual({ left: 160, width: 1280 });
 
-  await page
-    .getByLabel("System navigation")
-    .getByRole("link", { name: "GitHub", exact: true })
-    .click();
+  const systemNavigation = page.getByLabel("System navigation");
+  await expect(
+    systemNavigation.getByRole("link", { name: "GitHub", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    systemNavigation.getByRole("link", { name: "Scheduler", exact: true }),
+  ).toHaveCount(0);
+
+  const pluginPanels = page.getByRole("region", { name: "Plugins" });
+  const githubPanel = pluginPanels.getByRole("link", {
+    name: /GitHub/,
+  });
+  const schedulerPanel = pluginPanels.getByRole("link", {
+    name: /Scheduler/,
+  });
+  const [githubBounds, schedulerBounds] = await Promise.all([
+    githubPanel.boundingBox(),
+    schedulerPanel.boundingBox(),
+  ]);
+  expect(githubBounds?.x).toBe(schedulerBounds?.x);
+  expect(schedulerBounds?.y).toBeGreaterThan(
+    (githubBounds?.y ?? 0) + (githubBounds?.height ?? 0),
+  );
+
+  await githubPanel.click();
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins/github`);
   await expect(
     page.getByRole("heading", { name: "GitHub", exact: true }),
@@ -51,6 +72,11 @@ test("shows system usage and plugin details", async ({ page }) => {
     page.getByText("This plugin does not expose operational activity yet."),
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
+  expect(
+    await page
+      .getByRole("heading", { level: 2, name: "System", exact: true })
+      .evaluate((element) => element.getBoundingClientRect().top),
+  ).toBeLessThan(180);
 
   await page.goto(`${server.baseURL}/system/plugins/github/`);
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins/github/`);
