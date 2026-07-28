@@ -61,6 +61,47 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
+  it("projects turn context only across the authorized payload boundary", () => {
+    const context = event(1, {
+      type: "turn_context",
+      turnId: "turn-1",
+      pluginName: "memory",
+      kind: "recall",
+      version: 1,
+      content: {
+        memories: [{ id: "memory-1", content: "Use pnpm." }],
+      },
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [context],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: new Date(1_000).toISOString(),
+        data: {
+          type: "turn_context",
+          turnId: "turn-1",
+          pluginName: "memory",
+          kind: "recall",
+          version: 1,
+          content: {
+            memories: [{ id: "memory-1", content: "Use pnpm." }],
+          },
+        },
+      },
+    ]);
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events: [context],
+      }),
+    ).toEqual([]);
+  });
+
   it("keeps canonical sequence order and projects tool facts from agent history", () => {
     const events = [
       event(

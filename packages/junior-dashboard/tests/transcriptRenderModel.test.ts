@@ -436,6 +436,47 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
+  it("attaches turn context to the user message and searches its content", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(0, "2026-01-01T00:00:00.000Z", {
+          type: "message",
+          messageId: "user-1",
+          role: "user",
+          text: "Prepare the release.",
+        }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+        }),
+        event(2, "2026-01-01T00:00:02.000Z", {
+          type: "turn_context",
+          turnId: "turn-1",
+          pluginName: "memory",
+          kind: "recall",
+          version: 1,
+          content: {
+            memories: [
+              {
+                id: "memory-1",
+                content: "Release notes live in Notion.",
+                observedAtMs: 1_750_000_000_000,
+                scope: "conversation",
+                kind: "knowledge",
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+    const entries = groupTranscriptMessages(messages);
+
+    expect(messages[0]?.contexts).toHaveLength(1);
+    expect(entryMatchesSearch(entries[0]!, "release notes")).toBe(true);
+    expect(entryMatchesSearch(entries[0]!, "memory-1")).toBe(true);
+  });
+
   it("correlates repeated child outcomes by start sequence", () => {
     const messages = conversationTranscriptMessages(
       conversation([

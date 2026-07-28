@@ -19,6 +19,7 @@ import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
+import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 export interface TurnSessionContext {
   conversationId: string;
@@ -138,6 +139,7 @@ export async function persistRunningSessionRecord(args: {
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
+  turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
   if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
@@ -180,6 +182,7 @@ export async function persistRunningSessionRecord(args: {
         : {}),
       modelId: args.modelId,
       ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
+      ...(args.turnContexts ? { turnContexts: args.turnContexts } : {}),
       ...((args.actor ?? latestSessionRecord?.actor)
         ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),

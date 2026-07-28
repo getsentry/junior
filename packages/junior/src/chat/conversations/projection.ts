@@ -29,6 +29,7 @@ import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
+import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 /** Distinct MCP providers durably connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
@@ -225,6 +226,11 @@ export async function commitMessages(args: {
   trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */
   newMessageProvenance?: ConversationMessageProvenance;
+  /** Structured plugin context committed atomically with this turn's input. */
+  turnContext?: {
+    contexts: PluginTurnContext[];
+    turnId: string;
+  };
   /** SQL authority for the atomic commit; defaults to the process executor. */
   executor?: JuniorSqlDatabase;
 }): Promise<{
@@ -280,16 +286,32 @@ async function commitMessagesLocked(
   });
   if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
-    await eventStore.append(
-      args.conversationId,
-      newMessages.map((message, index) => ({
+    const turnContext = args.turnContext;
+    const turnContextEvents =
+      turnContext?.contexts.map((context, index) => ({
+        idempotencyKey:
+          `turn:${turnContext.turnId}:context:` +
+          `${context.pluginName}:${index}`,
+        createdAtMs: context.loadedAtMs,
+        data: {
+          type: "turn_context" as const,
+          turnId: turnContext.turnId,
+          pluginName: context.pluginName,
+          kind: context.kind,
+          version: context.version,
+          content: context.content,
+        },
+      })) ?? [];
+    await eventStore.append(args.conversationId, [
+      ...newMessages.map((message, index) => ({
         data: historyItemFromPiMessage(
           message,
           nextLocalProvenance[matchingPrefix + index]!,
         ),
         createdAtMs: messageTimestamp(message),
       })),
-    );
+      ...turnContextEvents,
+    ]);
   } else {
     throw new Error(
       `Agent history for ${args.conversationId} changed before its committed boundary`,

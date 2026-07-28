@@ -30,6 +30,7 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type {
   AgentRunInput,
   AgentRunInstructionActor,
@@ -63,6 +64,7 @@ export interface PromptAssembly {
   promptContentParts: UserContentPart[];
   promptHistoryMessages: PiMessage[];
   shouldPromptAgent: boolean;
+  turnContexts: PluginTurnContext[];
 }
 
 function isStructuredThreadContext(context: string): boolean {
@@ -458,5 +460,8 @@ export async function assemblePrompt(args: {
     promptContentParts,
     promptHistoryMessages,
     shouldPromptAgent,
+    turnContexts: pluginUserPromptContributions.flatMap((contribution) =>
+      contribution.context ? [contribution.context] : [],
+    ),
   };
 }

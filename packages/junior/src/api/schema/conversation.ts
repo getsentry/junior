@@ -173,6 +173,17 @@ const conversationReportTurnRoutedEventDataSchema = z
   })
   .strict();
 
+const conversationReportTurnContextEventDataSchema = z
+  .object({
+    type: z.literal("turn_context"),
+    turnId: z.string().min(1),
+    pluginName: z.string().min(1),
+    kind: z.string().min(1),
+    version: z.number().int().positive(),
+    content: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -224,6 +235,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportMessageHandledEventDataSchema,
   conversationReportToolCallsEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
+  conversationReportTurnContextEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,

@@ -2919,7 +2919,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("injects visible active memories into user prompt context", async () => {
+  it("keeps personal memory recall out of durable prompt context", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -2969,18 +2969,71 @@ WHERE id = '${superseded.memory.id}'
         text: "Draft a PR summary and mention release notes.",
       });
 
-      expect(result).toEqual([
-        {
-          text: expect.stringContaining(personal.memory.content),
-        },
-      ]);
-      const text = result?.[0]?.text ?? "";
+      const contribution = result?.[0];
+      expect(contribution && "text" in contribution).toBe(true);
+      if (!contribution || !("text" in contribution)) {
+        throw new Error("Memory recall did not return prompt text");
+      }
+      const text = contribution.text;
       expect(text).toContain(`Observed 2026-06-19: ${personal.memory.content}`);
       expect(text).toContain(conversation.memory.content);
       expect(text).not.toContain(personal.memory.id);
       expect(text).not.toContain(conversation.memory.id);
       expect(text).not.toContain("obsolete wording");
       expect(text).not.toContain("unrelated owner");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("retains conversation memory recall as structured prompt context", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      const conversation = await createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "Release notes live in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-conversation-context",
+      });
+
+      const plugin = createMemoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        log: noopLogger,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "Where do release notes live?",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      expect(contribution.context).toEqual({
+        kind: "recall",
+        version: 1,
+        content: {
+          memories: [
+            {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
+              scope: "conversation",
+            },
+          ],
+        },
+      });
+      expect(contribution.renderPrompt()).toContain(
+        conversation.memory.content,
+      );
     } finally {
       await fixture.close();
     }
@@ -3036,22 +3089,22 @@ WHERE id = '${superseded.memory.id}'
       });
 
       const plugin = createMemoryPlugin();
-      await expect(
-        plugin.hooks?.userPrompt?.({
-          ...context,
-          destination: slackDestination(context),
-          db: memoryDb(fixture),
-          embedder,
-          log: noopLogger,
-          plugin: { name: "memory" },
-          state: memoryState,
-          text: query,
-        }),
-      ).resolves.toEqual([
-        {
-          text: expect.stringContaining(memory),
-        },
-      ]);
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        db: memoryDb(fixture),
+        embedder,
+        log: noopLogger,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: query,
+      });
+      const contribution = result?.[0];
+      expect(contribution && "text" in contribution).toBe(true);
+      if (!contribution || !("text" in contribution)) {
+        throw new Error("Memory recall did not return prompt text");
+      }
+      expect(contribution.text).toContain(memory);
     } finally {
       await fixture.close();
     }

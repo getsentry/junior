@@ -11,7 +11,7 @@ import {
   type MemoryToolContext,
 } from "./tools";
 import { processMemorySession } from "./process-session";
-import { createMemoryPromptMessages } from "./recall";
+import { createMemoryPromptContributions } from "./recall";
 import type { MemoryDb } from "./store";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
@@ -132,7 +132,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
         };
       },
       async userPrompt(ctx) {
-        return await createMemoryPromptMessages({
+        return await createMemoryPromptContributions({
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
           ...(ctx.actor ? { actor: ctx.actor } : {}),
           db: ctx.db as MemoryDb,

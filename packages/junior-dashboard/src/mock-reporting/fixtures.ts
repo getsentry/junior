@@ -132,6 +132,25 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         state: "started",
       }),
       reportEvent(2, iso(Date.parse(startedAt), 8_000), {
+        type: "turn_context",
+        turnId: "active-turn",
+        pluginName: "memory",
+        kind: "recall",
+        version: 1,
+        content: {
+          memories: [
+            {
+              id: "memory-checkout-runbook",
+              content:
+                "Checkout latency investigations start with the deployment comparison dashboard.",
+              observedAtMs: Date.parse(startedAt) - 86_400_000,
+              scope: "conversation",
+              kind: "procedure",
+            },
+          ],
+        },
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 9_000), {
         type: "turn_routed",
         turnId: "active-turn",
         modelProfile: "handoff",
@@ -140,7 +159,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         confidence: 0.93,
         source: "router",
       }),
-      reportEvent(3, iso(Date.parse(startedAt), 10_000), {
+      reportEvent(4, iso(Date.parse(startedAt), 10_000), {
         type: "tool_calls",
         calls: [
           {

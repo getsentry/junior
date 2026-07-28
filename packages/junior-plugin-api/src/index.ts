@@ -3,9 +3,14 @@ export * from "./schemas";
 export * from "./context";
 export * from "./state";
 export {
+  definePromptContext,
+  promptContextSchema,
   promptMessageSchema,
+  type PromptContext,
+  type PromptContextContribution,
   type PromptMessage,
   type SystemPromptContext,
+  type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
 export * from "./dispatch";

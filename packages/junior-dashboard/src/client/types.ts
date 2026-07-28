@@ -69,7 +69,16 @@ export type TranscriptViewPart =
   | TranscriptViewTextPart
   | TranscriptViewToolCallPart;
 
+export type TranscriptViewTurnContext = {
+  content: Record<string, unknown>;
+  kind: string;
+  loadedAt: string;
+  pluginName: string;
+  version: number;
+};
+
 export type TranscriptViewMessage = {
+  contexts?: TranscriptViewTurnContext[];
   eventType?: string;
   route?: {
     confidence?: number;

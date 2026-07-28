@@ -45,6 +45,7 @@ import {
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
+import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
@@ -793,6 +794,11 @@ function TranscriptMessageView(props: {
           })}
         </div>
       )}
+      {props.view === "rich" &&
+      props.message.role === "user" &&
+      props.message.contexts?.length ? (
+        <TranscriptTurnContextView contexts={props.message.contexts} />
+      ) : null}
     </TranscriptMessageShell>
   );
 }

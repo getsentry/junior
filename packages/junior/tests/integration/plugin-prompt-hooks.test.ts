@@ -107,11 +107,16 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  definePromptContext,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getConversationEventStore } from "@/chat/db";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -179,6 +184,74 @@ describe("plugin prompt hooks", () => {
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
       "User memory guidance for hello.",
     );
+  });
+
+  it("persists structured context used by the prompt", async () => {
+    const recall = definePromptContext({
+      kind: "recall",
+      version: 1,
+      schema: z.object({
+        memories: z.array(z.object({ id: z.string(), content: z.string() })),
+      }),
+      renderPrompt: ({ memories }) => memories[0]!.content,
+    });
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory test plugin",
+        },
+        hooks: {
+          userPrompt() {
+            return [
+              recall({
+                memories: [{ id: "memory-1", content: "Use pnpm." }],
+              }),
+            ];
+          },
+        },
+      }),
+    ]);
+
+    const turnId = "turn-plugin-structured-context";
+    await executeAgentRun({
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId,
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+      },
+    });
+
+    expect(JSON.stringify(captured.promptMessages[0])).toContain("Use pnpm.");
+    const stored = await getConversationEventStore().loadByIdempotencyKey(
+      LOCAL_DESTINATION.conversationId,
+      `turn:${turnId}:context:memory:0`,
+    );
+    expect(stored?.data).toEqual({
+      type: "turn_context",
+      turnId,
+      pluginName: "memory",
+      kind: "recall",
+      version: 1,
+      content: {
+        memories: [{ id: "memory-1", content: "Use pnpm." }],
+      },
+    });
+    const history = await getConversationEventStore().loadCurrentHistory(
+      LOCAL_DESTINATION.conversationId,
+    );
+    expect(
+      JSON.stringify(
+        history.filter((event) =>
+          ["user_message", "assistant_message", "tool_result"].includes(
+            event.data.type,
+          ),
+        ),
+      ),
+    ).not.toContain("Use pnpm.");
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {

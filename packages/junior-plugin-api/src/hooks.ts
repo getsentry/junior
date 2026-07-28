@@ -29,6 +29,7 @@ import type {
   PromptMessage,
   SystemPromptContext,
   UserPromptContext,
+  UserPromptContribution,
 } from "./prompt";
 
 export interface PluginHooks {
@@ -37,7 +38,10 @@ export interface PluginHooks {
   ): Promise<PromptMessage[]> | PromptMessage[];
   userPrompt?(
     ctx: UserPromptContext,
-  ): Promise<PromptMessage[] | undefined> | PromptMessage[] | undefined;
+  ):
+    | Promise<UserPromptContribution[] | undefined>
+    | UserPromptContribution[]
+    | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
   grantForEgress?(
     ctx: EgressHookContext,

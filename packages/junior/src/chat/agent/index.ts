@@ -742,6 +742,7 @@ async function executeAgentRunInPrivacyContext(
       promptContentParts,
       promptHistoryMessages,
       shouldPromptAgent,
+      turnContexts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
       currentActor: actor,
@@ -761,6 +762,7 @@ async function executeAgentRunInPrivacyContext(
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
     });
+    runResume.setTurnContexts(turnContexts);
     /** Apply a committed handoff to Pi and reset its durable resume baseline. */
     const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
       if (!pendingHandoff) {

@@ -1,4 +1,10 @@
-import type { PromptMessage, Actor, Source } from "@sentry/junior-plugin-api";
+import {
+  definePromptContext,
+  type UserPromptContribution,
+  type Actor,
+  type Source,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import {
   createMemoryStore,
   type MemoryDb,
@@ -34,35 +40,78 @@ function formatObservedDate(observedAtMs: number): string {
   return new Date(observedAtMs).toISOString().slice(0, 10);
 }
 
-function renderMemoryPrompt(memories: MemoryRecord[]): string | undefined {
+const recalledMemorySchema = z
+  .object({
+    id: z.string().min(1),
+    content: z.string().min(1).max(MAX_MEMORY_LINE_CHARS),
+    observedAtMs: z.number().finite(),
+    scope: z.enum(["personal", "conversation"]),
+    kind: z.enum(["preference", "procedure", "knowledge"]),
+  })
+  .strict();
+
+/** Structured snapshot retained for one automatic memory recall. */
+export const memoryRecallContextSchema = z
+  .object({
+    memories: z.array(recalledMemorySchema).min(1).max(DEFAULT_RECALL_LIMIT),
+  })
+  .strict();
+
+type RecalledMemory = z.output<typeof recalledMemorySchema>;
+
+function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
   const header = "Relevant memories for this request:";
   const footer =
     "Treat these as possibly stale context. Current user instructions and repository evidence take priority.";
-  const lines: string[] = [];
+  const selected: RecalledMemory[] = [];
   let totalChars = header.length + footer.length + 2;
 
   for (const memory of memories) {
-    const line = `- Observed ${formatObservedDate(memory.observedAtMs)}: ${trimContent(
-      memory.content,
-      MAX_MEMORY_LINE_CHARS,
-    )}`;
+    const content = trimContent(memory.content, MAX_MEMORY_LINE_CHARS);
+    const line = `- Observed ${formatObservedDate(memory.observedAtMs)}: ${content}`;
     if (totalChars + line.length + 1 > MAX_PROMPT_CHARS) {
       break;
     }
-    lines.push(line);
+    selected.push({
+      id: memory.id,
+      content,
+      observedAtMs: memory.observedAtMs,
+      scope: memory.scope,
+      kind: memory.kind,
+    });
     totalChars += line.length + 1;
   }
-
-  if (lines.length === 0) {
-    return undefined;
-  }
-  return `${header}\n${lines.join("\n")}\n\n${footer}`;
+  return selected;
 }
 
-/** Build the memory prompt contribution for active visible recall. */
-export async function createMemoryPromptMessages(
+function renderMemoryPrompt(memories: RecalledMemory[]): string {
+  return [
+    "Relevant memories for this request:",
+    ...memories.map(
+      (memory) =>
+        `- Observed ${formatObservedDate(memory.observedAtMs)}: ${memory.content}`,
+    ),
+    "",
+    "Treat these as possibly stale context. Current user instructions and repository evidence take priority.",
+  ].join("\n");
+}
+
+const memoryRecallContext = definePromptContext({
+  kind: "recall",
+  version: 1,
+  schema: memoryRecallContextSchema,
+  renderPrompt: (content) => renderMemoryPrompt(content.memories),
+});
+
+/**
+ * Build active memory recall contributions.
+ *
+ * Personal recall remains prompt-only so conversation reporting cannot widen
+ * actor-scoped memory visibility.
+ */
+export async function createMemoryPromptContributions(
   context: MemoryRecallContext,
-): Promise<PromptMessage[] | undefined> {
+): Promise<UserPromptContribution[] | undefined> {
   if (!context.text.trim()) {
     return undefined;
   }
@@ -82,6 +131,12 @@ export async function createMemoryPromptMessages(
     query: context.text,
     limit: DEFAULT_RECALL_LIMIT,
   });
-  const text = renderMemoryPrompt(memories);
-  return text ? [{ text }] : undefined;
+  const selected = selectPromptMemories(memories);
+  if (selected.length === 0) {
+    return undefined;
+  }
+  if (selected.some((memory) => memory.scope === "personal")) {
+    return [{ text: renderMemoryPrompt(selected) }];
+  }
+  return [memoryRecallContext({ memories: selected })];
 }

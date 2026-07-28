@@ -40,6 +40,7 @@ import {
   type AgentRunDurability,
 } from "@/chat/agent/request";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 type LoadedSessionRecordState = Awaited<
   ReturnType<typeof loadTurnSessionRecord>
@@ -86,6 +87,7 @@ export function createResumeState(args: ResumeStateArgs) {
   let latestSafeBoundaryMessages: PiMessage[] = [];
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
+  let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
 
   const currentSliceId = args.sessionRecordState.currentSliceId;
@@ -124,6 +126,9 @@ export function createResumeState(args: ResumeStateArgs) {
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
     },
+    setTurnContexts(contexts: PluginTurnContext[]): void {
+      turnContexts = contexts;
+    },
     /** Adopt an already committed epoch replacement as every resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
       latestSafeBoundaryMessages = [...messages];
@@ -156,6 +161,7 @@ export function createResumeState(args: ResumeStateArgs) {
         sliceId: currentSliceId,
         messages,
         ...(trailingMessageProvenance ? { trailingMessageProvenance } : {}),
+        ...(turnContexts.length > 0 ? { turnContexts } : {}),
         ...(turnStartMessageIndex !== undefined
           ? { turnStartMessageIndex }
           : {}),

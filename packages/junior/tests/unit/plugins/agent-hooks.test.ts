@@ -1,6 +1,7 @@
 import {
   createLocalSource,
   createSlackSource,
+  definePromptContext,
   definePluginTool,
   defineJuniorPlugin,
   pluginToolResultSchema,
@@ -282,6 +283,65 @@ describe("agent plugin hooks", () => {
           id: "userPrompt:0",
           pluginName: "agent-demo",
           text: "remembered context",
+        },
+      ]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("renders and retains typed user prompt context", async () => {
+    const recall = definePromptContext({
+      kind: "recall",
+      version: 1,
+      schema: z.object({
+        memories: z.array(z.object({ id: z.string(), content: z.string() })),
+      }),
+      renderPrompt: ({ memories }) =>
+        memories.map((memory) => memory.content).join("\n"),
+    });
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory",
+        },
+        hooks: {
+          userPrompt() {
+            return [
+              recall({
+                memories: [{ id: "memory-1", content: "Use pnpm." }],
+              }),
+            ];
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        getPluginUserPromptContributions({
+          context: {
+            conversationId: "conversation-1",
+            source: LOCAL_SOURCE,
+            destination: LOCAL_DESTINATION,
+            userText: "hello",
+          },
+        }),
+      ).resolves.toEqual([
+        {
+          id: "userPrompt:0",
+          pluginName: "memory",
+          text: "Use pnpm.",
+          context: {
+            content: {
+              memories: [{ id: "memory-1", content: "Use pnpm." }],
+            },
+            kind: "recall",
+            loadedAtMs: expect.any(Number),
+            pluginName: "memory",
+            version: 1,
+          },
         },
       ]);
     } finally {

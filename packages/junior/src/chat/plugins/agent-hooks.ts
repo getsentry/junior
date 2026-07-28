@@ -1,4 +1,5 @@
 import {
+  promptContextSchema,
   promptMessageSchema,
   resourceEventSchema,
 } from "@sentry/junior-plugin-api";
@@ -94,8 +95,9 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
+const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
+const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
-const userPromptMessageArraySchema = z.array(promptMessageSchema);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -179,6 +181,62 @@ function toPromptContributionContext(args: {
     id: `${args.hookName}:${args.index}`,
     pluginName: args.pluginName,
     text: args.message.text,
+  };
+}
+
+function normalizePromptContext(value: unknown): Record<string, unknown> {
+  const serialized = JSON.stringify(value);
+  if (
+    serialized === undefined ||
+    Buffer.byteLength(serialized, "utf8") > PLUGIN_PROMPT_CONTEXT_MAX_BYTES
+  ) {
+    throw new TypeError("Plugin prompt context exceeded its serialized budget");
+  }
+  const parsed = JSON.parse(serialized);
+  if (!isRecord(parsed)) {
+    throw new TypeError("Plugin prompt context must be a JSON object");
+  }
+  return parsed;
+}
+
+function toUserPromptContributionContext(args: {
+  index: number;
+  pluginName: string;
+  value: unknown;
+}): PluginPromptContributionContext | undefined {
+  const message = promptMessageSchema.safeParse(args.value);
+  if (message.success) {
+    return toPromptContributionContext({
+      hookName: "userPrompt",
+      index: args.index,
+      message: message.data,
+      pluginName: args.pluginName,
+    });
+  }
+  if (!isRecord(args.value) || typeof args.value.renderPrompt !== "function") {
+    return undefined;
+  }
+  const context = promptContextSchema.safeParse(args.value.context);
+  if (!context.success) {
+    return undefined;
+  }
+  const text = promptMessageSchema.safeParse({
+    text: args.value.renderPrompt(),
+  });
+  if (!text.success) {
+    return undefined;
+  }
+  return {
+    id: `userPrompt:${args.index}`,
+    pluginName: args.pluginName,
+    text: text.data.text,
+    context: {
+      content: normalizePromptContext(context.data.content),
+      kind: context.data.kind,
+      loadedAtMs: Date.now(),
+      pluginName: args.pluginName,
+      version: context.data.version,
+    },
   };
 }
 
@@ -322,6 +380,7 @@ export async function getPluginUserPromptContributions(args: {
 }): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
+  let totalContextBytes = 0;
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.userPrompt;
@@ -335,8 +394,7 @@ export async function getPluginUserPromptContributions(args: {
       if (rawResult === undefined) {
         continue;
       }
-      const result = userPromptMessageArraySchema.safeParse(rawResult);
-      if (!result.success) {
+      if (!Array.isArray(rawResult)) {
         logInvalidPromptContributions({
           hookName: "userPrompt",
           pluginName,
@@ -344,21 +402,40 @@ export async function getPluginUserPromptContributions(args: {
         continue;
       }
 
-      const acceptedContributions = result.data.map((message, index) =>
-        toPromptContributionContext({
-          hookName: "userPrompt",
-          index,
-          message,
-          pluginName,
-        }),
+      const acceptedContributions = rawResult.map((value, index) =>
+        toUserPromptContributionContext({ index, pluginName, value }),
       );
-      const pluginContributionChars = acceptedContributions.reduce(
+      if (acceptedContributions.some((contribution) => !contribution)) {
+        logInvalidPromptContributions({
+          hookName: "userPrompt",
+          pluginName,
+        });
+        continue;
+      }
+      const validContributions = acceptedContributions.filter(
+        (contribution): contribution is PluginPromptContributionContext =>
+          contribution !== undefined,
+      );
+      const pluginContributionChars = validContributions.reduce(
         (sum, contribution) => sum + contribution.text.length,
+        0,
+      );
+      const pluginContextBytes = validContributions.reduce(
+        (sum, contribution) =>
+          sum +
+          (contribution.context
+            ? Buffer.byteLength(
+                JSON.stringify(contribution.context.content),
+                "utf8",
+              )
+            : 0),
         0,
       );
       if (
         totalChars + pluginContributionChars >
-        PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
+          PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS ||
+        totalContextBytes + pluginContextBytes >
+          PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES
       ) {
         logWarn(
           "plugin_user_prompt_contribution_budget_exceeded",
@@ -371,7 +448,8 @@ export async function getPluginUserPromptContributions(args: {
         continue;
       }
       totalChars += pluginContributionChars;
-      contributions.push(...acceptedContributions);
+      totalContextBytes += pluginContextBytes;
+      contributions.push(...validContributions);
     } catch (error) {
       logWarn(
         "plugin_user_prompt_hook_failed",

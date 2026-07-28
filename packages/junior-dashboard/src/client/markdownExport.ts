@@ -22,7 +22,9 @@ import type {
   TranscriptViewContextEventPart,
   TranscriptViewSubagentPart,
   TranscriptViewToolCallPart,
+  TranscriptViewTurnContext,
 } from "./types";
+import { memoryRecallContent } from "./conversations/turnContext";
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
 export function buildConversationMarkdown(
@@ -258,6 +260,43 @@ function appendMessage(
 
   const rawText = messageRawText(message);
   lines.push("", rawText.trim().length ? rawText : "_No content._");
+  appendTurnContexts(lines, message.contexts);
+}
+
+function appendTurnContexts(
+  lines: string[],
+  contexts: TranscriptViewTurnContext[] | undefined,
+): void {
+  for (const context of contexts ?? []) {
+    const memory = memoryRecallContent(context);
+    lines.push(
+      "",
+      memory
+        ? "#### Recalled memories"
+        : `#### ${headingText(context.kind)} context`,
+    );
+    addMetaLine(lines, "Plugin", context.pluginName);
+    addMetaLine(lines, "Loaded", context.loadedAt);
+    if (!memory) {
+      lines.push(
+        "",
+        "```json",
+        JSON.stringify(context.content, null, 2),
+        "```",
+      );
+      continue;
+    }
+    for (const item of memory.memories) {
+      lines.push(
+        "",
+        `- ${item.content}`,
+        `  - ID: ${inlineCode(item.id)}`,
+        `  - Observed: ${new Date(item.observedAtMs).toISOString()}`,
+        `  - Scope: ${item.scope}`,
+        `  - Kind: ${item.kind}`,
+      );
+    }
+  }
 }
 
 function appendSubagent(

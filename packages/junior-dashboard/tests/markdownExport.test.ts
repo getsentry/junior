@@ -77,6 +77,47 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("investigation complete\nfollow-up deployed");
   });
 
+  it("exports recalled memory context with its user message", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "user-1",
+          role: "user",
+          text: "Prepare the release.",
+        }),
+        event(1, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+        }),
+        event(2, {
+          type: "turn_context",
+          turnId: "turn-1",
+          pluginName: "memory",
+          kind: "recall",
+          version: 1,
+          content: {
+            memories: [
+              {
+                id: "memory-1",
+                content: "Release notes live in Notion.",
+                observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
+                scope: "conversation",
+                kind: "knowledge",
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+
+    expect(markdown).toContain("#### Recalled memories");
+    expect(markdown).toContain("Release notes live in Notion.");
+    expect(markdown).toContain("`memory-1`");
+    expect(markdown).toContain("Scope: conversation");
+  });
+
   it("exports resource events without attributing them to the actor", () => {
     const markdown = buildConversationMarkdown(
       conversation([

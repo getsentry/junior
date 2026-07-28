@@ -27,6 +27,7 @@ import {
   commitMessages,
   loadTurnProjection,
 } from "@/chat/conversations/projection";
+import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
@@ -708,6 +709,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
+  turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
 }): Promise<AgentTurnSessionRecord> {
@@ -742,6 +744,14 @@ export async function upsertAgentTurnSessionRecord(args: {
       : {}),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
+      : {}),
+    ...(args.turnContexts && args.turnContexts.length > 0
+      ? {
+          turnContext: {
+            contexts: args.turnContexts,
+            turnId: args.sessionId,
+          },
+        }
       : {}),
   });
   const durableTurnStartMessageIndex =

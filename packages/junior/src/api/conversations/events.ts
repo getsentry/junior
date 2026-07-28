@@ -14,6 +14,7 @@ export const conversationReportSourceEventTypes = [
   "tool_result",
   "tool_execution_started",
   "turn_started",
+  "turn_context",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -217,6 +218,18 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "started",
+      };
+    case "turn_context":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
+      return {
+        type: "turn_context",
+        turnId: data.turnId,
+        pluginName: data.pluginName,
+        kind: data.kind,
+        version: data.version,
+        content: data.content,
       };
     case "turn_routed":
       return {

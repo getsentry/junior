@@ -450,6 +450,48 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Agent response failed");
   });
 
+  it("renders recalled memory context on its user message", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "user-1",
+          role: "user",
+          text: "Prepare the release.",
+        }),
+        event(1, {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+        }),
+        event(2, {
+          type: "turn_context",
+          turnId: "turn-1",
+          pluginName: "memory",
+          kind: "recall",
+          version: 1,
+          content: {
+            memories: [
+              {
+                id: "memory-1",
+                content: "Release notes live in Notion.",
+                observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
+                scope: "conversation",
+                kind: "knowledge",
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+
+    expect(html).toContain("1 recalled memory");
+    expect(html).toContain("Release notes live in Notion.");
+    expect(html).toContain("memory-1");
+    expect(html).toContain("conversation");
+    expect(html).toContain("knowledge");
+  });
+
   it("renders a delivery terminal failure without treating it as an agent failure", () => {
     const html = renderTranscript(
       conversation([

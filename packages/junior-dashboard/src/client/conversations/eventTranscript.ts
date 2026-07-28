@@ -136,6 +136,21 @@ export function conversationTranscriptMessages(
       continue;
     }
 
+    if (data.type === "turn_context") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message) {
+        message.contexts ??= [];
+        message.contexts.push({
+          content: data.content,
+          kind: data.kind,
+          loadedAt: event.createdAt,
+          pluginName: data.pluginName,
+          version: data.version,
+        });
+      }
+      continue;
+    }
+
     if (data.type === "tool_calls") {
       for (const call of data.calls) ensureTool(event, call);
       continue;
