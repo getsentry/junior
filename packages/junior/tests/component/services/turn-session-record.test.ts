@@ -1424,4 +1424,53 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     });
   });
+
+  it("restores unmatched runtime context before an active-turn replacement", async () => {
+    const { loadTurnSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const runtimeContext: PiMessage = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "<runtime-turn-context>trusted runtime context</runtime-turn-context>",
+        },
+      ],
+      timestamp: 1,
+    };
+    const instruction: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "finish the current request" }],
+      timestamp: 2,
+    };
+    const summary: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "active-turn summary" }],
+      timestamp: 3,
+    };
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId: "conversation-active-compaction-resume",
+      sessionId: "turn-active-compaction-resume",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      piMessages: [runtimeContext, instruction, summary],
+    });
+
+    const resumed = await loadTurnSessionRecord({
+      conversationId: "conversation-active-compaction-resume",
+      sessionId: "turn-active-compaction-resume",
+    });
+
+    expect(resumed.resumedFromSessionRecord).toBe(true);
+    expect(resumed.existingSessionRecord?.piMessages).toEqual([
+      runtimeContext,
+      instruction,
+      summary,
+    ]);
+  });
 });

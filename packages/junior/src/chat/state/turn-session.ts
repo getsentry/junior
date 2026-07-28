@@ -355,6 +355,7 @@ function restoreRuntimeContext(
 ): PiMessage[] {
   if (!runtimeContext || runtimeContext.length === 0) return messages;
   const restored = [...messages];
+  const unmatchedRuntimeContext: PiMessage[] = [];
   for (const runtimeMessage of runtimeContext) {
     const runtime = runtimeMessage as {
       timestamp?: unknown;
@@ -367,7 +368,7 @@ function restoreRuntimeContext(
       );
     });
     if (targetIndex < 0) {
-      restored.push(runtimeMessage);
+      unmatchedRuntimeContext.push(runtimeMessage);
       continue;
     }
     const target = restored[targetIndex] as { content?: unknown };
@@ -379,7 +380,7 @@ function restoreRuntimeContext(
       ],
     } as PiMessage;
   }
-  return restored;
+  return [...unmatchedRuntimeContext, ...restored];
 }
 
 /** Read only the stored metadata record without materializing transcript logs. */
