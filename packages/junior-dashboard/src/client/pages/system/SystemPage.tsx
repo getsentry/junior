@@ -37,7 +37,9 @@ export function SystemPage(props: { data: SystemData }) {
     reports,
     skills: props.data.skills,
   });
-  const reportingPlugins = plugins.filter((plugin) => plugin.reports.length);
+  const reportingPlugins = props.data.pluginReportsLoading
+    ? plugins
+    : plugins.filter((plugin) => plugin.reports.length);
   const pathname = normalizeSystemPath(location.pathname);
   const plugin = plugins.find(
     (candidate) => systemPluginPath(candidate.name) === pathname,
