@@ -85,6 +85,32 @@ vi.mock("@/chat/conversations/projection", async (importOriginal) => {
 });
 
 vi.mock("@earendil-works/pi-agent-core", () => {
+  function durableTestMessage(message: unknown) {
+    const data = message as Record<string, unknown>;
+    if (data.role === "assistant") {
+      return {
+        api: "openai-responses",
+        provider: "openai",
+        model: "test-model",
+        usage: {},
+        stopReason: "stop",
+        timestamp: Date.now(),
+        ...data,
+      };
+    }
+    if (data.role === "toolResult") {
+      return {
+        toolCallId: "test-tool-call",
+        timestamp: Date.now(),
+        ...data,
+      };
+    }
+    if (data.role === "user") {
+      return { timestamp: Date.now(), ...data };
+    }
+    return message;
+  }
+
   class MockAgent {
     state: {
       messages: unknown[];
@@ -139,8 +165,12 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       this.finishPendingRun?.();
     }
 
+    private pushMessages(...messages: unknown[]) {
+      this.state.messages.push(...messages.map(durableTestMessage));
+    }
+
     private recordRunFailure(error: unknown) {
-      this.state.messages.push({
+      this.pushMessages({
         role: "assistant",
         content: [{ type: "text", text: "" }],
         stopReason: "error",
@@ -154,7 +184,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async prompt(message: unknown) {
       counters.promptCalls += 1;
-      this.state.messages.push(message);
+      this.pushMessages(message);
       if (agentMode.value === "activeCompaction") {
         const toolResult = {
           role: "toolResult",
@@ -163,7 +193,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           isError: false,
           content: [{ type: "text", text: "x".repeat(1_600_000) }],
         };
-        this.state.messages.push({
+        this.pushMessages({
           role: "assistant",
           content: [
             {
@@ -176,7 +206,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           stopReason: "toolUse",
           usage: { input: 2, output: 2 },
         });
-        this.state.messages.push(toolResult);
+        this.pushMessages(toolResult);
         await Promise.all(
           this.subscribers.map((subscriber) =>
             subscriber({
@@ -197,7 +227,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         const keptRequest = compactionState.nextProviderContextText.includes(
           "Make a large generated-file edit.",
         );
-        this.state.messages.push({
+        this.pushMessages({
           role: "assistant",
           content: [
             {
@@ -236,13 +266,13 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           this.recordRunFailure(error);
           return {};
         }
-        this.state.messages.push({
+        this.pushMessages({
           role: "toolResult",
           toolName: "bash",
           isError: false,
           content: [{ type: "text", text: "ok" }],
         });
-        this.state.messages.push({
+        this.pushMessages({
           role: "assistant",
           content: [{ type: "text", text: "Tool done." }],
           stopReason: "stop",
@@ -260,7 +290,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           stopReason: "stop",
           usage: { input: 2, output: 2 },
         };
-        this.state.messages.push(finalMessage);
+        this.pushMessages(finalMessage);
         await Promise.all(
           this.subscribers.map((subscriber) =>
             subscriber({ type: "message_end", message: finalMessage }),
@@ -297,7 +327,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             stopReason: "stop",
             usage: { input: 2, output: 2 },
           };
-          this.state.messages.push(firstMessage);
+          this.pushMessages(firstMessage);
           await Promise.all(
             this.subscribers.map((subscriber) =>
               subscriber({ type: "message_end", message: firstMessage }),
@@ -319,7 +349,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             ),
           );
         }
-        this.state.messages.push(...this.steeringMessages);
+        this.pushMessages(...this.steeringMessages);
         const finalMessage = {
           role: "assistant",
           content: [{ type: "text", text: "Steered." }],
@@ -329,7 +359,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             output: 2,
           },
         };
-        this.state.messages.push(finalMessage);
+        this.pushMessages(finalMessage);
         if (agentMode.value === "steeringDelivery") {
           await Promise.all(
             this.subscribers.map((subscriber) =>
@@ -339,13 +369,13 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         }
         return {};
       }
-      this.state.messages.push({
+      this.pushMessages({
         role: "toolResult",
         toolName: "bash",
         isError: false,
         content: [{ type: "text", text: "ok" }],
       });
-      this.state.messages.push({
+      this.pushMessages({
         role: "assistant",
         content: [],
         stopReason: "error",
@@ -376,7 +406,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
               : [];
           })
           .join("\n");
-        this.state.messages.push({
+        this.pushMessages({
           role: "assistant",
           content: [
             { type: "text", text: "Preserved after preflight compaction." },
@@ -389,7 +419,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         });
         return {};
       }
-      this.state.messages.push({
+      this.pushMessages({
         role: "assistant",
         content: [{ type: "text", text: "Recovered." }],
         stopReason: "stop",

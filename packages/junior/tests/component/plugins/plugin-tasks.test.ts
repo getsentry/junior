@@ -18,6 +18,39 @@ const destination = {
   conversationId,
 } as const;
 
+function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
+  return messages.map((message, index) => {
+    const timestamp = index + 1;
+    if (message.role === "assistant") {
+      return {
+        api: "openai-responses",
+        provider: "openai",
+        model: "test-model",
+        usage: {},
+        stopReason: "stop",
+        timestamp,
+        ...message,
+        content:
+          typeof message.content === "string"
+            ? [{ type: "text", text: message.content }]
+            : message.content,
+      } as PiMessage;
+    }
+    if (message.role === "toolResult") {
+      return {
+        toolCallId: `test-call-${index}`,
+        timestamp,
+        ...message,
+        content:
+          typeof message.content === "string"
+            ? [{ type: "text", text: message.content }]
+            : (message.content ?? []),
+      } as PiMessage;
+    }
+    return { timestamp, ...message } as PiMessage;
+  });
+}
+
 class PluginTaskQueueTestAdapter {
   #messages: PluginTaskQueueMessage[] = [];
 
@@ -49,7 +82,7 @@ async function recordCompletedSession(args: {
       userId: "local-cli",
       userName: "local",
     },
-    piMessages: [
+    piMessages: testPiMessages([
       {
         role: "user",
         content: "Run a completed session task.",
@@ -58,7 +91,7 @@ async function recordCompletedSession(args: {
         role: "assistant",
         content: "Done.",
       },
-    ] as PiMessage[],
+    ]),
     sessionId: args.sessionId,
     sliceId: 1,
     source: createLocalSource(args.conversationId),
@@ -140,7 +173,7 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: runConversationId,
       destination: runDestination,
-      piMessages: [
+      piMessages: testPiMessages([
         {
           role: "user",
           content: "Remember that stale prior turn data must not leak.",
@@ -174,7 +207,7 @@ describe("plugin background tasks", () => {
           role: "assistant",
           content: "Understood.",
         },
-      ] as PiMessage[],
+      ]),
       sessionId: runSessionId,
       sliceId: 1,
       source: runSource,
@@ -303,13 +336,13 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
-      piMessages: [
+      piMessages: testPiMessages([
         {
           role: "user",
           content: [{ type: "text", text: embeddedUserText }],
         },
         { role: "assistant", content: "Here are the takeaways." },
-      ] as PiMessage[],
+      ]),
       sessionId: runSessionId,
       sliceId: 1,
       source: runSource,
@@ -428,10 +461,10 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
-      piMessages: [
+      piMessages: testPiMessages([
         { role: "user", content: "Deploy the release now." },
         { role: "assistant", content: "On it." },
-      ] as PiMessage[],
+      ]),
       sessionId: slackSessionId,
       sliceId: 1,
       source,
@@ -524,10 +557,10 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
-      piMessages: [
+      piMessages: testPiMessages([
         { role: "user", content: "Summarize the thread context." },
         { role: "assistant", content: "On it." },
-      ] as PiMessage[],
+      ]),
       sessionId: slackSessionId,
       sliceId: 1,
       source,
@@ -619,10 +652,10 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
-      piMessages: [
+      piMessages: testPiMessages([
         { role: "user", content: "Run a legacy system task." },
         { role: "assistant", content: "Done." },
-      ] as PiMessage[],
+      ]),
       sessionId: runSessionId,
       sliceId: 1,
       source: runSource,
@@ -726,10 +759,10 @@ describe("plugin background tasks", () => {
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
-      piMessages: [
+      piMessages: testPiMessages([
         { role: "user", content: "Handle this direct message." },
         { role: "assistant", content: "Sure." },
-      ] as PiMessage[],
+      ]),
       sessionId: slackSessionId,
       sliceId: 1,
       source,

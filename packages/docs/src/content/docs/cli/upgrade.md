@@ -42,6 +42,14 @@ release is ready. If Junior reports this unsupported database state:
 
 Fresh databases without Junior tables do not require the bridge release.
 
+## Native agent-history migration
+
+When upgrading from a release that writes `agent_step` conversation events,
+block new ingress, drain active and resumable work, and stop all old workers
+before running `junior upgrade`. Deploy the new runtime before restarting
+workers or reopening ingress. The migration rewrites existing history once, so
+an old worker that remains active could append a legacy event after the rewrite.
+
 ## Example output
 
 An already-current database reports its migrations as existing:

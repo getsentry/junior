@@ -224,6 +224,12 @@ describe("oauth callback integration", () => {
             {
               role: "assistant",
               content: [{ type: "text", text: "uploaded" }],
+              api: "openai-responses",
+              provider: "openai",
+              model: "test-model",
+              usage: {},
+              stopReason: "stop",
+              timestamp: Date.now(),
             },
           ] as NonNullable<AgentRunResult["piMessages"]>,
           diagnostics: makeDiagnostics(),

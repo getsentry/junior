@@ -103,7 +103,16 @@ describe("queryConversationEvents", () => {
         type: "handoff",
         modelProfile: "handoff",
         modelId: "test/model",
-        replacementHistory: [{ message: { role: "user" } }],
+        replacementHistory: [
+          {
+            item: {
+              type: "user_message",
+              content: [],
+              timestamp: 3,
+              provenance: { authority: "context" },
+            },
+          },
+        ],
       },
     });
 

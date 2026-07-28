@@ -6,6 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -26,6 +27,32 @@ function userMessage(text: string): PiMessage {
     content: [{ type: "text", text }],
     timestamp: Date.now(),
   };
+}
+
+function assistantMessage(text: string, timestamp: number): PiMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason: "stop",
+    timestamp,
+  } as PiMessage;
 }
 
 function failingConversationStore(): ConversationStore {
@@ -491,11 +518,7 @@ describe("persistAuthPauseSessionRecord", () => {
       content: [{ type: "text", text: "current question" }],
       timestamp: 2,
     } as PiMessage;
-    const answer: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "answer" }],
-      timestamp: 3,
-    } as PiMessage;
+    const answer = assistantMessage("answer", 3);
 
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
@@ -977,11 +1000,7 @@ describe("persistAuthPauseSessionRecord", () => {
           ],
           timestamp: 1,
         } as PiMessage,
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "done" }],
-          timestamp: 2,
-        } as PiMessage,
+        assistantMessage("done", 2),
       ],
       reasoningLevel: "high",
     });
@@ -1053,11 +1072,7 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
     const unsafeAssistantBoundary: PiMessage[] = [
       ...userBoundary,
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "working" }],
-        timestamp: 2,
-      } as PiMessage,
+      assistantMessage("working", 2),
     ];
     const toolResultBoundary: PiMessage[] = [
       ...unsafeAssistantBoundary,
@@ -1066,6 +1081,7 @@ describe("persistAuthPauseSessionRecord", () => {
         toolCallId: "call-1",
         toolName: "bash",
         content: [{ type: "text", text: "ok" }],
+        isError: false,
         timestamp: 3,
       } as PiMessage,
     ];
@@ -1204,11 +1220,7 @@ describe("persistAuthPauseSessionRecord", () => {
       content: [{ type: "text", text: "help me" }],
       timestamp: 1,
     };
-    const unsafeAssistant = {
-      role: "assistant",
-      content: [{ type: "text", text: "not committed" }],
-      timestamp: 2,
-    } as PiMessage;
+    const unsafeAssistant = assistantMessage("not committed", 2);
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId: "conversation-branch",
@@ -1294,11 +1306,7 @@ describe("persistAuthPauseSessionRecord", () => {
       content: [{ type: "text", text: "new request" }],
       timestamp: 2,
     };
-    const newFollowup: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "new followup" }],
-      timestamp: 3,
-    } as PiMessage;
+    const newFollowup = assistantMessage("new followup", 3);
 
     const oldRecord = await upsertAgentTurnSessionRecord({
       modelId: "test/model",
@@ -1317,7 +1325,13 @@ describe("persistAuthPauseSessionRecord", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "test/model",
-          replacementHistory: [{ message: newRequest }],
+          replacementHistory: [
+            {
+              item: historyItemFromPiMessage(newRequest, {
+                authority: "context",
+              }),
+            },
+          ],
         },
       },
     );
@@ -1390,7 +1404,13 @@ describe("persistAuthPauseSessionRecord", () => {
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "handoff-call",
-        replacementHistory: [{ message: handoffSummary }],
+        replacementHistory: [
+          {
+            item: historyItemFromPiMessage(handoffSummary, {
+              authority: "context",
+            }),
+          },
+        ],
       },
     });
 

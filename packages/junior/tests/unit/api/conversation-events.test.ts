@@ -9,7 +9,6 @@ import {
   decodeStoredConversationEvent,
   type ConversationEvent,
   type ConversationEventData,
-  type ConversationAgentStepPayload,
 } from "@/chat/conversations/history";
 
 function event(
@@ -25,6 +24,22 @@ function event(
     createdAtMs,
     data,
   });
+}
+
+function assistantMessage(
+  content: unknown[],
+  timestamp = 0,
+): ConversationEventData {
+  return {
+    type: "assistant_message",
+    content,
+    api: "responses",
+    provider: "openai",
+    model: "gpt-5",
+    usage: {},
+    stopReason: "stop",
+    timestamp,
+  };
 }
 
 describe("conversation report event projection", () => {
@@ -46,7 +61,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("keeps canonical sequence order and projects only tool facts from agent steps", () => {
+  it("keeps canonical sequence order and projects tool facts from agent history", () => {
     const events = [
       event(
         10,
@@ -60,22 +75,19 @@ describe("conversation report event projection", () => {
       ),
       event(
         11,
-        {
-          type: "agent_step",
-          message: {
-            role: "assistant",
-            content: [
-              { type: "text", text: "one user-facing answer" },
-              { type: "thinking", thinking: "private chain of thought" },
-              {
-                type: "toolCall",
-                id: "private-tool-call-id",
-                name: "search",
-                arguments: { query: "private query" },
-              },
-            ],
-          } as ConversationAgentStepPayload,
-        },
+        assistantMessage(
+          [
+            { type: "text", text: "one user-facing answer" },
+            { type: "thinking", thinking: "private chain of thought" },
+            {
+              type: "toolCall",
+              id: "private-tool-call-id",
+              name: "search",
+              arguments: { query: "private query" },
+            },
+          ],
+          10_000,
+        ),
         10_000,
       ),
       event(
@@ -158,56 +170,48 @@ describe("conversation report event projection", () => {
     const projected = projectConversationReportEventPage({
       canExposePayload: true,
       events: [
-        event(1, {
-          type: "agent_step",
-          message: {
-            role: "assistant",
-            content: [
-              {
-                type: "toolCall",
-                id: "call-1",
-                name: "search",
-                arguments: { query: "first" },
-              },
-              {
-                type: "toolCall",
-                id: "call-2",
-                name: "fetch",
-                arguments: { url: "https://example.com" },
-              },
-            ],
-          } as ConversationAgentStepPayload,
-        }),
-        event(2, {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "call-1",
-            toolName: "search",
-            content: [{ type: "text", text: "model-visible error summary" }],
-            details: {
-              ok: false,
-              status: "error",
-              error: { kind: "not_found", message: "No matches" },
-              providerSecret: "must stay host-only",
+        event(
+          1,
+          assistantMessage([
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "search",
+              arguments: { query: "first" },
             },
-            isError: false,
-          } as ConversationAgentStepPayload,
+            {
+              type: "toolCall",
+              id: "call-2",
+              name: "fetch",
+              arguments: { url: "https://example.com" },
+            },
+          ]),
+        ),
+        event(2, {
+          type: "tool_result",
+          toolCallId: "call-1",
+          toolName: "search",
+          content: [{ type: "text", text: "model-visible error summary" }],
+          details: {
+            ok: false,
+            status: "error",
+            error: { kind: "not_found", message: "No matches" },
+            providerSecret: "must stay host-only",
+          },
+          isError: false,
+          timestamp: 2_000,
         }),
         event(3, {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "call-2",
-            toolName: "fetch",
-            content: [
-              { type: "text", text: "native result" },
-              { type: "image", mimeType: "image/png", data: "AAAA" },
-            ],
-            details: { ok: true, status: "success" },
-            rawProviderResponse: "must not escape",
-            isError: false,
-          } as ConversationAgentStepPayload,
+          type: "tool_result",
+          toolCallId: "call-2",
+          toolName: "fetch",
+          content: [
+            { type: "text", text: "native result" },
+            { type: "image", mimeType: "image/png", data: "AAAA" },
+          ],
+          details: { ok: true, status: "success" },
+          isError: false,
+          timestamp: 3_000,
         }),
       ],
     });
@@ -317,14 +321,14 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(prefix)).toBe(JSON.stringify(complete.slice(0, 1)));
   });
 
-  it("does not use future start context to rewrite an earlier tool result", () => {
+  it("does not use future start context to rewrite a native tool result", () => {
     const result = event(1, {
-      type: "agent_step",
-      message: {
-        role: "toolResult",
-        toolCallId: "call-1",
-        content: [{ type: "text", text: "result" }],
-      } as ConversationAgentStepPayload,
+      type: "tool_result",
+      toolCallId: "call-1",
+      toolName: "result_tool",
+      content: [{ type: "text", text: "result" }],
+      isError: false,
+      timestamp: 1_000,
     });
     const futureStart = event(2, {
       type: "tool_execution_started",
@@ -338,7 +342,23 @@ describe("conversation report event projection", () => {
         events: [result],
         toolStartEvents: [futureStart],
       }),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "call-1",
+              name: "result_tool",
+              status: "completed",
+              output: "result",
+            },
+          ],
+        },
+      },
+    ]);
   });
 
   it("redacts private content and strips every internal persistence or payload field", () => {
@@ -358,15 +378,13 @@ describe("conversation report event projection", () => {
           },
         }),
         event(2, {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolName: "safe_tool_name",
-            toolCallId: "private-tool-call-id",
-            isError: true,
-            content: [{ type: "text", text: "private tool result" }],
-            errorMessage: "private provider error",
-          } as ConversationAgentStepPayload,
+          type: "tool_result",
+          toolName: "safe_tool_name",
+          toolCallId: "private-tool-call-id",
+          isError: true,
+          content: [{ type: "text", text: "private tool result" }],
+          errorMessage: "private provider error",
+          timestamp: 2,
         }),
         event(3, {
           type: "tool_execution_started",
@@ -477,18 +495,20 @@ describe("conversation report event projection", () => {
         summary: "Continue monitoring CI.",
         replacementHistory: [
           {
-            message: {
-              role: "user",
+            item: {
+              type: "user_message",
               content: "Private retained user message.",
               timestamp: 1,
-            } as ConversationAgentStepPayload,
+              provenance: { authority: "context" },
+            },
           },
           {
-            message: {
-              role: "user",
+            item: {
+              type: "user_message",
               content: "Other private replacement context.",
               timestamp: 1,
-            } as ConversationAgentStepPayload,
+              provenance: { authority: "context" },
+            },
           },
         ],
       }),
@@ -499,8 +519,8 @@ describe("conversation report event projection", () => {
         summary: "Fix the remaining test.",
         replacementHistory: [
           {
-            message: {
-              role: "user",
+            item: {
+              type: "user_message",
               content: [
                 {
                   type: "text",
@@ -508,7 +528,8 @@ describe("conversation report event projection", () => {
                 },
               ],
               timestamp: 2,
-            } as ConversationAgentStepPayload,
+              provenance: { authority: "context" },
+            },
           },
         ],
       }),

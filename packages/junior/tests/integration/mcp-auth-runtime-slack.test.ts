@@ -20,7 +20,6 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { getConversationEventStore } from "@/chat/db";
-import type { PiMessage } from "@/chat/pi/messages";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -155,10 +154,31 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     private async appendAssistantMessage(message: unknown) {
-      this.state.messages.push(message);
+      const durableMessage = {
+        api: "openai-responses",
+        provider: "openai",
+        model: "fake-agent-model",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        timestamp: Date.now(),
+        ...(message as Record<string, unknown>),
+      };
+      this.state.messages.push(durableMessage);
       await Promise.all(
         this.subscribers.map((subscriber) =>
-          subscriber({ type: "message_end", message }),
+          subscriber({ type: "message_end", message: durableMessage }),
         ),
       );
     }
@@ -220,6 +240,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         ok: loadSkillResult.ok,
         details: loadSkillResult,
         isError: false,
+        content: [],
+        timestamp: Date.now(),
       });
 
       if (this.aborted) {
@@ -899,19 +921,12 @@ describe("mcp auth runtime slack integration", () => {
       {
         createdAtMs: 1,
         data: {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "prior-linear-call",
-            toolName: "callMcpTool",
-            isError: false,
-            content: [{ type: "text", text: "prior result" }],
-            timestamp: 1,
-            input: {
-              tool_name: MCP_TOOL_NAME,
-              arguments: { query: "prior request" },
-            },
-          } as PiMessage,
+          type: "tool_result",
+          toolCallId: "prior-linear-call",
+          toolName: "callMcpTool",
+          isError: false,
+          content: [{ type: "text", text: "prior result" }],
+          timestamp: 1,
         },
       },
     ]);

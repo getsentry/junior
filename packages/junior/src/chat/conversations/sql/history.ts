@@ -277,7 +277,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
-  async loadLatestInstructionStep(
+  async loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined> {
     const [row] = await this.executor
@@ -287,8 +287,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.type, "agent_step"),
-          sql`${juniorConversationEvents.payload}->'message'->>'role' = 'user'`,
+          eq(juniorConversationEvents.type, "user_message"),
           sql`${juniorConversationEvents.payload}->'provenance'->>'authority' = 'instruction'`,
         ),
       )

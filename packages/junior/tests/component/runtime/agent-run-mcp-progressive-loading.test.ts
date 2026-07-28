@@ -93,6 +93,32 @@ const TEST_ACTOR = {
 } as const;
 
 vi.mock("@earendil-works/pi-agent-core", () => {
+  function assistantMessage(text: string) {
+    return {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+  }
+
   class MockAgent {
     state: {
       messages: unknown[];
@@ -166,10 +192,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         };
       } catch (error) {
         loadSkillExecutionErrorCount.value += 1;
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "loading demo skill" }],
-        });
+        this.state.messages.push(assistantMessage("loading demo skill"));
         throw error;
       }
       this.state.messages.push({
@@ -179,22 +202,14 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         isError: false,
         details: loadSkillResult.details,
         content: [{ type: "text", text: "loaded" }],
+        timestamp: Date.now(),
       });
       if (this.aborted) {
-        this.state.messages.push({
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: completeEmptyAssistantOnAbort.value
-                ? ""
-                : "loading demo skill",
-            },
-          ],
-          ...(completeEmptyAssistantOnAbort.value
-            ? { stopReason: "stop" }
-            : {}),
-        });
+        this.state.messages.push(
+          assistantMessage(
+            completeEmptyAssistantOnAbort.value ? "" : "loading demo skill",
+          ),
+        );
         return {};
       }
       if (loadSkillResult.details?.mcp_provider) {
@@ -225,11 +240,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "resumed reply" }],
-        stopReason: "stop",
-      });
+      this.state.messages.push(assistantMessage("resumed reply"));
       return {};
     }
 
@@ -272,11 +283,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       if (this.aborted && continueStopsOnAbort.value) {
         return {};
       }
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "resumed reply" }],
-        stopReason: "stop",
-      });
+      this.state.messages.push(assistantMessage("resumed reply"));
       return {};
     }
   }
@@ -824,9 +831,11 @@ describe("executeAgentRun progressive MCP loading", () => {
             piMessages: [
               {
                 role: "toolResult",
+                toolCallId: "prior-call",
                 toolName: "callMcpTool",
                 isError: false,
                 content: [{ type: "text", text: "pong" }],
+                timestamp: 1,
                 input: {
                   tool_name: "mcp__demo__ping",
                   arguments: { query: "prior" },
@@ -861,9 +870,11 @@ describe("executeAgentRun progressive MCP loading", () => {
             piMessages: [
               {
                 role: "toolResult",
+                toolCallId: "prior-call",
                 toolName: "callMcpTool",
                 isError: false,
                 content: [{ type: "text", text: "pong" }],
+                timestamp: 1,
                 input: {
                   tool_name: "mcp__demo__ping",
                   arguments: { query: "prior" },
@@ -908,9 +919,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
       {
         role: "toolResult",
+        toolCallId: "prior-call",
         toolName: "callMcpTool",
         isError: false,
         content: [{ type: "text", text: "pong" }],
+        timestamp: 2,
         input: {
           tool_name: "mcp__demo__ping",
           arguments: { query: "prior" },

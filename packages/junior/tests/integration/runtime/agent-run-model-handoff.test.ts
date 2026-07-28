@@ -208,8 +208,8 @@ const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 function expectedHandoffReplacementHistory() {
   return [
     {
-      message: {
-        role: "user",
+      item: {
+        type: "user_message",
         timestamp: expect.any(Number),
         content: [
           expect.objectContaining({
@@ -219,8 +219,8 @@ function expectedHandoffReplacementHistory() {
             ),
           }),
         ],
+        provenance: { authority: "context" },
       },
-      provenance: { authority: "context" },
     },
   ];
 }

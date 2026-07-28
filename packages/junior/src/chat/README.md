@@ -48,7 +48,7 @@ the production singleton.
 - **Conversation**: durable identity shared by messages and agent state.
 - **Turn**: one response-producing execution for accumulated user input.
 - **Run**: one bounded attempt to advance a turn; a turn may span resumed runs.
-- **Step**: one persisted agent-history entry.
+- **Agent history item**: one persisted replayable model input or output.
 - **History replacement**: explicit agent-history reset after compaction or handoff.
 - **Reply**: one destination-visible assistant message owned by delivery code.
 - **Actor**: human or system principal associated with current work.

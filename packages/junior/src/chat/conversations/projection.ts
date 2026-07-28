@@ -20,6 +20,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
+  historyItemFromPiMessage,
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,
@@ -85,10 +86,13 @@ function resolveCommitProvenance(args: {
     }
     return args.explicitProvenance;
   }
+  if (args.existing.provenance.length !== args.existing.messages.length) {
+    throw new Error("committed provenance must align one-to-one with messages");
+  }
   const matchingPrefix = args.matchingPrefix;
   const provenance = args.nextMessages.map((_, index) =>
     index < matchingPrefix
-      ? (args.existing.provenance[index] ?? contextProvenance)
+      ? args.existing.provenance[index]!
       : contextProvenance,
   );
   if (args.newMessageProvenance) {
@@ -208,7 +212,7 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Append newly stable agent steps. A shorter or changed prefix indicates
+ * Append newly stable native history items. A shorter or changed prefix indicates
  * that a caller persisted volatile Pi state; only compaction and handoff may
  * intentionally replace active model history.
  */
@@ -226,7 +230,7 @@ export async function commitMessages(args: {
 }): Promise<{
   committedSeq: number;
   historyVersion: number;
-  /** Event sequence for every projected agent step. */
+  /** Event sequence for every projected agent history item. */
   messageSeqs: number[];
   /** Normalized durable messages after volatile runtime context is removed. */
   messages: PiMessage[];
@@ -279,11 +283,10 @@ async function commitMessagesLocked(
     await eventStore.append(
       args.conversationId,
       newMessages.map((message, index) => ({
-        data: {
-          type: "agent_step" as const,
+        data: historyItemFromPiMessage(
           message,
-          provenance: nextLocalProvenance[matchingPrefix + index]!,
-        },
+          nextLocalProvenance[matchingPrefix + index]!,
+        ),
         createdAtMs: messageTimestamp(message),
       })),
     );

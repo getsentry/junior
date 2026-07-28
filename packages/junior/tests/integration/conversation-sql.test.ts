@@ -1,11 +1,15 @@
 import { fileURLToPath } from "node:url";
-import { getTableColumns, getTableName } from "drizzle-orm";
+import { eq, getTableColumns, getTableName } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
-import { juniorSqlSchema as schema } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversations,
+  juniorSqlSchema as schema,
+} from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
@@ -36,6 +40,266 @@ SELECT EXISTS (
 }
 
 describe("conversation SQL local mode", () => {
+  it("migrates legacy agent history to native event types", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes(
+          "Cannot migrate malformed agent_step conversation events",
+        ),
+      ),
+    );
+    const nativeHistoryMigration = coreMigrations[nativeHistoryMigrationIndex];
+    if (!nativeHistoryMigration) {
+      throw new Error("Native conversation history migration not found");
+    }
+
+    try {
+      for (const migration of coreMigrations.slice(
+        0,
+        nativeHistoryMigrationIndex,
+      )) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
+      }
+
+      const conversationId = "internal:native-history-migration";
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values(buildJuniorSqlConversation({ conversationId }));
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId,
+            seq: 0,
+            historyVersion: 0,
+            schemaVersion: 1,
+            type: "agent_step",
+            payload: {
+              message: {
+                role: "user",
+                content: "Investigate the failure",
+                timestamp: 1_000,
+              },
+            },
+            createdAt: new Date(1_000),
+          },
+          {
+            conversationId,
+            seq: 1,
+            historyVersion: 0,
+            schemaVersion: 1,
+            type: "agent_step",
+            payload: {
+              message: {
+                role: "assistant",
+                content: [],
+                api: "responses",
+                provider: "openai",
+                model: "gpt-5.4",
+                usage: {},
+                stopReason: "toolUse",
+                timestamp: 1_001,
+              },
+            },
+            createdAt: new Date(1_001),
+          },
+          {
+            conversationId,
+            seq: 2,
+            historyVersion: 0,
+            schemaVersion: 1,
+            type: "agent_step",
+            payload: {
+              message: {
+                role: "toolResult",
+                toolCallId: "call-1",
+                toolName: "search",
+                content: [],
+                isError: false,
+                timestamp: 1_002,
+              },
+            },
+            createdAt: new Date(1_002),
+          },
+          {
+            conversationId,
+            seq: 3,
+            historyVersion: 1,
+            schemaVersion: 1,
+            type: "rollback",
+            payload: {
+              modelProfile: "coding",
+              modelId: "openai/gpt-5.4",
+              replacementHistory: [
+                {
+                  message: {
+                    role: "user",
+                    type: "tool_result",
+                    content: "Retained instruction",
+                    timestamp: 1_000,
+                  },
+                  provenance: { authority: "instruction" },
+                  sourceEventSeq: 0,
+                },
+              ],
+            },
+            createdAt: new Date(1_003),
+          },
+        ]);
+
+      for (const statement of nativeHistoryMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+      // The transformation is safe if an operator reruns its SQL manually.
+      for (const statement of nativeHistoryMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+
+      const rows = await fixture.sql
+        .db()
+        .select({
+          type: juniorConversationEvents.type,
+          payload: juniorConversationEvents.payload,
+        })
+        .from(juniorConversationEvents)
+        .orderBy(juniorConversationEvents.seq);
+
+      expect(rows).toEqual([
+        {
+          type: "user_message",
+          payload: {
+            content: "Investigate the failure",
+            provenance: { authority: "context" },
+            timestamp: 1_000,
+          },
+        },
+        {
+          type: "assistant_message",
+          payload: {
+            api: "responses",
+            content: [],
+            model: "gpt-5.4",
+            provider: "openai",
+            stopReason: "toolUse",
+            timestamp: 1_001,
+            usage: {},
+          },
+        },
+        {
+          type: "tool_result",
+          payload: {
+            content: [],
+            isError: false,
+            timestamp: 1_002,
+            toolCallId: "call-1",
+            toolName: "search",
+          },
+        },
+        {
+          type: "compaction",
+          payload: {
+            modelId: "openai/gpt-5.4",
+            modelProfile: "coding",
+            replacementHistory: [
+              {
+                item: {
+                  content: "Retained instruction",
+                  provenance: { authority: "instruction" },
+                  timestamp: 1_000,
+                  type: "user_message",
+                },
+                sourceEventSeq: 0,
+              },
+            ],
+          },
+        },
+      ]);
+
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          conversationId,
+          seq: 4,
+          historyVersion: 1,
+          schemaVersion: 1,
+          type: "agent_step",
+          payload: { message: { role: "system" } },
+          createdAt: new Date(1_004),
+        });
+      await expect(
+        (async () => {
+          for (const statement of nativeHistoryMigration.sql) {
+            await fixture.sql.execute(statement);
+          }
+        })(),
+      ).rejects.toThrow("Cannot migrate malformed agent_step");
+      const [malformed] = await fixture.sql
+        .db()
+        .select({
+          type: juniorConversationEvents.type,
+          payload: juniorConversationEvents.payload,
+        })
+        .from(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.seq, 4));
+      expect(malformed).toEqual({
+        type: "agent_step",
+        payload: { message: { role: "system" } },
+      });
+
+      await fixture.sql
+        .db()
+        .delete(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.seq, 4));
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          conversationId,
+          seq: 4,
+          historyVersion: 1,
+          schemaVersion: 1,
+          type: "compaction",
+          payload: {
+            modelProfile: "standard",
+            modelId: "openai/gpt-5.4",
+            replacementHistory: [{}],
+          },
+          createdAt: new Date(1_004),
+        });
+      await expect(
+        (async () => {
+          for (const statement of nativeHistoryMigration.sql) {
+            await fixture.sql.execute(statement);
+          }
+        })(),
+      ).rejects.toThrow("Cannot migrate malformed replacement history items");
+      const [malformedReplacement] = await fixture.sql
+        .db()
+        .select({
+          type: juniorConversationEvents.type,
+          payload: juniorConversationEvents.payload,
+        })
+        .from(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.seq, 4));
+      expect(malformedReplacement).toEqual({
+        type: "compaction",
+        payload: {
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+          replacementHistory: [{}],
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("creates migrated tables matching the Drizzle schema", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

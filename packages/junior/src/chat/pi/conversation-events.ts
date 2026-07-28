@@ -8,18 +8,13 @@ import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ConversationEvent,
   ConversationEventData,
+  AgentHistoryItem,
 } from "@/chat/conversations/history";
+import { agentHistoryItemSchema } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
-import {
-  contextProvenance,
-  type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
-
-type AgentStepEventData = Extract<
-  ConversationEventData,
-  { type: "agent_step" }
->;
+import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import { contextProvenance } from "@/chat/conversations/provenance";
 type AuthorizationCompletedEventData = Extract<
   ConversationEventData,
   { type: "authorization_completed" }
@@ -55,20 +50,65 @@ function authorizationObservationMessage(
   });
 }
 
-function messageEventProvenance(
-  data: AgentStepEventData,
-): ConversationMessageProvenance {
-  return data.provenance ?? contextProvenance;
+function durableMessages(message: PiMessage): PiMessage[] {
+  return stripRuntimeTurnContext([message]);
 }
 
-function durableMessages(message: unknown): PiMessage[] {
-  return stripRuntimeTurnContext([piMessageSchema.parse(message)]);
+/** Translate one Pi message into Junior's native durable history item. */
+export function historyItemFromPiMessage(
+  message: PiMessage,
+  provenance: ConversationMessageProvenance,
+): AgentHistoryItem {
+  const parsed = piMessageSchema.parse(message) as PiMessage & {
+    role: string;
+  };
+  const { role, ...fields } = parsed;
+  if (role === "user") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "user_message",
+      provenance,
+    });
+  }
+  if (role === "assistant") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "assistant_message",
+    });
+  }
+  if (role === "toolResult") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "tool_result",
+    });
+  }
+  throw new Error(`Unsupported durable agent message role "${role}"`);
+}
+
+/** Translate one Junior-native history item into the Pi message it represents. */
+export function piMessageFromHistoryItem(data: AgentHistoryItem): PiMessage {
+  if (data.type === "user_message") {
+    const { type: _, provenance: __, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "user" });
+  }
+  if (data.type === "assistant_message") {
+    const { type: _, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "assistant" });
+  }
+  const { type: _, ...fields } = data;
+  return piMessageSchema.parse({ ...fields, role: "toolResult" });
+}
+
+function historyItemProvenance(
+  data: AgentHistoryItem,
+): ConversationMessageProvenance {
+  return data.type === "user_message" ? data.provenance : contextProvenance;
 }
 
 /**
  * Project ordered Junior events into Pi context.
  *
- * Compaction and handoff start with replacement history. Later agent-step
+ * Compaction and handoff start with replacement history. Later native history
  * events append after it.
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
@@ -93,26 +133,30 @@ export function projectConversationEvents(
         `Unsupported conversation event "${event.data.originalType}" at seq ${event.seq} (schema version ${event.schemaVersion})`,
       );
     }
-    if (
-      event.data.type === "compaction" ||
-      event.data.type === "handoff" ||
-      event.data.type === "rollback"
-    ) {
+    if (event.data.type === "compaction" || event.data.type === "handoff") {
       modelProfile = event.data.modelProfile;
       modelId = event.data.modelId;
       for (const replacement of event.data.replacementHistory) {
-        for (const message of durableMessages(replacement.message)) {
+        for (const message of durableMessages(
+          piMessageFromHistoryItem(replacement.item),
+        )) {
           messages.push(message);
-          provenance.push(replacement.provenance ?? contextProvenance);
+          provenance.push(historyItemProvenance(replacement.item));
           seqs.push(replacement.sourceEventSeq ?? event.seq);
         }
       }
       continue;
     }
-    if (event.data.type === "agent_step") {
-      for (const message of durableMessages(event.data.message)) {
+    if (
+      event.data.type === "user_message" ||
+      event.data.type === "assistant_message" ||
+      event.data.type === "tool_result"
+    ) {
+      for (const message of durableMessages(
+        piMessageFromHistoryItem(event.data),
+      )) {
         messages.push(message);
-        provenance.push(messageEventProvenance(event.data));
+        provenance.push(historyItemProvenance(event.data));
         seqs.push(event.seq);
       }
       continue;

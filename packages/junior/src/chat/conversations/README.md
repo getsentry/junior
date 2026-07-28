@@ -8,37 +8,43 @@ This module owns Junior's durable conversation record, search, and retention.
 has a stable `(conversation_id, seq)` identity, an event type, a versioned JSON
 payload, and a timestamp.
 
-Two primary event types intentionally describe different facts:
+Platform transcript and agent-history events intentionally describe different
+facts:
 
 - `message` records exact source or destination chat content. It is the
   authority for transcript display, delivery handling, privacy, and search.
-- `agent_step` records one replayable Pi history entry. It is the authority for
-  the next agent request and may contain transformed input, assistant tool
-  calls, or tool results that were never chat messages.
+- `user_message`, `assistant_message`, and `tool_result` record native,
+  replayable agent-history items. They are the authority for the next model
+  request and may contain transformed input, assistant tool calls, or tool
+  results that were never platform chat messages.
+
+`user_message` provenance distinguishes user instructions from ambient context.
+Tool calls remain ordered content inside the `assistant_message` that produced
+them; the corresponding results are separate `tool_result` events.
 
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
 message arrived twice. `message_handled` remains the compact lifecycle fact
 used to prevent redelivery.
 
-A chat message and an agent step can correspond to the same turn, but they are
-not interchangeable. For example, delivered fallback text is a `message` even
-when it is not part of Pi history, while a tool result is an `agent_step` even
-though it is never delivered as a chat message. Keeping both facts in the same
-ordered event stream avoids a second transcript authority without conflating
-product history with agent history.
+A platform message and an agent-history item can correspond to the same turn,
+but they are not interchangeable. For example, delivered fallback text is a
+`message` even when it is not part of Pi history, while a `tool_result` is never
+delivered as a platform message. Keeping both facts in the same ordered event
+stream avoids a second transcript authority without conflating product history
+with agent history.
 
 Search queries `message` payloads directly through the partial GIN index on the
 event table. There is no message projection table.
 
 ## Agent History Replacement
 
-Normal execution appends `agent_step` events. `compaction` and `handoff` are
-the only live events that replace active agent history. Each stores the exact
-replacement history; later `agent_step` events append to it. The internal
-`history_version` column makes loading that active history efficient. There is
-no initial-history event. Rollback events written by the required `0.107.1`
-bridge remain read-compatible but are never written by the current runtime.
+Normal execution appends native agent-history events. `compaction` and
+`handoff` are the only live events that replace active agent history. Each
+stores the exact replacement history in the same native shapes; later native
+events append to it. The internal `history_version` column makes loading that
+active history efficient. There is no initial-history event. Database migrations
+normalize older history shapes before the runtime reads them.
 
 Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
 session record. It is removed before SQL history is written and restored for an
@@ -52,7 +58,7 @@ older source-thread context; it does not replace Pi history.
 
 - Persist inbound `message` events before agent execution.
 - Persist assistant `message` events only after destination acceptance.
-- Append stable `agent_step` events in sequence order.
+- Append stable native agent-history events in sequence order.
 - Reject attempts to mutate an already committed agent-history prefix.
 - Replace agent history only through explicit compaction or handoff.
 - Restore transcripts and agent history directly from conversation events.
@@ -80,9 +86,10 @@ to `unknown`.
 
 ## Visibility And Retention
 
-Destination visibility is the privacy authority. Messages, agent steps, child
-conversations, and plugin projections inherit it. Retention distinguishes
-expired content from redacted content and purges the complete child tree.
+Destination visibility is the privacy authority. Messages, agent-history
+items, child conversations, and plugin projections inherit it. Retention
+distinguishes expired content from redacted content and purges the complete
+child tree.
 
 Every conversation row carries its owning `root_conversation_id`. Roots
 self-reference; descendants copy the root from their immediate parent when
@@ -113,6 +120,10 @@ Follow `../../../../../policies/data-redaction.md` and
   complete the `0.107.1` bridge upgrade before installing a later release.
 - Keep old workers stopped between the bridge upgrade and the later deployment
   so they cannot write legacy state after it has been imported.
+- Upgrades from releases that write `agent_step` events must also block ingress,
+  drain active and resumable work, and stop old workers before running the
+  native agent-history migration. Deploy the new runtime before restarting
+  workers so legacy rows cannot be appended after the one-time rewrite.
 - Current `junior upgrade` runs only core and enabled-plugin Drizzle SQL
   migrations. Live workers restore history exclusively from conversation
   events.

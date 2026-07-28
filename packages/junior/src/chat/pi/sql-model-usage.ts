@@ -1,4 +1,4 @@
-/** SQL reporting adapter for usage stored on assistant agent steps. */
+/** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
@@ -9,7 +9,7 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 
-const message = sql`${juniorConversationEvents.payload}->'message'`;
+const message = sql`${juniorConversationEvents.payload}`;
 const usage = sql`${message}->'usage'`;
 const cost = sql`${usage}->'cost'`;
 
@@ -163,8 +163,7 @@ export async function readConversationModelUsageFromSql(
         options.includeDescendants
           ? eq(juniorConversations.rootConversationId, options.conversationId)
           : eq(juniorConversationEvents.conversationId, options.conversationId),
-        eq(juniorConversationEvents.type, "agent_step"),
-        sql`${message}->>'role' = 'assistant'`,
+        eq(juniorConversationEvents.type, "assistant_message"),
         sql`jsonb_typeof(${message}->'provider') = 'string'`,
         sql`jsonb_typeof(${message}->'model') = 'string'`,
         sql`coalesce(${message}->>'provider', '') <> ''`,

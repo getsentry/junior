@@ -15,6 +15,11 @@ function assistant(text: string, timestamp = 1): PiMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {},
+    stopReason: "stop",
     timestamp,
   } as PiMessage;
 }
@@ -206,7 +211,7 @@ describe("context compaction projection reset", () => {
       user("Run the lookup.", 1),
       {
         ...assistant("Lookup complete.", 2),
-        provider: undefined,
+        responseId: undefined,
         usage: { input: 5, cached: undefined },
       } as unknown as PiMessage,
     ];
@@ -583,8 +588,16 @@ describe("context compaction projection reset", () => {
       summary: "Continue the multi-file implementation.",
       replacementHistory: [
         {
-          message: durableHandoffMessages[0],
-          provenance: { authority: "context" },
+          item: {
+            type: "user_message",
+            content: (
+              durableHandoffMessages[0] as {
+                content: unknown[];
+              }
+            ).content,
+            timestamp: 3,
+            provenance: { authority: "context" },
+          },
         },
       ],
     });

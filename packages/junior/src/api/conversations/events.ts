@@ -10,7 +10,8 @@ import {
 export const conversationReportSourceEventTypes = [
   "message",
   "message_handled",
-  "agent_step",
+  "assistant_message",
+  "tool_result",
   "tool_execution_started",
   "turn_started",
   "turn_routed",
@@ -24,7 +25,7 @@ export const conversationReportSourceEventTypes = [
 
 const reportingAssistantMessageSchema = z
   .object({
-    role: z.literal("assistant"),
+    type: z.literal("assistant_message"),
     content: z.array(z.unknown()),
   })
   .passthrough();
@@ -40,7 +41,7 @@ const reportingToolCallPartSchema = z
 
 const reportingToolResultMessageSchema = z
   .object({
-    role: z.literal("toolResult"),
+    type: z.literal("tool_result"),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
@@ -105,7 +106,7 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
   return only.type === "text" ? only.text : only;
 }
 
-/** Project canonical Pi tool calls into the narrow reporting contract. */
+/** Project native assistant tool calls into the narrow reporting contract. */
 function reportToolCalls(args: {
   canExposePayload: boolean;
   createdAtMs: number;
@@ -134,7 +135,7 @@ function reportToolCalls(args: {
   return calls.length > 0 ? { type: "tool_calls", calls } : undefined;
 }
 
-/** Project a Pi tool result without exposing host-only result details. */
+/** Project a native tool result without exposing host-only result details. */
 function reportToolResult(args: {
   canExposePayload: boolean;
   message: unknown;
@@ -181,10 +182,7 @@ export function conversationReportToolResultIds(
   return [
     ...new Set(
       events.flatMap((event) => {
-        if (event.data.type !== "agent_step") return [];
-        const result = reportingToolResultMessageSchema.safeParse(
-          event.data.message,
-        );
+        const result = reportingToolResultMessageSchema.safeParse(event.data);
         return result.success ? [result.data.toolCallId] : [];
       }),
     ),
@@ -308,16 +306,17 @@ export function projectConversationReportEventPage(args: {
 
   for (const event of args.events) {
     let data: ConversationReportEventData | undefined;
-    if (event.data.type === "agent_step") {
+    if (
+      event.data.type === "assistant_message" ||
+      event.data.type === "tool_result"
+    ) {
       const reportArgs = {
         canExposePayload: args.canExposePayload,
         createdAtMs: event.createdAtMs,
-        message: event.data.message,
+        message: event.data,
         seq: event.seq,
       };
-      const result = reportingToolResultMessageSchema.safeParse(
-        event.data.message,
-      );
+      const result = reportingToolResultMessageSchema.safeParse(event.data);
       const start = result.success
         ? toolStarts.get(result.data.toolCallId)
         : undefined;
@@ -325,7 +324,7 @@ export function projectConversationReportEventPage(args: {
         reportToolCalls(reportArgs) ??
         reportToolResult({
           canExposePayload: args.canExposePayload,
-          message: event.data.message,
+          message: event.data,
           ...(start && start.seq < event.seq ? { start } : {}),
         });
     } else if (event.data.type === "tool_execution_started") {

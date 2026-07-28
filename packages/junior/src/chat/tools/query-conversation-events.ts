@@ -362,11 +362,7 @@ function stripReplacementHistory(
       payload: stripReplacementHistoryField(data.payload),
     };
   }
-  if (
-    data.type === "compaction" ||
-    data.type === "handoff" ||
-    data.type === "rollback"
-  ) {
+  if (data.type === "compaction" || data.type === "handoff") {
     return stripReplacementHistoryField(data) as Record<string, unknown>;
   }
   return data;

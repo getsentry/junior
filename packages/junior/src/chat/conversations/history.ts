@@ -18,40 +18,57 @@ const handoffModelProfileSchema = modelProfileSchema.refine(
   "handoff profile must not be standard",
 );
 
-/** Store one opaque agent-step payload while Pi owns provider validation. */
-export const conversationAgentStepPayloadSchema = z
-  .object({ role: z.string() })
-  .passthrough()
-  .transform((value) => value as { role: string });
-
-/** The opaque Pi history entry carried by an `agent_step` event. */
-export type ConversationAgentStepPayload = z.output<
-  typeof conversationAgentStepPayloadSchema
->;
-
-const conversationMessageDataSchema = z
+const userMessageEventDataSchema = z
   .object({
-    message: conversationAgentStepPayloadSchema,
-    provenance: conversationMessageProvenanceSchema.optional(),
+    type: z.literal("user_message"),
+    role: z.never().optional(),
+    provenance: conversationMessageProvenanceSchema,
+  })
+  .passthrough();
+
+const assistantMessageEventDataSchema = z
+  .object({
+    type: z.literal("assistant_message"),
+    role: z.never().optional(),
+  })
+  .passthrough();
+
+const toolResultEventDataSchema = z
+  .object({
+    type: z.literal("tool_result"),
+    role: z.never().optional(),
+  })
+  .passthrough();
+
+/**
+ * One replayable agent-history item. Junior owns `type` and user provenance,
+ * forbids the provider `role` discriminator, and leaves preserved message
+ * fields for the Pi adapter to validate when restoring model context.
+ */
+export const agentHistoryItemSchema = z.discriminatedUnion("type", [
+  userMessageEventDataSchema,
+  assistantMessageEventDataSchema,
+  toolResultEventDataSchema,
+]);
+
+/** A native replayable agent-history item. */
+export type AgentHistoryItem = z.output<typeof agentHistoryItemSchema>;
+
+const nativeReplacementHistoryItemSchema = z
+  .object({
+    item: agentHistoryItemSchema,
+    // Preserve the copied item's position when a turn resumes. Synthetic
+    // summary and handoff items have no source event.
+    sourceEventSeq: z.number().int().nonnegative().optional(),
   })
   .strict();
 
-const agentStepEventDataSchema = conversationMessageDataSchema.extend({
-  type: z.literal("agent_step"),
-});
-
-const replacementHistoryMessageSchema = conversationMessageDataSchema.extend({
-  // Preserve the copied message's position when a turn resumes. Synthetic
-  // summary and handoff messages have no source event.
-  sourceEventSeq: z.number().int().nonnegative().optional(),
-});
-
 /**
  * The complete agent history used immediately after a replacement. Later
- * `agent_step` events append to it. These entries are replayed model input, not
- * new conversation activity.
+ * native history events append to it. Replacement entries are replayed model
+ * history, not new conversation activity.
  */
-const replacementHistorySchema = z.array(replacementHistoryMessageSchema);
+const replacementHistorySchema = z.array(nativeReplacementHistoryItemSchema);
 
 const compactionDetailsSchema = z
   .object({
@@ -89,17 +106,6 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
     })
     .strict(),
 ]);
-
-// Read-only compatibility for rollback histories persisted by the 0.107.1
-// bridge. Live writers cannot create this event through replaceHistory().
-const legacyRollbackEventDataSchema = z
-  .object({
-    type: z.literal("rollback"),
-    modelProfile: modelProfileSchema,
-    modelId: z.string().min(1),
-    replacementHistory: replacementHistorySchema,
-  })
-  .strict();
 
 /** Validate an event that intentionally replaces active model history. */
 export const historyReplacementSchema = z
@@ -302,7 +308,7 @@ const subagentEndedEventDataSchema = z
 const appendableConversationEventDataSchema = z.union([
   messageEventDataSchema,
   messageUpdatedEventDataSchema,
-  agentStepEventDataSchema,
+  agentHistoryItemSchema,
   mcpProviderConnectedEventDataSchema,
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
@@ -321,7 +327,6 @@ const appendableConversationEventDataSchema = z.union([
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
   historyReplacementEventDataSchema,
-  legacyRollbackEventDataSchema,
 ]);
 
 /** One durable conversation event's validated data. */
@@ -331,11 +336,13 @@ export type ConversationEventData = z.output<
 
 // This list distinguishes unsupported rows from corrupt known rows. Add every
 // canonical event type here with its data schema.
-/** Canonical event type names accepted by live writers and observational queries. */
+/** Event type names recognized by current readers and observational queries. */
 export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "message",
   "message_updated",
-  "agent_step",
+  "user_message",
+  "assistant_message",
+  "tool_result",
   "mcp_provider_connected",
   "authorization_requested",
   "authorization_completed",
@@ -350,7 +357,6 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "subagent_ended",
   "handoff",
   "compaction",
-  "rollback",
 ] as const;
 
 /** One known durable conversation event type name. */
@@ -491,8 +497,8 @@ export interface ConversationEventStore {
     conversationId: string,
     idempotencyKey: string,
   ): Promise<ConversationEvent | undefined>;
-  /** Latest durable user instruction across history versions. */
-  loadLatestInstructionStep(
+  /** Latest durable instruction across history versions. */
+  loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined>;
   /** Events of the current history version in `seq` order. */

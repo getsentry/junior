@@ -8,6 +8,7 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { commitMessages } from "@/chat/conversations/projection";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getConversationEventStore } from "@/chat/db";
 import { botConfig } from "@/chat/config";
@@ -39,6 +40,19 @@ function completedReply(text: string) {
       usedPrimaryText: true,
     },
   });
+}
+
+function assistantPiMessage(text: string, timestamp: number): PiMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {},
+    stopReason: "stop",
+    timestamp,
+  } as PiMessage;
 }
 
 describe("Slack behavior: message content", () => {
@@ -241,11 +255,7 @@ describe("Slack behavior: message content", () => {
         ],
         timestamp: 1,
       },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "First response." }],
-        timestamp: 2,
-      },
+      assistantPiMessage("First response.", 2),
     ] as PiMessage[];
     const durableFirstTurnHistory: PiMessage[] = [
       {
@@ -353,11 +363,7 @@ describe("Slack behavior: message content", () => {
         ],
         timestamp: 1,
       },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "old answer ".repeat(1_000) }],
-        timestamp: 2,
-      },
+      assistantPiMessage("old answer ".repeat(1_000), 2),
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.000" });
     await commitMessages({
@@ -453,8 +459,7 @@ describe("Slack behavior: message content", () => {
         modelProfile: "handoff",
         modelId: botConfig.profiles.handoff!.modelId,
         replacementHistory: priorMessages.map((message) => ({
-          message,
-          provenance: { authority: "context" },
+          item: historyItemFromPiMessage(message, { authority: "context" }),
         })),
       },
     });
@@ -521,11 +526,7 @@ describe("Slack behavior: message content", () => {
         content: [{ type: "text", text: "older context ".repeat(5_000) }],
         timestamp: 1,
       },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "older answer ".repeat(1_000) }],
-        timestamp: 2,
-      },
+      assistantPiMessage("older answer ".repeat(1_000), 2),
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005006.000" });
     await commitMessages({
@@ -546,7 +547,9 @@ describe("Slack behavior: message content", () => {
         type: "compaction",
         modelProfile: "standard",
         modelId: "test/model",
-        replacementHistory: priorMessages.map((message) => ({ message })),
+        replacementHistory: priorMessages.map((message) => ({
+          item: historyItemFromPiMessage(message, { authority: "context" }),
+        })),
       },
     });
     const conversation = coerceThreadConversationState({});

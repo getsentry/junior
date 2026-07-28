@@ -4,6 +4,7 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
@@ -15,6 +16,12 @@ import {
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
+
+function replacement(message: PiMessage) {
+  return {
+    item: historyItemFromPiMessage(message, { authority: "context" }),
+  };
+}
 
 if (!TEST_DATABASE_URL) {
   throw new Error(
@@ -80,10 +87,7 @@ async function appendVisibleHistory(
       createdAtMs: 10,
     },
     {
-      data: {
-        type: "agent_step",
-        message: modelMessage,
-      },
+      data: historyItemFromPiMessage(modelMessage, { authority: "context" }),
       createdAtMs: 11,
     },
     {
@@ -95,9 +99,8 @@ async function appendVisibleHistory(
       createdAtMs: 12,
     },
     {
-      data: {
-        type: "agent_step",
-        message: {
+      data: historyItemFromPiMessage(
+        {
           role: "assistant",
           api: "responses",
           provider: "openai",
@@ -127,13 +130,13 @@ async function appendVisibleHistory(
           ],
           timestamp: 12,
         } as PiMessage,
-      },
+        { authority: "context" },
+      ),
       createdAtMs: 12,
     },
     {
-      data: {
-        type: "agent_step",
-        message: {
+      data: historyItemFromPiMessage(
+        {
           role: "toolResult",
           toolCallId: `${conversationId}:tool-call`,
           toolName: "search",
@@ -146,7 +149,8 @@ async function appendVisibleHistory(
           isError: false,
           timestamp: 13,
         } as PiMessage,
-      },
+        { authority: "context" },
+      ),
       createdAtMs: 13,
     },
     {
@@ -192,14 +196,12 @@ async function appendVisibleHistory(
       modelId: "private-model-id",
       summary: "Continue monitoring CI.",
       replacementHistory: [
-        { message: modelMessage },
-        {
-          message: {
-            role: "user",
-            content: "Private replacement context.",
-            timestamp: 15,
-          } as PiMessage,
-        },
+        replacement(modelMessage),
+        replacement({
+          role: "user",
+          content: "Private replacement context.",
+          timestamp: 15,
+        } as PiMessage),
       ],
     },
   });
@@ -213,18 +215,16 @@ async function appendVisibleHistory(
       triggeringToolCallId: `${conversationId}:handoff-tool-call`,
       summary: "Fix the remaining test.",
       replacementHistory: [
-        {
-          message: {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "More private replacement context.",
-              },
-            ],
-            timestamp: 16,
-          } as PiMessage,
-        },
+        replacement({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "More private replacement context.",
+            },
+          ],
+          timestamp: 16,
+        } as PiMessage),
       ],
     },
   });
@@ -465,8 +465,12 @@ describe("dashboard canonical event reporting", () => {
     await recordRoot(conversationId, "public");
     const componentUsageMessage = {
       role: "assistant",
+      api: "responses",
       provider: "openai",
       model: "gpt-5",
+      content: [],
+      stopReason: "stop",
+      timestamp: 10,
       usage: {
         input: 10,
         cost: {
@@ -477,21 +481,29 @@ describe("dashboard canonical event reporting", () => {
           total: 0.037,
         },
       },
-    };
+    } as unknown as PiMessage;
     const totalOnlyUsageMessage = {
       role: "assistant",
+      api: "responses",
       provider: "openai",
       model: "gpt-5",
+      content: [],
+      stopReason: "stop",
+      timestamp: 11,
       usage: { totalTokens: 7, cost: { total: 0.005 } },
-    };
+    } as unknown as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
-        data: { type: "agent_step", message: componentUsageMessage },
+        data: historyItemFromPiMessage(componentUsageMessage, {
+          authority: "context",
+        }),
         createdAtMs: 10,
       },
       {
-        data: { type: "agent_step", message: totalOnlyUsageMessage },
+        data: historyItemFromPiMessage(totalOnlyUsageMessage, {
+          authority: "context",
+        }),
         createdAtMs: 11,
       },
     ]);
@@ -502,8 +514,8 @@ describe("dashboard canonical event reporting", () => {
         modelProfile: "standard",
         modelId: "openai/gpt-5",
         replacementHistory: [
-          { message: componentUsageMessage },
-          { message: totalOnlyUsageMessage },
+          replacement(componentUsageMessage),
+          replacement(totalOnlyUsageMessage),
         ],
       },
     });

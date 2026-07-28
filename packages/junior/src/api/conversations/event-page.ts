@@ -159,7 +159,7 @@ async function projectConversationEventRows(
  *
  * Source rows are scanned in bounded chunks until the requested projected page
  * and one older event are known. This keeps ordinary pages bounded without
- * assuming every canonical agent step produces a reporting event.
+ * assuming every agent history event produces a reporting event.
  */
 export async function readConversationEventPage(
   executor: JuniorSqlDatabase,

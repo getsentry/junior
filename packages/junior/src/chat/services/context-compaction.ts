@@ -32,6 +32,10 @@ import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
+import {
+  historyItemFromPiMessage,
+  piMessageFromHistoryItem,
+} from "@/chat/pi/conversation-events";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
 import {
@@ -380,22 +384,30 @@ function buildReplacementProvenance(args: {
   sourceProvenance: ConversationMessageProvenance[];
 }): ConversationMessageProvenance[] {
   return [
-    ...args.retained.map(
-      (entry) => args.sourceProvenance[entry.sourceIndex] ?? contextProvenance,
-    ),
+    ...args.retained.map((entry) => {
+      const provenance = args.sourceProvenance[entry.sourceIndex];
+      if (!provenance) {
+        throw new Error("retained message provenance is missing");
+      }
+      return provenance;
+    }),
     contextProvenance,
   ];
 }
 
 async function loadLastInstruction(conversationId: string) {
   const event =
-    await getConversationEventStore().loadLatestInstructionStep(conversationId);
-  if (event?.data.type !== "agent_step") return undefined;
-  return {
-    message: event.data.message as PiMessage,
-    provenance: event.data.provenance,
-    sourceEventSeq: event.seq,
-  };
+    await getConversationEventStore().loadLatestInstruction(conversationId);
+  if (!event) return undefined;
+  if (event.data.type === "user_message") {
+    if (event.data.provenance.authority !== "instruction") return undefined;
+    return {
+      message: piMessageFromHistoryItem(event.data),
+      provenance: event.data.provenance,
+      sourceEventSeq: event.seq,
+    };
+  }
+  return undefined;
 }
 
 type CompactionSource =
@@ -530,8 +542,10 @@ async function writeCompactedThreadContext(
             ? sourceProjection.seqs[retained[index]!.sourceIndex]
             : undefined;
         return {
-          message,
-          provenance: replacementProvenance[index]!,
+          item: historyItemFromPiMessage(
+            message,
+            replacementProvenance[index]!,
+          ),
           ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
         };
       }),
@@ -601,8 +615,7 @@ export async function compactContextForHandoff(
         : {}),
       summary: generatedSummary,
       replacementHistory: replacementMessages.map((replacementMessage) => ({
-        message: replacementMessage,
-        provenance: contextProvenance,
+        item: historyItemFromPiMessage(replacementMessage, contextProvenance),
       })),
     },
   });
@@ -704,6 +717,11 @@ export async function compactActiveContextIfNeeded(
     );
   }
   const replacementMessages = stripRuntimeTurnContext(messages);
+  if (replacementMessages.length !== 1 + instructionProvenance.length) {
+    throw new Error(
+      "persisted instruction provenance must align one-to-one with messages",
+    );
+  }
   args.signal?.throwIfAborted();
   await getConversationEventStore().replaceHistory(args.conversationId, {
     createdAtMs: Date.now(),
@@ -722,16 +740,16 @@ export async function compactActiveContextIfNeeded(
         summaryChars: summary.length,
       },
       summary,
-      replacementHistory: replacementMessages.map((message, index) => ({
-        message,
-        provenance:
-          index === 0
-            ? contextProvenance
-            : (instructionProvenance[index - 1] ?? contextProvenance),
-        ...(index === 1 && retainedInstruction
-          ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
-          : {}),
-      })),
+      replacementHistory: replacementMessages.map((message, index) => {
+        const provenance =
+          index === 0 ? contextProvenance : instructionProvenance[index - 1]!;
+        return {
+          item: historyItemFromPiMessage(message, provenance),
+          ...(index === 1 && retainedInstruction
+            ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
+            : {}),
+        };
+      }),
     },
   });
   setSpanAttributes({

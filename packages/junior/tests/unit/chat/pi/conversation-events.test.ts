@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentHistoryItemSchema,
   conversationEventSchema,
   decodeStoredConversationEvent,
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
-import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import type { PiMessage } from "@/chat/pi/messages";
+import {
+  historyItemFromPiMessage,
+  piMessageFromHistoryItem,
+  projectConversationEvents,
+} from "@/chat/pi/conversation-events";
 
 function event(
   seq: number,
@@ -51,8 +55,9 @@ describe("projectConversationEvents", () => {
     }),
     event(1, { type: "mcp_provider_connected", provider: "github" }),
     event(2, {
-      type: "agent_step",
-      message: firstMessage,
+      type: "user_message",
+      content: firstMessage.content,
+      timestamp: firstMessage.timestamp,
       provenance: instructionProvenance,
     }),
     event(3, {
@@ -75,7 +80,12 @@ describe("projectConversationEvents", () => {
       authorizationId: "auth-2",
       delivery: "private_link_sent",
     }),
-    event(6, { type: "agent_step", message: lastMessage }),
+    event(6, {
+      type: "user_message",
+      content: lastMessage.content,
+      timestamp: lastMessage.timestamp,
+      provenance: { authority: "context" },
+    }),
     event(7, {
       type: "turn_started",
       turnId: "turn-1",
@@ -159,57 +169,68 @@ describe("projectConversationEvents", () => {
         modelId: "openai/gpt-5.4",
         replacementHistory: [
           {
-            message: retained,
-            provenance: instructionProvenance,
+            item: {
+              type: "user_message",
+              content: retained.content,
+              timestamp: retained.timestamp,
+              provenance: instructionProvenance,
+            },
             sourceEventSeq: 4,
           },
-          { message: summary },
+          {
+            item: {
+              type: "user_message",
+              content: summary.content,
+              timestamp: summary.timestamp,
+              provenance: { authority: "context" },
+            },
+          },
         ],
       }),
-      event(11, { type: "agent_step", message: later }),
+      event(11, {
+        type: "user_message",
+        content: later.content,
+        timestamp: later.timestamp,
+        provenance: { authority: "context" },
+      }),
     ]);
 
     expect(projection.messages).toEqual([retained, summary, later]);
     expect(projection.seqs).toEqual([4, 10, 11]);
   });
 
-  it("projects rollback history persisted by the bridge release", () => {
-    const retained = {
-      role: "user",
-      content: [{ type: "text", text: "Retained bridge history" }],
-      timestamp: 2_000,
-    };
-    const rollback = decodeStoredConversationEvent({
-      schemaVersion: 1,
-      seq: 12,
-      historyVersion: 2,
-      createdAtMs: 1_012,
-      type: "rollback",
-      payload: {
-        modelProfile: "coding",
-        modelId: "openai/gpt-5.4",
-        replacementHistory: [{ message: retained, sourceEventSeq: 4 }],
-      },
-    });
+  it("round-trips native Pi message roles without leaking provenance", () => {
+    const native = historyItemFromPiMessage(
+      firstMessage,
+      instructionProvenance,
+    );
 
-    expect(projectConversationEvents([rollback])).toMatchObject({
-      messages: [retained],
-      modelId: "openai/gpt-5.4",
-      modelProfile: "coding",
-      seqs: [4],
+    expect(native).toEqual({
+      type: "user_message",
+      content: firstMessage.content,
+      timestamp: firstMessage.timestamp,
+      provenance: instructionProvenance,
     });
+    expect(piMessageFromHistoryItem(native)).toEqual(firstMessage);
   });
 
-  it("validates opaque durable messages only at the Pi boundary", () => {
-    const invalid = {
-      schemaVersion: 1,
-      seq: 1,
-      historyVersion: 2,
-      createdAtMs: 1_001,
-      data: { type: "agent_step", message: {} },
-    } as ConversationEvent;
+  it("keeps Junior-owned history discriminants authoritative", () => {
+    const native = historyItemFromPiMessage(
+      {
+        ...firstMessage,
+        type: "tool_result",
+      } as Parameters<typeof historyItemFromPiMessage>[0],
+      instructionProvenance,
+    );
 
-    expect(() => projectConversationEvents([invalid])).toThrow(/role/);
+    expect(native.type).toBe("user_message");
+    expect(piMessageFromHistoryItem(native)).toMatchObject({ role: "user" });
+    expect(
+      agentHistoryItemSchema.safeParse({
+        type: "assistant_message",
+        role: "user",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects unsupported stored events at the model-history boundary", () => {
@@ -230,17 +251,16 @@ describe("projectConversationEvents", () => {
   it("omits volatile runtime bootstrap from durable agent history", () => {
     const projection = projectConversationEvents([
       event(20, {
-        type: "agent_step",
-        message: {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
-            },
-            { type: "text", text: "Keep this instruction." },
-          ],
-        } as PiMessage,
+        type: "user_message",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
+          },
+          { type: "text", text: "Keep this instruction." },
+        ],
+        timestamp: 2_000,
+        provenance: { authority: "instruction" },
       }),
     ]);
 
@@ -248,6 +268,7 @@ describe("projectConversationEvents", () => {
       {
         role: "user",
         content: [{ type: "text", text: "Keep this instruction." }],
+        timestamp: 2_000,
       },
     ]);
     expect(projection.seqs).toEqual([20]);

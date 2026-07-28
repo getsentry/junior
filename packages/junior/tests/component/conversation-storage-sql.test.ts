@@ -6,6 +6,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import {
   conversationEventDataSchema,
   conversationEventSchema,
+  newConversationEventSchema,
 } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
@@ -76,7 +77,7 @@ it("accepts compaction and handoff as the only live history replacements", () =>
   }
 });
 
-it("rejects unknown Junior event fields while retaining opaque message fields", () => {
+it("rejects unknown fields and legacy agent-step writes", () => {
   expect(
     conversationEventDataSchema.safeParse({
       type: "message",
@@ -124,9 +125,20 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
     }).success,
   ).toBe(false);
   expect(
+    newConversationEventSchema.safeParse({
+      data: {
+        type: "agent_step",
+        message: { role: "", providerOwnedField: true },
+      },
+      createdAtMs: 1,
+    }).success,
+  ).toBe(false);
+  expect(
     conversationEventDataSchema.safeParse({
-      type: "agent_step",
-      message: { role: "", providerOwnedField: true },
+      type: "user_message",
+      content: [{ type: "provider_owned", value: true }],
+      timestamp: 1,
+      provenance: { authority: "context" },
     }).success,
   ).toBe(true);
 });
@@ -294,6 +306,19 @@ function userMessage(text: string) {
   };
 }
 
+function userMessageEvent(
+  text: string,
+  authority: "instruction" | "context" = "context",
+) {
+  const { content, timestamp } = userMessage(text);
+  return {
+    type: "user_message" as const,
+    content,
+    timestamp,
+    provenance: { authority },
+  };
+}
+
 describe("SQL conversation storage", () => {
   it("persists visible-context compaction snapshots in conversation history", async () => {
     const events = getConversationEventStore();
@@ -349,11 +374,11 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("one") },
+          data: userMessageEvent("one"),
           createdAtMs: 1_000,
         },
         {
-          data: { type: "agent_step", message: userMessage("two") },
+          data: userMessageEvent("two"),
           createdAtMs: 2_000,
         },
       ]);
@@ -368,8 +393,8 @@ describe("SQL conversation storage", () => {
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
       expect(history.map((event) => event.schemaVersion)).toEqual([1, 1, 1]);
       expect(history.map((event) => event.data.type)).toEqual([
-        "agent_step",
-        "agent_step",
+        "user_message",
+        "user_message",
         "mcp_provider_connected",
       ]);
 
@@ -393,7 +418,7 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("loads the latest user instruction step", async () => {
+  it("loads the latest user instruction", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -403,44 +428,28 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: {
-            type: "agent_step",
-            message: userMessage("first instruction"),
-            provenance: { authority: "instruction" },
-          },
+          data: userMessageEvent("first instruction", "instruction"),
           createdAtMs: 1_000,
         },
         {
-          data: {
-            type: "agent_step",
-            message: userMessage("ambient context"),
-            provenance: { authority: "context" },
-          },
+          data: userMessageEvent("ambient context"),
           createdAtMs: 2_000,
         },
         {
-          data: {
-            type: "agent_step",
-            message: { role: "assistant" },
-            provenance: { authority: "instruction" },
-          },
+          data: { type: "mcp_provider_connected", provider: "github" },
           createdAtMs: 3_000,
         },
         {
-          data: {
-            type: "agent_step",
-            message: userMessage("latest instruction"),
-            provenance: { authority: "instruction" },
-          },
+          data: userMessageEvent("latest instruction", "instruction"),
           createdAtMs: 4_000,
         },
       ]);
 
-      const event = await store.loadLatestInstructionStep(CONVERSATION_ID);
+      const event = await store.loadLatestInstruction(CONVERSATION_ID);
       expect(event?.seq).toBe(3);
       expect(event?.data).toMatchObject({
-        type: "agent_step",
-        message: userMessage("latest instruction"),
+        type: "user_message",
+        content: userMessage("latest instruction").content,
         provenance: { authority: "instruction" },
       });
     } finally {
@@ -455,7 +464,7 @@ describe("SQL conversation storage", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlConversationEventStore(fixture.sql);
       const firstEvent = {
-        data: { type: "agent_step" as const, message: userMessage("first") },
+        data: userMessageEvent("first"),
         idempotencyKey: "event:first",
         createdAtMs: 1_000,
       };
@@ -494,7 +503,7 @@ describe("SQL conversation storage", () => {
       await store.append(CONVERSATION_ID, [
         { ...firstEvent, createdAtMs: 10_000 },
         {
-          data: { type: "agent_step", message: userMessage("second") },
+          data: userMessageEvent("second"),
           idempotencyKey: "event:second",
           createdAtMs: 8_000,
         },
@@ -616,22 +625,15 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: {
-            type: "agent_step",
-            message: userMessage("before\u0000after and literal \\u0000"),
-          },
+          data: userMessageEvent("before\u0000after and literal \\u0000"),
           createdAtMs: 1_000,
         },
       ]);
 
       expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
         {
-          type: "agent_step",
-          message: {
-            content: [
-              { text: "before after and literal \\u0000", type: "text" },
-            ],
-          },
+          type: "user_message",
+          content: [{ text: "before after and literal \\u0000", type: "text" }],
         },
       );
     } finally {
@@ -649,11 +651,11 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("epoch0-a") },
+          data: userMessageEvent("epoch0-a"),
           createdAtMs: 1_000,
         },
         {
-          data: { type: "agent_step", message: userMessage("epoch0-b") },
+          data: userMessageEvent("epoch0-b"),
           createdAtMs: 2_000,
         },
       ]);
@@ -663,7 +665,7 @@ describe("SQL conversation storage", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "test/model",
-          replacementHistory: [{ message: userMessage("epoch1-summary") }],
+          replacementHistory: [{ item: userMessageEvent("epoch1-summary") }],
         },
       });
 
@@ -689,11 +691,11 @@ describe("SQL conversation storage", () => {
 
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("epoch0-a") },
+          data: userMessageEvent("epoch0-a"),
           createdAtMs: 1_000,
         },
         {
-          data: { type: "agent_step", message: userMessage("epoch0-b") },
+          data: userMessageEvent("epoch0-b"),
           createdAtMs: 2_000,
         },
       ]);
@@ -703,7 +705,7 @@ describe("SQL conversation storage", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "test/model",
-          replacementHistory: [{ message: userMessage("epoch1-summary") }],
+          replacementHistory: [{ item: userMessageEvent("epoch1-summary") }],
         },
       });
       await store.append(CONVERSATION_ID, [
@@ -718,7 +720,7 @@ describe("SQL conversation storage", () => {
           type: "compaction",
           modelId: "test/model",
           modelProfile: "standard",
-          replacementHistory: [{ message: userMessage("epoch2-message") }],
+          replacementHistory: [{ item: userMessageEvent("epoch2-message") }],
         },
       });
 
@@ -757,7 +759,7 @@ describe("SQL conversation storage", () => {
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("committed") },
+          data: userMessageEvent("committed"),
           createdAtMs: 1_000,
         },
         {
@@ -942,7 +944,7 @@ WHERE conversation_id = $1 AND seq = 0
       const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("epoch0") },
+          data: userMessageEvent("epoch0"),
           createdAtMs: 1_000,
         },
       ]);
@@ -966,7 +968,7 @@ WHERE conversation_id = $1 AND seq = 0
             type: "compaction",
             modelId: "test/model",
             modelProfile: "standard",
-            replacementHistory: [{ message: userMessage("never") }],
+            replacementHistory: [{ item: userMessageEvent("never") }],
           },
         }),
       ).rejects.toThrow("epoch write failed");
@@ -1240,14 +1242,14 @@ INSERT INTO junior_conversation_events (
       // Event appends advance the clock too, and also never regress it.
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("newest") },
+          data: userMessageEvent("newest"),
           createdAtMs: 8_000,
         },
       ]);
       expect(await lastActivityMs()).toBe(8_000);
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("backdated") },
+          data: userMessageEvent("backdated"),
           createdAtMs: 3_000,
         },
       ]);
@@ -1269,7 +1271,7 @@ INSERT INTO junior_conversation_events (
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
         await events.append(conversationId, [
           {
-            data: { type: "agent_step", message: userMessage("hi") },
+            data: userMessageEvent("hi"),
             createdAtMs: 1_000,
           },
           {
@@ -1305,7 +1307,7 @@ INSERT INTO junior_conversation_events (
 
       await events.append(CONVERSATION_ID, [
         {
-          data: { type: "agent_step", message: userMessage("new history") },
+          data: userMessageEvent("new history"),
           createdAtMs: 6_000,
         },
         {

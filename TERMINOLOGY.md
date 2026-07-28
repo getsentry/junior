@@ -25,9 +25,9 @@ Canonical words used across Junior's code and documentation.
 - **Run**: one bounded attempt to advance a turn. A later run may resume the
   same turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a run.
-- **Agent step**: one replayable entry in agent history, stored as an
-  `agent_step` event. Tool calls belong to the assistant step that requested
-  them; each tool result is a separate step.
+- **Agent history item**: one replayable model input or output, stored as a
+  `user_message`, `assistant_message`, or `tool_result` event. Tool calls remain
+  ordered content inside the assistant message that requested them.
 - **History replacement**: an explicit compaction or handoff that supplies the
   agent history used by later turns. It is stored as the corresponding event,
   not as a generic context-start marker.
@@ -42,7 +42,7 @@ Canonical words used across Junior's code and documentation.
 - **Message update**: later delivery or hydration state for an existing
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent
-  steps. It is not the stored data itself.
+  history items. It is not the stored data itself.
 - **Session record**: the persisted read model for one resumable turn.
 - **Conversation execution**: mutable operational state for a conversation,
   such as mailbox state, worker lease, checkpoints, and activity status.
@@ -53,9 +53,11 @@ Canonical words used across Junior's code and documentation.
 
 ## Naming Guidance
 
-- Use `turn`, `run`, `slice`, and `step` only with the meanings above.
-- Use `message` for chat content and `agent_step` for replayable agent history;
-  do not use `model_item` or `model_message` as Junior-owned terms.
+- Use `turn`, `run`, and `slice` only with the meanings above.
+- Use `message` for platform chat content. Use `user_message`,
+  `assistant_message`, and `tool_result` for replayable agent history.
+- Use `agent history item` when referring to those three native event types as
+  a group; do not use `model_item` or `model_message`.
 - Use `turnId` for new identifiers representing a turn.
 - Use `reply` only for destination-visible messages; execution code should use
   `turn`, `run`, `result`, `outcome`, or `delivery` as appropriate.

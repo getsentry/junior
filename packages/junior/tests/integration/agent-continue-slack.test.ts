@@ -15,6 +15,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 
 const executeAgentRunMock = vi.fn();
 
@@ -53,6 +54,19 @@ function makeDiagnostics() {
     toolErrorCount: 0,
     toolResultCount: 0,
     usedPrimaryText: true,
+  };
+}
+
+function assistantPiMessage(text: string, timestamp: number) {
+  return {
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text }],
+    api: "openai-responses" as const,
+    provider: "openai",
+    model: "fake-agent-model",
+    usage: TEST_USAGE,
+    stopReason: "stop" as const,
+    timestamp,
   };
 }
 
@@ -1217,9 +1231,7 @@ describe("agent continuation Slack integration", () => {
             timestamp: 1,
           },
           {
-            role: "assistant",
-            content: [{ type: "text", text: "Final resumed answer" }],
-            timestamp: 2,
+            ...assistantPiMessage("Final resumed answer", 2),
           },
         ] as any,
         diagnostics: makeDiagnostics(),
@@ -1379,7 +1391,13 @@ describe("agent continuation Slack integration", () => {
         modelId: "test/model",
         modelProfile: "handoff",
         triggeringToolCallId: "recovered-handoff-call",
-        replacementHistory: [{ message: summaryMessage }],
+        replacementHistory: [
+          {
+            item: historyItemFromPiMessage(summaryMessage, {
+              authority: "context",
+            }),
+          },
+        ],
       },
     });
     // A prior recovery can park runtime context in the handoff epoch before
@@ -1387,12 +1405,10 @@ describe("agent continuation Slack integration", () => {
     await getConversationEventStore().append(conversationId, [
       {
         data: {
-          type: "agent_step",
-          message: {
-            role: "user",
-            content: [{ type: "text", text: previousRuntimeContext }],
-            timestamp: 1,
-          } as any,
+          type: "user_message",
+          content: [{ type: "text", text: previousRuntimeContext }],
+          timestamp: 1,
+          provenance: { authority: "context" },
         },
         createdAtMs: 1,
       },
@@ -1440,11 +1456,7 @@ describe("agent continuation Slack integration", () => {
         text: "Handoff recovery completed.",
         piMessages: [
           summaryMessage,
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "Handoff recovery completed." }],
-            timestamp: 6,
-          },
+          assistantPiMessage("Handoff recovery completed.", 6),
         ] as any,
         diagnostics: {
           ...makeDiagnostics(),

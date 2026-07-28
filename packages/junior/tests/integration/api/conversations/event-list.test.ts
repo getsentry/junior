@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import type { PiMessage } from "@/chat/pi/messages";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
   apiErrorSchema,
@@ -37,33 +36,30 @@ function message(messageId: string, createdAtMs: number) {
   };
 }
 
-function textAgentStep(createdAtMs: number, inputTokens = 0) {
+function assistantMessage(createdAtMs: number, inputTokens = 0) {
   return {
     data: {
-      type: "agent_step" as const,
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: "not a reporting event" }],
-        api: "responses",
-        provider: "openai",
-        model: "gpt-5",
-        stopReason: "stop",
-        timestamp: createdAtMs,
-        usage: {
-          input: inputTokens,
+      type: "assistant_message" as const,
+      content: [{ type: "text", text: "not a reporting event" }],
+      api: "responses",
+      provider: "openai",
+      model: "gpt-5",
+      stopReason: "stop",
+      timestamp: createdAtMs,
+      usage: {
+        input: inputTokens,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: inputTokens,
+        cost: {
+          input: inputTokens / 1_000,
           output: 0,
           cacheRead: 0,
           cacheWrite: 0,
-          totalTokens: inputTokens,
-          cost: {
-            input: inputTokens / 1_000,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: inputTokens / 1_000,
-          },
+          total: inputTokens / 1_000,
         },
-      } as PiMessage,
+      },
     },
     createdAtMs,
   };
@@ -79,7 +75,7 @@ describe("conversation event list API", () => {
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("message-1", 1),
-      textAgentStep(2),
+      assistantMessage(2),
       message("message-2", 3),
       message("message-3", 4),
       {
@@ -216,13 +212,12 @@ describe("conversation event list API", () => {
       },
       {
         data: {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "search-before-page",
-            content: [{ type: "text", text: "two matches" }],
-            isError: false,
-          } as PiMessage,
+          type: "tool_result",
+          toolCallId: "search-before-page",
+          toolName: "search",
+          content: [{ type: "text", text: "two matches" }],
+          isError: false,
+          timestamp: 3,
         },
         createdAtMs: 3,
       },
@@ -421,7 +416,7 @@ describe("conversation event list API", () => {
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("expired-message-1", 1),
-      textAgentStep(2, 5),
+      assistantMessage(2, 5),
       message("expired-message-2", 3),
     ]);
 

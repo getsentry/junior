@@ -35,6 +35,40 @@ import {
 } from "../fixtures/agent-runner";
 import { getConversationEventStore } from "@/chat/db";
 
+function userPiMessage(text: string, timestamp = 1): PiMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    timestamp,
+  } as PiMessage;
+}
+
+function assistantPiMessage(text: string, timestamp = 1): PiMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "fake-local-agent",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason: "stop",
+    timestamp,
+  } as PiMessage;
+}
+
 function successReply(
   text: string,
   options: Partial<
@@ -314,12 +348,7 @@ describe("local agent runner", () => {
             await deliverAssistantText(request, "uploaded");
             return completedAgentRun(
               successReply("uploaded", {
-                piMessages: [
-                  {
-                    role: "assistant",
-                    content: [{ type: "text", text: "uploaded" }],
-                  },
-                ] as PiMessage[],
+                piMessages: [assistantPiMessage("uploaded")],
               }),
             );
           },
@@ -587,12 +616,7 @@ describe("local agent runner", () => {
     const capture = vi.fn().mockReturnValue(eventId);
     const rawError = "raw-session-persistence-error-sentinel";
     const reply = successReply("delivered", {
-      piMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "delivered" }],
-        } as PiMessage,
-      ],
+      piMessages: [assistantPiMessage("delivered")],
     });
 
     await expect(
@@ -775,15 +799,9 @@ describe("local agent runner", () => {
               const context = flattenAgentRunRequestForTest(request);
 
               const piMessages = [
-                {
-                  role: "user",
-                  content: "capture this local turn",
-                },
-                {
-                  role: "assistant",
-                  content: "captured",
-                },
-              ] as PiMessage[];
+                userPiMessage("capture this local turn"),
+                assistantPiMessage("captured", 2),
+              ];
               await persistCompletedSessionForFakeReply(context, piMessages);
               await deliverAssistantText(request, "captured");
               return completedAgentRun(
@@ -997,10 +1015,7 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-four",
     });
     expect(conversationId).toBeDefined();
-    const projectedMessage = {
-      role: "user",
-      content: [{ type: "text", text: "projected history" }],
-    } as PiMessage;
+    const projectedMessage = userPiMessage("projected history");
     await commitMessages({
       conversationId: conversationId!,
       messages: [projectedMessage],
@@ -1036,15 +1051,9 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const generatedMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "hello" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "persisted pi output" }],
-      },
-    ] as PiMessage[];
+      userPiMessage("hello"),
+      assistantPiMessage("persisted pi output", 2),
+    ];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
       await deliverAssistantText(request, "persisted visible output");
       return completedAgentRun(
@@ -1099,15 +1108,9 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const generatedMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "hello" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "visible reply" }],
-      },
-    ] as PiMessage[];
+      userPiMessage("hello"),
+      assistantPiMessage("visible reply", 2),
+    ];
     const delivered: LocalAgentReply[] = [];
     let taskRuns = 0;
     setPlugins([
@@ -1177,19 +1180,10 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const projectedMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "projected question" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "projected answer" }],
-      },
-      {
-        role: "user",
-        content: [{ type: "text", text: "projected follow-up" }],
-      },
-    ] as PiMessage[];
+      userPiMessage("projected question"),
+      assistantPiMessage("projected answer", 2),
+      userPiMessage("projected follow-up", 3),
+    ];
     await commitMessages({
       conversationId: conversationId!,
       messages: projectedMessages,
