@@ -275,8 +275,11 @@ async function executeAgentRunInPrivacyContext(
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
+  let agent: Agent | undefined;
+  let spendLimitPiMessages: PiMessage[] | undefined;
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
+  let retryUsage: AgentTurnUsage | undefined;
   const configuredReasoningLevel =
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
@@ -579,7 +582,6 @@ async function executeAgentRunInPrivacyContext(
     const generatedFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
-    let agent: Agent | undefined;
     // Handoff becomes live only after its replacement epoch commits. This
     // pending value then drives the one-way model/context swap at Pi's boundary.
     let pendingHandoff:
@@ -611,14 +613,24 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    const enforceSpendLimit = (messages: PiMessage[]): void => {
+    const enforceSpendLimit = (
+      messages: PiMessage[],
+      latestUsage?: AgentTurnUsage,
+    ): void => {
+      const currentBoundaryUsage = usageSinceCurrentBoundary(messages);
+      spendLimitPiMessages = [...messages];
+      turnUsage = addAgentTurnUsage(
+        priorPhaseUsage,
+        retryUsage,
+        currentBoundaryUsage,
+      );
       enforceTurnSpendLimit({
         maxSpendUsd: botConfig.maxSpendUsd,
-        usage: addAgentTurnUsage(
-          conversationUsage,
-          priorPhaseUsage,
-          usageSinceCurrentBoundary(messages),
-        ),
+        usage: latestUsage,
+      });
+      enforceTurnSpendLimit({
+        maxSpendUsd: botConfig.maxSpendUsd,
+        usage: addAgentTurnUsage(conversationUsage, turnUsage),
       });
     };
     /** Commit the durable handoff epoch before staging its in-memory model swap. */
@@ -967,7 +979,11 @@ async function executeAgentRunInPrivacyContext(
       streamFn: createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
-        enforceSpendLimit(currentAgentMessages());
+        const usage = extractGenAiUsageSummary(assistantMessage);
+        enforceSpendLimit(
+          currentAgentMessages(),
+          hasAgentTurnUsage(usage) ? usage : undefined,
+        );
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -1042,14 +1058,12 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return;
         }
-        const containsHandoff = event.message.content.some(
-          (part) => part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
-        );
-        if (containsHandoff) {
-          return;
-        }
         try {
-          enforceSpendLimit(currentAgentMessages());
+          const usage = extractGenAiUsageSummary(event.message);
+          enforceSpendLimit(
+            currentAgentMessages(),
+            hasAgentTurnUsage(usage) ? usage : undefined,
+          );
         } catch (error) {
           if (!isTurnSpendLimitError(error)) {
             throw error;
@@ -1260,7 +1274,6 @@ async function executeAgentRunInPrivacyContext(
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
-          let retryUsage: AgentTurnUsage | undefined;
           try {
             for (let attempt = 0; ; attempt += 1) {
               await runAgentStep(run);
@@ -1286,6 +1299,9 @@ async function executeAgentRunInPrivacyContext(
               const currentUsage = hasAgentTurnUsage(usageSummary)
                 ? usageSummary
                 : undefined;
+              if (lastAssistant?.stopReason === "error") {
+                enforceSpendLimit(currentAgentMessages(), currentUsage);
+              }
               const currentPhaseUsage = addAgentTurnUsage(
                 retryUsage,
                 currentUsage,
@@ -1415,6 +1431,7 @@ async function executeAgentRunInPrivacyContext(
         result: {
           text: TURN_SPEND_LIMIT_RESPONSE,
           sandboxRef: lastKnownSandboxRef,
+          piMessages: spendLimitPiMessages,
           diagnostics: {
             outcome: "success",
             modelId: activeModelId,
@@ -1429,6 +1446,7 @@ async function executeAgentRunInPrivacyContext(
             toolErrorCount: 0,
             usedPrimaryText: true,
             durationMs: Date.now() - replyStartedAtMs,
+            usage: turnUsage,
           },
         },
       };
