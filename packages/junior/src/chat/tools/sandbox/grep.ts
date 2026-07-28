@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
   MAX_TEXT_CHARS,
   RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
@@ -306,7 +307,6 @@ async function grepFilesWithRipgrep(params: {
     "--json",
     "--line-number",
     "--hidden",
-    "--sort=path",
     "--max-count",
     String(params.limit + 1),
   ];
@@ -331,6 +331,7 @@ async function grepFilesWithRipgrep(params: {
     cmd: "rg",
     args,
     cwd: location.cwd,
+    timeoutMs: DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
   });
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     const detail =

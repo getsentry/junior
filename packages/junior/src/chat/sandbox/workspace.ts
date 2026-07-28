@@ -18,6 +18,7 @@ export interface SandboxCommandInput {
   env?: Record<string, string>;
   signal?: AbortSignal;
   sudo?: boolean;
+  timeoutMs?: number;
 }
 
 export interface SandboxFileStat {

@@ -62,7 +62,7 @@ describe("sandbox search telemetry", () => {
 
     expect(onTelemetry).toHaveBeenCalledWith({
       emittedLineCount: 1,
-      limit: 1000,
+      limit: 100,
       limitReached: false,
       parsedRecordCount: 1,
       rawOutputBytes: 11,

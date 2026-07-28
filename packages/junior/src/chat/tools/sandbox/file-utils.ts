@@ -29,6 +29,7 @@ export const RIPGREP_EXCLUDED_GLOBS = [
   "!**/.git/**",
   "!**/node_modules/**",
 ] as const;
+export const DEFAULT_SEARCH_COMMAND_TIMEOUT_MS = 30_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 
 export type TextSearchResultDetails =

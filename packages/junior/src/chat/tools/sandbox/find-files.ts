@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
   MAX_TEXT_CHARS,
   RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
@@ -22,8 +23,9 @@ import {
   type JuniorToolResultEnvelope,
 } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const DEFAULT_FIND_LIMIT = 1000;
+const DEFAULT_FIND_LIMIT = 100;
 
 interface FindFilesSuccessResult {
   content: JuniorToolResultEnvelope["content"];
@@ -143,26 +145,46 @@ async function findFilesWithRipgrep(params: {
   }
 
   const location = getRipgrepSearchLocation(params.root, rootIsDirectory);
-  const args = [
+  const ripgrepArgs = [
     "--files",
     "--null",
     "--hidden",
-    "--sort=path",
     "--glob",
     params.pattern,
   ];
   for (const excludedGlob of RIPGREP_EXCLUDED_GLOBS) {
-    args.push("--glob", excludedGlob);
+    ripgrepArgs.push("--glob", excludedGlob);
   }
-  args.push("--", location.target);
+  ripgrepArgs.push("--", location.target);
   const result = await params.runCommand({
-    cmd: "rg",
-    args,
+    cmd: "bash",
+    args: [
+      "-c",
+      [
+        `rg "$@" | head -z -n ${params.limit + 1}`,
+        'statuses=("${PIPESTATUS[@]}")',
+        "if (( statuses[1] != 0 )); then",
+        '  exit "${statuses[1]}"',
+        "fi",
+        "if (( statuses[0] == 0 || statuses[0] == 1 || statuses[0] == 141 )); then",
+        "  exit 0",
+        "fi",
+        'exit "${statuses[0]}"',
+      ].join("\n"),
+      "find-files",
+      ...ripgrepArgs,
+    ],
     cwd: location.cwd,
+    timeoutMs: DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
   });
-  if (result.exitCode !== 0 && result.exitCode !== 1) {
+  if (result.exitCode !== 0) {
     const detail =
       result.stderr.trim() || result.stdout.trim() || "command failed";
+    if (/error parsing glob|invalid glob/i.test(detail)) {
+      throw new ToolInputError(`Invalid glob pattern: ${params.pattern}`, {
+        cause: new Error(detail),
+      });
+    }
     throw new Error(`ripgrep file search failed: ${detail}`);
   }
 
@@ -256,7 +278,7 @@ export function createFindFilesTool() {
         .number()
         .int()
         .min(1)
-        .describe("Maximum number of file paths to return. Defaults to 1000.")
+        .describe("Maximum number of file paths to return. Defaults to 100.")
         .optional(),
     }),
     outputSchema: juniorToolResultSchema,

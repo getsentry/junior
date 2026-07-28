@@ -303,31 +303,34 @@ describe("sandbox file tools", () => {
 
     const result = await findFiles({
       fs: memory.fs,
+      limit: 20,
       path: "src",
       pattern: "nested/*.ts",
       runCommand,
     });
 
-    expect(calls).toEqual([
-      {
-        cmd: "rg",
-        args: [
-          "--files",
-          "--null",
-          "--hidden",
-          "--sort=path",
-          "--glob",
-          "nested/*.ts",
-          "--glob",
-          "!**/.git/**",
-          "--glob",
-          "!**/node_modules/**",
-          "--",
-          ".",
-        ],
-        cwd: workspacePath("src"),
-      },
-    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      cmd: "bash",
+      args: [
+        "-c",
+        expect.stringContaining('rg "$@" | head -z -n 21'),
+        "find-files",
+        "--files",
+        "--null",
+        "--hidden",
+        "--glob",
+        "nested/*.ts",
+        "--glob",
+        "!**/.git/**",
+        "--glob",
+        "!**/node_modules/**",
+        "--",
+        ".",
+      ],
+      cwd: workspacePath("src"),
+      timeoutMs: 30_000,
+    });
     expect(result.details).toMatchObject({
       ok: true,
       data: {
@@ -377,8 +380,11 @@ describe("sandbox file tools", () => {
     expect(calls[0]).toMatchObject({
       cmd: "rg",
       cwd: workspacePath("src"),
+      timeoutMs: 30_000,
     });
     const args = calls[0]?.args ?? [];
+    expect(args).toContain("--max-count");
+    expect(args).toContain("101");
     expect(args).toContain("--fixed-strings");
     expect(args).toContain("--max-count");
     expect(args).toContain("101");
@@ -433,6 +439,25 @@ describe("sandbox file tools", () => {
         },
       }),
     ).rejects.toBe(lifecycleFailure);
+  });
+
+  it("does not accept findFiles pipeline failures as no-match results", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "content\n",
+    });
+
+    await expect(
+      findFiles({
+        fs: memory.fs,
+        path: "src",
+        pattern: "*.ts",
+        runCommand: async () => ({
+          exitCode: 1,
+          stderr: "head failed",
+          stdout: "",
+        }),
+      }),
+    ).rejects.toThrow("ripgrep file search failed: head failed");
   });
 
   it("prepares grep string booleans like the previous TypeBox schema", () => {
