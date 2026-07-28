@@ -187,6 +187,30 @@ export function instructionTextForProjection(text: string): string {
   return unwrapCurrentInstruction(withoutContext) ?? withoutContext;
 }
 
+/** Return the projected instruction text carried by one user message. */
+export function getUserMessageInstructionText(message: PiMessage): string {
+  if (getPiMessageRole(message) !== "user") {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((part) =>
+              part &&
+              typeof part === "object" &&
+              (part as { type?: unknown }).type === "text" &&
+              typeof (part as { text?: unknown }).text === "string"
+                ? [(part as { text: string }).text]
+                : [],
+            )
+            .join("\n")
+        : "";
+  return instructionTextForProjection(text).trim();
+}
+
 /** Remove volatile runtime context before reusing messages as history. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
   return messages.flatMap((message) => {

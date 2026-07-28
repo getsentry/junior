@@ -1,7 +1,7 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   extractAssistantText,
-  instructionTextForProjection,
+  getUserMessageInstructionText,
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import type { ToolActionEvidence } from "@/chat/tool-support/action-review";
@@ -10,26 +10,6 @@ const MAX_EVIDENCE_ENTRIES = 12;
 const MAX_ENTRY_CHARS = 2_000;
 const MAX_TOTAL_CHARS = 12_000;
 const TRUNCATION_MARKER = "\n[truncated]";
-
-function textParts(message: PiMessage): string {
-  const content = (message as { content?: unknown }).content;
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .flatMap((part) =>
-      part &&
-      typeof part === "object" &&
-      (part as { type?: unknown }).type === "text" &&
-      typeof (part as { text?: unknown }).text === "string"
-        ? [(part as { text: string }).text]
-        : [],
-    )
-    .join("\n");
-}
 
 function boundedText(text: string, remaining: number): string {
   const limit = Math.min(MAX_ENTRY_CHARS, remaining);
@@ -54,7 +34,7 @@ export function buildToolActionEvidence(
   const candidates: ToolActionEvidence["entries"] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const text = instructionTextForProjection(textParts(message)).trim();
+      const text = getUserMessageInstructionText(message);
       if (text) {
         candidates.push({ role: "user", text });
       }

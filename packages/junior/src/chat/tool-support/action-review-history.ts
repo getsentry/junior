@@ -5,6 +5,7 @@ import {
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
+import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import {
   toolActionRejectionKey,
   type ToolActionRejection,
@@ -149,7 +150,8 @@ export function restoreToolActionReviewState(
         return (
           candidate.role === "user" &&
           candidateProvenance?.authority === "instruction" &&
-          sameActorIdentity(candidateProvenance.actor, actor)
+          sameActorIdentity(candidateProvenance.actor, actor) &&
+          getUserMessageInstructionText(candidate).length > 0
         );
       });
     if (!hasLaterAuthoritativeIntent) {

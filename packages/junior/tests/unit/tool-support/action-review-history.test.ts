@@ -209,4 +209,35 @@ describe("action review history", () => {
     expect(otherActor.rejectedActions).toHaveLength(1);
     expect(sameActor.rejectedActions).toEqual([]);
   });
+
+  it("keeps an exact rejection across an empty same-actor follow-up", () => {
+    const messages = transcript(
+      {
+        actionKey: "d".repeat(64),
+        decision: "ask",
+        reason: "Confirm the schedule.",
+        version: 1,
+      },
+      "Action requires user confirmation: Confirm the schedule.",
+    );
+    messages.push({
+      role: "user",
+      content: [{ type: "image", data: "attachment" }],
+    } as PiMessage);
+
+    const state = restoreToolActionReviewState(
+      messages,
+      [
+        ...PROVENANCE,
+        {
+          authority: "instruction",
+          actor: ACTOR,
+        },
+      ],
+      ACTOR,
+      "Schedule this every weekday.",
+    );
+
+    expect(state.rejectedActions).toHaveLength(1);
+  });
 });

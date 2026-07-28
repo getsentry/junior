@@ -65,7 +65,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   extractAssistantText,
-  instructionTextForProjection,
+  getUserMessageInstructionText,
   isAssistantMessage,
   retainRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -140,29 +140,6 @@ import {
 } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-function userInstructionText(message: PiMessage): string {
-  if (message.role !== "user") {
-    return "";
-  }
-  const content = (message as { content?: unknown }).content;
-  const text =
-    typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content
-            .flatMap((part) =>
-              part &&
-              typeof part === "object" &&
-              (part as { type?: unknown }).type === "text" &&
-              typeof (part as { text?: unknown }).text === "string"
-                ? [(part as { text: string }).text]
-                : [],
-            )
-            .join("\n")
-        : "";
-  return instructionTextForProjection(text).trim();
-}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -428,7 +405,7 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return [];
         }
-        const text = userInstructionText(message);
+        const text = getUserMessageInstructionText(message);
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
