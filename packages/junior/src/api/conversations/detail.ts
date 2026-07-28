@@ -51,7 +51,7 @@ function projectConversationDetail(args: {
       ...(args.locationId ? { locationId: args.locationId } : {}),
       usage: args.usage,
     }),
-    annotations: args.annotations,
+    annotations: canExposePayload ? args.annotations : [],
     events: args.events,
     ...(args.previousSeq !== undefined
       ? {

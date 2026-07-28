@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
+  type ConversationAnnotationInput,
   EgressAuthRequired,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
@@ -288,6 +289,9 @@ async function grantForEgress(input: {
 
 function githubToolsContext(input?: {
   actor?: TestActor;
+  annotationUpsert?: (
+    annotation: ConversationAnnotationInput,
+  ) => Promise<void> | void;
   conversationId?: string;
   egressFetch?: (request: {
     operation: string;
@@ -297,6 +301,7 @@ function githubToolsContext(input?: {
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
+  const annotations: ConversationAnnotationInput[] = [];
   const state = new Map<string, unknown>();
   const requests: Array<{
     operation: string;
@@ -308,6 +313,12 @@ function githubToolsContext(input?: {
     log: pluginLog,
     plugin: { name: "github" },
     ...(input?.actor ? { actor: input.actor } : {}),
+    annotations: {
+      async upsert(annotation: ConversationAnnotationInput) {
+        await input?.annotationUpsert?.(annotation);
+        annotations.push(structuredClone(annotation));
+      },
+    },
     conversationId,
     destination: { platform: "local" as const, conversationId },
     source: {
@@ -364,6 +375,9 @@ function githubToolsContext(input?: {
     },
     egressRequests() {
       return requests;
+    },
+    annotationInputs() {
+      return annotations;
     },
     setState(key: string, value: unknown) {
       state.set(key, cloneStateValue(value));
@@ -1098,6 +1112,46 @@ Conversation: \`local:test:old-conversation\`
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
+    expect(ctx.annotationInputs()).toEqual([
+      {
+        kind: "resource_link",
+        key: "getsentry/junior#691",
+        label: "getsentry/junior #691: Typed PR",
+        status: "draft",
+        url: "https://github.com/getsentry/junior/pull/691",
+      },
+    ]);
+  });
+
+  it("bounds pull request annotation labels for maximum-length titles", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 691,
+            html_url: "https://github.com/getsentry/junior/pull/691",
+          }),
+          { status: 201 },
+        ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "x".repeat(256),
+          head: "long-title",
+          base: "main",
+        },
+        { toolCallId: "call-create-pull-request-long-title" },
+      ),
+    ).resolves.toMatchObject({ number: 691 });
+
+    expect(ctx.annotationInputs()[0]?.label).toHaveLength(256);
+    expect(ctx.annotationInputs()[0]?.label).toMatch(
+      /^getsentry\/junior #691: x+$/,
+    );
   });
 
   it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {

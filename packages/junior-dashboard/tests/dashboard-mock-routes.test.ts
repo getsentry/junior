@@ -224,6 +224,16 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     ).toContain("webSearch");
 
+    const dashboardQa = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    expect(dashboardQa.annotations).toEqual([
+      expect.objectContaining({
+        kind: "resource_link",
+        key: "getsentry/junior#1081",
+        plugin: "github",
+        status: "open",
+      }),
+    ]);
+
     const failed = await readDetail("slack:CQA777:1770014400.000500");
     expect(failed.events.at(-1)?.data).toMatchObject({
       type: "turn_lifecycle",

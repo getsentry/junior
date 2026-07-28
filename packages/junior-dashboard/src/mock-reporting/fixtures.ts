@@ -163,6 +163,18 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -8 * 60_000),
     lastProgressAt: iso(nowMs, -8 * 60_000),
     actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    annotations: [
+      {
+        kind: "resource_link",
+        key: "getsentry/junior#1081",
+        label: "getsentry/junior #1081: Show conversation pull requests",
+        plugin: "github",
+        status: "open",
+        url: "https://github.com/getsentry/junior/pull/1081",
+        createdAt: startedAt,
+        updatedAt: iso(Date.parse(startedAt), 52_000),
+      },
+    ],
     cumulativeDurationMs: 98_000,
     events: [
       reportEvent(0, startedAt, {
@@ -694,6 +706,7 @@ function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
   const {
+    annotations: _annotations,
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,

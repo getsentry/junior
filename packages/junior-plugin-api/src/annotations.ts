@@ -1,11 +1,24 @@
 import { z } from "zod";
 
+function usesHttpProtocol(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export const resourceLinkAnnotationSchema = z
   .object({
     kind: z.literal("resource_link"),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
-    url: z.string().url().max(2_048),
+    url: z
+      .string()
+      .url()
+      .max(2_048)
+      .refine(usesHttpProtocol, "URL must use HTTP or HTTPS."),
     description: z.string().trim().min(1).max(512).optional(),
     status: z.enum(["open", "draft", "closed", "merged", "warning"]).optional(),
   })

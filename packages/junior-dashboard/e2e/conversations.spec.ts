@@ -323,6 +323,11 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "Open pull request getsentry/junior #1081: Show conversation pull requests",
+    }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/junior/pull/1081");
   const subagentRow = page
     .getByRole("button", { name: "Open advisor transcript" })
     .first();

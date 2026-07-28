@@ -3,9 +3,12 @@ import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import {
   closeDb,
+  getDb,
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { readConversationDetail } from "@/api/conversations/detail";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -48,5 +51,63 @@ describe("conversation detail API", () => {
       await refreshedResponse.json(),
     );
     expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
+  });
+
+  it("only returns annotations to viewers with private-content access", async () => {
+    const conversationId = "slack:C-private:annotated-detail";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "Participant@Example.com",
+        platform: "slack",
+        slackUserId: "U-participant",
+        teamId: "T-private",
+      },
+      conversationId,
+      destination: {
+        channelId: "C-private",
+        platform: "slack",
+        teamId: "T-private",
+      },
+      nowMs: 1,
+      source: "slack",
+      title: "Private annotated conversation",
+      visibility: "private",
+    });
+    const annotations = createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    });
+    await annotations.upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1081",
+      label: "getsentry/junior #1081",
+      status: "open",
+      url: "https://github.com/getsentry/junior/pull/1081",
+    });
+
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      {
+        annotations: [],
+        eventHistory: { status: "redacted" },
+      },
+    );
+    await expect(
+      readConversationDetail(conversationId, {
+        verifiedViewerEmail: "participant@example.com",
+      }),
+    ).resolves.toMatchObject({
+      annotations: [
+        {
+          key: "getsentry/junior#1081",
+          kind: "resource_link",
+          label: "getsentry/junior #1081",
+          plugin: "github",
+          status: "open",
+          url: "https://github.com/getsentry/junior/pull/1081",
+        },
+      ],
+      eventHistory: { status: "available" },
+    });
   });
 });
