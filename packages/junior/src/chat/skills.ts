@@ -235,7 +235,6 @@ export interface Skill extends SkillMetadata {
 
 export interface SkillInvocation {
   skillName: string;
-  args: string;
 }
 
 export interface DiscoverSkillsOptions {
@@ -427,7 +426,7 @@ export async function discoverSkills(
   return sorted;
 }
 
-/** Extract an explicit skill invocation (name + args) from a user message. */
+/** Extract an explicit skill invocation from a user message. */
 export function parseSkillInvocation(
   messageText: string,
   availableSkills: SkillMetadata[],
@@ -435,20 +434,16 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const referenceMatch =
-    /(?:^|\s)(?:\/|\$)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(
-      trimmed,
-    );
+  const referenceMatch = /(?:^|\s)(?:\/|\$)([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(
+    trimmed,
+  );
   if (referenceMatch) {
     const skillName = referenceMatch[1].toLowerCase();
     if (!availableSkills.some((skill) => skill.name === skillName)) {
       return null;
     }
 
-    return {
-      skillName,
-      args: (referenceMatch[2] ?? "").trim(),
-    };
+    return { skillName };
   }
 
   const namedSkill = availableSkills.find((skill) => {
@@ -472,7 +467,6 @@ export function parseSkillInvocation(
 
   return {
     skillName: namedSkill.name,
-    args: trimmed,
   };
 }
 

@@ -96,7 +96,6 @@ describe("skills", () => {
       ),
     ).toEqual({
       skillName: "weather-lookup",
-      args: "Use the weather-lookup skill for San Francisco.",
     });
   });
 
@@ -120,7 +119,6 @@ describe("skills", () => {
       parseSkillInvocation("hey /brief github: octocat", stubSkills),
     ).toEqual({
       skillName: "brief",
-      args: "github: octocat",
     });
   });
 
@@ -129,7 +127,6 @@ describe("skills", () => {
       parseSkillInvocation("hey $brief github: octocat", stubSkills),
     ).toEqual({
       skillName: "brief",
-      args: "github: octocat",
     });
   });
 
@@ -138,7 +135,6 @@ describe("skills", () => {
       parseSkillInvocation("$weather-lookup San Francisco", stubSkills),
     ).toEqual({
       skillName: "weather-lookup",
-      args: "San Francisco",
     });
   });
 
