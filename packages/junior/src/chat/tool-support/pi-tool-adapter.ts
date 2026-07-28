@@ -157,6 +157,9 @@ export function createPiAgentTools(
           toolName,
           input: sandboxInput,
           ...(signal ? { signal } : {}),
+          ...(toolName === "grep" || toolName === "findFiles"
+            ? { setToolCallSpanAttributes: setSpanAttributes }
+            : {}),
         })
       : await toolDef.execute(toolInput, {
           experimental_context: sandbox,

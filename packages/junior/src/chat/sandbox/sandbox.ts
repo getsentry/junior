@@ -6,6 +6,7 @@ import {
   setSpanStatus,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import {
   buildSandboxEgressNetworkPolicy,
@@ -48,6 +49,7 @@ import {
   positiveInteger,
   resolveWorkspacePath,
   type SandboxCommandRunner,
+  type SandboxSearchTelemetry,
 } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
@@ -63,6 +65,8 @@ export interface SandboxToolCall {
   toolName: string;
   input: unknown;
   signal?: AbortSignal;
+  /** Add safe sandbox measurements to the caller-owned tool span. */
+  setToolCallSpanAttributes?: SetSpanAttributes;
 }
 
 export interface SandboxTools {
@@ -92,6 +96,7 @@ export interface SandboxOptions {
 
 interface SandboxToolCallContext {
   readonly signal?: AbortSignal;
+  readonly setToolCallSpanAttributes?: SetSpanAttributes;
   fileSystem(): Promise<SandboxFileSystem>;
   commandRunner(): Promise<SandboxCommandRunner>;
 }
@@ -213,12 +218,14 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   });
   const createToolCallContext = (
     signal?: AbortSignal,
+    setToolCallSpanAttributes?: SetSpanAttributes,
   ): SandboxToolCallContext => {
     let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
     let commandRunnerPromise: Promise<SandboxCommandRunner> | undefined;
 
     return {
       signal,
+      setToolCallSpanAttributes,
       fileSystem() {
         signal?.throwIfAborted();
         return (fileSystemPromise ??= runtime.tools().then(({ fs }) => {
@@ -246,7 +253,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>,
+    callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
   // Network-policy header transforms need the current tool span's trace headers.
@@ -254,12 +261,42 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>,
+    callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   ): Promise<T> =>
-    withSandboxSpan(name, op, attributes, async () => {
+    withSandboxSpan(name, op, attributes, async (setSpanAttributes) => {
       await runtime.refreshNetworkPolicy(getTracePropagationHeaders());
-      return await callback();
+      return await callback(setSpanAttributes);
     });
+
+  const searchTelemetryAttributes = (
+    telemetry: SandboxSearchTelemetry,
+  ): Record<string, number | boolean> => ({
+    "app.sandbox.search.raw_output_bytes": telemetry.rawOutputBytes,
+    "app.sandbox.search.parsed_records": telemetry.parsedRecordCount,
+    "app.sandbox.search.result_count": telemetry.resultCount,
+    "app.sandbox.search.emitted_lines": telemetry.emittedLineCount,
+    "app.sandbox.search.result_bytes": telemetry.resultBytes,
+    "app.sandbox.search.limit": telemetry.limit,
+    "app.sandbox.search.limit_reached": telemetry.limitReached,
+  });
+
+  const recordSearchTelemetry = (
+    telemetry: SandboxSearchTelemetry,
+    setSearchSpanAttributes: SetSpanAttributes,
+    setToolCallSpanAttributes?: SetSpanAttributes,
+  ): void => {
+    const attributes = searchTelemetryAttributes(telemetry);
+    for (const setAttributes of [
+      setSearchSpanAttributes,
+      setToolCallSpanAttributes,
+    ]) {
+      try {
+        setAttributes?.(attributes);
+      } catch {
+        // Search telemetry is a best-effort observer.
+      }
+    }
+  };
 
   const logSandboxBootRequest = (
     trigger: string,
@@ -555,10 +592,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       {
         "app.sandbox.pattern.length": pattern.length,
       },
-      async () => {
+      async (setSearchSpanAttributes) => {
         const response = await grepFiles({
           fs: fileSystem,
           runCommand: await context.commandRunner(),
+          onTelemetry: (telemetry) =>
+            recordSearchTelemetry(
+              telemetry,
+              setSearchSpanAttributes,
+              context.setToolCallSpanAttributes,
+            ),
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
@@ -597,10 +640,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       {
         "app.sandbox.pattern.length": pattern.length,
       },
-      async () => {
+      async (setSearchSpanAttributes) => {
         const response = await findFiles({
           fs: fileSystem,
           runCommand: await context.commandRunner(),
+          onTelemetry: (telemetry) =>
+            recordSearchTelemetry(
+              telemetry,
+              setSearchSpanAttributes,
+              context.setToolCallSpanAttributes,
+            ),
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(limit ? { limit } : {}),
@@ -640,7 +689,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const execute = async <T>(params: SandboxToolCall): Promise<T> => {
     const rawInput = (params.input ?? {}) as Record<string, unknown>;
-    const context = createToolCallContext(params.signal);
+    const context = createToolCallContext(
+      params.signal,
+      params.setToolCallSpanAttributes,
+    );
     const bashCommand =
       params.toolName === "bash"
         ? String(rawInput.command ?? "").trim()

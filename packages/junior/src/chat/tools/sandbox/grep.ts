@@ -12,6 +12,7 @@ import {
   truncateText,
   type SandboxCommandRunner,
   type SandboxFileSystem,
+  type SandboxSearchTelemetry,
   type TextSearchResultDetails,
   type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
@@ -91,6 +92,7 @@ export async function grepFiles(params: {
   ignoreCase?: boolean;
   limit?: unknown;
   literal?: boolean;
+  onTelemetry?: (telemetry: SandboxSearchTelemetry) => void;
   path?: string;
   pattern: string;
   runCommand?: SandboxCommandRunner;
@@ -110,6 +112,7 @@ export async function grepFiles(params: {
       ignoreCase: params.ignoreCase,
       limit,
       literal: params.literal,
+      onTelemetry: params.onTelemetry,
       path: params.path,
       pattern: params.pattern,
       root,
@@ -279,6 +282,7 @@ async function grepFilesWithRipgrep(params: {
   ignoreCase?: boolean;
   limit: number;
   literal?: boolean;
+  onTelemetry?: (telemetry: SandboxSearchTelemetry) => void;
   path?: string;
   pattern: string;
   root: string;
@@ -298,7 +302,14 @@ async function grepFilesWithRipgrep(params: {
   }
 
   const location = getRipgrepSearchLocation(params.root, rootIsDirectory);
-  const args = ["--json", "--line-number", "--hidden", "--sort=path"];
+  const args = [
+    "--json",
+    "--line-number",
+    "--hidden",
+    "--sort=path",
+    "--max-count",
+    String(params.limit + 1),
+  ];
   if (params.ignoreCase) {
     args.push("--ignore-case");
   }
@@ -338,6 +349,7 @@ async function grepFilesWithRipgrep(params: {
   >();
   const pathOrder: string[] = [];
   let totalMatches = 0;
+  let parsedRecordCount = 0;
   for (const rawLine of normalizeToLf(result.stdout).split("\n")) {
     if (!rawLine) {
       continue;
@@ -348,6 +360,7 @@ async function grepFilesWithRipgrep(params: {
     } catch (error) {
       throw new Error("ripgrep returned invalid JSON output", { cause: error });
     }
+    parsedRecordCount += 1;
     if (record.type !== "match" && record.type !== "context") {
       continue;
     }
@@ -436,7 +449,7 @@ async function grepFilesWithRipgrep(params: {
     notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
   }
 
-  return makeStructuredToolResult({
+  const response = makeStructuredToolResult({
     ok: true,
     status: "success",
     target: params.path ?? ".",
@@ -458,6 +471,21 @@ async function grepFilesWithRipgrep(params: {
     ...(matchLimitReached ? { match_limit_reached: params.limit } : {}),
     ...(lineTruncated ? { line_truncated: true } : {}),
   });
+  params.onTelemetry?.({
+    emittedLineCount: output.length,
+    limit: params.limit,
+    limitReached: matchLimitReached,
+    parsedRecordCount,
+    rawOutputBytes: Buffer.byteLength(result.stdout, "utf8"),
+    resultBytes: response.content.reduce(
+      (total, item) =>
+        total +
+        (item.type === "text" ? Buffer.byteLength(item.text, "utf8") : 0),
+      0,
+    ),
+    resultCount: matchCount,
+  });
+  return response;
 }
 
 /** Create the sandbox grep tool definition exposed to the agent. */

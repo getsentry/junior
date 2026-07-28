@@ -11,6 +11,7 @@ import {
   truncateText,
   type SandboxCommandRunner,
   type SandboxFileSystem,
+  type SandboxSearchTelemetry,
   type TextSearchResultDetails,
   type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
@@ -43,6 +44,7 @@ type FindFilesResult = FindFilesSuccessResult | TextSearchToolResult;
 export async function findFiles(params: {
   fs: SandboxFileSystem;
   limit?: unknown;
+  onTelemetry?: (telemetry: SandboxSearchTelemetry) => void;
   path?: string;
   pattern: string;
   runCommand?: SandboxCommandRunner;
@@ -57,6 +59,7 @@ export async function findFiles(params: {
     return await findFilesWithRipgrep({
       fs: params.fs,
       limit,
+      onTelemetry: params.onTelemetry,
       path: params.path,
       pattern: params.pattern,
       root,
@@ -120,6 +123,7 @@ export async function findFiles(params: {
 async function findFilesWithRipgrep(params: {
   fs: SandboxFileSystem;
   limit: number;
+  onTelemetry?: (telemetry: SandboxSearchTelemetry) => void;
   path?: string;
   pattern: string;
   root: string;
@@ -194,7 +198,7 @@ async function findFilesWithRipgrep(params: {
       ? `${bounded.content}\n\n[${notices.join(" ")}]`
       : bounded.content;
 
-  return makeStructuredToolResult(
+  const response = makeStructuredToolResult(
     {
       ok: true,
       status: "success",
@@ -211,6 +215,21 @@ async function findFilesWithRipgrep(params: {
     },
     { content: [{ type: "text", text }] },
   ) as FindFilesResult;
+  params.onTelemetry?.({
+    emittedLineCount: relativePaths.length,
+    limit: params.limit,
+    limitReached,
+    parsedRecordCount: allPaths.length,
+    rawOutputBytes: Buffer.byteLength(result.stdout, "utf8"),
+    resultBytes: response.content.reduce(
+      (total, item) =>
+        total +
+        (item.type === "text" ? Buffer.byteLength(item.text, "utf8") : 0),
+      0,
+    ),
+    resultCount: relativePaths.length,
+  });
+  return response;
 }
 
 /** Create the sandbox file discovery tool definition exposed to the agent. */

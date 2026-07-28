@@ -76,6 +76,14 @@ fields=timestamp,trace,span.description,span.duration,gen_ai.conversation.id,err
 sort=-timestamp
 ```
 
+Search tool volume, truncation, and raw output size.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
+fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
+sort=-timestamp
+```
+
 Slack delivery failures after the agent turn ran.
 
 ```text
@@ -154,7 +162,11 @@ Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 
 Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.call.result`, `mcp.method.name`,
 `process.executable.name`, `process.exit.code`, `app.sandbox.source`,
-`app.sandbox.snapshot.resolve_outcome`
+`app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
+`app.sandbox.search.parsed_records`,
+`app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
+`app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
+`app.sandbox.search.limit_reached`
 
 ### Auth And Resume
 

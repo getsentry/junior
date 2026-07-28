@@ -13,6 +13,17 @@ export type SandboxCommandRunner = (
   input: SandboxCommandInput,
 ) => Promise<SandboxCommandResult>;
 
+/** Safe measurements produced by one sandbox-backed search operation. */
+export interface SandboxSearchTelemetry {
+  emittedLineCount: number;
+  limit: number;
+  limitReached: boolean;
+  parsedRecordCount: number;
+  rawOutputBytes: number;
+  resultCount: number;
+  resultBytes: number;
+}
+
 export const MAX_TEXT_CHARS = 60_000;
 export const RIPGREP_EXCLUDED_GLOBS = [
   "!**/.git/**",

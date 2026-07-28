@@ -380,6 +380,8 @@ describe("sandbox file tools", () => {
     });
     const args = calls[0]?.args ?? [];
     expect(args).toContain("--fixed-strings");
+    expect(args).toContain("--max-count");
+    expect(args).toContain("101");
     expect(args).toContain("nested/*.ts");
     expect(args).toContain("needle'; exit 9; '");
     expect(args.indexOf("nested/*.ts")).toBeLessThan(

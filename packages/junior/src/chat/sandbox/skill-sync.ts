@@ -18,6 +18,8 @@ interface SkillSyncFile {
   content: Buffer;
 }
 
+const DIRECTORY_CREATE_CONCURRENCY = 8;
+
 function toPosixRelative(base: string, absolute: string): string {
   return path.relative(base, absolute).split(path.sep).join("/");
 }
@@ -117,6 +119,19 @@ function collectDirectories(
         directory.startsWith(`${workspaceRoot}/`),
     )
     .sort((a, b) => a.length - b.length);
+}
+
+function groupDirectoriesByDepth(directories: string[]): string[][] {
+  const groups = new Map<number, string[]>();
+  for (const directory of directories) {
+    const depth = directory.split("/").filter(Boolean).length;
+    const group = groups.get(depth) ?? [];
+    group.push(directory);
+    groups.set(depth, group);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, group]) => group);
 }
 
 /** Resolve a virtual sandbox skill path back to the host filesystem when no sandbox exists yet. */
@@ -237,13 +252,28 @@ export async function syncSkillsToSandbox(params: {
         },
         async () => {
           try {
-            for (const directory of directories) {
-              try {
-                await params.sandbox.mkDir(directory);
-              } catch (error) {
-                if (!isAlreadyExistsError(error)) {
-                  throw error;
-                }
+            // Finish each parent depth before creating child directories.
+            for (const directoriesAtDepth of groupDirectoriesByDepth(
+              directories,
+            )) {
+              for (
+                let offset = 0;
+                offset < directoriesAtDepth.length;
+                offset += DIRECTORY_CREATE_CONCURRENCY
+              ) {
+                await Promise.all(
+                  directoriesAtDepth
+                    .slice(offset, offset + DIRECTORY_CREATE_CONCURRENCY)
+                    .map(async (directory) => {
+                      try {
+                        await params.sandbox.mkDir(directory);
+                      } catch (error) {
+                        if (!isAlreadyExistsError(error)) {
+                          throw error;
+                        }
+                      }
+                    }),
+                );
               }
             }
 
