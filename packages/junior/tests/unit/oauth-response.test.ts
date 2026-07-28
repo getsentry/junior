@@ -34,11 +34,12 @@ describe("OAuth error responses", () => {
       },
     });
     const wrappedFetch = fetchWithBoundedOAuthErrorBodies(
-      vi.fn(async () =>
-        new Response(body, {
-          headers: { "www-authenticate": 'Bearer realm="mcp"' },
-          status: 401,
-        }),
+      vi.fn(
+        async () =>
+          new Response(body, {
+            headers: { "www-authenticate": 'Bearer realm="mcp"' },
+            status: 401,
+          }),
       ) as typeof fetch,
     );
 
@@ -47,5 +48,20 @@ describe("OAuth error responses", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe('Bearer realm="mcp"');
     await expect(response.text()).resolves.toBe("");
+  });
+
+  it("reports safe status metadata before returning an error response", async () => {
+    let observedStatus: number | undefined;
+    const wrappedFetch = fetchWithBoundedOAuthErrorBodies(
+      vi.fn(async () => new Response("provider detail", { status: 503 })),
+      (status) => {
+        observedStatus = status;
+      },
+    );
+
+    const response = await wrappedFetch("https://mcp.example.com/token");
+
+    expect(response.status).toBe(503);
+    expect(observedStatus).toBe(503);
   });
 });

@@ -84,10 +84,17 @@ export async function readBoundedOAuthErrorBody(
 /** Preserve small OAuth error responses while bounding bodies before SDK parsing. */
 export function fetchWithBoundedOAuthErrorBodies(
   fetchFn: typeof fetch = globalThis.fetch,
+  onResponseStatus?: (status: number | undefined) => void,
 ): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetchFn(input, init);
-    if (response.ok || !response.body) {
+    if (response.ok) {
+      onResponseStatus?.(undefined);
+      return response;
+    }
+
+    onResponseStatus?.(response.status);
+    if (!response.body) {
       return response;
     }
 

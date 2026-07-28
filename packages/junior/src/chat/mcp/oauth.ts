@@ -111,10 +111,13 @@ export async function finalizeMcpAuthorization(
   if (mcp.headers && Object.keys(mcp.headers).length > 0) {
     requestInit.headers = new Headers(mcp.headers);
   }
+  let providerStatus: number | undefined;
   const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
     ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
     authProvider,
-    fetch: fetchWithBoundedOAuthErrorBodies(),
+    fetch: fetchWithBoundedOAuthErrorBodies(undefined, (status) => {
+      providerStatus = status;
+    }),
   });
 
   let failure: unknown;
@@ -125,6 +128,7 @@ export async function finalizeMcpAuthorization(
       phase: "oauth_callback",
       provider,
       resourceHost: new URL(mcp.url).hostname,
+      status: providerStatus,
     });
   }
   try {

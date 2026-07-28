@@ -164,10 +164,10 @@ describe("createMcpOAuthClientProvider", () => {
     ) as unknown as typeof fetch;
     finishAuthMock.mockImplementation(
       async (_code: string, options: { fetch?: typeof fetch } | undefined) => {
-        const response = await options?.fetch?.("https://mcp.example.com/token");
-        const error = new Error(await response?.text());
-        Object.assign(error, { status: response?.status });
-        throw error;
+        const response = await options?.fetch?.(
+          "https://mcp.example.com/token",
+        );
+        throw new Error(await response?.text());
       },
     );
 

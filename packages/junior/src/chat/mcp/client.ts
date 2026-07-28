@@ -80,6 +80,7 @@ export class PluginMcpClient {
   private client?: Client;
   private clientPromise?: Promise<Client>;
   private lastAttemptedTransportSessionId?: string;
+  private lastProviderStatus?: number;
   private transport?: StreamableHTTPClientTransport;
   private listedTools?: ListedTool[];
   private readonly resourceHost?: string;
@@ -216,7 +217,9 @@ export class PluginMcpClient {
     this.lastAttemptedTransportSessionId = sessionId;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
       ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
-      fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch),
+      fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch, (status) => {
+        this.lastProviderStatus = status;
+      }),
       ...(this.options.authProvider
         ? { authProvider: this.options.authProvider }
         : {}),
@@ -244,6 +247,7 @@ export class PluginMcpClient {
     promise: Promise<T>,
     phase: McpProviderErrorPhase,
   ): Promise<T> {
+    this.lastProviderStatus = undefined;
     try {
       return await promise;
     } catch (error) {
@@ -261,6 +265,7 @@ export class PluginMcpClient {
         provider: this.plugin.manifest.name,
         missingSession: isMissingSessionError(error) || undefined,
         resourceHost: this.resourceHost,
+        status: this.lastProviderStatus,
       });
     }
   }
