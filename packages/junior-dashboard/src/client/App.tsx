@@ -17,6 +17,7 @@ import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
+import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { cn, dashboardContainerClass } from "./styles";
@@ -198,6 +199,18 @@ export function DashboardShell() {
             )
           }
           path="/people/:email"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading API tokens" />
+            ) : loggedIn ? (
+              <PersonalTokensPage />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/settings/api-tokens"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>

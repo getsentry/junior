@@ -5,7 +5,6 @@ import { Link } from "react-router";
 import { peoplePath } from "../format";
 import { cn } from "../styles";
 import type { Identity } from "../types";
-import { PersonalTokensDialog } from "./PersonalTokensDialog";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -27,7 +26,6 @@ function initials(name: string | null | undefined, email: string): string {
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const [tokensOpen, setTokensOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const email = identity.user.email!;
@@ -109,17 +107,14 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
             <UserRound aria-hidden="true" size={16} strokeWidth={2} />
             My profile
           </Link>
-          <button
-            className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#d6d6d6] transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
-            onClick={() => {
-              setOpen(false);
-              setTokensOpen(true);
-            }}
-            type="button"
+          <Link
+            className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+            onClick={() => setOpen(false)}
+            to="/settings/api-tokens"
           >
             <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
             API tokens
-          </button>
+          </Link>
           <button
             className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#d6d6d6] transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
             onClick={() => {
@@ -132,9 +127,6 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
             Log out
           </button>
         </div>
-      ) : null}
-      {tokensOpen ? (
-        <PersonalTokensDialog onClose={() => setTokensOpen(false)} />
       ) : null}
     </div>
   );
