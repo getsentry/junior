@@ -455,6 +455,16 @@ describe("Pi tool adapter", () => {
       toolCallId: "tool-demo",
       toolName: "demo",
     });
+
+    await expect(
+      demoTool!.execute("tool-retry", { cadence: "weekly" }),
+    ).rejects.toThrow(
+      "This exact action was already rejected under the current user instruction",
+    );
+    expect(reviewState.pendingRejections.get("tool-retry")).toMatchObject({
+      decision: "ask",
+      reason: "Recurring work should be confirmed.",
+    });
   });
 
   it("escalates unavailable Guardian review to the run boundary", async () => {

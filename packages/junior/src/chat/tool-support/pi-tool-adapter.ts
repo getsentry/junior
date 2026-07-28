@@ -194,7 +194,7 @@ export function createPiAgentTools(
             actionKey,
             decision: error.decision,
             priorRejection: error.reviewedAction,
-            reason: error.reason,
+            reason: error.reviewedAction.reason,
             ...(error.riskLevel ? { riskLevel: error.riskLevel } : {}),
             ...(error.userAuthorization
               ? { userAuthorization: error.userAuthorization }
