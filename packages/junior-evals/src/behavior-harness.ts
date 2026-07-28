@@ -312,6 +312,7 @@ export interface EvalOverrides {
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
+  github_resource_events?: boolean;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -649,6 +650,7 @@ const HARNESS_ENV_KEYS = [
   "GITHUB_APP_ID",
   "GITHUB_APP_PRIVATE_KEY",
   "GITHUB_INSTALLATION_ID",
+  "GITHUB_WEBHOOK_SECRET",
   "JUNIOR_BASE_URL",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
@@ -1562,6 +1564,11 @@ async function setupHarnessEnvironment(
     }
 
     configureCredentialProviderEnv(credentialProviders);
+    if (scenario.overrides?.github_resource_events) {
+      process.env.GITHUB_WEBHOOK_SECRET = "eval-github-webhook-secret";
+    } else {
+      delete process.env.GITHUB_WEBHOOK_SECRET;
+    }
     ensureHarnessBaseUrl();
     process.env.JUNIOR_SECRET = "junior-test-secret";
     pluginCatalogRuntime.setConfig({

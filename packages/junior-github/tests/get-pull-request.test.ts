@@ -1,44 +1,37 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
-
-const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
 function toolContext() {
-  const fetch = vi.fn(
-    async () =>
-      new Response(
-        JSON.stringify({
-          base: { ref: "main" },
-          draft: false,
-          head: { ref: "feat/resource-events" },
-          html_url: "https://github.com/getsentry/junior/pull/691",
-          merged: false,
-          number: 691,
-          state: "open",
-          title: "Add resource events",
-        }),
-        { status: 200 },
-      ),
-  );
+  const adapter = createGitHubApiTestAdapter([
+    {
+      body: {
+        base: { ref: "main" },
+        draft: false,
+        head: { ref: "feat/resource-events" },
+        html_url: "https://github.com/getsentry/junior/pull/691",
+        merged: false,
+        number: 691,
+        state: "open",
+        title: "Add resource events",
+      },
+    },
+  ]);
   const ctx = {
-    egress: { fetch },
+    egress: adapter.egress,
   } as unknown as ToolRegistrationHookContext;
-  return { fetch, tool: createGitHubGetPullRequestTool(ctx) };
+  return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }
 
 describe("getPullRequest", () => {
   afterEach(() => {
-    if (ORIGINAL_WEBHOOK_SECRET === undefined) {
-      delete process.env.GITHUB_WEBHOOK_SECRET;
-    } else {
-      process.env.GITHUB_WEBHOOK_SECRET = ORIGINAL_WEBHOOK_SECRET;
-    }
+    vi.unstubAllEnvs();
   });
 
   it("returns a subscribable hint for an existing pull request", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-    const { fetch, tool } = toolContext();
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    const { adapter, tool } = toolContext();
 
     await expect(
       tool.execute?.(
@@ -53,16 +46,16 @@ describe("getPullRequest", () => {
         type: "pull_request",
       },
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(adapter.requests()).toEqual([
       expect.objectContaining({
         operation: "github.pull.get",
         provider: "github",
       }),
-    );
+    ]);
   });
 
   it("omits the hint when GitHub webhooks are not configured", async () => {
-    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
     const { tool } = toolContext();
 
     const result = await tool.execute?.(

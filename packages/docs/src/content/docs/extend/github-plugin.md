@@ -2,7 +2,7 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for GitHub repository workflows.
 type: tutorial
-summary: Set up Junior-owned GitHub deployments, workflow dispatches, issues, pull requests, and branch pushes.
+summary: Set up GitHub deployment lookup and watches alongside Junior-owned workflow dispatches, issues, pull requests, and branch pushes.
 prerequisites:
   - /extend/
 related:

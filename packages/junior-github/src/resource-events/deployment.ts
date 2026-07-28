@@ -26,7 +26,7 @@ export function gitHubDeploymentSourceResource(input: {
   const environment = input.environment.trim();
   const repo = input.repo.toLowerCase();
   return {
-    label: `GitHub ${environment} deployment for ${repo} at ${commitSha.slice(0, 12)}`,
+    label: `GitHub deployment for ${repo} at ${commitSha.slice(0, 12)}`,
     provider: "github",
     resourceRef: `github:deployment-source:${repo}:${encodeURIComponent(environment.toLowerCase())}:${commitSha}`,
   };

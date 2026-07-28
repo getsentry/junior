@@ -10,6 +10,62 @@ import {
 } from "../../src/helpers";
 
 describeEval("Resource Event Subscriptions", slackEvals, (it) => {
+  it("looks up and subscribes to an exact deployment before GitHub creates it", async ({
+    run,
+  }) => {
+    const commitSha = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
+    const result = await run({
+      overrides: {
+        credential_providers: ["github"],
+        github_resource_events: true,
+        plugin_packages: ["@sentry/junior-github"],
+      },
+      initialEvents: [
+        mention(
+          `Watch the Production deployment of getsentry/junior-prod for commit ${commitSha}. It may not exist yet; tell me when it succeeds, fails, or reports an error.`,
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The reply confirms the exact deployment target will be monitored through event-based updates.",
+        ],
+        fail: [
+          "Do not claim a polling task or recurring schedule was created.",
+          "Do not ask the user to wait and check GitHub manually.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "github_getDeployment",
+          arguments: {
+            commitSha,
+            environment: "Production",
+            repo: "getsentry/junior-prod",
+          },
+        }),
+        expect.objectContaining({
+          name: "subscribeToResourceEvents",
+          arguments: expect.objectContaining({
+            events: expect.arrayContaining([
+              "deployment.succeeded",
+              "deployment.failed",
+              "deployment.error",
+            ]),
+            provider: "github",
+            resourceRef: `github:deployment-source:getsentry/junior-prod:production:${commitSha}`,
+            resourceType: "deployment_source",
+          }),
+        }),
+      ]),
+    );
+    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+      "scheduler_slackScheduleCreateTask",
+    );
+  });
+
   it("when a created PR can emit requested events, subscribe instead of polling", async ({
     run,
   }) => {

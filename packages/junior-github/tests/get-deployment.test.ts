@@ -1,56 +1,50 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetDeploymentTool } from "../src/tools/get-deployment";
+import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
-const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 const COMMIT_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
-function toolContext(responses: unknown[]) {
-  const fetch = vi.fn(async () => {
-    const body = responses.shift();
-    return new Response(JSON.stringify(body), { status: 200 });
-  });
+function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
+  const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
-    egress: { fetch },
+    egress: adapter.egress,
   } as unknown as ToolRegistrationHookContext;
-  return { fetch, tool: createGitHubGetDeploymentTool(ctx) };
+  return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
 }
 
 describe("getDeployment", () => {
   afterEach(() => {
-    if (ORIGINAL_WEBHOOK_SECRET === undefined) {
-      delete process.env.GITHUB_WEBHOOK_SECRET;
-    } else {
-      process.env.GITHUB_WEBHOOK_SECRET = ORIGINAL_WEBHOOK_SECRET;
-    }
+    vi.unstubAllEnvs();
   });
 
   it("returns deployment metadata, its latest status, and a subscription hint", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-    const { fetch, tool } = toolContext([
-      [
-        {
-          created_at: "2026-07-28T05:17:14Z",
-          creator: { login: "vercel[bot]" },
-          description: null,
-          environment: "Production",
-          id: 5_634_510_476,
-          ref: COMMIT_SHA,
-          sha: COMMIT_SHA,
-          updated_at: "2026-07-28T05:17:14Z",
-        },
-      ],
-      [
-        {
-          created_at: "2026-07-28T05:17:14Z",
-          creator: { login: "vercel[bot]" },
-          description: "Deployment has failed",
-          environment_url: "https://junior-prod.example",
-          id: 16_022_370_846,
-          log_url: "https://junior-prod.example/logs",
-          state: "failure",
-        },
-      ],
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    const { adapter, tool } = toolContext([
+      {
+        body: [
+          {
+            created_at: "2026-07-28T05:17:14Z",
+            creator: null,
+            description: null,
+            environment: "Production",
+            id: 5_634_510_476,
+            ref: COMMIT_SHA,
+            sha: COMMIT_SHA,
+            updated_at: "2026-07-28T05:17:14Z",
+          },
+        ],
+      },
+      {
+        body: [
+          {
+            created_at: "2026-07-28T05:17:14Z",
+            creator: null,
+            id: 16_022_370_846,
+            state: "failure",
+          },
+        ],
+      },
     ]);
 
     await expect(
@@ -65,10 +59,14 @@ describe("getDeployment", () => {
     ).resolves.toMatchObject({
       commitSha: COMMIT_SHA,
       deployment: {
+        creator: null,
         environment: "Production",
         id: 5_634_510_476,
         latestStatus: {
-          description: "Deployment has failed",
+          creator: null,
+          description: null,
+          environmentUrl: null,
+          logUrl: null,
           state: "failure",
         },
       },
@@ -82,23 +80,24 @@ describe("getDeployment", () => {
         type: "deployment_source",
       },
     });
-    expect(fetch).toHaveBeenCalledTimes(2);
-    const deploymentsRequest = fetch.mock.calls[0]?.[0].request as Request;
+    const requests = adapter.requests();
+    expect(requests).toHaveLength(2);
+    const deploymentsRequest = requests[0]?.request;
     expect(deploymentsRequest.url).toContain(`sha=${COMMIT_SHA}`);
     expect(deploymentsRequest.url).toContain("environment=Production");
-    expect(fetch.mock.calls[0]?.[0]).toMatchObject({
+    expect(requests[0]).toMatchObject({
       operation: "github.deployment.list",
       provider: "github",
     });
-    expect(fetch.mock.calls[1]?.[0]).toMatchObject({
+    expect(requests[1]).toMatchObject({
       operation: "github.deployment-status.list",
       provider: "github",
     });
   });
 
   it("returns a subscribable source before GitHub creates the deployment", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-    const { fetch, tool } = toolContext([[]]);
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    const { adapter, tool } = toolContext([{ body: [] }]);
 
     await expect(
       tool.execute?.(
@@ -115,6 +114,92 @@ describe("getDeployment", () => {
         resourceRef: `github:deployment-source:getsentry/junior-prod:preview:${COMMIT_SHA}`,
       },
     });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(adapter.requests()).toHaveLength(1);
+  });
+
+  it("reports a missing repository as a repairable tool error", async () => {
+    const { tool } = toolContext([
+      { body: { message: "Not Found" }, status: 404 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          commitSha: COMMIT_SHA,
+          environment: "Production",
+          repo: "getsentry/missing",
+        },
+        { toolCallId: "missing-deployment" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub deployment lookup failed with HTTP 404",
+      name: "PluginToolInputError",
+    });
+  });
+
+  it("distinguishes validation failures from provider abuse protection", async () => {
+    const validation = toolContext([
+      {
+        body: {
+          errors: [{ field: "environment", code: "invalid" }],
+          message: "Validation Failed",
+        },
+        status: 422,
+      },
+    ]);
+    const abuseProtection = toolContext([
+      { body: { message: "Request was spammed" }, status: 422 },
+    ]);
+    const input = {
+      commitSha: COMMIT_SHA,
+      environment: "Production",
+      repo: "getsentry/junior-prod",
+    };
+
+    await expect(
+      validation.tool.execute?.(input, { toolCallId: "invalid-deployment" }),
+    ).rejects.toMatchObject({ name: "PluginToolInputError" });
+    await expect(
+      abuseProtection.tool.execute?.(input, {
+        toolCallId: "throttled-deployment",
+      }),
+    ).rejects.toMatchObject({
+      message: "GitHub deployment lookup failed with HTTP 422",
+      name: "Error",
+    });
+  });
+
+  it("treats a missing provider-returned status as a runtime error", async () => {
+    const { tool } = toolContext([
+      {
+        body: [
+          {
+            created_at: "2026-07-28T05:17:14Z",
+            creator: null,
+            description: null,
+            environment: "Production",
+            id: 5_634_510_476,
+            ref: COMMIT_SHA,
+            sha: COMMIT_SHA,
+            updated_at: "2026-07-28T05:17:14Z",
+          },
+        ],
+      },
+      { body: { message: "Not Found" }, status: 404 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          commitSha: COMMIT_SHA,
+          environment: "Production",
+          repo: "getsentry/junior-prod",
+        },
+        { toolCallId: "missing-deployment-status" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub deployment status lookup failed with HTTP 404",
+      name: "Error",
+    });
   });
 });

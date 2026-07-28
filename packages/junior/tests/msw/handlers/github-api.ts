@@ -5,6 +5,9 @@ export const GITHUB_API_ORIGIN = "https://api.github.com";
 export function resetGitHubApiMockState(): void {}
 
 export const githubApiHandlers = [
+  http.get(`${GITHUB_API_ORIGIN}/repos/:owner/:repo/deployments`, () =>
+    HttpResponse.json([]),
+  ),
   http.post(
     `${GITHUB_API_ORIGIN}/app/installations/:installationId/access_tokens`,
     () =>

@@ -24,34 +24,40 @@ const inputSchema = z
       .describe('GitHub deployment environment, such as "Production".'),
   })
   .strict();
-const statusSchema = z.object({
-  createdAt: z.string(),
-  creator: z.string(),
-  description: z.string().nullable(),
-  environmentUrl: z.string().nullable(),
-  id: z.number(),
-  logUrl: z.string().nullable(),
-  state: z.string(),
-});
-const deploymentSchema = z.object({
-  createdAt: z.string(),
-  creator: z.string(),
-  description: z.string().nullable(),
-  environment: z.string(),
-  id: z.number(),
-  latestStatus: statusSchema.nullable(),
-  ref: z.string(),
-  sha: commitShaSchema,
-  updatedAt: z.string(),
-  url: z.string(),
-});
-const deploymentSourceSchema = z.object({
-  commitSha: commitShaSchema,
-  deployment: deploymentSchema.nullable(),
-  environment: z.string(),
-  repo: z.string(),
-  subscribable: subscribableResourceSchema.optional(),
-});
+const statusSchema = z
+  .object({
+    createdAt: z.string(),
+    creator: z.string().nullable(),
+    description: z.string().nullable(),
+    environmentUrl: z.string().nullable(),
+    id: z.number(),
+    logUrl: z.string().nullable(),
+    state: z.string(),
+  })
+  .strict();
+const deploymentSchema = z
+  .object({
+    createdAt: z.string(),
+    creator: z.string().nullable(),
+    description: z.string().nullable(),
+    environment: z.string(),
+    id: z.number(),
+    latestStatus: statusSchema.nullable(),
+    ref: z.string(),
+    sha: commitShaSchema,
+    updatedAt: z.string(),
+    url: z.string(),
+  })
+  .strict();
+const deploymentSourceSchema = z
+  .object({
+    commitSha: commitShaSchema,
+    deployment: deploymentSchema.nullable(),
+    environment: z.string(),
+    repo: z.string(),
+    subscribable: subscribableResourceSchema.optional(),
+  })
+  .strict();
 type DeploymentSource = z.output<typeof deploymentSourceSchema>;
 interface Result extends PluginToolResult, DeploymentSource {
   data: DeploymentSource;
@@ -60,13 +66,43 @@ interface Result extends PluginToolResult, DeploymentSource {
   subscribable?: SubscribableResource;
   target: "getDeployment";
 }
-const outputSchema = pluginToolResultSchema.extend({
-  data: deploymentSourceSchema,
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.literal("getDeployment"),
-  ...deploymentSourceSchema.shape,
-});
+const outputSchema = pluginToolResultSchema
+  .extend({
+    data: deploymentSourceSchema,
+    ok: z.literal(true),
+    status: z.literal("success"),
+    target: z.literal("getDeployment"),
+    ...deploymentSourceSchema.shape,
+  })
+  .strict();
+
+const providerCreatorSchema = z
+  .object({ login: z.string() })
+  .passthrough()
+  .nullable();
+const providerDeploymentSchema = z
+  .object({
+    created_at: z.string(),
+    creator: providerCreatorSchema,
+    description: z.string().nullable(),
+    environment: z.string(),
+    id: z.number(),
+    ref: z.string(),
+    sha: commitShaSchema,
+    updated_at: z.string(),
+  })
+  .passthrough();
+const providerStatusSchema = z
+  .object({
+    created_at: z.string(),
+    creator: providerCreatorSchema,
+    description: z.string().nullable().optional(),
+    environment_url: z.string().nullable().optional(),
+    id: z.number(),
+    log_url: z.string().nullable().optional(),
+    state: z.string(),
+  })
+  .passthrough();
 
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
@@ -76,6 +112,7 @@ function parseRepo(value: string) {
   return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
 }
 
+/** Read a provider response without assuming its error body is JSON. */
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return undefined;
@@ -84,6 +121,28 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return text;
   }
+}
+
+/** Route repairable lookup failures through the model-visible tool error path. */
+function throwLookupError(
+  target: "deployment" | "deployment status",
+  status: number,
+  body: unknown,
+): never {
+  const message = `GitHub ${target} lookup failed with HTTP ${status}`;
+  const hasValidationErrors =
+    body !== null &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    Array.isArray((body as { errors?: unknown }).errors) &&
+    (body as { errors: unknown[] }).errors.length > 0;
+  if (
+    target === "deployment" &&
+    (status === 404 || (status === 422 && hasValidationErrors))
+  ) {
+    throw new PluginToolInputError(message);
+  }
+  throw new Error(message);
 }
 
 function repositoryUrl(repo: { name: string; owner: string }, path: string) {
@@ -118,23 +177,14 @@ export function createGitHubGetDeploymentTool(
       });
       const deploymentsBody = await readJson(deploymentsResponse);
       if (!deploymentsResponse.ok) {
-        throw new Error(
-          `GitHub deployment lookup failed with HTTP ${deploymentsResponse.status}`,
+        throwLookupError(
+          "deployment",
+          deploymentsResponse.status,
+          deploymentsBody,
         );
       }
       const providerDeployment = z
-        .array(
-          z.object({
-            created_at: z.string(),
-            creator: z.object({ login: z.string() }),
-            description: z.string().nullable(),
-            environment: z.string(),
-            id: z.number(),
-            ref: z.string(),
-            sha: commitShaSchema,
-            updated_at: z.string(),
-          }),
-        )
+        .array(providerDeploymentSchema)
         .parse(deploymentsBody)[0];
 
       let deployment: z.output<typeof deploymentSchema> | null = null;
@@ -154,37 +204,29 @@ export function createGitHubGetDeploymentTool(
         });
         const statusesBody = await readJson(statusesResponse);
         if (!statusesResponse.ok) {
-          throw new Error(
-            `GitHub deployment status lookup failed with HTTP ${statusesResponse.status}`,
+          throwLookupError(
+            "deployment status",
+            statusesResponse.status,
+            statusesBody,
           );
         }
         const providerStatus = z
-          .array(
-            z.object({
-              created_at: z.string(),
-              creator: z.object({ login: z.string() }),
-              description: z.string().nullable(),
-              environment_url: z.string().nullable(),
-              id: z.number(),
-              log_url: z.string().nullable(),
-              state: z.string(),
-            }),
-          )
+          .array(providerStatusSchema)
           .parse(statusesBody)[0];
         deployment = {
           createdAt: providerDeployment.created_at,
-          creator: providerDeployment.creator.login,
+          creator: providerDeployment.creator?.login ?? null,
           description: providerDeployment.description,
           environment: providerDeployment.environment,
           id: providerDeployment.id,
           latestStatus: providerStatus
             ? {
                 createdAt: providerStatus.created_at,
-                creator: providerStatus.creator.login,
-                description: providerStatus.description,
-                environmentUrl: providerStatus.environment_url,
+                creator: providerStatus.creator?.login ?? null,
+                description: providerStatus.description ?? null,
+                environmentUrl: providerStatus.environment_url ?? null,
                 id: providerStatus.id,
-                logUrl: providerStatus.log_url,
+                logUrl: providerStatus.log_url ?? null,
                 state: providerStatus.state,
               }
             : null,
