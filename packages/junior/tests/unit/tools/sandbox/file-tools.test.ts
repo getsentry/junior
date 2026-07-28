@@ -297,14 +297,14 @@ describe("sandbox file tools", () => {
       return {
         exitCode: 0,
         stderr: "",
-        stdout: "src/app.ts\0src/nested/test.ts\0",
+        stdout: "nested/test.ts\0",
       };
     };
 
     const result = await findFiles({
       fs: memory.fs,
       path: "src",
-      pattern: "*.ts",
+      pattern: "nested/*.ts",
       runCommand,
     });
 
@@ -321,32 +321,32 @@ describe("sandbox file tools", () => {
           "--glob",
           "!node_modules/**",
           "--glob",
-          "*.ts",
+          "nested/*.ts",
           "--",
-          "src",
+          ".",
         ],
-        cwd: SANDBOX_WORKSPACE_ROOT,
+        cwd: workspacePath("src"),
       },
     ]);
     expect(result.details).toMatchObject({
       ok: true,
       data: {
-        files: ["app.ts", "nested/test.ts"],
-        file_count: 2,
+        files: ["nested/test.ts"],
+        file_count: 1,
       },
     });
   });
 
   it("parses bounded ripgrep JSON without shell interpolation", async () => {
     const memory = createMemoryFs({
-      "src/app.ts": "before\nneedle\nafter\n",
+      "src/nested/app.ts": "before\nneedle\nafter\n",
     });
     const calls: Parameters<SandboxCommandRunner>[0][] = [];
     const event = (type: "context" | "match", line: number, text: string) =>
       JSON.stringify({
         type,
         data: {
-          path: { text: "src/app.ts" },
+          path: { text: "nested/app.ts" },
           lines: { text: `${text}\n` },
           line_number: line,
         },
@@ -367,6 +367,7 @@ describe("sandbox file tools", () => {
     const result = await grepFiles({
       context: 1,
       fs: memory.fs,
+      glob: "nested/*.ts",
       literal: true,
       path: "src",
       pattern: "needle'; exit 9; '",
@@ -375,14 +376,19 @@ describe("sandbox file tools", () => {
 
     expect(calls[0]).toMatchObject({
       cmd: "rg",
-      cwd: SANDBOX_WORKSPACE_ROOT,
+      cwd: workspacePath("src"),
     });
     expect(calls[0]?.args).toContain("--fixed-strings");
+    expect(calls[0]?.args).toContain("nested/*.ts");
     expect(calls[0]?.args).toContain("needle'; exit 9; '");
     expect(result.details).toMatchObject({
       ok: true,
       data: {
-        lines: ["app.ts-1- before", "app.ts:2: needle", "app.ts-3- after"],
+        lines: [
+          "nested/app.ts-1- before",
+          "nested/app.ts:2: needle",
+          "nested/app.ts-3- after",
+        ],
         match_count: 1,
       },
     });

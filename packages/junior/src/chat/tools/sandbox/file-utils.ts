@@ -183,6 +183,20 @@ export function resolveWorkspacePath(
   return normalized;
 }
 
+/** Anchor ripgrep paths and globs to the requested search root. */
+export function getRipgrepSearchLocation(
+  root: string,
+  rootIsDirectory: boolean,
+): { cwd: string; target: string } {
+  if (rootIsDirectory) {
+    return { cwd: root, target: "." };
+  }
+  return {
+    cwd: path.posix.dirname(root),
+    target: path.posix.basename(root),
+  };
+}
+
 /** Share bounded workspace traversal across search tools so their skip rules stay aligned. */
 export async function collectFiles(params: {
   fs: SandboxFileSystem;

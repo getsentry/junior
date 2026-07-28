@@ -1,8 +1,8 @@
 import path from "node:path";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
+  getRipgrepSearchLocation,
   isMissingPathError,
   missingPathSearchResult,
   normalizeToLf,
@@ -296,8 +296,7 @@ async function grepFilesWithRipgrep(params: {
     throw error;
   }
 
-  const target =
-    path.posix.relative(SANDBOX_WORKSPACE_ROOT, params.root) || ".";
+  const location = getRipgrepSearchLocation(params.root, rootIsDirectory);
   const args = [
     "--json",
     "--line-number",
@@ -320,12 +319,12 @@ async function grepFilesWithRipgrep(params: {
   if (params.context > 0) {
     args.push("--context", String(params.context));
   }
-  args.push("--", params.pattern, target);
+  args.push("--", params.pattern, location.target);
 
   const result = await params.runCommand({
     cmd: "rg",
     args,
-    cwd: SANDBOX_WORKSPACE_ROOT,
+    cwd: location.cwd,
   });
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     const detail =
@@ -364,7 +363,7 @@ async function grepFilesWithRipgrep(params: {
     }
     const absolutePath = rawPath.startsWith("/")
       ? path.posix.normalize(rawPath)
-      : path.posix.resolve(SANDBOX_WORKSPACE_ROOT, rawPath);
+      : path.posix.resolve(location.cwd, rawPath);
     const displayPath = rootIsDirectory
       ? path.posix.relative(params.root, absolutePath)
       : path.posix.basename(absolutePath);
