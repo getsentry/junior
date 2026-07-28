@@ -394,6 +394,47 @@ describe("runtime dependency snapshots", () => {
     );
   });
 
+  it("installs ripgrep from a pinned release archive", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "system", package: "ripgrep" },
+    ]);
+    const sandbox = makeSandbox("snap_ripgrep", async (params) => {
+      if (getScript(params).includes("'sha256sum'")) {
+        return {
+          exitCode: 0,
+          stdout: async () =>
+            "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599  /tmp/ripgrep.tar.gz",
+          stderr: async () => "",
+        };
+      }
+      return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+    expect(snapshot.snapshotId).toBe("snap_ripgrep");
+    const scripts = sandbox.runCommand.mock.calls.map((call) =>
+      getScript(call[0]),
+    );
+    expect(scripts).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "'curl' '-fsSL' 'https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz'",
+        ),
+        expect.stringContaining(
+          "'tar' '-xzf' '/tmp/junior-runtime-1c9297be4a08-ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz' '-C' '/tmp'",
+        ),
+        expect.stringContaining(
+          "'install' '-m' '0755' '/tmp/ripgrep-15.1.0-x86_64-unknown-linux-musl/rg' '/vercel/sandbox/.junior/bin/rg'",
+        ),
+      ]),
+    );
+    expect(scripts.some((script) => script.includes("'dnf'"))).toBe(false);
+  });
+
   it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
     getRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gh" },

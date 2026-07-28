@@ -20,11 +20,15 @@ import { getStateAdapter } from "@/chat/state/adapter";
 
 const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
 const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";
-const SNAPSHOT_PROFILE_VERSION = 1;
+const SNAPSHOT_PROFILE_VERSION = 2;
 const SNAPSHOT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_BUILD_LOCK_TTL_MS = 10 * 60 * 1000;
 const SNAPSHOT_WAIT_FOR_LOCK_MS = SNAPSHOT_BUILD_LOCK_TTL_MS + 30 * 1000;
 const DEFAULT_FLOATING_DEP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const RIPGREP_VERSION = "15.1.0";
+const RIPGREP_ARCHIVE_SHA256 =
+  "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599";
+const RIPGREP_ARCHIVE_URL = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl.tar.gz`;
 
 interface CachedSnapshotEntry {
   profileHash: string;
@@ -316,6 +320,83 @@ function runtimeDependencyFilePath(url: string, sha256: string): string {
   return `/tmp/junior-runtime-${sha256.slice(0, 12)}-${sanitizedBasename}`;
 }
 
+async function downloadVerifiedRuntimeDependency(
+  sandbox: SandboxSession,
+  url: string,
+  sha256: string,
+): Promise<string> {
+  const filePath = runtimeDependencyFilePath(url, sha256);
+  await runOrThrow(
+    sandbox,
+    {
+      cmd: "curl",
+      args: ["-fsSL", url, "-o", filePath],
+    },
+    `curl download ${url}`,
+  );
+
+  const checksumResult = await runNonInteractiveCommand(sandbox, {
+    cmd: "sha256sum",
+    args: [filePath],
+  });
+  const checksumStdout = checksumResult.stdout.trim();
+  const checksumStderr = checksumResult.stderr.trim();
+  if (checksumResult.exitCode !== 0) {
+    throw new Error(
+      `sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`,
+    );
+  }
+  const actualChecksum = checksumStdout.split(/\s+/)[0]?.toLowerCase();
+  if (!actualChecksum) {
+    throw new Error("sha256sum produced empty output");
+  }
+  if (actualChecksum !== sha256) {
+    throw new Error(
+      `checksum mismatch for ${url}: expected ${sha256}, got ${actualChecksum}`,
+    );
+  }
+
+  return filePath;
+}
+
+async function installRipgrep(sandbox: SandboxSession): Promise<void> {
+  const archivePath = await downloadVerifiedRuntimeDependency(
+    sandbox,
+    RIPGREP_ARCHIVE_URL,
+    RIPGREP_ARCHIVE_SHA256,
+  );
+  const extractedDir = `/tmp/ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl`;
+  await runOrThrow(
+    sandbox,
+    {
+      cmd: "tar",
+      args: ["-xzf", archivePath, "-C", "/tmp"],
+    },
+    "extract ripgrep",
+  );
+  await runOrThrow(
+    sandbox,
+    {
+      cmd: "mkdir",
+      args: ["-p", `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`],
+    },
+    "create sandbox bin directory",
+  );
+  await runOrThrow(
+    sandbox,
+    {
+      cmd: "install",
+      args: [
+        "-m",
+        "0755",
+        `${extractedDir}/rg`,
+        `${SANDBOX_WORKSPACE_ROOT}/.junior/bin/rg`,
+      ],
+    },
+    "install ripgrep",
+  );
+}
+
 async function installRuntimeDependencies(
   sandbox: SandboxSession,
   deps: PluginRuntimeDependency[],
@@ -341,38 +422,11 @@ async function installRuntimeDependencies(
       async () => {
         for (const dep of systemDeps) {
           if ("url" in dep) {
-            const rpmPath = runtimeDependencyFilePath(dep.url, dep.sha256);
-            await runOrThrow(
+            const rpmPath = await downloadVerifiedRuntimeDependency(
               sandbox,
-              {
-                cmd: "curl",
-                args: ["-fsSL", dep.url, "-o", rpmPath],
-              },
-              `curl download ${dep.url}`,
+              dep.url,
+              dep.sha256,
             );
-
-            const checksumResult = await runNonInteractiveCommand(sandbox, {
-              cmd: "sha256sum",
-              args: [rpmPath],
-            });
-            const checksumStdout = checksumResult.stdout.trim();
-            const checksumStderr = checksumResult.stderr.trim();
-            if (checksumResult.exitCode !== 0) {
-              throw new Error(
-                `sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`,
-              );
-            }
-            const actualChecksum = checksumStdout
-              .split(/\s+/)[0]
-              ?.toLowerCase();
-            if (!actualChecksum) {
-              throw new Error("sha256sum produced empty output");
-            }
-            if (actualChecksum !== dep.sha256) {
-              throw new Error(
-                `checksum mismatch for ${dep.url}: expected ${dep.sha256}, got ${actualChecksum}`,
-              );
-            }
 
             await runOrThrow(
               sandbox,
@@ -386,6 +440,10 @@ async function installRuntimeDependencies(
             continue;
           }
 
+          if (dep.package === "ripgrep") {
+            await installRipgrep(sandbox);
+            continue;
+          }
           if (dep.package === "gh") {
             await installGhCliViaDnf(sandbox);
             continue;
