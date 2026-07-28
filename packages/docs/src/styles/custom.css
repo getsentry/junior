@@ -331,20 +331,21 @@ body:has(.jr-home) main {
   transform: rotate(6deg);
 }
 
-.jr-gremlin {
+.jr-mascot {
   filter: drop-shadow(10px 10px 0 var(--jr-black));
   margin: 0 auto;
-  max-width: 17rem;
+  max-width: 18rem;
   position: relative;
   transform: rotate(3deg);
 }
 
-.jr-gremlin svg {
+.jr-mascot img {
   display: block;
+  margin: 0;
   width: 100%;
 }
 
-.jr-gremlin-note {
+.jr-mascot-note {
   background: var(--jr-pink);
   border: 4px solid var(--jr-black);
   font-family: "Arial Black", Impact, sans-serif;
@@ -598,8 +599,16 @@ body:has(.jr-home) main {
 }
 
 .slk-avatar-bot {
-  background: var(--jr-acid);
-  color: #000;
+  background: var(--jr-cream);
+  overflow: hidden;
+  padding: 0;
+}
+
+.slk-avatar-bot img {
+  display: block;
+  height: 100%;
+  margin: 0;
+  width: 100%;
 }
 
 .slk-msg-body {
@@ -811,7 +820,7 @@ body:has(.jr-home) footer {
     grid-template-columns: 1fr 0.6fr 1.2fr 0.6fr 1fr;
   }
 
-  .jr-gremlin-note {
+  .jr-mascot-note {
     right: -0.5rem;
   }
 }
@@ -855,7 +864,7 @@ body:has(.jr-home) footer {
     display: none;
   }
 
-  .jr-gremlin {
+  .jr-mascot {
     grid-column: 1 / -1;
     grid-row: 1;
   }
@@ -905,11 +914,11 @@ body:has(.jr-home) footer {
 
   .jr-sticker-slack,
   .jr-tool-pile,
-  .jr-gremlin {
+  .jr-mascot {
     grid-column: 1;
   }
 
-  .jr-gremlin {
+  .jr-mascot {
     grid-row: 1;
   }
 

@@ -1,20 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Junior favicon">
-  <rect x="0" y="0" width="64" height="64" fill="#111111" />
-  <path
-    d="M24 18V39C24 45 20 48 14 48"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="6"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M36 46V28M36 33C36 30 39 28 43 28"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="6"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <circle cx="49" cy="46" r="3" fill="#39ff14" />
+  <rect width="64" height="64" rx="10" fill="#000" />
+  <path d="M31 14 34 6" fill="none" stroke="#fff7df" stroke-width="4" stroke-linecap="round" />
+  <circle cx="35" cy="5" r="4" fill="#ff3cac" stroke="#000" stroke-width="2" />
+  <path d="M12 27c2-13 12-19 25-18 10 1 17 7 18 18z" fill="#0033ff" stroke="#000" stroke-width="4" stroke-linejoin="round" />
+  <path d="M10 27h45l-4 27c-10 7-28 7-38 0z" fill="#ffd000" stroke="#000" stroke-width="4" stroke-linejoin="round" />
+  <path d="M34 25c10 0 17 6 18 9-5 0-13-2-21-5z" fill="#0033ff" stroke="#000" stroke-width="4" stroke-linejoin="round" />
+  <ellipse cx="31" cy="39" rx="15" ry="11" fill="#fff" stroke="#000" stroke-width="4" />
+  <circle cx="34" cy="39" r="7" fill="#000" />
+  <circle cx="37" cy="36" r="2.5" fill="#fff" />
 </svg>
