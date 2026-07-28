@@ -1,17 +1,15 @@
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
-  resolveRuntimeDependencySnapshot,
-  type RuntimeDependencySnapshotProgressPhase,
-} from "@/chat/sandbox/runtime-dependency-snapshots";
+  resolve as resolveSnapshot,
+  type ProgressPhase,
+} from "@/chat/sandbox/snapshot/resolve";
 import { GLOBAL_RUNTIME_DEPENDENCIES } from "@/chat/sandbox/runtime-dependencies";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
-function progressMessage(
-  phase: RuntimeDependencySnapshotProgressPhase,
-): string {
+function progressMessage(phase: ProgressPhase): string {
   if (phase === "resolve_start") {
     return "Resolving sandbox snapshot profile...";
   }
@@ -117,8 +115,8 @@ export async function runSnapshotCreate(
 
   try {
     logSnapshotProfile(log);
-    const emitted = new Set<RuntimeDependencySnapshotProgressPhase>();
-    const snapshot = await resolveRuntimeDependencySnapshot({
+    const emitted = new Set<ProgressPhase>();
+    const snapshot = await resolveSnapshot({
       runtime,
       timeoutMs,
       onProgress: async (phase) => {

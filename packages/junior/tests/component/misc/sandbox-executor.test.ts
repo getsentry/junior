@@ -107,12 +107,8 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   },
 }));
 
-const {
-  resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingErrorMock,
-  getRuntimeDependencyProfileHashMock,
-} = vi.hoisted(() => ({
-  resolveRuntimeDependencySnapshotMock: vi.fn<
+const { resolveMock, missingErrorMock, hashMock } = vi.hoisted(() => ({
+  resolveMock: vi.fn<
     (...args: any[]) => Promise<{
       snapshotId?: string;
       profileHash?: string;
@@ -126,16 +122,17 @@ const {
     cacheHit: false,
     resolveOutcome: "no_profile",
   })),
-  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
-  getRuntimeDependencyProfileHashMock: vi.fn<
-    (runtime: string) => string | undefined
-  >(() => undefined),
+  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+  hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
 }));
 
-vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
-  resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingError: isSnapshotMissingErrorMock,
-  getRuntimeDependencyProfileHash: getRuntimeDependencyProfileHashMock,
+vi.mock("@/chat/sandbox/snapshot/profile", () => ({
+  hash: hashMock,
+}));
+
+vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
+  resolve: resolveMock,
+  isMissingError: missingErrorMock,
 }));
 
 import { createSandbox } from "@/chat/sandbox/sandbox";
@@ -469,16 +466,16 @@ describe("createTestSandbox", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
-    isSnapshotMissingErrorMock.mockReset();
-    isSnapshotMissingErrorMock.mockReturnValue(false);
-    getRuntimeDependencyProfileHashMock.mockReset();
-    getRuntimeDependencyProfileHashMock.mockReturnValue(undefined);
+    missingErrorMock.mockReset();
+    missingErrorMock.mockReturnValue(false);
+    hashMock.mockReset();
+    hashMock.mockReturnValue(undefined);
     delete process.env.VERCEL_TOKEN;
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
@@ -497,7 +494,7 @@ describe("createTestSandbox", () => {
   });
 
   it("preserves an unopened sandbox reference without rewriting its profile", () => {
-    getRuntimeDependencyProfileHashMock.mockReturnValue("current-profile");
+    hashMock.mockReturnValue("current-profile");
     const sandbox = createSandbox({
       sandboxRef: { id: "sbx_existing", profileHash: "persisted-profile" },
       skills: [],
@@ -571,7 +568,7 @@ describe("createTestSandbox", () => {
       ),
     });
     const recoveredSandbox = makeSandbox("sbx_fresh_stopped");
-    getRuntimeDependencyProfileHashMock.mockReturnValue("profile-v1");
+    hashMock.mockReturnValue("profile-v1");
     sandboxCreateMock.mockResolvedValueOnce(stoppedSandbox);
     sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
 
@@ -832,7 +829,7 @@ describe("createTestSandbox", () => {
 
   it("recreates sandbox when dependency profile hash changed", async () => {
     const freshSandbox = makeSandbox("sbx_fresh_after_profile_change");
-    getRuntimeDependencyProfileHashMock.mockReturnValue("current-profile");
+    hashMock.mockReturnValue("current-profile");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
     const executor = createTestSandbox({
@@ -1658,7 +1655,7 @@ describe("createTestSandbox", () => {
     closedSandbox.fs.stat.mockRejectedValueOnce(createClosedStreamError());
     recoveredSandbox.fs.stat.mockResolvedValue({ isDirectory: () => true });
     recoveredSandbox.fs.readdir.mockResolvedValue([]);
-    getRuntimeDependencyProfileHashMock.mockReturnValue("profile-v1");
+    hashMock.mockReturnValue("profile-v1");
     sandboxCreateMock.mockResolvedValueOnce(closedSandbox);
     sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
 
@@ -2327,7 +2324,7 @@ describe("createTestSandbox", () => {
   it("creates fresh sandboxes from dependency snapshots when available", async () => {
     process.env.SANDBOX_VCPUS = "4";
     const snapshotSandbox = makeSandbox("sbx_snapshot");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "hash_123",
       dependencyCount: 2,
@@ -2354,7 +2351,7 @@ describe("createTestSandbox", () => {
 
   it("rebuilds snapshot when cached snapshot is missing", async () => {
     const rebuiltSandbox = makeSandbox("sbx_rebuilt");
-    resolveRuntimeDependencySnapshotMock
+    resolveMock
       .mockResolvedValueOnce({
         snapshotId: "snap_missing",
         profileHash: "hash_1",
@@ -2374,7 +2371,7 @@ describe("createTestSandbox", () => {
     sandboxCreateMock
       .mockRejectedValueOnce(missingError)
       .mockResolvedValueOnce(rebuiltSandbox);
-    isSnapshotMissingErrorMock.mockImplementation(
+    missingErrorMock.mockImplementation(
       (error: unknown) => error === missingError,
     );
 
@@ -2384,7 +2381,7 @@ describe("createTestSandbox", () => {
     const sandbox = await executor.createSandbox();
 
     await expectWorkspaceToDelegate(sandbox, rebuiltSandbox);
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(
+    expect(resolveMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         runtime: "node22",
@@ -2404,7 +2401,7 @@ describe("createTestSandbox", () => {
 
   it("retries snapshot boot when Vercel reports snapshotting in progress", async () => {
     const snapshotSandbox = makeSandbox("sbx_snapshot_ready");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       snapshotId: "snap_retry",
       profileHash: "hash_retry",
       dependencyCount: 2,
@@ -2446,7 +2443,7 @@ describe("createTestSandbox", () => {
 
   it("uses a fresh sandbox name when retrying snapshot boot with network policy", async () => {
     const snapshotSandbox = makeSandbox("sbx_snapshot_policy_ready");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       snapshotId: "snap_policy_retry",
       profileHash: "hash_policy_retry",
       dependencyCount: 2,
@@ -2522,9 +2519,7 @@ describe("createTestSandbox", () => {
   });
 
   it("wraps snapshot resolution failures as sandbox setup errors", async () => {
-    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(
-      new Error("lock timeout"),
-    );
+    resolveMock.mockRejectedValueOnce(new Error("lock timeout"));
 
     const executor = createTestSandbox();
     executor.configureSkills([]);

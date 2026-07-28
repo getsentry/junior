@@ -4,12 +4,12 @@ const {
   getProvidersMock,
   getRuntimeDependenciesMock,
   getRuntimePostinstallMock,
-  resolveRuntimeDependencySnapshotMock,
+  resolveMock,
 } = vi.hoisted(() => ({
   getProvidersMock: vi.fn(),
   getRuntimeDependenciesMock: vi.fn(),
   getRuntimePostinstallMock: vi.fn(),
-  resolveRuntimeDependencySnapshotMock: vi.fn(),
+  resolveMock: vi.fn(),
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
@@ -20,8 +20,8 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   },
 }));
 
-vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
-  resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
+vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
+  resolve: resolveMock,
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
@@ -35,7 +35,7 @@ describe("snapshot create cli", () => {
     getProvidersMock.mockReset();
     getRuntimeDependenciesMock.mockReset();
     getRuntimePostinstallMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockReset();
+    resolveMock.mockReset();
 
     getProvidersMock.mockReturnValue([]);
     getRuntimeDependenciesMock.mockReturnValue([]);
@@ -43,7 +43,7 @@ describe("snapshot create cli", () => {
   });
 
   it("uses default runtime and timeout", async () => {
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
@@ -52,8 +52,8 @@ describe("snapshot create cli", () => {
 
     await runSnapshotCreate((line) => logs.push(line));
 
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenCalledTimes(1);
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenCalledWith({
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    expect(resolveMock).toHaveBeenCalledWith({
       runtime: "node22",
       timeoutMs: 10 * 60 * 1000,
       onProgress: expect.any(Function),
@@ -62,9 +62,7 @@ describe("snapshot create cli", () => {
     expect(logs).toContain(
       "Sandbox snapshot inputs: plugins=0 system_dependencies=0 npm_dependencies=0 postinstall_commands=0",
     );
-    await resolveRuntimeDependencySnapshotMock.mock.calls[0][0].onProgress(
-      "resolve_start",
-    );
+    await resolveMock.mock.calls[0][0].onProgress("resolve_start");
     expect(logs).toContain("Resolving sandbox snapshot profile...");
     expect(
       logs.some((line) => line.includes("resolve_outcome=no_profile")),
@@ -98,7 +96,7 @@ describe("snapshot create cli", () => {
     getRuntimePostinstallMock.mockReturnValue([
       { cmd: "agent-browser", args: ["install"] },
     ]);
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 2,
@@ -121,7 +119,7 @@ describe("snapshot create cli", () => {
   });
 
   it("logs cache hit metadata", async () => {
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    resolveMock.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 3,
@@ -141,9 +139,7 @@ describe("snapshot create cli", () => {
   });
 
   it("rethrows resolver errors", async () => {
-    resolveRuntimeDependencySnapshotMock.mockRejectedValue(
-      new Error("OIDC missing"),
-    );
+    resolveMock.mockRejectedValue(new Error("OIDC missing"));
 
     await expect(runSnapshotCreate()).rejects.toThrow("OIDC missing");
   });

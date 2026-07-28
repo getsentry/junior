@@ -18,12 +18,12 @@ import {
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getSandboxResources } from "@/chat/sandbox/resources";
+import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import {
-  getRuntimeDependencyProfileHash,
-  isSnapshotMissingError,
-  resolveRuntimeDependencySnapshot,
-  type RuntimeDependencySnapshot,
-} from "@/chat/sandbox/runtime-dependency-snapshots";
+  isMissingError,
+  resolve as resolveSnapshot,
+  type Snapshot,
+} from "@/chat/sandbox/snapshot/resolve";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -154,8 +154,7 @@ export function createSandboxRuntime(
 
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
-  const dependencyProfileHash =
-    getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
+  const dependencyProfileHash = profileHash(SANDBOX_RUNTIME);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -340,7 +339,7 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
-  const setSnapshotAttributes = (snapshot: RuntimeDependencySnapshot): void => {
+  const setSnapshotAttributes = (snapshot: Snapshot): void => {
     setSpanAttributes({
       "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
       "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
@@ -361,7 +360,7 @@ export function createSandboxRuntime(
 
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
-    snapshot: RuntimeDependencySnapshot;
+    snapshot: Snapshot;
     sandboxCredentials: SandboxCredentials | undefined;
     sandboxName: string;
   }): Promise<SandboxSession> => {
@@ -390,14 +389,14 @@ export function createSandboxRuntime(
         sandboxName,
       );
     } catch (error) {
-      if (!isSnapshotMissingError(error)) {
+      if (!isMissingError(error)) {
         throw error;
       }
 
       setSpanAttributes({
         "app.sandbox.snapshot.rebuild_after_missing": true,
       });
-      const rebuiltSnapshot = await resolveRuntimeDependencySnapshot({
+      const rebuiltSnapshot = await resolveSnapshot({
         runtime,
         timeoutMs,
         forceRebuild: true,
@@ -431,7 +430,7 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveRuntimeDependencySnapshot({
+          const snapshot = await resolveSnapshot({
             runtime,
             timeoutMs,
           });

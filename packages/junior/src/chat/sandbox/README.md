@@ -41,4 +41,4 @@ traffic through verified host egress.
 
 All credential-capable provider access follows
 `../../../../../policies/security.md`. The verified egress implementation lives
-under `egress/`; `runtime-dependency-snapshots.ts` owns snapshot acquisition.
+under `egress/`; `snapshot/resolve.ts` owns snapshot acquisition.
