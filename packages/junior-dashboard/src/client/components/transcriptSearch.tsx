@@ -148,7 +148,10 @@ export function entryMatchesSearch(
   }
 
   if (entry.kind === "reasoning") {
-    return textContains(entry.part.text, normalizedQuery);
+    return textContains(
+      entry.part.redacted ? "reasoning redacted" : entry.part.text,
+      normalizedQuery,
+    );
   }
 
   if (entry.kind === "subagent") {

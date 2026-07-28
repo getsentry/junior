@@ -140,6 +140,20 @@ describe("canonical event transcript reduction", () => {
     ]);
   });
 
+  it("matches the visible label for redacted reasoning", () => {
+    const [entry] = groupTranscriptMessages([
+      {
+        role: "assistant",
+        sourceSeq: 1,
+        parts: [{ type: "reasoning", redacted: true }],
+      },
+    ] as TranscriptViewMessage[]);
+
+    expect(entry?.kind).toBe("reasoning");
+    expect(entry && entryMatchesSearch(entry, "reasoning")).toBe(true);
+    expect(entry && entryMatchesSearch(entry, "redacted")).toBe(true);
+  });
+
   it("adapts turn routes onto messages while keeping handoffs structural", () => {
     const messages = conversationTranscriptMessages(
       conversation([
