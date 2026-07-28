@@ -31,9 +31,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
     await run({
       overrides: { skill_dirs: skillDirs },
       initialEvents: [
-        mention(
-          "Use the weather-lookup skill to check the weather in San Francisco.",
-        ),
+        mention("$weather-lookup check the weather in San Francisco."),
       ],
       criteria: rubric({
         pass: [

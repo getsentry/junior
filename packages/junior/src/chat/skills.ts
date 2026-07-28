@@ -427,7 +427,7 @@ export async function discoverSkills(
   return sorted;
 }
 
-/** Extract a skill invocation (name + args) from a user message, or return null if none matches. */
+/** Extract an explicit skill invocation (name + args) from a user message. */
 export function parseSkillInvocation(
   messageText: string,
   availableSkills: SkillMetadata[],
@@ -435,17 +435,19 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const slashMatch =
-    /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed);
-  if (slashMatch) {
-    const skillName = slashMatch[1].toLowerCase();
+  const referenceMatch =
+    /(?:^|\s)(?:\/|\$)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(
+      trimmed,
+    );
+  if (referenceMatch) {
+    const skillName = referenceMatch[1].toLowerCase();
     if (!availableSkills.some((skill) => skill.name === skillName)) {
       return null;
     }
 
     return {
       skillName,
-      args: (slashMatch[2] ?? "").trim(),
+      args: (referenceMatch[2] ?? "").trim(),
     };
   }
 

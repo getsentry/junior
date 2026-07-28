@@ -82,7 +82,7 @@ describe("skills", () => {
     }
   });
 
-  it("does not parse invocation without slash command", () => {
+  it("does not parse invocation without an explicit skill reference", () => {
     expect(
       parseSkillInvocation("please summarize this candidate", stubSkills),
     ).toBeNull();
@@ -124,17 +124,27 @@ describe("skills", () => {
     });
   });
 
-  it("parses /skill invocation", () => {
+  it("parses $skill tokens anywhere in the message", () => {
     expect(
-      parseSkillInvocation("hey /brief github: octocat", stubSkills),
+      parseSkillInvocation("hey $brief github: octocat", stubSkills),
     ).toEqual({
       skillName: "brief",
       args: "github: octocat",
     });
   });
 
-  it("returns null for unregistered slash command", () => {
+  it("parses $skill for user-callable skills", () => {
+    expect(
+      parseSkillInvocation("$weather-lookup San Francisco", stubSkills),
+    ).toEqual({
+      skillName: "weather-lookup",
+      args: "San Francisco",
+    });
+  });
+
+  it("returns null for an unregistered skill reference", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
+    expect(parseSkillInvocation("$jr link sentry", stubSkills)).toBeNull();
   });
 
   it("returns null when no skills are available", () => {
