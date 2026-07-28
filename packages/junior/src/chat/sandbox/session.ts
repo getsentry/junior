@@ -68,6 +68,7 @@ interface SandboxToolExecutors {
     timedOut?: boolean;
   }>;
   fs: SandboxFileSystem;
+  runCommand: SandboxSession["runCommand"];
 }
 
 interface SandboxRuntime {
@@ -768,6 +769,7 @@ export function createSandboxRuntime(
         }
       },
       fs: sandboxInstance.fs as SandboxFileSystem,
+      runCommand: async (input) => await sandboxInstance.runCommand(input),
     };
   };
 

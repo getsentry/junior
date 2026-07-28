@@ -1,10 +1,17 @@
 import path from "node:path";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
+import type {
+  SandboxCommandInput,
+  SandboxCommandResult,
+  SandboxFileSystem,
+} from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 
 export type { SandboxFileSystem };
+export type SandboxCommandRunner = (
+  input: SandboxCommandInput,
+) => Promise<SandboxCommandResult>;
 
 export const MAX_TEXT_CHARS = 60_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);

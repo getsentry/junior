@@ -1,4 +1,5 @@
 import path from "node:path";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
@@ -8,6 +9,7 @@ import {
   positiveInteger,
   resolveWorkspacePath,
   truncateText,
+  type SandboxCommandRunner,
   type SandboxFileSystem,
   type TextSearchResultDetails,
   type TextSearchToolResult,
@@ -90,6 +92,7 @@ export async function grepFiles(params: {
   literal?: boolean;
   path?: string;
   pattern: string;
+  runCommand?: SandboxCommandRunner;
 }): Promise<GrepResult> {
   if (!params.pattern) {
     throw new Error("pattern is required");
@@ -98,6 +101,20 @@ export async function grepFiles(params: {
   const root = resolveWorkspacePath(params.path);
   const limit = positiveInteger(params.limit) ?? DEFAULT_GREP_LIMIT;
   const context = positiveInteger(params.context) ?? 0;
+  if (params.runCommand) {
+    return await grepFilesWithRipgrep({
+      context,
+      fs: params.fs,
+      glob: params.glob,
+      ignoreCase: params.ignoreCase,
+      limit,
+      literal: params.literal,
+      path: params.path,
+      pattern: params.pattern,
+      root,
+      runCommand: params.runCommand,
+    });
+  }
   let regex: RegExp | undefined;
   if (!params.literal) {
     try {
@@ -226,6 +243,225 @@ export async function grepFiles(params: {
       ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
     },
     ...(matchLimitReached ? { match_limit_reached: limit } : {}),
+    ...(lineTruncated ? { line_truncated: true } : {}),
+  });
+}
+
+interface RipgrepText {
+  bytes?: string;
+  text?: string;
+}
+
+interface RipgrepRecord {
+  type?: string;
+  data?: {
+    line_number?: number;
+    lines?: RipgrepText;
+    path?: RipgrepText;
+  };
+}
+
+function decodeRipgrepText(value: RipgrepText | undefined): string {
+  if (typeof value?.text === "string") {
+    return value.text;
+  }
+  if (typeof value?.bytes === "string") {
+    return Buffer.from(value.bytes, "base64").toString("utf8");
+  }
+  return "";
+}
+
+async function grepFilesWithRipgrep(params: {
+  context: number;
+  fs: SandboxFileSystem;
+  glob?: string;
+  ignoreCase?: boolean;
+  limit: number;
+  literal?: boolean;
+  path?: string;
+  pattern: string;
+  root: string;
+  runCommand: SandboxCommandRunner;
+}): Promise<GrepResult> {
+  let rootIsDirectory: boolean;
+  try {
+    rootIsDirectory = (await params.fs.stat(params.root)).isDirectory();
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return missingPathSearchResult({
+        path: params.path ?? ".",
+        displayPath: params.path ?? ".",
+      });
+    }
+    throw error;
+  }
+
+  const target =
+    path.posix.relative(SANDBOX_WORKSPACE_ROOT, params.root) || ".";
+  const args = [
+    "--json",
+    "--line-number",
+    "--hidden",
+    "--sort=path",
+    "--glob",
+    "!.git/**",
+    "--glob",
+    "!node_modules/**",
+  ];
+  if (params.ignoreCase) {
+    args.push("--ignore-case");
+  }
+  if (params.literal) {
+    args.push("--fixed-strings");
+  }
+  if (params.glob) {
+    args.push("--glob", params.glob);
+  }
+  if (params.context > 0) {
+    args.push("--context", String(params.context));
+  }
+  args.push("--", params.pattern, target);
+
+  const result = await params.runCommand({
+    cmd: "rg",
+    args,
+    cwd: SANDBOX_WORKSPACE_ROOT,
+  });
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    const detail =
+      result.stderr.trim() || result.stdout.trim() || "command failed";
+    if (/regex parse error|error parsing regex/i.test(detail)) {
+      throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
+        cause: new Error(detail),
+      });
+    }
+    throw new Error(`ripgrep search failed: ${detail}`);
+  }
+
+  const recordsByPath = new Map<
+    string,
+    Array<{ line: number; matched: boolean; text: string }>
+  >();
+  const pathOrder: string[] = [];
+  let totalMatches = 0;
+  for (const rawLine of normalizeToLf(result.stdout).split("\n")) {
+    if (!rawLine) {
+      continue;
+    }
+    let record: RipgrepRecord;
+    try {
+      record = JSON.parse(rawLine) as RipgrepRecord;
+    } catch (error) {
+      throw new Error("ripgrep returned invalid JSON output", { cause: error });
+    }
+    if (record.type !== "match" && record.type !== "context") {
+      continue;
+    }
+    const line = record.data?.line_number;
+    const rawPath = decodeRipgrepText(record.data?.path);
+    if (!line || !rawPath) {
+      continue;
+    }
+    const absolutePath = rawPath.startsWith("/")
+      ? path.posix.normalize(rawPath)
+      : path.posix.resolve(SANDBOX_WORKSPACE_ROOT, rawPath);
+    const displayPath = rootIsDirectory
+      ? path.posix.relative(params.root, absolutePath)
+      : path.posix.basename(absolutePath);
+    let records = recordsByPath.get(displayPath);
+    if (!records) {
+      records = [];
+      recordsByPath.set(displayPath, records);
+      pathOrder.push(displayPath);
+    }
+    const matched = record.type === "match";
+    if (matched) {
+      totalMatches += 1;
+    }
+    records.push({
+      line,
+      matched,
+      text: decodeRipgrepText(record.data?.lines).replace(/\r?\n$/, ""),
+    });
+  }
+
+  let remainingMatches = params.limit;
+  const output: string[] = [];
+  let lineTruncated = false;
+  for (const displayPath of pathOrder) {
+    const records = recordsByPath.get(displayPath) ?? [];
+    const selectedMatchLines: number[] = [];
+    for (const record of records) {
+      if (record.matched && remainingMatches > 0) {
+        selectedMatchLines.push(record.line);
+        remainingMatches -= 1;
+      }
+    }
+    if (selectedMatchLines.length === 0) {
+      continue;
+    }
+    const selectedMatchSet = new Set(selectedMatchLines);
+    const emittedLines = new Set<number>();
+    for (const record of records) {
+      if (emittedLines.has(record.line)) {
+        continue;
+      }
+      const include = selectedMatchLines.some(
+        (matchLine) => Math.abs(record.line - matchLine) <= params.context,
+      );
+      if (!include) {
+        continue;
+      }
+      emittedLines.add(record.line);
+      const truncated = truncateGrepLine(record.text);
+      lineTruncated ||= truncated.truncated;
+      const separator = selectedMatchSet.has(record.line) ? ":" : "-";
+      output.push(
+        `${displayPath}${separator}${record.line}${separator} ${truncated.line}`,
+      );
+    }
+  }
+
+  const matchCount = Math.min(totalMatches, params.limit);
+  const matchLimitReached = totalMatches > params.limit;
+  const bounded = truncateText(
+    output.length > 0 ? output.join("\n") : "No matches found",
+  );
+  const notices: string[] = [];
+  if (matchLimitReached) {
+    notices.push(
+      `${params.limit} matches limit reached. Refine pattern or raise limit.`,
+    );
+  }
+  if (lineTruncated) {
+    notices.push(
+      `Some lines were truncated to ${MAX_GREP_LINE_CHARS} characters.`,
+    );
+  }
+  if (bounded.truncated) {
+    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
+  }
+
+  return makeStructuredToolResult({
+    ok: true,
+    status: "success",
+    target: params.path ?? ".",
+    path: params.path ?? ".",
+    truncated: matchLimitReached || lineTruncated || bounded.truncated,
+    data: {
+      context: params.context,
+      ...(params.glob ? { glob: params.glob } : {}),
+      line_count: output.length,
+      lines:
+        bounded.content === "No matches found"
+          ? []
+          : bounded.content.split("\n"),
+      match_count: matchCount,
+      pattern: params.pattern,
+      path: params.path ?? ".",
+      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
+    },
+    ...(matchLimitReached ? { match_limit_reached: params.limit } : {}),
     ...(lineTruncated ? { line_truncated: true } : {}),
   });
 }

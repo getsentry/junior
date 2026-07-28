@@ -47,6 +47,7 @@ import {
   isMissingPathError,
   positiveInteger,
   resolveWorkspacePath,
+  type SandboxCommandRunner,
 } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
@@ -92,6 +93,7 @@ export interface SandboxOptions {
 interface SandboxToolCallContext {
   readonly signal?: AbortSignal;
   fileSystem(): Promise<SandboxFileSystem>;
+  commandRunner(): Promise<SandboxCommandRunner>;
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -213,6 +215,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     signal?: AbortSignal,
   ): SandboxToolCallContext => {
     let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
+    let commandRunnerPromise: Promise<SandboxCommandRunner> | undefined;
 
     return {
       signal,
@@ -222,6 +225,19 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           signal?.throwIfAborted();
           return bindSandboxFileSystem(fs, signal);
         }));
+      },
+      commandRunner() {
+        signal?.throwIfAborted();
+        return (commandRunnerPromise ??= runtime
+          .tools()
+          .then(({ runCommand }) => {
+            signal?.throwIfAborted();
+            return async (input) =>
+              await runCommand({
+                ...input,
+                ...(signal ? { signal } : {}),
+              });
+          }));
       },
     };
   };
@@ -542,6 +558,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await grepFiles({
           fs: fileSystem,
+          runCommand: await context.commandRunner(),
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
@@ -583,6 +600,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await findFiles({
           fs: fileSystem,
+          runCommand: await context.commandRunner(),
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(limit ? { limit } : {}),
