@@ -388,21 +388,14 @@ function buildReplacementProvenance(args: {
 }
 
 async function loadLastInstruction(conversationId: string) {
-  const events = await getConversationEventStore().loadHistory(conversationId);
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]!;
-    if (
-      event.data.type === "agent_step" &&
-      event.data.provenance?.authority === "instruction"
-    ) {
-      return {
-        message: event.data.message as PiMessage,
-        provenance: event.data.provenance,
-        sourceEventSeq: event.seq,
-      };
-    }
-  }
-  return undefined;
+  const event =
+    await getConversationEventStore().loadLatestInstructionStep(conversationId);
+  if (event?.data.type !== "agent_step") return undefined;
+  return {
+    message: event.data.message as PiMessage,
+    provenance: event.data.provenance,
+    sourceEventSeq: event.seq,
+  };
 }
 
 type CompactionSource =

@@ -463,6 +463,10 @@ export interface ConversationEventStore {
     conversationId: string,
     idempotencyKey: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Latest durable user instruction across history versions. */
+  loadLatestInstructionStep(
+    conversationId: string,
+  ): Promise<ConversationEvent | undefined>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */

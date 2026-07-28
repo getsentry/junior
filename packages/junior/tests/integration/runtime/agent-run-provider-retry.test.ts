@@ -570,6 +570,7 @@ describe("executeAgentRun provider retry", () => {
         routing: {
           source: TEST_SOURCE,
           destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
         conversationId: "conversation-active-compaction",
         turnId: "turn-active-compaction",

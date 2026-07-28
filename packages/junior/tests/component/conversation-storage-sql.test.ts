@@ -393,6 +393,61 @@ describe("SQL conversation storage", () => {
     }
   });
 
+  it("loads the latest user instruction step", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+
+      await store.append(CONVERSATION_ID, [
+        {
+          data: {
+            type: "agent_step",
+            message: userMessage("first instruction"),
+            provenance: { authority: "instruction" },
+          },
+          createdAtMs: 1_000,
+        },
+        {
+          data: {
+            type: "agent_step",
+            message: userMessage("ambient context"),
+            provenance: { authority: "context" },
+          },
+          createdAtMs: 2_000,
+        },
+        {
+          data: {
+            type: "agent_step",
+            message: { role: "assistant" },
+            provenance: { authority: "instruction" },
+          },
+          createdAtMs: 3_000,
+        },
+        {
+          data: {
+            type: "agent_step",
+            message: userMessage("latest instruction"),
+            provenance: { authority: "instruction" },
+          },
+          createdAtMs: 4_000,
+        },
+      ]);
+
+      const event = await store.loadLatestInstructionStep(CONVERSATION_ID);
+      expect(event?.seq).toBe(3);
+      expect(event?.data).toMatchObject({
+        type: "agent_step",
+        message: userMessage("latest instruction"),
+        provenance: { authority: "instruction" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("does not refresh or unarchive a conversation for duplicate appends", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

@@ -46,6 +46,10 @@ class MemoryConversationEventStore implements ConversationEventStore {
     throw new Error("not implemented");
   }
 
+  async loadLatestInstructionStep(): Promise<ConversationEvent | undefined> {
+    return undefined;
+  }
+
   async loadCurrentHistory(): Promise<ConversationEvent[]> {
     return this.history;
   }

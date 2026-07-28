@@ -273,6 +273,26 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
+  async loadLatestInstructionStep(
+    conversationId: string,
+  ): Promise<ConversationEvent | undefined> {
+    const [row] = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "agent_step"),
+          sql`${juniorConversationEvents.payload}->'message'->>'role' = 'user'`,
+          sql`${juniorConversationEvents.payload}->'provenance'->>'authority' = 'instruction'`,
+        ),
+      )
+      .orderBy(desc(juniorConversationEvents.seq))
+      .limit(1);
+    return row ? eventFromRow(row) : undefined;
+  }
+
   async loadMessageHistory(conversationId: string): Promise<MessageHistory> {
     const [compactionRow] = await this.executor
       .db()
