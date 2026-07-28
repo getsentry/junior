@@ -25,7 +25,7 @@ import {
 } from "@/chat/sandbox/paths";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
@@ -183,17 +183,10 @@ function formatSkillEntry(skill: SkillMetadata): string[] {
 
 function formatAvailableSkillsForPrompt(
   skills: SkillMetadata[],
-  invocation: SkillInvocation | null,
 ): string | null {
   const autoSelectable = skills.filter(
     (s) => s.disableModelInvocation !== true,
   );
-  const invokedExplicitOnly = invocation
-    ? skills.filter(
-        (s) =>
-          s.disableModelInvocation === true && s.name === invocation.skillName,
-      )
-    : [];
 
   const sections: string[] = [];
 
@@ -208,19 +201,6 @@ function formatAvailableSkillsForPrompt(
     }
     available.push("</available-skills>");
     sections.push(available.join("\n"));
-  }
-
-  // User-callable skills: model must not auto-select these.
-  if (invokedExplicitOnly.length > 0) {
-    const userCallable = [
-      "<user-callable-skills>",
-      "The user's current message explicitly references this skill by name. Load it when relevant to the request.",
-    ];
-    for (const skill of invokedExplicitOnly) {
-      userCallable.push(...formatSkillEntry(skill));
-    }
-    userCallable.push("</user-callable-skills>");
-    sections.push(userCallable.join("\n"));
   }
 
   return sections.length > 0 ? sections.join("\n") : null;
@@ -370,7 +350,8 @@ const TOOL_CALL_STYLE_RULES = [
 ];
 
 const SKILL_POLICY_RULES = [
-  "- Only load skills listed in `<available-skills>`, `<user-callable-skills>`, or named by `<explicit-skill-trigger>`. Never guess or invent a skill name.",
+  "- A `<skill>` block in the current user turn is already loaded. Follow its instructions directly and do not call `loadSkill` for that skill.",
+  "- Otherwise, only load skills listed in `<available-skills>`. Never guess or invent a skill name.",
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];
 
@@ -586,7 +567,6 @@ function buildContextSection(params: {
     plugin?: string;
     source: Source;
   };
-  invocation: SkillInvocation | null;
 }): string | null {
   const blocks: string[][] = [];
 
@@ -629,15 +609,6 @@ function buildContextSection(params: {
     );
   }
 
-  if (params.invocation) {
-    blocks.push(
-      renderTag("explicit-skill-trigger", [
-        "Treat this skill as selected. Load it unless the tool says it is unavailable.",
-        `/${escapeXml(params.invocation.skillName)}`,
-      ]),
-    );
-  }
-
   const body = blocks.map((block) => block.join("\n")).join("\n\n");
   if (!body) {
     return null;
@@ -649,13 +620,11 @@ function buildContextSection(params: {
 function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
-  invocation: SkillInvocation | null;
   toolGuidance?: ToolPromptContext[];
 }): string | null {
   const blocks: string[] = [];
   const availableSkills = formatAvailableSkillsForPrompt(
     params.availableSkills,
-    params.invocation,
   );
   if (availableSkills) {
     blocks.push(availableSkills);
@@ -738,7 +707,6 @@ type TurnContextPromptInput = {
     plugin?: string;
     source: Source;
   };
-  invocation: SkillInvocation | null;
   actor?: {
     userName?: string;
     fullName?: string;
@@ -795,7 +763,6 @@ export function buildTurnContextPrompt(
       ? buildCapabilitiesSection({
           availableSkills: params.availableSkills,
           activeMcpCatalogs: params.activeMcpCatalogs ?? [],
-          invocation: params.invocation,
           toolGuidance: params.toolGuidance ?? [],
         })
       : null,
@@ -806,7 +773,6 @@ export function buildTurnContextPrompt(
           artifactState: params.artifactState,
           configuration: params.configuration,
           dispatch: params.dispatch,
-          invocation: params.invocation,
         })
       : null,
     includeSessionContext ? buildRuntimeSection(params.runtime ?? {}) : null,

@@ -58,7 +58,6 @@ describe("prompt builders", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],
       activeMcpCatalogs: [],
-      invocation: null,
     });
 
     expect(prompt).toContain("- sandbox.workspace_root: /vercel/sandbox");
@@ -68,7 +67,6 @@ describe("prompt builders", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],
       activeMcpCatalogs: [],
-      invocation: null,
       runtime: {
         conversationId: "slack:C123:1712345.000001",
         slackConversation: {
@@ -111,7 +109,6 @@ describe("prompt builders", () => {
           taskId: "sched_plugin_1",
         },
       },
-      invocation: null,
     });
 
     expect(prompt).toContain("<dispatch>");
@@ -153,7 +150,6 @@ describe("prompt builders", () => {
           sentry_project: "junior",
         },
         includeSessionContext: false,
-        invocation: null,
         actor: {
           userId: "U0BETA",
           userName: "dcramer",
@@ -184,7 +180,6 @@ describe("prompt builders", () => {
         { provider: "alpha-provider", available_tool_count: 2 },
       ],
       includeSessionContext: false,
-      invocation: null,
       pluginPromptContributions: [
         {
           id: "memory",

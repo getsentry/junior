@@ -462,6 +462,9 @@ async function executeAgentRunInPrivacyContext(
       skillSandbox,
       syncLoadedSkillNamesForResume,
     });
+    const explicitSkill = invokedSkill
+      ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
+      : null;
 
     // ── Prompt input ─────────────────────────────────────────────────
     const { routerBlocks, userContentParts } = buildPromptInput(input);
@@ -753,7 +756,7 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      invocation: skillInvocation,
+      explicitSkill,
       priorPiMessages,
       resumedFromSessionRecord,
       routing,

@@ -1,8 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { buildPromptInput, buildUserTurnText } from "@/chat/agent/prompt";
+import {
+  buildPromptInput,
+  buildUserTurnText,
+  renderExplicitSkillInstructions,
+} from "@/chat/agent/prompt";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 describe("buildUserTurnText", () => {
+  it("renders an explicitly selected skill as loaded instructions", () => {
+    expect(
+      renderExplicitSkillInstructions({
+        name: "weather-lookup",
+        description: "Weather lookup",
+        skillPath: "/host/skills/weather-lookup/SKILL.md",
+        body: "Use the weather source.",
+      }),
+    ).toBe(
+      [
+        "<skill>",
+        "<name>weather-lookup</name>",
+        "<path>/vercel/sandbox/.junior/skills/weather-lookup/SKILL.md</path>",
+        "Use the weather source.",
+        "</skill>",
+      ].join("\n"),
+    );
+  });
+
   it("wraps input in the current instruction boundary without context", () => {
     expect(buildUserTurnText("hello")).toBe(
       ["<current-instruction>", "hello", "</current-instruction>"].join("\n"),
