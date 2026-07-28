@@ -1,4 +1,5 @@
 import { Sandbox } from "@vercel/sandbox";
+import { z } from "zod";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
@@ -13,16 +14,20 @@ import { getStateAdapter } from "@/chat/state/adapter";
 const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
 const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";
 const SNAPSHOT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const SNAPSHOT_BUILD_LOCK_TTL_MS = 10 * 60 * 1000;
-const SNAPSHOT_WAIT_FOR_LOCK_MS = SNAPSHOT_BUILD_LOCK_TTL_MS + 30 * 1000;
+const SNAPSHOT_BUILD_LOCK_BUFFER_MS = 30 * 1000;
+const SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS = 30 * 1000;
 
-interface CachedSnapshotEntry {
-  profileHash: string;
-  snapshotId: string;
-  runtime: string;
-  createdAtMs: number;
-  dependencyCount: number;
-}
+const cachedSnapshotSchema = z
+  .object({
+    profileHash: z.string(),
+    snapshotId: z.string(),
+    runtime: z.string(),
+    createdAtMs: z.number(),
+    dependencyCount: z.number(),
+  })
+  .strict();
+
+type CachedSnapshot = z.output<typeof cachedSnapshotSchema>;
 
 export type ResolveOutcome =
   | "no_profile"
@@ -54,11 +59,10 @@ export type ProgressPhase =
   | "building_snapshot"
   | "build_complete";
 
-interface BuildLockResult {
+type LockResult = {
   snapshotId: string;
-  source: "wait_cache" | "callback_cache" | "built";
-  waitedForLock: boolean;
-}
+  source: "cache_hit" | "cache_hit_after_lock_wait" | "built";
+};
 
 function profileCacheKey(profileHash: string): string {
   return `${SNAPSHOT_CACHE_PREFIX}:${profileHash}`;
@@ -68,35 +72,31 @@ function profileLockKey(profileHash: string): string {
   return `${SNAPSHOT_LOCK_PREFIX}:${profileHash}`;
 }
 
+/** Read one cached snapshot pointer; only a missing key is a cache miss. */
 async function getCachedSnapshot(
   profileHash: string,
-): Promise<CachedSnapshotEntry | null> {
-  try {
-    const state = getStateAdapter();
-    await state.connect();
-    const raw = await state.get(profileCacheKey(profileHash));
-    if (typeof raw !== "string") {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as CachedSnapshotEntry;
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      typeof parsed.profileHash !== "string" ||
-      typeof parsed.snapshotId !== "string" ||
-      typeof parsed.runtime !== "string" ||
-      typeof parsed.createdAtMs !== "number" ||
-      typeof parsed.dependencyCount !== "number"
-    ) {
-      return null;
-    }
-    return parsed;
-  } catch {
+): Promise<CachedSnapshot | null> {
+  const state = getStateAdapter();
+  await state.connect();
+  const raw = await state.get(profileCacheKey(profileHash));
+  if (typeof raw !== "string") {
     return null;
   }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error(`Invalid cached sandbox snapshot for ${profileHash}`);
+  }
+  const parsed = cachedSnapshotSchema.safeParse(value);
+  if (!parsed.success || parsed.data.profileHash !== profileHash) {
+    throw new Error(`Invalid cached sandbox snapshot for ${profileHash}`);
+  }
+  return parsed.data;
 }
 
-async function setCachedSnapshot(entry: CachedSnapshotEntry): Promise<void> {
+/** Persist one dependency profile's reusable snapshot pointer. */
+async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(
@@ -155,32 +155,28 @@ async function build(
   );
 }
 
+/** Run one profile build under a timeout-buffered lock or reuse its result. */
 async function withBuildLock(
   profileHash: string,
+  timeoutMs: number,
   callback: () => Promise<{
     snapshotId: string;
-    source: "callback_cache" | "built";
+    source: "cache_hit" | "built";
   }>,
-  canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean,
-  hooks?: {
-    onWaitingForLock?: () => void | Promise<void>;
-  },
-): Promise<BuildLockResult> {
+  canUseCachedSnapshot: (cached: CachedSnapshot) => boolean,
+  onWaitingForLock?: () => void | Promise<void>,
+): Promise<LockResult> {
   const state = getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
+  const lockTtlMs = timeoutMs + SNAPSHOT_BUILD_LOCK_BUFFER_MS;
   const tryAcquireLock = async () =>
-    await state.acquireLock(lockKey, SNAPSHOT_BUILD_LOCK_TTL_MS);
+    await state.acquireLock(lockKey, lockTtlMs);
 
   let lock = await tryAcquireLock();
   if (lock) {
     try {
-      const result = await callback();
-      return {
-        snapshotId: result.snapshotId,
-        source: result.source,
-        waitedForLock: false,
-      };
+      return await callback();
     } finally {
       await state.releaseLock(lock);
     }
@@ -193,15 +189,15 @@ async function withBuildLock(
       "app.sandbox.snapshot.profile_hash": profileHash,
     },
     async () => {
-      await hooks?.onWaitingForLock?.();
-      const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
+      await onWaitingForLock?.();
+      const waitUntil =
+        Date.now() + lockTtlMs + SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS;
       while (Date.now() < waitUntil) {
         const cached = await getCachedSnapshot(profileHash);
         if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
           return {
             snapshotId: cached.snapshotId,
-            source: "wait_cache" as const,
-            waitedForLock: true,
+            source: "cache_hit_after_lock_wait",
           };
         }
 
@@ -211,8 +207,10 @@ async function withBuildLock(
             const result = await callback();
             return {
               snapshotId: result.snapshotId,
-              source: result.source,
-              waitedForLock: true,
+              source:
+                result.source === "built"
+                  ? "built"
+                  : "cache_hit_after_lock_wait",
             };
           } finally {
             await state.releaseLock(lock);
@@ -226,8 +224,7 @@ async function withBuildLock(
       if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
         return {
           snapshotId: cached.snapshotId,
-          source: "wait_cache" as const,
-          waitedForLock: true,
+          source: "cache_hit_after_lock_wait",
         };
       }
 
@@ -238,22 +235,18 @@ async function withBuildLock(
 
 function toResolveOutcome(
   forceRebuild: boolean,
-  source: BuildLockResult["source"],
-  waitedForLock: boolean,
+  source: LockResult["source"],
 ): ResolveOutcome {
   if (source === "built") {
     return forceRebuild ? "forced_rebuild" : "rebuilt";
   }
-  if (waitedForLock || source === "wait_cache") {
-    return "cache_hit_after_lock_wait";
-  }
-  return "cache_hit";
+  return source;
 }
 
 function getRebuildReason(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
-  cached?: CachedSnapshotEntry | null;
+  cached?: CachedSnapshot | null;
   shouldRebuildCached: boolean;
 }): RebuildReason | undefined {
   if (params.forceRebuild) {
@@ -285,7 +278,6 @@ export async function resolve(params: {
     },
     async () => {
       await params.onProgress?.("resolve_start");
-      const resolveStartedAtMs = Date.now();
       const currentProfile = profile.create(params.runtime);
       if (!currentProfile) {
         return {
@@ -319,29 +311,28 @@ export async function resolve(params: {
         shouldRebuildCached: cachedNeedsRebuild,
       });
 
-      const canUseCachedSnapshot = (
-        candidate: CachedSnapshotEntry,
-      ): boolean => {
+      const canUseCachedSnapshot = (candidate: CachedSnapshot): boolean => {
         if (params.forceRebuild) {
           if (params.staleSnapshotId) {
             return candidate.snapshotId !== params.staleSnapshotId;
           }
           // Force rebuild requests should ignore snapshots that existed before this
           // call but can reuse a fresh snapshot produced by a concurrent builder.
-          return candidate.createdAtMs > resolveStartedAtMs;
+          return candidate.snapshotId !== cached?.snapshotId;
         }
         return !profile.isStale(currentProfile, candidate.createdAtMs);
       };
 
       const lockResult = await withBuildLock(
         currentProfile.hash,
+        params.timeoutMs,
         async () => {
           const latest = await getCachedSnapshot(currentProfile.hash);
           if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
             await params.onProgress?.("cache_hit");
             return {
               snapshotId: latest.snapshotId,
-              source: "callback_cache" as const,
+              source: "cache_hit",
             };
           }
 
@@ -359,13 +350,11 @@ export async function resolve(params: {
             dependencyCount: currentProfile.dependencyCount,
           });
           await params.onProgress?.("build_complete");
-          return { snapshotId: nextSnapshotId, source: "built" as const };
+          return { snapshotId: nextSnapshotId, source: "built" };
         },
         canUseCachedSnapshot,
-        {
-          onWaitingForLock: async () => {
-            await params.onProgress?.("waiting_for_lock");
-          },
+        async () => {
+          await params.onProgress?.("waiting_for_lock");
         },
       );
 
@@ -377,7 +366,6 @@ export async function resolve(params: {
         resolveOutcome: toResolveOutcome(
           Boolean(params.forceRebuild),
           lockResult.source,
-          lockResult.waitedForLock,
         ),
         ...(rebuildReason ? { rebuildReason } : {}),
       };

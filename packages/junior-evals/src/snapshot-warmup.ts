@@ -1,4 +1,4 @@
-import { runSnapshotCreate } from "@/cli/snapshot-warmup";
+import { runSnapshotCreate } from "@/cli/snapshot-create";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
 /** Warm one plugin dependency profile and restore the eval catalog afterward. */

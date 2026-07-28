@@ -73,4 +73,26 @@ describe("snapshot dependency profile", () => {
 
     expect(first?.hash).not.toBe(second?.hash);
   });
+
+  it("rejects conflicting npm versions", () => {
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+      { type: "npm", package: "example", version: "2.0.0" },
+    ]);
+
+    expect(() => create("node22")).toThrow(
+      "Conflicting runtime dependency versions for example: 1.2.3 and 2.0.0",
+    );
+  });
+
+  it("deduplicates identical dependencies", () => {
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+
+    expect(create("node22")?.dependencies).toEqual([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+  });
 });

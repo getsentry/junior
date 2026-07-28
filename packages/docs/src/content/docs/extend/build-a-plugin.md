@@ -97,6 +97,7 @@ runtime-postinstall:
 ```
 
 Junior merges runtime dependency declarations from all loaded plugins and prepares them with `junior snapshot create`.
+Identical declarations are deduplicated. Plugins that declare different versions of the same npm package cannot share a snapshot, so snapshot creation fails until their versions agree.
 
 ## Register the package
 

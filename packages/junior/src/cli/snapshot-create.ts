@@ -3,7 +3,7 @@ import {
   resolve as resolveSnapshot,
   type ProgressPhase,
 } from "@/chat/sandbox/snapshot/resolve";
-import { GLOBAL_RUNTIME_DEPENDENCIES } from "@/chat/sandbox/runtime-dependencies";
+import * as profile from "@/chat/sandbox/snapshot/profile";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 const DEFAULT_RUNTIME = "node22";
@@ -29,8 +29,12 @@ function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none";
 }
 
-function logSnapshotProfile(log: (line: string) => void): void {
+function logSnapshotProfile(
+  runtime: string,
+  log: (line: string) => void,
+): void {
   const providers = pluginCatalogRuntime.getProviders();
+  const currentProfile = profile.create(runtime);
   const pluginNames = providers.map((plugin) => plugin.manifest.name).sort();
   const snapshotPluginNames = providers
     .filter(
@@ -42,10 +46,7 @@ function logSnapshotProfile(log: (line: string) => void): void {
     .sort();
   const systemDependencies: string[] = [];
   const npmDependencies: string[] = [];
-  for (const dep of [
-    ...GLOBAL_RUNTIME_DEPENDENCIES,
-    ...pluginCatalogRuntime.getRuntimeDependencies(),
-  ]) {
+  for (const dep of currentProfile?.dependencies ?? []) {
     if (dep.type === "npm") {
       npmDependencies.push(`${dep.package}@${dep.version}`);
       continue;
@@ -53,11 +54,10 @@ function logSnapshotProfile(log: (line: string) => void): void {
 
     systemDependencies.push("package" in dep ? dep.package : dep.url);
   }
-  const postinstallCommands = pluginCatalogRuntime
-    .getRuntimePostinstall()
-    .map(({ cmd, args }) =>
+  const postinstallCommands = (currentProfile?.postinstall ?? []).map(
+    ({ cmd, args }) =>
       [cmd, ...(args ?? [])].filter((part) => part.trim().length > 0).join(" "),
-    );
+  );
 
   log(`Loaded plugins (${pluginNames.length}): ${formatList(pluginNames)}`);
   log(
@@ -102,6 +102,7 @@ function logSnapshotProfile(log: (line: string) => void): void {
   }
 }
 
+/** Resolve or create the default sandbox snapshot and report its progress. */
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
 ): Promise<void> {
@@ -114,7 +115,7 @@ export async function runSnapshotCreate(
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 
   try {
-    logSnapshotProfile(log);
+    logSnapshotProfile(runtime, log);
     const emitted = new Set<ProgressPhase>();
     const snapshot = await resolveSnapshot({
       runtime,

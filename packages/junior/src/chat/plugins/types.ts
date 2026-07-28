@@ -1,4 +1,16 @@
+import type {
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+} from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+
+export type {
+  PluginNpmRuntimeDependency,
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+  PluginSystemRuntimeDependency,
+  PluginSystemRuntimeDependencyFromUrl,
+} from "@sentry/junior-plugin-api";
 
 export interface PluginOAuthConfig {
   clientIdEnv: string;
@@ -32,34 +44,6 @@ export interface OAuthBearerCredentials {
 }
 
 export type PluginCredentials = OAuthBearerCredentials;
-
-export interface PluginNpmRuntimeDependency {
-  type: "npm";
-  package: string;
-  version: string;
-}
-
-export interface PluginSystemRuntimeDependency {
-  type: "system";
-  package: string;
-}
-
-export interface PluginSystemRuntimeDependencyFromUrl {
-  type: "system";
-  url: string;
-  sha256: string;
-}
-
-export type PluginRuntimeDependency =
-  | PluginNpmRuntimeDependency
-  | PluginSystemRuntimeDependency
-  | PluginSystemRuntimeDependencyFromUrl;
-
-export interface PluginRuntimePostinstallCommand {
-  cmd: string;
-  args?: string[];
-  sudo?: boolean;
-}
 
 export interface PluginMcpHttpConfig {
   transport: "http";

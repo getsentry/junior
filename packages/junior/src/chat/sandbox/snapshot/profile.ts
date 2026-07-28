@@ -9,13 +9,13 @@ import { GLOBAL_RUNTIME_DEPENDENCIES } from "@/chat/sandbox/runtime-dependencies
 const VERSION = 1;
 const DEFAULT_FLOATING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export interface Profile {
+export type Profile = {
   hash: string;
   dependencyCount: number;
   floating: boolean;
   dependencies: PluginRuntimeDependency[];
   postinstall: PluginRuntimePostinstallCommand[];
-}
+};
 
 function isExactNpmVersion(version: string): boolean {
   return /^\d+\.\d+\.\d+(?:[-+][a-z0-9.]+)?$/i.test(version.trim());
@@ -23,6 +23,44 @@ function isExactNpmVersion(version: string): boolean {
 
 function isFloating(dep: PluginRuntimeDependency): boolean {
   return dep.type === "npm" && !isExactNpmVersion(dep.version);
+}
+
+/**
+ * Merge dependencies for one global install, rejecting competing npm versions.
+ */
+function mergeDependencies(
+  dependencies: PluginRuntimeDependency[],
+): PluginRuntimeDependency[] {
+  const seen = new Set<string>();
+  const npmVersions = new Map<string, string>();
+  const merged: PluginRuntimeDependency[] = [];
+
+  for (const dependency of dependencies) {
+    const key =
+      dependency.type === "npm"
+        ? `${dependency.type}:${dependency.package}:${dependency.version}`
+        : "package" in dependency
+          ? `${dependency.type}:package:${dependency.package}`
+          : `${dependency.type}:url:${dependency.url}:${dependency.sha256}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    if (dependency.type === "npm") {
+      const version = npmVersions.get(dependency.package);
+      if (version !== undefined && version !== dependency.version) {
+        throw new Error(
+          `Conflicting runtime dependency versions for ${dependency.package}: ${version} and ${dependency.version}`,
+        );
+      }
+      npmVersions.set(dependency.package, dependency.version);
+    }
+
+    merged.push(dependency);
+  }
+
+  return merged;
 }
 
 function floatingMaxAgeMs(): number {
@@ -38,10 +76,10 @@ function floatingMaxAgeMs(): number {
 
 /** Build the dependency profile that selects a reusable sandbox snapshot. */
 export function create(runtime: string): Profile | null {
-  const dependencies = [
+  const dependencies = mergeDependencies([
     ...GLOBAL_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
-  ];
+  ]);
   const postinstall = pluginCatalogRuntime.getRuntimePostinstall();
   if (dependencies.length === 0 && postinstall.length === 0) {
     return null;

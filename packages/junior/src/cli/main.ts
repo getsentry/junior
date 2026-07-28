@@ -21,7 +21,7 @@ async function runInit(dir: string): Promise<void> {
 }
 
 async function runSnapshotCreate(): Promise<void> {
-  const mod = await import("./snapshot-warmup");
+  const mod = await import("./snapshot-create");
   await mod.runSnapshotCreate();
 }
 

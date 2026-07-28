@@ -28,7 +28,7 @@ vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
 }));
 
-import { runSnapshotCreate } from "@/cli/snapshot-warmup";
+import { runSnapshotCreate } from "@/cli/snapshot-create";
 
 describe("snapshot create cli", () => {
   beforeEach(() => {

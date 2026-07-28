@@ -11,7 +11,7 @@ export default defineConfig({
     "cli/chat": "src/cli/chat.ts",
     "cli/check": "src/cli/check.ts",
     "cli/upgrade": "src/cli/upgrade.ts",
-    "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
+    "cli/snapshot-create": "src/cli/snapshot-create.ts",
     api: "src/api.ts",
     "api/schema": "src/api/schema.ts",
     instrumentation: "src/instrumentation.ts",

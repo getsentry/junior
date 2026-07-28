@@ -42,15 +42,23 @@ vi.mock("@/chat/logging", () => ({
 
 const store = new Map<string, string>();
 let lockHeld = false;
+let getError: Error | undefined;
+const acquiredLockTtls: number[] = [];
 
 vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
     connect: vi.fn(async () => {}),
-    get: vi.fn(async (key: string) => store.get(key)),
+    get: vi.fn(async (key: string) => {
+      if (getError) {
+        throw getError;
+      }
+      return store.get(key);
+    }),
     set: vi.fn(async (key: string, value: string) => {
       store.set(key, value);
     }),
-    acquireLock: vi.fn(async () => {
+    acquireLock: vi.fn(async (_key: string, ttlMs: number) => {
+      acquiredLockTtls.push(ttlMs);
       if (lockHeld) {
         return null;
       }
@@ -91,6 +99,8 @@ describe("snapshot resolution", () => {
   beforeEach(() => {
     store.clear();
     lockHeld = false;
+    getError = undefined;
+    acquiredLockTtls.length = 0;
     sandboxCreateMock.mockReset();
     withSpanMock.mockReset();
     withSpanMock.mockImplementation(
@@ -154,6 +164,59 @@ describe("snapshot resolution", () => {
     });
     expect(snapshot.snapshotId).toBe("snap_stopped");
     expect(sandbox.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets cache failures reach the caller", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    getError = new Error("state unavailable");
+
+    await expect(
+      resolveSnapshot({
+        runtime: "node22",
+        timeoutMs: 60_000,
+      }),
+    ).rejects.toThrow("state unavailable");
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed cache values without exposing their contents", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_new"));
+
+    const first = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+    const [cacheKey] = [...store.keys()];
+    store.set(cacheKey, "private-token-abc");
+
+    await expect(
+      resolveSnapshot({
+        runtime: "node22",
+        timeoutMs: 60_000,
+      }),
+    ).rejects.toEqual(
+      new Error(`Invalid cached sandbox snapshot for ${first.profileHash}`),
+    );
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the build lock beyond the sandbox timeout", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_new"));
+
+    await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+
+    expect(acquiredLockTtls).toEqual([90_000]);
   });
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
@@ -237,11 +300,8 @@ describe("snapshot resolution", () => {
 
     const [cacheKey] = [...store.keys()];
     const initialCached = JSON.parse(store.get(cacheKey) ?? "") as {
-      profileHash: string;
       snapshotId: string;
-      runtime: string;
       createdAtMs: number;
-      dependencyCount: number;
     };
 
     lockHeld = true;
@@ -251,7 +311,6 @@ describe("snapshot resolution", () => {
         JSON.stringify({
           ...initialCached,
           snapshotId: "snap_from_other_worker",
-          createdAtMs: Date.now(),
         }),
       );
     }, 100);
