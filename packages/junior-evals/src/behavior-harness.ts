@@ -9,7 +9,10 @@ import {
   type Message,
   type SerializedMessage,
 } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type {
+  Destination,
+  PluginRegistration,
+} from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
@@ -33,6 +36,10 @@ import {
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import {
+  defineJuniorPlugins,
+  pluginCatalogConfigFromPluginSet,
+} from "@/plugins";
 import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
@@ -59,6 +66,7 @@ import {
   type ScheduledTask,
   type SchedulerDb,
 } from "@sentry/junior-scheduler";
+import { githubPlugin } from "@sentry/junior-github";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import {
@@ -1521,8 +1529,21 @@ interface HarnessEnvironment {
   stateAdapter: HarnessStateAdapter;
 }
 
+function runtimePluginsForScenario(
+  scenario: EvalScenario,
+): PluginRegistration[] {
+  const packages = new Set(scenario.overrides?.plugin_packages ?? []);
+  return [
+    ...(packages.has("@sentry/junior-github")
+      ? [githubPlugin({ appPermissions: { deployments: "read" } })]
+      : []),
+    ...(packages.has("@sentry/junior-memory") ? [createMemoryPlugin()] : []),
+  ];
+}
+
 async function setupHarnessEnvironment(
   scenario: EvalScenario,
+  runtimePlugins: PluginRegistration[],
 ): Promise<HarnessEnvironment> {
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
 
@@ -1571,9 +1592,18 @@ async function setupHarnessEnvironment(
     }
     ensureHarnessBaseUrl();
     process.env.JUNIOR_SECRET = "junior-test-secret";
+    const pluginConfig = pluginCatalogConfigFromPluginSet(
+      defineJuniorPlugins([
+        ...(scenario.overrides?.plugin_packages ?? []),
+        ...runtimePlugins,
+      ]),
+    );
     pluginCatalogRuntime.setConfig({
-      inlineManifests: pluginFixtures.inlineManifests,
-      packages: scenario.overrides?.plugin_packages ?? [],
+      inlineManifests: [
+        ...pluginFixtures.inlineManifests,
+        ...(pluginConfig?.inlineManifests ?? []),
+      ],
+      packages: pluginConfig?.packages ?? [],
     });
 
     const stateAdapter = getStateAdapter();
@@ -2516,22 +2546,22 @@ export async function runEvalScenario(
   options: EvalScenarioRunOptions = {},
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
-  const env = await setupHarnessEnvironment(scenario);
+  const runtimePlugins = runtimePluginsForScenario(scenario);
+  const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
 
   try {
-    const usesMemoryPlugin = Boolean(
-      scenario.overrides?.plugin_packages?.includes("@sentry/junior-memory"),
+    const runtimePluginNames = new Set(
+      runtimePlugins.map((plugin) => plugin.manifest.name),
     );
-
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
       schedulerPlugin(),
-      ...(usesMemoryPlugin ? [createMemoryPlugin()] : []),
+      ...runtimePlugins,
       ...currentPlugins.filter(
         (plugin) =>
           plugin.manifest.name !== "scheduler" &&
-          (!usesMemoryPlugin || plugin.manifest.name !== "memory"),
+          !runtimePluginNames.has(plugin.manifest.name),
       ),
     ]);
     const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });

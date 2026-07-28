@@ -112,6 +112,8 @@ import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
 } from "../../../src/behavior-harness";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 
 describe("behavior harness", () => {
   afterAll(() => {
@@ -478,6 +480,48 @@ describe("behavior harness", () => {
     ).rejects.toThrow("Plugin package names must be valid npm package names");
 
     expect(process.cwd()).toBe(cwd);
+  });
+
+  it("registers GitHub runtime and egress ownership when an eval requests its package", async () => {
+    let pluginNames: string[] = [];
+    let apiProvider: string | undefined;
+    handleNewMentionMock.mockImplementationOnce(
+      async (
+        thread: { post: (value: unknown) => Promise<void> },
+        _message: unknown,
+        options?: { ack?: () => Promise<void> },
+      ) => {
+        await options?.ack?.();
+        pluginNames = getPlugins().map((plugin) => plugin.manifest.name);
+        apiProvider = resolveSandboxEgressProviderForHost("api.github.com");
+        await thread.post("observed");
+      },
+    );
+
+    await runEvalScenario({
+      initialEvents: [
+        {
+          type: "new_mention",
+          thread: {
+            id: "fixture-github-plugin",
+            channel_id: "CGITHUB",
+            thread_ts: "1700000000.0005",
+          },
+          message: {
+            id: "m-github-plugin",
+            text: "watch a deployment",
+            is_mention: true,
+            author: { user_id: "UGITHUB" },
+          },
+        },
+      ],
+      overrides: {
+        plugin_packages: ["@sentry/junior-github"],
+      },
+    });
+
+    expect(pluginNames).toContain("github");
+    expect(apiProvider).toBe("github");
   });
 
   it("collects created canvas metadata from captured Slack API calls", () => {
