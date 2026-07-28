@@ -143,6 +143,26 @@ test("navigates plugin information and activity on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+  await expect(page.getByLabel("System view").locator("option")).toHaveText([
+    "Overview",
+    "Scheduler",
+  ]);
+  await page
+    .getByRole("region", { name: "Plugins" })
+    .getByRole("link", { name: /GitHub/ })
+    .click();
+  await expect(page.getByLabel("System view")).toHaveValue(
+    "/system/plugins/github",
+  );
+  await expect(
+    page.getByLabel("System view").locator("option:checked"),
+  ).toHaveText("GitHub");
+  await expect(
+    page
+      .getByLabel("System view")
+      .locator('option[value="/system/plugins/github"]'),
+  ).toHaveAttribute("disabled", "");
+  await page.getByLabel("System view").selectOption("/system");
   await page
     .getByLabel("System view")
     .selectOption("/system/plugins/scheduler");

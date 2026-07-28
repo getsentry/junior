@@ -9,9 +9,16 @@ import {
 } from "./SystemPlugins";
 
 /** Render route-backed navigation for the System overview and loaded plugins. */
-export function SystemNavigation(props: { plugins: SystemPlugin[] }) {
+export function SystemNavigation(props: {
+  plugins: SystemPlugin[];
+  reportingPlugins: SystemPlugin[];
+}) {
   const location = useLocation();
   const navigate = useNavigate();
+  const currentPlugin = findSystemPlugin(location.pathname, props.plugins);
+  const currentPluginHasReporting = props.reportingPlugins.some(
+    (plugin) => plugin.name === currentPlugin?.name,
+  );
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "flex min-w-fit items-center gap-2.5 rounded-md border px-3 py-2 font-display text-sm font-medium no-underline transition-colors lg:min-w-0",
@@ -34,11 +41,16 @@ export function SystemNavigation(props: { plugins: SystemPlugin[] }) {
             value={systemNavigationValue(location.pathname, props.plugins)}
           >
             <option value="/system">Overview</option>
-            {props.plugins.map((plugin) => (
+            {props.reportingPlugins.map((plugin) => (
               <option key={plugin.name} value={systemPluginPath(plugin.name)}>
                 {plugin.displayName}
               </option>
             ))}
+            {currentPlugin && !currentPluginHasReporting ? (
+              <option disabled value={systemPluginPath(currentPlugin.name)}>
+                {currentPlugin.displayName}
+              </option>
+            ) : null}
           </select>
           <ChevronDown
             aria-hidden="true"
@@ -56,12 +68,12 @@ export function SystemNavigation(props: { plugins: SystemPlugin[] }) {
             <Gauge aria-hidden="true" size={15} strokeWidth={1.8} />
             Overview
           </NavLink>
-          {props.plugins.length ? (
+          {props.reportingPlugins.length ? (
             <>
               <div className="px-3 pt-4 pb-1.5 font-mono text-[0.56rem] font-medium uppercase tracking-[0.16em] text-white/25">
                 Plugins
               </div>
-              {props.plugins.map((plugin) => (
+              {props.reportingPlugins.map((plugin) => (
                 <NavLink
                   className={linkClass}
                   key={plugin.name}
@@ -83,9 +95,16 @@ function systemNavigationValue(
   pathname: string,
   plugins: SystemPlugin[],
 ): string {
+  const plugin = findSystemPlugin(pathname, plugins);
+  return plugin ? systemPluginPath(plugin.name) : "/system";
+}
+
+function findSystemPlugin(
+  pathname: string,
+  plugins: SystemPlugin[],
+): SystemPlugin | undefined {
   const normalizedPath = normalizeSystemPath(pathname);
-  const plugin = plugins.find(
+  return plugins.find(
     (candidate) => systemPluginPath(candidate.name) === normalizedPath,
   );
-  return plugin ? systemPluginPath(plugin.name) : "/system";
 }

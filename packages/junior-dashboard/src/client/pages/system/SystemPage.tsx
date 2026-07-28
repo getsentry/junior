@@ -72,7 +72,10 @@ export function SystemPage(props: { data: SystemData }) {
       />
 
       <div className="grid min-w-0 items-start gap-4 sm:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <SystemNavigation plugins={reportingPlugins} />
+        <SystemNavigation
+          plugins={plugins}
+          reportingPlugins={reportingPlugins}
+        />
         <div className="grid min-w-0 gap-4 sm:gap-6">
           {plugin ? (
             <PluginSystemPage data={props.data} plugin={plugin} range={range} />
