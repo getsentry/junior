@@ -262,7 +262,7 @@ describe("agent plugin hooks", () => {
             expect(ctx.source).toEqual(LOCAL_SOURCE);
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
-            expect(ctx).not.toHaveProperty("model");
+            expect(ctx).toHaveProperty("model");
             return [{ text: "remembered context" }];
           },
         },
