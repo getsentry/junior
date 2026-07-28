@@ -1,4 +1,4 @@
-import { cn } from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type TimeRangeDays = 7 | 30 | 90;
 
@@ -21,7 +21,10 @@ export function TimeRangeSelector(props: {
             "h-7 min-w-10 cursor-pointer rounded border px-2 font-mono text-[0.68rem] transition-colors",
             props.value === days
               ? "border-amber-500/30 bg-amber-500/20 text-amber-400"
-              : "border-white/10 bg-white/5 text-dashboard-text-muted hover:bg-white/10 hover:text-dashboard-text-muted",
+              : cn(
+                  "border-white/10 bg-white/5 hover:bg-white/10",
+                  dashboardInteractiveTextClass,
+                ),
           )}
           key={days}
           onClick={() => props.onChange(days)}

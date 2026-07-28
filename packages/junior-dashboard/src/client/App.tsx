@@ -21,7 +21,11 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
-import { cn, dashboardContainerClass } from "./styles";
+import {
+  cn,
+  dashboardContainerClass,
+  dashboardInteractiveTextClass,
+} from "./styles";
 
 const dashboardBackground = {
   backgroundColor: "#050507",
@@ -63,7 +67,10 @@ export function DashboardShell() {
       "relative whitespace-nowrap px-1 py-2 font-mono text-[0.68rem] font-medium uppercase tracking-[0.12em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors",
       isActive
         ? "text-dashboard-text after:bg-cyan-400"
-        : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text-muted hover:after:bg-white/20",
+        : cn(
+            "after:bg-transparent hover:after:bg-white/20",
+            dashboardInteractiveTextClass,
+          ),
     );
 
   return (

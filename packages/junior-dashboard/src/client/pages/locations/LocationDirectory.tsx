@@ -3,7 +3,7 @@ import { Hash } from "lucide-react";
 import { Link } from "react-router";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
-import { ConversationSearchInput } from "../../components/ConversationListControls";
+import { SearchInput } from "../../components/SearchInput";
 import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
@@ -35,7 +35,7 @@ export function LocationDirectory(props: {
         title="Public directory"
       />
       <div className="grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
-        <ConversationSearchInput
+        <SearchInput
           label="Search locations"
           placeholder="Search channel name..."
           value={props.query}

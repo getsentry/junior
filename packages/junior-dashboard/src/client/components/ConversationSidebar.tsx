@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, MessageSquareText, Search } from "lucide-react";
+import { Archive, MessageSquareText } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "../conversations/queries";
@@ -13,6 +13,7 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { EmptyTelemetry } from "./EmptyTelemetry";
+import { SearchInput } from "./SearchInput";
 
 /** Render the compact personal conversation picker used by the home workspace. */
 export function ConversationSidebar(props: {
@@ -42,21 +43,13 @@ export function ConversationSidebar(props: {
         </div>
       </div>
       <div className="px-3 pb-3">
-        <div className="relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dashboard-text-muted"
-            size={14}
-          />
-          <input
-            aria-label="Search your conversations"
-            className="h-10 w-full rounded-lg border border-white/[0.08] bg-black/20 pl-9 pr-3 font-mono text-[0.74rem] text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-white/15 focus:border-cyan-300/35 focus:ring-2 focus:ring-cyan-300/10"
-            onChange={(event) => props.onQueryChange(event.currentTarget.value)}
-            placeholder="Search conversations…"
-            type="search"
-            value={props.query}
-          />
-        </div>
+        <SearchInput
+          label="Search your conversations"
+          onChange={props.onQueryChange}
+          placeholder="Search conversations…"
+          size="default"
+          value={props.query}
+        />
       </div>
       <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-2">
         {props.error ? (

@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { dashboardInteractiveTextClass } from "../src/client/styles";
+
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const clientRoot = path.join(packageRoot, "src", "client");
 const tailwindPath = path.join(packageRoot, "src", "tailwind.css");
@@ -60,5 +62,11 @@ describe("dashboard neutral text colors", () => {
 
     expect(css).toContain("--color-dashboard-text: #f4f4f5;");
     expect(css).toContain("--color-dashboard-text-muted: #a1a1aa;");
+  });
+
+  it("brightens muted interactive text on hover", () => {
+    expect(dashboardInteractiveTextClass).toBe(
+      "text-dashboard-text-muted hover:text-dashboard-text",
+    );
   });
 });

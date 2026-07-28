@@ -7,7 +7,7 @@ import {
   memoryRecallContent,
   type MemoryRecallContent,
 } from "../conversations/turnContext";
-import { cn } from "../styles";
+import { cn, dashboardInteractiveTextClass } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 
 /** Show structured context attached to one transcript user message. */
@@ -40,7 +40,8 @@ export function TranscriptTurnContextView(props: {
           aria-expanded={open}
           aria-label="View turn context"
           className={cn(
-            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-dashboard-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-white/10 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            dashboardInteractiveTextClass,
             open && "border-white/10 bg-white/[0.06] text-cyan-100/80",
           )}
           onClick={() => setOpen(true)}

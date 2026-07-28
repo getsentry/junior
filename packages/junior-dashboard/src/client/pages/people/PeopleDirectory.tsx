@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { UserRound } from "lucide-react";
 import type { ActorSummaryReport } from "@sentry/junior/api/schema";
 
-import { ConversationSearchInput } from "../../components/ConversationListControls";
+import { SearchInput } from "../../components/SearchInput";
 import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
@@ -83,7 +83,7 @@ export function PeopleDirectory(props: {
         title="People directory"
       />
       <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
-        <ConversationSearchInput
+        <SearchInput
           label="Search people"
           placeholder="Search name, email, Slack handle..."
           value={props.query}

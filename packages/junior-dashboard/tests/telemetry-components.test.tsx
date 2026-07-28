@@ -18,6 +18,7 @@ import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { PluginReports } from "../src/client/components/PluginReports";
+import { SearchInput } from "../src/client/components/SearchInput";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
@@ -199,6 +200,20 @@ describe("dashboard canonical-event components", () => {
     expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
       'type="button"',
     );
+  });
+
+  it("distinguishes search values from placeholder text", () => {
+    const html = renderToStaticMarkup(
+      <SearchInput
+        label="Search conversations"
+        onChange={() => undefined}
+        placeholder="Search conversations…"
+        value="checkout"
+      />,
+    );
+
+    expect(html).toContain("text-dashboard-text");
+    expect(html).toContain("placeholder:text-dashboard-text-muted");
   });
 
   it("renders typed tool states in the component gallery", () => {

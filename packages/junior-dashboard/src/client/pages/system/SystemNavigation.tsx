@@ -1,7 +1,7 @@
 import { Boxes, ChevronDown, Gauge } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
-import { cn } from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 import {
   normalizeSystemPath,
   systemPluginPath,
@@ -17,7 +17,10 @@ export function SystemNavigation(props: { plugins: SystemPlugin[] }) {
       "flex min-w-fit items-center gap-2.5 rounded-md border px-3 py-2 font-display text-sm font-medium no-underline transition-colors lg:min-w-0",
       isActive
         ? "border-cyan-300/20 bg-cyan-300/[0.08] text-cyan-100"
-        : "border-transparent text-dashboard-text-muted hover:border-white/[0.07] hover:bg-white/[0.03] hover:text-dashboard-text-muted",
+        : cn(
+            "border-transparent hover:border-white/[0.07] hover:bg-white/[0.03]",
+            dashboardInteractiveTextClass,
+          ),
     );
 
   return (

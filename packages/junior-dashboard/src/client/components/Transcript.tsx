@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDownToLine, Search } from "lucide-react";
+import { ArrowDownToLine } from "lucide-react";
 
 import type {
   ConversationTranscript,
@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { cn } from "../styles";
 import { Button } from "./Button";
+import { SearchInput } from "./SearchInput";
 import { TranscriptHeader } from "./TranscriptHeader";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import {
@@ -64,22 +65,14 @@ export function Transcript(props: {
           value={view}
           onChange={setView}
         />
-        <div className="relative mb-5 mt-3">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dashboard-text-muted"
-            size={13}
-            strokeWidth={2.5}
-          />
-          <input
-            aria-label="Search transcript"
-            className="h-10 w-full rounded-lg border border-white/[0.08] bg-black/20 pl-9 pr-3 font-mono text-[0.74rem] text-dashboard-text-muted outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-white/15 focus:border-cyan-300/35 focus:ring-2 focus:ring-cyan-300/10"
-            placeholder="Search transcript…"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-          />
-        </div>
+        <SearchInput
+          className="mb-5 mt-3"
+          label="Search transcript"
+          onChange={setSearch}
+          placeholder="Search transcript…"
+          size="default"
+          value={search}
+        />
         {props.hasPreviousPage || props.loadingPreviousPage ? (
           <div className="mb-2 flex justify-center">
             <Button

@@ -6,3 +6,6 @@ export function cn(
 }
 
 export const dashboardContainerClass = "mx-auto w-full min-w-0 max-w-screen-xl";
+
+export const dashboardInteractiveTextClass =
+  "text-dashboard-text-muted hover:text-dashboard-text";

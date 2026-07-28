@@ -7,7 +7,7 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import { useLocationDetailData } from "../../api";
 import { Button } from "../../components/Button";
 import { ConversationList } from "../../components/ConversationList";
-import { ConversationSearchInput } from "../../components/ConversationListControls";
+import { SearchInput } from "../../components/SearchInput";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Section } from "../../components/Section";
@@ -177,7 +177,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
           </div>
         </SectionHeader>
         <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(12rem,36rem)_auto]">
-          <ConversationSearchInput
+          <SearchInput
             label="Search location conversations"
             placeholder="Search title, person, or ID..."
             value={search}
