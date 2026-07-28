@@ -679,7 +679,6 @@ export function createDashboardApp(
         options.mockConversations ? "morgan@sentry.io" : undefined,
       );
       c.set("authSession", session);
-      c.set("verifiedViewerEmail", verifiedViewerEmail(session));
       await next();
       return;
     }
