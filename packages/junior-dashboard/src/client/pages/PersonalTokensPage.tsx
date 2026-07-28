@@ -82,6 +82,15 @@ export function PersonalTokensPage() {
               <code className="block overflow-x-auto rounded bg-black p-2 text-xs text-emerald-300">
                 {createdToken.token}
               </code>
+              <Button
+                className="mt-3"
+                onClick={() => {
+                  setCreatedToken(undefined);
+                  setName("Local agent");
+                }}
+              >
+                Create another token
+              </Button>
             </div>
           ) : (
             <div className="mt-5 flex gap-2">
