@@ -75,6 +75,9 @@ export default defineConfig({
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
+    // Live model and provider calls can fail transiently in CI. Keep local
+    // runs single-attempt so failures remain fast and easy to diagnose.
+    retry: process.env.CI ? 2 : 0,
     testTimeout: EVAL_TEST_TIMEOUT_MS,
   },
 });
