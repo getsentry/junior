@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   MAX_TEXT_CHARS,
+  RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
   getRipgrepSearchLocation,
   isMissingPathError,
@@ -138,22 +139,21 @@ async function findFilesWithRipgrep(params: {
   }
 
   const location = getRipgrepSearchLocation(params.root, rootIsDirectory);
+  const args = [
+    "--files",
+    "--null",
+    "--hidden",
+    "--sort=path",
+    "--glob",
+    params.pattern,
+  ];
+  for (const excludedGlob of RIPGREP_EXCLUDED_GLOBS) {
+    args.push("--glob", excludedGlob);
+  }
+  args.push("--", location.target);
   const result = await params.runCommand({
     cmd: "rg",
-    args: [
-      "--files",
-      "--null",
-      "--hidden",
-      "--sort=path",
-      "--glob",
-      "!.git/**",
-      "--glob",
-      "!node_modules/**",
-      "--glob",
-      params.pattern,
-      "--",
-      location.target,
-    ],
+    args,
     cwd: location.cwd,
   });
   if (result.exitCode !== 0 && result.exitCode !== 1) {

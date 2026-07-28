@@ -14,6 +14,10 @@ export type SandboxCommandRunner = (
 ) => Promise<SandboxCommandResult>;
 
 export const MAX_TEXT_CHARS = 60_000;
+export const RIPGREP_EXCLUDED_GLOBS = [
+  "!**/.git/**",
+  "!**/node_modules/**",
+] as const;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 
 export type TextSearchResultDetails =

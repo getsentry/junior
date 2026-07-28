@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   MAX_TEXT_CHARS,
+  RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
   getRipgrepSearchLocation,
   isMissingPathError,
@@ -297,16 +298,7 @@ async function grepFilesWithRipgrep(params: {
   }
 
   const location = getRipgrepSearchLocation(params.root, rootIsDirectory);
-  const args = [
-    "--json",
-    "--line-number",
-    "--hidden",
-    "--sort=path",
-    "--glob",
-    "!.git/**",
-    "--glob",
-    "!node_modules/**",
-  ];
+  const args = ["--json", "--line-number", "--hidden", "--sort=path"];
   if (params.ignoreCase) {
     args.push("--ignore-case");
   }
@@ -315,6 +307,9 @@ async function grepFilesWithRipgrep(params: {
   }
   if (params.glob) {
     args.push("--glob", params.glob);
+  }
+  for (const excludedGlob of RIPGREP_EXCLUDED_GLOBS) {
+    args.push("--glob", excludedGlob);
   }
   if (params.context > 0) {
     args.push("--context", String(params.context));

@@ -317,11 +317,11 @@ describe("sandbox file tools", () => {
           "--hidden",
           "--sort=path",
           "--glob",
-          "!.git/**",
-          "--glob",
-          "!node_modules/**",
-          "--glob",
           "nested/*.ts",
+          "--glob",
+          "!**/.git/**",
+          "--glob",
+          "!**/node_modules/**",
           "--",
           ".",
         ],
@@ -378,9 +378,16 @@ describe("sandbox file tools", () => {
       cmd: "rg",
       cwd: workspacePath("src"),
     });
-    expect(calls[0]?.args).toContain("--fixed-strings");
-    expect(calls[0]?.args).toContain("nested/*.ts");
-    expect(calls[0]?.args).toContain("needle'; exit 9; '");
+    const args = calls[0]?.args ?? [];
+    expect(args).toContain("--fixed-strings");
+    expect(args).toContain("nested/*.ts");
+    expect(args).toContain("needle'; exit 9; '");
+    expect(args.indexOf("nested/*.ts")).toBeLessThan(
+      args.indexOf("!**/.git/**"),
+    );
+    expect(args.indexOf("nested/*.ts")).toBeLessThan(
+      args.indexOf("!**/node_modules/**"),
+    );
     expect(result.details).toMatchObject({
       ok: true,
       data: {
