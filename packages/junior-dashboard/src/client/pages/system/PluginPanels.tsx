@@ -1,4 +1,4 @@
-import { ArrowRight, Boxes, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, Boxes, Sparkles } from "lucide-react";
 import { Link } from "react-router";
 
 import { Card } from "../../components/layout/Card";
@@ -10,7 +10,7 @@ export function PluginPanels(props: { plugins: SystemPlugin[] }) {
     <section aria-labelledby="system-plugins-heading" className="grid gap-3">
       <div className="px-1">
         <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-          Loaded capabilities
+          Loaded plugins
         </div>
         <h2
           className="mt-1 mb-0 font-display text-xl font-medium text-white"
@@ -92,10 +92,6 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         <PanelFact
           icon={Sparkles}
           label={`${props.plugin.skills.length} skills`}
-        />
-        <PanelFact
-          icon={Wrench}
-          label={`${props.plugin.capabilities.length} capabilities`}
         />
       </div>
     </Link>

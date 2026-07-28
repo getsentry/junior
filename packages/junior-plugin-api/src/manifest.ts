@@ -66,7 +66,6 @@ export interface PluginEnvVarDeclaration {
 
 export interface PluginManifest {
   apiHeaders?: Record<string, string>;
-  capabilities?: string[];
   commandEnv?: Record<string, string>;
   configKeys?: string[];
   credentials?: PluginCredentials;

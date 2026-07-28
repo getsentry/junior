@@ -60,7 +60,6 @@ function buildPlugin(): PluginDefinition {
       name: "demo",
       displayName: "Demo",
       description: "Demo MCP plugin",
-      capabilities: [],
       configKeys: [],
       mcp: {
         transport: "http",

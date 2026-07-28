@@ -46,8 +46,6 @@ async function writePackagedPlugin(tempRoot: string): Promise<void> {
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "config-keys:",
       "  - org",
       "credentials:",
@@ -77,8 +75,6 @@ async function writePackagedPluginWithImplicitLatest(
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "config-keys:",
       "  - org",
       "credentials:",
@@ -165,8 +161,6 @@ async function writePackagedPluginWithInvalidDomain(
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "config-keys:",
       "  - org",
       "credentials:",
@@ -254,8 +248,6 @@ async function writePackagedPluginWithInvalidAuthTokenEnv(
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "config-keys:",
       "  - org",
       "credentials:",
@@ -309,8 +301,6 @@ async function writePackagedPluginWithInvalidOauthEndpoint(
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "credentials:",
       "  type: oauth-bearer",
       "  domains:",
@@ -344,8 +334,6 @@ async function writePackagedPluginWithOauthOverrides(
       "name: example",
       "display-name: Example",
       "description: Example plugin",
-      "capabilities:",
-      "  - api.read",
       "credentials:",
       "  type: oauth-bearer",
       "  domains:",
@@ -386,8 +374,6 @@ async function writePackagedPluginWithForbiddenApiHeader(
       "name: demo",
       "display-name: Demo",
       "description: Demo plugin",
-      "capabilities:",
-      "  - api",
       "credentials:",
       "  type: oauth-bearer",
       "  domains:",
@@ -592,7 +578,6 @@ describe("plugin registry package discovery", () => {
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
-    expect(providers[0]?.manifest.capabilities).toEqual(["demo.api"]);
     const resolvedTempRoot = await fs.realpath(tempRoot);
     expect(registry.getSkillRoots()).toEqual([
       path.join(
@@ -670,7 +655,6 @@ describe("plugin registry package discovery", () => {
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
-    expect(providers[0]?.manifest.capabilities).toEqual([]);
     expect(providers[0]?.manifest.configKeys).toEqual([]);
     expect(providers[0]?.manifest.credentials).toBeUndefined();
     expect(() =>

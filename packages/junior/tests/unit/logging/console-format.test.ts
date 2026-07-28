@@ -69,7 +69,6 @@ describe("console log formatting", () => {
       "plugin_loaded",
       {
         "app.plugin.name": "github",
-        "app.plugin.capability_count": 8,
         "app.plugin.config_key_count": 1,
         "app.plugin.has_mcp": false,
         "file.directory":
@@ -133,7 +132,6 @@ describe("console log formatting", () => {
       "plugin_loaded",
       {
         "app.plugin.name": "github",
-        "app.plugin.capability_count": 8,
       },
       "Loaded plugin",
     );
@@ -143,6 +141,5 @@ describe("console log formatting", () => {
     expect(line).toContain("2026-04-14T16:29:00.133Z INF Loaded plugin");
     expect(line).toContain("event.name=plugin_loaded");
     expect(line).toContain("app.plugin.name=github");
-    expect(line).toContain("app.plugin.capability_count=8");
   });
 });

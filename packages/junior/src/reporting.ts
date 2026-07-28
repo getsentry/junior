@@ -66,7 +66,6 @@ export async function readPlugins(): Promise<Plugin[]> {
     await import("@/chat/plugins/catalog-runtime");
   return pluginsSchema.parse(
     pluginCatalogRuntime.getProviders().map((plugin) => ({
-      capabilities: plugin.manifest.capabilities ?? [],
       configKeys: plugin.manifest.configKeys ?? [],
       description: plugin.manifest.description,
       displayName: plugin.manifest.displayName,

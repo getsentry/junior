@@ -105,14 +105,12 @@ export async function mockDashboardApis(page: Page) {
     await route.fulfill({
       json: [
         {
-          capabilities: ["github.issues", "github.pull-requests"],
           configKeys: ["github.organization"],
           description: "GitHub repository and development workflow context.",
           displayName: "GitHub",
           name: "github",
         },
         {
-          capabilities: ["scheduler.scheduled-tasks"],
           configKeys: [],
           description: "Recurring and deferred Junior tasks.",
           displayName: "Scheduler",

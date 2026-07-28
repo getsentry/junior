@@ -15,7 +15,6 @@ function buildPlugin() {
       name: "demo",
       displayName: "Demo",
       description: "Demo plugin",
-      capabilities: [],
       configKeys: [],
       mcp: {
         transport: "http" as const,

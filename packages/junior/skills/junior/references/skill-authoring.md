@@ -25,7 +25,7 @@ description: Prepare release notes from local project context. Use when users as
 | `compatibility`         | Optional string, maximum 500 chars.                                                                                                                      |
 | `license`               | Optional string.                                                                                                                                         |
 | `allowed-tools`         | Rare optional restriction. Omit by default; use only when the skill must hide otherwise available tools while active.                                    |
-| `requires-capabilities` | Forbidden. Plugin capabilities come from `plugin.yaml`.                                                                                                  |
+| `requires-capabilities` | Forbidden. Provider authentication comes from plugin domains and credential declarations.                                                                |
 | `uses-config`           | Forbidden. Plugin config keys come from `plugin.yaml`.                                                                                                   |
 
 ## Body

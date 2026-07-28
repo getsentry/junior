@@ -299,7 +299,6 @@ async function handlePluginsCommand(
       name: plugin.manifest.name,
       displayName: plugin.manifest.displayName,
       description: plugin.manifest.description,
-      capabilities: [...plugin.manifest.capabilities],
       configKeys: [...plugin.manifest.configKeys],
     }))
     .sort((left, right) => left.name.localeCompare(right.name));

@@ -46,9 +46,6 @@ app/plugins/acme/
 name: acme
 description: Acme support data lookup
 
-capabilities:
-  - api.read
-
 env-vars:
   ACME_AUTH_HEADER:
   ACME_REGION:
@@ -120,9 +117,6 @@ Fix:
 ```yaml
 name: acme
 description: Acme support data lookup
-
-capabilities:
-  - api.read
 
 config-keys:
   - region

@@ -37,12 +37,6 @@ function cloneInlineManifests(
           {
             manifest: {
               ...structuredClone(plugin.manifest),
-              capabilities:
-                plugin.manifest.capabilities?.map((capability) =>
-                  capability.includes(".")
-                    ? capability
-                    : `${plugin.manifest.name}.${capability}`,
-                ) ?? [],
               configKeys:
                 plugin.manifest.configKeys?.map((key) =>
                   key.includes(".") ? key : `${plugin.manifest.name}.${key}`,

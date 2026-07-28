@@ -20,7 +20,6 @@ const catalogPlugins = vi.hoisted(
           name: "sentry",
           displayName: "Sentry",
           description: "Sentry provider",
-          capabilities: [],
           configKeys: [],
           credentials: {
             type: "oauth-bearer",
@@ -35,7 +34,6 @@ const catalogPlugins = vi.hoisted(
           name: "notion",
           displayName: "Notion",
           description: "Notion provider",
-          capabilities: [],
           configKeys: [],
           mcp: {
             transport: "http",
@@ -49,7 +47,6 @@ const catalogPlugins = vi.hoisted(
           name: "github",
           displayName: "GitHub",
           description: "GitHub provider",
-          capabilities: [],
           configKeys: [],
           domains: ["api.github.com", "github.com"],
           oauth: {
@@ -71,7 +68,6 @@ const catalogPlugins = vi.hoisted(
           name: "example-bundle",
           displayName: "Example Bundle",
           description: "Bundle-only plugin",
-          capabilities: [],
           configKeys: [],
         },
       },

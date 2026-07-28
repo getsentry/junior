@@ -6,7 +6,7 @@ Skills describe behavior. Plugins declare authority.
 
 | Runtime need                             | Manifest owner                                   |
 | ---------------------------------------- | ------------------------------------------------ |
-| Provider permissions                     | `capabilities`                                   |
+| Provider authentication                  | `domains`, `credentials`, and `api-headers`      |
 | Conversation or install defaults         | `config-keys` plus optional app `configDefaults` |
 | OAuth bearer delivery                    | `credentials` and `oauth`                        |
 | GitHub App delivery                      | `credentials`                                    |

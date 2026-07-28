@@ -258,11 +258,6 @@ const manifestSourceSchema = z
     }),
     "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
-    capabilities: z
-      .array(z.string(), {
-        error: "must be an array when provided",
-      })
-      .optional(),
     "config-keys": z
       .array(z.string(), {
         error: "must be an array when provided",
@@ -327,7 +322,6 @@ function manifestConfigPatch(
   const result: Record<string, unknown> = {};
   setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
-  setDefined(result, "capabilities", config.capabilities);
   setDefined(result, "config-keys", config.configKeys);
   setDefined(result, "domains", config.domains);
   setDefined(result, "api-headers", config.apiHeaders);
@@ -977,11 +971,6 @@ function parseManifestSource(
     if (path === "description") {
       throw new Error(`Invalid plugin description in ${dir}`);
     }
-    if (path === "capabilities") {
-      throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} capabilities must be an array when provided`,
-      );
-    }
     if (path === "config-keys") {
       throw new Error(
         `Plugin ${String(parsedSource.name ?? "unknown")} config-keys must be an array when provided`,
@@ -1041,15 +1030,6 @@ function parseManifestSource(
   }
 
   const data = sourceResult.data;
-  const capabilities = (data.capabilities ?? []).map((cap) => {
-    if (!SHORT_CAPABILITY_RE.test(cap)) {
-      throw new Error(
-        `Invalid capability token "${cap}" in plugin ${data.name}`,
-      );
-    }
-    return `${data.name}.${cap}`;
-  });
-
   const configKeys = (data["config-keys"] ?? []).map((key) => {
     if (!SHORT_CONFIG_KEY_RE.test(key)) {
       throw new Error(`Invalid config key "${key}" in plugin ${data.name}`);
@@ -1104,7 +1084,6 @@ function parseManifestSource(
     name: data.name,
     displayName: data["display-name"],
     description: data.description,
-    capabilities,
     configKeys,
     ...(domains ? { domains } : {}),
     ...(apiHeaders ? { apiHeaders } : {}),

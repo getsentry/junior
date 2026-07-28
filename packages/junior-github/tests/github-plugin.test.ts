@@ -459,7 +459,6 @@ describe("github plugin", () => {
   it("defaults GitHub App permissions and user OAuth scopes to all available app access", () => {
     const plugin = githubPlugin();
 
-    expect(plugin.manifest.capabilities).toBeUndefined();
     expect(plugin.manifest.oauth?.scope).toBeUndefined();
     expect(plugin.manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
@@ -476,13 +475,6 @@ describe("github plugin", () => {
       },
     });
 
-    expect(plugin.manifest.capabilities).toEqual([
-      "github.contents.read",
-      "github.discussions.read",
-      "github.issues.write",
-      "github.pull-requests.write",
-      "github.repository-projects.admin",
-    ]);
     expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
   });
 
@@ -498,16 +490,14 @@ describe("github plugin", () => {
     );
   });
 
-  it("accepts GitHub permission names without a local provider catalog", () => {
-    const plugin = githubPlugin({
-      appPermissions: {
-        "new-provider-permission": "read",
-      },
-    });
-
-    expect(plugin.manifest.capabilities).toEqual([
-      "github.new-provider-permission.read",
-    ]);
+  it("accepts GitHub permission names without a local permission catalog", () => {
+    expect(() =>
+      githubPlugin({
+        appPermissions: {
+          "new-provider-permission": "read",
+        },
+      }),
+    ).not.toThrow();
   });
 
   it("rejects malformed explicit GitHub App permission names", () => {

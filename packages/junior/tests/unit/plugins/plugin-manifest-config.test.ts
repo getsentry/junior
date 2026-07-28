@@ -128,7 +128,6 @@ describe("plugin manifest config", () => {
         name: "github",
         displayName: "GitHub",
         description: "GitHub",
-        capabilities: [],
         configKeys: [],
         domains: ["api.github.com", "github.com"],
         oauth: {

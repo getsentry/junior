@@ -54,7 +54,6 @@ describe("inline plugin manifests", () => {
         name: "bad-capability-token",
         displayName: "Bad Capability Token",
         description: "Bad inline manifest",
-        capabilities: [123],
       }),
     ).toThrow("Invalid input: expected string");
 

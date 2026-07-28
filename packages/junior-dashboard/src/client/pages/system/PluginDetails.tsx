@@ -1,9 +1,9 @@
-import { Boxes, KeyRound, Sparkles, Wrench } from "lucide-react";
+import { Boxes, KeyRound, Sparkles } from "lucide-react";
 
 import { Card } from "../../components/layout/Card";
 import type { SystemPlugin } from "./SystemPlugins";
 
-/** Render non-reporting plugin metadata and declared capabilities. */
+/** Render non-reporting plugin metadata. */
 export function PluginDetails(props: { plugin: SystemPlugin }) {
   return (
     <section aria-labelledby="plugin-details-heading" className="grid gap-3">
@@ -15,21 +15,16 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
           className="mt-1 mb-0 font-display text-xl font-medium text-white"
           id="plugin-details-heading"
         >
-          Details and capabilities
+          Details
         </h2>
       </div>
       <Card>
-        <div className="grid grid-cols-2 gap-px bg-white/[0.055] lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-3">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
           <Detail
             icon={Sparkles}
             label="Skills"
             value={String(props.plugin.skills.length)}
-          />
-          <Detail
-            icon={Wrench}
-            label="Capabilities"
-            value={String(props.plugin.capabilities.length)}
           />
           <Detail
             icon={KeyRound}
@@ -38,11 +33,6 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
           />
         </div>
         <div className="grid gap-5 border-t border-white/[0.06] p-4 sm:p-5 lg:grid-cols-2">
-          <CapabilityList
-            emptyText="No capabilities are declared in this plugin's manifest."
-            items={props.plugin.capabilities}
-            title="Declared capabilities"
-          />
           <CapabilityList
             emptyText="No plugin-provided skills were discovered."
             items={props.plugin.skills.map((skill) => skill.name)}

@@ -45,8 +45,6 @@ describe("loadSkill tool", () => {
         "name: sentry",
         "display-name: Sentry",
         "description: Sentry issue tracking",
-        "capabilities:",
-        "  - api",
       ].join("\n"),
       "utf8",
     );

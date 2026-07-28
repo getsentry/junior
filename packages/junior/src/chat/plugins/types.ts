@@ -79,7 +79,6 @@ export interface PluginManifest {
   name: string;
   displayName: string;
   description: string;
-  capabilities: string[];
   configKeys: string[];
   domains?: string[];
   apiHeaders?: Record<string, string>;
@@ -136,7 +135,6 @@ type PluginCredentialConfig = PluginCredentialConfigBase & {
 export interface PluginManifestConfig {
   displayName?: string;
   description?: string;
-  capabilities?: string[];
   configKeys?: string[];
   domains?: string[] | null;
   apiHeaders?: Record<string, string | null> | null;

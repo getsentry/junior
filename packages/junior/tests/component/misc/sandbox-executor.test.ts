@@ -86,7 +86,6 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
           name: "sentry",
           displayName: "Sentry",
           description: "Sentry",
-          capabilities: ["sentry.api"],
           configKeys: [],
           commandEnv: {
             SENTRY_READ_ONLY: "1",
