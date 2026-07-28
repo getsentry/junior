@@ -2,7 +2,7 @@ import { Brain, Braces, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { TranscriptViewTurnContext } from "../types";
-import { formatMessageTimestamp } from "../format";
+import { formatMessageTimestamp, formatTime } from "../format";
 import {
   memoryRecallContent,
   type MemoryRecallContent,
@@ -218,7 +218,7 @@ function MemoryRecall(props: {
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
                 <dt className="text-white/35">Observed</dt>
                 <dd className="m-0 text-white/60">
-                  {formatMessageTimestamp(memory.observedAtMs)}
+                  {formatTime(new Date(memory.observedAtMs).toISOString())}
                 </dd>
               </div>
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
