@@ -3,9 +3,11 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
+  lt,
   lte,
   sql,
 } from "drizzle-orm";
@@ -16,6 +18,8 @@ import {
   historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
+  type ConversationEventPage,
+  type ConversationEventQuery,
   type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
@@ -313,6 +317,116 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(eq(juniorConversationEvents.conversationId, conversationId))
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
+  }
+
+  async query(
+    conversationId: string,
+    query: ConversationEventQuery,
+  ): Promise<ConversationEventPage> {
+    if (query.limit < 1) {
+      throw new Error("Conversation event query limit must be at least 1");
+    }
+    if (
+      query.afterSeq !== undefined &&
+      query.beforeSeq !== undefined &&
+      query.afterSeq >= query.beforeSeq
+    ) {
+      return { events: [], hasOlder: false, hasNewer: false };
+    }
+
+    const typeFilter =
+      query.types && query.types.length > 0
+        ? inArray(juniorConversationEvents.type, [...query.types])
+        : undefined;
+    const bounds = and(
+      eq(juniorConversationEvents.conversationId, conversationId),
+      query.afterSeq === undefined
+        ? undefined
+        : gt(juniorConversationEvents.seq, query.afterSeq),
+      query.beforeSeq === undefined
+        ? undefined
+        : lt(juniorConversationEvents.seq, query.beforeSeq),
+      typeFilter,
+    );
+
+    // Default to the newest matching page so debug callers start near recent activity.
+    const newestFirst = query.afterSeq === undefined;
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(bounds)
+      .orderBy(
+        newestFirst
+          ? desc(juniorConversationEvents.seq)
+          : asc(juniorConversationEvents.seq),
+      )
+      .limit(query.limit + 1);
+
+    const overflow = rows.length > query.limit;
+    const pageRows = overflow ? rows.slice(0, query.limit) : rows;
+    const events = (
+      newestFirst ? [...pageRows].reverse() : pageRows
+    ).map(eventFromRow);
+
+    if (events.length === 0) {
+      return { events, hasOlder: false, hasNewer: false };
+    }
+
+    const firstSeq = events[0]!.seq;
+    const lastSeq = events[events.length - 1]!.seq;
+    const hasOlder =
+      newestFirst && overflow
+        ? true
+        : await this.hasMatchingEvent({
+            conversationId,
+            beforeSeq: firstSeq,
+            typeFilter,
+          });
+    const hasNewer =
+      !newestFirst && overflow
+        ? true
+        : await this.hasMatchingEvent({
+            conversationId,
+            afterSeq: lastSeq,
+            typeFilter,
+          });
+
+    return { events, hasOlder, hasNewer };
+  }
+
+  /** Return whether any matching event exists inside the exclusive seq window. */
+  private async hasMatchingEvent(args: {
+    afterSeq?: number;
+    beforeSeq?: number;
+    conversationId: string;
+    typeFilter: ReturnType<typeof inArray> | undefined;
+  }): Promise<boolean> {
+    if (
+      args.afterSeq !== undefined &&
+      args.beforeSeq !== undefined &&
+      args.afterSeq >= args.beforeSeq
+    ) {
+      return false;
+    }
+    const [row] = await this.executor
+      .db()
+      .select({ seq: juniorConversationEvents.seq })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, args.conversationId),
+          args.afterSeq === undefined
+            ? undefined
+            : gt(juniorConversationEvents.seq, args.afterSeq),
+          args.beforeSeq === undefined
+            ? undefined
+            : lt(juniorConversationEvents.seq, args.beforeSeq),
+          args.typeFilter,
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
   }
 
   /** Read the next sequence and active model-history version. */

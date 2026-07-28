@@ -97,6 +97,7 @@ export interface ToolWiring {
   mcpToolManager: McpToolManager;
   pluginHooks: PluginHookRunner;
   getSandboxRef: () => SandboxRef | undefined;
+  close(): Promise<void>;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -418,6 +419,24 @@ export async function wireAgentTools(
     mcpToolManager,
     pluginHooks,
     getSandboxRef: agentSandbox.sandboxRef,
+    async close() {
+      agentSandbox.close();
+      try {
+        await mcpToolManager.close();
+      } catch (closeError) {
+        logWarn(
+          "mcp_tool_manager_close_failed",
+          {},
+          {
+            "exception.message":
+              closeError instanceof Error
+                ? closeError.message
+                : String(closeError),
+          },
+          "Failed to close MCP tool manager",
+        );
+      }
+    },
     toolGuidance,
     toolRuntimeContext,
   };

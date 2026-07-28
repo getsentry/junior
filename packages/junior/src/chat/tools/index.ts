@@ -31,6 +31,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createQueryConversationEventsTool } from "@/chat/tools/query-conversation-events";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
@@ -117,6 +118,9 @@ export function createTools(
     }),
     ...createResourceEventTools(context),
   };
+  if (context.conversationId) {
+    tools.queryConversationEvents = createQueryConversationEventsTool(context);
+  }
   if (hooks.writeGeneratedArtifacts) {
     tools.imageGenerate = createImageGenerateTool(
       {

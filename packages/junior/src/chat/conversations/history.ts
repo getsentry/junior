@@ -331,7 +331,8 @@ export type ConversationEventData = z.output<
 
 // This list distinguishes unsupported rows from corrupt known rows. Add every
 // canonical event type here with its data schema.
-const knownConversationEventTypeSchema = z.enum([
+/** Canonical event type names accepted by live writers and observational queries. */
+export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "message",
   "message_updated",
   "agent_step",
@@ -350,7 +351,13 @@ const knownConversationEventTypeSchema = z.enum([
   "handoff",
   "compaction",
   "rollback",
-]);
+] as const;
+
+/** One known durable conversation event type name. */
+export type KnownConversationEventType =
+  (typeof KNOWN_CONVERSATION_EVENT_TYPES)[number];
+
+const knownConversationEventTypeSchema = z.enum(KNOWN_CONVERSATION_EVENT_TYPES);
 
 const unknownConversationEventDataSchema = z
   .object({
@@ -449,6 +456,27 @@ export const newConversationEventSchema = z
 /** An event to append; the store assigns `seq` and current history version. */
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
+/** Bounded observational page over the durable conversation event log. */
+export interface ConversationEventQuery {
+  /** Exclusive lower bound on `seq`. */
+  afterSeq?: number;
+  /** Exclusive upper bound on `seq`. */
+  beforeSeq?: number;
+  /** Maximum events to return. */
+  limit: number;
+  /** Optional event-type filter. Empty/undefined returns every type. */
+  types?: readonly KnownConversationEventType[];
+}
+
+/** One page of raw conversation events plus pagination hints. */
+export interface ConversationEventPage {
+  events: ConversationEvent[];
+  /** True when at least one older event exists before the returned page. */
+  hasOlder: boolean;
+  /** True when at least one newer event exists after the returned page. */
+  hasNewer: boolean;
+}
+
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
   /** Append events atomically, assigning `seq = max+1` under the lease. */
@@ -475,4 +503,12 @@ export interface ConversationEventStore {
   loadMessageHistory(conversationId: string): Promise<MessageHistory>;
   /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /**
+   * Bounded raw event page for observational/debug reads.
+   * Defaults to the newest matching events when neither bound is set.
+   */
+  query(
+    conversationId: string,
+    query: ConversationEventQuery,
+  ): Promise<ConversationEventPage>;
 }

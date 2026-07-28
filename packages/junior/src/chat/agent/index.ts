@@ -268,6 +268,7 @@ async function executeAgentRunInPrivacyContext(
   let resume: ResumeState | undefined;
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
+  let closeTools: (() => Promise<void>) | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -729,6 +730,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
     });
     mcpToolManager = wiring.mcpToolManager;
+    closeTools = wiring.close;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools;
 
@@ -1451,20 +1453,6 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
-    try {
-      await mcpToolManager?.close();
-    } catch (closeError) {
-      logWarn(
-        "mcp_tool_manager_close_failed",
-        {},
-        {
-          "exception.message":
-            closeError instanceof Error
-              ? closeError.message
-              : String(closeError),
-        },
-        "Failed to close MCP tool manager",
-      );
-    }
+    await closeTools?.();
   }
 }

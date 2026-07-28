@@ -19,6 +19,7 @@ import {
   formatConversationDuration,
   formatCostTotal,
   formatElapsedDuration,
+  formatPayloadSize,
   formatRuntime,
   formatTranscriptDuration,
   formatUsageTotal,
@@ -91,6 +92,14 @@ describe("dashboard conversation formatting", () => {
     expect(formatDuration(2_700_000)).toBe("45m");
     expect(formatDuration(839_497_000)).toBe("9d 17h 11m 37s");
     expect(formatDuration(11_117_520_000)).toBe("4mo 8d 16h 12m");
+  });
+
+  it("formats serialized payload sizes for transcript metadata", () => {
+    expect(formatPayloadSize("hello")).toBe("5b");
+    expect(formatPayloadSize({ ok: true })).toBe("11b");
+    expect(formatPayloadSize("é")).toBe("2b");
+    expect(formatPayloadSize("x".repeat(5_100))).toBe("5kb");
+    expect(formatPayloadSize(undefined)).toBeUndefined();
   });
 
   it("formats cumulative conversation runtime", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
   ConversationEvent,
+  ConversationEventPage,
+  ConversationEventQuery,
   ConversationEventStore,
   HistoryReplacement,
   MessageHistory,
@@ -69,6 +71,43 @@ class MemoryConversationEventStore implements ConversationEventStore {
 
   async loadHistory(): Promise<ConversationEvent[]> {
     return this.history;
+  }
+
+  async query(
+    _conversationId: string,
+    query: ConversationEventQuery,
+  ): Promise<ConversationEventPage> {
+    const filtered = this.history.filter((event) => {
+      if (query.afterSeq !== undefined && event.seq <= query.afterSeq) {
+        return false;
+      }
+      if (query.beforeSeq !== undefined && event.seq >= query.beforeSeq) {
+        return false;
+      }
+      if (query.types && query.types.length > 0) {
+        return query.types.includes(
+          event.data.type as (typeof query.types)[number],
+        );
+      }
+      return true;
+    });
+    const newestFirst = query.afterSeq === undefined;
+    const ordered = newestFirst
+      ? [...filtered].sort((left, right) => right.seq - left.seq)
+      : [...filtered].sort((left, right) => left.seq - right.seq);
+    const overflow = ordered.length > query.limit;
+    const page = overflow ? ordered.slice(0, query.limit) : ordered;
+    const events = newestFirst ? [...page].reverse() : page;
+    if (events.length === 0) {
+      return { events, hasOlder: false, hasNewer: false };
+    }
+    const firstSeq = events[0]!.seq;
+    const lastSeq = events[events.length - 1]!.seq;
+    return {
+      events,
+      hasOlder: filtered.some((event) => event.seq < firstSeq),
+      hasNewer: filtered.some((event) => event.seq > lastSeq),
+    };
   }
 }
 

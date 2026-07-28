@@ -60,7 +60,10 @@ older source-thread context; it does not replace Pi history.
 
 Reporting APIs project an authorized, redacted contract from the event stream.
 Raw event payloads are internal and must not become dashboard or external API
-payloads.
+payloads. The deferred `queryConversationEvents` tool is the agent-facing
+observational reader for that same log: it returns bounded raw events for the
+current conversation tree, or for another retained public conversation in the
+same Slack workspace.
 
 ## Stored Event Compatibility
 
