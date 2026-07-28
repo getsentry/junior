@@ -5,6 +5,40 @@
   --jr-cream: #fff7df;
   --jr-black: #000;
   --jr-purple: #695cff;
+  --ve-accent-soft: rgba(204, 255, 0, 0.16);
+  --ve-heading-accent: rgba(204, 255, 0, 0.42);
+}
+
+html:root,
+html:root[data-theme="dark"],
+html:root[data-theme="light"] {
+  --ve-accent-soft: rgba(204, 255, 0, 0.16);
+  --ve-heading-accent: rgba(204, 255, 0, 0.42);
+}
+
+::selection {
+  background: var(--jr-acid);
+  color: var(--jr-black);
+}
+
+:focus-visible {
+  outline-color: var(--jr-acid);
+}
+
+.sidebar [aria-current="page"],
+.sidebar [aria-current="page"]:hover,
+.sidebar [aria-current="page"]:focus {
+  background: var(--jr-acid);
+  color: var(--jr-black);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  text-decoration-color: rgba(204, 255, 0, 0.65);
+}
+
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+  color: var(--jr-acid);
+  text-decoration-color: var(--jr-acid);
 }
 
 .site-title {
