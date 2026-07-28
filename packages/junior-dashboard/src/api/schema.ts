@@ -14,7 +14,6 @@ export const dashboardIdentitySchema = z
 
 export const dashboardConfigSchema = z
   .object({
-    agentName: z.string(),
     allowedEmailCount: z.number(),
     allowedGoogleDomainCount: z.number(),
     authRequired: z.boolean(),

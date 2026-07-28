@@ -82,7 +82,6 @@ function renderTranscript(detail: ConversationTranscript): string {
 function systemData(): SystemData {
   return {
     config: {
-      agentName: "Junior",
       allowedEmailCount: 0,
       allowedGoogleDomainCount: 0,
       authPath: "/api/auth",

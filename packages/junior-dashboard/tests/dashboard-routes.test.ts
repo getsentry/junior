@@ -396,17 +396,14 @@ describe("dashboard routes", () => {
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
   });
 
-  it("renders the configured agent name in the shell and config API", async () => {
+  it("renders the configured agent name from the dashboard shell", async () => {
     const app = createDashboardApp({ agentName: "Marky", authRequired: false });
 
     const shell = await app.fetch(new Request("http://localhost/"));
-    const config = await app.fetch(new Request("http://localhost/api/config"));
-
     const html = await shell.text();
     expect(html).toContain("<title>Marky</title>");
     expect(html).toContain("Loading Marky");
     expect(html).toContain('__JUNIOR_DASHBOARD_AGENT_NAME__ = "Marky"');
-    expect(await config.json()).toMatchObject({ agentName: "Marky" });
   });
 
   it("escapes the configured agent name in HTML and inline JavaScript", async () => {
@@ -600,7 +597,6 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      agentName: "Junior",
       allowedEmailCount: 1,
       allowedGoogleDomainCount: 1,
       authRequired: true,

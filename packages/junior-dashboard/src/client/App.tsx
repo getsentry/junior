@@ -8,6 +8,7 @@ import {
 } from "react-router";
 
 import { useDashboardCoreData, useSystemData } from "./api";
+import { getDashboardAgentName } from "./agentName";
 import { LoadingView } from "./components/LoadingView";
 import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
@@ -87,7 +88,7 @@ export function DashboardShell() {
           )}
         >
           <Link
-            aria-label={`${data?.config.agentName ?? "Junior"} home`}
+            aria-label={`${getDashboardAgentName()} home`}
             className="flex min-w-0 max-w-full items-center justify-self-start text-inherit no-underline"
             to="/"
           >

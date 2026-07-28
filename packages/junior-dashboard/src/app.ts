@@ -756,7 +756,6 @@ export function createDashboardApp(
   app.route("/", createJuniorApi());
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
-      agentName,
       allowedEmailCount: allowedEmails.length,
       allowedGoogleDomainCount: allowedDomains.length,
       authRequired,
