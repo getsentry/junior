@@ -1852,6 +1852,27 @@ describe("createTestSandbox", () => {
     });
   });
 
+  it("preserves writeFile workspace path errors", async () => {
+    const sandbox = makeSandbox("sbx_write_file_outside_workspace");
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    const error = await executor
+      .execute({
+        toolName: "writeFile",
+        input: { path: "/etc/passwd", content: "new content" },
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ToolInputError);
+    expect(error).toMatchObject({
+      message: "Path must stay within /vercel/sandbox: /etc/passwd",
+    });
+    expect(sandbox.fs.writeFile).not.toHaveBeenCalled();
+  });
+
   it("syncs sandbox files once when the first tool call initializes the sandbox", async () => {
     const sandbox = makeSandbox("sbx_single_sync");
     sandboxCreateMock.mockResolvedValue(sandbox);

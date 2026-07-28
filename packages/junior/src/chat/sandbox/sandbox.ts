@@ -442,6 +442,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       throw new ToolInputError("path is required");
     }
 
+    const workspacePath = resolveWorkspacePath(filePath);
     const content = String(rawInput.content ?? "");
     logSandboxBootRequest("tool.writeFile", {
       "file.path": filePath,
@@ -456,7 +457,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
       async () => {
         try {
-          await fileSystem.writeFile(resolveWorkspacePath(filePath), content, {
+          await fileSystem.writeFile(workspacePath, content, {
             encoding: "utf8",
           });
         } catch (error) {
