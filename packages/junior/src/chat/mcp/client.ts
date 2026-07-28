@@ -176,7 +176,7 @@ export class PluginMcpClient {
       }
 
       await this.clearStoredTransportSessionId();
-      await this.disposeClient({ throwOnError: false });
+      await this.cleanupClientAfterFailure();
       return await operation();
     }
   }
@@ -238,7 +238,7 @@ export class PluginMcpClient {
       return client;
     } catch (error) {
       await this.syncTransportSessionId();
-      await this.disposeClient({ throwOnError: false });
+      await this.cleanupClientAfterFailure();
       throw error;
     }
   }
@@ -287,26 +287,37 @@ export class PluginMcpClient {
     );
   }
 
-  private async disposeClient({
-    throwOnError = true,
-  }: { throwOnError?: boolean } = {}): Promise<void> {
+  private resetClientState(): StreamableHTTPClientTransport | undefined {
     const transport = this.transport;
     this.listedTools = undefined;
     this.transport = undefined;
     this.client = undefined;
     this.clientPromise = undefined;
+    return transport;
+  }
+
+  private async cleanupClientAfterFailure(): Promise<void> {
+    const transport = this.resetClientState();
+    if (!transport) {
+      return;
+    }
+    try {
+      await transport.close();
+    } catch {}
+  }
+
+  private async disposeClient(): Promise<void> {
+    const transport = this.resetClientState();
 
     if (transport) {
       try {
         await transport.close();
       } catch (error) {
-        if (throwOnError) {
-          throw toMcpProviderError(error, {
-            phase: "close",
-            provider: this.plugin.manifest.name,
-            resourceHost: this.resourceHost,
-          });
-        }
+        throw toMcpProviderError(error, {
+          phase: "close",
+          provider: this.plugin.manifest.name,
+          resourceHost: this.resourceHost,
+        });
       }
     }
   }
