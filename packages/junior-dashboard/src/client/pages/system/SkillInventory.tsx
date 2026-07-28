@@ -21,10 +21,10 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
           <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
             Capability map
           </div>
-          <h2 className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-white">
+          <h2 className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text">
             Skills
           </h2>
-          <p className="mt-1.5 mb-0 max-w-2xl font-mono text-[0.66rem] leading-relaxed text-white/30">
+          <p className="mt-1.5 mb-0 max-w-2xl font-mono text-[0.66rem] leading-relaxed text-dashboard-text-muted">
             The task-specific instructions {getDashboardAgentName()} discovered,
             grouped by their plugin provider when one is registered.
           </p>
@@ -43,7 +43,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
             />
           ))
         ) : (
-          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center font-mono text-[0.72rem] text-white/30">
+          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center font-mono text-[0.72rem] text-dashboard-text-muted">
             No skills have been discovered yet.
           </div>
         )}
@@ -66,15 +66,15 @@ function SkillGroupCard(props: { group: SkillGroup }) {
             )}
           </div>
           <div>
-            <h3 className="m-0 truncate font-display text-base font-medium text-white">
+            <h3 className="m-0 truncate font-display text-base font-medium text-dashboard-text">
               {label}
             </h3>
-            <div className="mt-0.5 font-mono text-[0.55rem] uppercase tracking-[0.1em] text-white/25">
+            <div className="mt-0.5 font-mono text-[0.55rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
               {props.group.pluginProvider ? "plugin provider" : "core or local"}
             </div>
           </div>
         </div>
-        <span className="font-mono text-[0.62rem] text-white/30">
+        <span className="font-mono text-[0.62rem] text-dashboard-text-muted">
           {formatCompactNumber(props.group.skills.length)} skill
           {props.group.skills.length === 1 ? "" : "s"}
         </span>
@@ -82,7 +82,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
           <span
-            className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.68rem] text-white/60"
+            className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.68rem] text-dashboard-text-muted"
             key={skill.name}
           >
             {skill.name}
@@ -96,10 +96,10 @@ function SkillGroupCard(props: { group: SkillGroup }) {
 function InventoryMetric(props: { label: string; value: number }) {
   return (
     <div className="border-r border-white/[0.06] px-3 py-2.5 text-center last:border-r-0">
-      <div className="font-display text-xl font-light leading-none text-white/90">
+      <div className="font-display text-xl font-light leading-none text-dashboard-text">
         {formatCompactNumber(props.value)}
       </div>
-      <div className="mt-1.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+      <div className="mt-1.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
         {props.label}
       </div>
     </div>

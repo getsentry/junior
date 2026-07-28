@@ -111,10 +111,10 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             <MapPin aria-hidden="true" size={16} />
           </span>
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
+            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               People seen here
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.68rem] text-white/30">
+            <p className="mt-1 mb-0 font-mono text-[0.68rem] text-dashboard-text-muted">
               Verified contributors across persisted conversations.
             </p>
           </div>
@@ -131,10 +131,10 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
               ].join(":");
               const content = (
                 <>
-                  <div className="truncate font-display text-[0.95rem] font-medium text-white/85">
+                  <div className="truncate font-display text-[0.95rem] font-medium text-dashboard-text">
                     {item.label}
                   </div>
-                  <div className="mt-1 font-mono text-[0.66rem] text-white/30">
+                  <div className="mt-1 font-mono text-[0.66rem] text-dashboard-text-muted">
                     {formatCompactNumber(item.conversations)} conversations /{" "}
                     <Duration value={item.durationMs} />
                   </div>
@@ -170,7 +170,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
         <SectionHeader>
           <div>
             <SectionTitle>Recent conversations</SectionTitle>
-            <div className="mt-1 font-mono text-[0.67rem] text-white/30">
+            <div className="mt-1 font-mono text-[0.67rem] text-dashboard-text-muted">
               {visible.length} of {conversations.length} / generated{" "}
               {formatTime(detail.generatedAt)}
             </div>

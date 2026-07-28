@@ -377,13 +377,13 @@ export function ToolCallGallery() {
         <span className="w-px bg-cyan-300/15" />
       </div>
       <div className="grid min-w-0 gap-3">
-        <p className="m-0 text-[0.78rem] leading-relaxed text-white/45">
+        <p className="m-0 text-[0.78rem] leading-relaxed text-dashboard-text-muted">
           Click any row to compare its collapsed signature with the full
           arguments and result.
         </p>
         {TOOL_CALL_FIXTURES.map((fixture) => (
           <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-[0.65rem] uppercase tracking-[0.08em] text-white/30">
+            <div className="font-mono text-[0.65rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
               {fixture.description}
             </div>
             <TranscriptToolView
@@ -405,10 +405,12 @@ function GallerySection(props: {
   return (
     <section className="grid min-w-0 gap-4">
       <div>
-        <h2 className="m-0 font-display text-xl font-medium text-white">
+        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           {props.title}
         </h2>
-        <p className="mt-1 mb-0 text-sm text-white/45">{props.description}</p>
+        <p className="mt-1 mb-0 text-sm text-dashboard-text-muted">
+          {props.description}
+        </p>
       </div>
       {props.children}
     </section>
@@ -418,7 +420,7 @@ function GallerySection(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-white/[0.05] pb-3 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/45">
+      <div className="border-b border-white/[0.05] pb-3 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>

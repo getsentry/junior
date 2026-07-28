@@ -92,7 +92,7 @@ export function MetricValue(props: {
       </span>
       {position ? (
         <span
-          className="pointer-events-none fixed z-30 rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-[0.76rem] font-normal leading-relaxed text-[#b8b8b8] shadow-xl shadow-black/35"
+          className="pointer-events-none fixed z-30 rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-[0.76rem] font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-black/35"
           id={tooltipId}
           role="tooltip"
           style={tooltipStyle}
@@ -104,9 +104,9 @@ export function MetricValue(props: {
                   line.label
                     ? "contents"
                     : cn(
-                        "col-span-2 block min-w-0 break-words text-[#d6d6d6]",
+                        "col-span-2 block min-w-0 break-words text-dashboard-text",
                         line.valueStyle === "heading" &&
-                          "font-mono font-semibold text-white",
+                          "font-mono font-semibold text-dashboard-text",
                         line.valueStyle === "heading" &&
                           index > 0 &&
                           "mt-1 border-t border-white/10 pt-2",
@@ -117,16 +117,16 @@ export function MetricValue(props: {
                 {line.label ? (
                   <span
                     className={cn(
-                      "min-w-0 break-words font-medium text-[#888]",
+                      "min-w-0 break-words font-medium text-dashboard-text-muted",
                       line.labelStyle === "code" &&
-                        "break-all font-mono text-[0.74rem] text-[#d6d6d6]",
+                        "break-all font-mono text-[0.74rem] text-dashboard-text",
                     )}
                   >
                     {line.label}
                   </span>
                 ) : null}
                 {line.label ? (
-                  <span className="whitespace-nowrap text-right text-[#d6d6d6]">
+                  <span className="whitespace-nowrap text-right text-dashboard-text">
                     {line.value}
                   </span>
                 ) : (
@@ -158,7 +158,9 @@ export function MetricList(props: {
           className="inline-flex min-w-0 items-center gap-x-1.5"
           key={item.key}
         >
-          {index > 0 ? <span className="text-[#666]">·</span> : null}
+          {index > 0 ? (
+            <span className="text-dashboard-text-muted">·</span>
+          ) : null}
           <span className="min-w-0">{item.content}</span>
         </span>
       ))}

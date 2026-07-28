@@ -46,7 +46,7 @@ export function StructuredMarkup(props: {
     <>
       {nodes.map((node, index) => (
         <div
-          className="grid min-w-0 gap-0 py-0.5 pl-4 font-mono text-[0.86rem] leading-relaxed text-[#b8b8b8]"
+          className="grid min-w-0 gap-0 py-0.5 pl-4 font-mono text-[0.86rem] leading-relaxed text-dashboard-text-muted"
           key={index}
         >
           <MarkupNodeView
@@ -62,7 +62,7 @@ export function StructuredMarkup(props: {
 function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
   if (props.node.type === "text") {
     return (
-      <div className="min-w-0 whitespace-pre-wrap break-words text-white">
+      <div className="min-w-0 whitespace-pre-wrap break-words text-dashboard-text">
         {props.node.text.trim()}
       </div>
     );
@@ -81,18 +81,20 @@ function MarkupElementView(props: {
   const hasChildren = children.length > 0;
   const [open, setOpen] = useState(props.defaultOpen ?? true);
   const attributes = props.node.attributes.map(([name, value]) => (
-    <span className="ml-1.5 text-[#b8b8b8]" key={name}>
-      {name}=<span className="text-white">"{value}"</span>
+    <span className="ml-1.5 text-dashboard-text-muted" key={name}>
+      {name}=<span className="text-dashboard-text">"{value}"</span>
     </span>
   ));
 
   if (!hasChildren) {
     return (
       <div className="-ml-1 flex min-w-0 flex-wrap items-baseline px-1 py-0.5">
-        <span className="text-[#888]">&lt;</span>
-        <span className="font-bold text-white">{props.node.tagName}</span>
+        <span className="text-dashboard-text-muted">&lt;</span>
+        <span className="font-bold text-dashboard-text">
+          {props.node.tagName}
+        </span>
         {attributes}
-        <span className="text-[#888]"> /&gt;</span>
+        <span className="text-dashboard-text-muted"> /&gt;</span>
       </div>
     );
   }
@@ -106,12 +108,14 @@ function MarkupElementView(props: {
       }}
       open={open}
     >
-      <summary className="-ml-1 flex w-full max-w-full cursor-pointer list-none flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-white/[0.05] hover:text-white [&::-webkit-details-marker]:hidden">
-        <span className="mr-1 w-2 text-white">{open ? "-" : "+"}</span>
-        <span className="text-[#888]">&lt;</span>
-        <span className="font-bold text-white">{props.node.tagName}</span>
+      <summary className="-ml-1 flex w-full max-w-full cursor-pointer list-none flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-white/[0.05] hover:text-dashboard-text [&::-webkit-details-marker]:hidden">
+        <span className="mr-1 w-2 text-dashboard-text">{open ? "-" : "+"}</span>
+        <span className="text-dashboard-text-muted">&lt;</span>
+        <span className="font-bold text-dashboard-text">
+          {props.node.tagName}
+        </span>
         {attributes}
-        <span className="text-[#888]">&gt;</span>
+        <span className="text-dashboard-text-muted">&gt;</span>
       </summary>
       <div className="ml-1 grid gap-0 border-l border-white/10 pl-3">
         {children.map((child, index) => (
@@ -127,9 +131,11 @@ function MarkupElementView(props: {
         role="button"
         tabIndex={0}
       >
-        <span className="text-[#888]">&lt;/</span>
-        <span className="font-bold text-white">{props.node.tagName}</span>
-        <span className="text-[#888]">&gt;</span>
+        <span className="text-dashboard-text-muted">&lt;/</span>
+        <span className="font-bold text-dashboard-text">
+          {props.node.tagName}
+        </span>
+        <span className="text-dashboard-text-muted">&gt;</span>
       </div>
     </details>
   );
@@ -180,7 +186,7 @@ export function HighlightedCodeFallback(props: {
   return (
     <pre
       className={cn(
-        "m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 text-white",
+        "m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 text-dashboard-text",
         props.variant === "prose"
           ? "font-display text-[0.94rem] leading-7"
           : "font-mono text-[0.86rem] leading-relaxed",

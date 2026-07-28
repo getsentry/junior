@@ -13,7 +13,7 @@ export function PluginPanels(props: { plugins: SystemPlugin[] }) {
           Loaded plugins
         </div>
         <h2
-          className="mt-1 mb-0 font-display text-xl font-medium text-white"
+          className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text"
           id="system-plugins-heading"
         >
           Plugins
@@ -27,7 +27,7 @@ export function PluginPanels(props: { plugins: SystemPlugin[] }) {
         </div>
       ) : (
         <Card padding="md">
-          <div className="font-mono text-[0.72rem] text-white/30">
+          <div className="font-mono text-[0.72rem] text-dashboard-text-muted">
             No plugin inventory has been reported yet.
           </div>
         </Card>
@@ -51,17 +51,17 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
             <Boxes aria-hidden="true" size={16} strokeWidth={1.8} />
           </div>
           <div className="min-w-0">
-            <h3 className="m-0 truncate font-display text-lg font-medium text-white">
+            <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
               {props.plugin.displayName}
             </h3>
-            <p className="mt-1 mb-0 line-clamp-2 font-mono text-[0.66rem] leading-relaxed text-white/35">
+            <p className="mt-1 mb-0 line-clamp-2 font-mono text-[0.66rem] leading-relaxed text-dashboard-text-muted">
               {props.plugin.description}
             </p>
           </div>
         </div>
         <ArrowRight
           aria-hidden="true"
-          className="mt-1 shrink-0 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200/70"
+          className="mt-1 shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200/70"
           size={16}
         />
       </div>
@@ -77,10 +77,10 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
               className="min-w-0 bg-[#09090b] px-3 py-2.5"
               key={metric.label}
             >
-              <div className="truncate font-display text-lg font-light text-white/90">
+              <div className="truncate font-display text-lg font-light text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-1 truncate font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+              <div className="mt-1 truncate font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -101,7 +101,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
 function PanelFact(props: { icon: typeof Sparkles; label: string }) {
   const Icon = props.icon;
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-white/25">
+    <span className="inline-flex items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
       <Icon aria-hidden="true" size={11} />
       {props.label}
     </span>

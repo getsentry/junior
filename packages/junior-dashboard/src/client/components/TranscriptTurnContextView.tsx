@@ -40,7 +40,7 @@ export function TranscriptTurnContextView(props: {
           aria-expanded={open}
           aria-label="View turn context"
           className={cn(
-            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-white/35 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-dashboard-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
             open && "border-white/10 bg-white/[0.06] text-cyan-100/80",
           )}
           onClick={() => setOpen(true)}
@@ -52,7 +52,7 @@ export function TranscriptTurnContextView(props: {
         </button>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-[0.68rem] font-medium text-white/70 opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
+          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-[0.68rem] font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
         >
           View turn context
         </span>
@@ -98,10 +98,10 @@ function TurnContextPanel(props: {
               <Braces aria-hidden="true" size={17} strokeWidth={1.8} />
             </span>
             <div className="min-w-0">
-              <h2 className="m-0 text-sm font-semibold text-white">
+              <h2 className="m-0 text-sm font-semibold text-dashboard-text">
                 Turn context
               </h2>
-              <p className="m-0 mt-0.5 text-xs text-white/40">
+              <p className="m-0 mt-0.5 text-xs text-dashboard-text-muted">
                 Structured context supplied with this message
               </p>
             </div>
@@ -109,7 +109,7 @@ function TurnContextPanel(props: {
           <button
             aria-label="Close turn context"
             autoFocus
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/10 hover:text-dashboard-text"
             onClick={props.onClose}
             type="button"
           >
@@ -150,11 +150,11 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
               size={15}
             />
           )}
-          <h3 className="m-0 truncate text-[0.82rem] font-semibold text-white/85">
+          <h3 className="m-0 truncate text-[0.82rem] font-semibold text-dashboard-text">
             {memory ? "Recalled memories" : props.context.pluginName}
           </h3>
         </div>
-        <span className="shrink-0 text-[0.7rem] text-white/35">
+        <span className="shrink-0 text-[0.7rem] text-dashboard-text-muted">
           {props.context.kind} · v{props.context.version}
         </span>
       </div>
@@ -185,55 +185,57 @@ function MemoryRecall(props: {
           <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
             <ChevronRight
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-white/35 transition-transform group-open/memory:rotate-90"
+              className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
               size={15}
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-3">
-                <span className="text-[0.72rem] font-medium text-white/45">
+                <span className="text-[0.72rem] font-medium text-dashboard-text-muted">
                   Memory {index + 1}
                 </span>
-                <span className="shrink-0 text-[0.68rem] text-white/30">
+                <span className="shrink-0 text-[0.68rem] text-dashboard-text-muted">
                   {memory.kind} · {memory.scope}
                 </span>
               </span>
-              <span className="mt-1 block truncate text-[0.8rem] text-white/75">
+              <span className="mt-1 block truncate text-[0.8rem] text-dashboard-text-muted">
                 <HighlightText text={memory.content} />
               </span>
             </span>
           </summary>
 
           <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
-            <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-white/80">
+            <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-dashboard-text">
               <HighlightText text={memory.content} />
             </div>
 
             <dl className="mt-4 grid gap-2 text-xs">
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-white/35">Memory ID</dt>
-                <dd className="m-0 break-all font-mono text-white/60">
+                <dt className="text-dashboard-text-muted">Memory ID</dt>
+                <dd className="m-0 break-all font-mono text-dashboard-text-muted">
                   <HighlightText text={memory.id} />
                 </dd>
               </div>
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-white/35">Observed</dt>
-                <dd className="m-0 text-white/60">
+                <dt className="text-dashboard-text-muted">Observed</dt>
+                <dd className="m-0 text-dashboard-text-muted">
                   {formatTime(new Date(memory.observedAtMs).toISOString())}
                 </dd>
               </div>
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-white/35">Scope</dt>
-                <dd className="m-0 text-white/60">{memory.scope}</dd>
+                <dt className="text-dashboard-text-muted">Scope</dt>
+                <dd className="m-0 text-dashboard-text-muted">
+                  {memory.scope}
+                </dd>
               </div>
               <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-white/35">Kind</dt>
-                <dd className="m-0 text-white/60">{memory.kind}</dd>
+                <dt className="text-dashboard-text-muted">Kind</dt>
+                <dd className="m-0 text-dashboard-text-muted">{memory.kind}</dd>
               </div>
             </dl>
           </div>
         </details>
       ))}
-      <p className="m-0 border-t border-white/10 px-3 py-2 text-[0.68rem] text-white/30">
+      <p className="m-0 border-t border-white/10 px-3 py-2 text-[0.68rem] text-dashboard-text-muted">
         {props.memories.length}{" "}
         {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
         {formatMessageTimestamp(Date.parse(props.loadedAt))}
@@ -245,10 +247,10 @@ function MemoryRecall(props: {
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
     <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-[0.75rem] leading-relaxed text-white/60">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-[0.75rem] leading-relaxed text-dashboard-text-muted">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
-      <p className="m-0 mt-3 text-[0.7rem] text-white/30">
+      <p className="m-0 mt-3 text-[0.7rem] text-dashboard-text-muted">
         Loaded {formatMessageTimestamp(Date.parse(props.context.loadedAt))}
       </p>
     </div>

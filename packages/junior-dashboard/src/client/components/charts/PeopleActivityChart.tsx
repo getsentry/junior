@@ -128,12 +128,16 @@ export function PeopleActivityChart(props: {
               <Tooltip
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                    <span className="text-white/60">active people</span>
-                    <span className="text-right text-white/80">
+                    <span className="text-dashboard-text-muted">
+                      active people
+                    </span>
+                    <span className="text-right text-dashboard-text">
                       {day.activePeople}
                     </span>
-                    <span className="text-white/60">conversations</span>
-                    <span className="text-right text-white/80">
+                    <span className="text-dashboard-text-muted">
+                      conversations
+                    </span>
+                    <span className="text-right text-dashboard-text">
                       {day.conversations}
                     </span>
                   </div>

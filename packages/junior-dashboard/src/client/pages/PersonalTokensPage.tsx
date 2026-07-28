@@ -69,7 +69,7 @@ export function PersonalTokensPage() {
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Personal API Tokens</h1>
-        <p className="mt-2 mb-0 max-w-2xl text-sm text-[#aaa]">
+        <p className="mt-2 mb-0 max-w-2xl text-sm text-dashboard-text-muted">
           Use a token to read {getDashboardAgentName()} APIs from a local agent
           or script. Tokens expire after 90 days.
         </p>
@@ -97,7 +97,7 @@ export function PersonalTokensPage() {
             <div className="mt-5 flex gap-2">
               <input
                 aria-label="Token name"
-                className="min-w-0 flex-1 rounded border border-white/15 bg-black px-3 py-2 text-sm text-white"
+                className="min-w-0 flex-1 rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text"
                 maxLength={80}
                 onChange={(event) => setName(event.target.value)}
                 value={name}
@@ -115,9 +115,13 @@ export function PersonalTokensPage() {
 
           <div className="mt-5 space-y-2">
             {loading ? (
-              <p className="text-sm text-[#888]">Loading API tokens…</p>
+              <p className="text-sm text-dashboard-text-muted">
+                Loading API tokens…
+              </p>
             ) : tokens.length === 0 ? (
-              <p className="text-sm text-[#888]">No active API tokens.</p>
+              <p className="text-sm text-dashboard-text-muted">
+                No active API tokens.
+              </p>
             ) : (
               tokens.map((token) => (
                 <div
@@ -129,14 +133,14 @@ export function PersonalTokensPage() {
                     <p className="m-0 truncate text-sm font-semibold">
                       {token.name}
                     </p>
-                    <p className="mt-1 mb-0 text-xs text-[#888]">
+                    <p className="mt-1 mb-0 text-xs text-dashboard-text-muted">
                       Ends in {token.tokenSuffix} · Expires{" "}
                       {new Date(token.expiresAt).toLocaleDateString()}
                     </p>
                   </div>
                   <button
                     aria-label={`Revoke ${token.name}`}
-                    className="cursor-pointer border-0 bg-transparent p-1 text-[#888] hover:text-rose-300"
+                    className="cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted hover:text-rose-300"
                     disabled={busy}
                     onClick={() => void revokeToken(token)}
                     type="button"

@@ -13,10 +13,10 @@ import type { Conversation } from "../types";
 export function ConversationSummary(props: { conversation: Conversation }) {
   return (
     <div className="min-w-0">
-      <div className="min-w-0 truncate text-[1.04rem] font-bold leading-tight text-white">
+      <div className="min-w-0 truncate text-[1.04rem] font-bold leading-tight text-dashboard-text">
         {conversationDisplayTitle(props.conversation)}
       </div>
-      <div className="mt-1 break-words text-[0.86rem] leading-relaxed text-[#b8b8b8] md:truncate">
+      <div className="mt-1 break-words text-[0.86rem] leading-relaxed text-dashboard-text-muted md:truncate">
         <ConversationIdentity conversation={props.conversation} />
       </div>
     </div>
@@ -36,7 +36,7 @@ function ConversationIdentity(props: { conversation: Conversation }) {
       {location && props.conversation.locationId ? (
         <>
           <Link
-            className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+            className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
             to={locationPath(props.conversation.locationId)}
@@ -53,7 +53,7 @@ function ConversationIdentity(props: { conversation: Conversation }) {
       ) : null}
       {email ? (
         <Link
-          className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+          className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
           to={peoplePath(email)}

@@ -19,14 +19,14 @@ export function PluginReports(props: {
     return (
       <Card padding="md">
         <div className="flex items-center gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-white/25">
+          <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
             <RadioTower aria-hidden="true" size={17} />
           </div>
           <div>
-            <h2 className="m-0 font-display text-base font-medium text-white/75">
+            <h2 className="m-0 font-display text-base font-medium text-dashboard-text-muted">
               Operational reports
             </h2>
-            <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/30">
+            <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
               {props.emptyText}
             </p>
           </div>
@@ -42,7 +42,7 @@ export function PluginReports(props: {
           <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
             Live signals
           </div>
-          <h2 className="mt-1 mb-0 font-display text-xl font-medium text-white">
+          <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
             Operational reports
           </h2>
         </div>
@@ -74,15 +74,15 @@ function PluginReportView(props: {
     <Card>
       <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
         <div className="min-w-0">
-          <h3 className="m-0 truncate font-display text-lg font-medium text-white">
+          <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
             {title}
           </h3>
-          <div className="mt-1 hidden font-mono text-[0.62rem] text-white/30 sm:block">
+          <div className="mt-1 hidden font-mono text-[0.62rem] text-dashboard-text-muted sm:block">
             {props.report.pluginName}
           </div>
         </div>
         {props.report.generatedAt ? (
-          <div className="hidden shrink-0 font-mono text-[0.62rem] text-white/30 sm:block">
+          <div className="hidden shrink-0 font-mono text-[0.62rem] text-dashboard-text-muted sm:block">
             updated {formatTime(props.report.generatedAt)}
           </div>
         ) : null}
@@ -112,10 +112,10 @@ function PluginReportView(props: {
               )}
               key={metric.label}
             >
-              <div className="truncate font-display text-2xl font-light leading-none text-white">
+              <div className="truncate font-display text-2xl font-light leading-none text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-white/30">
+              <div className="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -155,19 +155,19 @@ function PluginReportRecordSet(props: {
   return (
     <div className="border-t border-white/[0.06]">
       <div className="flex items-center justify-between gap-4 px-5 py-3">
-        <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-white/45">
+        <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
           {props.recordSet.title}
         </div>
-        <div className="hidden font-mono text-[0.58rem] text-white/25 sm:block">
+        <div className="hidden font-mono text-[0.58rem] text-dashboard-text-muted sm:block">
           {records.length} records
         </div>
       </div>
       {records.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-white/30">
+        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
           {props.recordSet.emptyText ?? "No records."}
         </div>
       ) : fields.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-white/30">
+        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
           Report records are unavailable because no fields were declared.
         </div>
       ) : (
@@ -183,10 +183,10 @@ function PluginReportRecordSet(props: {
               >
                 {fields.map((field) => (
                   <div key={field.key}>
-                    <div className="font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+                    <div className="font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
                       {field.label}
                     </div>
-                    <div className="mt-1 break-words font-mono text-[0.68rem] leading-relaxed text-white/60">
+                    <div className="mt-1 break-words font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
                       {record.values[field.key] ?? ""}
                     </div>
                   </div>
@@ -196,7 +196,7 @@ function PluginReportRecordSet(props: {
           </div>
           <div className="hidden overflow-x-auto border-t border-white/[0.05] sm:block">
             <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-black/15 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-white/25">
+              <thead className="bg-black/15 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
                 <tr>
                   {fields.map((field) => (
                     <th
@@ -220,7 +220,7 @@ function PluginReportRecordSet(props: {
                   >
                     {fields.map((field) => (
                       <td
-                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-[0.7rem] text-white/55"
+                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-[0.7rem] text-dashboard-text-muted"
                         key={field.key}
                       >
                         {record.values[field.key] ?? ""}

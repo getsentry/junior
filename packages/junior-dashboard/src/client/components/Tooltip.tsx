@@ -121,7 +121,7 @@ export function Tooltip({ children, content, label }: TooltipProps) {
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-50 min-w-36 max-w-64 rounded-md border border-white/15 bg-[#0b0b0b] px-3 py-2 font-mono text-[0.68rem] leading-relaxed text-white/70 shadow-2xl shadow-black/70"
+              className="pointer-events-none fixed z-50 min-w-36 max-w-64 rounded-md border border-white/15 bg-[#0b0b0b] px-3 py-2 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70"
               id={tooltipId}
               ref={tooltipRef}
               role="tooltip"
@@ -132,7 +132,7 @@ export function Tooltip({ children, content, label }: TooltipProps) {
               }}
             >
               {label ? (
-                <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-white/40">
+                <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
                   {label}
                 </div>
               ) : null}

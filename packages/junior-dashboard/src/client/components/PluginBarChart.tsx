@@ -44,12 +44,12 @@ export function PluginBarChart(props: {
     <div className="overflow-hidden rounded border border-white/[0.07] bg-[#09090b]">
       <div className="border-b border-white/[0.06] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
+          <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
             {widget.title}
           </h4>
         </div>
         {widget.description ? (
-          <p className="mt-1 mb-0 font-mono text-[0.62rem] text-white/30">
+          <p className="mt-1 mb-0 font-mono text-[0.62rem] text-dashboard-text-muted">
             {widget.description}
           </p>
         ) : null}
@@ -57,7 +57,7 @@ export function PluginBarChart(props: {
           <div aria-label="Chart legend" className="mt-3 flex flex-wrap gap-3">
             {widget.series.map((series, index) => (
               <span
-                className="flex items-center gap-1.5 font-mono text-[0.58rem] text-white/40"
+                className="flex items-center gap-1.5 font-mono text-[0.58rem] text-dashboard-text-muted"
                 key={series.key}
               >
                 <i
@@ -75,7 +75,7 @@ export function PluginBarChart(props: {
         ) : null}
       </div>
       {categories.length === 0 ? (
-        <p className="m-0 p-4 font-mono text-[0.68rem] text-white/30">
+        <p className="m-0 p-4 font-mono text-[0.68rem] text-dashboard-text-muted">
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (

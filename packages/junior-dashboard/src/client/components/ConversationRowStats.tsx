@@ -27,12 +27,12 @@ export function ConversationRowStats(props: {
   return (
     <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
       {primaryStats.length > 0 ? (
-        <div className="text-[0.84rem] leading-relaxed text-[#b8b8b8]">
+        <div className="text-[0.84rem] leading-relaxed text-dashboard-text-muted">
           {primaryStats.join(" · ")}
         </div>
       ) : null}
       {secondaryStats.length > 0 ? (
-        <div className="max-w-full break-words text-[0.84rem] leading-relaxed text-[#888] md:truncate">
+        <div className="max-w-full break-words text-[0.84rem] leading-relaxed text-dashboard-text-muted md:truncate">
           {secondaryStats.join(" · ")}
         </div>
       ) : null}

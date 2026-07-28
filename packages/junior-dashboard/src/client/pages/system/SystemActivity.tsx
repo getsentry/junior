@@ -35,7 +35,7 @@ export function SystemActivity(props: {
             Runtime telemetry
           </div>
           <h2
-            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-white"
+            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
             id="system-metrics-title"
           >
             Usage over time

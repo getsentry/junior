@@ -94,16 +94,18 @@ export function LocationActivityChart(props: {
               <Tooltip
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                    <span className="text-white/60">conversations</span>
-                    <span className="text-right text-white/80">
+                    <span className="text-dashboard-text-muted">
+                      conversations
+                    </span>
+                    <span className="text-right text-dashboard-text">
                       {day.conversations}
                     </span>
-                    <span className="text-white/60">active</span>
-                    <span className="text-right text-white/80">
+                    <span className="text-dashboard-text-muted">active</span>
+                    <span className="text-right text-dashboard-text">
                       {day.active}
                     </span>
-                    <span className="text-white/60">failed</span>
-                    <span className="text-right text-white/80">
+                    <span className="text-dashboard-text-muted">failed</span>
+                    <span className="text-right text-dashboard-text">
                       {day.failed}
                     </span>
                   </div>

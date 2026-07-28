@@ -80,7 +80,7 @@ export function ConversationPage(props: {
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
-            <div className="mt-2 break-words font-mono text-[0.68rem] leading-snug text-white/40">
+            <div className="mt-2 break-words font-mono text-[0.68rem] leading-snug text-dashboard-text-muted">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
@@ -88,7 +88,7 @@ export function ConversationPage(props: {
               />
             </div>
           </div>
-          <div className="flex min-w-0 flex-col items-start gap-2 self-start font-mono text-[0.65rem] leading-snug text-white/35 md:items-end md:text-right">
+          <div className="flex min-w-0 flex-col items-start gap-2 self-start font-mono text-[0.65rem] leading-snug text-dashboard-text-muted md:items-end md:text-right">
             <div className="break-words">
               updated{" "}
               {formatRelativeTime(
@@ -96,7 +96,7 @@ export function ConversationPage(props: {
               )}
             </div>
             <button
-              className="rounded border border-white/15 px-2.5 py-1 text-white/60 transition hover:border-white/30 hover:text-white disabled:opacity-40"
+              className="rounded border border-white/15 px-2.5 py-1 text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text disabled:opacity-40"
               disabled={!conversation || archive.isPending}
               onClick={() =>
                 archive.mutate({
@@ -125,7 +125,7 @@ export function ConversationPage(props: {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error && !detail.data ? (
-          <div className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-white/45">
+          <div className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-dashboard-text-muted">
             {detail.error.message}
           </div>
         ) : (
@@ -270,7 +270,7 @@ function ConversationIdentity(props: {
         <>
           {email ? (
             <Link
-              className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+              className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
               to={peoplePath(email)}
             >
               {owner}
@@ -286,7 +286,7 @@ function ConversationIdentity(props: {
         <>
           {" · "}
           <a
-            className="text-white no-underline hover:underline"
+            className="text-dashboard-text no-underline hover:underline"
             href={props.detail.sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
@@ -392,7 +392,7 @@ function ConversationStats(props: {
 
   return (
     <MetricList
-      className="col-span-full mt-1 break-words border-t border-white/[0.07] pt-3 text-[0.72rem] leading-[1.5] text-white/45"
+      className="col-span-full mt-1 break-words border-t border-white/[0.07] pt-3 text-[0.72rem] leading-[1.5] text-dashboard-text-muted"
       items={stats}
     />
   );

@@ -4,10 +4,10 @@ import type { ReactNode } from "react";
 export function DirectoryMetric(props: { label: string; value: ReactNode }) {
   return (
     <div className="justify-self-end text-right max-md:justify-self-stretch max-md:text-left">
-      <div className="mb-1 hidden font-mono text-[0.56rem] uppercase tracking-[0.1em] text-white/25 max-md:block">
+      <div className="mb-1 hidden font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted max-md:block">
         {props.label}
       </div>
-      <div className="font-display text-xl font-light leading-none text-white/90 md:font-mono md:text-[0.76rem] md:text-white/65">
+      <div className="font-display text-xl font-light leading-none text-dashboard-text md:font-mono md:text-[0.76rem] md:text-dashboard-text-muted">
         {props.value}
       </div>
     </div>

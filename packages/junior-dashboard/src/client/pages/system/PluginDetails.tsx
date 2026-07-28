@@ -12,7 +12,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
           Plugin information
         </div>
         <h2
-          className="mt-1 mb-0 font-display text-xl font-medium text-white"
+          className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text"
           id="plugin-details-heading"
         >
           Details
@@ -60,10 +60,10 @@ export function PluginHeader(props: { plugin: SystemPlugin }) {
       <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
         Plugin
       </div>
-      <h2 className="mt-1 mb-0 font-display text-2xl font-medium tracking-[-0.02em] text-white sm:text-3xl">
+      <h2 className="mt-1 mb-0 font-display text-2xl font-medium tracking-[-0.02em] text-dashboard-text sm:text-3xl">
         {props.plugin.displayName}
       </h2>
-      <p className="mt-2 mb-0 max-w-2xl font-mono text-[0.7rem] leading-relaxed text-white/45">
+      <p className="mt-2 mb-0 max-w-2xl font-mono text-[0.7rem] leading-relaxed text-dashboard-text-muted">
         {props.plugin.description}
       </p>
     </header>
@@ -76,10 +76,10 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
     <div className="flex items-center gap-3 bg-[#09090b] px-4 py-3.5">
       <Icon aria-hidden="true" className="text-cyan-200/60" size={15} />
       <div className="min-w-0">
-        <div className="truncate font-display text-base font-medium text-white/85">
+        <div className="truncate font-display text-base font-medium text-dashboard-text">
           {props.value}
         </div>
-        <div className="mt-0.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-white/25">
+        <div className="mt-0.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
           {props.label}
         </div>
       </div>
@@ -94,14 +94,14 @@ function CapabilityList(props: {
 }) {
   return (
     <div>
-      <h3 className="m-0 font-mono text-[0.6rem] font-medium uppercase tracking-[0.12em] text-white/40">
+      <h3 className="m-0 font-mono text-[0.6rem] font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.title}
       </h3>
       {props.items.length ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {props.items.map((item) => (
             <span
-              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.65rem] text-white/55"
+              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.65rem] text-dashboard-text-muted"
               key={item}
             >
               {item}
@@ -109,7 +109,7 @@ function CapabilityList(props: {
           ))}
         </div>
       ) : (
-        <p className="mt-2 mb-0 font-mono text-[0.65rem] leading-relaxed text-white/25">
+        <p className="mt-2 mb-0 font-mono text-[0.65rem] leading-relaxed text-dashboard-text-muted">
           {props.emptyText}
         </p>
       )}

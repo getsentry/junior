@@ -34,22 +34,22 @@ export function TranscriptContextEventView(props: {
           {handoff ? "Model handoff" : "Context compacted"}
         </strong>
         {typeof props.timestamp === "number" ? (
-          <span className="text-[0.76rem] text-white/35">
+          <span className="text-[0.76rem] text-dashboard-text-muted">
             {formatMessageTimestamp(props.timestamp)}
           </span>
         ) : null}
       </div>
-      <div className="mt-1.5 text-[0.8rem] text-white/45">
+      <div className="mt-1.5 text-[0.8rem] text-dashboard-text-muted">
         {handoff
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
         <details className="mt-2 border-t border-white/[0.06] pt-2">
-          <summary className="cursor-pointer select-none text-[0.78rem] font-medium text-white/55">
+          <summary className="cursor-pointer select-none text-[0.78rem] font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>
-          <div className="mt-2 text-[0.8rem] leading-relaxed text-white/60">
+          <div className="mt-2 text-[0.8rem] leading-relaxed text-dashboard-text-muted">
             <TranscriptText
               firstChildIndex={0}
               lastChildIndex={0}

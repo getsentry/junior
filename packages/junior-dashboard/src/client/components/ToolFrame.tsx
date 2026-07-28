@@ -29,7 +29,7 @@ export function ToolFrame(props: {
             <>
               <span
                 className={cn(
-                  "hidden text-[#777] max-md:inline",
+                  "hidden text-dashboard-text-muted max-md:inline",
                   !staticFrame && "max-md:group-open:hidden",
                 )}
               >
@@ -37,7 +37,7 @@ export function ToolFrame(props: {
               </span>
               <span
                 className={cn(
-                  "hidden shrink-0 whitespace-nowrap text-[#888] max-md:inline",
+                  "hidden shrink-0 whitespace-nowrap text-dashboard-text-muted max-md:inline",
                   !staticFrame && "max-md:group-open:hidden",
                 )}
               >
@@ -53,7 +53,7 @@ export function ToolFrame(props: {
       )}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="min-w-0 break-words text-[0.8rem] text-[#888]">
+          <TranscriptHeadingMeta className="min-w-0 break-words text-[0.8rem] text-dashboard-text-muted">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
@@ -63,7 +63,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words py-1 font-mono text-[0.78rem] leading-snug text-[#777] max-md:block">
+      <div className="hidden min-w-0 break-words py-1 font-mono text-[0.78rem] leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -95,9 +95,9 @@ export function toolFrameClass(): string {
 
 function toolHeaderClass(interactive: boolean): string {
   return cn(
-    "block py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8]",
+    "block py-1.5 font-mono text-[0.82rem] leading-tight text-dashboard-text-muted",
     interactive
-      ? "cursor-pointer list-none transition-colors hover:text-white hover:[&_*]:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-white focus-visible:[&_*]:text-white [&::-webkit-details-marker]:hidden"
+      ? "cursor-pointer list-none transition-colors hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
       : "cursor-default",
   );
 }

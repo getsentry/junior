@@ -57,7 +57,7 @@ export function LocationDirectory(props: {
         <DirectoryRowsSkeleton />
       ) : props.locations.length ? (
         <div className="min-w-0" role="table">
-          <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/50 max-md:hidden">
+          <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden">
             <div>Location</div>
             <div className="justify-self-end">Conversations</div>
             <div className="justify-self-end">Tokens</div>
@@ -74,10 +74,10 @@ export function LocationDirectory(props: {
                   <Hash aria-hidden="true" size={16} strokeWidth={1.8} />
                 </span>
                 <div className="min-w-0">
-                  <div className="truncate font-display text-[1rem] font-medium leading-tight text-white/90">
+                  <div className="truncate font-display text-[1rem] font-medium leading-tight text-dashboard-text">
                     {location.label}
                   </div>
-                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/55">
+                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-dashboard-text-muted">
                     Last active {formatRelativeTime(location.lastSeenAt)}
                   </div>
                 </div>

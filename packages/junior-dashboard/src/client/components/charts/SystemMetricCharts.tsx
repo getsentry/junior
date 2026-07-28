@@ -119,18 +119,18 @@ function MetricChart(props: {
       <div className="border-b border-white/[0.06] px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
+            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               {chart.title}
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-white/35">
+            <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
               {chart.description}
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <div className="font-display text-xl font-light text-white/90">
+            <div className="font-display text-xl font-light text-dashboard-text">
               {chart.format(total)}
             </div>
-            <div className="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-white/25">
+            <div className="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
               period total
             </div>
           </div>

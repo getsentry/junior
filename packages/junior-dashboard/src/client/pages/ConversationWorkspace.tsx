@@ -87,7 +87,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-4 py-3 md:hidden">
               <Link
-                className="inline-flex items-center gap-2 font-mono text-[0.7rem] text-white/45 no-underline hover:text-white"
+                className="inline-flex items-center gap-2 font-mono text-[0.7rem] text-dashboard-text-muted no-underline hover:text-dashboard-text"
                 to="/"
               >
                 <ArrowLeft aria-hidden="true" size={15} />
@@ -114,10 +114,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         ) : (
           <div className="grid min-h-0 place-items-center px-6 text-center">
             <div>
-              <div className="font-display text-lg font-medium text-white">
+              <div className="font-display text-lg font-medium text-dashboard-text">
                 Select a conversation
               </div>
-              <div className="mt-1 font-mono text-[0.7rem] text-white/30">
+              <div className="mt-1 font-mono text-[0.7rem] text-dashboard-text-muted">
                 Choose one of your conversations to view its history.
               </div>
             </div>

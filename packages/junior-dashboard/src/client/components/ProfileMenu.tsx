@@ -62,8 +62,8 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
         aria-expanded={open}
         aria-label={`Open profile menu for ${name}`}
         className={cn(
-          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-[#0b0b0b] px-1.5 text-[#d6d6d6] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
-          open && "border-white/30 bg-[#151515] text-white",
+          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-[#0b0b0b] px-1.5 text-dashboard-text transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
+          open && "border-white/30 bg-[#151515] text-dashboard-text",
         )}
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
@@ -92,15 +92,17 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
           id="profile-popover"
         >
           <div className="border-b border-white/10 px-2.5 py-2.5">
-            <p className="m-0 truncate text-sm font-semibold text-white">
+            <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
               {name}
             </p>
             {name !== email ? (
-              <p className="mt-1 mb-0 truncate text-xs text-[#888]">{email}</p>
+              <p className="mt-1 mb-0 truncate text-xs text-dashboard-text-muted">
+                {email}
+              </p>
             ) : null}
           </div>
           <Link
-            className="mt-1 flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+            className="mt-1 flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to={peoplePath(email)}
           >
@@ -108,7 +110,7 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
             My profile
           </Link>
           <Link
-            className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+            className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to="/settings/api-tokens"
           >
@@ -116,7 +118,7 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
             API tokens
           </Link>
           <button
-            className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#d6d6d6] transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+            className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
               void onSignOut();

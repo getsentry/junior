@@ -151,14 +151,15 @@ function transcriptMessageClass(role: string): string {
   return cn(
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]",
     kind === "assistant" &&
-      "mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-white",
+      "mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-dashboard-text",
     kind === "user" &&
-      "ml-6 border-white/[0.09] bg-white/[0.055] text-[#f4f4f4]",
+      "ml-6 border-white/[0.09] bg-white/[0.055] text-dashboard-text",
     kind === "system" &&
-      "border-amber-300/15 bg-amber-300/[0.045] text-[#f4f4f4]",
+      "border-amber-300/15 bg-amber-300/[0.045] text-dashboard-text",
     kind === "tool" &&
-      "border-white/[0.06] bg-black/15 text-[#b8b8b8] shadow-none",
-    kind === "other" && "border-white/[0.08] bg-white/[0.03] text-[#f4f4f4]",
+      "border-white/[0.06] bg-black/15 text-dashboard-text-muted shadow-none",
+    kind === "other" &&
+      "border-white/[0.08] bg-white/[0.03] text-dashboard-text",
   );
 }
 
@@ -168,10 +169,10 @@ function transcriptRoleClass(role: string): string {
   return cn(
     "text-[0.88rem] leading-snug",
     kind === "assistant" && "text-cyan-100/75",
-    kind === "user" && "text-white",
+    kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
-    kind === "tool" && "text-[#b8b8b8]",
-    kind === "other" && "text-[#f4f4f4]",
+    kind === "tool" && "text-dashboard-text-muted",
+    kind === "other" && "text-dashboard-text",
   );
 }
 
@@ -181,10 +182,10 @@ function transcriptRoleLabelClass(role: string): string {
   return cn(
     "inline-block max-w-full break-all font-display text-[0.95rem] font-semibold leading-tight",
     kind === "assistant" && "text-cyan-100",
-    kind === "user" && "text-white",
+    kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
-    kind === "tool" && "text-[#b8b8b8]",
-    kind === "other" && "text-white",
+    kind === "tool" && "text-dashboard-text-muted",
+    kind === "other" && "text-dashboard-text",
   );
 }
 
@@ -220,7 +221,7 @@ function TranscriptMessageHeader(props: {
       leftClassName={transcriptRoleClass(props.role)}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="text-[0.78rem] text-[#888]">
+          <TranscriptHeadingMeta className="text-[0.78rem] text-dashboard-text-muted">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
@@ -585,7 +586,7 @@ function RedactedMessageView(props: {
         role={props.message.role}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-[0.9rem] leading-snug text-[#b8b8b8]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-[0.9rem] leading-snug text-dashboard-text-muted">
         {props.message.parts.map((_part, index) => (
           <RedactedMetadataRow key={index} />
         ))}
@@ -599,7 +600,7 @@ function RedactedMetadataRow(props: { meta?: string }) {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 max-md:grid-cols-1">
       <RedactedMarker />
       {props.meta ? (
-        <span className="min-w-0 break-words text-right text-[#888] max-md:text-left">
+        <span className="min-w-0 break-words text-right text-dashboard-text-muted max-md:text-left">
           {props.meta}
         </span>
       ) : null}
@@ -609,7 +610,7 @@ function RedactedMetadataRow(props: { meta?: string }) {
 
 function RedactedMarker() {
   return (
-    <code className="inline-flex w-fit font-mono text-[0.82rem] leading-tight text-[#b8b8b8]">
+    <code className="inline-flex w-fit font-mono text-[0.82rem] leading-tight text-dashboard-text-muted">
       {"<redacted>"}
     </code>
   );
@@ -690,7 +691,7 @@ function transcriptMeta(
       ? {
           content: (
             <a
-              className="text-white no-underline hover:underline"
+              className="text-dashboard-text no-underline hover:underline"
               href={conversation.sentryTraceUrl}
               rel="noreferrer"
               target="_blank"
@@ -719,7 +720,7 @@ function TranscriptResourceEventView(props: {
         <HighlightText text={props.message.eventType ?? ""} />
       </summary>
       {text ? (
-        <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-white/55">
+        <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-dashboard-text-muted">
           <HighlightText text={text} />
         </div>
       ) : redacted ? (

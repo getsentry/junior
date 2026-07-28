@@ -61,16 +61,16 @@ export function SubagentTranscriptDrawer(props: {
                 size={16}
                 strokeWidth={2.25}
               />
-              <h2 className="m-0 min-w-0 break-words text-lg font-bold leading-tight tracking-normal text-white">
+              <h2 className="m-0 min-w-0 break-words text-lg font-bold leading-tight tracking-normal text-dashboard-text">
                 {label}
               </h2>
             </div>
             <div className="mt-2 grid min-w-0 gap-1.5 text-[0.78rem] leading-snug">
-              <code className="min-w-0 break-all font-mono text-[0.72rem] text-[#d6d6d6] sm:text-[0.78rem]">
+              <code className="min-w-0 break-all font-mono text-[0.72rem] text-dashboard-text sm:text-[0.78rem]">
                 {props.target.conversationId}
               </code>
               <Link
-                className="inline-flex w-fit items-center gap-1 font-semibold text-white no-underline hover:underline"
+                className="inline-flex w-fit items-center gap-1 font-semibold text-dashboard-text no-underline hover:underline"
                 to={conversationPath(props.target.conversationId)}
                 onClick={props.onClose}
               >
@@ -78,7 +78,7 @@ export function SubagentTranscriptDrawer(props: {
                 <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
               </Link>
             </div>
-            <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-[#888]">
+            <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-dashboard-text-muted">
               {meta.join(" · ")}
             </div>
             <div className="absolute right-4 top-3 flex items-center gap-1.5 md:right-5">

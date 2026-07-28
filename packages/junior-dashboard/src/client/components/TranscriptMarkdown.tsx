@@ -23,7 +23,7 @@ export function TranscriptMarkdown(props: {
   return (
     <div
       className={cn(
-        "min-w-0 break-words text-white [overflow-wrap:anywhere]",
+        "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.compact
           ? "font-display text-[0.9rem] leading-[1.6rem]"
           : "font-display text-[0.94rem] leading-7",
@@ -42,7 +42,7 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
   switch (props.block.type) {
     case "heading": {
       const className = cn(
-        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-white",
+        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text",
         props.block.level <= 2 ? "text-[1.05em]" : "text-[1em]",
       );
       const content = renderInlineMarkdown(props.block.text);
@@ -66,7 +66,7 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
       return (
         <ListTag
           className={cn(
-            "m-0 grid min-w-0 list-outside gap-1 pl-5 text-white",
+            "m-0 grid min-w-0 list-outside gap-1 pl-5 text-dashboard-text",
             props.block.ordered ? "list-decimal" : "list-disc",
           )}
         >
@@ -80,7 +80,7 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
     }
     case "paragraph":
       return (
-        <p className="m-0 min-w-0 whitespace-normal text-white">
+        <p className="m-0 min-w-0 whitespace-normal text-dashboard-text">
           {props.block.lines.map((line, index) => (
             <span key={index}>
               {index > 0 ? <br /> : null}
@@ -202,7 +202,10 @@ function renderInlineText(text: string, keyBase: number): ReactNode[] {
   while ((match = codePattern.exec(text))) {
     if (match.index > cursor) {
       nodes.push(
-        ...renderEmphasisText(text.slice(cursor, match.index), `${keyBase}-${part++}`),
+        ...renderEmphasisText(
+          text.slice(cursor, match.index),
+          `${keyBase}-${part++}`,
+        ),
       );
     }
     nodes.push(
@@ -242,11 +245,17 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
     }
     nodes.push(
       match[1] ? (
-        <strong className="font-semibold text-white" key={`${keyBase}-b-${part++}`}>
+        <strong
+          className="font-semibold text-dashboard-text"
+          key={`${keyBase}-b-${part++}`}
+        >
           <HighlightText text={match[2] ?? ""} />
         </strong>
       ) : (
-        <em className="italic text-white/95" key={`${keyBase}-i-${part++}`}>
+        <em
+          className="italic text-dashboard-text"
+          key={`${keyBase}-i-${part++}`}
+        >
           <HighlightText text={match[3] ?? ""} />
         </em>
       ),
@@ -266,7 +275,9 @@ function SearchAwareLinkLabel(props: { href: string; label: string }) {
   const search = useTranscriptSearch();
   const hrefMatches =
     search.active && props.href.toLowerCase().includes(search.normalizedQuery);
-  const labelMatches = props.label.toLowerCase().includes(search.normalizedQuery);
+  const labelMatches = props.label
+    .toLowerCase()
+    .includes(search.normalizedQuery);
 
   if (hrefMatches && !labelMatches) {
     return (

@@ -116,13 +116,13 @@ function ToolSignature(props: {
           "shrink-0 font-bold",
           props.running && !searchActive
             ? "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none"
-            : "text-[#d6d6d6]",
+            : "text-dashboard-text",
         )}
       >
         <HighlightText text={props.name} />
       </strong>
       {props.preview && !searchActive ? (
-        <code className="min-w-0 truncate font-[inherit] text-[#b8b8b8] group-open:hidden">
+        <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-open:hidden">
           (<HighlightText text={props.preview} />)
         </code>
       ) : null}

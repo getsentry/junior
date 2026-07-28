@@ -114,12 +114,12 @@ export function LocationDirectoryActivityChart(props: {
                 <Tooltip
                   content={
                     <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                      <span className="text-white/60">public</span>
-                      <span className="text-right text-white/80">
+                      <span className="text-dashboard-text-muted">public</span>
+                      <span className="text-right text-dashboard-text">
                         {day.publicConversations}
                       </span>
-                      <span className="text-white/60">private</span>
-                      <span className="text-right text-white/80">
+                      <span className="text-dashboard-text-muted">private</span>
+                      <span className="text-right text-dashboard-text">
                         {day.privateConversations}
                       </span>
                     </div>

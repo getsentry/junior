@@ -53,7 +53,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
       <div className="min-w-[36rem]">
         <div
           aria-hidden="true"
-          className="mb-1 grid gap-1 text-[0.64rem] font-semibold leading-none text-[#666]"
+          className="mb-1 grid gap-1 text-[0.64rem] font-semibold leading-none text-dashboard-text-muted"
           style={{
             gridTemplateColumns: `repeat(${weeks.length}, minmax(0.75rem, 1fr))`,
           }}
@@ -78,12 +78,14 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                 <Tooltip
                   content={
                     <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                      <span className="text-white/60">conversations</span>
-                      <span className="text-right text-white/80">
+                      <span className="text-dashboard-text-muted">
+                        conversations
+                      </span>
+                      <span className="text-right text-dashboard-text">
                         {day.conversations}
                       </span>
-                      <span className="text-white/60">runtime</span>
-                      <span className="text-right text-white/80">
+                      <span className="text-dashboard-text-muted">runtime</span>
+                      <span className="text-right text-dashboard-text">
                         {activityRuntime(day)}
                       </span>
                     </div>
@@ -111,7 +113,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
             ),
           )}
         </div>
-        <div className="mt-3 flex items-center gap-1 text-[0.7rem] font-semibold uppercase leading-none text-[#666]">
+        <div className="mt-3 flex items-center gap-1 text-[0.7rem] font-semibold uppercase leading-none text-dashboard-text-muted">
           <span>Less</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <span

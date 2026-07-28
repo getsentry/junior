@@ -82,7 +82,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
             Runtime telemetry
           </div>
           <h2
-            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-white"
+            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
             id="profile-metrics-title"
           >
             Usage over time
@@ -119,7 +119,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
           <Section className="mb-0">
             <SectionHeader
               actions={
-                <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-white/30">
+                <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
                   52 weeks
                 </div>
               }
@@ -154,14 +154,14 @@ function LeaderboardSection(props: {
             className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/[0.06] px-4 py-3 last:border-b-0"
             key={item.label}
           >
-            <div className="font-mono text-[0.68rem] leading-none text-white/25">
+            <div className="font-mono text-[0.68rem] leading-none text-dashboard-text-muted">
               {index + 1}
             </div>
             <div className="min-w-0">
-              <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-white/85">
+              <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-dashboard-text">
                 {item.label}
               </div>
-              <div className="mt-1 truncate font-mono text-[0.66rem] leading-tight text-white/30">
+              <div className="mt-1 truncate font-mono text-[0.66rem] leading-tight text-dashboard-text-muted">
                 {runtimeLabel(item.durationMs, item.conversations)}
                 {item.tokens
                   ? ` / ${formatCompactNumber(item.tokens)} tokens`
@@ -171,7 +171,7 @@ function LeaderboardSection(props: {
                   : ""}
               </div>
             </div>
-            <div className="font-display text-xl font-light leading-none text-white/90">
+            <div className="font-display text-xl font-light leading-none text-dashboard-text">
               {formatCompactNumber(item.conversations)}
             </div>
           </li>
