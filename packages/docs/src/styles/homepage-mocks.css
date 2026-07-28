@@ -132,7 +132,7 @@
 }
 
 .jr-product-mock-caption {
-  color: var(--jr-black);
+  color: var(--jr-black) !important;
   font-size: 0.82rem;
   font-weight: 800;
   line-height: 1.35;

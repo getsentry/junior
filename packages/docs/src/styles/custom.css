@@ -406,7 +406,7 @@ body:has(.jr-home) main {
 }
 
 .jr-section-number {
-  color: var(--jr-black);
+  color: var(--jr-black) !important;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
@@ -590,7 +590,7 @@ body:has(.jr-home) main {
 }
 
 .slk-text {
-  color: #e7e8ea;
+  color: #e7e8ea !important;
   line-height: 1.5;
   margin: 0;
 }
@@ -711,12 +711,17 @@ body:has(.jr-home) main {
 }
 
 .jr-customers-eyebrow {
-  color: var(--jr-black);
+  color: var(--jr-black) !important;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   margin: 0 0 1rem;
+}
+
+.jr-customers-eyebrow p {
+  color: var(--jr-black) !important;
+  margin: 0;
 }
 
 .jr-customer-logo {
@@ -742,7 +747,7 @@ body:has(.jr-home) main {
 }
 
 .jr-made-this {
-  color: var(--jr-black);
+  color: var(--jr-black) !important;
   font-size: 0.8rem;
   font-style: italic;
   margin: 0 0 1rem auto;
