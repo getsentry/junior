@@ -20,7 +20,7 @@ export function TranscriptReasoningView(props: {
     <>
       <span
         aria-label="Reasoning"
-        className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-[#777]"
+        className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-dashboard-text-muted"
         title="Reasoning"
       >
         <Brain aria-hidden="true" size={14} strokeWidth={1.8} />
@@ -28,15 +28,15 @@ export function TranscriptReasoningView(props: {
       <TranscriptHeadingRow
         left={
           searchActive ? (
-            <span className="block min-w-0 italic text-[#9a9a9a]">
+            <span className="block min-w-0 italic text-dashboard-text-muted">
               Reasoning
             </span>
           ) : (
             <>
-              <span className="block min-w-0 truncate italic text-[#9a9a9a] group-open/reasoning:hidden">
+              <span className="block min-w-0 truncate italic text-dashboard-text-muted group-open/reasoning:hidden">
                 {rendered}
               </span>
-              <span className="hidden min-w-0 italic text-[#9a9a9a] group-open/reasoning:inline">
+              <span className="hidden min-w-0 italic text-dashboard-text-muted group-open/reasoning:inline">
                 Reasoning
               </span>
             </>
@@ -44,7 +44,7 @@ export function TranscriptReasoningView(props: {
         }
         right={
           timestamp ? (
-            <TranscriptHeadingMeta className="min-w-0 break-words text-[0.78rem] not-italic text-[#777] max-md:hidden">
+            <TranscriptHeadingMeta className="min-w-0 break-words text-[0.78rem] not-italic text-dashboard-text-muted max-md:hidden">
               {timestamp}
             </TranscriptHeadingMeta>
           ) : undefined
@@ -56,7 +56,7 @@ export function TranscriptReasoningView(props: {
   const content = (
     <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2">
       <span aria-hidden="true" />
-      <div className="min-w-0 whitespace-pre-wrap break-words py-1 italic text-[#9a9a9a]">
+      <div className="min-w-0 whitespace-pre-wrap break-words py-1 italic text-dashboard-text-muted">
         <HighlightText text={rendered} />
       </div>
     </div>
@@ -64,7 +64,7 @@ export function TranscriptReasoningView(props: {
 
   if (searchActive) {
     return (
-      <div className="py-1.5 text-[0.84rem] leading-relaxed text-[#888]">
+      <div className="py-1.5 text-[0.84rem] leading-relaxed text-dashboard-text-muted">
         <div className="grid list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2">
           {summary}
         </div>
@@ -74,8 +74,8 @@ export function TranscriptReasoningView(props: {
   }
 
   return (
-    <details className="group/reasoning py-1.5 text-[0.84rem] leading-relaxed text-[#888]">
-      <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 transition-colors hover:text-[#b8b8b8] [&::-webkit-details-marker]:hidden">
+    <details className="group/reasoning py-1.5 text-[0.84rem] leading-relaxed text-dashboard-text-muted">
+      <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 transition-colors hover:text-dashboard-text [&::-webkit-details-marker]:hidden">
         {summary}
       </summary>
       {content}
