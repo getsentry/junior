@@ -184,7 +184,8 @@ describe("createCanvas", () => {
     expect(canvasCreateCalls[0]?.params).toMatchObject({
       document_content: {
         type: "markdown",
-        markdown: "### Deep heading\n1. Parent\n- Child\n> Quoted child",
+        markdown:
+          "### Deep heading\n1. Parent\n   1. Child\n   Quoted child",
       },
     });
   });

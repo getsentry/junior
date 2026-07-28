@@ -14,8 +14,8 @@ export interface CanvasMarkdownNormalization {
   markdown: string;
   normalizedCount: number;
   normalizedHeadingCount: number;
-  flattenedMixedListCount: number;
-  flattenedBlockquoteCount: number;
+  normalizedMixedListCount: number;
+  unwrappedBlockquoteCount: number;
 }
 
 function getListType(marker: string): ListType {
@@ -40,8 +40,8 @@ export function normalizeCanvasMarkdown(
   markdown: string,
 ): CanvasMarkdownNormalization {
   let normalizedHeadingCount = 0;
-  let flattenedMixedListCount = 0;
-  let flattenedBlockquoteCount = 0;
+  let normalizedMixedListCount = 0;
+  let unwrappedBlockquoteCount = 0;
   let openFence: Fence | undefined;
   const listItems: ListItem[] = [];
 
@@ -81,18 +81,17 @@ export function normalizeCanvasMarkdown(
       const parent = listItems[listItems.length - 1];
       // Slack rejects a list nested under a different list type.
       if (parent && parent.type !== type) {
-        const rootIndent = listItems[0]?.indent ?? 0;
-        listItems.length = 0;
-        listItems.push({ indent: rootIndent, type });
-        flattenedMixedListCount += 1;
-        return `${" ".repeat(rootIndent)}${marker}${gap}${content}`;
+        const normalizedMarker = parent.type === "numbered" ? "1." : "-";
+        listItems.push({ indent, type: parent.type });
+        normalizedMixedListCount += 1;
+        return `${whitespace}${normalizedMarker}${gap}${content}`;
       }
 
       listItems.push({ indent, type });
       return originalLine;
     }
 
-    const blockquoteMatch = originalLine.match(/^([ \t]+)(>+.*)$/);
+    const blockquoteMatch = originalLine.match(/^([ \t]+)>+[ \t]?(.*)$/);
     const rootListIndent = listItems[0]?.indent;
     // Slack rejects blockquotes nested inside list items.
     if (
@@ -100,8 +99,8 @@ export function normalizeCanvasMarkdown(
       rootListIndent !== undefined &&
       blockquoteMatch[1]!.length > rootListIndent
     ) {
-      flattenedBlockquoteCount += 1;
-      return `${" ".repeat(rootListIndent)}${blockquoteMatch[2]}`;
+      unwrappedBlockquoteCount += 1;
+      return `${blockquoteMatch[1]}${blockquoteMatch[2]}`;
     }
 
     if (
@@ -120,14 +119,14 @@ export function normalizeCanvasMarkdown(
 
   const normalizedCount =
     normalizedHeadingCount +
-    flattenedMixedListCount +
-    flattenedBlockquoteCount;
+    normalizedMixedListCount +
+    unwrappedBlockquoteCount;
 
   return {
     markdown: lines.join("\n"),
     normalizedCount,
     normalizedHeadingCount,
-    flattenedMixedListCount,
-    flattenedBlockquoteCount,
+    normalizedMixedListCount,
+    unwrappedBlockquoteCount,
   };
 }

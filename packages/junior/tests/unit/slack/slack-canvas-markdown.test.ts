@@ -8,8 +8,8 @@ describe("normalizeCanvasMarkdown", () => {
       markdown: "### Deep heading\nBody",
       normalizedCount: 1,
       normalizedHeadingCount: 1,
-      flattenedMixedListCount: 0,
-      flattenedBlockquoteCount: 0,
+      normalizedMixedListCount: 0,
+      unwrappedBlockquoteCount: 0,
     });
   });
 
@@ -19,8 +19,8 @@ describe("normalizeCanvasMarkdown", () => {
       markdown: "# H1\n## H2\n### H3",
       normalizedCount: 0,
       normalizedHeadingCount: 0,
-      flattenedMixedListCount: 0,
-      flattenedBlockquoteCount: 0,
+      normalizedMixedListCount: 0,
+      unwrappedBlockquoteCount: 0,
     });
   });
 
@@ -32,8 +32,8 @@ describe("normalizeCanvasMarkdown", () => {
       markdown: "Text\n### Too deep\n`#### code`",
       normalizedCount: 1,
       normalizedHeadingCount: 1,
-      flattenedMixedListCount: 0,
-      flattenedBlockquoteCount: 0,
+      normalizedMixedListCount: 0,
+      unwrappedBlockquoteCount: 0,
     });
   });
 
@@ -47,19 +47,39 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
   });
 
-  it("flattens bullet lists nested inside numbered lists", () => {
+  it("uses numbered markers for bullet items nested inside numbered lists", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   - Child\n2. Next",
     );
-    expect(normalized.markdown).toBe("1. Parent\n- Child\n2. Next");
-    expect(normalized.flattenedMixedListCount).toBe(1);
+    expect(normalized.markdown).toBe("1. Parent\n   1. Child\n2. Next");
+    expect(normalized.normalizedMixedListCount).toBe(1);
     expect(normalized.normalizedCount).toBe(1);
   });
 
-  it("flattens numbered lists nested inside bullet lists", () => {
+  it("uses bullet markers for numbered items nested inside bullet lists", () => {
     const normalized = normalizeCanvasMarkdown("- Parent\n  1. Child");
-    expect(normalized.markdown).toBe("- Parent\n1. Child");
-    expect(normalized.flattenedMixedListCount).toBe(1);
+    expect(normalized.markdown).toBe("- Parent\n  - Child");
+    expect(normalized.normalizedMixedListCount).toBe(1);
+  });
+
+  it("preserves sibling hierarchy when normalizing mixed nested lists", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n   - First\n   - Second\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n   1. First\n   1. Second\n2. Next",
+    );
+    expect(normalized.normalizedMixedListCount).toBe(2);
+  });
+
+  it("uses the normalized parent type for deeper descendants", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Root\n   - Child\n     - Grandchild\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Root\n   1. Child\n     1. Grandchild\n2. Next",
+    );
+    expect(normalized.normalizedMixedListCount).toBe(2);
   });
 
   it("preserves nested lists with the same list type", () => {
@@ -67,14 +87,14 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
   });
 
-  it("moves blockquotes out of list items", () => {
+  it("unwraps blockquotes inside list items without changing indentation", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   > Quoted child\n   > More detail\n2. Next",
     );
     expect(normalized.markdown).toBe(
-      "1. Parent\n> Quoted child\n> More detail\n2. Next",
+      "1. Parent\n   Quoted child\n   More detail\n2. Next",
     );
-    expect(normalized.flattenedBlockquoteCount).toBe(2);
+    expect(normalized.unwrappedBlockquoteCount).toBe(2);
     expect(normalized.normalizedCount).toBe(2);
   });
 

@@ -68,10 +68,10 @@ export async function createCanvas(
           normalizedContent.normalizedCount > 0,
         "app.slack.canvas.normalized_heading_count":
           normalizedContent.normalizedHeadingCount,
-        "app.slack.canvas.flattened_mixed_list_count":
-          normalizedContent.flattenedMixedListCount,
-        "app.slack.canvas.flattened_blockquote_count":
-          normalizedContent.flattenedBlockquoteCount,
+        "app.slack.canvas.normalized_mixed_list_count":
+          normalizedContent.normalizedMixedListCount,
+        "app.slack.canvas.unwrapped_blockquote_count":
+          normalizedContent.unwrappedBlockquoteCount,
       },
     },
   );
@@ -174,10 +174,10 @@ export async function writeCanvasMarkdown(input: {
           normalizedContent.normalizedCount > 0,
         "app.slack.canvas.normalized_heading_count":
           normalizedContent.normalizedHeadingCount,
-        "app.slack.canvas.flattened_mixed_list_count":
-          normalizedContent.flattenedMixedListCount,
-        "app.slack.canvas.flattened_blockquote_count":
-          normalizedContent.flattenedBlockquoteCount,
+        "app.slack.canvas.normalized_mixed_list_count":
+          normalizedContent.normalizedMixedListCount,
+        "app.slack.canvas.unwrapped_blockquote_count":
+          normalizedContent.unwrappedBlockquoteCount,
       },
     },
   );
