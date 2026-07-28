@@ -66,7 +66,7 @@ export function PersonalTokensPage() {
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="max-w-3xl">
+      <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Personal API Tokens</h1>
         <p className="mt-2 mb-0 max-w-2xl text-sm text-[#aaa]">
           Use a token to read Junior APIs from a local agent or script. Tokens
