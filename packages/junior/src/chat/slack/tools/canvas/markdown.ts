@@ -62,7 +62,21 @@ export function normalizeCanvasMarkdown(
       return originalLine;
     }
 
-    const listMatch = originalLine.match(
+    let line = originalLine;
+    const rootListIndent = listItems[0]?.indent;
+    const blockquoteMatch = line.match(/^([ \t]+)(?:>[ \t]*)+(.*)$/);
+    // Slack rejects blockquotes nested inside list items. Unwrap every quote
+    // marker before processing syntax that the quote may have hidden.
+    if (
+      blockquoteMatch &&
+      rootListIndent !== undefined &&
+      blockquoteMatch[1]!.length > rootListIndent
+    ) {
+      unwrappedBlockquoteCount += 1;
+      line = `${blockquoteMatch[1]}${blockquoteMatch[2]}`;
+    }
+
+    const listMatch = line.match(
       /^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/,
     );
     if (listMatch) {
@@ -88,30 +102,18 @@ export function normalizeCanvasMarkdown(
       }
 
       listItems.push({ indent, type });
-      return originalLine;
-    }
-
-    const blockquoteMatch = originalLine.match(/^([ \t]+)>+[ \t]?(.*)$/);
-    const rootListIndent = listItems[0]?.indent;
-    // Slack rejects blockquotes nested inside list items.
-    if (
-      blockquoteMatch &&
-      rootListIndent !== undefined &&
-      blockquoteMatch[1]!.length > rootListIndent
-    ) {
-      unwrappedBlockquoteCount += 1;
-      return `${blockquoteMatch[1]}${blockquoteMatch[2]}`;
+      return line;
     }
 
     if (
       rootListIndent !== undefined &&
-      originalLine.trim() &&
-      originalLine.search(/\S/) <= rootListIndent
+      line.trim() &&
+      line.search(/\S/) <= rootListIndent
     ) {
       listItems.length = 0;
     }
 
-    return originalLine.replace(/^( {0,3})#{4,}(?=[ \t])/, (_, indent) => {
+    return line.replace(/^( {0,3})#{4,}(?=[ \t])/, (_, indent) => {
       normalizedHeadingCount += 1;
       return `${indent}###`;
     });

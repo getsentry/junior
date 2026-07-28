@@ -98,6 +98,30 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalized.normalizedCount).toBe(2);
   });
 
+  it("normalizes list syntax revealed by unwrapped blockquotes", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n   > - Child\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n   1. Child\n2. Next",
+    );
+    expect(normalized.unwrappedBlockquoteCount).toBe(1);
+    expect(normalized.normalizedMixedListCount).toBe(1);
+    expect(normalized.normalizedCount).toBe(2);
+  });
+
+  it("normalizes headings revealed by spaced nested quote markers", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n   > > #### Deep heading\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n   ### Deep heading\n2. Next",
+    );
+    expect(normalized.unwrappedBlockquoteCount).toBe(1);
+    expect(normalized.normalizedHeadingCount).toBe(1);
+    expect(normalized.normalizedCount).toBe(2);
+  });
+
   it("preserves top-level blockquotes", () => {
     const markdown = "> Quote\n> More detail";
     expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
@@ -105,7 +129,7 @@ describe("normalizeCanvasMarkdown", () => {
 
   it("is idempotent after normalizing rejected markdown", () => {
     const first = normalizeCanvasMarkdown(
-      "#### Heading\n1. Parent\n   - Child\n   > Quote",
+      "#### Heading\n1. Parent\n   > - Child\n   > > #### Deep heading",
     );
     const second = normalizeCanvasMarkdown(first.markdown);
 
