@@ -388,6 +388,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     `${pagePath("system")}/*`,
     pagePath("settings/plugins"),
     `${pagePath("settings/plugins")}/*`,
+    pagePath("settings/api-tokens"),
   ];
   if (dashboard.componentGallery) {
     pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
@@ -408,12 +409,15 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/user-pages",
     "/api/user-pages/*",
     "/api/skills",
+    "/api/stats",
     "/api/conversations",
     "/api/conversations/*",
     "/api/locations",
     "/api/locations/*",
     "/api/people",
     "/api/people/*",
+    "/api/personal-tokens",
+    "/api/personal-tokens/*",
     "/api/config",
     "/api/me",
     authPath,
