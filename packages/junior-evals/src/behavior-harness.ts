@@ -1712,6 +1712,7 @@ function buildRuntimeServices(
             activeTurnCompactionInjected = true;
             await runRequest.durability?.onInputCommitted?.();
             const nowMs = Date.now();
+            const actor = actorFromRouting(runRequest.routing);
             const piMessages = [
               {
                 role: "user",
@@ -1733,7 +1734,7 @@ function buildRuntimeServices(
                     ),
                   },
                 ],
-                timestamp: nowMs,
+                timestamp: nowMs + 1,
               },
               {
                 role: "user",
@@ -1743,7 +1744,7 @@ function buildRuntimeServices(
                     text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
                   },
                 ],
-                timestamp: nowMs,
+                timestamp: nowMs + 2,
               },
             ] as PiMessage[];
             const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -1758,7 +1759,11 @@ function buildRuntimeServices(
               destinationVisibility: runRequest.routing.destinationVisibility,
               source: runRequest.routing.source,
               surface: runRequest.routing.surface,
-              actor: actorFromRouting(runRequest.routing),
+              actor,
+              trailingMessageProvenance: [
+                { authority: "instruction", actor },
+                { authority: "context" },
+              ],
               turnStartMessageIndex: 0,
             });
             return {

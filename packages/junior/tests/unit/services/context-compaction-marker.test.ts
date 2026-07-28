@@ -7,6 +7,12 @@ import {
 } from "@/chat/services/context-compaction-marker";
 
 describe("hasCompactedConversationContext", () => {
+  it("makes active-turn continuation conditional on no newer instruction", () => {
+    expect(ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX).toContain(
+      "If a newer user instruction follows",
+    );
+  });
+
   it("detects active-turn continuation state", () => {
     expect(
       hasCompactedConversationContext([
