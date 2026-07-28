@@ -458,6 +458,12 @@ function dashboardPagePaths(
       nested: true,
       path: basePath === "/" ? "/system" : `${basePath}/system`,
     },
+    {
+      path:
+        basePath === "/"
+          ? "/settings/api-tokens"
+          : `${basePath}/settings/api-tokens`,
+    },
   ];
   if (options.componentGallery) {
     paths.push({
