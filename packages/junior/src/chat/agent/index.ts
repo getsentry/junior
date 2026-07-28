@@ -411,6 +411,7 @@ async function executeAgentRunInPrivacyContext(
       surface,
     });
     const runResume = resume;
+    let pendingToolActivityWrites = Promise.resolve();
     const recordParentToolExecution = async (event:
       | {
           args: unknown;
@@ -454,6 +455,13 @@ async function executeAgentRunInPrivacyContext(
           "Failed to record host-only tool execution",
         );
       }
+    };
+    const enqueueParentToolExecution = (
+      event: Parameters<typeof recordParentToolExecution>[0],
+    ): void => {
+      pendingToolActivityWrites = pendingToolActivityWrites.then(() =>
+        recordParentToolExecution(event),
+      );
     };
     const persistedConfigurationValues = policy.channelConfiguration
       ? await policy.channelConfiguration.resolveValues()
@@ -1022,15 +1030,21 @@ async function executeAgentRunInPrivacyContext(
         event.type === "tool_execution_start" ||
         event.type === "tool_execution_end"
       ) {
-        return recordParentToolExecution(event);
+        // Pi emits tool_execution_end before appending the corresponding
+        // toolResult message. Queue reporting writes without blocking that
+        // lifecycle so timeout recovery can snapshot the continuable result.
+        enqueueParentToolExecution(event);
+        return;
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
         if (pendingHandoff) {
-          return;
+          return pendingToolActivityWrites;
         }
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+        return pendingToolActivityWrites.then(() =>
+          runResume
+            .persistSafeBoundary([...agent!.state.messages])
+            .then(() => undefined),
+        );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (
@@ -1359,6 +1373,7 @@ async function executeAgentRunInPrivacyContext(
         return authPauseOutcome;
       }
     } finally {
+      await pendingToolActivityWrites;
       unsubscribe();
     }
 
