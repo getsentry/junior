@@ -80,6 +80,15 @@ vi.mock("@/chat/conversations/projection", async (importOriginal) => {
       }
       return actual.recordToolExecutionStarted(...args);
     },
+    recordToolExecutionCompleted: async (
+      ...args: Parameters<typeof actual.recordToolExecutionCompleted>
+    ) => {
+      sessionLogState.toolExecutionAppendCalls += 1;
+      if (sessionLogState.failToolExecutionAppend) {
+        throw new Error("store blip during host-only append");
+      }
+      return actual.recordToolExecutionCompleted(...args);
+    },
   };
 });
 
@@ -216,6 +225,22 @@ vi.mock("@earendil-works/pi-agent-core", () => {
                 toolCallId: "call_1",
                 toolName: "bash",
                 args: { cmd: "ls" },
+              }),
+            ),
+          );
+        } catch (error) {
+          this.recordRunFailure(error);
+          return {};
+        }
+        try {
+          await Promise.all(
+            this.subscribers.map((subscriber) =>
+              subscriber({
+                type: "tool_execution_end",
+                toolCallId: "call_1",
+                toolName: "bash",
+                result: { content: [{ type: "text", text: "ok" }] },
+                isError: false,
               }),
             ),
           );
@@ -1094,7 +1119,7 @@ describe("executeAgentRun provider retry", () => {
       }),
     );
 
-    expect(sessionLogState.toolExecutionAppendCalls).toBe(1);
+    expect(sessionLogState.toolExecutionAppendCalls).toBe(2);
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.text).toBe("Tool done.");
   });

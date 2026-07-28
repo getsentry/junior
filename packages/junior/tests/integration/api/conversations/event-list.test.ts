@@ -216,13 +216,10 @@ describe("conversation event list API", () => {
       },
       {
         data: {
-          type: "agent_step",
-          message: {
-            role: "toolResult",
-            toolCallId: "search-before-page",
-            content: [{ type: "text", text: "two matches" }],
-            isError: false,
-          } as PiMessage,
+          type: "tool_execution_completed",
+          toolCallId: "search-before-page",
+          toolName: "search",
+          outcome: "completed",
         },
         createdAtMs: 3,
       },

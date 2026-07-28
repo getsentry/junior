@@ -159,6 +159,15 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
+const toolExecutionCompletedEventDataSchema = z
+  .object({
+    type: z.literal("tool_execution_completed"),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    outcome: z.enum(["completed", "error"]),
+  })
+  .strict();
+
 const conversationMessageRoleSchema = z.union([
   z.literal("user"),
   z.literal("assistant"),
@@ -307,6 +316,7 @@ const appendableConversationEventDataSchema = z.union([
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
+  toolExecutionCompletedEventDataSchema,
   messageHandledEventDataSchema,
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
@@ -339,6 +349,7 @@ const knownConversationEventTypeSchema = z.enum([
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
+  "tool_execution_completed",
   "message_handled",
   "messages_summarized",
   "turn_started",

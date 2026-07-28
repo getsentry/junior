@@ -41,6 +41,7 @@ import {
   loadConnectedMcpProviders,
   loadTurnRoute,
   openConversationProjection,
+  recordToolExecutionCompleted,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
   recordTurnRoute,
@@ -410,17 +411,36 @@ async function executeAgentRunInPrivacyContext(
       surface,
     });
     const runResume = resume;
-    const recordParentToolExecutionStart = async (event: {
-      args: unknown;
-      toolCallId: string;
-      toolName: string;
-    }) => {
+    const recordParentToolExecution = async (event:
+      | {
+          args: unknown;
+          toolCallId: string;
+          toolName: string;
+          type: "tool_execution_start";
+        }
+      | {
+          isError: boolean;
+          result: unknown;
+          toolCallId: string;
+          toolName: string;
+          type: "tool_execution_end";
+        },
+    ) => {
       try {
-        await recordToolExecutionStarted({
-          conversationId,
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-        });
+        if (event.type === "tool_execution_start") {
+          await recordToolExecutionStarted({
+            conversationId,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+          });
+        } else {
+          await recordToolExecutionCompleted({
+            conversationId,
+            isError: event.isError,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+          });
+        }
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
@@ -431,7 +451,7 @@ async function executeAgentRunInPrivacyContext(
           {
             "gen_ai.tool.name": event.toolName,
           },
-          "Failed to record host-only tool execution start",
+          "Failed to record host-only tool execution",
         );
       }
     };
@@ -998,8 +1018,11 @@ async function executeAgentRunInPrivacyContext(
     });
 
     const unsubscribe = agent.subscribe((event) => {
-      if (event.type === "tool_execution_start") {
-        return recordParentToolExecutionStart(event);
+      if (
+        event.type === "tool_execution_start" ||
+        event.type === "tool_execution_end"
+      ) {
+        return recordParentToolExecution(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
         if (pendingHandoff) {

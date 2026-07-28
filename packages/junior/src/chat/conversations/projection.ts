@@ -458,3 +458,24 @@ export async function recordToolExecutionStarted(args: {
     },
   ]);
 }
+
+/** Record a host-observed parent tool completion without persisting its output. */
+export async function recordToolExecutionCompleted(args: {
+  conversationId: string;
+  createdAtMs?: number;
+  isError: boolean;
+  toolCallId: string;
+  toolName: string;
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      data: {
+        type: "tool_execution_completed",
+        toolCallId: args.toolCallId,
+        toolName: args.toolName,
+        outcome: args.isError ? "error" : "completed",
+      },
+      createdAtMs: args.createdAtMs ?? Date.now(),
+    },
+  ]);
+}
