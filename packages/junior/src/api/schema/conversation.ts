@@ -140,6 +140,48 @@ const conversationReportToolCallsEventDataSchema = z
   })
   .strict();
 
+const conversationReportReasoningPartSchema = z
+  .object({
+    type: z.literal("reasoning"),
+    text: z.string().min(1).optional(),
+    redacted: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.text === undefined) === (data.redacted !== true)) {
+      context.addIssue({
+        code: "custom",
+        message: "reasoning content must be text or explicitly redacted",
+      });
+    }
+  });
+
+const conversationReportAssistantToolCallPartSchema = z
+  .object({
+    type: z.literal("tool_call"),
+    toolCallId: z.string().min(1),
+    name: z.string().min(1),
+    status: z.literal("running"),
+    startedAt: z.string().datetime(),
+    startedSeq: z.number().int().nonnegative(),
+    input: z.unknown().optional(),
+  })
+  .strict();
+
+const conversationReportAssistantMessageEventDataSchema = z
+  .object({
+    type: z.literal("assistant_message"),
+    parts: z
+      .array(
+        z.discriminatedUnion("type", [
+          conversationReportReasoningPartSchema,
+          conversationReportAssistantToolCallPartSchema,
+        ]),
+      )
+      .min(1),
+  })
+  .strict();
+
 const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   "state",
   [
@@ -233,6 +275,7 @@ const conversationReportSubagentEventDataSchema = z
 export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportMessageEventDataSchema,
   conversationReportMessageHandledEventDataSchema,
+  conversationReportAssistantMessageEventDataSchema,
   conversationReportToolCallsEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
@@ -333,6 +376,34 @@ function validateConversationEvents(
         code: "custom",
         path: ["events", index, "data"],
         message: "redacted event history must redact tool payloads",
+      });
+    }
+    if (
+      report.eventHistory.status === "redacted" &&
+      event.data.type === "assistant_message" &&
+      event.data.parts.some(
+        (part) =>
+          (part.type === "reasoning" && part.text !== undefined) ||
+          (part.type === "tool_call" && part.input !== undefined),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["events", index, "data"],
+        message: "redacted event history must redact assistant messages",
+      });
+    }
+    if (
+      report.eventHistory.status === "available" &&
+      event.data.type === "assistant_message" &&
+      event.data.parts.some(
+        (part) => part.type === "reasoning" && part.redacted === true,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["events", index, "data"],
+        message: "available event history must expose reasoning",
       });
     }
   }

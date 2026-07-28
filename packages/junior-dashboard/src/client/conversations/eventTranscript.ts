@@ -6,10 +6,18 @@ import type {
   TranscriptViewPart,
 } from "../types";
 
-type ToolCall = Extract<
-  ConversationReportEvent["data"],
-  { type: "tool_calls" }
->["calls"][number];
+type ToolCall =
+  | Extract<
+      ConversationReportEvent["data"],
+      { type: "tool_calls" }
+    >["calls"][number]
+  | Extract<
+      Extract<
+        ConversationReportEvent["data"],
+        { type: "assistant_message" }
+      >["parts"][number],
+      { type: "tool_call" }
+    >;
 
 function eventTimestamp(event: ConversationReportEvent): number {
   return Date.parse(event.createdAt);
@@ -61,12 +69,13 @@ export function conversationTranscriptMessages(
 
   const ensureTool = (event: ConversationReportEvent, call: ToolCall): void => {
     if (replacedToolIds.has(call.toolCallId)) return;
+    const output = "output" in call ? call.output : undefined;
     const existing = tools.get(call.toolCallId);
     if (existing) {
       existing.name = call.name;
       existing.status = call.status;
       if (call.input !== undefined) existing.input = call.input;
-      if (call.output !== undefined) existing.output = call.output;
+      if (output !== undefined) existing.output = output;
       if (call.status !== "running") {
         existing.resultTimestamp = eventTimestamp(event);
       }
@@ -79,7 +88,7 @@ export function conversationTranscriptMessages(
       name: call.name,
       status: call.status,
       ...(call.input === undefined ? {} : { input: call.input }),
-      ...(call.output === undefined ? {} : { output: call.output }),
+      ...(output === undefined ? {} : { output }),
       ...(call.status === "running"
         ? {}
         : { resultTimestamp: eventTimestamp(event) }),
@@ -110,6 +119,34 @@ export function conversationTranscriptMessages(
       };
       messages.push(message);
       if (message.role === "user") latestUserMessage = message;
+      continue;
+    }
+
+    if (data.type === "assistant_message") {
+      const parts: TranscriptViewPart[] = [];
+      for (const part of data.parts) {
+        if (part.type === "reasoning") {
+          parts.push(
+            part.redacted
+              ? { type: "reasoning", redacted: true }
+              : { type: "reasoning", text: part.text! },
+          );
+          continue;
+        }
+        if (replacedToolIds.has(part.toolCallId)) continue;
+        const tool = {
+          type: "tool_call" as const,
+          id: part.toolCallId,
+          name: part.name,
+          status: part.status,
+          ...(part.input === undefined ? {} : { input: part.input }),
+        };
+        tools.set(part.toolCallId, tool);
+        parts.push(tool);
+      }
+      if (parts.length > 0) {
+        messages.push(eventMessage(event, "assistant", parts));
+      }
       continue;
     }
 

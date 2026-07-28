@@ -92,6 +92,54 @@ describe("canonical event transcript reduction", () => {
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
   });
 
+  it("preserves ordered reasoning and tool activity", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "assistant_message",
+          parts: [
+            { type: "reasoning", text: "Inspect the inputs." },
+            {
+              type: "tool_call",
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+              startedAt: "2026-01-01T00:00:01.000Z",
+              startedSeq: 1,
+            },
+            { type: "reasoning", text: "Check the result." },
+          ],
+        }),
+      ]),
+    );
+
+    expect(groupTranscriptMessages(messages)).toEqual([
+      {
+        key: "1:reasoning:0",
+        kind: "reasoning",
+        part: { type: "reasoning", text: "Inspect the inputs." },
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        key: "tool:search-1",
+        kind: "tool",
+        part: {
+          type: "tool_call",
+          id: "search-1",
+          name: "search",
+          status: "running",
+        },
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        key: "1:reasoning:2",
+        kind: "reasoning",
+        part: { type: "reasoning", text: "Check the result." },
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+    ]);
+  });
+
   it("adapts turn routes onto messages while keeping handoffs structural", () => {
     const messages = conversationTranscriptMessages(
       conversation([

@@ -1,0 +1,84 @@
+import { Brain } from "lucide-react";
+
+import { formatMessageTimestamp } from "../format";
+import {
+  TranscriptHeadingMeta,
+  TranscriptHeadingRow,
+} from "./TranscriptHeadingRow";
+import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+
+/** Render reasoning collapsed with a short preview until expanded or searched. */
+export function TranscriptReasoningView(props: {
+  redacted?: true;
+  text?: string;
+  timestamp?: number;
+}) {
+  const { active: searchActive } = useTranscriptSearch();
+  const rendered = props.redacted ? "Reasoning redacted" : (props.text ?? "");
+  const timestamp = formatMessageTimestamp(props.timestamp);
+  const summary = (
+    <>
+      <span
+        aria-label="Reasoning"
+        className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-[#777]"
+        title="Reasoning"
+      >
+        <Brain aria-hidden="true" size={14} strokeWidth={1.8} />
+      </span>
+      <TranscriptHeadingRow
+        left={
+          searchActive ? (
+            <span className="block min-w-0 italic text-[#9a9a9a]">
+              Reasoning
+            </span>
+          ) : (
+            <>
+              <span className="block min-w-0 truncate italic text-[#9a9a9a] group-open/reasoning:hidden">
+                {rendered}
+              </span>
+              <span className="hidden min-w-0 italic text-[#9a9a9a] group-open/reasoning:inline">
+                Reasoning
+              </span>
+            </>
+          )
+        }
+        right={
+          timestamp ? (
+            <TranscriptHeadingMeta className="min-w-0 break-words text-[0.78rem] not-italic text-[#777] max-md:hidden">
+              {timestamp}
+            </TranscriptHeadingMeta>
+          ) : undefined
+        }
+        rightClassName="min-w-0 max-md:hidden"
+      />
+    </>
+  );
+  const content = (
+    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2">
+      <span aria-hidden="true" />
+      <div className="min-w-0 whitespace-pre-wrap break-words py-1 italic text-[#9a9a9a]">
+        <HighlightText text={rendered} />
+      </div>
+    </div>
+  );
+
+  if (searchActive) {
+    return (
+      <div className="py-1.5 text-[0.84rem] leading-relaxed text-[#888]">
+        <div className="grid list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2">
+          {summary}
+        </div>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <details className="group/reasoning py-1.5 text-[0.84rem] leading-relaxed text-[#888]">
+      <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 transition-colors hover:text-[#b8b8b8] [&::-webkit-details-marker]:hidden">
+        {summary}
+      </summary>
+      {content}
+    </details>
+  );
+}

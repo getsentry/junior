@@ -225,6 +225,11 @@ describe("dashboard canonical-event mock routes", () => {
     ).toContain("webSearch");
 
     const dashboardQa = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    expect(
+      dashboardQa.events.some(
+        (event) => event.data.type === "assistant_message",
+      ),
+    ).toBe(true);
     expect(dashboardQa.annotations).toEqual([
       expect.objectContaining({
         kind: "resource_link",

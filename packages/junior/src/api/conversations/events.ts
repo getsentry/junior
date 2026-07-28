@@ -63,6 +63,13 @@ const reportingTextPartSchema = z
   .object({ type: z.literal("text"), text: z.string() })
   .passthrough();
 
+const reportingReasoningPartSchema = z
+  .object({
+    type: z.literal("thinking"),
+    thinking: z.string(),
+  })
+  .passthrough();
+
 const reportingMediaPartSchema = z
   .object({
     type: z.enum(["image", "audio"]),
@@ -107,8 +114,8 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
   return only.type === "text" ? only.text : only;
 }
 
-/** Project native assistant tool calls into the narrow reporting contract. */
-function reportToolCalls(args: {
+/** Project one native assistant history item into its safe reporting shape. */
+function reportAssistantMessage(args: {
   canExposePayload: boolean;
   createdAtMs: number;
   message: unknown;
@@ -117,11 +124,28 @@ function reportToolCalls(args: {
   const message = reportingAssistantMessageSchema.safeParse(args.message);
   if (!message.success) return undefined;
 
-  const calls = message.data.content.flatMap((part) => {
+  const parts: Extract<
+    ConversationReportEventData,
+    { type: "assistant_message" }
+  >["parts"] = [];
+  for (const part of message.data.content) {
+    const reasoning = reportingReasoningPartSchema.safeParse(part);
+    if (reasoning.success) {
+      if (reasoning.data.thinking.trim().length > 0) {
+        parts.push({
+          type: "reasoning" as const,
+          ...(args.canExposePayload
+            ? { text: reasoning.data.thinking }
+            : { redacted: true as const }),
+        });
+      }
+      continue;
+    }
+
     const call = reportingToolCallPartSchema.safeParse(part);
-    if (!call.success) return [];
-    return [
-      {
+    if (call.success) {
+      parts.push({
+        type: "tool_call" as const,
         toolCallId: call.data.id,
         name: call.data.name,
         status: "running" as const,
@@ -130,10 +154,10 @@ function reportToolCalls(args: {
         ...(args.canExposePayload && call.data.arguments !== undefined
           ? { input: call.data.arguments }
           : {}),
-      },
-    ];
-  });
-  return calls.length > 0 ? { type: "tool_calls", calls } : undefined;
+      });
+    }
+  }
+  return parts.length > 0 ? { type: "assistant_message", parts } : undefined;
 }
 
 /** Project a native tool result without exposing host-only result details. */
@@ -334,7 +358,7 @@ export function projectConversationReportEventPage(args: {
         ? toolStarts.get(result.data.toolCallId)
         : undefined;
       data =
-        reportToolCalls(reportArgs) ??
+        reportAssistantMessage(reportArgs) ??
         reportToolResult({
           canExposePayload: args.canExposePayload,
           message: event.data,

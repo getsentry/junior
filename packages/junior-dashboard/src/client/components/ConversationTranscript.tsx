@@ -48,11 +48,13 @@ import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
+import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { getDashboardAgentName } from "../agentName";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
   groupTranscriptMessages,
   messageRawText,
+  type RenderedReasoningEntry,
   type RenderedToolEntry,
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
@@ -70,6 +72,7 @@ type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
 type TranscriptFailureEntry = Extract<TranscriptEntry, { kind: "failure" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
+type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
@@ -338,6 +341,13 @@ function VisibleTranscriptEntries(props: {
           />
         </TranscriptRailEvent>
       )}
+      renderReasoning={(entry) => (
+        <TranscriptReasoningView
+          redacted={entry.part.redacted}
+          text={entry.part.text}
+          timestamp={entry.timestamp}
+        />
+      )}
       renderTool={(entry) => (
         <TranscriptToolView
           part={entry.part}
@@ -355,6 +365,7 @@ function TranscriptEntryList(props: {
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
+  renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 }) {
@@ -364,10 +375,15 @@ function TranscriptEntryList(props: {
   for (let index = 0; index < props.entries.length; ) {
     const entry = props.entries[index]!;
 
-    if (entry.kind === "tool") {
-      const runEntries: RenderedToolEntry[] = [];
-      while (props.entries[index]?.kind === "tool") {
-        runEntries.push(props.entries[index] as RenderedToolEntry);
+    if (entry.kind === "tool" || entry.kind === "reasoning") {
+      const runEntries: Array<RenderedReasoningEntry | RenderedToolEntry> = [];
+      while (
+        props.entries[index]?.kind === "tool" ||
+        props.entries[index]?.kind === "reasoning"
+      ) {
+        runEntries.push(
+          props.entries[index] as RenderedReasoningEntry | RenderedToolEntry,
+        );
         index += 1;
       }
       const visibleEntries = search.active
@@ -381,6 +397,7 @@ function TranscriptEntryList(props: {
             autoCollapse={index < props.entries.length}
             entries={visibleEntries}
             key={`${props.keyPrefix}:tool-run:${runEntries.at(-1)!.key}`}
+            renderReasoning={props.renderReasoning}
             renderTool={props.renderTool}
           />,
         );
@@ -563,6 +580,13 @@ function RedactedTranscriptView(props: {
             timestamp={entry.timestamp}
           />
         </TranscriptRailEvent>
+      )}
+      renderReasoning={(entry) => (
+        <TranscriptReasoningView
+          redacted={entry.part.redacted}
+          text={entry.part.text}
+          timestamp={entry.timestamp}
+        />
       )}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />

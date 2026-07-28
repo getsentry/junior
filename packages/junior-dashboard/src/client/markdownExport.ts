@@ -142,8 +142,29 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "reasoning") {
+      appendReasoning(
+        lines,
+        conversationTranscript,
+        entry.part,
+        entry.timestamp,
+      );
+      continue;
+    }
+
     appendTool(lines, conversationTranscript, entry.part, entry.timestamp);
   }
+}
+
+function appendReasoning(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+  part: Extract<TranscriptViewMessage["parts"][number], { type: "reasoning" }>,
+  timestamp: number | undefined,
+): void {
+  lines.push("", "### Reasoning");
+  addEventMeta(lines, conversationTranscript, timestamp);
+  lines.push("", part.redacted ? "<redacted>" : part.text);
 }
 
 function appendFailure(

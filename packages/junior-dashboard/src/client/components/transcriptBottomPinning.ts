@@ -342,6 +342,13 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.output === undefined ? "" : "output",
     ].join(":");
   }
+  if (part.type === "reasoning") {
+    return [
+      part.type,
+      part.text?.length ?? 0,
+      part.redacted ? "redacted" : "",
+    ].join(":");
+  }
   if (part.type === "subagent") {
     return [
       part.type,

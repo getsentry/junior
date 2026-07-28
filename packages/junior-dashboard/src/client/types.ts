@@ -15,6 +15,10 @@ export type TranscriptViewTextPart =
   | { redacted?: never; text: string; type: "text" }
   | { redacted: true; text?: never; type: "text" };
 
+export type TranscriptViewReasoningPart =
+  | { redacted?: never; text: string; type: "reasoning" }
+  | { redacted: true; text?: never; type: "reasoning" };
+
 export type TranscriptViewToolCallPart = {
   id: string;
   input?: unknown;
@@ -65,6 +69,7 @@ export type TranscriptViewContextEventPart = {
 
 export type TranscriptViewPart =
   | TranscriptViewContextEventPart
+  | TranscriptViewReasoningPart
   | TranscriptViewSubagentPart
   | TranscriptViewTextPart
   | TranscriptViewToolCallPart;

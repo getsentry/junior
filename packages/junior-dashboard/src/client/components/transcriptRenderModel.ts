@@ -1,6 +1,7 @@
 import type {
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
+  TranscriptViewReasoningPart,
   TranscriptViewSubagentPart,
   TranscriptViewTextPart,
   TranscriptViewToolCallPart,
@@ -34,6 +35,13 @@ export type RenderedToolEntry = {
   timestamp?: number;
 };
 
+export type RenderedReasoningEntry = {
+  key: string;
+  kind: "reasoning";
+  part: TranscriptViewReasoningPart;
+  timestamp?: number;
+};
+
 export type RenderedMessageEntry = {
   key: string;
   kind: "message";
@@ -46,6 +54,7 @@ export type RenderedTranscriptEntry =
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
+  | RenderedReasoningEntry
   | RenderedSubagentEntry
   | RenderedToolEntry;
 
@@ -85,6 +94,13 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
+      } else if (part.type === "reasoning") {
+        entries.push({
+          key: `${message.sourceSeq}:reasoning:${partIndex}`,
+          kind: "reasoning",
+          part,
+          timestamp: message.timestamp,
+        });
       } else if (part.type === "subagent") {
         entries.push({
           key: `subagent:${part.id}`,
@@ -121,6 +137,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
   return message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
+      if (part.type === "reasoning") return part.text ?? "reasoning redacted";
       if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;

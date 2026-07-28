@@ -102,7 +102,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("keeps canonical sequence order and projects tool facts from agent history", () => {
+  it("keeps canonical sequence order and projects authorized assistant activity", () => {
     const events = [
       event(
         10,
@@ -162,9 +162,14 @@ describe("conversation report event projection", () => {
         seq: 11,
         createdAt: "1970-01-01T00:00:10.000Z",
         data: {
-          type: "tool_calls",
-          calls: [
+          type: "assistant_message",
+          parts: [
             {
+              type: "reasoning",
+              text: "private chain of thought",
+            },
+            {
+              type: "tool_call",
               toolCallId: "private-tool-call-id",
               name: "search",
               status: "running",
@@ -204,7 +209,26 @@ describe("conversation report event projection", () => {
     expect(
       JSON.stringify(projected).match(/one user-facing answer/g),
     ).toHaveLength(1);
-    expect(JSON.stringify(projected)).not.toContain("private chain of thought");
+    expect(JSON.stringify(projected)).toContain("private chain of thought");
+
+    const redacted = projectConversationReportEventPage({
+      canExposePayload: false,
+      events,
+    });
+    expect(redacted[1]?.data).toEqual({
+      type: "assistant_message",
+      parts: [
+        { type: "reasoning", redacted: true },
+        {
+          type: "tool_call",
+          toolCallId: "private-tool-call-id",
+          name: "search",
+          status: "running",
+          startedAt: "1970-01-01T00:00:10.000Z",
+          startedSeq: 11,
+        },
+      ],
+    });
   });
 
   it("projects parallel calls, structured outcomes, and safe native content", () => {
@@ -259,9 +283,10 @@ describe("conversation report event projection", () => {
 
     expect(projected.map(({ data }) => data)).toEqual([
       {
-        type: "tool_calls",
-        calls: [
+        type: "assistant_message",
+        parts: [
           {
+            type: "tool_call",
             toolCallId: "call-1",
             name: "search",
             status: "running",
@@ -270,6 +295,7 @@ describe("conversation report event projection", () => {
             input: { query: "first" },
           },
           {
+            type: "tool_call",
             toolCallId: "call-2",
             name: "fetch",
             status: "running",

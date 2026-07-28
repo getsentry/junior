@@ -147,6 +147,10 @@ export function entryMatchesSearch(
     ].some((value) => textContains(value, normalizedQuery));
   }
 
+  if (entry.kind === "reasoning") {
+    return textContains(entry.part.text, normalizedQuery);
+  }
+
   if (entry.kind === "subagent") {
     return (
       textContains(entry.part.subagentKind, normalizedQuery) ||

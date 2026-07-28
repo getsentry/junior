@@ -273,14 +273,36 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         status: "completed",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
-        type: "tool_calls",
-        calls: [
+        type: "assistant_message",
+        parts: [
           {
+            type: "reasoning",
+            text: "Load the dashboard QA skill before inspecting the reporting surface.",
+          },
+          {
+            type: "tool_call",
             toolCallId: "qa-load-skill",
             name: "loadSkill",
-            status: "completed",
+            status: "running",
+            startedSeq: 8,
+            startedAt: iso(Date.parse(startedAt), 50_000),
             input: { skill_name: "junior-qa" },
-            output: { ok: true },
+          },
+          {
+            type: "reasoning",
+            text: "Search the repository so the review covers the current pull request state.",
+          },
+          {
+            type: "tool_call",
+            toolCallId: "qa-execute-tool",
+            name: "executeTool",
+            status: "running",
+            startedSeq: 8,
+            startedAt: iso(Date.parse(startedAt), 50_000),
+            input: {
+              tool_name: "github_search",
+              arguments: { query: "is:pr is:open", limit: 25 },
+            },
           },
         ],
       }),
@@ -288,9 +310,19 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         type: "tool_calls",
         calls: [
           {
+            toolCallId: "qa-load-skill",
+            name: "loadSkill",
+            status: "completed",
+            startedSeq: 8,
+            startedAt: iso(Date.parse(startedAt), 50_000),
+            output: { ok: true },
+          },
+          {
             toolCallId: "qa-execute-tool",
             name: "executeTool",
             status: "completed",
+            startedSeq: 8,
+            startedAt: iso(Date.parse(startedAt), 50_000),
             input: {
               tool_name: "github_search",
               arguments: { query: "is:pr is:open", limit: 25 },
