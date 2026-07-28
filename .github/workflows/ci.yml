@@ -220,6 +220,16 @@ jobs:
       - run: pnpm --filter @sentry/junior-github test
       - run: pnpm --filter @sentry/junior-vercel test
 
+  sandbox-image:
+    name: test / sandbox image
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm sandbox:image:test
+
   dashboard-tests:
     name: test / dashboard
     runs-on: ubuntu-latest

@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "runtime": "node22",
+  "dependencies": [
+    {
+      "type": "system",
+      "package": "docker"
+    },
+    {
+      "type": "system",
+      "package": "ripgrep"
+    },
+    {
+      "type": "npm",
+      "package": "agent-browser",
+      "version": "0.27.0"
+    },
+    {
+      "type": "npm",
+      "package": "sentry",
+      "version": "latest"
+    },
+    {
+      "type": "npm",
+      "package": "vercel",
+      "version": "latest"
+    },
+    {
+      "type": "system",
+      "package": "alsa-lib"
+    },
+    {
+      "type": "system",
+      "package": "at-spi2-atk"
+    },
+    {
+      "type": "system",
+      "package": "at-spi2-core"
+    },
+    {
+      "type": "system",
+      "package": "atk"
+    },
+    {
+      "type": "system",
+      "package": "cairo"
+    },
+    {
+      "type": "system",
+      "package": "cups-libs"
+    },
+    {
+      "type": "system",
+      "package": "dbus-libs"
+    },
+    {
+      "type": "system",
+      "package": "gh"
+    },
+    {
+      "type": "system",
+      "package": "glib2"
+    },
+    {
+      "type": "system",
+      "package": "gtk3"
+    },
+    {
+      "type": "system",
+      "package": "jq"
+    },
+    {
+      "type": "system",
+      "package": "libdrm"
+    },
+    {
+      "type": "system",
+      "package": "libX11"
+    },
+    {
+      "type": "system",
+      "package": "libX11-xcb"
+    },
+    {
+      "type": "system",
+      "package": "libxcb"
+    },
+    {
+      "type": "system",
+      "package": "libXcomposite"
+    },
+    {
+      "type": "system",
+      "package": "libXdamage"
+    },
+    {
+      "type": "system",
+      "package": "libXext"
+    },
+    {
+      "type": "system",
+      "package": "libXfixes"
+    },
+    {
+      "type": "system",
+      "package": "libxkbcommon"
+    },
+    {
+      "type": "system",
+      "package": "libXrandr"
+    },
+    {
+      "type": "system",
+      "package": "libxshmfence"
+    },
+    {
+      "type": "system",
+      "package": "mesa-libgbm"
+    },
+    {
+      "type": "system",
+      "package": "nspr"
+    },
+    {
+      "type": "system",
+      "package": "nss"
+    },
+    {
+      "type": "system",
+      "package": "pango"
+    }
+  ],
+  "postinstall": [
+    {
+      "cmd": "agent-browser",
+      "args": ["install"]
+    },
+    {
+      "cmd": "bash",
+      "args": [
+        "-lc",
+        "set -euo pipefail\nversion=0.58.5\narchive=\"pup_${version}_Linux_x86_64.tar.gz\"\nurl=\"https://github.com/DataDog/pup/releases/download/v${version}/${archive}\"\nsha256=\"9543d968a6bd3b00da7ef20053717494beba7962e6cea01368d82857c8ea926b\"\ntmp=\"$(mktemp -d)\"\ntrap 'rm -rf \"$tmp\"' EXIT\ncurl -fsSL \"$url\" -o \"$tmp/$archive\"\necho \"${sha256}  $tmp/$archive\" | sha256sum -c -\ntar -xzf \"$tmp/$archive\" -C \"$tmp\"\nmkdir -p /vercel/sandbox/.junior/bin\ninstall -m 0755 \"$tmp/pup\" /vercel/sandbox/.junior/bin/pup\npup --version"
+      ]
+    }
+  ]
+}
