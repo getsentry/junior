@@ -87,7 +87,7 @@ export function DashboardShell() {
           )}
         >
           <Link
-            aria-label="Junior home"
+            aria-label={`${data?.config.agentName ?? "Junior"} home`}
             className="flex min-w-0 max-w-full items-center justify-self-start text-inherit no-underline"
             to="/"
           >

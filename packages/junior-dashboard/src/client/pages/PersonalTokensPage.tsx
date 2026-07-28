@@ -7,6 +7,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { dashboardContainerClass } from "../styles";
+import { getDashboardAgentName } from "../agentName";
 import { Button } from "../components/Button";
 
 /** Create and revoke personal API tokens for local clients. */
@@ -69,8 +70,8 @@ export function PersonalTokensPage() {
       <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Personal API Tokens</h1>
         <p className="mt-2 mb-0 max-w-2xl text-sm text-[#aaa]">
-          Use a token to read Junior APIs from a local agent or script. Tokens
-          expire after 90 days.
+          Use a token to read {getDashboardAgentName()} APIs from a local agent
+          or script. Tokens expire after 90 days.
         </p>
 
         <div className="mt-6 rounded-lg border border-white/15 bg-[#0b0b0b] p-5">

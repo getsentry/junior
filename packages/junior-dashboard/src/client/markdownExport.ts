@@ -14,6 +14,7 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
+import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import type {
   Conversation,
@@ -159,8 +160,8 @@ function appendFailure(
   lines.push(
     "",
     outcome === "delivery_failed"
-      ? "Junior could not deliver this message to its destination."
-      : "The model response ended before Junior could complete this turn.",
+      ? `${getDashboardAgentName()} could not deliver this message to its destination.`
+      : `The model response ended before ${getDashboardAgentName()} could complete this turn.`,
   );
 }
 
@@ -352,8 +353,7 @@ function messageRoleLabel(
   conversationTranscript: ConversationTranscript,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant")
-    return conversationTranscript.assistantLabel ?? "Junior";
+  if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user")
     return actorLabel(conversationTranscript.actorIdentity) ?? "User";
   if (kind === "system") return "System";

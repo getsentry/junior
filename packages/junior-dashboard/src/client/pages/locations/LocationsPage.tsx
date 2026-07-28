@@ -16,6 +16,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
@@ -79,9 +80,9 @@ export function LocationsPageContent(props: {
         description={
           props.error && !props.data
             ? "Locations failed to load."
-            : "See the public channels where Junior has been working and how busy they've been."
+            : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
         }
-        eyebrow="Where Junior's working"
+        eyebrow={`Where ${agentNamePossessive()} working`}
         title="Locations"
       />
       {props.error ? (

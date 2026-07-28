@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 
+import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
@@ -64,8 +65,8 @@ export function SystemPage(props: { data: SystemData }) {
             <TimeRangeSelector onChange={setRange} value={range} />
           ) : undefined
         }
-        description="A live read on Junior's runtime, model usage, loaded capabilities, and the systems keeping work moving."
-        eyebrow="Junior's engine room"
+        description={`A live read on ${agentNamePossessive()} runtime, model usage, loaded capabilities, and the systems keeping work moving.`}
+        eyebrow={`${agentNamePossessive()} engine room`}
         title="System"
       />
 
@@ -139,7 +140,7 @@ function PluginReportError(props: { showingReports: boolean }) {
           </div>
           <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
             {props.showingReports
-              ? "Showing the last operational reports Junior received."
+              ? `Showing the last operational reports ${getDashboardAgentName()} received.`
               : "Plugin details and capabilities are still available."}
           </div>
         </div>

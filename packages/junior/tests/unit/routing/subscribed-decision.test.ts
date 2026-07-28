@@ -104,6 +104,31 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).not.toHaveBeenCalled();
   });
 
+  it("uses the configured bot name throughout the router prompt", async () => {
+    const completeObject = vi.fn(async (_args: { system: string }) => ({
+      object: {
+        should_reply: false,
+        should_unsubscribe: false,
+        confidence: 0.95,
+        reason: "side conversation",
+      },
+    }));
+
+    await decideSubscribedThreadReply({
+      botUserName: "marky",
+      modelId: "router-model",
+      input: makeInput(),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(completeObject).toHaveBeenCalledOnce();
+    const system = completeObject.mock.calls[0]![0].system;
+    expect(system).toContain("assistant named marky");
+    expect(system).toContain("whether marky should reply");
+    expect(system).not.toContain("Junior");
+  });
+
   it("routes acknowledgment text with attachments through the classifier", async () => {
     const completeObject = vi.fn(async () => ({
       object: {

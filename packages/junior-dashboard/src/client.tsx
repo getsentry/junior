@@ -4,9 +4,11 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
 import { DashboardShell } from "./client/App";
+import { getDashboardAgentName } from "./client/agentName";
 
 declare global {
   interface Window {
+    __JUNIOR_DASHBOARD_AGENT_NAME__?: string;
     __JUNIOR_DASHBOARD_BASE_PATH__?: string;
     __JUNIOR_DASHBOARD_SHOW_ERROR__?: (error: unknown) => void;
   }
@@ -48,7 +50,7 @@ function DashboardErrorPanel(props: { error: Error }) {
           Dashboard Error
         </div>
         <h1 className="mt-2 text-3xl font-bold leading-tight tracking-normal">
-          Junior failed to render
+          {getDashboardAgentName()} failed to render
         </h1>
         <p className="my-4 max-w-3xl text-[#b8b8b8]">
           The dashboard hit a client-side exception. The stack trace is shown

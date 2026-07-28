@@ -12,6 +12,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
@@ -71,7 +72,7 @@ export function PeoplePageContent(props: {
         description={
           props.error
             ? "People failed to load."
-            : "See who's been working with Junior, how often, and for how long."
+            : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
         }
         eyebrow="Who's been around"
         title="People"

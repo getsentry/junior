@@ -5,6 +5,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { botConfig } from "@/chat/config";
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -833,7 +834,10 @@ describe("createApp plugin config", () => {
     expect(componentGallery.status).toBe(200);
     await expect(componentGallery.text()).resolves.toBe("dashboard");
     expect(createDashboardApp).toHaveBeenCalledWith(
-      expect.objectContaining({ componentGallery: true }),
+      expect.objectContaining({
+        agentName: botConfig.userName,
+        componentGallery: true,
+      }),
     );
 
     const dashboardAvatar = await app.fetch(

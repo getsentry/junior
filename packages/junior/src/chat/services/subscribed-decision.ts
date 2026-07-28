@@ -345,26 +345,27 @@ export function getSubscribedReplyPreflightDecision(args: {
 }
 
 function buildRouterSystemPrompt(botUserName: string): string {
+  const assistantName = escapeXml(botUserName);
   return [
-    "You are a message router for a Slack assistant named Junior in a subscribed Slack thread.",
-    "Decide whether Junior should reply to the latest message.",
+    `You are a message router for a Slack assistant named ${assistantName} in a subscribed Slack thread.`,
+    `Decide whether ${assistantName} should reply to the latest message.`,
     "Subscribed threads are passive by default.",
-    "Reply true only when the latest message is aimed at Junior.",
+    `Reply true only when the latest message is aimed at ${assistantName}.`,
     "Use who currently has the conversation floor, not just topic overlap.",
-    "If Junior was the last speaker, only a clear turn back to Junior should count as an implicit follow-up.",
-    "Terse clarifications like 'which one?' or 'why?' right after Junior answers can be should_reply=true.",
-    "Direct self-reference to Junior's prior answer like 'what did you just say?' or 'explain that more' can be should_reply=true.",
-    "If one or more humans spoke after Junior, require a clear turn back to Junior. Shared domain vocabulary alone is not enough.",
-    "Questions like 'what about auth?' or 'can you check on this?' are usually human-to-human unless the thread clearly turns back to Junior.",
-    "A vague question like 'is that the right approach?' is still should_reply=false unless it clearly turns back to Junior.",
+    `If ${assistantName} was the last speaker, only a clear turn back to ${assistantName} should count as an implicit follow-up.`,
+    `Terse clarifications like 'which one?' or 'why?' right after ${assistantName} answers can be should_reply=true.`,
+    `Direct self-reference to ${assistantName}'s prior answer like 'what did you just say?' or 'explain that more' can be should_reply=true.`,
+    `If one or more humans spoke after ${assistantName}, require a clear turn back to ${assistantName}. Shared domain vocabulary alone is not enough.`,
+    `Questions like 'what about auth?' or 'can you check on this?' are usually human-to-human unless the thread clearly turns back to ${assistantName}.`,
+    `A vague question like 'is that the right approach?' is still should_reply=false unless it clearly turns back to ${assistantName}.`,
     "Acknowledgments, reactions, status chatter, and team coordination should be should_reply=false.",
-    "If the latest message clearly tells Junior to stop watching, replying, or participating, set should_unsubscribe=true and should_reply=false.",
+    `If the latest message clearly tells ${assistantName} to stop watching, replying, or participating, set should_unsubscribe=true and should_reply=false.`,
     "When uncertain, prefer should_reply=false with low confidence.",
     "",
     "Return JSON with should_reply, should_unsubscribe, confidence, and a reason under 160 characters.",
     "Do not return any extra keys.",
     "",
-    `<assistant-name>${escapeXml(botUserName)}</assistant-name>`,
+    `<assistant-name>${assistantName}</assistant-name>`,
   ].join("\n");
 }
 

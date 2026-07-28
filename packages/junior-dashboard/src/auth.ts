@@ -9,6 +9,7 @@ export type DashboardUser = DashboardIdentity["user"];
 export type DashboardSession = DashboardIdentity;
 
 export interface DashboardAuthConfig {
+  agentName?: string;
   baseURL?: string;
   authPath: string;
   trustedOrigins: string[];
@@ -71,7 +72,7 @@ export function createDashboardAuth(
   );
 
   const auth = betterAuth({
-    appName: "Junior Dashboard",
+    appName: `${config.agentName?.trim() || "Junior"} Dashboard`,
     baseURL,
     basePath: config.authPath,
     secret,

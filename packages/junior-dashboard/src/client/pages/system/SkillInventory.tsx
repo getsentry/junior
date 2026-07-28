@@ -1,5 +1,6 @@
 import { Boxes, Sparkles } from "lucide-react";
 import type { SkillReport } from "@sentry/junior/api/schema";
+import { getDashboardAgentName } from "../../agentName";
 
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber } from "../../format";
@@ -24,8 +25,8 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
             Skills
           </h2>
           <p className="mt-1.5 mb-0 max-w-2xl font-mono text-[0.66rem] leading-relaxed text-white/30">
-            The task-specific instructions Junior discovered, grouped by their
-            plugin provider when one is registered.
+            The task-specific instructions {getDashboardAgentName()} discovered,
+            grouped by their plugin provider when one is registered.
           </p>
         </div>
         <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-white/[0.07] bg-black/15 max-sm:w-full max-sm:min-w-0">

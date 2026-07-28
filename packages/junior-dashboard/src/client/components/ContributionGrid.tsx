@@ -1,5 +1,6 @@
 import { formatDuration } from "./Duration";
 import { Tooltip } from "./Tooltip";
+import { getDashboardAgentName } from "../agentName";
 import { cn } from "../styles";
 
 type ContributionDay = {
@@ -64,7 +65,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
           ))}
         </div>
         <div
-          aria-label="Daily Junior conversation activity"
+          aria-label={`Daily ${getDashboardAgentName()} conversation activity`}
           className="grid w-full grid-flow-col grid-rows-7 gap-1"
           role="list"
           style={{

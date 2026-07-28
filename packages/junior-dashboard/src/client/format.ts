@@ -13,6 +13,7 @@ import type {
   TranscriptViewPart,
   VisualStatus,
 } from "./types";
+import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
@@ -291,7 +292,7 @@ function transcriptMessageAuthor(
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return "Junior";
+  if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
     return actorLabel(conversation.actorIdentity) ?? "User";
   }

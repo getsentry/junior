@@ -9,6 +9,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import {
+  botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
   setSlackReactionConfig,
@@ -137,6 +138,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
+  agentName?: string;
   pluginRoutes?: PluginApiRouteRegistration[];
 }
 
@@ -497,6 +499,7 @@ function dashboardRouteRegistrations(args: {
   const fetch = (request: Request) => {
     app ??= args.createDashboardApp({
       ...args.dashboard,
+      agentName: botConfig.userName,
       pluginRoutes: args.pluginRoutes,
     });
     if (!app || typeof app.fetch !== "function") {

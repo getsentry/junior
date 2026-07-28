@@ -39,6 +39,7 @@ const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const LOGIN_NEXT_PARAM = "next";
 
 export interface JuniorDashboardOptions {
+  agentName?: string;
   basePath?: string;
   baseURL?: string;
   authPath?: string;
@@ -83,6 +84,15 @@ function stripTrailingSlashes(value: string): string {
     end -= 1;
   }
   return end === value.length ? value : value.slice(0, end);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function normalizeValues(values: string[] | undefined): string[] {
@@ -309,7 +319,7 @@ function unauthorized(
   );
 }
 
-function forbidden(request: Request): Response {
+function forbidden(request: Request, agentName: string): Response {
   if (!isJsonRoute(new URL(request.url).pathname)) {
     return new Response(
       `<!DOCTYPE html>
@@ -317,7 +327,7 @@ function forbidden(request: Request): Response {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Junior access denied</title>
+  <title>${escapeHtml(agentName)} access denied</title>
   <style>
     ${readDashboardTailwind()}
   </style>
@@ -326,7 +336,7 @@ function forbidden(request: Request): Response {
   <main class="grid min-h-screen place-items-center p-8">
     <section class="max-w-lg border-l-4 border-rose-400 pl-4">
       <h1 class="m-0 mb-3 text-[1.75rem] font-bold leading-tight">Access denied</h1>
-      <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this Junior dashboard.</p>
+      <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this ${escapeHtml(agentName)} dashboard.</p>
     </section>
   </main>
 </body>
@@ -474,14 +484,15 @@ function dashboardPagePaths(
   return paths;
 }
 
-function renderDashboard(basePath: string): Response {
+function renderDashboard(basePath: string, agentName: string): Response {
+  const encodedAgentName = JSON.stringify(agentName).replace(/</g, "\\u003c");
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Junior</title>
+  <title>${escapeHtml(agentName)}</title>
   <style>
     ${readDashboardTailwind()}
   </style>
@@ -492,14 +503,15 @@ function renderDashboard(basePath: string): Response {
       <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
         <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-[0.82rem] font-black leading-none text-white">Jr</div>
         <div class="min-w-0">
-          <div class="font-bold">Loading Junior</div>
-          <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading Junior"></div>
+          <div class="font-bold">Loading ${escapeHtml(agentName)}</div>
+          <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading ${escapeHtml(agentName)}"></div>
         </div>
       </section>
     </main>
   </div>
   <script>
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
+    window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
     (function () {
       function escapeHtml(value) {
         return String(value)
@@ -527,7 +539,7 @@ function renderDashboard(basePath: string): Response {
           '<main class="grid min-h-screen place-items-center bg-black p-8 text-white">' +
           '<section class="w-full max-w-5xl border border-rose-400/50 bg-[#0b0b0b] p-5 font-sans">' +
           '<div class="font-mono text-xs uppercase leading-none text-[#888]">Dashboard Error</div>' +
-          '<h1 class="mt-2 text-3xl font-bold leading-tight tracking-normal">Junior failed to render</h1>' +
+          '<h1 class="mt-2 text-3xl font-bold leading-tight tracking-normal">' + escapeHtml(window.__JUNIOR_DASHBOARD_AGENT_NAME__) + ' failed to render</h1>' +
           '<p class="my-4 max-w-3xl text-[#b8b8b8]">The dashboard hit a client-side exception. The stack trace is shown here so the page does not fail blank.</p>' +
           '<pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-white/10 bg-black p-4 font-mono text-sm leading-relaxed text-white">' +
           escapeHtml(errorText(error)) +
@@ -612,6 +624,7 @@ export function createDashboardApp(
   );
   const allowedDomains = normalizeValues(options.allowedGoogleDomains);
   const allowedEmails = normalizeValues(options.allowedEmails);
+  const agentName = options.agentName?.trim() || "Junior";
 
   const authRequired = options.authRequired !== false;
   const configuredBaseURL = options.baseURL ?? process.env.JUNIOR_BASE_URL;
@@ -633,6 +646,7 @@ export function createDashboardApp(
   const auth = authRequired
     ? (options.auth ??
       createDashboardAuth({
+        agentName,
         authPath,
         baseURL: options.baseURL,
         trustedOrigins: options.trustedOrigins ?? [],
@@ -706,7 +720,7 @@ export function createDashboardApp(
       });
     }
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
-      return forbidden(c.req.raw);
+      return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
@@ -719,9 +733,9 @@ export function createDashboardApp(
   for (const { nested, path } of dashboardPagePaths(basePath, {
     componentGallery: options.componentGallery,
   })) {
-    app.get(path, () => renderDashboard(basePath));
+    app.get(path, () => renderDashboard(basePath, agentName));
     if (nested) {
-      app.get(`${path}/*`, () => renderDashboard(basePath));
+      app.get(`${path}/*`, () => renderDashboard(basePath, agentName));
     }
   }
   for (const route of options.pluginRoutes ?? []) {
@@ -742,6 +756,7 @@ export function createDashboardApp(
   app.route("/", createJuniorApi());
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
+      agentName,
       allowedEmailCount: allowedEmails.length,
       allowedGoogleDomainCount: allowedDomains.length,
       authRequired,

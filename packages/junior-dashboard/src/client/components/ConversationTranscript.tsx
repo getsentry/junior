@@ -47,6 +47,7 @@ import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
+import { getDashboardAgentName } from "../agentName";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
   groupTranscriptMessages,
@@ -105,7 +106,7 @@ export function ConversationTranscriptView(props: {
 function TypingIndicator() {
   return (
     <div aria-live="polite" className="mt-2 flex items-center" role="status">
-      <span className="sr-only">Junior is responding</span>
+      <span className="sr-only">{getDashboardAgentName()} is responding</span>
       <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
         {[0, 1, 2].map((dot) => (
           <span
@@ -136,7 +137,7 @@ function transcriptRoleLabel(
   conversation: ConversationTranscript,
 ): string {
   const kind = transcriptRoleKind(role);
-  if (kind === "assistant") return conversation.assistantLabel ?? "Junior";
+  if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") return transcriptActorLabel(conversation);
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -434,8 +435,8 @@ function TranscriptFailureView(props: {
         </div>
         <div className="mt-1 text-[0.84rem] leading-relaxed text-rose-100/70">
           {deliveryFailed
-            ? "Junior could not deliver this message to its destination."
-            : "The model response ended before Junior could complete this turn."}
+            ? `${getDashboardAgentName()} could not deliver this message to its destination.`
+            : `The model response ended before ${getDashboardAgentName()} could complete this turn.`}
         </div>
       </div>
       {timestamp ? (
