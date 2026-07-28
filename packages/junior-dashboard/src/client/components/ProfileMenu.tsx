@@ -126,7 +126,7 @@ export function ProfileMenu({
           </Link>
           {userPages.map((page) => (
             <Link
-              className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+              className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
               key={`${page.pluginName}:${page.id}`}
               onClick={() => setOpen(false)}
               to={pluginUserPagePath(page.pluginName, page.id)}
