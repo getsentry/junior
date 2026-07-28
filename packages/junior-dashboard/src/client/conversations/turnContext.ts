@@ -33,15 +33,3 @@ export function memoryRecallContent(context: TranscriptViewTurnContext) {
   const parsed = memoryRecallContentSchema.safeParse(context.content);
   return parsed.success ? parsed.data : undefined;
 }
-
-/** Flatten authorized context content for transcript-local search. */
-export function turnContextSearchText(
-  context: TranscriptViewTurnContext,
-): string {
-  return [
-    context.pluginName,
-    context.kind,
-    String(context.version),
-    JSON.stringify(context.content),
-  ].join(" ");
-}

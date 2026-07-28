@@ -5,7 +5,6 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
-import { turnContextSearchText } from "../conversations/turnContext";
 import { stringifyPartValue } from "../format";
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -126,10 +125,7 @@ export function entryMatchesSearch(
   if (entry.kind === "message") {
     return (
       textContains(entry.message.eventType, normalizedQuery) ||
-      textContains(messageRawText(entry.message), normalizedQuery) ||
-      entry.message.contexts?.some((context) =>
-        textContains(turnContextSearchText(context), normalizedQuery),
-      ) === true
+      textContains(messageRawText(entry.message), normalizedQuery)
     );
   }
 

@@ -436,7 +436,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it("attaches turn context to the user message and searches its content", () => {
+  it("attaches turn context without matching its hidden content", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
@@ -473,8 +473,8 @@ describe("canonical event transcript reduction", () => {
     const entries = groupTranscriptMessages(messages);
 
     expect(messages[0]?.contexts).toHaveLength(1);
-    expect(entryMatchesSearch(entries[0]!, "release notes")).toBe(true);
-    expect(entryMatchesSearch(entries[0]!, "memory-1")).toBe(true);
+    expect(entryMatchesSearch(entries[0]!, "release notes")).toBe(false);
+    expect(entryMatchesSearch(entries[0]!, "memory-1")).toBe(false);
   });
 
   it("correlates repeated child outcomes by start sequence", () => {
