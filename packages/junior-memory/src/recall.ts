@@ -4,6 +4,7 @@ import {
   type Actor,
   type Source,
 } from "@sentry/junior-plugin-api";
+import type { MemoryAgent } from "./agent";
 import { z } from "zod";
 import {
   createMemoryStore,
@@ -14,10 +15,12 @@ import {
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
+const RELEVANCE_GATE_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
 
 export interface MemoryRecallContext {
+  agent: Pick<MemoryAgent, "selectRelevantMemories">;
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
@@ -122,16 +125,28 @@ export async function createMemoryPromptContributions(
     ...(context.actor ? { actor: context.actor } : {}),
     source: context.source,
   });
-  const memories = await createMemoryStore(context.db, runtimeContext, {
+  const candidates = await createMemoryStore(context.db, runtimeContext, {
     ...(context.embedder ? { embedder: context.embedder } : {}),
     ...(context.maxVectorDistance !== undefined
       ? { maxVectorDistance: context.maxVectorDistance }
       : {}),
   }).searchMemories({
     query: context.text,
-    limit: DEFAULT_RECALL_LIMIT,
+    limit: RELEVANCE_GATE_CANDIDATE_LIMIT,
   });
-  const selected = selectPromptMemories(memories);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  const relevantIds = await context.agent.selectRelevantMemories({
+    candidates: candidates.map(({ content, id }) => ({ content, id })),
+    userRequest: context.text,
+  });
+  const candidatesById = new Map(candidates.map((memory) => [memory.id, memory]));
+  const relevant = relevantIds
+    .map((id) => candidatesById.get(id))
+    .filter((memory): memory is MemoryRecord => memory !== undefined)
+    .slice(0, DEFAULT_RECALL_LIMIT);
+  const selected = selectPromptMemories(relevant);
   if (selected.length === 0) {
     return undefined;
   }

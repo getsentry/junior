@@ -217,6 +217,30 @@ function createTestEmbedder(
   };
 }
 
+function recallModel(select: (candidates: string[]) => string[]): PluginModel {
+  return {
+    async completeObject(input) {
+      const encoded = /<candidate-memories>\n(.+)\n<\/candidate-memories>/s.exec(
+        input.prompt,
+      )?.[1];
+      const candidates = JSON.parse(encoded ?? "[]") as Array<{
+        content: string;
+        id: string;
+      }>;
+      return {
+        object: {
+          relevantIds: select(candidates.map(({ content }) => content)).map(
+            (content) =>
+              candidates.find((candidate) => candidate.content === content)!.id,
+          ),
+        },
+      };
+    },
+  };
+}
+
+const selectAllRecallModel = recallModel((candidates) => candidates);
+
 function extractionModel(
   memories: Array<{
     content: string;
@@ -2966,6 +2990,7 @@ WHERE id = '${superseded.memory.id}'
         log: noopLogger,
         plugin: { name: "memory" },
         state: memoryState,
+        model: selectAllRecallModel,
         text: "Draft a PR summary and mention release notes.",
       });
 
@@ -3008,6 +3033,7 @@ WHERE id = '${superseded.memory.id}'
         log: noopLogger,
         plugin: { name: "memory" },
         state: memoryState,
+        model: selectAllRecallModel,
         text: "Where do release notes live?",
       });
 
@@ -3044,6 +3070,92 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("filters vector matches that only share repository and CI vocabulary", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      });
+      const relevant = await store.createConversationMemory({
+        content: "getsentry/junior CI runs package tests with pnpm.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-relevant",
+      });
+      await store.createConversationMemory({
+        content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-vocab-collision",
+      });
+      await store.createConversationMemory({
+        content: "Single-tenant repository access is configured in the admin dashboard.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-unrelated",
+      });
+
+      const plugin = createMemoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        log: noopLogger,
+        model: recallModel((candidates) =>
+          candidates.filter((content) => content.includes("getsentry/junior CI")),
+        ),
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "How does CI work in getsentry/junior?",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      expect(contribution.context.content).toMatchObject({
+        memories: [{ id: relevant.memory.id }],
+      });
+      expect(contribution.renderPrompt()).not.toContain("autofix");
+      expect(contribution.renderPrompt()).not.toContain("Single-tenant");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("omits memory context when the relevance gate selects nothing", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      await createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-empty",
+      });
+
+      const plugin = createMemoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          destination: slackDestination(context),
+          db: memoryDb(fixture),
+          embedder: createTestEmbedder(),
+          log: noopLogger,
+          model: recallModel(() => []),
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: "How does CI work in getsentry/junior?",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("skips user prompt memory recall when prompt text is blank", async () => {
     const fixture = await createMemoryFixture();
 
@@ -3065,6 +3177,7 @@ WHERE id = '${superseded.memory.id}'
           log: noopLogger,
           plugin: { name: "memory" },
           state: memoryState,
+          model: selectAllRecallModel,
           text: "   ",
         }),
       ).resolves.toBeUndefined();
@@ -3102,6 +3215,7 @@ WHERE id = '${superseded.memory.id}'
         log: noopLogger,
         plugin: { name: "memory" },
         state: memoryState,
+        model: selectAllRecallModel,
         text: query,
       });
       const contribution = result?.[0];
