@@ -12,6 +12,7 @@ export const conversationReportSourceEventTypes = [
   "message_handled",
   "agent_step",
   "tool_execution_started",
+  "tool_execution_completed",
   "turn_started",
   "turn_routed",
   "turn_completed",
@@ -181,6 +182,9 @@ export function conversationReportToolResultIds(
   return [
     ...new Set(
       events.flatMap((event) => {
+        if (event.data.type === "tool_execution_completed") {
+          return [event.data.toolCallId];
+        }
         if (event.data.type !== "agent_step") return [];
         const result = reportingToolResultMessageSchema.safeParse(
           event.data.message,
@@ -343,6 +347,24 @@ export function projectConversationReportEventPage(args: {
             status: "running",
             startedAt: new Date(event.createdAtMs).toISOString(),
             startedSeq: event.seq,
+          },
+        ],
+      };
+    } else if (event.data.type === "tool_execution_completed") {
+      const start = toolStarts.get(event.data.toolCallId);
+      data = {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: event.data.toolCallId,
+            name: event.data.toolName,
+            status: event.data.outcome,
+            ...(start && start.seq < event.seq
+              ? {
+                  startedAt: new Date(start.createdAtMs).toISOString(),
+                  startedSeq: start.seq,
+                }
+              : {}),
           },
         ],
       };

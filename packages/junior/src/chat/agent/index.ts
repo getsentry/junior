@@ -41,6 +41,7 @@ import {
   loadConnectedMcpProviders,
   loadTurnRoute,
   openConversationProjection,
+  recordToolExecutionCompleted,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
   recordTurnRoute,
@@ -411,17 +412,37 @@ async function executeAgentRunInPrivacyContext(
       surface,
     });
     const runResume = resume;
-    const recordParentToolExecutionStart = async (event: {
-      args: unknown;
-      toolCallId: string;
-      toolName: string;
-    }) => {
+    let pendingToolActivityWrites = Promise.resolve();
+    const recordParentToolExecution = async (event:
+      | {
+          args: unknown;
+          toolCallId: string;
+          toolName: string;
+          type: "tool_execution_start";
+        }
+      | {
+          isError: boolean;
+          result: unknown;
+          toolCallId: string;
+          toolName: string;
+          type: "tool_execution_end";
+        },
+    ) => {
       try {
-        await recordToolExecutionStarted({
-          conversationId,
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-        });
+        if (event.type === "tool_execution_start") {
+          await recordToolExecutionStarted({
+            conversationId,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+          });
+        } else {
+          await recordToolExecutionCompleted({
+            conversationId,
+            isError: event.isError,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+          });
+        }
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
@@ -432,9 +453,16 @@ async function executeAgentRunInPrivacyContext(
           {
             "gen_ai.tool.name": event.toolName,
           },
-          "Failed to record host-only tool execution start",
+          "Failed to record host-only tool execution",
         );
       }
+    };
+    const enqueueParentToolExecution = (
+      event: Parameters<typeof recordParentToolExecution>[0],
+    ): void => {
+      pendingToolActivityWrites = pendingToolActivityWrites.then(() =>
+        recordParentToolExecution(event),
+      );
     };
     const persistedConfigurationValues = policy.channelConfiguration
       ? await policy.channelConfiguration.resolveValues()
@@ -1000,16 +1028,25 @@ async function executeAgentRunInPrivacyContext(
     });
 
     const unsubscribe = agent.subscribe((event) => {
-      if (event.type === "tool_execution_start") {
-        return recordParentToolExecutionStart(event);
+      if (
+        event.type === "tool_execution_start" ||
+        event.type === "tool_execution_end"
+      ) {
+        // Pi emits tool_execution_end before appending the corresponding
+        // toolResult message. Queue reporting writes without blocking that
+        // lifecycle so timeout recovery can snapshot the continuable result.
+        enqueueParentToolExecution(event);
+        return;
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
         if (pendingHandoff) {
-          return;
+          return pendingToolActivityWrites;
         }
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+        return pendingToolActivityWrites.then(() =>
+          runResume
+            .persistSafeBoundary([...agent!.state.messages])
+            .then(() => undefined),
+        );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (
@@ -1338,6 +1375,7 @@ async function executeAgentRunInPrivacyContext(
         return authPauseOutcome;
       }
     } finally {
+      await pendingToolActivityWrites;
       unsubscribe();
     }
 
