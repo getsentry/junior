@@ -176,7 +176,7 @@ export class PluginMcpClient {
       }
 
       await this.clearStoredTransportSessionId();
-      await this.disposeClient();
+      await this.disposeClient({ throwOnError: false });
       return await operation();
     }
   }
@@ -238,7 +238,7 @@ export class PluginMcpClient {
       return client;
     } catch (error) {
       await this.syncTransportSessionId();
-      await this.disposeClient();
+      await this.disposeClient({ throwOnError: false });
       throw error;
     }
   }
@@ -287,7 +287,9 @@ export class PluginMcpClient {
     );
   }
 
-  private async disposeClient(): Promise<void> {
+  private async disposeClient({
+    throwOnError = true,
+  }: { throwOnError?: boolean } = {}): Promise<void> {
     const transport = this.transport;
     this.listedTools = undefined;
     this.transport = undefined;
@@ -298,11 +300,13 @@ export class PluginMcpClient {
       try {
         await transport.close();
       } catch (error) {
-        throw toMcpProviderError(error, {
-          phase: "close",
-          provider: this.plugin.manifest.name,
-          resourceHost: this.resourceHost,
-        });
+        if (throwOnError) {
+          throw toMcpProviderError(error, {
+            phase: "close",
+            provider: this.plugin.manifest.name,
+            resourceHost: this.resourceHost,
+          });
+        }
       }
     }
   }

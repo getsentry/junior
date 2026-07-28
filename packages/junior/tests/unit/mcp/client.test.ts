@@ -239,9 +239,11 @@ describe("PluginMcpClient", () => {
     authProvider.getMcpServerSessionId.mockResolvedValue(undefined);
     authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
     const providerText = "SENSITIVE_CANARY";
+    const closeProviderText = "SENSITIVE_CLOSE_CANARY";
     connectMock.mockRejectedValueOnce(
       new StreamableHTTPError(401, providerText),
     );
+    closeMock.mockRejectedValueOnce(new Error(closeProviderText));
 
     const client = new PluginMcpClient(buildPlugin(), { authProvider });
     const error = await client.listTools().catch((caught: unknown) => caught);
@@ -255,7 +257,9 @@ describe("PluginMcpClient", () => {
     });
     expect((error as Error & { cause?: unknown }).cause).toBeUndefined();
     expect(JSON.stringify(error)).not.toContain(providerText);
+    expect(JSON.stringify(error)).not.toContain(closeProviderText);
     expect((error as Error).message).not.toContain(providerText);
+    expect((error as Error).message).not.toContain(closeProviderText);
   });
 
   it("sanitizes transport close failures before cleanup telemetry", async () => {
@@ -324,6 +328,7 @@ describe("PluginMcpClient", () => {
       .mockResolvedValueOnce("stale-session")
       .mockResolvedValue(undefined);
     authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
+    closeMock.mockRejectedValueOnce(new Error("SENSITIVE_CLOSE_CANARY"));
     connectMock
       .mockRejectedValueOnce(new StreamableHTTPError(400, "Session not found"))
       .mockImplementationOnce(async (transport: { sessionId?: string }) => {
@@ -343,6 +348,7 @@ describe("PluginMcpClient", () => {
     const client = new PluginMcpClient(buildPlugin(), { authProvider });
 
     await expect(client.listTools()).resolves.toHaveLength(1);
+    expect(closeMock).toHaveBeenCalledTimes(1);
     expect(authProvider.saveMcpServerSessionId).toHaveBeenCalledWith(undefined);
     expect(transportOptions).toEqual([
       expect.objectContaining({
