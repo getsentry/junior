@@ -2236,7 +2236,7 @@ async function processEvents(args: {
     event: ScheduledTaskDueEvent,
   ): Promise<void> => {
     const { thread } = getThreadRecord(event.thread);
-    const nowMs = event.now_ms ?? Date.parse("2026-05-26T12:00:00.000Z");
+    const nowMs = event.now_ms ?? Date.now();
     const scheduleKind = event.schedule_kind ?? "one_off";
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
     const task: ScheduledTask = {
