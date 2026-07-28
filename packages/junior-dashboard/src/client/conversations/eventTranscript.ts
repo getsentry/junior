@@ -77,6 +77,9 @@ export function conversationTranscriptMessages(
       existing.status = call.status;
       if (call.input !== undefined) existing.input = call.input;
       if (output !== undefined) existing.output = output;
+      if (existing.startedTimestamp === undefined && call.startedAt) {
+        existing.startedTimestamp = Date.parse(call.startedAt);
+      }
       if (call.status !== "running") {
         existing.resultTimestamp = eventTimestamp(event);
       }

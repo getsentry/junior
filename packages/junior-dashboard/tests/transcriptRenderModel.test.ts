@@ -314,6 +314,7 @@ describe("canonical event transcript reduction", () => {
         name: "search",
         output: { matches: 2 },
         resultTimestamp: Date.parse("2026-01-01T00:00:03.000Z"),
+        startedTimestamp: Date.parse("2026-01-01T00:00:00.000Z"),
         status: "completed",
       },
     ]);
@@ -384,6 +385,65 @@ describe("canonical event transcript reduction", () => {
         timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
       },
     ]);
+  });
+
+  it("applies a later operational start timestamp to an assistant tool", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(1, "2026-01-01T00:00:02.000Z", {
+          type: "assistant_message",
+          parts: [
+            { type: "reasoning", text: "Inspect the inputs." },
+            {
+              type: "tool_call",
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+              startedAt: "2026-01-01T00:00:02.000Z",
+              startedSeq: 1,
+              input: { query: "regression" },
+            },
+          ],
+        }),
+        event(2, "2026-01-01T00:00:03.000Z", {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+              startedSeq: 0,
+              startedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        }),
+        event(3, "2026-01-01T00:00:04.000Z", {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "search-1",
+              name: "search",
+              status: "completed",
+              startedSeq: 0,
+              startedAt: "2026-01-01T00:00:00.000Z",
+              output: { matches: 2 },
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.parts[1]).toMatchObject({
+      type: "tool_call",
+      id: "search-1",
+      startedTimestamp: Date.parse("2026-01-01T00:00:00.000Z"),
+      status: "completed",
+    });
+    expect(groupTranscriptMessages(messages)[1]).toMatchObject({
+      kind: "tool",
+      timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
+    });
   });
 
   it("replaces correlated tool facts with special lifecycle rows", () => {
