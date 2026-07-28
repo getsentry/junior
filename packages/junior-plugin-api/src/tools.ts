@@ -203,11 +203,10 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
  * Tool-declared approval mode.
  *
  * `auto` delegates to core policy, `review` enters approval review, and
- * `approve` permits execution without review. Omission delegates to core
- * defaults. These values do not select the reviewer.
+ * `approve` permits execution without review. Omission leaves the tool outside
+ * action review. These values do not select the reviewer.
  *
- * This is declaration metadata only; current tool execution is unchanged.
- * TODO(#1053): Enforce effective approval modes before tool execution.
+ * Core resolves the effective mode immediately before execution.
  */
 export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
@@ -231,16 +230,13 @@ export interface ToolAnnotations {
 
 /**
  * Canonical approval metadata declared by core and plugin tools.
- *
- * This metadata is declaration-only until #1053 adds approval enforcement.
- * Current tool execution is unchanged.
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; omission delegates to core defaults. */
+  /** Optional declared approval mode; omission leaves the tool outside review. */
   approvalMode?: ToolApprovalMode;
   annotations?: ToolAnnotations;
   /**
-   * Describe the exact validated invocation for future approval presentation.
+   * Describe the reviewed semantic action for the review request.
    *
    * Core owns authoritative tool, actor, source, destination, conversation,
    * credential, and input data. This description adds domain-specific context

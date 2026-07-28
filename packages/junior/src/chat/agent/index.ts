@@ -51,6 +51,7 @@ import {
 import {
   instructionActors,
   instructionProvenanceFor,
+  sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
@@ -64,6 +65,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   extractAssistantText,
+  instructionTextForProjection,
   isAssistantMessage,
   retainRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -137,6 +139,29 @@ import {
 } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+
+function userInstructionText(message: PiMessage): string {
+  if (message.role !== "user") {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((part) =>
+              part &&
+              typeof part === "object" &&
+              (part as { type?: unknown }).type === "text" &&
+              typeof (part as { text?: unknown }).text === "string"
+                ? [(part as { text: string }).text]
+                : [],
+            )
+            .join("\n")
+        : "";
+  return instructionTextForProjection(text).trim();
+}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -382,6 +407,33 @@ async function executeAgentRunInPrivacyContext(
     ];
     const runActors = (): Actor[] =>
       instructionActors(committedInstructionProvenance);
+    const turnStartMessageIndex = existingSessionRecord?.turnStartMessageIndex;
+    const currentTurnMessages =
+      turnStartMessageIndex !== undefined
+        ? (existingSessionRecord?.piMessages.slice(turnStartMessageIndex) ?? [])
+        : [];
+    const currentTurnProvenance =
+      turnStartMessageIndex !== undefined
+        ? (existingSessionRecord?.piMessageProvenance?.slice(
+            turnStartMessageIndex,
+          ) ?? [])
+        : [];
+    const guardianIntentParts =
+      currentTurnMessages.flatMap((message, index) => {
+        const provenance = currentTurnProvenance[index];
+        if (
+          provenance?.authority !== "instruction" ||
+          !sameActorIdentity(provenance.actor, actor)
+        ) {
+          return [];
+        }
+        const text = userInstructionText(message);
+        return text ? [text] : [];
+      }) ?? [];
+    if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
+      guardianIntentParts.push(userInput);
+    }
+    const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       destination: routing.destination,
@@ -554,6 +606,7 @@ async function executeAgentRunInPrivacyContext(
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
     let agent: Agent | undefined;
+    let pendingPiHookError: Error | undefined;
     // Handoff becomes live only after its replacement epoch commits. This
     // pending value then drives the one-way model/context swap at Pi's boundary.
     let pendingHandoff:
@@ -688,6 +741,10 @@ async function executeAgentRunInPrivacyContext(
       activeSkills,
       currentActor: actor,
       currentActors: runActors,
+      currentAgentMessages,
+      currentTurnMessages,
+      currentTurnProvenance,
+      currentUserIntent,
       artifactStatePatch,
       availableSkills,
       configurationValues,
@@ -698,6 +755,10 @@ async function executeAgentRunInPrivacyContext(
       generatedFiles,
       invokedSkill,
       observers,
+      onFatalToolError(error) {
+        pendingPiHookError = error;
+        agent?.abort();
+      },
       onSandboxRefChanged: (sandboxRef) => {
         lastKnownSandboxRef = sandboxRef;
       },
@@ -916,6 +977,15 @@ async function executeAgentRunInPrivacyContext(
           committedInstructionProvenance.push(
             ...messages.map((message) => message.provenance),
           );
+          for (const message of messages) {
+            if (
+              message.provenance.authority === "instruction" &&
+              sameActorIdentity(message.provenance.actor, actor) &&
+              message.text.trim()
+            ) {
+              guardianIntentParts.push(message.text.trim());
+            }
+          }
           for (const message of piMessages) {
             agent!.steer(message);
           }
@@ -948,7 +1018,6 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
-    let pendingPiHookError: Error | undefined;
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
       streamFn: createTracedStreamFn({
@@ -972,10 +1041,20 @@ async function executeAgentRunInPrivacyContext(
         }
         return undefined;
       },
-      afterToolCall: async ({ result }, signal) =>
-        runResume.timedOut && signal?.aborted
-          ? annotateTurnDeadlineToolResult(result)
-          : undefined,
+      afterToolCall: async ({ result, toolCall }, signal) => {
+        const deadlineResult =
+          runResume.timedOut && signal?.aborted
+            ? annotateTurnDeadlineToolResult(result)
+            : undefined;
+        const sourceResult = deadlineResult ?? result;
+        const projectedResult = wiring.projectActionReviewResult(
+          toolCall.id,
+          sourceResult,
+        );
+        return deadlineResult || projectedResult !== result
+          ? projectedResult
+          : undefined;
+      },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
           const handoffUpdate = applyPendingHandoff();
@@ -998,7 +1077,7 @@ async function executeAgentRunInPrivacyContext(
             ? { ...handoffUpdate, ...capacityUpdate }
             : (capacityUpdate ?? handoffUpdate);
         } catch (error) {
-          pendingPiHookError =
+          pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));
           throw error;
         }

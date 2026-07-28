@@ -55,6 +55,47 @@ describe("callMcpTool", () => {
     });
   });
 
+  it("resolves the underlying MCP action metadata for core review", () => {
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => [
+        {
+          name: "mcp__demo__search",
+          rawName: "search",
+          provider: "demo",
+          description: "Search the remote workspace.",
+          parameters: {},
+          annotations: {
+            destructiveHint: false,
+            openWorldHint: true,
+            readOnlyHint: true,
+          },
+          execute: vi.fn(),
+        },
+      ]),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    expect(
+      callMcpTool.resolveApprovalMetadata?.({
+        tool_name: "mcp__demo__search",
+        arguments: { query: "errors" },
+      }),
+    ).toEqual({
+      annotations: {
+        destructiveHint: false,
+        openWorldHint: true,
+        readOnlyHint: true,
+      },
+      description: "Search the remote workspace.",
+      name: "mcp__demo__search",
+      source: {
+        id: "demo",
+        description: "MCP provider demo",
+      },
+    });
+  });
+
   it("preserves native MCP content from the managed tool", async () => {
     const nativeContent = [
       { type: "text" as const, text: "image generated" },
@@ -253,6 +294,6 @@ describe("callMcpTool", () => {
     expect(error.message).toContain(
       'Call searchMcpTools with provider "demo" to refresh the catalog',
     );
-    expect(manager.activateProvider).toHaveBeenCalledWith("demo");
+    expect(manager.activateProvider).not.toHaveBeenCalled();
   });
 });

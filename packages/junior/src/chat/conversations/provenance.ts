@@ -51,6 +51,16 @@ function actorIdentityKey(actor: Actor): string {
     : `${actor.platform}\u0000${actor.userId}`;
 }
 
+/** Compare two actors by runtime identity only, never by display metadata. */
+export function sameActorIdentity(
+  left: Actor | undefined,
+  right: Actor | undefined,
+): boolean {
+  return Boolean(
+    left && right && actorIdentityKey(left) === actorIdentityKey(right),
+  );
+}
+
 /**
  * Return distinct instruction actors in first-seen order for attribution only.
  * Never use this list as credential authority.

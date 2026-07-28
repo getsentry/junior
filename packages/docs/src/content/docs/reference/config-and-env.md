@@ -23,7 +23,7 @@ related:
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                                       |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                                                |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                                           |
-| `AI_MODEL`                                  | No          | Standard model for main agent runs. Defaults to `xai/grok-4.5`.                                                                                                                                  |
+| `AI_MODEL`                                  | No          | Standard model for main agent runs and Guardian action review. Defaults to `xai/grok-4.5`.                                                                                                       |
 | `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                                        |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                                      |
 | `AI_HANDOFF_MODEL`                          | No          | Model for the built-in `handoff` profile. Defaults to `openai/gpt-5.6-sol`.                                                                                                                      |
@@ -49,6 +49,12 @@ the stored name through current configuration; the exact model ID recorded when
 an epoch opens is audit evidence, not a runtime pin. Changing a mapping retargets
 existing conversations, while removing or renaming a referenced profile makes
 those conversations fail until that name is configured again.
+
+Guardian action review sends the standard model a bounded review request with
+hook-adjusted semantic input (starting from validated tool arguments and
+excluding hook-injected environment values), current actor and destination
+context, and recent visible conversation evidence. Input and output payloads
+from this review are excluded from telemetry.
 
 When `@sentry/junior-memory` is enabled, the configured Postgres database must
 support pgvector because the plugin migration creates the `vector` extension

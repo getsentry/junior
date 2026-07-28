@@ -112,6 +112,17 @@ vi.mock("@/chat/services/turn-router", async () => {
   };
 });
 
+vi.mock("@/chat/services/guardian-action-review", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises MCP auth behavior, not action policy.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
+}));
+
 vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@earendil-works/pi-agent-core")>();

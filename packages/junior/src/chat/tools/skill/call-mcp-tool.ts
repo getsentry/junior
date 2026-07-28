@@ -7,7 +7,6 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
-  activateProvider(provider: string): Promise<boolean>;
   getResolvedActiveTools(): ManagedMcpTool[];
 }
 
@@ -55,6 +54,7 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 /** Create the stable dispatcher for active MCP provider tools. */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
+    approvalMode: "auto",
     description:
       "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
     inputSchema: z
@@ -71,12 +71,31 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           .optional(),
       })
       .passthrough(),
+    resolveApprovalMetadata: ({ tool_name }) => {
+      const activeTool = mcpToolManager
+        .getResolvedActiveTools()
+        .find((candidate) => candidate.name === tool_name);
+      const provider = parseMcpProviderFromToolName(tool_name);
+      return {
+        ...(activeTool?.annotations
+          ? { annotations: activeTool.annotations }
+          : {}),
+        description:
+          activeTool?.description ?? `Call the MCP tool ${tool_name}.`,
+        name: tool_name,
+        ...(provider
+          ? {
+              source: {
+                id: provider,
+                description: `MCP provider ${provider}`,
+              },
+            }
+          : {}),
+      };
+    },
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
-      if (provider) {
-        await mcpToolManager.activateProvider(provider);
-      }
       const activeTools = mcpToolManager.getResolvedActiveTools();
       const mcpTool = activeTools.find(
         (candidate) => candidate.name === tool_name,

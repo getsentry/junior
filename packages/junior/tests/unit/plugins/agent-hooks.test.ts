@@ -1308,11 +1308,14 @@ describe("agent plugin hooks", () => {
 
       const before = await runner.beforeToolExecute({
         name: "bash",
-        input: { command: "replace me" },
+        input: {
+          command: "replace me",
+          env: { PUBLIC_MODE: "preview" },
+        },
       });
       expect(before.input).toEqual({
         command: "replaced",
-        env: { AGENT_PLUGIN: "U123" },
+        env: { PUBLIC_MODE: "preview" },
       });
       expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
     } finally {

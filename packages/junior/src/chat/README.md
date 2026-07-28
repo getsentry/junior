@@ -40,6 +40,11 @@ mailbox-backed provider.
 - `slack/` and `local/`: platform adapters.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
   boundaries.
+- `tool-support/action-review.ts`: effective approval modes, authoritative
+  action proposals, deterministic context checks, and the execution gate.
+- `services/guardian-action-policy.ts` and `guardian-action-review.ts`: the
+  Codex-derived policy and structured model reviewer for actions that enter
+  review.
 
 Provider modules must not import runtime orchestration. Runtime and service
 modules depend on small injected ports rather than provider implementations or
@@ -92,6 +97,13 @@ delegation without becoming the execution actor or a general task owner.
   delivery.
 - Actor, destination, conversation, and credential context remain explicit
   across asynchronous boundaries.
+- Action review sees the validated, hook-adjusted semantic input immediately
+  before execution; hook-injected environment values stay execution-only.
+  Unclassified tools retain compatibility behavior; `ask` and `deny` become
+  expected tool failures until durable confirmation owns `ask`.
+- Guardian receives a projection of credential authority, never signed
+  credential bindings, plus bounded visible user/assistant evidence. It cannot
+  override deterministic context checks, and unavailable review fails closed.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in

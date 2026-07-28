@@ -3,6 +3,10 @@ import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orche
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import type {
+  ToolActionReview,
+  ToolActionReviewer,
+} from "@/chat/tool-support/action-review";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -25,6 +29,33 @@ const githubSkill: Skill = {
   pluginProvider: "github",
   allowedTools: ["bash"],
 };
+
+function actionReview(
+  reviewer: ToolActionReviewer,
+  userIntent: string,
+): ToolActionReview {
+  return {
+    context: {
+      actor: { platform: "local", userId: "local-user" },
+      conversationId: "local:tool-review",
+      destination: {
+        platform: "local",
+        conversationId: "local:tool-review",
+      },
+      source: {
+        platform: "local",
+        type: "priv",
+        conversationId: "local:tool-review",
+      },
+      userIntent: () => userIntent,
+    },
+    priorRejections: [],
+    pendingRejections: new Map(),
+    onUnavailable: vi.fn(),
+    rejectedActions: [],
+    reviewer,
+  };
+}
 
 describe("Pi tool adapter", () => {
   beforeEach(() => {
@@ -256,6 +287,210 @@ describe("Pi tool adapter", () => {
     expect(onToolCall).toHaveBeenCalledWith("tool-bash", "bash", {
       command: "which gh",
     });
+  });
+
+  it("reviews validated actions immediately before execution", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const execute = vi.fn(async () => ({ ok: true }));
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow" as const,
+      reason: "The action matches the request.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }));
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          approvalMode: "review",
+          description: "Create the report.",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+      undefined,
+      actionReview({ review }, "Create the report."),
+    );
+
+    await demoTool!.execute("tool-demo", { reportId: "weekly" });
+
+    expect(review).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: { reportId: "weekly" },
+        tool: expect.objectContaining({ name: "demo" }),
+      }),
+      {},
+    );
+    expect(execute).toHaveBeenCalledOnce();
+    expect(review.mock.invocationCallOrder[0]).toBeLessThan(
+      execute.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reviews semantic env without exposing hook-injected env", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const execute = vi.fn(async () => ({ ok: true }));
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow" as const,
+      reason: "The action matches the request.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }));
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          approvalMode: "review",
+          description: "Create the report.",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        beforeToolExecute: vi.fn(async () => ({
+          input: {
+            reportId: "monthly",
+            env: { OUTPUT_FORMAT: "summary" },
+          },
+          env: { SECRET_TOKEN: "must-not-reach-guardian" },
+        })),
+        prepareSandbox: vi.fn(),
+      },
+      "private",
+      undefined,
+      actionReview({ review }, "Create the monthly report."),
+    );
+
+    await demoTool!.execute("tool-demo", { reportId: "weekly" });
+
+    expect(review.mock.calls[0]?.[0].input).toEqual({
+      env: { OUTPUT_FORMAT: "summary" },
+      reportId: "monthly",
+    });
+    expect(JSON.stringify(review.mock.calls[0]?.[0])).not.toContain(
+      "must-not-reach-guardian",
+    );
+    expect(execute).toHaveBeenCalledWith(
+      {
+        env: {
+          OUTPUT_FORMAT: "summary",
+          SECRET_TOKEN: "must-not-reach-guardian",
+        },
+        reportId: "monthly",
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("does not execute actions that Guardian asks the user to confirm", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const execute = vi.fn(async () => ({ ok: true }));
+    const onToolResult = vi.fn();
+    const reviewState = actionReview(
+      {
+        review: async () => ({
+          decision: "ask",
+          reason: "Recurring work should be confirmed.",
+          riskLevel: "medium",
+          userAuthorization: "low",
+        }),
+      },
+      "Create the recurring report.",
+    );
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          approvalMode: "review",
+          description: "Create the recurring report.",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+      onToolResult,
+      reviewState,
+    );
+
+    await expect(
+      demoTool!.execute("tool-demo", { cadence: "weekly" }),
+    ).rejects.toThrow(
+      "Action requires user confirmation: Recurring work should be confirmed.",
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(reviewState.pendingRejections.get("tool-demo")).toMatchObject({
+      actionKey: expect.any(String),
+      decision: "ask",
+      reason: "Recurring work should be confirmed.",
+      version: 1,
+    });
+    expect(onToolResult).toHaveBeenCalledWith({
+      error:
+        "Action requires user confirmation: Recurring work should be confirmed.",
+      ok: false,
+      params: { cadence: "weekly" },
+      toolCallId: "tool-demo",
+      toolName: "demo",
+    });
+  });
+
+  it("escalates unavailable Guardian review to the run boundary", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onUnavailable = vi.fn();
+    const reviewState = actionReview(
+      {
+        review: async () => {
+          throw new Error("review provider unavailable");
+        },
+      },
+      "Create the report.",
+    );
+    reviewState.onUnavailable = onUnavailable;
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          approvalMode: "review",
+          description: "Create the report.",
+          inputSchema: {} as any,
+          execute: vi.fn(),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+      undefined,
+      reviewState,
+    );
+
+    await expect(
+      demoTool!.execute("tool-demo", { reportId: "weekly" }),
+    ).rejects.toThrow(
+      "Required action review is unavailable; the action was not executed.",
+    );
+    expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
   it("reports structured tool error results to observers", async () => {

@@ -1,6 +1,9 @@
 import { Kind, type Static, type TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
-import type { ToolApprovalMetadata } from "@sentry/junior-plugin-api";
+import type {
+  ToolAnnotations,
+  ToolApprovalMetadata,
+} from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 /**
@@ -12,6 +15,17 @@ export interface JsonSchemaObject {
 export type ToolInputSchema = TSchema | JsonSchemaObject;
 
 export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+
+/** Invocation-specific approval metadata resolved by a trusted host bridge. */
+export interface ToolApprovalResolution {
+  annotations?: ToolAnnotations;
+  description?: string;
+  name?: string;
+  source?: {
+    description: string;
+    id: string;
+  };
+}
 
 export interface ToolExecuteOptions {
   experimental_context?: unknown;
@@ -53,6 +67,12 @@ interface BaseToolDefinition<
    */
   promptGuidelines?: string[];
   prepareArguments?: (args: unknown) => TInput;
+  /**
+   * Return trusted host metadata for the exact dispatched action.
+   *
+   * Descriptions and annotations inform review; they do not grant authority.
+   */
+  resolveApprovalMetadata?(input: TInput): ToolApprovalResolution;
   executionMode?: ToolExecutionMode;
   execute?: (
     input: TInput,
@@ -102,6 +122,12 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     options: ToolExecuteOptions,
   ): Promise<unknown> | unknown;
   prepareArguments?(args: unknown): unknown;
+  /**
+   * Return trusted host metadata for the exact dispatched action.
+   *
+   * Descriptions and annotations inform review; they do not grant authority.
+   */
+  resolveApprovalMetadata?(input: unknown): ToolApprovalResolution;
 }
 
 /** Name-indexed heterogeneous tool definitions accepted by the agent runtime. */

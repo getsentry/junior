@@ -20,6 +20,10 @@ import {
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  ToolActionRejectedError,
+  ToolActionReviewUnavailableError,
+} from "@/chat/tool-support/action-review";
 
 function isPluginToolInputError(error: unknown): boolean {
   return (
@@ -66,6 +70,12 @@ export function handleToolExecutionError(
   conversationPrivacy?: ConversationPrivacy,
   setExecutionSpanAttributes?: SetSpanAttributes,
 ): never {
+  if (
+    error instanceof ToolActionRejectedError ||
+    error instanceof ToolActionReviewUnavailableError
+  ) {
+    throw error;
+  }
   const errorType = getToolErrorType(error);
   const errorMessage = getMcpAwareTelemetryMessage(error, conversationPrivacy);
   const errorAttributes = {

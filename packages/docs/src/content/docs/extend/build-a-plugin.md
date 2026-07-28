@@ -221,6 +221,11 @@ export function myProviderPlugin() {
       tools(ctx) {
         return {
           ping: zodTool({
+            approvalMode: "auto",
+            annotations: {
+              readOnlyHint: true,
+              openWorldHint: true,
+            },
             description: "Check my-provider connectivity.",
             inputSchema: z.object({}),
             outputSchema: pingResultSchema,
@@ -244,6 +249,18 @@ export function myProviderPlugin() {
   });
 }
 ```
+
+Use `approvalMode: "auto"` when Junior should review an action according to its
+annotations and source. Use `review` when every invocation requires review, or
+`approve` only when the tool is safe to execute without review. Omitting the
+field leaves the tool outside action review.
+
+Annotations describe side effects; they do not authorize an action. Junior
+selects and enforces the reviewer. Add `describeProposal(input)` only when a
+short domain-specific summary makes the reviewed semantic action clearer.
+Review runs after `replaceInput`, while values added through `ctx.env` remain
+execution-only. Keep action targets and side effects in typed input so Guardian
+can review them.
 
 Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata

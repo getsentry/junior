@@ -6,6 +6,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
 const {
   DEMO_SKILL,
+  agentAfterToolResults,
   agentInitialSystemPrompts,
   agentInitialToolNames,
   callToolMock,
@@ -14,6 +15,8 @@ const {
   continueCallCount,
   continueStopsOnAbort,
   deliverPrivateMessageMock,
+  guardianDecision,
+  guardianProposals,
   listToolsMock,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
@@ -33,6 +36,7 @@ const {
     skillPath: "/tmp/skills/demo-skill",
     pluginProvider: "demo",
   } as const,
+  agentAfterToolResults: [] as unknown[],
   agentInitialSystemPrompts: [] as string[],
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
@@ -41,6 +45,10 @@ const {
   continueCallCount: { value: 0 },
   continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
+  guardianDecision: {
+    value: "allow" as "allow" | "deny" | "unavailable",
+  },
+  guardianProposals: [] as unknown[],
   listToolsMock: vi.fn(),
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
@@ -134,8 +142,24 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }>;
     };
     private aborted = false;
+    private readonly afterToolCall?: (
+      event: {
+        isError: boolean;
+        result: { content: unknown[]; details: Record<string, unknown> };
+        toolCall: { arguments: unknown; id: string; name: string };
+      },
+      signal?: AbortSignal,
+    ) => Promise<
+      | {
+          content?: unknown[];
+          details?: Record<string, unknown>;
+          isError?: boolean;
+        }
+      | undefined
+    >;
 
     constructor(input: {
+      afterToolCall?: MockAgent["afterToolCall"];
       initialState: {
         model: unknown;
         systemPrompt: string;
@@ -151,6 +175,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      this.afterToolCall = input.afterToolCall;
       agentInitialSystemPrompts.push(input.initialState.systemPrompt);
       agentInitialToolNames.push(
         input.initialState.tools.map((tool) => tool.name),
@@ -163,6 +188,40 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     abort() {
       this.aborted = true;
+    }
+
+    private async executeTool(
+      tool: {
+        name: string;
+        execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
+      },
+      toolCallId: string,
+      params: Record<string, unknown>,
+    ) {
+      try {
+        return await tool.execute(toolCallId, params);
+      } catch (error) {
+        const result = {
+          content: [
+            {
+              type: "text",
+              text: error instanceof Error ? error.message : String(error),
+            },
+          ],
+          details: {},
+        };
+        const adjusted = await this.afterToolCall?.({
+          isError: true,
+          result,
+          toolCall: {
+            arguments: params,
+            id: toolCallId,
+            name: tool.name,
+          },
+        });
+        agentAfterToolResults.push(adjusted ?? result);
+        throw error;
+      }
     }
 
     async prompt(message: unknown) {
@@ -240,7 +299,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         throw new Error("callMcpTool missing");
       }
 
-      await callMcpTool.execute("tool-call-2", {
+      await this.executeTool(callMcpTool, "tool-call-2", {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
@@ -280,7 +339,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       if (!callMcpTool) {
         throw new Error("callMcpTool missing on continue");
       }
-      await callMcpTool.execute("tool-call-continue", {
+      await this.executeTool(callMcpTool, "tool-call-continue", {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
@@ -382,6 +441,30 @@ vi.mock("@/chat/pi/client", () => ({
   getGatewayApiKey: () => "test-gateway-key",
   getPiGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
+}));
+
+vi.mock("@/chat/services/guardian-action-review", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async (proposal: unknown) => {
+      guardianProposals.push(proposal);
+      if (guardianDecision.value === "unavailable") {
+        throw new Error("guardian provider unavailable");
+      }
+      return guardianDecision.value === "deny"
+        ? {
+            decision: "deny" as const,
+            reason: "The test policy denied this action.",
+            riskLevel: "high" as const,
+            userAuthorization: "low" as const,
+          }
+        : {
+            decision: "allow" as const,
+            reason: "This test exercises MCP runtime behavior.",
+            riskLevel: "low" as const,
+            userAuthorization: "high" as const,
+          };
+    },
+  }),
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => {
@@ -630,12 +713,15 @@ describe("executeAgentRun progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
     agentInitialSystemPrompts.length = 0;
+    agentAfterToolResults.length = 0;
     callToolMock.mockReset();
     clientOptions.length = 0;
     completeEmptyAssistantOnAbort.value = false;
     continueCallCount.value = 0;
     continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
+    guardianDecision.value = "allow";
+    guardianProposals.length = 0;
     listToolsMock.mockReset();
     searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
@@ -826,6 +912,74 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(sessionRecord).toMatchObject({
       state: "running",
     });
+  });
+
+  it("wires Guardian denial through the runtime before MCP execution", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    guardianDecision.value = "deny";
+
+    await executeAgentRun(
+      makeAgentRunRequest("help me", {
+        conversationId: "conversation-guardian-deny",
+        threadTs: "1712345.0099",
+        turnId: "turn-guardian-deny",
+      }),
+    );
+
+    expect(guardianProposals).toEqual([
+      expect.objectContaining({
+        input: {
+          arguments: { query: "hello" },
+          tool_name: "mcp__demo__ping",
+        },
+        tool: expect.objectContaining({
+          name: "mcp__demo__ping",
+        }),
+      }),
+    ]);
+    expect(callToolMock).not.toHaveBeenCalled();
+    expect(agentAfterToolResults).toEqual([
+      expect.objectContaining({
+        details: expect.objectContaining({
+          guardianActionRejection: expect.objectContaining({
+            actionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
+            decision: "deny",
+            priorRejection: expect.objectContaining({
+              input: {
+                arguments: { query: "hello" },
+                tool_name: "mcp__demo__ping",
+              },
+            }),
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it("escalates unavailable Guardian review to the agent-run boundary", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    guardianDecision.value = "unavailable";
+
+    const outcome = await executeAgentRun(
+      makeAgentRunRequest("help me", {
+        conversationId: "conversation-guardian-unavailable",
+        threadTs: "1712345.0100",
+        turnId: "turn-guardian-unavailable",
+      }),
+    );
+
+    expect(outcome).toMatchObject({
+      status: "completed",
+      result: {
+        diagnostics: {
+          outcome: "provider_error",
+        },
+        text: "",
+      },
+    });
+    expect(callToolMock).not.toHaveBeenCalled();
   });
 
   it("restores MCP providers inferred from prior Pi history before building a follow-up turn prompt", async () => {

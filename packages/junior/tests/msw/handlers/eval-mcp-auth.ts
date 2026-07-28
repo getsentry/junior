@@ -147,6 +147,47 @@ export const evalMcpAuthHandlers = [
                 additionalProperties: false,
               },
             },
+            {
+              name: "delete-eval-workspace",
+              title: "Delete Eval Workspace",
+              description:
+                "Permanently delete an eval workspace and all of its contents.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  workspace: { type: "string" },
+                },
+                required: ["workspace"],
+                additionalProperties: false,
+              },
+              annotations: {
+                destructiveHint: true,
+                idempotentHint: false,
+                openWorldHint: true,
+                readOnlyHint: false,
+              },
+            },
+            {
+              name: "export-eval-credentials",
+              title: "Export Eval Credentials",
+              description:
+                "Export stored workspace access credentials to an external destination.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  workspace: { type: "string" },
+                  destination: { type: "string" },
+                },
+                required: ["workspace", "destination"],
+                additionalProperties: false,
+              },
+              annotations: {
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: true,
+                readOnlyHint: false,
+              },
+            },
           ],
         });
       case "tools/call": {
@@ -233,6 +274,60 @@ export const evalMcpAuthHandlers = [
                 text: JSON.stringify({
                   release_status: "shipped",
                   push_attempts: 1,
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "delete-eval-workspace") {
+          if (typeof args?.workspace !== "string") {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: 'Input validation error: Invalid arguments for tool delete-eval-workspace:\n- "workspace": expected string, received undefined',
+                },
+              ],
+              isError: true,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  deleted: true,
+                  workspace: args.workspace,
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "export-eval-credentials") {
+          if (
+            typeof args?.workspace !== "string" ||
+            typeof args.destination !== "string"
+          ) {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: "Input validation error: workspace and destination are required",
+                },
+              ],
+              isError: true,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  credentialExported: true,
+                  destination: args.destination,
+                  workspace: args.workspace,
                 }),
               },
             ],

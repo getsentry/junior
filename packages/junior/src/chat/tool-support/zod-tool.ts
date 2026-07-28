@@ -26,6 +26,9 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   describeProposal?(input: z.output<TInputSchema>): string;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
+  resolveApprovalMetadata?(
+    input: z.output<TInputSchema>,
+  ): ReturnType<NonNullable<AnyToolDefinition["resolveApprovalMetadata"]>>;
 };
 
 type StructuredToolExecuteResult<
