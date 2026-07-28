@@ -6,7 +6,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 export function createReportProgressTool() {
   return zodTool({
     description:
-      "Update the user-visible assistant loading message with a short progress phase. For every non-trivial turn, call this early with the initial major work phase, then call it again only when the major phase meaningfully changes. Messages must be written in sentence case with a present-participle verb (e.g. 'Searching docs', 'Reviewing results', 'Running checks'). Skip trivial direct answers, generic filler, and minor substeps.",
+      "Update the user-visible assistant loading message with a short progress phase. Use this only for work with multiple substantive phases or a materially long wait. Skip short lookups, routine commands, generic filler, and minor substeps. After an initial update, call it again only when the major phase meaningfully changes. Messages must be written in sentence case with a present-participle verb (e.g. 'Searching docs', 'Reviewing results', 'Running checks').",
     inputSchema: z.object({
       message: z
         .string()

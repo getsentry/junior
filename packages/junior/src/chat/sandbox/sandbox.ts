@@ -228,7 +228,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       setToolCallSpanAttributes,
       fileSystem() {
         signal?.throwIfAborted();
-        return (fileSystemPromise ??= runtime.tools().then(({ fs }) => {
+        return (fileSystemPromise ??= runtime.tools(signal).then(({ fs }) => {
           signal?.throwIfAborted();
           return bindSandboxFileSystem(fs, signal);
         }));
@@ -236,7 +236,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       commandRunner() {
         signal?.throwIfAborted();
         return (commandRunnerPromise ??= runtime
-          .tools()
+          .tools(signal)
           .then(({ runCommand }) => {
             signal?.throwIfAborted();
             return async (input) =>
@@ -328,7 +328,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       "app.sandbox.command_length": command.length,
     });
     const { bash: executeBash, sessionId: activeSessionId } =
-      await runtime.tools();
+      await runtime.tools(context.signal);
     await clearEgressSignals(activeSessionId);
     const result = await withSandboxToolSpan(
       "bash",

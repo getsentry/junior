@@ -51,6 +51,34 @@ interface SandboxCredentials {
   projectId?: string;
 }
 
+interface SandboxAcquisition {
+  controller: AbortController;
+  promise: Promise<SandboxSession>;
+  settled: boolean;
+  waiters: number;
+}
+
+function sandboxFetchOptions(
+  signal?: AbortSignal,
+): { fetch: typeof globalThis.fetch } | Record<string, never> {
+  if (!signal) {
+    return {};
+  }
+
+  return {
+    fetch: (input, init) => {
+      const requestSignal =
+        init?.signal ?? (input instanceof Request ? input.signal : undefined);
+      return globalThis.fetch(input, {
+        ...init,
+        signal: requestSignal
+          ? AbortSignal.any([requestSignal, signal])
+          : signal,
+      });
+    },
+  };
+}
+
 interface SandboxToolExecutors {
   sessionId: string;
   bash: (input: {
@@ -73,8 +101,8 @@ interface SandboxToolExecutors {
 
 interface SandboxRuntime {
   sandboxRef(): SandboxRef | undefined;
-  acquire(): Promise<SandboxSession>;
-  tools(): Promise<SandboxToolExecutors>;
+  acquire(signal?: AbortSignal): Promise<SandboxSession>;
+  tools(signal?: AbortSignal): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   close(): void;
 }
@@ -148,7 +176,7 @@ export function createSandboxRuntime(
   let reportedSandboxRef = options.sandboxRef;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
-  let acquiringSandbox: Promise<SandboxSession> | undefined;
+  let acquiringSandbox: SandboxAcquisition | undefined;
   let keepAliveTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
 
@@ -304,9 +332,11 @@ export function createSandboxRuntime(
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
+    signal?: AbortSignal,
   ): Promise<SandboxSession> => {
     const resources = getSandboxResources();
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
+      signal?.throwIfAborted();
       const sandboxName =
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
@@ -323,7 +353,8 @@ export function createSandboxRuntime(
             },
             ...(resources ? { resources } : {}),
             ...(sandboxCredentials ?? {}),
-          } as Parameters<typeof Sandbox.create>[0]),
+            ...sandboxFetchOptions(signal),
+          }),
         );
       } catch (error) {
         if (
@@ -332,7 +363,7 @@ export function createSandboxRuntime(
         ) {
           throw error;
         }
-        await sleep(SNAPSHOT_BOOT_RETRY_DELAY_MS);
+        await sleep(SNAPSHOT_BOOT_RETRY_DELAY_MS, signal);
       }
     }
 
@@ -363,8 +394,11 @@ export function createSandboxRuntime(
     snapshot: Snapshot;
     sandboxCredentials: SandboxCredentials | undefined;
     sandboxName: string;
+    signal?: AbortSignal;
   }): Promise<SandboxSession> => {
-    const { runtime, snapshot, sandboxCredentials, sandboxName } = params;
+    const { runtime, snapshot, sandboxCredentials, sandboxName, signal } =
+      params;
+    signal?.throwIfAborted();
 
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
@@ -378,7 +412,8 @@ export function createSandboxRuntime(
             : {}),
           ...(resources ? { resources } : {}),
           ...(sandboxCredentials ?? {}),
-        } as Parameters<typeof Sandbox.create>[0]),
+          ...sandboxFetchOptions(signal),
+        }),
       );
     }
 
@@ -387,6 +422,7 @@ export function createSandboxRuntime(
         snapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
+        signal,
       );
     } catch (error) {
       if (!isMissingError(error)) {
@@ -401,20 +437,25 @@ export function createSandboxRuntime(
         timeoutMs,
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
+        signal,
       });
       if (!rebuiltSnapshot.snapshotId) {
         throw error;
       }
+      signal?.throwIfAborted();
 
       return await createSandboxFromSnapshot(
         rebuiltSnapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
+        signal,
       );
     }
   };
 
-  const createFreshSandbox = async (): Promise<SandboxSession> => {
+  const createFreshSandbox = async (
+    signal?: AbortSignal,
+  ): Promise<SandboxSession> => {
     const runtime = SANDBOX_RUNTIME;
     const sandboxCredentials = getVercelSandboxCredentials();
     const sandboxName = createSandboxName();
@@ -433,13 +474,16 @@ export function createSandboxRuntime(
           const snapshot = await resolveSnapshot({
             runtime,
             timeoutMs,
+            signal,
           });
+          signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
           return await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
             sandboxCredentials,
             sandboxName,
+            signal,
           });
         },
       );
@@ -503,7 +547,9 @@ export function createSandboxRuntime(
     return activeSandbox?.session ?? null;
   };
 
-  const tryRestoreHintedSandbox = async (): Promise<SandboxSession | null> => {
+  const tryRestoreHintedSandbox = async (
+    signal?: AbortSignal,
+  ): Promise<SandboxSession | null> => {
     const ref = sandboxRef;
     if (!ref) {
       return null;
@@ -525,7 +571,8 @@ export function createSandboxRuntime(
               name: ref.id,
               resume: true,
               ...(sandboxCredentials ?? {}),
-            } as Parameters<typeof Sandbox.get>[0]),
+              ...sandboxFetchOptions(signal),
+            }),
           ),
       );
     } catch (error) {
@@ -554,7 +601,9 @@ export function createSandboxRuntime(
     }
   };
 
-  const acquireSandbox = async (): Promise<SandboxSession> => {
+  const acquireSandbox = async (
+    signal?: AbortSignal,
+  ): Promise<SandboxSession> => {
     return await withSandboxSpan(
       "sandbox.acquire",
       "sandbox.acquire",
@@ -572,28 +621,69 @@ export function createSandboxRuntime(
           return cachedSandbox;
         }
 
-        const hintedSandbox = await tryRestoreHintedSandbox();
+        signal?.throwIfAborted();
+        const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;
         }
 
-        return await createFreshSandbox();
+        return await createFreshSandbox(signal);
       },
     );
   };
 
-  const getOrAcquireSandbox = async (): Promise<SandboxSession> => {
-    if (acquiringSandbox) {
-      return await acquiringSandbox;
-    }
+  const getOrAcquireSandbox = async (
+    signal?: AbortSignal,
+  ): Promise<SandboxSession> => {
+    for (;;) {
+      signal?.throwIfAborted();
+      let acquisition = acquiringSandbox;
+      if (!acquisition) {
+        const controller = new AbortController();
+        const startedAcquisition: SandboxAcquisition = {
+          controller,
+          promise: acquireSandbox(signal ? controller.signal : undefined),
+          settled: false,
+          waiters: 0,
+        };
+        const markSettled = () => {
+          startedAcquisition.settled = true;
+          if (acquiringSandbox === startedAcquisition) {
+            acquiringSandbox = undefined;
+          }
+        };
+        void startedAcquisition.promise.then(markSettled, markSettled);
+        acquiringSandbox = startedAcquisition;
+        acquisition = startedAcquisition;
+      }
 
-    const nextSandbox = acquireSandbox();
-    acquiringSandbox = nextSandbox;
-    try {
-      return await nextSandbox;
-    } finally {
-      if (acquiringSandbox === nextSandbox) {
-        acquiringSandbox = undefined;
+      acquisition.waiters += 1;
+      let removeAbortListener: (() => void) | undefined;
+      try {
+        if (!signal) {
+          return await acquisition.promise;
+        }
+        const aborted = new Promise<never>((_resolve, reject) => {
+          const onAbort = () => reject(signal.reason);
+          signal.addEventListener("abort", onAbort, { once: true });
+          removeAbortListener = () =>
+            signal.removeEventListener("abort", onAbort);
+        });
+        return await Promise.race([acquisition.promise, aborted]);
+      } catch (error) {
+        signal?.throwIfAborted();
+        if (!acquisition.controller.signal.aborted) {
+          throw error;
+        }
+        if (acquiringSandbox === acquisition) {
+          acquiringSandbox = undefined;
+        }
+      } finally {
+        removeAbortListener?.();
+        acquisition.waiters -= 1;
+        if (acquisition.waiters === 0 && !acquisition.settled) {
+          acquisition.controller.abort(signal?.reason);
+        }
       }
     }
   };
@@ -772,9 +862,13 @@ export function createSandboxRuntime(
     };
   };
 
-  const ensureReadySandbox = async (): Promise<SandboxSession> => {
-    const activeSandbox = await getOrAcquireSandbox();
+  const ensureReadySandbox = async (
+    signal?: AbortSignal,
+  ): Promise<SandboxSession> => {
+    const activeSandbox = await getOrAcquireSandbox(signal);
+    signal?.throwIfAborted();
     await probeSession(activeSandbox);
+    signal?.throwIfAborted();
     await extendKeepAlive(activeSandbox);
     startKeepAlive(activeSandbox);
     return activeSandbox;
@@ -784,11 +878,11 @@ export function createSandboxRuntime(
     sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
-    async acquire() {
-      return await getOrAcquireSandbox();
+    async acquire(signal) {
+      return await getOrAcquireSandbox(signal);
     },
-    async tools() {
-      return createToolExecutors(await ensureReadySandbox());
+    async tools(signal) {
+      return createToolExecutors(await ensureReadySandbox(signal));
     },
     async refreshNetworkPolicy(traceHeaders) {
       const active = activeSandbox;

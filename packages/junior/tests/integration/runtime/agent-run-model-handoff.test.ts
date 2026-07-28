@@ -8,17 +8,22 @@ const observations = vi.hoisted(() => ({
     role?: unknown;
     content?: Array<{ type?: unknown; text?: unknown }>;
   }>,
+  afterHandoffDescription: "",
+  afterHandoffProfiles: [] as string[],
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
   initialImagePart: undefined as
     | { type: unknown; data: unknown; mimeType: unknown }
     | undefined,
+  initialHandoffDescription: "",
+  initialHandoffProfiles: [] as string[],
   initialToolNames: [] as string[],
   mixedBatch: false,
   progressTool: false,
   providerCalls: 0,
   routerCalls: 0,
   requestedProfile: "handoff" as string | null | undefined,
+  requestedProfileSequence: [] as string[],
   requestHandoffAfterRouting: false,
   routedModelProfile: "standard",
   routedReasoningLevel: "high",
@@ -85,9 +90,13 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       const call = observations.providerCalls;
       const routedToHandoff =
         call === 1 && observations.routedModelProfile === "handoff";
+      const sequencedProfile = observations.requestedProfileSequence[call - 1];
       const shouldRequestHandoff =
-        call === 1 &&
-        (!routedToHandoff || observations.requestHandoffAfterRouting);
+        sequencedProfile !== undefined ||
+        (call === 1 &&
+          (!routedToHandoff || observations.requestHandoffAfterRouting));
+      const requestedProfile =
+        sequencedProfile ?? observations.requestedProfile;
       if (call === 1) {
         observations.initialModelId = model.id;
         observations.initialImagePart = (
@@ -106,12 +115,28 @@ vi.mock("@/chat/pi/traced-stream", () => ({
         observations.initialToolNames = (context.tools ?? []).map(
           (tool: { name: string }) => tool.name,
         );
+        observations.initialHandoffDescription =
+          (context.tools ?? []).find(
+            (tool: { name: string }) => tool.name === "handoff",
+          )?.description ?? "";
+        observations.initialHandoffProfiles =
+          (context.tools ?? []).find(
+            (tool: { name: string }) => tool.name === "handoff",
+          )?.parameters?.properties?.profile?.enum ?? [];
       } else {
         observations.afterHandoffModelId = model.id;
         observations.afterHandoffMessages = context.messages ?? [];
         observations.afterHandoffToolNames = (context.tools ?? []).map(
           (tool: { name: string }) => tool.name,
         );
+        observations.afterHandoffDescription =
+          (context.tools ?? []).find(
+            (tool: { name: string }) => tool.name === "handoff",
+          )?.description ?? "";
+        observations.afterHandoffProfiles =
+          (context.tools ?? []).find(
+            (tool: { name: string }) => tool.name === "handoff",
+          )?.parameters?.properties?.profile?.enum ?? [];
       }
 
       const text =
@@ -128,13 +153,15 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       if (shouldRequestHandoff) {
         content.push({
           type: "toolCall",
-          id: observations.progressTool ? "progress-call-1" : "handoff-call-1",
+          id: observations.progressTool
+            ? "progress-call-1"
+            : `handoff-call-${call}`,
           name: observations.progressTool ? "reportProgress" : "handoff",
           arguments: observations.progressTool
             ? { message: "Checking details" }
-            : observations.requestedProfile === undefined
+            : requestedProfile === undefined
               ? {}
-              : { profile: observations.requestedProfile },
+              : { profile: requestedProfile },
         });
         if (observations.mixedBatch && !observations.progressTool) {
           content.push({
@@ -230,15 +257,20 @@ describe("executeAgentRun model handoff", () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     observations.afterHandoffModelId = "";
     observations.afterHandoffMessages = [];
+    observations.afterHandoffDescription = "";
+    observations.afterHandoffProfiles = [];
     observations.afterHandoffToolNames = [];
     observations.initialModelId = "";
     observations.initialImagePart = undefined;
+    observations.initialHandoffDescription = "";
+    observations.initialHandoffProfiles = [];
     observations.initialToolNames = [];
     observations.mixedBatch = false;
     observations.progressTool = false;
     observations.providerCalls = 0;
     observations.routerCalls = 0;
     observations.requestedProfile = "handoff";
+    observations.requestedProfileSequence = [];
     observations.requestHandoffAfterRouting = false;
     observations.routedModelProfile = "standard";
     observations.routedReasoningLevel = "high";
@@ -365,7 +397,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.providerCalls).toBe(1);
   });
 
-  it("durably hands off when a routed model requests its active profile", async () => {
+  it("does not hand off again when a routed model requests its active profile", async () => {
     observations.routedModelProfile = "handoff";
     observations.requestHandoffAfterRouting = true;
     const conversationId = "local:test:routed-model-confirms-handoff";
@@ -383,23 +415,67 @@ describe("executeAgentRun model handoff", () => {
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
     expect(observations.providerCalls).toBe(2);
-    expect(observations.summaryCalls).toBe(1);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
+    ).toBe("standard");
     expect(
       (await getConversationEventStore().loadHistory(conversationId))
         .map((event) => event.data)
         .filter((event) => event.type === "handoff"),
-    ).toEqual([
+    ).toEqual([]);
+  });
+
+  it("can hand off twice when the second target was initially active", async () => {
+    observations.routedModelProfile = "handoff";
+    observations.requestedProfileSequence = ["coding", "handoff"];
+    const conversationId = "local:test:repeated-model-handoff";
+    const handoffResults: Array<{ ok: boolean; result?: unknown }> = [];
+
+    const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-repeated-model-handoff",
+      turnId: "turn-repeated-model-handoff",
+      input: { messageText: "Switch profiles as the work changes." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      observers: {
+        onToolResult: (result) => {
+          if (result.toolName === "handoff") {
+            handoffResults.push({
+              ok: result.ok,
+              ...(result.result !== undefined ? { result: result.result } : {}),
+            });
+          }
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.providerCalls).toBe(3);
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("handoff");
+    expect(handoffResults).toEqual([
       {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        reasoningLevel: "high",
-        triggeringToolCallId: "handoff-call-1",
-        summary: "Implement the requested change and verify it.",
-        replacementHistory: expectedHandoffReplacementHistory(),
+        ok: true,
+        result: {
+          model_profile: "coding",
+          ok: true,
+          status: "success",
+        },
+      },
+      {
+        ok: true,
+        result: {
+          model_profile: "handoff",
+          ok: true,
+          status: "success",
+        },
       },
     ]);
   });
@@ -440,6 +516,14 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames,
     );
+    expect(observations.initialHandoffDescription).toContain(
+      "Profiles: `handoff`, `coding`.",
+    );
+    expect(observations.afterHandoffDescription).toContain(
+      "Profiles: `coding`.",
+    );
+    expect(observations.initialHandoffProfiles).toEqual(["handoff", "coding"]);
+    expect(observations.afterHandoffProfiles).toEqual(["coding"]);
     expect(observations.summaryCalls).toBe(1);
     expect(observations.handoffStatusBeforeSummary).toBe(true);
     expect(

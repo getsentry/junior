@@ -14,6 +14,7 @@ interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
   cmd: string;
   cwd?: string;
   login?: boolean;
+  signal?: AbortSignal;
   sudo?: boolean;
 }
 
@@ -101,6 +102,7 @@ export async function runNonInteractiveCommand(
   const command: SandboxCommandInput = {
     ...buildNonInteractiveCommand(input),
     ...(input.cwd ? { cwd: input.cwd } : {}),
+    ...(input.signal ? { signal: input.signal } : {}),
     ...(input.sudo !== undefined ? { sudo: input.sudo } : {}),
   };
   return await sandbox.runCommand(command);

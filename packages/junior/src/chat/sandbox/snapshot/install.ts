@@ -12,6 +12,7 @@ async function runOrThrow(
   params: {
     cmd: string;
     args?: string[];
+    signal?: AbortSignal;
     sudo?: boolean;
   },
   label: string,
@@ -31,6 +32,7 @@ async function tryRun(
   params: {
     cmd: string;
     args?: string[];
+    signal?: AbortSignal;
     sudo?: boolean;
   },
 ): Promise<boolean> {
@@ -38,10 +40,14 @@ async function tryRun(
   return result.exitCode === 0;
 }
 
-async function installGh(sandbox: SandboxSession): Promise<void> {
+async function installGh(
+  sandbox: SandboxSession,
+  signal?: AbortSignal,
+): Promise<void> {
   const installed = await tryRun(sandbox, {
     cmd: "dnf",
     args: ["install", "-y", "gh"],
+    signal,
     sudo: true,
   });
   if (installed) {
@@ -55,6 +61,7 @@ async function installGh(sandbox: SandboxSession): Promise<void> {
       "addrepo",
       "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo",
     ],
+    signal,
     sudo: true,
   });
   if (!repoAdded) {
@@ -63,6 +70,7 @@ async function installGh(sandbox: SandboxSession): Promise<void> {
       {
         cmd: "dnf",
         args: ["install", "-y", "dnf-command(config-manager)"],
+        signal,
         sudo: true,
       },
       "dnf install dnf-command(config-manager)",
@@ -76,6 +84,7 @@ async function installGh(sandbox: SandboxSession): Promise<void> {
           "--add-repo",
           "https://cli.github.com/packages/rpm/gh-cli.repo",
         ],
+        signal,
         sudo: true,
       },
       "dnf config-manager --add-repo gh-cli.repo",
@@ -87,6 +96,7 @@ async function installGh(sandbox: SandboxSession): Promise<void> {
     {
       cmd: "dnf",
       args: ["install", "-y", "gh", "--repo", "gh-cli"],
+      signal,
       sudo: true,
     },
     "dnf install gh --repo gh-cli",
@@ -111,6 +121,7 @@ function filePath(url: string, sha256: string): string {
 async function installUrl(
   sandbox: SandboxSession,
   dependency: Extract<PluginRuntimeDependency, { type: "system"; url: string }>,
+  signal?: AbortSignal,
 ): Promise<void> {
   const rpmPath = filePath(dependency.url, dependency.sha256);
   await runOrThrow(
@@ -118,6 +129,7 @@ async function installUrl(
     {
       cmd: "curl",
       args: ["-fsSL", dependency.url, "-o", rpmPath],
+      signal,
     },
     `curl download ${dependency.url}`,
   );
@@ -125,6 +137,7 @@ async function installUrl(
   const checksum = await runNonInteractiveCommand(sandbox, {
     cmd: "sha256sum",
     args: [rpmPath],
+    signal,
   });
   const expected = dependency.sha256;
   const actual = checksum.stdout.trim().split(/\s+/)[0]?.toLowerCase();
@@ -147,6 +160,7 @@ async function installUrl(
     {
       cmd: "dnf",
       args: ["install", "-y", rpmPath],
+      signal,
       sudo: true,
     },
     `dnf install ${dependency.url}`,
@@ -157,6 +171,7 @@ async function installUrl(
 export async function dependencies(
   sandbox: SandboxSession,
   values: PluginRuntimeDependency[],
+  signal?: AbortSignal,
 ): Promise<void> {
   const system = values.filter(
     (
@@ -182,16 +197,18 @@ export async function dependencies(
       },
       async () => {
         for (const dependency of system) {
+          signal?.throwIfAborted();
           if ("url" in dependency) {
-            await installUrl(sandbox, dependency);
+            await installUrl(sandbox, dependency, signal);
           } else if (dependency.package === "gh") {
-            await installGh(sandbox);
+            await installGh(sandbox, signal);
           } else {
             await runOrThrow(
               sandbox,
               {
                 cmd: "dnf",
                 args: ["install", "-y", dependency.package],
+                signal,
                 sudo: true,
               },
               `dnf install ${dependency.package}`,
@@ -221,6 +238,7 @@ export async function dependencies(
               `${SANDBOX_WORKSPACE_ROOT}/.junior`,
               ...npm,
             ],
+            signal,
           },
           "npm install",
         );
@@ -233,6 +251,7 @@ export async function dependencies(
 export async function postinstall(
   sandbox: SandboxSession,
   commands: PluginRuntimePostinstallCommand[],
+  signal?: AbortSignal,
 ): Promise<void> {
   if (commands.length === 0) {
     return;
@@ -246,11 +265,13 @@ export async function postinstall(
     },
     async () => {
       for (const command of commands) {
+        signal?.throwIfAborted();
         const result = await runNonInteractiveCommand(sandbox, {
           cmd: command.cmd,
           args: command.args,
           login: true,
           pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
+          signal,
           ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
         });
         if (result.exitCode !== 0) {

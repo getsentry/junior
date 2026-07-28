@@ -52,4 +52,22 @@ describe("non-interactive shell commands", () => {
       ],
     });
   });
+
+  it("passes cancellation to the sandbox command", async () => {
+    const runCommand = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+    }));
+    const signal = new AbortController().signal;
+
+    await runNonInteractiveCommand(
+      { runCommand },
+      { cmd: "echo", args: ["ok"], signal },
+    );
+
+    expect(runCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ signal }),
+    );
+  });
 });

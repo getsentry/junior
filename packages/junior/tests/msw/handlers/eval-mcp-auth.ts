@@ -127,6 +127,26 @@ export const evalMcpAuthHandlers = [
                 additionalProperties: false,
               },
             },
+            {
+              name: "release-push",
+              title: "Release Push",
+              description: "Publish the eval release status.",
+              inputSchema: {
+                type: "object",
+                properties: {},
+                additionalProperties: false,
+              },
+            },
+            {
+              name: "release-status",
+              title: "Release Status",
+              description: "Return the observed eval release status.",
+              inputSchema: {
+                type: "object",
+                properties: {},
+                additionalProperties: false,
+              },
+            },
           ],
         });
       case "tools/call": {
@@ -184,6 +204,35 @@ export const evalMcpAuthHandlers = [
                       "state.closed_unmerged",
                     ],
                   },
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "release-push") {
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "duplicate push rejected",
+                  release_status: "shipped",
+                  push_attempts: 2,
+                }),
+              },
+            ],
+            isError: true,
+          });
+        }
+        if (toolName === "release-status") {
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  release_status: "shipped",
+                  push_attempts: 1,
                 }),
               },
             ],

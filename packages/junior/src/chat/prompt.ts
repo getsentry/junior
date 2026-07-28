@@ -333,10 +333,11 @@ const TOOL_POLICY_RULES = [
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
+  "- After changing files, name the changed paths and summarize the completed result in the final answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
   "- When a tool result includes a subscribable resource, use resource-event subscriptions for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the subscription can deliver. Use the suggested events when they fit and write a concise intent summary.",
-  "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis when that tool is available.",
+  "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis only when it offers a profile that better matches the task. Do not switch merely because the task involves code.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
@@ -360,7 +361,8 @@ const EXECUTION_CONTRACT_RULES = [
   "- Complete the full task, but report only the result and evidence the user needs; do not narrate every step, check, or detail.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
-  "- For non-trivial or long-running work, call `reportProgress` early when available, then only when the major phase changes. Routine tool calls should stay silent.",
+  "- Use `reportProgress` only for work with multiple substantive phases or a materially long wait. Skip short lookups and routine commands; after an initial update, call it again only when the major phase changes.",
+  "- When a tool outcome is unknown and may include side effects, inspect authoritative state before retrying. If state already reflects the intended result, do not repeat the mutation.",
 ];
 
 const CONVERSATION_RULES = [

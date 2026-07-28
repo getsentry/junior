@@ -389,6 +389,36 @@ function credentialTokenFromForwardURL(
     : undefined;
 }
 
+function mockAbortableSandboxCreate(name: string) {
+  let releaseFetch: () => void = () => {};
+  let requestSignal: AbortSignal | undefined;
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) =>
+      await new Promise<Response>((resolve, reject) => {
+        requestSignal = init?.signal ?? undefined;
+        releaseFetch = () => resolve(new Response());
+        const onAbort = () => reject(requestSignal?.reason);
+        if (requestSignal?.aborted) {
+          onAbort();
+          return;
+        }
+        requestSignal?.addEventListener("abort", onAbort, { once: true });
+      }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  sandboxCreateMock.mockImplementationOnce(
+    async (params: { fetch?: typeof globalThis.fetch }) => {
+      await params.fetch!("https://api.vercel.test/sandboxes");
+      return makeSandbox(name);
+    },
+  );
+  return {
+    fetchMock,
+    release: () => releaseFetch(),
+    signal: () => requestSignal,
+  };
+}
+
 function createApiError(
   status: number,
   statusText: string,
@@ -488,6 +518,7 @@ describe("createTestSandbox", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
@@ -678,6 +709,132 @@ describe("createTestSandbox", () => {
     ]);
 
     expect(firstExecutors.fs).toBe(secondExecutors.fs);
+  });
+
+  it("cancels sandbox acquisition with the tool signal", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    sandboxCreateMock.mockImplementationOnce(
+      async (params: { fetch?: typeof globalThis.fetch }) =>
+        await params.fetch!("https://api.vercel.test/sandboxes", {
+          signal: new AbortController().signal,
+        }),
+    );
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const controller = new AbortController();
+    const deadline = new Error("turn deadline");
+
+    const pending = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledOnce());
+    controller.abort(deadline);
+
+    await expect(pending).rejects.toBe(deadline);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.vercel.test/sandboxes",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("keeps a shared acquisition alive when its first caller is cancelled", async () => {
+    const acquisition = mockAbortableSandboxCreate("sbx_shared_after_abort");
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const firstReason = new Error("first turn ended");
+
+    const first = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: firstController.signal,
+    });
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledOnce());
+    const second = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: secondController.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    firstController.abort(firstReason);
+
+    await expect(first).rejects.toBe(firstReason);
+    expect(acquisition.signal()?.aborted).toBe(false);
+    acquisition.release();
+    await expect(second).resolves.toBeDefined();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a later caller cancel without aborting the shared acquisition", async () => {
+    const acquisition = mockAbortableSandboxCreate("sbx_shared_later_abort");
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const secondReason = new Error("second turn ended");
+
+    const first = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: firstController.signal,
+    });
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledOnce());
+    const second = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: secondController.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    secondController.abort(secondReason);
+
+    await expect(second).rejects.toBe(secondReason);
+    expect(acquisition.signal()?.aborted).toBe(false);
+    acquisition.release();
+    await expect(first).resolves.toBeDefined();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries an acquisition abandoned by all earlier callers", async () => {
+    mockAbortableSandboxCreate("sbx_abandoned");
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const controller = new AbortController();
+    const reason = new Error("caller stopped waiting");
+
+    const abandoned = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledOnce());
+
+    controller.abort(reason);
+    await expect(abandoned).rejects.toBe(reason);
+
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_recovered"));
+    const recovered = executor.execute({
+      toolName: "bash",
+      input: { command: "pwd" },
+      signal: new AbortController().signal,
+    });
+
+    await expect(recovered).resolves.toBeDefined();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not report a reference change when restoring the same sandbox", async () => {
@@ -1040,7 +1197,7 @@ describe("createTestSandbox", () => {
       signal: abortController.signal,
     });
 
-    await Promise.resolve();
+    await vi.waitFor(() => expect(sandbox.runCommand).toHaveBeenCalledOnce());
     abortController.abort();
     const response = await responsePromise;
 

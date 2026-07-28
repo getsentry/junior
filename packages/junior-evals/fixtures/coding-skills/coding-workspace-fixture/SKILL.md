@@ -1,6 +1,7 @@
 ---
 name: coding-workspace-fixture
 description: Use for eval coding fixture tasks involving the small TypeScript project under skills/coding-workspace-fixture/project.
+allowed-tools: bash readFile writeFile
 ---
 
 # Coding Workspace Fixture

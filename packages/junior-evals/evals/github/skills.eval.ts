@@ -63,19 +63,19 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   it("when an interrupted push applied remotely, verify it and do not push again", async ({
     run,
   }) => {
-    const pushCommand = "skills/github-push-recovery-fixture/push.sh";
+    const pushTool = "mcp__eval-operation__release-push";
+    const statusTool = "mcp__eval-operation__release-status";
     const result = await run({
       overrides: {
-        plugin_packages: ["@sentry/junior-github"],
-        skill_dirs: ["fixtures/github-push-recovery-skills"],
+        plugin_dirs: ["fixtures/plugins"],
         timeout_resume: {
-          tool_name: "bash",
-          arguments: { command: pushCommand },
+          tool_name: "callMcpTool",
+          arguments: { tool_name: pushTool, arguments: {} },
         },
       },
       initialEvents: [
         mention(
-          "Finish pushing the already-committed release-status change using the local push-recovery fixture, then tell me whether the remote has it.",
+          "/eval-operation The interrupted release push may already have applied. Reconcile its unknown outcome by checking release status first. Push only if that verification shows the release is not shipped, then report the observed remote state.",
         ),
       ],
       criteria: rubric({
@@ -93,21 +93,17 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     const calls = toolCalls(result.session);
     const pushCalls = calls.filter(
       (call) =>
-        call.name === "bash" &&
-        typeof call.arguments?.command === "string" &&
-        call.arguments.command.includes("github-push-recovery-fixture/push.sh"),
+        call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
     );
-    const remoteStateCall = calls.find(
+    const statusCall = calls.find(
       (call) =>
-        call.name === "bash" &&
+        call.name === "callMcpTool" &&
         call.status === "ok" &&
-        JSON.stringify(call.result)?.includes(
-          "remote_release_status=shipped push_attempts=1",
-        ) === true,
+        call.arguments?.tool_name === statusTool,
     );
 
     expect(pushCalls).toHaveLength(0);
-    expect(remoteStateCall).toMatchObject({ result: { ok: true } });
+    expect(statusCall).toBeDefined();
   });
 
   it("when asked about PR auth sequencing, explain automatic installation credentials", async ({
@@ -120,7 +116,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? Keep it short.",
+          "/github-code Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? This is an explanation-only question: answer from the skill instructions without inspecting a repository or running tools. Keep it short.",
         ),
       ],
       criteria: rubric({

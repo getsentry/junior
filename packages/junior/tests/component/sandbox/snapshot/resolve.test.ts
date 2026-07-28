@@ -219,6 +219,59 @@ describe("snapshot resolution", () => {
     expect(acquiredLockTtls).toEqual([90_000]);
   });
 
+  it("stops waiting for a shared build lock when the caller is cancelled", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    lockHeld = true;
+    const controller = new AbortController();
+    const reason = new Error("turn ended");
+
+    const resolving = resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      signal: controller.signal,
+      onProgress: (phase) => {
+        if (phase === "waiting_for_lock") {
+          controller.abort(reason);
+        }
+      },
+    });
+
+    await expect(resolving).rejects.toBe(reason);
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("passes cancellation into snapshot sandbox creation", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    const controller = new AbortController();
+    const reason = new Error("turn ended");
+    sandboxCreateMock.mockImplementation(
+      async ({ signal }: { signal?: AbortSignal }) =>
+        await new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    const resolving = resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => {
+      expect(sandboxCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+    controller.abort(reason);
+
+    await expect(resolving).rejects.toBe(reason);
+  });
+
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
     getRuntimeDependenciesMock.mockReturnValue([

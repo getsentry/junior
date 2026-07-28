@@ -110,6 +110,7 @@ async function build(
   value: profile.Profile,
   runtime: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   return await trace(
     "sandbox.snapshot.build",
@@ -125,14 +126,15 @@ async function build(
         await Sandbox.create({
           timeout: timeoutMs,
           runtime,
+          signal,
           ...(sandboxCredentials ?? {}),
           ...(resources ? { resources } : {}),
         }),
       );
 
       try {
-        await install.dependencies(sandbox, value.dependencies);
-        await install.postinstall(sandbox, value.postinstall);
+        await install.dependencies(sandbox, value.dependencies, signal);
+        await install.postinstall(sandbox, value.postinstall, signal);
         return await trace(
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",
@@ -140,7 +142,7 @@ async function build(
             "app.sandbox.snapshot.dependency_count": value.dependencyCount,
           },
           async () => {
-            const snapshot = await sandbox.snapshot();
+            const snapshot = await sandbox.snapshot({ signal });
             return snapshot.snapshotId;
           },
         );
@@ -165,7 +167,9 @@ async function withBuildLock(
   }>,
   canUseCachedSnapshot: (cached: CachedSnapshot) => boolean,
   onWaitingForLock?: () => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<LockResult> {
+  signal?.throwIfAborted();
   const state = getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
@@ -193,6 +197,7 @@ async function withBuildLock(
       const waitUntil =
         Date.now() + lockTtlMs + SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS;
       while (Date.now() < waitUntil) {
+        signal?.throwIfAborted();
         const cached = await getCachedSnapshot(profileHash);
         if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
           return {
@@ -217,9 +222,10 @@ async function withBuildLock(
           }
         }
 
-        await sleep(500);
+        await sleep(500, signal);
       }
 
+      signal?.throwIfAborted();
       const cached = await getCachedSnapshot(profileHash);
       if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
         return {
@@ -268,6 +274,7 @@ export async function resolve(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
   onProgress?: (phase: ProgressPhase) => void | Promise<void>;
+  signal?: AbortSignal;
 }): Promise<Snapshot> {
   return await trace(
     "sandbox.snapshot.resolve",
@@ -277,6 +284,7 @@ export async function resolve(params: {
       "app.sandbox.snapshot.force_rebuild": Boolean(params.forceRebuild),
     },
     async () => {
+      params.signal?.throwIfAborted();
       await params.onProgress?.("resolve_start");
       const currentProfile = profile.create(params.runtime);
       if (!currentProfile) {
@@ -341,6 +349,7 @@ export async function resolve(params: {
             currentProfile,
             params.runtime,
             params.timeoutMs,
+            params.signal,
           );
           await setCachedSnapshot({
             profileHash: currentProfile.hash,
@@ -356,6 +365,7 @@ export async function resolve(params: {
         async () => {
           await params.onProgress?.("waiting_for_lock");
         },
+        params.signal,
       );
 
       return {

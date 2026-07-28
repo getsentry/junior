@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelProfileSchema } from "@/chat/model-profile";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -12,7 +13,7 @@ export function createHandoffTool(
 ) {
   const profileSchema = z.enum(handoff.profiles);
   const handoffResultSchema = juniorToolResultSchema.extend({
-    model_profile: profileSchema,
+    model_profile: modelProfileSchema,
   });
   const profileNames = handoff.profiles
     .map((profile) => `\`${profile}\``)

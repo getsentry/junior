@@ -1,6 +1,6 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 const codingFixtureOverrides = {
   skill_dirs: ["fixtures/coding-skills"],
@@ -52,16 +52,16 @@ describeEval("Coding File Tools", slackEvals, (it) => {
   it("when making a targeted source edit, update the value and report the changed path", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: codingFixtureOverrides,
       initialEvents: [
         mention(
-          "In the eval coding fixture, change the default retry count from 2 to 3. Keep the reply brief and tell me which file changed.",
+          "/coding-workspace-fixture Change the default retry count from 2 to 3. Keep the reply brief and tell me which file changed.",
         ),
       ],
       criteria: rubric({
         pass: [
-          "The final reply identifies the changed config file and says the default retry count is now 3.",
+          "The final reply identifies project/src/config.ts and says the default retry count is now 3.",
         ],
         fail: [
           "Do not answer with only a plan or promise to edit later.",
@@ -69,6 +69,17 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(
+      toolCalls(result.session).some(
+        (call) =>
+          call.status === "ok" &&
+          (call.name === "bash" ||
+            call.name === "editFile" ||
+            call.name === "writeFile") &&
+          JSON.stringify(call.arguments).includes("project/src/config.ts"),
+      ),
+    ).toBe(true);
   });
 
   it("when comparing fixture behavior, cite the relevant files and leave them unchanged", async ({
@@ -78,7 +89,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
       overrides: codingFixtureOverrides,
       initialEvents: [
         mention(
-          "In the eval coding fixture, compare project/src/alerts.ts and project/docs/operations.md for emergency mode behavior. Summarize what each file says and do not change any files.",
+          "/coding-workspace-fixture Compare project/src/alerts.ts and project/docs/operations.md for emergency mode behavior. Summarize what each file says and do not change any files.",
         ),
       ],
       criteria: rubric({
@@ -96,10 +107,10 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     });
   });
 
-  it("when a coding request requires architecture reasoning, upgrade before analysis", async ({
+  it("when a coding request requires architecture reasoning, give a concrete recommendation", async ({
     run,
   }) => {
-    const result = await run({
+    await run({
       initialEvents: [
         mention(
           "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. Use only this description; no repository inspection is needed.",
@@ -116,50 +127,5 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ],
       }),
     });
-    expect(result.usage.model).toBe("openai/gpt-5.6-sol");
-  });
-
-  it("routes a coding task to the handoff model and keeps its workspace on the next turn", async ({
-    run,
-  }) => {
-    const thread = {
-      id: "thread-model-handoff",
-      channel_id: "CMODELHANDOFF",
-      thread_ts: "17000000.5400",
-    };
-    const result = await run({
-      overrides: codingFixtureOverrides,
-      initialEvents: [
-        mention(
-          "In the eval coding fixture, create skills/coding-workspace-fixture/project/handoff-proof.txt containing exactly `projection-cobalt-7319`, read it back, and report its exact contents.",
-          { thread },
-        ),
-      ],
-      events: [
-        threadMessage(
-          "Without rewriting it, run sha256sum on skills/coding-workspace-fixture/project/handoff-proof.txt and report the exact digest.",
-          { thread, is_mention: true },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant completes both turns; the first reply reports projection-cobalt-7319 and the second reports SHA-256 digest 2613e9a4578bc3a4de57451d7e553efcbce5df5002ca77628a962dc660804082.",
-          "The second turn hashes the file created in the first turn from the same workspace without rewriting it.",
-        ],
-        fail: [
-          "Do not answer with only a plan or promise to inspect the file later.",
-          "Do not report sandbox setup failure text.",
-        ],
-      }),
-    });
-
-    const calls = toolCalls(result.session);
-    expect(result.usage.model).toBe("openai/gpt-5.6-sol");
-    expect(
-      calls.some((call) => {
-        const args = JSON.stringify(call.arguments) ?? "";
-        return args.includes("sha256sum") && args.includes("handoff-proof.txt");
-      }),
-    ).toBe(true);
   });
 });

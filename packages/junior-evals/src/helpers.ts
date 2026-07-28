@@ -509,7 +509,6 @@ const GATEWAY_AUTH_FAILURE_PATTERNS = [
   "Missing AI gateway credentials",
   '"type":"authentication_error"',
 ];
-
 function formatBulletSection(
   title: string,
   items: readonly string[] | undefined,

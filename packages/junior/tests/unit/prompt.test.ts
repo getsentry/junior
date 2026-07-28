@@ -77,6 +77,22 @@ describe("prompt builders", () => {
     );
   });
 
+  it("requires safe mutation recovery and concise file-change reporting", () => {
+    const systemPrompt = buildSystemPrompt({
+      source: createLocalSource("local:test:prompt-contracts"),
+    });
+
+    expect(systemPrompt).toContain(
+      "inspect authoritative state before retrying",
+    );
+    expect(systemPrompt).toContain("do not repeat the mutation");
+    expect(systemPrompt).toContain("name the changed paths");
+    expect(systemPrompt).toContain(
+      "only when it offers a profile that better matches the task",
+    );
+    expect(systemPrompt).toContain("Skip short lookups and routine commands");
+  });
+
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

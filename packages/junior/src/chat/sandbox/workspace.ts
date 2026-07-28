@@ -95,7 +95,7 @@ export interface SandboxSession extends SandboxWorkspace {
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
-  snapshot(): Promise<{ snapshotId: string }>;
+  snapshot(options?: { signal?: AbortSignal }): Promise<{ snapshotId: string }>;
   stop(): Promise<unknown>;
   update(params: { networkPolicy?: NetworkPolicy }): Promise<void>;
 }
@@ -159,9 +159,9 @@ export function createSandboxSession(
         stderr,
       };
     },
-    snapshot() {
+    snapshot(options) {
       return run(async () => {
-        const snapshot = await session.snapshot();
+        const snapshot = await session.snapshot(options);
         return { snapshotId: snapshot.snapshotId };
       });
     },

@@ -128,7 +128,10 @@ import {
   compactActiveContextIfNeeded,
   compactContextForHandoff,
 } from "@/chat/services/context-compaction";
-import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+import {
+  createHandoffTool,
+  HANDOFF_TOOL_NAME,
+} from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -677,19 +680,27 @@ async function executeAgentRunInPrivacyContext(
       activeModelProfile = args.profile;
       activeModelId = target.modelId;
     };
-    const requestHandoff = {
-      profiles: handoffProfiles,
-      execute: async (
-        profile: ModelProfile,
-        options: { signal?: AbortSignal; toolCallId: string },
-      ) =>
-        await scheduleHandoff({
-          profile,
-          signal: options.signal,
-          sourceMessages: [...agent!.state.messages],
-          triggeringToolCallId: options.toolCallId,
-        }),
+    const handoffControlFor = (activeProfile: ModelProfile) => {
+      const profiles = handoffProfiles.filter(
+        (profile) => profile !== activeProfile,
+      );
+      return profiles.length > 0
+        ? {
+            profiles: profiles as [ModelProfile, ...ModelProfile[]],
+            execute: async (
+              profile: ModelProfile,
+              options: { signal?: AbortSignal; toolCallId: string },
+            ) =>
+              await scheduleHandoff({
+                profile,
+                signal: options.signal,
+                sourceMessages: [...agent!.state.messages],
+                triggeringToolCallId: options.toolCallId,
+              }),
+          }
+        : undefined;
     };
+    const requestHandoff = handoffControlFor(activeModelProfile);
 
     setTags({
       ...runLogContext,
@@ -737,7 +748,32 @@ async function executeAgentRunInPrivacyContext(
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    const toolsAfterHandoff = wiring.agentTools;
+    const toolsWithoutHandoff = wiring.agentTools.filter(
+      (tool) => tool.name !== HANDOFF_TOOL_NAME,
+    );
+    const handoffAgentTool = wiring.agentTools.find(
+      (tool) => tool.name === HANDOFF_TOOL_NAME,
+    );
+    const toolsForActiveProfile = () => {
+      const handoff = handoffControlFor(activeModelProfile);
+      if (!handoff) {
+        return toolsWithoutHandoff;
+      }
+      if (!handoffAgentTool) {
+        throw new Error("Handoff control is missing its Pi tool");
+      }
+      const definition = createHandoffTool(handoff);
+      return wiring.agentTools.map((tool) =>
+        tool.name === HANDOFF_TOOL_NAME
+          ? {
+              ...handoffAgentTool,
+              description: definition.description,
+              parameters: definition.inputSchema,
+              prepareArguments: definition.prepareArguments,
+            }
+          : tool,
+      );
+    };
 
     // ── Prompt context ───────────────────────────────────────────────
     const {
@@ -779,7 +815,8 @@ async function executeAgentRunInPrivacyContext(
       agent!.state.messages = replacement;
       agent!.state.model = model;
       agent!.state.thinkingLevel = thinkingLevel;
-      agent!.state.tools = toolsAfterHandoff;
+      const tools = toolsForActiveProfile();
+      agent!.state.tools = tools;
       runResume.setBeforeMessageCount(replacement.length);
       runResume.setTurnStartMessageIndex(0);
       runResume.adoptCommittedBoundary(replacement);
@@ -792,7 +829,7 @@ async function executeAgentRunInPrivacyContext(
         context: {
           systemPrompt: baseInstructions,
           messages: replacement,
-          tools: toolsAfterHandoff,
+          tools,
         },
         model,
         thinkingLevel,
