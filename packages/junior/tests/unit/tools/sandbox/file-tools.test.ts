@@ -108,6 +108,57 @@ describe("sandbox file tools", () => {
     expect(JSON.parse(result.content[0].text)).toEqual(result.details);
   });
 
+  it("continues readFile at the first whole line excluded by the character limit", () => {
+    const line = "a".repeat(30_000);
+    const result = sliceFileContent({
+      content: `${line}\n${line}\nthree`,
+      path: "generated.txt",
+    });
+
+    expect(result.details).toMatchObject({
+      truncated: true,
+      character_limit_reached: 60_000,
+      data: {
+        content: line,
+        end_line: 1,
+        truncation_reasons: ["60000 character output limit reached."],
+      },
+      continuation: {
+        arguments: {
+          path: "generated.txt",
+          offset: 2,
+          limit: 1000,
+        },
+        reason: "character output limit reached; file has more lines",
+      },
+    });
+    expect(result.details).not.toHaveProperty("line_truncated");
+    expect(result.content[0].text.length).toBeLessThan(61_000);
+  });
+
+  it("bounds and reports an individually oversized readFile line", () => {
+    const result = sliceFileContent({
+      content: "a".repeat(100_000),
+      path: "generated.json",
+    });
+
+    expect(result.details).toMatchObject({
+      truncated: true,
+      character_limit_reached: 60_000,
+      line_truncated: true,
+      data: {
+        end_line: 1,
+        truncation_reasons: [
+          "60000 character output limit reached.",
+          "Line 1 was truncated.",
+        ],
+      },
+    });
+    expect(result.details.data.content).toHaveLength(60_000);
+    expect(result.details).not.toHaveProperty("continuation");
+    expect(result.content[0].text.length).toBeLessThan(61_000);
+  });
+
   it("applies exact edits and preserves line endings", async () => {
     const memory = createMemoryFs({
       "src/app.ts": "one\r\ntwo\r\nthree\r\n",
