@@ -1,4 +1,5 @@
 const MAX_OAUTH_ERROR_BODY_BYTES = 16 * 1024;
+const MAX_OAUTH_ERROR_BODY_READS = MAX_OAUTH_ERROR_BODY_BYTES;
 
 export type OAuthProviderErrorPhase = "token_exchange" | "token_refresh";
 
@@ -54,10 +55,15 @@ export async function readBoundedOAuthErrorBody(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let bytesRead = 0;
+  let reads = 0;
   let text = "";
 
   try {
-    while (bytesRead < MAX_OAUTH_ERROR_BODY_BYTES) {
+    while (
+      bytesRead < MAX_OAUTH_ERROR_BODY_BYTES &&
+      reads < MAX_OAUTH_ERROR_BODY_READS
+    ) {
+      reads += 1;
       const { done, value } = await reader.read();
       if (done) {
         return text + decoder.decode();

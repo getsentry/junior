@@ -27,6 +27,28 @@ describe("OAuth error responses", () => {
     expect(pulls).toBeLessThan(100);
   });
 
+  it("bounds provider streams that keep yielding empty chunks", async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array());
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    const text = await readBoundedOAuthErrorBody(
+      new Response(body, { status: 500 }),
+    );
+
+    expect(text).toBe("");
+    expect(cancelled).toBe(true);
+    expect(pulls).toBe(16 * 1024);
+  });
+
   it("preserves the HTTP status when the provider body stream fails", async () => {
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
