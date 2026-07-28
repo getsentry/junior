@@ -91,10 +91,16 @@ export function addAgentTurnUsage(
       reasoningTokens = (reasoningTokens ?? 0) + reasoning;
     }
     if (usage.cost) {
-      for (const field of [...COST_COMPONENT_FIELDS, "total"] as const) {
+      let componentCostTotal: number | undefined;
+      for (const field of COST_COMPONENT_FIELDS) {
         const value = getFiniteCost(usage.cost[field]);
         if (value === undefined) continue;
         cost[field] = addCost(cost[field], value);
+        componentCostTotal = addCost(componentCostTotal, value);
+      }
+      const total = getFiniteCost(usage.cost.total) ?? componentCostTotal;
+      if (total !== undefined) {
+        cost.total = addCost(cost.total, total);
       }
     }
     const usageComponentTotal = getComponentTotal(usage);

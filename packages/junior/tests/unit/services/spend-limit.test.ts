@@ -5,6 +5,7 @@ import {
   TurnSpendCostUnavailableError,
   TurnSpendLimitExceededError,
 } from "@/chat/services/spend-limit";
+import { addAgentTurnUsage } from "@/chat/usage";
 
 describe("turn spend limit", () => {
   it("uses the provider total when present", () => {
@@ -37,6 +38,18 @@ describe("turn spend limit", () => {
       enforceTurnSpendLimit({
         maxSpendUsd: 1,
         usage: { cost: { total: 1 } },
+      }),
+    ).toThrow(TurnSpendLimitExceededError);
+  });
+
+  it("counts total-only and component-only usage together", () => {
+    expect(() =>
+      enforceTurnSpendLimit({
+        maxSpendUsd: 1,
+        usage: addAgentTurnUsage(
+          { cost: { total: 0.75 } },
+          { cost: { input: 0.15, output: 0.1 } },
+        ),
       }),
     ).toThrow(TurnSpendLimitExceededError);
   });

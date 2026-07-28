@@ -56,6 +56,21 @@ describe("addAgentTurnUsage", () => {
     });
   });
 
+  it("derives missing slice totals before aggregating cost", () => {
+    expect(
+      addAgentTurnUsage(
+        { cost: { total: 1 } },
+        { cost: { input: 0.2, output: 0.3 } },
+      ),
+    ).toEqual({
+      cost: {
+        input: 0.2,
+        output: 0.3,
+        total: 1.5,
+      },
+    });
+  });
+
   it("recognizes cost-only usage records", () => {
     expect(hasAgentTurnUsage({ cost: { total: 0.01 } })).toBe(true);
   });
