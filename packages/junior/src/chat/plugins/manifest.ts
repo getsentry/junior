@@ -18,7 +18,6 @@ import type {
 import { inlineManifestSource } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
-const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const TARGET_FLAG_RE = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/;
 const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;

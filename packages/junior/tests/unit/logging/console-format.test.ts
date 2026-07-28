@@ -80,7 +80,7 @@ describe("console log formatting", () => {
     expect(infoSpy).toHaveBeenCalledTimes(1);
     const line = stripAnsi(String(infoSpy.mock.calls[0]?.[0] ?? ""));
     expect(line).toMatch(
-      /^\d{2}:\d{2}:\d{2} INF Loaded plugin github caps=8 config=1 mcp=no$/,
+      /^\d{2}:\d{2}:\d{2} INF Loaded plugin github config=1 mcp=no$/,
     );
     expect(line).not.toContain("event.name=");
     expect(line).not.toContain("file.directory=");

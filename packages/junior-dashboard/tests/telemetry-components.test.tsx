@@ -1162,7 +1162,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduler.scheduled-tasks<");
     expect(html).toContain(">scheduled-tasks<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
