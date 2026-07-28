@@ -437,54 +437,58 @@ export async function reviewToolAction(
   if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
     return;
   }
-  const resolved = tool.resolveApprovalMetadata?.(input);
-  if (effectiveApprovalMode(tool, resolved) === "approve") {
-    return;
-  }
-  if (!review) {
-    throw new ToolActionReviewUnavailableError();
-  }
-
-  assertAuthoritativeContext(review.context);
-  const proposal = buildProposal(
-    toolName,
-    tool,
-    input,
-    resolved,
-    review.context,
-    review.priorRejections,
-  );
-  const denialKey = rejectionKey(
-    toolName,
-    input,
-    proposal.context.userIntent,
-    "deny",
-  );
-  const askKey = rejectionKey(
-    toolName,
-    input,
-    proposal.context.userIntent,
-    "ask",
-  );
-  const priorRejection = review.rejectedActions.find(
-    (rejection) => rejection.key === denialKey || rejection.key === askKey,
-  );
-  if (priorRejection) {
-    throw new ToolActionRejectedError(
-      priorRejection.decision,
-      `Guardian previously rejected this exact action: ${priorRejection.reason}`,
-      {
-        ...priorRejection,
-        reviewedAction: priorRejection.reviewedAction,
-      },
-    );
-  }
-  const reviewOptions = signal ? { signal } : {};
+  let proposal: ToolActionProposal;
   let decision: ToolActionReviewDecision;
   try {
-    decision = await review.reviewer.review(proposal, reviewOptions);
+    const resolved = tool.resolveApprovalMetadata?.(input);
+    if (effectiveApprovalMode(tool, resolved) === "approve") {
+      return;
+    }
+    if (!review) {
+      throw new ToolActionReviewUnavailableError();
+    }
+
+    assertAuthoritativeContext(review.context);
+    proposal = buildProposal(
+      toolName,
+      tool,
+      input,
+      resolved,
+      review.context,
+      review.priorRejections,
+    );
+    const denialKey = rejectionKey(
+      toolName,
+      input,
+      proposal.context.userIntent,
+      "deny",
+    );
+    const askKey = rejectionKey(
+      toolName,
+      input,
+      proposal.context.userIntent,
+      "ask",
+    );
+    const priorRejection = review.rejectedActions.find(
+      (rejection) => rejection.key === denialKey || rejection.key === askKey,
+    );
+    if (priorRejection) {
+      throw new ToolActionRejectedError(
+        priorRejection.decision,
+        `Guardian previously rejected this exact action: ${priorRejection.reason}`,
+        {
+          ...priorRejection,
+          reviewedAction: priorRejection.reviewedAction,
+        },
+      );
+    }
+    decision = await review.reviewer.review(proposal, signal ? { signal } : {});
   } catch (error) {
-    if (signal?.aborted) {
+    if (
+      signal?.aborted ||
+      error instanceof ToolActionRejectedError ||
+      error instanceof ToolActionReviewUnavailableError
+    ) {
       throw error;
     }
     throw new ToolActionReviewUnavailableError({ cause: error });

@@ -282,6 +282,67 @@ describe("tool action review", () => {
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "approval metadata",
+      (
+        tool: AnyToolDefinition,
+        _actionReview: ToolActionReview,
+        failure: Error,
+      ) => {
+        tool.resolveApprovalMetadata = () => {
+          throw failure;
+        };
+      },
+    ],
+    [
+      "proposal description",
+      (
+        tool: AnyToolDefinition,
+        _actionReview: ToolActionReview,
+        failure: Error,
+      ) => {
+        tool.describeProposal = () => {
+          throw failure;
+        };
+      },
+    ],
+    [
+      "conversation evidence",
+      (
+        _tool: AnyToolDefinition,
+        actionReview: ToolActionReview,
+        failure: Error,
+      ) => {
+        actionReview.context.evidence = () => {
+          throw failure;
+        };
+      },
+    ],
+  ])(
+    "fails closed when %s preparation fails",
+    async (_name, arrangeFailure) => {
+      const reviewer = { review: vi.fn() };
+      const tool = definition({ approvalMode: "review" });
+      const actionReview = reviewContext(reviewer);
+      const failure = new Error("review setup failed");
+      arrangeFailure(tool, actionReview, failure);
+
+      await expect(
+        reviewToolAction(
+          "generateReport",
+          tool,
+          { reportId: "weekly" },
+          actionReview,
+        ),
+      ).rejects.toMatchObject({
+        cause: failure,
+        name: "ToolActionReviewUnavailableError",
+      });
+      expect(reviewer.review).not.toHaveBeenCalled();
+    },
+  );
+
   it("fails closed when Guardian cannot produce a decision", async () => {
     const action = reviewToolAction(
       "generateReport",
