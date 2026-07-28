@@ -14,7 +14,7 @@ function normalizeScope(rawScope: string): string {
   return String(rawScope).trim().replace(/-/g, "_");
 }
 
-/** Validate the configured GitHub App capability and read-token declaration. */
+/** Validate the configured GitHub App read-token permission declaration. */
 export function normalizePermissions(
   permissions: GitHubAppPermissions | undefined,
 ): GitHubAppPermissions | undefined {
@@ -68,20 +68,4 @@ export function readGrantPermissions(
     }
   }
   return readOnly;
-}
-
-/** Expose configured permissions as plugin capabilities for host policy checks. */
-export function permissionCapabilities(
-  permissions: GitHubAppPermissions | undefined,
-): string[] | undefined {
-  if (permissions === undefined) {
-    return undefined;
-  }
-
-  return Object.entries(permissions)
-    .map(([normalizedScope, rawLevel]) => {
-      const scope = normalizedScope.replace(/_/g, "-");
-      return `github.${scope}.${rawLevel}`;
-    })
-    .sort();
 }

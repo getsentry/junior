@@ -100,7 +100,6 @@ function sentryPlugin() {
       name: "sentry",
       displayName: "Sentry",
       description: "Sentry",
-      capabilities: ["sentry.api"],
       configKeys: [],
       envVars: {
         SENTRY_BOT_EMAIL: {},
@@ -125,7 +124,6 @@ function githubPlugin() {
       name: "github",
       displayName: "GitHub",
       description: "GitHub",
-      capabilities: ["github.api"],
       configKeys: [],
       envVars: {},
       commandEnv: {
@@ -143,7 +141,6 @@ function headerOnlyPlugin() {
       name: "header-only",
       displayName: "Header Only",
       description: "Header-only",
-      capabilities: ["header-only.api"],
       configKeys: [],
       envVars: {},
       commandEnv: {

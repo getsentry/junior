@@ -10,7 +10,6 @@ export const healthReportSchema = z
 
 export const pluginSchema = z
   .object({
-    capabilities: z.array(z.string()),
     configKeys: z.array(z.string()),
     description: z.string(),
     displayName: z.string(),

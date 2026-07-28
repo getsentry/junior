@@ -1,4 +1,4 @@
-import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { ChevronDown, KeyRound, LogOut, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -106,6 +106,14 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
           >
             <UserRound aria-hidden="true" size={16} strokeWidth={2} />
             My profile
+          </Link>
+          <Link
+            className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
+            onClick={() => setOpen(false)}
+            to="/settings/api-tokens"
+          >
+            <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
+            API tokens
           </Link>
           <button
             className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#d6d6d6] transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"

@@ -143,7 +143,6 @@ describe("jr-rpc custom command", () => {
             name: "example",
             displayName: "Example",
             description: "Example plugin",
-            capabilities: ["example.search"],
             configKeys: ["example.repo"],
           },
         },
@@ -166,7 +165,6 @@ describe("jr-rpc custom command", () => {
             name: "example",
             displayName: "Example",
             description: "Example plugin",
-            capabilities: ["example.search"],
             configKeys: ["example.repo"],
           },
         ]),
@@ -217,7 +215,6 @@ describe("jr-rpc custom command", () => {
             name: "cloudflare",
             displayName: "Cloudflare",
             description: "Cloudflare plugin",
-            capabilities: [],
             configKeys: [
               "cloudflare.account.id",
               "cloudflare.zone.id",
@@ -258,7 +255,6 @@ describe("jr-rpc custom command", () => {
             name: "cloudflare",
             displayName: "Cloudflare",
             description: "Cloudflare plugin",
-            capabilities: [],
             configKeys: [
               "cloudflare.account.id",
               "cloudflare.zone.id",

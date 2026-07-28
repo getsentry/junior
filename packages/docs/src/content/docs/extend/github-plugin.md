@@ -40,7 +40,7 @@ export const plugins = defineJuniorPlugins([
 
 Junior requests read-level installation tokens for read traffic. Allowlisted writes receive a repository-scoped token with the complete permission envelope approved on the GitHub App installation, so a branch push and the following pull request operation cannot receive mismatched permissions. Unsupported writes are still denied by the egress policy instead of borrowing a user token.
 
-You can optionally declare `appPermissions` when registering the plugin. Junior uses that declaration to advertise capabilities and avoid an installation lookup when downscoping read tokens; it does not downscope write tokens. Keep the declaration aligned with the permissions approved in the GitHub App settings.
+You can optionally declare `appPermissions` when registering the plugin. Junior uses that declaration to avoid an installation lookup when downscoping read tokens; it does not downscope write tokens. Keep the declaration aligned with the permissions approved in the GitHub App settings.
 
 ## Configure environment variables
 

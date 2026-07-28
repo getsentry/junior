@@ -2,9 +2,6 @@ name: cloudflare
 display-name: Cloudflare
 description: Cloudflare production operations — Workers monitoring, deployments, builds, logs, DNS, and observability via the Cloudflare API MCP server
 
-capabilities:
-  - api
-
 config-keys:
   - account.id
   - zone.id

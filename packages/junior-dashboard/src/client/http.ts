@@ -49,6 +49,33 @@ export async function patch<T>(
   return schema.parse(await response.json());
 }
 
+/** Send one authenticated POST request and validate its response. */
+export async function post<T>(
+  schema: ZodType<T>,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(path, {
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+  return schema.parse(await response.json());
+}
+
+/** Delete one authenticated dashboard resource. */
+export async function deleteDashboardResource(path: string): Promise<void> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    method: "DELETE",
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,

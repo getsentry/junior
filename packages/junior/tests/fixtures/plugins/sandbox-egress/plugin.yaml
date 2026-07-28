@@ -2,9 +2,6 @@ name: sandbox-egress-test
 display-name: Sandbox Egress Test
 description: Integration fixture for sandbox egress credential proxying
 
-capabilities:
-  - sandbox-egress-test.api
-
 credentials:
   type: oauth-bearer
   domains:

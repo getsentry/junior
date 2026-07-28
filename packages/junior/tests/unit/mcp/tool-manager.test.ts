@@ -72,7 +72,6 @@ function buildPlugin(
       name,
       displayName: "Demo",
       description: "Demo MCP plugin",
-      capabilities: [],
       configKeys: [],
       mcp: {
         transport: "http",

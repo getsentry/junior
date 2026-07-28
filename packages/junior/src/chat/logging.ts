@@ -161,11 +161,7 @@ const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
   "url.path",
   "user_agent.original",
 ]);
-const CONSOLE_DROP_WHEN_COUNTED_KEYS = new Set([
-  "app.capability.names",
-  "app.capability.providers",
-  "app.config.keys",
-]);
+const CONSOLE_DROP_WHEN_COUNTED_KEYS = new Set(["app.config.keys"]);
 const CONSOLE_PREVIEW_KEYS = new Set([
   "gen_ai.input.messages",
   "gen_ai.output.messages",
@@ -833,7 +829,6 @@ function shouldShowPrettyCorrelation(eventName: string): boolean {
   return !(
     eventName === "plugin_loaded" ||
     eventName === "startup_discovery_summary" ||
-    eventName === "capability_catalog_loaded" ||
     eventName.endsWith("_loaded")
   );
 }
@@ -856,10 +851,6 @@ function getPrettyConsoleSummaryTokens(
   );
   pushPrettyConsoleToken(
     tokens,
-    numericConsoleToken("caps", attributes["app.plugin.capability_count"]),
-  );
-  pushPrettyConsoleToken(
-    tokens,
     numericConsoleToken("config", attributes["app.plugin.config_key_count"]),
   );
   pushPrettyConsoleToken(
@@ -877,10 +868,6 @@ function getPrettyConsoleSummaryTokens(
   pushPrettyConsoleToken(
     tokens,
     numericConsoleToken("skills", attributes["app.skill.count"]),
-  );
-  pushPrettyConsoleToken(
-    tokens,
-    numericConsoleToken("capabilities", attributes["app.capability.count"]),
   );
   pushPrettyConsoleToken(
     tokens,

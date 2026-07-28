@@ -42,7 +42,6 @@ export default defineConfig({
     "@vercel/queue",
     "@vercel/sandbox",
     "ai",
-    "bash-tool",
     "chat",
     "commander",
     "just-bash",

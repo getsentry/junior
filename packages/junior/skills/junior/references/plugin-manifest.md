@@ -18,7 +18,6 @@ description: Internal provider workflows
 
 | Field                  | Purpose                     | Rules                                                                               |
 | ---------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `capabilities`         | provider permissions        | short tokens, qualified as `<plugin>.<capability>`                                  |
 | `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`                                         |
 | `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                                                       |
 | `domains`              | header injection domains    | required with `api-headers`                                                         |

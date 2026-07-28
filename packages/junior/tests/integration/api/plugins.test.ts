@@ -13,7 +13,6 @@ describe("plugins API route", () => {
       inlineManifests: [
         {
           manifest: {
-            capabilities: ["issues", "pull-requests"],
             configKeys: ["github.organization"],
             description: "GitHub development workflows.",
             displayName: "GitHub",
@@ -30,7 +29,6 @@ describe("plugins API route", () => {
     expect(response.status).toBe(200);
     expect(pluginsSchema.parse(await response.json())).toEqual([
       {
-        capabilities: ["github.issues", "github.pull-requests"],
         configKeys: ["github.organization"],
         description: "GitHub development workflows.",
         displayName: "GitHub",

@@ -13,11 +13,6 @@ describe("inline plugin manifests", () => {
   it("rejects invalid values instead of dropping them before validation", () => {
     const cases: Array<[string, Record<string, unknown>, string]> = [
       [
-        "capabilities",
-        { capabilities: null },
-        "Plugin bad-capabilities capabilities must be an array when provided",
-      ],
-      [
         "config-keys",
         { configKeys: null },
         "Plugin bad-config-keys config-keys must be an array when provided",
@@ -49,15 +44,6 @@ describe("inline plugin manifests", () => {
   });
 
   it("lets the manifest parser report malformed inline tokens", () => {
-    expect(() =>
-      parse({
-        name: "bad-capability-token",
-        displayName: "Bad Capability Token",
-        description: "Bad inline manifest",
-        capabilities: [123],
-      }),
-    ).toThrow("Invalid input: expected string");
-
     expect(() =>
       parse({
         name: "bad-target-token",

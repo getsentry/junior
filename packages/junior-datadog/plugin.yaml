@@ -6,9 +6,6 @@ config-keys:
   - env
   - service
 
-capabilities:
-  - api
-
 # Datadog orgs are region-pinned. Pup routes requests to api.${DATADOG_SITE}.
 # Deployment env vars use DATADOG_* names; Pup receives DD_* command env.
 # Non-US1 operators set DATADOG_SITE to their site host (e.g. us5.datadoghq.com,

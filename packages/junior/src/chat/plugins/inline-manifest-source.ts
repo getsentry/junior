@@ -117,11 +117,6 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "description", manifest.description);
   setDefined(
     result,
-    "capabilities",
-    inlineTokenListSource(manifest.name, manifest.capabilities),
-  );
-  setDefined(
-    result,
     "config-keys",
     inlineTokenListSource(manifest.name, manifest.configKeys),
   );

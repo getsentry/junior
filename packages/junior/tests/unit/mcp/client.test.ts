@@ -106,7 +106,6 @@ function buildPlugin() {
       name: "notion",
       displayName: "Notion",
       description: "Notion MCP",
-      capabilities: [],
       configKeys: [],
       mcp: {
         transport: "http" as const,

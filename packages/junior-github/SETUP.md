@@ -116,11 +116,11 @@ githubPlugin({
 });
 ```
 
-Junior records these permissions as plugin capabilities. Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. Installation-write token requests intentionally omit the `permissions` field, so GitHub applies the complete permission envelope approved on the App installation. GitHub remains the source of truth for whether a permission name or level exists.
+Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. Installation-write token requests intentionally omit the `permissions` field, so GitHub applies the complete permission envelope approved on the App installation. GitHub remains the source of truth for whether a permission name or level exists.
 
 GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. Repository-scoped installation tokens instead use the App permission envelope and installation repository access without borrowing the requesting user's authority. GitHub returns an empty `scope` value for user-to-server tokens, so Junior cannot verify granted scopes from the token response.
 
-If you pass `additionalUserScopes`, Junior includes those values in the authorization URL and records the requested scope string as a local reauthorization contract. This does not expand or prove GitHub API permissions. Configure provider-enforced access in the GitHub App settings; `appPermissions` only declares capabilities and controls read-token downscoping:
+If you pass `additionalUserScopes`, Junior includes those values in the authorization URL and records the requested scope string as a local reauthorization contract. This does not expand or prove GitHub API permissions. Configure provider-enforced access in the GitHub App settings; `appPermissions` only controls read-token downscoping:
 
 ```ts
 githubPlugin({

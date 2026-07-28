@@ -130,7 +130,6 @@ function systemData(): SystemData {
 
 function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
   return {
-    capabilities: [],
     configKeys: [],
     description: `${name} plugin description`,
     displayName:
@@ -1163,12 +1162,9 @@ describe("dashboard canonical-event components", () => {
     const data = systemData();
     data.plugins = [
       plugin("github", {
-        capabilities: ["github.issues", "github.pull-requests"],
         configKeys: ["github.organization"],
       }),
-      plugin("scheduler", {
-        capabilities: ["scheduler.scheduled-tasks"],
-      }),
+      plugin("scheduler", {}),
     ];
     data.skills = [{ name: "scheduled-tasks", pluginProvider: "scheduler" }];
     data.pluginReports!.reports = [
@@ -1190,7 +1186,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduler.scheduled-tasks<");
     expect(html).toContain(">scheduled-tasks<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");

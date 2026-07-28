@@ -20,7 +20,6 @@ overrides:
   yaml: ^2.9.0
 peerDependencyRules:
   allowedVersions:
-    bash-tool>just-bash: ">=2.9.3"
     vitest-evals>ai: ">=4"
     vitest-evals>zod: ">=3"
 syncInjectedDepsAfterScripts:

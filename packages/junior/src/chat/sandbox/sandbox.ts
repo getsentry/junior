@@ -34,9 +34,11 @@ import {
   resolveHostSkillPath,
 } from "@/chat/sandbox/skill-sync";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import type {
-  SandboxSession,
-  SandboxWorkspace,
+import {
+  bindSandboxFileSystem,
+  type SandboxFileSystem,
+  type SandboxSession,
+  type SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
@@ -44,6 +46,7 @@ import { findFiles } from "@/chat/tools/sandbox/find-files";
 import {
   isMissingPathError,
   positiveInteger,
+  resolveWorkspacePath,
 } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
@@ -70,6 +73,7 @@ export interface SandboxAccess {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  close(): void;
 }
 
 export interface SandboxOptions {
@@ -83,6 +87,11 @@ export interface SandboxOptions {
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+}
+
+interface SandboxToolCallContext {
+  readonly signal?: AbortSignal;
+  fileSystem(): Promise<SandboxFileSystem>;
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -200,6 +209,22 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     onSandboxPrepare: options.prepare,
     onSandboxRefChanged: options.onSandboxRefChanged,
   });
+  const createToolCallContext = (
+    signal?: AbortSignal,
+  ): SandboxToolCallContext => {
+    let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
+
+    return {
+      signal,
+      fileSystem() {
+        signal?.throwIfAborted();
+        return (fileSystemPromise ??= runtime.tools().then(({ fs }) => {
+          signal?.throwIfAborted();
+          return bindSandboxFileSystem(fs, signal);
+        }));
+      },
+    };
+  };
 
   const withSandboxSpan = <T>(
     name: string,
@@ -242,7 +267,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   const executeBashTool = async <T>(
     rawInput: Record<string, unknown>,
     command: string,
-    signal?: AbortSignal,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const env = parseEnv(rawInput.env);
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
@@ -264,7 +289,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             command,
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
-            ...(signal ? { signal } : {}),
+            ...(context.signal ? { signal: context.signal } : {}),
           });
           setSpanAttributes({
             "process.exit.code": response.exitCode,
@@ -323,6 +348,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeReadFileTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const filePath = String(rawInput.path ?? "").trim();
     if (!filePath) {
@@ -337,7 +363,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         resolveHostDataPath(options.referenceFiles, filePath);
       if (hostPath) {
         try {
-          const content = await fs.readFile(hostPath, "utf8");
+          const content = await fs.readFile(hostPath, {
+            encoding: "utf8",
+            ...(context.signal ? { signal: context.signal } : {}),
+          });
           setSpanAttributes({
             "app.sandbox.path.length": filePath.length,
             "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),
@@ -362,7 +391,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.readFile", {
       "file.path": filePath,
     });
-    const executeReadFile = (await runtime.tools()).readFile;
+    const fileSystem = await context.fileSystem();
     const result = await withSandboxToolSpan(
       "sandbox.readFile",
       "sandbox.fs.read",
@@ -372,7 +401,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         let response: { content: string };
         try {
-          response = await executeReadFile({ path: filePath });
+          response = {
+            content: await fileSystem.readFile(resolveWorkspacePath(filePath), {
+              encoding: "utf8",
+            }),
+          };
         } catch (error) {
           if (isMissingPathError(error)) {
             setSpanStatus("ok");
@@ -402,17 +435,19 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeWriteFileTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const filePath = String(rawInput.path ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
     }
 
+    const workspacePath = resolveWorkspacePath(filePath);
     const content = String(rawInput.content ?? "");
     logSandboxBootRequest("tool.writeFile", {
       "file.path": filePath,
     });
-    const executeWriteFile = (await runtime.tools()).writeFile;
+    const fileSystem = await context.fileSystem();
     await withSandboxToolSpan(
       "sandbox.writeFile",
       "sandbox.fs.write",
@@ -422,8 +457,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
       async () => {
         try {
-          await executeWriteFile({ path: filePath, content });
+          await fileSystem.writeFile(workspacePath, content, {
+            encoding: "utf8",
+          });
         } catch (error) {
+          if (context.signal?.aborted) {
+            throw error;
+          }
           throwSandboxOperationError("sandbox writeFile", error);
         }
         setSpanStatus("ok");
@@ -445,6 +485,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeEditFileTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const filePath = String(rawInput.path ?? "").trim();
     if (!filePath) {
@@ -457,7 +498,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.editFile", {
       "file.path": filePath,
     });
-    const executors = await runtime.tools();
+    const fileSystem = await context.fileSystem();
     const result = await withSandboxToolSpan(
       "sandbox.editFile",
       "sandbox.fs.edit",
@@ -467,7 +508,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
       async () => {
         const response = await editFile({
-          fs: executors.fs,
+          fs: fileSystem,
           path: filePath,
           edits: rawInput.edits as Array<{ oldText: string; newText: string }>,
         });
@@ -481,6 +522,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeGrepTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const pattern = String(rawInput.pattern ?? "");
     if (!pattern) {
@@ -490,7 +532,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.grep");
     const contextLines = positiveInteger(rawInput.context);
     const limit = positiveInteger(rawInput.limit);
-    const executors = await runtime.tools();
+    const fileSystem = await context.fileSystem();
     const result = await withSandboxToolSpan(
       "sandbox.grep",
       "sandbox.fs.search",
@@ -499,7 +541,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
       async () => {
         const response = await grepFiles({
-          fs: executors.fs,
+          fs: fileSystem,
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
@@ -522,6 +564,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeFindFilesTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     const pattern = String(rawInput.pattern ?? "");
     if (!pattern) {
@@ -530,7 +573,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
     logSandboxBootRequest("tool.findFiles");
     const limit = positiveInteger(rawInput.limit);
-    const executors = await runtime.tools();
+    const fileSystem = await context.fileSystem();
     const result = await withSandboxToolSpan(
       "sandbox.findFiles",
       "sandbox.fs.find",
@@ -539,7 +582,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
       async () => {
         const response = await findFiles({
-          fs: executors.fs,
+          fs: fileSystem,
           pattern,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(limit ? { limit } : {}),
@@ -554,17 +597,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const executeListDirTool = async <T>(
     rawInput: Record<string, unknown>,
+    context: SandboxToolCallContext,
   ): Promise<T> => {
     logSandboxBootRequest("tool.listDir");
     const limit = positiveInteger(rawInput.limit);
-    const executors = await runtime.tools();
+    const fileSystem = await context.fileSystem();
     const result = await withSandboxToolSpan(
       "sandbox.listDir",
       "sandbox.fs.list",
       {},
       async () => {
         const response = await listDir({
-          fs: executors.fs,
+          fs: fileSystem,
           ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
           ...(limit ? { limit } : {}),
         });
@@ -578,6 +622,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const execute = async <T>(params: SandboxToolCall): Promise<T> => {
     const rawInput = (params.input ?? {}) as Record<string, unknown>;
+    const context = createToolCallContext(params.signal);
     const bashCommand =
       params.toolName === "bash"
         ? String(rawInput.command ?? "").trim()
@@ -591,33 +636,34 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
     try {
       if (bashCommand !== undefined) {
-        return await executeBashTool(rawInput, bashCommand, params.signal);
+        return await executeBashTool(rawInput, bashCommand, context);
       }
 
       if (params.toolName === "readFile") {
-        return await executeReadFileTool(rawInput);
+        return await executeReadFileTool(rawInput, context);
       }
 
       if (params.toolName === "editFile") {
-        return await executeEditFileTool(rawInput);
+        return await executeEditFileTool(rawInput, context);
       }
 
       if (params.toolName === "grep") {
-        return await executeGrepTool(rawInput);
+        return await executeGrepTool(rawInput, context);
       }
 
       if (params.toolName === "findFiles") {
-        return await executeFindFilesTool(rawInput);
+        return await executeFindFilesTool(rawInput, context);
       }
 
       if (params.toolName === "listDir") {
-        return await executeListDirTool(rawInput);
+        return await executeListDirTool(rawInput, context);
       }
 
       if (params.toolName === "writeFile") {
-        return await executeWriteFileTool(rawInput);
+        return await executeWriteFileTool(rawInput, context);
       }
     } catch (error) {
+      params.signal?.throwIfAborted();
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
@@ -674,6 +720,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     },
     sandboxRef() {
       return runtime.sandboxRef();
+    },
+    close() {
+      runtime.close();
     },
   };
 }

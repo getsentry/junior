@@ -413,6 +413,7 @@ describe("dashboard routes", () => {
       "/people/person%40sentry.io",
       "/system",
       "/system/plugins/github",
+      "/settings/api-tokens",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
 

@@ -38,11 +38,9 @@ describe("plugin registry", () => {
     ).createPluginCatalogRuntime();
 
     expect(registry.getProviders()).toEqual([]);
-    expect(registry.getCapabilityProviders()).toEqual([]);
     expect(registry.getSkillRoots()).toEqual([]);
     expect(registry.getOAuthConfig("unknown")).toBeUndefined();
     expect(registry.isProvider("sentry")).toBe(false);
-    expect(registry.isCapability("sentry.api")).toBe(false);
     expect(registry.isConfigKey("sentry.org")).toBe(false);
     expect(() =>
       registry.createBroker("sentry", {
@@ -134,7 +132,6 @@ describe("plugin registry", () => {
             name: "first",
             displayName: "First",
             description: "First plugin",
-            capabilities: [],
             configKeys: [],
           },
         },
@@ -147,7 +144,6 @@ describe("plugin registry", () => {
             name: "second",
             displayName: "Second",
             description: "Second plugin",
-            capabilities: [],
             configKeys: [],
           },
         },
@@ -297,7 +293,6 @@ describe("plugin registry", () => {
             name: "code-plugin",
             displayName: "Code Plugin",
             description: "Code plugin",
-            capabilities: [],
             configKeys: [],
           },
         },
@@ -352,7 +347,6 @@ describe("plugin registry", () => {
             name: "code-plugin",
             displayName: "Code Plugin",
             description: "Code plugin",
-            capabilities: [],
             configKeys: [],
           },
         },
@@ -409,7 +403,6 @@ describe("plugin registry", () => {
             name: "code-plugin",
             displayName: "Code Plugin",
             description: "Code plugin",
-            capabilities: [],
             configKeys: [],
           },
         },
@@ -419,7 +412,6 @@ describe("plugin registry", () => {
             name: "other-plugin",
             displayName: "Other Plugin",
             description: "Other plugin",
-            capabilities: [],
             configKeys: [],
           },
         },

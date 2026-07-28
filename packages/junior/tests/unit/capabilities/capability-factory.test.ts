@@ -50,7 +50,6 @@ describe("capability factory", () => {
           name: "example",
           displayName: "Example",
           description: "Example",
-          capabilities: ["example.api"],
           configKeys: [],
           domains: ["api.example.com"],
           apiHeaders: {
@@ -100,7 +99,6 @@ describe("capability factory", () => {
           name: "github",
           displayName: "GitHub",
           description: "GitHub",
-          capabilities: ["github.api"],
           configKeys: [],
           domains: ["api.github.com"],
         },
@@ -112,7 +110,6 @@ describe("capability factory", () => {
           name: "sentry",
           displayName: "Sentry",
           description: "Sentry",
-          capabilities: ["sentry.api"],
           configKeys: [],
           credentials: {
             type: "oauth-bearer",

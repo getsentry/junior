@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPluginAppFixture } from "../../fixtures/plugin-app";
-import { getCapabilityProvider } from "@/chat/capabilities/catalog";
 import {
   discoverSkills,
   loadSkillsByName,
@@ -201,8 +200,6 @@ describe("skills", () => {
           "name: demo",
           "display-name: Demo",
           "description: Demo plugin",
-          "capabilities:",
-          "  - read",
           "credentials:",
           "  type: oauth-bearer",
           "  domains:",
@@ -236,10 +233,6 @@ describe("skills", () => {
         ).toMatchObject({
           name: "demo-connect",
           pluginProvider: "demo",
-        });
-        expect(getCapabilityProvider("demo.read")).toMatchObject({
-          provider: "demo",
-          capabilities: ["demo.read"],
         });
       } finally {
         await pluginApp.cleanup();

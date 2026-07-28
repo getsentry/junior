@@ -2,9 +2,6 @@ name: eval-oauth
 display-name: Eval OAuth
 description: Eval-only generic OAuth auth-resume fixture
 
-capabilities:
-  - read
-
 credentials:
   type: oauth-bearer
   domains:

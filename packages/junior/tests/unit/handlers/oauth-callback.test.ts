@@ -72,7 +72,6 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
     },
     isProvider: (provider: string) =>
       provider === "sentry" || provider === "example" || provider === "github",
-    getCapabilityProviders: () => [],
     isCapability: () => false,
     isConfigKey: () => false,
     getProviders: () => [],

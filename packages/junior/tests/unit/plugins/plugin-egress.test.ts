@@ -10,7 +10,6 @@ function githubManifest() {
     name: "github",
     displayName: "GitHub",
     description: "GitHub",
-    capabilities: [],
     configKeys: [],
     domains: ["api.github.com"],
   };

@@ -387,6 +387,17 @@ function buildReplacementProvenance(args: {
   ];
 }
 
+async function loadLastInstruction(conversationId: string) {
+  const event =
+    await getConversationEventStore().loadLatestInstructionStep(conversationId);
+  if (event?.data.type !== "agent_step") return undefined;
+  return {
+    message: event.data.message as PiMessage,
+    provenance: event.data.provenance,
+    sourceEventSeq: event.seq,
+  };
+}
+
 type CompactionSource =
   | {
       estimatedTokens: number;
@@ -669,15 +680,22 @@ export async function compactActiveContextIfNeeded(
           ...runtimeMessage,
           content: [
             ...runtimeMessage.content,
-            { type: "text", text: renderCurrentInstruction(summaryText) },
+            { type: "text", text: summaryText },
           ],
         } as PiMessage,
       ]
-    : [userMessage(renderCurrentInstruction(summaryText))];
-  const messages = [
-    ...summaryMessages,
-    ...pendingMessages.map((entry) => entry.message),
-  ];
+    : [userMessage(summaryText)];
+  const retainedInstruction =
+    pendingMessages.length === 0
+      ? await loadLastInstruction(args.conversationId)
+      : undefined;
+  const instructionMessages = retainedInstruction
+    ? [retainedInstruction.message]
+    : pendingMessages.map((entry) => entry.message);
+  const instructionProvenance = retainedInstruction
+    ? [retainedInstruction.provenance]
+    : pendingMessages.map((entry) => entry.provenance);
+  const messages = [...summaryMessages, ...instructionMessages];
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
     throw new ContextInputLimitExceededError(
@@ -700,7 +718,7 @@ export async function compactActiveContextIfNeeded(
         triggerTokens,
         inputLimitTokens,
         inputMessageCount: source.messages.length,
-        retainedMessageCount: pendingMessages.length,
+        retainedMessageCount: instructionMessages.length,
         summaryChars: summary.length,
       },
       summary,
@@ -709,14 +727,17 @@ export async function compactActiveContextIfNeeded(
         provenance:
           index === 0
             ? contextProvenance
-            : (pendingMessages[index - 1]?.provenance ?? contextProvenance),
+            : (instructionProvenance[index - 1] ?? contextProvenance),
+        ...(index === 1 && retainedInstruction
+          ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
+          : {}),
       })),
     },
   });
   setSpanAttributes({
     "app.compaction.input_messages": source.messages.length,
     "app.compaction.replacement_tokens": replacementInputTokens,
-    "app.compaction.retained_messages": pendingMessages.length,
+    "app.compaction.retained_messages": instructionMessages.length,
     "app.compaction.summary_chars": summary.length,
     "app.compaction.trigger_tokens": triggerTokens,
     "app.context_input_limit_tokens": inputLimitTokens,

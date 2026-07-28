@@ -11,7 +11,6 @@ const MANIFEST: PluginManifest = {
   name: "example",
   displayName: "Example",
   description: "Example API access",
-  capabilities: ["example.query"],
   configKeys: [],
   domains: ["api.example.com"],
   apiHeaders: {

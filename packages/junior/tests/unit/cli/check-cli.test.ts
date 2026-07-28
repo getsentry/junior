@@ -41,8 +41,6 @@ describe("check cli", () => {
         "name: demo",
         "display-name: Demo",
         "description: Demo plugin",
-        "capabilities:",
-        "  - issues.read",
         "config-keys:",
         "  - repo",
         "target:",
@@ -154,8 +152,6 @@ describe("check cli", () => {
         "name: demo",
         "display-name: Demo",
         "description: Demo packaged plugin",
-        "capabilities:",
-        "  - issues.read",
         "",
       ].join("\n"),
     );

@@ -1,40 +1,40 @@
 {
-  "id": "eadd5e6e-4969-4bd0-a1b6-ac4709011413",
+  "id": "000fd8df-3f20-485a-8669-ef5e66d7177c",
   "prevId": "b85697dd-3399-4757-93bf-3bdad67612ea",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.junior_conversation_annotations": {
-      "name": "junior_conversation_annotations",
+    "public.junior_api_tokens": {
+      "name": "junior_api_tokens",
       "schema": "",
       "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "owner_email_normalized": {
+          "name": "owner_email_normalized",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "plugin": {
-          "name": "plugin",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
+        "token_hash": {
+          "name": "token_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "key": {
-          "name": "key",
+        "token_suffix": {
+          "name": "token_suffix",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "annotation_json": {
-          "name": "annotation_json",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -44,40 +44,59 @@
           "primaryKey": false,
           "notNull": true
         },
-        "updated_at": {
-          "name": "updated_at",
+        "expires_at": {
+          "name": "expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_conversation_annotations_conversation_id_fk": {
-          "name": "junior_conversation_annotations_conversation_id_fk",
-          "tableFrom": "junior_conversation_annotations",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_annotations_pk": {
-          "name": "junior_conversation_annotations_pk",
+      "indexes": {
+        "junior_api_tokens_token_hash_uidx": {
+          "name": "junior_api_tokens_token_hash_uidx",
           "columns": [
-            "conversation_id",
-            "plugin",
-            "kind",
-            "key"
-          ]
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_api_tokens_owner_email_idx": {
+          "name": "junior_api_tokens_owner_email_idx",
+          "columns": [
+            {
+              "expression": "owner_email_normalized",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -235,12 +254,8 @@
           "name": "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_events",
           "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["conversation_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -248,10 +263,7 @@
       "compositePrimaryKeys": {
         "junior_conversation_events_conversation_id_seq_pk": {
           "name": "junior_conversation_events_conversation_id_seq_pk",
-          "columns": [
-            "conversation_id",
-            "seq"
-          ]
+          "columns": ["conversation_id", "seq"]
         }
       },
       "uniqueConstraints": {},
@@ -602,12 +614,8 @@
           "name": "junior_conversations_destination_id_junior_destinations_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_destinations",
-          "columnsFrom": [
-            "destination_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["destination_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -615,12 +623,8 @@
           "name": "junior_conversations_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": [
-            "actor_identity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_identity_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -628,12 +632,8 @@
           "name": "junior_conversations_creator_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": [
-            "creator_identity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["creator_identity_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -641,12 +641,8 @@
           "name": "junior_conversations_credential_subject_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": [
-            "credential_subject_identity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["credential_subject_identity_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -654,12 +650,8 @@
           "name": "junior_conversations_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "parent_conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
+          "columnsFrom": ["parent_conversation_id"],
+          "columnsTo": ["conversation_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -667,12 +659,8 @@
           "name": "junior_conversations_root_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "root_conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
+          "columnsFrom": ["root_conversation_id"],
+          "columnsTo": ["conversation_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -996,12 +984,8 @@
           "name": "junior_identities_user_id_junior_users_id_fk",
           "tableFrom": "junior_identities",
           "tableTo": "junior_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

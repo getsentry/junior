@@ -14,7 +14,6 @@ import {
 import {
   type GitHubAppPermissions,
   normalizePermissions,
-  permissionCapabilities,
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
@@ -70,13 +69,13 @@ export interface GitHubPluginOptions {
   additionalUserScopes?: string[];
 
   /**
-   * GitHub App permissions Junior should expose as capabilities and downscope
-   * to read for installation-read tokens.
+   * GitHub App permissions Junior should downscope to read for
+   * installation-read tokens.
    *
-   * Keys may use GitHub permission names with underscores or hyphens. Junior
-   * records these as plugin capabilities. Installation-write tokens inherit
-   * the App installation's complete permission envelope.
-   * GitHub remains the source of truth for whether a permission exists.
+   * Keys may use GitHub permission names with underscores or hyphens.
+   * Installation-write tokens inherit the App installation's complete
+   * permission envelope. GitHub remains the source of truth for whether a
+   * permission exists.
    */
   appPermissions?: GitHubAppPermissions;
 
@@ -607,7 +606,6 @@ export function githubPlugin(
     ? readGrantPermissions(declaredAppPermissions)
     : undefined;
   const loadReadPermissions = createPermissionCache();
-  const appCapabilities = permissionCapabilities(declaredAppPermissions);
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
 
@@ -618,7 +616,6 @@ export function githubPlugin(
       displayName: "GitHub",
       description:
         "GitHub issue, pull request, and repository workflows via GitHub App",
-      ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {

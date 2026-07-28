@@ -21,7 +21,6 @@ export function vercelPlugin(): PluginRegistration {
       apiHeaders: {
         Authorization: "Bearer ${JUNIOR_VERCEL_TOKEN}",
       },
-      capabilities: ["api"],
       commandEnv: {
         VERCEL_TOKEN: "host_managed_credential",
       },

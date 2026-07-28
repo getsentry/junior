@@ -193,9 +193,6 @@ importers:
       ai:
         specifier: 6.0.190
         version: 6.0.190(zod@4.4.3)
-      bash-tool:
-        specifier: ^1.3.16
-        version: 1.3.16(@vercel/sandbox@2.8.0)(ai@6.0.190(zod@4.4.3))(just-bash@3.0.1)
       chat:
         specifier: 4.29.0
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
@@ -3999,19 +3996,6 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  bash-tool@1.3.16:
-    resolution: {integrity: sha512-2xuprVBzUOYw4+QCpeSwvkuXuHkjKRtMzh+nTpEidROsNnglr5xRs3mdeOmwFVkjB4JhE/uZqIXE+tabbJI7QQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@vercel/sandbox': '*'
-      ai: 6.0.190
-      just-bash: ^2.9.3
-    peerDependenciesMeta:
-      '@vercel/sandbox':
-        optional: true
-      just-bash:
-        optional: true
-
   basic-ftp@5.3.1:
     resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
     engines: {node: '>=10.0.0'}
@@ -7805,9 +7789,6 @@ packages:
   zod@3.24.4:
     resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.1.11:
     resolution: {integrity: sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg==}
 
@@ -10386,7 +10367,6 @@ snapshots:
       '@vercel/queue': 0.2.0
       '@vercel/sandbox': 2.8.0
       ai: 6.0.190(zod@4.4.3)
-      bash-tool: 1.3.16(@vercel/sandbox@2.8.0)(ai@6.0.190(zod@4.4.3))(just-bash@3.0.1)
       chat: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       commander: 14.0.3
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0)
@@ -11605,16 +11585,6 @@ snapshots:
   bare-events@2.8.3: {}
 
   base64-js@1.5.1: {}
-
-  bash-tool@1.3.16(@vercel/sandbox@2.8.0)(ai@6.0.190(zod@4.4.3))(just-bash@3.0.1):
-    dependencies:
-      ai: 6.0.190(zod@4.4.3)
-      fast-glob: 3.3.3
-      yaml: 2.9.0
-      zod: 3.25.76
-    optionalDependencies:
-      '@vercel/sandbox': 2.8.0
-      just-bash: 3.0.1
 
   basic-ftp@5.3.1: {}
 
@@ -16227,8 +16197,6 @@ snapshots:
   zod@3.22.4: {}
 
   zod@3.24.4: {}
-
-  zod@3.25.76: {}
 
   zod@4.1.11: {}
 

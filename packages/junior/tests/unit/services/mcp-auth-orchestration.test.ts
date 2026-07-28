@@ -52,7 +52,6 @@ function plugin(name: string): PluginDefinition {
       name,
       displayName: name,
       description: `${name} plugin`,
-      capabilities: [],
       configKeys: [],
     },
   };

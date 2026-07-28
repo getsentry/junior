@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
-import { createBashTool } from "bash-tool";
 import {
   logInfo,
   setSpanAttributes,
@@ -43,6 +42,8 @@ const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
+const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
+const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
 interface SandboxCredentials {
   token?: string;
@@ -66,43 +67,7 @@ interface SandboxToolExecutors {
     aborted?: boolean;
     timedOut?: boolean;
   }>;
-  readFile: (input: { path: string }) => Promise<{ content: string }>;
-  writeFile: (input: {
-    path: string;
-    content: string;
-  }) => Promise<{ success: boolean }>;
   fs: SandboxFileSystem;
-}
-
-function createBashToolSandboxAdapter(sandbox: SandboxSession) {
-  return {
-    async executeCommand(command: string) {
-      const result = await sandbox.runCommand({
-        cmd: "bash",
-        args: ["-c", command],
-      });
-      return {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
-    },
-    async readFile(filePath: string) {
-      const content = await sandbox.readFileToBuffer({ path: filePath });
-      if (content == null) {
-        throw new Error(`File not found: ${filePath}`);
-      }
-      return content.toString("utf8");
-    },
-    async writeFiles(files: Array<{ path: string; content: string | Buffer }>) {
-      await sandbox.writeFiles(
-        files.map((file) => ({
-          path: file.path,
-          content: file.content,
-        })),
-      );
-    },
-  };
 }
 
 interface SandboxRuntime {
@@ -110,12 +75,11 @@ interface SandboxRuntime {
   acquire(): Promise<SandboxSession>;
   tools(): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
+  close(): void;
 }
 
 interface ActiveSandbox {
   session: SandboxSession;
-  toolExecutors?: SandboxToolExecutors;
-  loadingToolExecutors?: Promise<SandboxToolExecutors>;
   networkPolicyKey?: string;
 }
 
@@ -184,6 +148,8 @@ export function createSandboxRuntime(
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: Promise<SandboxSession> | undefined;
+  let keepAliveTimer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
 
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
@@ -209,6 +175,10 @@ export function createSandboxRuntime(
       return;
     }
     activeSandbox = null;
+    if (keepAliveTimer) {
+      clearTimeout(keepAliveTimer);
+      keepAliveTimer = undefined;
+    }
   };
 
   const adaptSandbox = (
@@ -688,29 +658,41 @@ export function createSandboxRuntime(
     }
   };
 
-  const buildToolExecutors = async (
-    sandboxInstance: SandboxSession,
-  ): Promise<SandboxToolExecutors> => {
-    const toolkit = await withSandboxSpan(
-      "sandbox.bash_tool.init",
-      "sandbox.tool.init",
-      {
-        "app.sandbox.tool_name": "bash",
-        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT,
-      },
-      async () =>
-        await createBashTool({
-          sandbox: createBashToolSandboxAdapter(sandboxInstance),
-          destination: SANDBOX_WORKSPACE_ROOT,
-        }),
-    );
-
-    const executeReadFile = toolkit.tools.readFile.execute;
-    const executeWriteFile = toolkit.tools.writeFile.execute;
-    if (!executeReadFile || !executeWriteFile) {
-      throw new Error("bash-tool did not return executable tool handlers");
+  const startKeepAlive = (session: SandboxSession): void => {
+    const keepAliveMs = parseKeepAliveMs();
+    if (keepAliveMs === 0 || closed || keepAliveTimer) {
+      return;
     }
 
+    const intervalMs = Math.max(
+      MIN_KEEPALIVE_INTERVAL_MS,
+      Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
+    );
+    const schedule = (): void => {
+      keepAliveTimer = setTimeout(async () => {
+        keepAliveTimer = undefined;
+        if (closed || activeSandbox?.session !== session) {
+          return;
+        }
+        try {
+          await extendKeepAlive(session);
+        } catch {
+          invalidateSession(session.sessionId);
+          return;
+        }
+        if (closed || activeSandbox?.session !== session) {
+          return;
+        }
+        schedule();
+      }, intervalMs);
+      keepAliveTimer.unref?.();
+    };
+    schedule();
+  };
+
+  const createToolExecutors = (
+    sandboxInstance: SandboxSession,
+  ): SandboxToolExecutors => {
     return {
       sessionId: sandboxInstance.sessionId,
       bash: async (input) => {
@@ -785,16 +767,6 @@ export function createSandboxRuntime(
           }
         }
       },
-      readFile: async (input) =>
-        (await executeReadFile(input, {
-          toolCallId: "sandbox-read-file",
-          messages: [],
-        })) as { content: string },
-      writeFile: async (input) =>
-        (await executeWriteFile(input, {
-          toolCallId: "sandbox-write-file",
-          messages: [],
-        })) as { success: boolean },
       fs: sandboxInstance.fs as SandboxFileSystem,
     };
   };
@@ -803,41 +775,8 @@ export function createSandboxRuntime(
     const activeSandbox = await getOrAcquireSandbox();
     await probeSession(activeSandbox);
     await extendKeepAlive(activeSandbox);
+    startKeepAlive(activeSandbox);
     return activeSandbox;
-  };
-
-  const loadToolExecutors = async (
-    session: SandboxSession,
-  ): Promise<SandboxToolExecutors> => {
-    const active = activeSandbox;
-    if (!active || active.session !== session) {
-      throw new Error("sandbox session changed before tool initialization");
-    }
-    if (active.toolExecutors) {
-      return active.toolExecutors;
-    }
-    if (active.loadingToolExecutors) {
-      return await active.loadingToolExecutors;
-    }
-
-    let nextToolExecutors: Promise<SandboxToolExecutors>;
-    nextToolExecutors = buildToolExecutors(session).then((executors) => {
-      if (
-        activeSandbox === active &&
-        active.loadingToolExecutors === nextToolExecutors
-      ) {
-        active.toolExecutors = executors;
-      }
-      return executors;
-    });
-    active.loadingToolExecutors = nextToolExecutors;
-    try {
-      return await nextToolExecutors;
-    } finally {
-      if (active.loadingToolExecutors === nextToolExecutors) {
-        active.loadingToolExecutors = undefined;
-      }
-    }
   };
 
   return {
@@ -848,7 +787,7 @@ export function createSandboxRuntime(
       return await getOrAcquireSandbox();
     },
     async tools() {
-      return await loadToolExecutors(await ensureReadySandbox());
+      return createToolExecutors(await ensureReadySandbox());
     },
     async refreshNetworkPolicy(traceHeaders) {
       const active = activeSandbox;
@@ -856,6 +795,13 @@ export function createSandboxRuntime(
         return;
       }
       await applyNetworkPolicy(active.session, traceHeaders);
+    },
+    close() {
+      closed = true;
+      if (keepAliveTimer) {
+        clearTimeout(keepAliveTimer);
+        keepAliveTimer = undefined;
+      }
     },
   };
 }

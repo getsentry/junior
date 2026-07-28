@@ -144,7 +144,6 @@ async function registerManagedEgressPlugin(input?: {
           name: "managed-egress",
           displayName: "Managed Egress",
           description: "Managed egress integration fixture",
-          capabilities: ["api"],
           domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
         },
         hooks: {
@@ -206,7 +205,6 @@ async function registerOAuthBrokerPlugin() {
           name: "oauth-broker",
           displayName: "Oauth Broker",
           description: "OAuth broker integration fixture",
-          capabilities: ["api"],
           credentials: {
             type: "oauth-bearer",
             domains: [OAUTH_BROKER_PROVIDER_HOST],

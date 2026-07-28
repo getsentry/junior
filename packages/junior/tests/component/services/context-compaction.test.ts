@@ -336,7 +336,10 @@ describe("context compaction projection reset", () => {
         modelProfile: "standard",
         pendingMessages: [
           {
-            message: user("Also run the focused test.", 5),
+            message: user(
+              "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
+              5,
+            ),
             provenance: {
               authority: "instruction",
               actor: {
@@ -351,8 +354,7 @@ describe("context compaction projection reset", () => {
         piMessages: activeMessages,
       },
       {
-        completeText: async () =>
-          ({ text: "The edit completed; verify the result." }) as never,
+        completeText: async () => ({ text: "No outstanding asks." }) as never,
       },
     );
 
@@ -361,16 +363,20 @@ describe("context compaction projection reset", () => {
     expect(textOf(result.piMessages![0]!)).toContain(
       "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
     );
-    expect(textOf(result.piMessages![0]!)).toContain(
-      "The edit completed; verify the result.",
+    expect(textOf(result.piMessages![0]!)).toContain("No outstanding asks.");
+    expect(textOf(result.piMessages![0]!)).not.toContain(
+      "<current-instruction>",
     );
-    expect(textOf(result.piMessages![1]!)).toBe("Also run the focused test.");
+    expect(textOf(result.piMessages![1]!)).toBe(
+      "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
+    );
     const durable = await loadProjection({ conversationId });
     expect(textOf(durable[0]!)).not.toContain("<runtime-turn-context>");
-    expect(textOf(durable[0]!)).toContain(
-      "The edit completed; verify the result.",
+    expect(textOf(durable[0]!)).toContain("No outstanding asks.");
+    expect(textOf(durable[0]!)).not.toContain("<current-instruction>");
+    expect(textOf(durable[1]!)).toBe(
+      "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
-    expect(textOf(durable[1]!)).toBe("Also run the focused test.");
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.modelProfile).toBe("standard");
     expect(projection.provenance[1]).toMatchObject({
@@ -384,14 +390,14 @@ describe("context compaction projection reset", () => {
       type: "compaction",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
-      summary: "The edit completed; verify the result.",
+      summary: "No outstanding asks.",
       details: {
         reason: "capacity",
         triggerTokens: 360_000,
         inputLimitTokens: 380_000,
         inputMessageCount: 4,
         retainedMessageCount: 1,
-        summaryChars: 38,
+        summaryChars: 20,
       },
     });
     expect(

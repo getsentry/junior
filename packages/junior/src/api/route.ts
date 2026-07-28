@@ -17,7 +17,7 @@ export type ApiRoute<TResponseSchema extends z.ZodType = z.ZodType> = {
   handler: (
     context: Context<JuniorApiEnv>,
   ) => Promise<z.input<TResponseSchema>> | z.input<TResponseSchema>;
-  method: "get" | "patch";
+  method: "delete" | "get" | "patch" | "post";
   path: string;
   responseSchema: TResponseSchema;
 };

@@ -68,6 +68,15 @@ export type {
 export { apiErrorSchema } from "./schema/common";
 export type { ApiError } from "./schema/common";
 export {
+  createPersonalTokenBodySchema,
+  createdPersonalTokenSchema,
+  personalTokenListSchema,
+  personalTokenMetadataSchema,
+  personalTokenParamsSchema,
+  revokePersonalTokenResponseSchema,
+} from "./schema/personal-token";
+export type { PersonalTokenMetadata } from "./schema/personal-token";
+export {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
   pluginOperationalReportSchema,

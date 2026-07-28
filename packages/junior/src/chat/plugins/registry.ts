@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
@@ -23,7 +22,6 @@ import type {
 } from "./types";
 
 interface LoadedPluginState {
-  capabilityToPlugin: Map<string, PluginDefinition>;
   domainToPlugin: Map<string, string>;
   packageSkillRoots: Set<string>;
   pluginConfigKeys: Set<string>;
@@ -48,7 +46,6 @@ interface PluginCatalogRuntimeState {
 
 export interface PluginCatalogRuntime {
   createBroker(provider: string, deps: PluginBrokerDeps): CredentialBroker;
-  getCapabilityProviders(): CapabilityProviderDefinition[];
   getDefinition(provider: string): PluginDefinition | undefined;
   getDisplayName(provider: string): string | undefined;
   getForSkillPath(skillPath: string): PluginDefinition | undefined;
@@ -61,7 +58,6 @@ export interface PluginCatalogRuntime {
   getRuntimePostinstall(): PluginRuntimePostinstallCommand[];
   getSignature(): string;
   getSkillRoots(): string[];
-  isCapability(capability: string): boolean;
   isConfigKey(key: string): boolean;
   isProvider(provider: string): boolean;
   parseConfiguredInlineManifest(
@@ -86,7 +82,6 @@ function createLoadedPluginState(signature: string): LoadedPluginState {
     signature,
     pluginDefinitions: [],
     pluginMigrationRoots: new Map(),
-    capabilityToPlugin: new Map(),
     domainToPlugin: new Map(),
     pluginConfigKeys: new Set(),
     pluginsByName: new Map(),
@@ -114,14 +109,6 @@ function registerPluginManifest(
     throw new Error(`Duplicate plugin name "${manifest.name}"`);
   }
 
-  for (const cap of manifest.capabilities) {
-    if (state.capabilityToPlugin.has(cap)) {
-      throw new Error(
-        `Duplicate capability "${cap}" in plugin "${manifest.name}"`,
-      );
-    }
-  }
-
   for (const domain of providerDomains(manifest)) {
     const owner = state.domainToPlugin.get(domain);
     if (owner) {
@@ -144,9 +131,6 @@ function registerPluginManifest(
     state.pluginMigrationRoots.set(manifest.name, definition.migrationsDir);
   }
 
-  for (const cap of manifest.capabilities) {
-    state.capabilityToPlugin.set(cap, definition);
-  }
   for (const key of manifest.configKeys) {
     state.pluginConfigKeys.add(key);
   }
@@ -435,7 +419,6 @@ function logLoadedPlugins(state: LoadedPluginState): void {
       {},
       {
         "app.plugin.name": plugin.manifest.name,
-        "app.plugin.capability_count": plugin.manifest.capabilities.length,
         "app.plugin.config_key_count": plugin.manifest.configKeys.length,
         "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
         "file.directory": plugin.dir,
@@ -479,24 +462,6 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
     },
     getSignature() {
       return ensurePluginsLoaded(runtime).signature;
-    },
-    getCapabilityProviders() {
-      const state = ensurePluginsLoaded(runtime);
-      return state.pluginDefinitions.map((plugin) => ({
-        provider: plugin.manifest.name,
-        capabilities: [...plugin.manifest.capabilities],
-        configKeys: [...plugin.manifest.configKeys],
-        ...(plugin.manifest.target
-          ? {
-              target: {
-                ...plugin.manifest.target,
-                ...(plugin.manifest.target.commandFlags
-                  ? { commandFlags: [...plugin.manifest.target.commandFlags] }
-                  : {}),
-              },
-            }
-          : {}),
-      }));
     },
     getProviders() {
       return [...ensurePluginsLoaded(runtime).pluginDefinitions];
@@ -629,9 +594,6 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
     isProvider(provider) {
       return ensurePluginsLoaded(runtime).pluginsByName.has(provider);
     },
-    isCapability(capability) {
-      return ensurePluginsLoaded(runtime).capabilityToPlugin.has(capability);
-    },
     isConfigKey(key) {
       return ensurePluginsLoaded(runtime).pluginConfigKeys.has(key);
     },
@@ -657,7 +619,6 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
 
       setSpanAttributes({
         "app.plugin.name": name,
-        "app.plugin.capabilities": plugin.manifest.capabilities,
         "app.plugin.has_oauth": Boolean(plugin.manifest.oauth),
       });
 

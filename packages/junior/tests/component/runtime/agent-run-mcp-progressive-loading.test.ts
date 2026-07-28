@@ -455,6 +455,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       },
     },
     sandboxRef: () => ({ id: "sandbox-test", profileHash: "hash-test" }),
+    close: vi.fn(),
   }),
 }));
 
@@ -465,7 +466,6 @@ vi.mock("@/chat/plugins/catalog-runtime", () => {
     manifest: {
       name: "demo",
       description: "Demo plugin",
-      capabilities: [],
       configKeys: [],
       mcp: {
         transport: "http",

@@ -61,8 +61,15 @@
     {
       "idx": 8,
       "version": "7",
-      "when": 1785193047066,
-      "tag": "0008_cultured_shen",
+      "when": 1785191902140,
+      "tag": "0008_sticky_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785209518342,
+      "tag": "0009_slippery_harrier",
       "breakpoints": true
     }
   ]

@@ -1,5 +1,4 @@
 import type { StateAdapter } from "chat";
-import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type {
   CredentialBroker,
@@ -24,8 +23,6 @@ export function createUserTokenStore(): UserTokenStore {
 function createProviderCredentialRouter(
   userTokenStore: UserTokenStore,
 ): ProviderCredentialRouter {
-  logCapabilityCatalogLoadedOnce();
-
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
   for (const plugin of pluginCatalogRuntime.getProviders()) {

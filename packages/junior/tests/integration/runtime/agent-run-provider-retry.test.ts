@@ -23,6 +23,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
     },
     compactionState: {
       nextProviderContextChars: 0,
+      nextProviderContextText: "",
       preflightContextText: "",
       summaryCalls: 0,
     },
@@ -188,12 +189,24 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         await this.prepareNextTurn?.({
           context: { messages: this.state.messages },
         });
-        compactionState.nextProviderContextChars = JSON.stringify(
+        compactionState.nextProviderContextText = JSON.stringify(
           this.state.messages,
-        ).length;
+        );
+        compactionState.nextProviderContextChars =
+          compactionState.nextProviderContextText.length;
+        const keptRequest = compactionState.nextProviderContextText.includes(
+          "Make a large generated-file edit.",
+        );
         this.state.messages.push({
           role: "assistant",
-          content: [{ type: "text", text: "Verified after compaction." }],
+          content: [
+            {
+              type: "text",
+              text: keptRequest
+                ? "Finished the requested edit."
+                : "got it — context checkpoint loaded. no outstanding asks.",
+            },
+          ],
           stopReason: "stop",
           usage: { input: 2, output: 2 },
         });
@@ -438,7 +451,12 @@ vi.mock("@/chat/pi/client", () => ({
   }),
   completeText: async () => {
     compactionState.summaryCalls += 1;
-    return { text: "The edit completed; verify the changed file." };
+    return {
+      text:
+        agentMode.value === "activeCompaction"
+          ? "No outstanding asks."
+          : "The edit completed; verify the changed file.",
+    };
   },
   getPiGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
@@ -474,6 +492,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       },
     },
     sandboxRef: () => undefined,
+    close: vi.fn(),
   }),
 }));
 
@@ -524,6 +543,7 @@ describe("executeAgentRun provider retry", () => {
     counters.continueCalls = 0;
     counters.promptCalls = 0;
     compactionState.nextProviderContextChars = 0;
+    compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
     compactionState.summaryCalls = 0;
     sessionLogState.failToolExecutionAppend = false;
@@ -539,7 +559,7 @@ describe("executeAgentRun provider retry", () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
-  it("compacts oversized tool history before the next provider request", async () => {
+  it("continues the user's request when active compaction writes a wrong summary", async () => {
     agentMode.value = "activeCompaction";
     const statuses: string[] = [];
 
@@ -551,6 +571,7 @@ describe("executeAgentRun provider retry", () => {
         routing: {
           source: TEST_SOURCE,
           destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
         conversationId: "conversation-active-compaction",
         turnId: "turn-active-compaction",
@@ -562,10 +583,16 @@ describe("executeAgentRun provider retry", () => {
       }),
     );
 
-    expect(result.text).toBe("Verified after compaction.");
+    expect(result.text).toBe("Finished the requested edit.");
     expect(statuses).toContain("Compacting context");
     expect(compactionState.summaryCalls).toBe(1);
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
+    expect(compactionState.nextProviderContextText).toContain(
+      "Make a large generated-file edit.",
+    );
+    expect(compactionState.nextProviderContextText).toContain(
+      "No outstanding asks.",
+    );
     expect(result.diagnostics.usage).toMatchObject({
       inputTokens: 4,
       outputTokens: 4,
