@@ -1,4 +1,5 @@
-import { Brain } from "lucide-react";
+import { Brain, Braces, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp } from "../format";
@@ -6,49 +7,167 @@ import {
   memoryRecallContent,
   type MemoryRecallContent,
 } from "../conversations/turnContext";
+import { cn } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 
-/** Render structured context attached to one transcript user message. */
+/** Show structured context attached to one transcript user message. */
 export function TranscriptTurnContextView(props: {
   contexts: TranscriptViewTurnContext[];
 }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
   return (
-    <div className="grid gap-2">
-      {props.contexts.map((context, index) => (
-        <TurnContext
-          context={context}
-          key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
+    <>
+      <div className="group/context relative flex justify-end">
+        <button
+          aria-controls={panelId}
+          aria-expanded={open}
+          aria-label="View turn context"
+          className={cn(
+            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-white/35 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            open && "border-white/10 bg-white/[0.06] text-cyan-100/80",
+          )}
+          onClick={() => setOpen(true)}
+          ref={triggerRef}
+          title="View turn context"
+          type="button"
+        >
+          <Braces aria-hidden="true" size={15} strokeWidth={1.8} />
+        </button>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-[0.68rem] font-medium text-white/70 opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
+        >
+          View turn context
+        </span>
+      </div>
+
+      {open ? (
+        <TurnContextPanel
+          contexts={props.contexts}
+          id={panelId}
+          onClose={() => {
+            setOpen(false);
+            triggerRef.current?.focus();
+          }}
         />
-      ))}
+      ) : null}
+    </>
+  );
+}
+
+function TurnContextPanel(props: {
+  contexts: TranscriptViewTurnContext[];
+  id: string;
+  onClose(): void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        aria-label="Close turn context"
+        className="absolute inset-0 cursor-default border-0 bg-black/55 backdrop-blur-[1px]"
+        onClick={props.onClose}
+        type="button"
+      />
+      <section
+        aria-label="Turn context"
+        aria-modal="true"
+        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-white/15 bg-[#0b0b0b] shadow-2xl shadow-black/70"
+        id={props.id}
+        role="dialog"
+      >
+        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/10 px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-200/10 text-cyan-100/80">
+              <Braces aria-hidden="true" size={17} strokeWidth={1.8} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="m-0 text-sm font-semibold text-white">
+                Turn context
+              </h2>
+              <p className="m-0 mt-0.5 text-xs text-white/40">
+                Structured context supplied with this message
+              </p>
+            </div>
+          </div>
+          <button
+            aria-label="Close turn context"
+            autoFocus
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+            onClick={props.onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={17} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
+          {props.contexts.map((context, index) => (
+            <TurnContext
+              context={context}
+              key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
 function TurnContext(props: { context: TranscriptViewTurnContext }) {
   const memory = memoryRecallContent(props.context);
-  const count = memory?.memories.length;
 
   return (
-    <details className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.035] px-3 py-2">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.78rem] font-medium text-cyan-100/75 [&::-webkit-details-marker]:hidden">
-        <Brain aria-hidden="true" className="size-3.5" />
-        <span>
-          {count === undefined
-            ? `${props.context.pluginName} context`
-            : `${count} recalled ${count === 1 ? "memory" : "memories"}`}
+    <section className="border-b border-white/10 py-5 last:border-b-0">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {memory ? (
+            <Brain
+              aria-hidden="true"
+              className="shrink-0 text-cyan-100/60"
+              size={15}
+            />
+          ) : (
+            <Braces
+              aria-hidden="true"
+              className="shrink-0 text-cyan-100/60"
+              size={15}
+            />
+          )}
+          <h3 className="m-0 truncate text-[0.82rem] font-semibold text-white/85">
+            {memory ? "Recalled memories" : props.context.pluginName}
+          </h3>
+        </div>
+        <span className="shrink-0 text-[0.7rem] text-white/35">
+          {props.context.kind} · v{props.context.version}
         </span>
-      </summary>
-      <div className="mt-3">
-        {memory ? (
-          <MemoryRecall
-            loadedAt={props.context.loadedAt}
-            memories={memory.memories}
-          />
-        ) : (
-          <GenericContext context={props.context} />
-        )}
       </div>
-    </details>
+
+      {memory ? (
+        <MemoryRecall
+          loadedAt={props.context.loadedAt}
+          memories={memory.memories}
+        />
+      ) : (
+        <GenericContext context={props.context} />
+      )}
+    </section>
   );
 }
 
@@ -57,31 +176,45 @@ function MemoryRecall(props: {
   memories: MemoryRecallContent["memories"];
 }) {
   return (
-    <div className="grid gap-3">
-      <div className="text-[0.72rem] text-white/35">
-        Loaded {formatMessageTimestamp(Date.parse(props.loadedAt))}
-      </div>
-      {props.memories.map((memory) => (
-        <div
-          className="grid gap-2 border-t border-white/8 pt-3 first:border-t-0 first:pt-0"
+    <div>
+      {props.memories.map((memory, index) => (
+        <article
+          className="border-t border-white/8 py-4 first:border-t-0 first:pt-0 last:pb-0"
           key={memory.id}
         >
-          <div className="whitespace-pre-wrap text-[0.82rem] leading-relaxed text-white/70">
+          <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-white/80">
             <HighlightText text={memory.content} />
           </div>
-          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[0.7rem]">
-            <dt className="text-white/30">ID</dt>
-            <dd className="truncate font-mono text-white/50">{memory.id}</dd>
-            <dt className="text-white/30">Observed</dt>
-            <dd className="text-white/50">
-              {formatMessageTimestamp(memory.observedAtMs)}
-            </dd>
-            <dt className="text-white/30">Scope</dt>
-            <dd className="text-white/50">{memory.scope}</dd>
-            <dt className="text-white/30">Kind</dt>
-            <dd className="text-white/50">{memory.kind}</dd>
+
+          <dl className="mt-4 grid gap-2 text-xs">
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+              <dt className="text-white/35">Memory ID</dt>
+              <dd className="m-0 break-all font-mono text-white/60">
+                <HighlightText text={memory.id} />
+              </dd>
+            </div>
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+              <dt className="text-white/35">Observed</dt>
+              <dd className="m-0 text-white/60">
+                {formatMessageTimestamp(memory.observedAtMs)}
+              </dd>
+            </div>
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+              <dt className="text-white/35">Scope</dt>
+              <dd className="m-0 text-white/60">{memory.scope}</dd>
+            </div>
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+              <dt className="text-white/35">Kind</dt>
+              <dd className="m-0 text-white/60">{memory.kind}</dd>
+            </div>
           </dl>
-        </div>
+
+          {index === props.memories.length - 1 ? (
+            <p className="m-0 mt-4 text-[0.7rem] text-white/30">
+              Loaded {formatMessageTimestamp(Date.parse(props.loadedAt))}
+            </p>
+          ) : null}
+        </article>
       ))}
     </div>
   );
@@ -89,14 +222,13 @@ function MemoryRecall(props: {
 
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
-    <div className="grid gap-2">
-      <div className="text-[0.72rem] text-white/35">
-        {props.context.kind} v{props.context.version} · Loaded{" "}
-        {formatMessageTimestamp(Date.parse(props.context.loadedAt))}
-      </div>
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[0.72rem] leading-relaxed text-white/55">
+    <div>
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-[0.75rem] leading-relaxed text-white/60">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
+      <p className="m-0 mt-3 text-[0.7rem] text-white/30">
+        Loaded {formatMessageTimestamp(Date.parse(props.context.loadedAt))}
+      </p>
     </div>
   );
 }
