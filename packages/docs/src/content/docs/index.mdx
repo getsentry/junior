@@ -1,111 +1,299 @@
 ---
 title: Junior
-description: Junior brings your tools into Slack. Ask in a thread and get answers backed by live context from Sentry, GitHub, Linear, and whatever else you've connected.
+description: Junior investigates issues, gathers company context, and takes action with your connected tools from a Slack thread.
 template: splash
 hero:
-  title: '<span class="jr-home-mega-inline">Junior</span><span class="jr-home-headline">Your company''s tools, <span class="jr-highlight">inside Slack.</span></span>'
-  tagline: "Ask in a thread. Junior figures out the rest — pulling context from Sentry, GitHub, Linear, and whatever else you've connected."
+  title: '<span class="jr-home-mega" aria-label="Junior">JUNIOR</span>'
+  tagline: "Drop a question in Slack. Junior digs through your tools, brings receipts, and handles the next annoying step."
   actions:
-    - text: Get Started
+    - text: Set Up Junior
       link: /start-here/quickstart/
       icon: right-arrow
-    - text: Use Junior
+    - text: See Junior Cook
       link: /start-here/using-junior/
       icon: right-arrow
 ---
 
 <div class="jr-home">
-<section class="slk-window">
-  <header class="slk-header">
-    <div class="slk-header-left">
-      <svg class="slk-thread-icon" aria-hidden="true" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M2 5.5A2.5 2.5 0 014.5 3h11A2.5 2.5 0 0118 5.5v6a2.5 2.5 0 01-2.5 2.5H11l-3.5 3v-3H4.5A2.5 2.5 0 012 11.5v-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+  <div class="jr-scribble jr-scribble-star" aria-hidden="true">★</div>
+  <div class="jr-scribble jr-scribble-arrow" aria-hidden="true">↘</div>
+  <div class="jr-scribble jr-scribble-wow" aria-hidden="true">WOW!</div>
+
+  <section class="jr-sticker-scene" aria-label="Junior connects Slack to your tools">
+    <div class="jr-sticker jr-sticker-slack">
+      <span class="jr-sticker-kicker">YELL HERE</span>
+      <svg aria-hidden="true" viewBox="0 0 120 96" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 12h100v58H65L43 88V70H10z" fill="#ff3cac" stroke="#000" stroke-width="7" stroke-linejoin="round" />
+        <circle cx="35" cy="41" r="6" fill="#000" />
+        <circle cx="59" cy="41" r="6" fill="#000" />
+        <circle cx="83" cy="41" r="6" fill="#000" />
       </svg>
-      <span class="slk-header-title">Thread</span>
+      <strong>Slack</strong>
     </div>
-    <span class="slk-header-channel"># incident-ops</span>
+
+    <div class="jr-flow-arrow jr-flow-arrow-blue" aria-hidden="true">
+      <span>the vague ask</span>
+      <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+        <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>
+
+    <div class="jr-gremlin" aria-label="Junior, a mischievous robot gremlin">
+      <span class="jr-gremlin-note">goes digging</span>
+      <svg viewBox="0 0 230 250" role="img" xmlns="http://www.w3.org/2000/svg">
+        <path d="m54 54-30-36 49 10m103 26 31-36-50 10" fill="#0033ff" stroke="#000" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M44 61c18-31 124-36 145 8l-4 118c-19 35-111 48-145 5z" fill="#695cff" stroke="#000" stroke-width="9" stroke-linejoin="round" />
+        <path d="m47 87-31 39 34 5m133-45 31 32-32 10" fill="#ff3cac" stroke="#000" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+        <rect x="61" y="77" width="105" height="66" rx="15" fill="#ccff00" stroke="#000" stroke-width="8" />
+        <circle cx="91" cy="106" r="12" fill="#000" />
+        <circle cx="139" cy="106" r="12" fill="#000" />
+        <circle cx="95" cy="102" r="4" fill="#fff" />
+        <circle cx="143" cy="102" r="4" fill="#fff" />
+        <path d="M91 130c15 10 31 10 48-2" fill="none" stroke="#000" stroke-width="7" stroke-linecap="round" />
+        <path d="m76 203-7 30m87-31 10 29" fill="none" stroke="#000" stroke-width="10" stroke-linecap="round" />
+        <path d="m54 235 30-2m67 0 31 2" fill="none" stroke="#000" stroke-width="12" stroke-linecap="round" />
+        <path d="M105 44v-19" stroke="#000" stroke-width="8" stroke-linecap="round" />
+        <circle cx="105" cy="18" r="10" fill="#ff3cac" stroke="#000" stroke-width="6" />
+      </svg>
+    </div>
+
+    <div class="jr-flow-arrow jr-flow-arrow-green" aria-hidden="true">
+      <span>receipts + buttons</span>
+      <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+        <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>
+
+    <div class="jr-tool-pile">
+      <div class="jr-sticker jr-sticker-github">
+        <span class="jr-cat-ears" aria-hidden="true"></span>
+        <span class="jr-cat-face" aria-hidden="true">•ᴗ•</span>
+        <strong>GitHub</strong>
+      </div>
+      <div class="jr-sticker jr-sticker-sentry">
+        <span aria-hidden="true">△</span>
+        <strong>Sentry</strong>
+      </div>
+      <div class="jr-sticker jr-sticker-more">
+        <span aria-hidden="true">+∞</span>
+        <strong>your stuff</strong>
+      </div>
+    </div>
+
+  </section>
+
+<div
+  class="jr-ticker"
+  aria-label="Ask the question, let Junior dig, get the receipts, and ship the fix"
+>
+  <span>ASK THE QUESTION</span>
+  <i>★</i>
+  <span>LET JUNIOR DIG</span>
+  <i>★</i>
+  <span>GET THE RECEIPTS</span>
+  <i>★</i>
+  <span>SHIP THE FIX</span>
+</div>
+
+  <section class="jr-proof" aria-labelledby="jr-proof-title">
+    <div class="jr-proof-copy">
+      <p class="jr-section-number">ONE SLACK MESSAGE</p>
+      <h2 id="jr-proof-title">Junior digs.<br />You ship.</h2>
+      <p>Junior snoops through Sentry, GitHub, Linear, docs, dashboards — whatever you plugged in. Then it comes back with receipts and can actually do the next thing.</p>
+      <div class="jr-proof-stamp">FINDS IT<br />EXPLAINS IT<br />DOES IT</div>
+    </div>
+
+    <div class="jr-slack-wrap">
+      <span class="jr-tape jr-tape-top" aria-hidden="true"></span>
+      <span class="jr-tape jr-tape-bottom" aria-hidden="true"></span>
+      <section class="slk-window" aria-label="Example Slack conversation with Junior">
+        <header class="slk-header">
+          <div class="slk-header-left">
+            <svg class="slk-thread-icon" aria-hidden="true" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 5.5A2.5 2.5 0 014.5 3h11A2.5 2.5 0 0118 5.5v6a2.5 2.5 0 01-2.5 2.5H11l-3.5 3v-3H4.5A2.5 2.5 0 012 11.5v-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            </svg>
+            <span class="slk-header-title">Thread</span>
+          </div>
+          <span class="slk-header-channel"># incident-ops</span>
+        </header>
+
+        <div class="slk-messages">
+          <div class="slk-msg">
+            <div class="slk-avatar slk-avatar-user" aria-hidden="true">DC</div>
+            <div class="slk-msg-body">
+              <div class="slk-msg-meta"><span class="slk-name">David C.</span><span class="slk-time">12:03 PM</span></div>
+              <p class="slk-text"><span class="slk-mention slk-mention-user">@jr</span> why is prod on fire? if auth did it, undo it and write the update.</p>
+            </div>
+          </div>
+
+          <div class="slk-msg slk-msg-junior">
+            <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
+            <div class="slk-msg-body">
+              <div class="slk-msg-meta"><span class="slk-name">Junior</span><span class="slk-app-badge">App</span><span class="slk-time">12:04 PM</span></div>
+              <p class="slk-text">yep, auth did it. <code class="slk-code">9f4e2c</code> broke webhook verification. rolled it back, the graph is chilling out, and the update is drafted.</p>
+              <div class="slk-tool-call">↳ Sentry snitched · GitHub confirmed · rollback shipped</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+  </section>
+
+<section class="jr-real-work" aria-labelledby="jr-real-work-title">
+  <header class="jr-real-work-heading">
+    <p>REAL STUFF. ALREADY SHIPPED.</p>
+    <h2 id="jr-real-work-title">Junior does more than yap.</h2>
+    <span>These mocks map to plugins and workflows in the repo right now. No roadmap fanfic.</span>
   </header>
 
-  <div class="slk-messages">
-
-    <div class="slk-msg">
-      <div class="slk-avatar slk-avatar-user" aria-hidden="true">DC</div>
-      <div class="slk-msg-body">
-        <div class="slk-msg-meta">
-          <span class="slk-name">David C.</span>
-          <span class="slk-time">12:03 PM</span>
+  <div class="jr-mock-grid">
+    <article class="jr-product-mock jr-product-mock-incident">
+      <header class="jr-product-mock-label">
+        <span>01</span>
+        <div>
+          <small>SENTRY + GITHUB + VERCEL</small>
+          <h3>Prod is on fire</h3>
         </div>
-        <p class="slk-text"><span class="slk-mention slk-mention-user">@jr</span> need context on the 5xx spike after deploy. Pull the likely cause and give me a rollback call if this is the auth change.</p>
+      </header>
+      <div class="jr-mock-window jr-incident-window">
+        <div class="jr-mock-window-bar">
+          <span># incident-ops</span>
+          <i>LIVE</i>
+        </div>
+        <div class="jr-mini-message">
+          <b>DC</b>
+          <p><strong>@jr</strong> why are checkouts dying? find it and fix it if the deploy did it.</p>
+        </div>
+        <div class="jr-mini-message jr-mini-message-bot">
+          <b>J</b>
+          <div>
+            <span class="jr-mock-status">CAUSE FOUND</span>
+            <p><code>9f4e2c</code> broke signature checks. rolled back. errors are dropping.</p>
+          </div>
+        </div>
+        <div class="jr-receipt-list">
+          <span>✓ Sentry spike matched</span>
+          <span>✓ GitHub diff checked</span>
+          <span>✓ Vercel rollback shipped</span>
+        </div>
       </div>
-    </div>
+      <p class="jr-product-mock-caption">Ask for the answer and the fix in the same sentence. Wild concept.</p>
+    </article>
 
-    <div class="slk-divider">
-      <span class="slk-divider-label">4 replies</span>
-    </div>
-
-    <div class="slk-msg">
-      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
-      <div class="slk-msg-body">
-        <div class="slk-msg-meta">
-          <span class="slk-name">Junior</span>
-          <span class="slk-app-badge">App</span>
-          <span class="slk-time">12:03 PM</span>
+    <article class="jr-product-mock jr-product-mock-linear">
+      <header class="jr-product-mock-label">
+        <span>02</span>
+        <div>
+          <small>LINEAR</small>
+          <h3>Make the ticket</h3>
         </div>
-        <p class="slk-text">On it. Pulling deploy diff, recent error groups, and queue callback failures for the last 30 min.</p>
-        <div class="slk-tool-call">
-          <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5v5h4.5L8 14.5v-5H3.5L8 1.5z" fill="currentColor"/></svg>
-          Queried Sentry error groups · Fetched deploy diff · Scanned queue callbacks
+      </header>
+      <div class="jr-mock-window jr-linear-window">
+        <div class="jr-linear-prompt">“turn this thread into a Linear issue, keep the links, assign the on-call”</div>
+        <div class="jr-linear-issue">
+          <div class="jr-linear-issue-top">
+            <span>ENG-482</span>
+            <i>IN PROGRESS</i>
+          </div>
+          <h4>Webhook verification rejects valid checkout events</h4>
+          <p>Regression started after <code>9f4e2c</code>. Includes Sentry issue, deploy, and reproduction notes from Slack.</p>
+          <div class="jr-linear-meta">
+            <span>◉ on-call</span>
+            <span>▲ urgent</span>
+            <span>↗ 3 links</span>
+          </div>
         </div>
+        <div class="jr-linear-done">created from the thread · context survived</div>
       </div>
-    </div>
+      <p class="jr-product-mock-caption">No copy-paste pilgrimage. The useful thread bits come with it.</p>
+    </article>
 
-    <div class="slk-msg">
-      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
-      <div class="slk-msg-body">
-        <div class="slk-msg-meta">
-          <span class="slk-name">Junior</span>
-          <span class="slk-app-badge">App</span>
-          <span class="slk-time">12:04 PM</span>
+    <article class="jr-product-mock jr-product-mock-browser">
+      <header class="jr-product-mock-label">
+        <span>03</span>
+        <div>
+          <small>AGENT BROWSER</small>
+          <h3>Check the website</h3>
         </div>
-        <p class="slk-text">Found it. Error rate jumped 7x immediately after commit <code class="slk-code">9f4e2c</code> in auth middleware. 87% of failures are <code class="slk-code">invalid_signature</code> from webhook verification.</p>
-      </div>
-    </div>
-
-    <div class="slk-msg">
-      <div class="slk-avatar slk-avatar-user" aria-hidden="true">DC</div>
-      <div class="slk-msg-body">
-        <div class="slk-msg-meta">
-          <span class="slk-name">David C.</span>
-          <span class="slk-time">12:04 PM</span>
+      </header>
+      <div class="jr-mock-window jr-browser-window">
+        <div class="jr-browser-bar">
+          <span></span><span></span><span></span>
+          <p>preview.example.com</p>
         </div>
-        <p class="slk-text">Roll it back and drop the status update text for <span class="slk-mention">#eng-incidents</span>.</p>
-      </div>
-    </div>
-
-    <div class="slk-msg">
-      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
-      <div class="slk-msg-body">
-        <div class="slk-msg-meta">
-          <span class="slk-name">Junior</span>
-          <span class="slk-app-badge">App</span>
-          <span class="slk-time">12:05 PM</span>
+        <div class="jr-browser-preview">
+          <div class="jr-browser-preview-nav"></div>
+          <div class="jr-browser-preview-title"></div>
+          <div class="jr-browser-preview-grid"><i></i><i></i><i></i></div>
         </div>
-        <p class="slk-text">Done. Rollback is live. Error rate is trending down. Draft posted to <span class="slk-mention">#eng-incidents</span>: <em>"Rolled back auth middleware regression from <code class="slk-code">9f4e2c</code>; webhook 5xx recovering."</em></p>
+        <div class="jr-browser-checks">
+          <span>✓ desktop checked</span>
+          <span>✓ mobile checked</span>
+          <span>✓ console clean</span>
+          <span>✓ screenshots attached</span>
+        </div>
+        <div class="jr-browser-verdict"><b>SHIP IT</b><span>nothing cursed found</span></div>
       </div>
-    </div>
+      <p class="jr-product-mock-caption">Junior can open the real page, click around, and bring visual receipts.</p>
+    </article>
 
   </div>
+</section>
+
+<section class="jr-cards" aria-label="What Junior does">
+  <article class="jr-card jr-card-blue">
+    <span>01</span>
+    <h2>Find it.</h2>
+    <p>
+      Errors, deploys, logs, code changes, owners. Junior digs through the pile
+      so you do not have to.
+    </p>
+  </article>
+  <article class="jr-card jr-card-pink">
+    <span>02</span>
+    <h2>Prove it.</h2>
+    <p>
+      No mystery vibes. Junior shows its work and brings the useful bits back
+      from every tool it checked.
+    </p>
+  </article>
+  <article class="jr-card jr-card-cream">
+    <span>03</span>
+    <h2>Do it.</h2>
+    <p>
+      Draft the update. Open the issue. Make the approved change. Anything but
+      another giant blob of advice.
+    </p>
+  </article>
 </section>
 
 <section class="jr-customers" aria-labelledby="jr-customers-title">
-  <p class="jr-customers-eyebrow" id="jr-customers-title">Sort of trusted by</p>
-  <div class="jr-customer-logos" aria-label="Companies using Junior">
-    <a class="jr-customer-logo" href="https://sentry.io" aria-label="Sentry">
-      <svg viewBox="0 0 222 66" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-        <path d="M29,2.26a4.67,4.67,0,0,0-8,0L14.42,13.53A32.21,32.21,0,0,1,32.17,40.19H27.55A27.68,27.68,0,0,0,12.09,17.47L6,28a15.92,15.92,0,0,1,9.23,12.17H4.62A.76.76,0,0,1,4,39.06l2.94-5a10.74,10.74,0,0,0-3.36-1.9l-2.91,5a4.54,4.54,0,0,0,1.69,6.24A4.66,4.66,0,0,0,4.62,44H19.15a19.4,19.4,0,0,0-8-17.31l2.31-4A23.87,23.87,0,0,1,23.76,44H36.07a35.88,35.88,0,0,0-16.41-31.8l4.67-8a.77.77,0,0,1,1.05-.27c.53.29,20.29,34.77,20.66,35.17a.76.76,0,0,1-.68,1.13H40.6q.09,1.91,0,3.81h4.78A4.59,4.59,0,0,0,50,39.43a4.49,4.49,0,0,0-.62-2.28Z M124.32,28.28,109.56,9.22h-3.68V34.77h3.73V15.19l15.18,19.58h3.26V9.22h-3.73ZM87.15,23.54h13.23V20.22H87.14V12.53h14.93V9.21H83.34V34.77h18.92V31.45H87.14ZM71.59,20.3h0C66.44,19.06,65,18.08,65,15.7c0-2.14,1.89-3.59,4.71-3.59a12.06,12.06,0,0,1,7.07,2.55l2-2.83a14.1,14.1,0,0,0-9-3c-5.06,0-8.59,3-8.59,7.27,0,4.6,3,6.19,8.46,7.52C74.51,24.74,76,25.78,76,28.11s-2,3.77-5.09,3.77a12.34,12.34,0,0,1-8.3-3.26l-2.25,2.69a15.94,15.94,0,0,0,10.42,3.85c5.48,0,9-2.95,9-7.51C79.75,23.79,77.47,21.72,71.59,20.3ZM195.7,9.22l-7.69,12-7.64-12h-4.46L186,24.67V34.78h3.84V24.55L200,9.22Zm-64.63,3.46h8.37v22.1h3.84V12.68h8.37V9.22H131.08ZM169.41,24.8c3.86-1.07,6-3.77,6-7.63,0-4.91-3.59-8-9.38-8H154.67V34.76h3.8V25.58h6.45l6.48,9.2h4.44l-7-9.82Zm-10.95-2.5V12.6h7.17c3.74,0,5.88,1.77,5.88,4.84s-2.29,4.86-5.84,4.86Z" transform="translate(11, 11)" fill="currentColor" />
-      </svg>
-    </a>
-  </div>
-  <a class="jr-customers-cta" href="https://github.com/getsentry/junior/issues/new?title=Add%20our%20company%20to%20the%20Junior%20homepage">Add your company</a>
+  <p class="jr-customers-eyebrow" id="jr-customers-title">
+    BUILT AT SENTRY. YES, WE ACTUALLY USE IT.
+  </p>
+  <a class="jr-customer-logo" href="https://sentry.io" aria-label="Sentry">
+    <svg
+      viewBox="0 0 222 66"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M29,2.26a4.67,4.67,0,0,0-8,0L14.42,13.53A32.21,32.21,0,0,1,32.17,40.19H27.55A27.68,27.68,0,0,0,12.09,17.47L6,28a15.92,15.92,0,0,1,9.23,12.17H4.62A.76.76,0,0,1,4,39.06l2.94-5a10.74,10.74,0,0,0-3.36-1.9l-2.91,5a4.54,4.54,0,0,0,1.69,6.24A4.66,4.66,0,0,0,4.62,44H19.15a19.4,19.4,0,0,0-8-17.31l2.31-4A23.87,23.87,0,0,1,23.76,44H36.07a35.88,35.88,0,0,0-16.41-31.8l4.67-8a.77.77,0,0,1,1.05-.27c.53.29,20.29,34.77,20.66,35.17a.76.76,0,0,1-.68,1.13H40.6q.09,1.91,0,3.81h4.78A4.59,4.59,0,0,0,50,39.43a4.49,4.49,0,0,0-.62-2.28Z M124.32,28.28,109.56,9.22h-3.68V34.77h3.73V15.19l15.18,19.58h3.26V9.22h-3.73ZM87.15,23.54h13.23V20.22H87.14V12.53h14.93V9.21H83.34V34.77h18.92V31.45H87.14ZM71.59,20.3h0C66.44,19.06,65,18.08,65,15.7c0-2.14,1.89-3.59,4.71-3.59a12.06,12.06,0,0,1,7.07,2.55l2-2.83a14.1,14.1,0,0,0-9-3c-5.06,0-8.59,3-8.59,7.27,0,4.6,3,6.19,8.46,7.52C74.51,24.74,76,25.78,76,28.11s-2,3.77-5.09,3.77a12.34,12.34,0,0,1-8.3-3.26l-2.25,2.69a15.94,15.94,0,0,0,10.42,3.85c5.48,0,9-2.95,9-7.51C79.75,23.79,77.47,21.72,71.59,20.3ZM195.7,9.22l-7.69,12-7.64-12h-4.46L186,24.67V34.78h3.84V24.55L200,9.22Zm-64.63,3.46h8.37v22.1h3.84V12.68h8.37V9.22H131.08ZM169.41,24.8c3.86-1.07,6-3.77,6-7.63,0-4.91-3.59-8-9.38-8H154.67V34.76h3.8V25.58h6.45l6.48,9.2h4.44l-7-9.82Zm-10.95-2.5V12.6h7.17c3.74,0,5.88,1.77,5.88,4.84s-2.29,4.86-5.84,4.86Z"
+        transform="translate(11, 11)"
+        fill="currentColor"
+      />
+    </svg>
+  </a>
+  <a
+    class="jr-customers-cta"
+    href="https://github.com/getsentry/junior/issues/new?title=Add%20our%20company%20to%20the%20Junior%20homepage"
+  >
+    Got Junior running? Flex on us →
+  </a>
 </section>
+
+  <p class="jr-made-this"><b>*</b> yes, Junior made this homepage too.</p>
 </div>

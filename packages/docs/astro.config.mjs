@@ -45,7 +45,7 @@ export default defineConfig({
       description:
         "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
       favicon: "/favicon.svg",
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/custom.css", "./src/styles/homepage-mocks.css"],
       social: [
         {
           icon: "github",
@@ -191,10 +191,7 @@ export default defineConfig({
           ],
         },
       ],
-      plugins: [
-        sentryStarlightTheme(),
-        sentryAgentMarkdown(),
-      ],
+      plugins: [sentryStarlightTheme(), sentryAgentMarkdown()],
     }),
   ],
   markdown: {
