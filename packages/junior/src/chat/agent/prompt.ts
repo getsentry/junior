@@ -8,7 +8,11 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { sandboxSkillFile } from "@/chat/sandbox/paths";
+import {
+  sandboxSkillDir,
+  sandboxSkillFile,
+  sandboxSkillPathResolution,
+} from "@/chat/sandbox/paths";
 import {
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
@@ -110,6 +114,8 @@ export function renderExplicitSkillInstructions(skill: Skill): string {
     "<skill>",
     `<name>${escapeXml(skill.name)}</name>`,
     `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
+    `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
+    `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
     skill.body,
     "</skill>",
   ].join("\n");

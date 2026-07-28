@@ -21,3 +21,9 @@ export function sandboxSkillDir(skillName: string): string {
 export function sandboxSkillFile(skillName: string): string {
   return `${sandboxSkillDir(skillName)}/SKILL.md`;
 }
+
+/** Explain how the agent should resolve files and commands owned by a skill. */
+export function sandboxSkillPathResolution(skillName: string): string {
+  const skillDir = sandboxSkillDir(skillName);
+  return `Resolve relative paths in this skill against ${skillDir}. For bash commands from this skill, cd to ${skillDir} first or use absolute paths.`;
+}

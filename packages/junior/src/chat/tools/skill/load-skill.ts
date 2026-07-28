@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
+import {
+  sandboxSkillDir,
+  sandboxSkillFile,
+  sandboxSkillPathResolution,
+} from "@/chat/sandbox/paths";
 import {
   loadSkillsByName,
   type Skill,
@@ -90,7 +94,7 @@ async function loadSkillFromHost(
     skill_dir: skillDir,
     working_directory: skillDir,
     location: skillFilePath,
-    path_resolution: `Resolve relative paths in this skill against ${skillDir}. For bash commands from this skill, cd to ${skillDir} first or use absolute paths.`,
+    path_resolution: sandboxSkillPathResolution(skill.name),
     instructions: loaded.body,
   };
 }

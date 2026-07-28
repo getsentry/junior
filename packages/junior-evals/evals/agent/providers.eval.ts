@@ -63,12 +63,6 @@ describeEval("Skill Providers", slackEvals, (it) => {
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "loadSkill",
-          arguments: expect.objectContaining({
-            skill_name: "eval-mcp",
-          }),
-        }),
-        expect.objectContaining({
           name: "callMcpTool",
           arguments: expect.objectContaining({
             tool_name: "mcp__eval-mcp__handbook-search",
@@ -76,6 +70,14 @@ describeEval("Skill Providers", slackEvals, (it) => {
               query: expect.stringMatching(/US holidays/i),
             }),
           }),
+        }),
+      ]),
+    );
+    expect(toolCalls(result.session)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "loadSkill",
+          arguments: expect.objectContaining({ skill_name: "eval-mcp" }),
         }),
       ]),
     );

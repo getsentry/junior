@@ -138,6 +138,31 @@ describe("skills", () => {
     });
   });
 
+  it("ignores environment variables and keeps scanning for a skill", () => {
+    expect(
+      parseSkillInvocation("use $HOME then $brief github: octocat", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(
+      parseSkillInvocation(
+        "For $10, use the weather-lookup skill for San Francisco.",
+        stubSkills,
+      ),
+    ).toEqual({
+      skillName: "weather-lookup",
+    });
+  });
+
+  it("does not treat common environment variables as skill references", () => {
+    expect(
+      parseSkillInvocation("echo $HOME", [
+        ...stubSkills,
+        { name: "home", description: "Home", skillPath: "/tmp/home" },
+      ]),
+    ).toBeNull();
+  });
+
   it("returns null for an unregistered skill reference", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
     expect(parseSkillInvocation("$jr link sentry", stubSkills)).toBeNull();

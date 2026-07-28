@@ -19,7 +19,9 @@ describe("buildUserTurnText", () => {
       [
         "<skill>",
         "<name>weather-lookup</name>",
-        "<path>/vercel/sandbox/.junior/skills/weather-lookup/SKILL.md</path>",
+        "<path>/vercel/sandbox/skills/weather-lookup/SKILL.md</path>",
+        "<working_directory>/vercel/sandbox/skills/weather-lookup</working_directory>",
+        "<path_resolution>Resolve relative paths in this skill against /vercel/sandbox/skills/weather-lookup. For bash commands from this skill, cd to /vercel/sandbox/skills/weather-lookup first or use absolute paths.</path_resolution>",
         "Use the weather source.",
         "</skill>",
       ].join("\n"),

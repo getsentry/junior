@@ -426,6 +426,22 @@ export async function discoverSkills(
   return sorted;
 }
 
+function isCommonEnvironmentVariable(name: string): boolean {
+  return [
+    "HOME",
+    "LANG",
+    "PATH",
+    "PWD",
+    "SHELL",
+    "TEMP",
+    "TERM",
+    "TMP",
+    "TMPDIR",
+    "USER",
+    "XDG_CONFIG_HOME",
+  ].includes(name.toUpperCase());
+}
+
 /** Extract an explicit skill invocation from a user message. */
 export function parseSkillInvocation(
   messageText: string,
@@ -434,16 +450,25 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const referenceMatch = /(?:^|\s)(?:\/|\$)([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(
-    trimmed,
-  );
-  if (referenceMatch) {
-    const skillName = referenceMatch[1].toLowerCase();
+  const slashMatch = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(trimmed);
+  if (slashMatch) {
+    const skillName = slashMatch[1].toLowerCase();
     if (!availableSkills.some((skill) => skill.name === skillName)) {
       return null;
     }
 
     return { skillName };
+  }
+
+  const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
+  for (const match of trimmed.matchAll(dollarPattern)) {
+    const skillName = match[1].toLowerCase();
+    if (isCommonEnvironmentVariable(skillName)) {
+      continue;
+    }
+    if (availableSkills.some((skill) => skill.name === skillName)) {
+      return { skillName };
+    }
   }
 
   const namedSkill = availableSkills.find((skill) => {
