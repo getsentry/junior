@@ -47,6 +47,11 @@ export interface WebSearchToolDeps {
   }) => Promise<JuniorToolResult> | JuniorToolResult;
 }
 
+/** Optional host image reader for deterministic tool execution without sandbox I/O. */
+export interface ViewImageToolDeps {
+  readFile?: (path: string) => Promise<Buffer | null | undefined>;
+}
+
 export interface ToolHooks {
   /**
    * Materialize generated files and return sandbox paths that exist before the
@@ -63,6 +68,7 @@ export interface ToolHooks {
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
+    viewImage?: ViewImageToolDeps;
     webFetch?: WebFetchToolDeps;
     webSearch?: WebSearchToolDeps;
   };
@@ -92,6 +98,8 @@ interface BaseToolRuntimeContext {
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
   workspace: SandboxWorkspace;
+  /** Report whether the model currently executing the turn accepts images. */
+  supportsImageInput?: () => boolean;
 }
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {

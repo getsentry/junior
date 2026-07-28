@@ -12,6 +12,7 @@ import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
+import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
@@ -120,6 +121,13 @@ export function createTools(
   };
   if (context.conversationId) {
     tools.queryConversationEvents = createQueryConversationEventsTool(context);
+  }
+  if (context.supportsImageInput) {
+    tools.viewImage = createViewImageTool(
+      context.workspace,
+      context.supportsImageInput,
+      hooks.toolOverrides?.viewImage,
+    );
   }
   if (hooks.writeGeneratedArtifacts) {
     tools.imageGenerate = createImageGenerateTool(

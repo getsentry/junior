@@ -1,5 +1,6 @@
 import path from "node:path";
 import { generateKeyPairSync } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -304,6 +305,12 @@ interface SubscribedDecisionFixture {
   should_reply: boolean;
 }
 
+/** Host image fixture exposed at one model-visible sandbox path. */
+interface EvalViewImageFixture {
+  path: string;
+  source: string;
+}
+
 export interface EvalOverrides {
   active_turn_compaction?: {
     summary: string;
@@ -324,6 +331,7 @@ export interface EvalOverrides {
     tool_name: string;
   };
   unset_gateway_api_key?: boolean;
+  view_image_files?: EvalViewImageFixture[];
 }
 
 export interface EvalScenario {
@@ -1882,12 +1890,28 @@ function buildRuntimeServices(
           const baseToolOverrides: ToolHooks["toolOverrides"] = {
             ...(request.policy?.toolOverrides ?? {}),
           };
+          const viewImageFixtures = new Map(
+            scenario.overrides?.view_image_files?.map((fixture) => [
+              fixture.path,
+              resolveEvalRelativePath(fixture.source),
+            ]) ?? [],
+          );
           const toolOverrides = {
             ...baseToolOverrides,
             webFetch: createReplayWebFetchDeps(baseToolOverrides),
             webSearch: createReplayWebSearchDeps(baseToolOverrides),
             ...(mockImageGeneration
               ? { imageGenerate: createMockImageGenerateDeps() }
+              : {}),
+            ...(viewImageFixtures.size > 0
+              ? {
+                  viewImage: {
+                    readFile: async (imagePath: string) => {
+                      const sourcePath = viewImageFixtures.get(imagePath);
+                      return sourcePath ? await readFile(sourcePath) : null;
+                    },
+                  },
+                }
               : {}),
           };
           if (scenario.overrides?.unset_gateway_api_key) {

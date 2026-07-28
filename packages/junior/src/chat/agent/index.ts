@@ -724,6 +724,8 @@ async function executeAgentRunInPrivacyContext(
       skillSandbox,
       spanContext,
       state,
+      supportsImageInput: () =>
+        resolveGatewayModel(activeModelId).input.includes("image"),
       surface,
       syncLoadedSkillNamesForResume,
       toolCalls,

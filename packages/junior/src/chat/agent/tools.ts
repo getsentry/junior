@@ -84,6 +84,7 @@ interface ToolWiringArgs {
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
   state: AgentRunState;
+  supportsImageInput: () => boolean;
   surface: AgentTurnSurface;
   syncLoadedSkillNamesForResume: () => void;
   toolCalls: string[];
@@ -228,6 +229,7 @@ export async function wireAgentTools(
     }),
     mcpToolManager,
     workspace: agentSandbox.workspace,
+    supportsImageInput: args.supportsImageInput,
     surface: args.surface,
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };

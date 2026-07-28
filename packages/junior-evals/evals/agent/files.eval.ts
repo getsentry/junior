@@ -6,7 +6,49 @@ const codingFixtureOverrides = {
   skill_dirs: ["fixtures/coding-skills"],
 };
 
+const imageFixtureOverrides = {
+  view_image_files: [
+    {
+      source: "fixtures/images/workspace-shapes.png",
+      path: "/vercel/sandbox/fixtures/workspace-shapes.png",
+    },
+  ],
+};
+
 describeEval("Coding File Tools", slackEvals, (it) => {
+  it("when asked about a workspace image, inspect it and explain what it shows", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: imageFixtureOverrides,
+      initialEvents: [
+        mention(
+          "Use viewImage to inspect /vercel/sandbox/fixtures/workspace-shapes.png, then explain what it shows. Describe the colored shapes and where they are positioned.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The reply says the image contains a blue square on the left, a red circle on the right, and a green triangle near the bottom center.",
+          "The reply is based on inspecting the image rather than guessing from its filename.",
+        ],
+        fail: [
+          "Do not claim the image cannot be viewed or ask the user to upload it again.",
+          "Do not describe different colors, shapes, or positions as the main image contents.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toContainEqual(
+      expect.objectContaining({
+        name: "viewImage",
+        status: "ok",
+        arguments: expect.objectContaining({
+          path: expect.stringContaining("fixtures/workspace-shapes.png"),
+        }),
+      }),
+    );
+  });
+
   it("when making a targeted source edit, update the value and report the changed path", async ({
     run,
   }) => {

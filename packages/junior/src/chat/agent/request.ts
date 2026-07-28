@@ -33,6 +33,7 @@ import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
+  ViewImageToolDeps,
   WebFetchToolDeps,
   WebSearchToolDeps,
 } from "@/chat/tools/types";
@@ -115,6 +116,7 @@ export interface AgentRunPolicy {
   sandboxEgressSignals?: SandboxEgressSignalTransport;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
+    viewImage?: ViewImageToolDeps;
     webFetch?: WebFetchToolDeps;
     webSearch?: WebSearchToolDeps;
   };
