@@ -121,6 +121,7 @@ async function appendVisibleHistory(
           },
           stopReason: "toolUse",
           content: [
+            { type: "thinking", thinking: "Inspect the tool request." },
             {
               type: "toolCall",
               id: `${conversationId}:tool-call`,
@@ -378,6 +379,15 @@ describe("dashboard canonical event reporting", () => {
             input: { query: "visible tool query" },
           },
         ],
+        assistant: {
+          parts: [
+            { type: "reasoning", text: "Inspect the tool request." },
+            {
+              type: "tool_call",
+              toolCallId: `${conversationId}:tool-call`,
+            },
+          ],
+        },
       },
       {
         type: "tool_calls",

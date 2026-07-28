@@ -114,7 +114,36 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
   return only.type === "text" ? only.text : only;
 }
 
-/** Project one native assistant history item into its safe reporting shape. */
+/** Project native assistant tool calls through the existing reporting shape. */
+function reportToolCalls(args: {
+  canExposePayload: boolean;
+  createdAtMs: number;
+  message: unknown;
+  seq: number;
+}): ConversationReportEventData | undefined {
+  const message = reportingAssistantMessageSchema.safeParse(args.message);
+  if (!message.success) return undefined;
+
+  const calls = message.data.content.flatMap((part) => {
+    const call = reportingToolCallPartSchema.safeParse(part);
+    if (!call.success) return [];
+    return [
+      {
+        toolCallId: call.data.id,
+        name: call.data.name,
+        status: "running" as const,
+        startedAt: new Date(args.createdAtMs).toISOString(),
+        startedSeq: args.seq,
+        ...(args.canExposePayload && call.data.arguments !== undefined
+          ? { input: call.data.arguments }
+          : {}),
+      },
+    ];
+  });
+  return calls.length > 0 ? { type: "tool_calls", calls } : undefined;
+}
+
+/** Project assistant reasoning with tool ids retained only for display order. */
 function reportAssistantMessage(args: {
   canExposePayload: boolean;
   createdAtMs: number;
@@ -124,40 +153,50 @@ function reportAssistantMessage(args: {
   const message = reportingAssistantMessageSchema.safeParse(args.message);
   if (!message.success) return undefined;
 
-  const parts: Extract<
+  const hasReasoning = message.data.content.some((part) => {
+    const reasoning = reportingReasoningPartSchema.safeParse(part);
+    return reasoning.success && reasoning.data.thinking.trim().length > 0;
+  });
+  if (!hasReasoning) return reportToolCalls(args);
+
+  const reasoningParts: Extract<
     ConversationReportEventData,
     { type: "assistant_message" }
+  >["parts"] = [];
+  const assistantParts: NonNullable<
+    Extract<ConversationReportEventData, { type: "tool_calls" }>["assistant"]
   >["parts"] = [];
   for (const part of message.data.content) {
     const reasoning = reportingReasoningPartSchema.safeParse(part);
     if (reasoning.success) {
       if (reasoning.data.thinking.trim().length > 0) {
-        parts.push({
+        const projected = {
           type: "reasoning" as const,
           ...(args.canExposePayload
             ? { text: reasoning.data.thinking }
             : { redacted: true as const }),
-        });
+        };
+        reasoningParts.push(projected);
+        assistantParts.push(projected);
       }
       continue;
     }
 
     const call = reportingToolCallPartSchema.safeParse(part);
     if (call.success) {
-      parts.push({
+      assistantParts.push({
         type: "tool_call" as const,
         toolCallId: call.data.id,
-        name: call.data.name,
-        status: "running" as const,
-        startedAt: new Date(args.createdAtMs).toISOString(),
-        startedSeq: args.seq,
-        ...(args.canExposePayload && call.data.arguments !== undefined
-          ? { input: call.data.arguments }
-          : {}),
       });
     }
   }
-  return parts.length > 0 ? { type: "assistant_message", parts } : undefined;
+  const toolCalls = reportToolCalls(args);
+  if (toolCalls?.type === "tool_calls") {
+    return { ...toolCalls, assistant: { parts: assistantParts } };
+  }
+  return reasoningParts.length > 0
+    ? { type: "assistant_message", parts: reasoningParts }
+    : undefined;
 }
 
 /** Project a native tool result without exposing host-only result details. */

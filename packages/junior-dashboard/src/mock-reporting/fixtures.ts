@@ -273,14 +273,9 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         status: "completed",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
-        type: "assistant_message",
-        parts: [
+        type: "tool_calls",
+        calls: [
           {
-            type: "reasoning",
-            text: "Load the dashboard QA skill before inspecting the reporting surface.",
-          },
-          {
-            type: "tool_call",
             toolCallId: "qa-load-skill",
             name: "loadSkill",
             status: "running",
@@ -289,11 +284,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             input: { skill_name: "junior-qa" },
           },
           {
-            type: "reasoning",
-            text: "Search the repository so the review covers the current pull request state.",
-          },
-          {
-            type: "tool_call",
             toolCallId: "qa-execute-tool",
             name: "executeTool",
             status: "running",
@@ -305,6 +295,20 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+        assistant: {
+          parts: [
+            {
+              type: "reasoning",
+              text: "Load the dashboard QA skill before inspecting the reporting surface.",
+            },
+            { type: "tool_call", toolCallId: "qa-load-skill" },
+            {
+              type: "reasoning",
+              text: "Search the repository so the review covers the current pull request state.",
+            },
+            { type: "tool_call", toolCallId: "qa-execute-tool" },
+          ],
+        },
       }),
       reportEvent(9, iso(Date.parse(startedAt), 52_000), {
         type: "tool_calls",
@@ -315,6 +319,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             status: "completed",
             startedSeq: 8,
             startedAt: iso(Date.parse(startedAt), 50_000),
+            input: { skill_name: "junior-qa" },
             output: { ok: true },
           },
           {

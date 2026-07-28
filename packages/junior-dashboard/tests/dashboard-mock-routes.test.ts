@@ -227,7 +227,9 @@ describe("dashboard canonical-event mock routes", () => {
     const dashboardQa = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
     expect(
       dashboardQa.events.some(
-        (event) => event.data.type === "assistant_message",
+        (event) =>
+          event.data.type === "tool_calls" &&
+          event.data.assistant !== undefined,
       ),
     ).toBe(true);
     expect(dashboardQa.annotations).toEqual([

@@ -208,51 +208,6 @@ describe("dashboard conversation formatting", () => {
     });
   });
 
-  it("counts pending assistant tool requests once across later updates", () => {
-    const conversation = transcript([
-      event(0, {
-        type: "assistant_message",
-        parts: [
-          { type: "reasoning", text: "Inspect the inputs." },
-          {
-            type: "tool_call",
-            toolCallId: "search-1",
-            name: "search",
-            status: "running",
-            startedAt: "2026-01-01T00:00:00.000Z",
-            startedSeq: 0,
-          },
-          {
-            type: "tool_call",
-            toolCallId: "fetch-1",
-            name: "fetch",
-            status: "running",
-            startedAt: "2026-01-01T00:00:00.000Z",
-            startedSeq: 0,
-          },
-        ],
-      }),
-      event(1, {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "search-1",
-            name: "search",
-            status: "completed",
-          },
-        ],
-      }),
-    ]);
-
-    expect(summarizeToolCalls(conversation)).toEqual({
-      items: [
-        { count: 1, name: "fetch" },
-        { count: 1, name: "search" },
-      ],
-      total: 2,
-    });
-  });
-
   it("does not count assistant-only history as actor turns", () => {
     const conversation = transcript([
       event(0, {

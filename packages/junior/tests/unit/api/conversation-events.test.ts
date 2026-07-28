@@ -162,14 +162,9 @@ describe("conversation report event projection", () => {
         seq: 11,
         createdAt: "1970-01-01T00:00:10.000Z",
         data: {
-          type: "assistant_message",
-          parts: [
+          type: "tool_calls",
+          calls: [
             {
-              type: "reasoning",
-              text: "private chain of thought",
-            },
-            {
-              type: "tool_call",
               toolCallId: "private-tool-call-id",
               name: "search",
               status: "running",
@@ -178,6 +173,18 @@ describe("conversation report event projection", () => {
               input: { query: "private query" },
             },
           ],
+          assistant: {
+            parts: [
+              {
+                type: "reasoning",
+                text: "private chain of thought",
+              },
+              {
+                type: "tool_call",
+                toolCallId: "private-tool-call-id",
+              },
+            ],
+          },
         },
       },
       {
@@ -216,11 +223,9 @@ describe("conversation report event projection", () => {
       events,
     });
     expect(redacted[1]?.data).toEqual({
-      type: "assistant_message",
-      parts: [
-        { type: "reasoning", redacted: true },
+      type: "tool_calls",
+      calls: [
         {
-          type: "tool_call",
           toolCallId: "private-tool-call-id",
           name: "search",
           status: "running",
@@ -228,6 +233,45 @@ describe("conversation report event projection", () => {
           startedSeq: 11,
         },
       ],
+      assistant: {
+        parts: [
+          { type: "reasoning", redacted: true },
+          {
+            type: "tool_call",
+            toolCallId: "private-tool-call-id",
+          },
+        ],
+      },
+    });
+  });
+
+  it("projects reasoning-only assistant history as an additive event", () => {
+    const events = [
+      event(
+        1,
+        assistantMessage([
+          { type: "thinking", thinking: "Check the final answer." },
+        ]),
+      ),
+    ];
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events,
+      })[0]?.data,
+    ).toEqual({
+      type: "assistant_message",
+      parts: [{ type: "reasoning", text: "Check the final answer." }],
+    });
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events,
+      })[0]?.data,
+    ).toEqual({
+      type: "assistant_message",
+      parts: [{ type: "reasoning", redacted: true }],
     });
   });
 
@@ -283,10 +327,9 @@ describe("conversation report event projection", () => {
 
     expect(projected.map(({ data }) => data)).toEqual([
       {
-        type: "assistant_message",
-        parts: [
+        type: "tool_calls",
+        calls: [
           {
-            type: "tool_call",
             toolCallId: "call-1",
             name: "search",
             status: "running",
@@ -295,7 +338,6 @@ describe("conversation report event projection", () => {
             input: { query: "first" },
           },
           {
-            type: "tool_call",
             toolCallId: "call-2",
             name: "fetch",
             status: "running",

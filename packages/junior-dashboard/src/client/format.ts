@@ -253,13 +253,8 @@ export function summarizeToolCalls(
   let total = 0;
 
   for (const event of conversation.events) {
-    const calls =
-      event.data.type === "tool_calls"
-        ? event.data.calls
-        : event.data.type === "assistant_message"
-          ? event.data.parts.filter((part) => part.type === "tool_call")
-          : [];
-    for (const call of calls) {
+    if (event.data.type !== "tool_calls") continue;
+    for (const call of event.data.calls) {
       if (seen.has(call.toolCallId)) continue;
       seen.add(call.toolCallId);
       const item = byName.get(call.name) ?? {

@@ -128,40 +128,17 @@ export function conversationTranscriptMessages(
     }
 
     if (data.type === "assistant_message") {
-      const parts: TranscriptViewPart[] = [];
-      for (const part of data.parts) {
-        if (part.type === "reasoning") {
-          parts.push(
+      messages.push(
+        eventMessage(
+          event,
+          "assistant",
+          data.parts.map((part) =>
             part.redacted
               ? { type: "reasoning", redacted: true }
               : { type: "reasoning", text: part.text! },
-          );
-          continue;
-        }
-        if (replacedToolIds.has(part.toolCallId)) continue;
-        const existing = tools.get(part.toolCallId);
-        const tool = existing ?? {
-          type: "tool_call" as const,
-          id: part.toolCallId,
-          name: part.name,
-          status: part.status,
-        };
-        tool.name = part.name;
-        if (part.input !== undefined) tool.input = part.input;
-        if (!existing) tools.set(part.toolCallId, tool);
-
-        const standaloneMessage = standaloneToolMessages.get(part.toolCallId);
-        if (standaloneMessage) {
-          tool.startedTimestamp = standaloneMessage.timestamp;
-          const messageIndex = messages.indexOf(standaloneMessage);
-          if (messageIndex >= 0) messages.splice(messageIndex, 1);
-          standaloneToolMessages.delete(part.toolCallId);
-        }
-        parts.push(tool);
-      }
-      if (parts.length > 0) {
-        messages.push(eventMessage(event, "assistant", parts));
-      }
+          ),
+        ),
+      );
       continue;
     }
 
@@ -205,6 +182,36 @@ export function conversationTranscriptMessages(
 
     if (data.type === "tool_calls") {
       for (const call of data.calls) ensureTool(event, call);
+      if (data.assistant) {
+        const parts: TranscriptViewPart[] = [];
+        for (const part of data.assistant.parts) {
+          if (part.type === "reasoning") {
+            parts.push(
+              part.redacted
+                ? { type: "reasoning", redacted: true }
+                : { type: "reasoning", text: part.text! },
+            );
+            continue;
+          }
+          if (replacedToolIds.has(part.toolCallId)) continue;
+          const tool = tools.get(part.toolCallId);
+          if (!tool) continue;
+
+          const standaloneMessage = standaloneToolMessages.get(part.toolCallId);
+          if (standaloneMessage) {
+            if (standaloneMessage.sourceSeq !== event.seq) {
+              tool.startedTimestamp = standaloneMessage.timestamp;
+            }
+            const messageIndex = messages.indexOf(standaloneMessage);
+            if (messageIndex >= 0) messages.splice(messageIndex, 1);
+            standaloneToolMessages.delete(part.toolCallId);
+          }
+          parts.push(tool);
+        }
+        if (parts.length > 0) {
+          messages.push(eventMessage(event, "assistant", parts));
+        }
+      }
       continue;
     }
 

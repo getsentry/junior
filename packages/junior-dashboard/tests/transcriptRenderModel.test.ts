@@ -95,20 +95,34 @@ describe("canonical event transcript reduction", () => {
   it("preserves ordered reasoning and tool activity", () => {
     const messages = conversationTranscriptMessages(
       conversation([
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "assistant_message",
-          parts: [
-            { type: "reasoning", text: "Inspect the inputs." },
+        event(0, "2026-01-01T00:00:00.000Z", {
+          type: "tool_calls",
+          calls: [
             {
-              type: "tool_call",
+              toolCallId: "search-1",
+              name: "search",
+              status: "running",
+            },
+          ],
+        }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "tool_calls",
+          calls: [
+            {
               toolCallId: "search-1",
               name: "search",
               status: "running",
               startedAt: "2026-01-01T00:00:01.000Z",
               startedSeq: 1,
             },
-            { type: "reasoning", text: "Check the result." },
           ],
+          assistant: {
+            parts: [
+              { type: "reasoning", text: "Inspect the inputs." },
+              { type: "tool_call", toolCallId: "search-1" },
+              { type: "reasoning", text: "Check the result." },
+            ],
+          },
         }),
       ]),
     );
@@ -127,9 +141,10 @@ describe("canonical event transcript reduction", () => {
           type: "tool_call",
           id: "search-1",
           name: "search",
+          startedTimestamp: Date.parse("2026-01-01T00:00:00.000Z"),
           status: "running",
         },
-        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+        timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
       },
       {
         key: "1:reasoning:2",
@@ -263,6 +278,7 @@ describe("canonical event transcript reduction", () => {
               toolCallId: "search-1",
               name: "search",
               status: "running",
+              input: { query: "regression" },
             },
           ],
         }),
@@ -273,6 +289,7 @@ describe("canonical event transcript reduction", () => {
       {
         type: "tool_call",
         id: "search-1",
+        input: { query: "regression" },
         name: "search",
         status: "running",
       },
@@ -348,11 +365,9 @@ describe("canonical event transcript reduction", () => {
           ],
         }),
         event(1, "2026-01-01T00:00:01.000Z", {
-          type: "assistant_message",
-          parts: [
-            { type: "reasoning", text: "Inspect the inputs." },
+          type: "tool_calls",
+          calls: [
             {
-              type: "tool_call",
               toolCallId: "search-1",
               name: "search",
               status: "running",
@@ -361,6 +376,12 @@ describe("canonical event transcript reduction", () => {
               input: { query: "regression" },
             },
           ],
+          assistant: {
+            parts: [
+              { type: "reasoning", text: "Inspect the inputs." },
+              { type: "tool_call", toolCallId: "search-1" },
+            ],
+          },
         }),
         event(2, "2026-01-01T00:00:03.000Z", {
           type: "tool_calls",
@@ -401,15 +422,13 @@ describe("canonical event transcript reduction", () => {
     ]);
   });
 
-  it("applies a later operational start timestamp to an assistant tool", () => {
+  it("keeps a later operational tool row after assistant reasoning", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(1, "2026-01-01T00:00:02.000Z", {
-          type: "assistant_message",
-          parts: [
-            { type: "reasoning", text: "Inspect the inputs." },
+          type: "tool_calls",
+          calls: [
             {
-              type: "tool_call",
               toolCallId: "search-1",
               name: "search",
               status: "running",
@@ -418,6 +437,12 @@ describe("canonical event transcript reduction", () => {
               input: { query: "regression" },
             },
           ],
+          assistant: {
+            parts: [
+              { type: "reasoning", text: "Inspect the inputs." },
+              { type: "tool_call", toolCallId: "search-1" },
+            ],
+          },
         }),
         event(2, "2026-01-01T00:00:03.000Z", {
           type: "tool_calls",

@@ -133,13 +133,6 @@ const conversationReportToolCallSchema = z
     }
   });
 
-const conversationReportToolCallsEventDataSchema = z
-  .object({
-    type: z.literal("tool_calls"),
-    calls: z.array(conversationReportToolCallSchema).min(1),
-  })
-  .strict();
-
 const conversationReportReasoningPartSchema = z
   .object({
     type: z.literal("reasoning"),
@@ -160,17 +153,11 @@ const conversationReportAssistantToolCallPartSchema = z
   .object({
     type: z.literal("tool_call"),
     toolCallId: z.string().min(1),
-    name: z.string().min(1),
-    status: z.literal("running"),
-    startedAt: z.string().datetime(),
-    startedSeq: z.number().int().nonnegative(),
-    input: z.unknown().optional(),
   })
   .strict();
 
-const conversationReportAssistantMessageEventDataSchema = z
+const conversationReportAssistantMetadataSchema = z
   .object({
-    type: z.literal("assistant_message"),
     parts: z
       .array(
         z.discriminatedUnion("type", [
@@ -179,6 +166,38 @@ const conversationReportAssistantMessageEventDataSchema = z
         ]),
       )
       .min(1),
+  })
+  .strict();
+
+const conversationReportToolCallsEventDataSchema = z
+  .object({
+    type: z.literal("tool_calls"),
+    calls: z.array(conversationReportToolCallSchema).min(1),
+    assistant: conversationReportAssistantMetadataSchema.optional(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if (!data.assistant) return;
+    const callIds = new Set(data.calls.map((call) => call.toolCallId));
+    const partCallIds = data.assistant.parts.flatMap((part) =>
+      part.type === "tool_call" ? [part.toolCallId] : [],
+    );
+    if (
+      partCallIds.length !== callIds.size ||
+      partCallIds.some((toolCallId) => !callIds.has(toolCallId))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["assistant", "parts"],
+        message: "assistant tool parts must reference every call exactly once",
+      });
+    }
+  });
+
+const conversationReportAssistantMessageEventDataSchema = z
+  .object({
+    type: z.literal("assistant_message"),
+    parts: z.array(conversationReportReasoningPartSchema).min(1),
   })
   .strict();
 
@@ -381,11 +400,7 @@ function validateConversationEvents(
     if (
       report.eventHistory.status === "redacted" &&
       event.data.type === "assistant_message" &&
-      event.data.parts.some(
-        (part) =>
-          (part.type === "reasoning" && part.text !== undefined) ||
-          (part.type === "tool_call" && part.input !== undefined),
-      )
+      event.data.parts.some((part) => part.text !== undefined)
     ) {
       context.addIssue({
         code: "custom",
@@ -396,14 +411,29 @@ function validateConversationEvents(
     if (
       report.eventHistory.status === "available" &&
       event.data.type === "assistant_message" &&
-      event.data.parts.some(
-        (part) => part.type === "reasoning" && part.redacted === true,
-      )
+      event.data.parts.some((part) => part.redacted === true)
     ) {
       context.addIssue({
         code: "custom",
         path: ["events", index, "data"],
         message: "available event history must expose reasoning",
+      });
+    }
+    if (
+      event.data.type === "tool_calls" &&
+      ((report.eventHistory.status === "redacted" &&
+        event.data.assistant?.parts.some(
+          (part) => part.type === "reasoning" && part.text !== undefined,
+        )) ||
+        (report.eventHistory.status === "available" &&
+          event.data.assistant?.parts.some(
+            (part) => part.type === "reasoning" && part.redacted === true,
+          )))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["events", index, "data", "assistant"],
+        message: "assistant reasoning must match event history visibility",
       });
     }
   }
