@@ -158,7 +158,7 @@ describe("createCanvas", () => {
     expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(0);
   });
 
-  it("normalizes unsupported heading depth before canvas create", async () => {
+  it("normalizes rejected markdown before canvas create", async () => {
     queueSlackApiResponse("canvases.create", {
       body: canvasesCreateOk({ canvasId: "F_NORM" }),
     });
@@ -174,7 +174,8 @@ describe("createCanvas", () => {
 
     await createCanvas({
       title: "Title",
-      markdown: "#### Deep heading\nBody",
+      markdown:
+        "#### Deep heading\n1. Parent\n   - Child\n   > Quoted child",
       channelId: "C12345",
     });
 
@@ -183,7 +184,7 @@ describe("createCanvas", () => {
     expect(canvasCreateCalls[0]?.params).toMatchObject({
       document_content: {
         type: "markdown",
-        markdown: "### Deep heading\nBody",
+        markdown: "### Deep heading\n1. Parent\n- Child\n> Quoted child",
       },
     });
   });

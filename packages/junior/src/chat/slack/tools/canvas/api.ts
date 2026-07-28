@@ -9,6 +9,10 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { extractCanvasId } from "@/chat/slack/canvas-references";
+import {
+  normalizeCanvasMarkdown,
+  type CanvasMarkdownNormalization,
+} from "@/chat/slack/tools/canvas/markdown";
 
 export { extractCanvasId } from "@/chat/slack/canvas-references";
 
@@ -26,28 +30,6 @@ export interface CanvasReadResult {
   filetype?: string;
   content: string;
   byteLength: number;
-}
-
-/** Clamp headings deeper than h3 to h3 (Slack canvas limitation). */
-export function normalizeCanvasMarkdown(markdown: string): {
-  markdown: string;
-  normalizedHeadingCount: number;
-} {
-  let normalizedHeadingCount = 0;
-  const normalized = markdown
-    .split("\n")
-    .map((line) =>
-      line.replace(/^(#{4,})(?=\s)/, () => {
-        normalizedHeadingCount += 1;
-        return "###";
-      }),
-    )
-    .join("\n");
-
-  return {
-    markdown: normalized,
-    normalizedHeadingCount,
-  };
 }
 
 /**
@@ -83,9 +65,13 @@ export async function createCanvas(
         "app.slack.canvas.title_length": input.title.length,
         "app.slack.canvas.markdown_length": normalizedContent.markdown.length,
         "app.slack.canvas.markdown_normalized":
-          normalizedContent.normalizedHeadingCount > 0,
+          normalizedContent.normalizedCount > 0,
         "app.slack.canvas.normalized_heading_count":
           normalizedContent.normalizedHeadingCount,
+        "app.slack.canvas.flattened_mixed_list_count":
+          normalizedContent.flattenedMixedListCount,
+        "app.slack.canvas.flattened_blockquote_count":
+          normalizedContent.flattenedBlockquoteCount,
       },
     },
   );
@@ -159,7 +145,7 @@ async function grantChannelCanvasAccess(
 export async function writeCanvasMarkdown(input: {
   canvasId: string;
   markdown: string;
-}): Promise<{ markdown: string; normalizedHeadingCount: number }> {
+}): Promise<CanvasMarkdownNormalization> {
   const client = getSlackClient();
   const normalizedContent = normalizeCanvasMarkdown(input.markdown);
 
@@ -185,9 +171,13 @@ export async function writeCanvasMarkdown(input: {
         "app.slack.canvas.operation": "replace",
         "app.slack.canvas.markdown_length": normalizedContent.markdown.length,
         "app.slack.canvas.markdown_normalized":
-          normalizedContent.normalizedHeadingCount > 0,
+          normalizedContent.normalizedCount > 0,
         "app.slack.canvas.normalized_heading_count":
           normalizedContent.normalizedHeadingCount,
+        "app.slack.canvas.flattened_mixed_list_count":
+          normalizedContent.flattenedMixedListCount,
+        "app.slack.canvas.flattened_blockquote_count":
+          normalizedContent.flattenedBlockquoteCount,
       },
     },
   );

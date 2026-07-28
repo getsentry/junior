@@ -1,10 +1,10 @@
 import { logWarn } from "@/chat/logging";
 import {
-  normalizeCanvasMarkdown,
   readCanvas,
   writeCanvasMarkdown,
 } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
+import { normalizeCanvasMarkdown } from "@/chat/slack/tools/canvas/markdown";
 import { z } from "zod";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
