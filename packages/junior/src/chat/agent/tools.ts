@@ -202,6 +202,10 @@ export async function wireAgentTools(
       skill.disableModelInvocation !== true ||
       skill.name === args.invokedSkill?.name,
   );
+  const explicitSkillLoaded = Boolean(
+    args.invokedSkill &&
+    args.activeSkills.some((skill) => skill.name === args.invokedSkill?.name),
+  );
   const commonToolRuntimeContext = {
     conversationId: args.conversationId,
     userText: args.userInput,
@@ -310,6 +314,7 @@ export async function wireAgentTools(
       },
     },
     toolRuntimeContext,
+    { includeLoadSkill: !explicitSkillLoaded },
   );
 
   const plannedToolExposure = planToolExposure(

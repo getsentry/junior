@@ -82,11 +82,16 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
+export interface CreateToolsOptions {
+  includeLoadSkill?: boolean;
+}
+
 /** Build the model-facing tool registry from runtime-owned context and capabilities. */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
   context: ToolRuntimeContext,
+  options: CreateToolsOptions = {},
 ) {
   const state = createToolState(hooks, context);
   const slackContext = getSlackToolContext(context);
@@ -97,9 +102,13 @@ export function createTools(
     slackContext && slackSourceCapabilities?.canSendFiles,
   );
   const tools: ToolRegistry = {
-    loadSkill: createLoadSkillTool(availableSkills, {
-      onSkillLoaded: hooks.onSkillLoaded,
-    }),
+    ...(options.includeLoadSkill === false
+      ? {}
+      : {
+          loadSkill: createLoadSkillTool(availableSkills, {
+            onSkillLoaded: hooks.onSkillLoaded,
+          }),
+        }),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),

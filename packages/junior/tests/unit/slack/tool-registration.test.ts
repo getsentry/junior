@@ -70,6 +70,14 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
+  it("omits loadSkill when an explicit skill is already loaded", () => {
+    const tools = createTools([], {}, ctx("D12345"), {
+      includeLoadSkill: false,
+    });
+
+    expect(tools).not.toHaveProperty("loadSkill");
+  });
+
   it("registers thread sendFiles but not channel-only tools in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
