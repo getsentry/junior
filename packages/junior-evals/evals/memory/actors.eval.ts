@@ -6,7 +6,13 @@ import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
 } from "../../../junior-memory/src/db/schema";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+import {
+  mention,
+  rubric,
+  slackEvals,
+  steer,
+  threadMessage,
+} from "../../src/helpers";
 
 /**
  * Multi-actor provenance evals for passive memory extraction.
@@ -229,52 +235,34 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "1700000000.000003",
   } satisfies MemoryThread;
 
-  // TDD target (issue #773): today this invariant is enforced only by the
-  // model honoring prompt-text author labels, so this case is unstable
-  // (observed failing with the assistant claiming the preference "for" the
-  // actor). Deterministic per-message provenance makes it stably green.
-  it("when another user's pending mention is batched into the latest turn, do not store their first-person preference as the actor's personal memory", async ({
+  it("when another user steers a preference into the active turn, do not store it as the actor's personal memory", async ({
     run,
   }) => {
     await clearMemories();
-    // Bob's mention is still pending when Alice's message arrives, so the
-    // mailbox worker handles both in one turn: Alice is the live actor
-    // and Bob's ask is carried into her run. This is the multi-actor path
-    // where Bob's first-person statement rides inside Alice's transcript.
     await run({
       overrides: memoryPluginOverrides,
       initialEvents: [
-        mention(
-          "When you write up the recap, I prefer short bullet summaries over prose.",
-          {
-            thread: batchedMentionThread,
-            author: BOB,
-          },
-        ),
-        threadMessage(
-          "Can you recap what has been asked in this thread so far?",
-          {
-            thread: batchedMentionThread,
-            is_mention: true,
-            author: ALICE,
-          },
+        mention("Can you recap what has been asked in this thread so far?", {
+          thread: batchedMentionThread,
+          author: ALICE,
+        }),
+      ],
+      events: [
+        steer(
+          mention(
+            "!! When you write up the recap, I prefer short bullet summaries over prose.",
+            {
+              thread: batchedMentionThread,
+              author: BOB,
+            },
+          ),
         ),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant recaps the thread, covering the bullet-summary formatting request.",
-          "If the assistant attributes the bullet-summary preference to anyone, it attributes it to the participant who stated it, not to the actor asking for the recap.",
-        ],
-        fail: [
-          "Do not tell the recap actor that the bullet-summary preference is their own stated preference.",
-          "Do not address the recap actor as the person who asked for bullet summaries.",
-        ],
-      }),
     });
 
     const rows = await readMemories(batchedMentionThread);
     // Bob's first-person formatting preference must never land in Alice's
-    // personal scope just because her message closed out the batched turn.
+    // personal scope just because he explicitly steered her active turn.
     const alicePersonal = personalMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
@@ -303,41 +291,33 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
   // Issue #776: the case the citation router alone cannot cover. Alice's own
   // durable first-person preference cites only her own run-actor instruction —
   // exactly the shape a single-actor run stores as personal memory — but Bob's
-  // batched ask makes this a multi-actor run, so no preference may be stored.
+  // explicit steering makes this a multi-actor run, so no preference may be stored.
   it("when the actor states their own durable preference in a multi-actor turn, store no preference memory at all", async ({
     run,
   }) => {
     await clearMemories();
-    // Bob's pending mention is batched into Alice's turn, so both are run
-    // actors on the completed run.
     await run({
       overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
-          "Open question: should we pause the launch? Please list it when you get a chance.",
-          {
-            thread: actorPreferenceMultiActorThread,
-            author: BOB,
-          },
-        ),
-        threadMessage(
           "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
           {
             thread: actorPreferenceMultiActorThread,
-            is_mention: true,
             author: ALICE,
           },
         ),
       ],
-      criteria: rubric({
-        pass: [
-          "The assistant recaps the asks in the thread, covering the open-questions request.",
-          "If the assistant acknowledges the numbered-list preference, it treats it as guidance for the current recap.",
-        ],
-        fail: [
-          "Do not tell the actor that the numbered-list preference was saved or stored as a remembered preference.",
-        ],
-      }),
+      events: [
+        steer(
+          mention(
+            "!! Open question: should we pause the launch? Please list it when you get a chance.",
+            {
+              thread: actorPreferenceMultiActorThread,
+              author: BOB,
+            },
+          ),
+        ),
+      ],
     });
 
     const rows = await readMemories(actorPreferenceMultiActorThread);
