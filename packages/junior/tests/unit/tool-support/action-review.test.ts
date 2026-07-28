@@ -174,6 +174,11 @@ describe("tool action review", () => {
         decision,
         name: "ToolActionRejectedError",
       });
+      await expect(action).rejects.toThrow(
+        decision === "ask"
+          ? "respond to the user now with a direct, concise confirmation question"
+          : "If the reason is missing or withheld authorization",
+      );
     }
   });
 
@@ -210,7 +215,9 @@ describe("tool action review", () => {
         input,
         context,
       ),
-    ).rejects.toThrow("previously rejected this exact action");
+    ).rejects.toThrow(
+      "This exact action was already rejected under the current user instruction",
+    );
     expect(review).toHaveBeenCalledTimes(1);
 
     await expect(
@@ -249,7 +256,9 @@ describe("tool action review", () => {
     ).rejects.toMatchObject({ decision: "ask" });
     await expect(
       reviewToolAction("createSchedule", tool, input, context),
-    ).rejects.toThrow("previously rejected this exact action");
+    ).rejects.toThrow(
+      "This exact action was already rejected under the current user instruction",
+    );
     expect(review).toHaveBeenCalledTimes(1);
 
     userIntent = "Yes, create that exact weekday schedule.";

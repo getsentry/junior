@@ -64,8 +64,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function rejectionMarker(message: Record<string, unknown>) {
-  if (!isRecord(message.details)) {
+/** Read a core-owned action rejection marker from one durable Pi message. */
+export function getToolActionRejectionMarker(
+  message: unknown,
+): ToolActionRejectionMarker | undefined {
+  if (!isRecord(message) || !isRecord(message.details)) {
     return undefined;
   }
   const parsed = rejectionMarkerSchema.safeParse(
@@ -135,7 +138,7 @@ export function restoreToolActionReviewState(
     if (record.role !== "toolResult" || record.isError !== true) {
       continue;
     }
-    const rejection = rejectionMarker(record);
+    const rejection = getToolActionRejectionMarker(record);
     if (!rejection) {
       continue;
     }

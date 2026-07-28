@@ -122,6 +122,20 @@ export interface ToolActionReview {
   reviewer: ToolActionReviewer;
 }
 
+const ACTION_CONFIRMATION_INSTRUCTIONS = [
+  "The action was not executed because explicit user confirmation is required.",
+  "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+  "Do not call another tool or retry until the user explicitly confirms this exact action.",
+].join("\n");
+
+const ACTION_DENIAL_INSTRUCTIONS = [
+  "This action was rejected due to unacceptable risk.",
+  "The agent must not attempt the same outcome through a workaround, indirect execution, or policy circumvention.",
+  "If the reason is missing or withheld authorization and exact confirmation could make the action allowable, stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+  "Proceed only with a materially safer alternative. Otherwise, stop and explain the specific risk to the user without mentioning Guardian or internal review mechanics.",
+].join("\n");
+
 /** Expected tool failure when core or Guardian rejects an exact action. */
 export class ToolActionRejectedError extends Error {
   readonly decision: Exclude<ToolActionDecision, "allow">;
@@ -139,8 +153,8 @@ export class ToolActionRejectedError extends Error {
   ) {
     super(
       decision === "ask"
-        ? `Action requires user confirmation: ${reason}`
-        : `Action denied: ${reason} Do not retry this action through an equivalent tool or workaround.`,
+        ? `${ACTION_CONFIRMATION_INSTRUCTIONS}\nReason: ${reason}`
+        : `${ACTION_DENIAL_INSTRUCTIONS}\nReason: ${reason}`,
     );
     this.name = "ToolActionRejectedError";
     this.decision = decision;
@@ -475,7 +489,7 @@ export async function reviewToolAction(
     if (priorRejection) {
       throw new ToolActionRejectedError(
         priorRejection.decision,
-        `Guardian previously rejected this exact action: ${priorRejection.reason}`,
+        `This exact action was already rejected under the current user instruction: ${priorRejection.reason}`,
         {
           ...priorRejection,
           reviewedAction: priorRejection.reviewedAction,

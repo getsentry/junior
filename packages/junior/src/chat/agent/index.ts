@@ -111,6 +111,7 @@ import {
   surfaceFromRouting,
   type AgentRunRequest,
 } from "@/chat/agent/request";
+import { buildActionConfirmationReply } from "@/chat/agent/action-confirmation-reply";
 import { restoreSessionRecord } from "@/chat/agent/session";
 import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
 import {
@@ -1446,6 +1447,12 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
+    const actionConfirmationReply = buildActionConfirmationReply(newMessages);
+    if (actionConfirmationReply) {
+      agent.state.messages.push(actionConfirmationReply);
+      newMessages.push(actionConfirmationReply);
+      await deliverAssistantMessage(actionConfirmationReply);
+    }
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
     // completed session record after assistant output handling settles, so a

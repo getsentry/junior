@@ -433,7 +433,7 @@ describe("Pi tool adapter", () => {
     await expect(
       demoTool!.execute("tool-demo", { cadence: "weekly" }),
     ).rejects.toThrow(
-      "Action requires user confirmation: Recurring work should be confirmed.",
+      "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
     );
     expect(execute).not.toHaveBeenCalled();
     expect(reviewState.pendingRejections.get("tool-demo")).toMatchObject({
@@ -443,8 +443,13 @@ describe("Pi tool adapter", () => {
       version: 1,
     });
     expect(onToolResult).toHaveBeenCalledWith({
-      error:
-        "Action requires user confirmation: Recurring work should be confirmed.",
+      error: [
+        "The action was not executed because explicit user confirmation is required.",
+        "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+        "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+        "Do not call another tool or retry until the user explicitly confirms this exact action.",
+        "Reason: Recurring work should be confirmed.",
+      ].join("\n"),
       ok: false,
       params: { cadence: "weekly" },
       toolCallId: "tool-demo",
