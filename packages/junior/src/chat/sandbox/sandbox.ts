@@ -662,6 +662,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         return await executeWriteFileTool(rawInput, context);
       }
     } catch (error) {
+      params.signal?.throwIfAborted();
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);

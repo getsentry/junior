@@ -1605,7 +1605,7 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("stops sandbox file traversal when the agent turn is cancelled", async () => {
+  it("preserves turn cancellation when file traversal reports an interrupted stream", async () => {
     const sandbox = makeSandbox("sbx_aborted_find_files");
     const abortReason = new Error("agent turn cancelled");
     let markEntryStatStarted: () => void = () => {};
@@ -1626,7 +1626,7 @@ describe("createTestSandbox", () => {
               "abort",
               () => {
                 clearTimeout(missingSignalTimeout);
-                reject(options.signal?.reason);
+                reject(createStreamInterruptedError());
               },
               { once: true },
             );
