@@ -111,7 +111,7 @@ import {
   surfaceFromRouting,
   type AgentRunRequest,
 } from "@/chat/agent/request";
-import { buildActionConfirmationReply } from "@/chat/agent/action-confirmation-reply";
+import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { restoreSessionRecord } from "@/chat/agent/session";
 import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
 import {
@@ -1308,6 +1308,7 @@ async function executeAgentRunInPrivacyContext(
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
           let discardedRetryUsage: AgentTurnUsage | undefined;
+          let actionConfirmationRetryUsed = false;
           let providerRetryAttempt = 0;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
@@ -1369,6 +1370,16 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
                 throw pendingAuthPause;
+              }
+
+              const confirmationRetry = actionConfirmationRetryUsed
+                ? undefined
+                : actionConfirmationRetryMessages(agent!.state.messages);
+              if (confirmationRetry) {
+                actionConfirmationRetryUsed = true;
+                await prepareRetry(confirmationRetry);
+                run = agent!.continue();
+                continue;
               }
 
               const emptyOutputContinuation = nextEmptyOutputContinuation({
@@ -1447,14 +1458,6 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
-    const actionConfirmationReply = buildActionConfirmationReply(
-      agent.state.messages,
-    );
-    if (actionConfirmationReply) {
-      agent.state.messages.push(actionConfirmationReply);
-      newMessages.push(actionConfirmationReply);
-      await deliverAssistantMessage(actionConfirmationReply);
-    }
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
     // completed session record after assistant output handling settles, so a

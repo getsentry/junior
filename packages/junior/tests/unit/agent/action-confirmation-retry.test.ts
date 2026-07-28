@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import { buildActionConfirmationReply } from "@/chat/agent/action-confirmation-reply";
-import { getAssistantMessageText } from "@/chat/services/turn-result";
+import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 
 const usage = {
   input: 1,
@@ -67,21 +66,22 @@ function rejectedMessages(): PiMessage[] {
   ] as PiMessage[];
 }
 
-describe("action confirmation reply", () => {
-  it("builds a direct confirmation when the agent stops after an ask", () => {
-    const reply = buildActionConfirmationReply(rejectedMessages());
+describe("action confirmation retry", () => {
+  it("rewinds an empty assistant reply to the ask tool result", () => {
+    const messages = rejectedMessages();
+    messages.push({
+      role: "assistant",
+      api: "test",
+      provider: "test",
+      model: "test",
+      content: [],
+      usage,
+      stopReason: "stop",
+      timestamp: 3,
+    } as PiMessage);
 
-    expect(reply?.content).toEqual([
-      {
-        type: "text",
-        text: [
-          "I haven't performed the action. You have not confirmed permanently deleting preview-42 and all of its contents.",
-          "Should I perform that exact action?",
-        ].join("\n\n"),
-      },
-    ]);
-    expect(reply && getAssistantMessageText(reply)).toContain(
-      "Should I perform that exact action",
+    expect(actionConfirmationRetryMessages(messages)).toEqual(
+      messages.slice(0, -1),
     );
   });
 
@@ -98,7 +98,7 @@ describe("action confirmation reply", () => {
       timestamp: 3,
     } as PiMessage);
 
-    expect(buildActionConfirmationReply(messages)).toBeUndefined();
+    expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
   });
 
   it("does not revive an earlier ask after a later denial", () => {
@@ -119,7 +119,7 @@ describe("action confirmation reply", () => {
     };
     messages.push(denied);
 
-    expect(buildActionConfirmationReply(messages)).toBeUndefined();
+    expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
   });
 
   it("does not revive an ask after a later user instruction", () => {
@@ -130,6 +130,6 @@ describe("action confirmation reply", () => {
       timestamp: 3,
     } as PiMessage);
 
-    expect(buildActionConfirmationReply(messages)).toBeUndefined();
+    expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
   });
 });

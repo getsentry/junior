@@ -420,6 +420,26 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     async continue() {
       counters.continueCalls += 1;
       if (agentMode.value === "silentResume") {
+        if (counters.continueCalls === 1) {
+          return {};
+        }
+        const confirmation = {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "I haven't deleted preview-42. Should I permanently delete the workspace and all of its contents?",
+            },
+          ],
+          stopReason: "stop",
+          usage: { input: 2, output: 2 },
+        };
+        this.state.messages.push(confirmation);
+        await Promise.all(
+          this.subscribers.map((subscriber) =>
+            subscriber({ type: "message_end", message: confirmation }),
+          ),
+        );
         return {};
       }
       if (agentMode.value === "preflightCompaction") {
@@ -1179,12 +1199,11 @@ describe("agent run continuation", () => {
       }),
     );
 
-    const confirmation = [
-      "I haven't performed the action. You have not confirmed permanently deleting preview-42 and all of its contents.",
-      "Should I perform that exact action?",
-    ].join("\n\n");
+    const confirmation =
+      "I haven't deleted preview-42. Should I permanently delete the workspace and all of its contents?";
     expect(result.text).toBe(confirmation);
     expect(delivered).toEqual([{ text: confirmation }]);
+    expect(counters.continueCalls).toBe(2);
   });
 
   it("keeps steered messages when yielding after steering drain", async () => {
