@@ -1605,34 +1605,32 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("preserves turn cancellation when file traversal reports an interrupted stream", async () => {
+  it("preserves turn cancellation when ripgrep reports an interrupted stream", async () => {
     const sandbox = makeSandbox("sbx_aborted_find_files");
     const abortReason = new Error("agent turn cancelled");
-    let markEntryStatStarted: () => void = () => {};
-    const entryStatStarted = new Promise<void>((resolve) => {
-      markEntryStatStarted = resolve;
+    let markCommandStarted: () => void = () => {};
+    const commandStarted = new Promise<void>((resolve) => {
+      markCommandStarted = resolve;
     });
-    sandbox.fs.stat
-      .mockResolvedValueOnce({ isDirectory: () => true })
-      .mockImplementationOnce(
-        async (_filePath: string, options?: { signal?: AbortSignal }) =>
-          await new Promise<{ isDirectory(): boolean }>((_resolve, reject) => {
-            markEntryStatStarted();
-            const missingSignalTimeout = setTimeout(
-              () => reject(new Error("abort signal was not propagated")),
-              100,
-            );
-            options?.signal?.addEventListener(
-              "abort",
-              () => {
-                clearTimeout(missingSignalTimeout);
-                reject(createStreamInterruptedError());
-              },
-              { once: true },
-            );
-          }),
-      );
-    sandbox.fs.readdir.mockResolvedValueOnce(["first.ts", "second.ts"]);
+    sandbox.fs.stat.mockResolvedValueOnce({ isDirectory: () => true });
+    sandbox.runCommand.mockImplementationOnce(
+      async (input: { signal?: AbortSignal }) =>
+        await new Promise<never>((_resolve, reject) => {
+          markCommandStarted();
+          const missingSignalTimeout = setTimeout(
+            () => reject(new Error("abort signal was not propagated")),
+            100,
+          );
+          input.signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(missingSignalTimeout);
+              reject(createStreamInterruptedError());
+            },
+            { once: true },
+          );
+        }),
+    );
     sandboxGetMock.mockResolvedValueOnce(sandbox);
 
     const executor = createTestSandbox({
@@ -1645,12 +1643,13 @@ describe("createTestSandbox", () => {
       input: { pattern: "*.ts" },
       signal: controller.signal,
     });
-    await entryStatStarted;
+    await commandStarted;
 
     controller.abort(abortReason);
 
     await expect(operation).rejects.toBe(abortReason);
-    expect(sandbox.fs.stat).toHaveBeenCalledTimes(2);
+    expect(sandbox.fs.stat).toHaveBeenCalledTimes(1);
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates an unavailable sandbox and lets a later tool call recover", async () => {
