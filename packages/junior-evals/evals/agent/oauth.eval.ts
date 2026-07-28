@@ -273,7 +273,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     ]);
     expect(
       matchingToolCalls(result, "loadSkill", { skill_name: "eval-oauth" }),
-    ).toHaveLength(0);
+    ).not.toHaveLength(0);
     expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
     expect(
       matchingThreadReplies(result, oauthConnectThread, /\S/),
