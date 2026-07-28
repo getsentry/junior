@@ -121,4 +121,15 @@ describe("action confirmation reply", () => {
 
     expect(buildActionConfirmationReply(messages)).toBeUndefined();
   });
+
+  it("does not revive an ask after a later user instruction", () => {
+    const messages = rejectedMessages();
+    messages.push({
+      role: "user",
+      content: [{ type: "text", text: "Do something else instead." }],
+      timestamp: 3,
+    } as PiMessage);
+
+    expect(buildActionConfirmationReply(messages)).toBeUndefined();
+  });
 });

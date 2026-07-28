@@ -56,12 +56,12 @@ export function buildActionConfirmationReply(
     return undefined;
   }
   if (
-    messages
-      .slice(rejectionIndex + 1)
-      .some(
-        (message) =>
-          isAssistantMessage(message) && getAssistantMessageText(message),
-      )
+    messages.slice(rejectionIndex + 1).some((message) => {
+      if (message.role === "user") {
+        return true;
+      }
+      return isAssistantMessage(message) && getAssistantMessageText(message);
+    })
   ) {
     return undefined;
   }

@@ -1447,7 +1447,9 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
-    const actionConfirmationReply = buildActionConfirmationReply(newMessages);
+    const actionConfirmationReply = buildActionConfirmationReply(
+      agent.state.messages,
+    );
     if (actionConfirmationReply) {
       agent.state.messages.push(actionConfirmationReply);
       newMessages.push(actionConfirmationReply);

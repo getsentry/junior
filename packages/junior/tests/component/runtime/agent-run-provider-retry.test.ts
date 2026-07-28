@@ -17,6 +17,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
         | "preflightCompaction"
         | "pendingProviderCall"
         | "cooperativeYield"
+        | "silentResume"
         | "terminalDelivery"
         | "steering"
         | "steeringDelivery"
@@ -418,6 +419,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async continue() {
       counters.continueCalls += 1;
+      if (agentMode.value === "silentResume") {
+        return {};
+      }
       if (agentMode.value === "preflightCompaction") {
         compactionState.preflightContextText = this.state.messages
           .flatMap((message) => {
@@ -594,6 +598,20 @@ const TEST_SOURCE = createSlackSource({
   threadTs: "1712345.0001",
   type: "priv",
 });
+const TEST_USAGE = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+};
 
 describe("agent run continuation", () => {
   beforeEach(async () => {
@@ -846,20 +864,7 @@ describe("agent run continuation", () => {
         api: "responses",
         provider: "openai",
         model: "gpt-5.3",
-        usage: {
-          input: 1,
-          output: 1,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 2,
-          cost: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0,
-          },
-        },
+        usage: TEST_USAGE,
         stopReason: "stop",
         timestamp: 2,
       },
@@ -1083,6 +1088,103 @@ describe("agent run continuation", () => {
       sessionId: "turn-yield",
       expectedVersion: sessionRecord?.version,
     });
+  });
+
+  it("delivers confirmation after resuming from an ask rejection boundary", async () => {
+    agentMode.value = "silentResume";
+    const conversationId = "conversation-ask-resume";
+    const turnId = "turn-ask-resume";
+    const messages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Delete preview-42 after I confirm." }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        content: [
+          {
+            type: "toolCall",
+            id: "delete-preview-42",
+            name: "deleteWorkspace",
+            arguments: { workspace: "preview-42" },
+          },
+        ],
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        timestamp: 2,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "delete-preview-42",
+        toolName: "deleteWorkspace",
+        content: [{ type: "text", text: "confirmation required" }],
+        isError: true,
+        timestamp: 3,
+        details: {
+          guardianActionRejection: {
+            actionKey: "a".repeat(64),
+            decision: "ask",
+            priorRejection: {
+              decision: "ask",
+              input: { workspace: "preview-42" },
+              reason:
+                "User has not confirmed permanently deleting preview-42 and all of its contents.",
+              tool: {
+                description:
+                  "Permanently delete preview-42 and all of its contents.",
+                name: "deleteWorkspace",
+              },
+            },
+            reason:
+              "User has not confirmed permanently deleting preview-42 and all of its contents.",
+            version: 1,
+          },
+        },
+      },
+    ] as PiMessage[];
+    await turnSessionState.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId: turnId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      piMessages: messages,
+      turnStartMessageIndex: 0,
+      resumeReason: "yield",
+      errorMessage: "Agent turn yielded at a safe boundary",
+    });
+    const delivered: Array<{ text: string }> = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        conversationId,
+        turnId,
+        input: { messageText: "Delete preview-42 after I confirm." },
+        routing: {
+          destination: TEST_DESTINATION,
+          source: TEST_SOURCE,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        delivery: {
+          onAssistantMessage: (message) => {
+            delivered.push(message);
+          },
+        },
+      }),
+    );
+
+    const confirmation = [
+      "I haven't performed the action. You have not confirmed permanently deleting preview-42 and all of its contents.",
+      "Should I perform that exact action?",
+    ].join("\n\n");
+    expect(result.text).toBe(confirmation);
+    expect(delivered).toEqual([{ text: confirmation }]);
   });
 
   it("keeps steered messages when yielding after steering drain", async () => {
