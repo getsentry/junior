@@ -25,6 +25,7 @@ export type TranscriptViewToolCallPart = {
   name: string;
   output?: unknown;
   resultTimestamp?: number;
+  startedTimestamp?: number;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };

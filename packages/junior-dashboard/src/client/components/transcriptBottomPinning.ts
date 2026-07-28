@@ -338,6 +338,7 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.type,
       part.id,
       part.status,
+      part.startedTimestamp ?? "",
       part.input === undefined ? "" : "input",
       part.output === undefined ? "" : "output",
     ].join(":");

@@ -92,7 +92,7 @@ export function groupTranscriptMessages(
           key: `tool:${part.id}`,
           kind: "tool",
           part,
-          timestamp: message.timestamp,
+          timestamp: part.startedTimestamp ?? message.timestamp,
         });
       } else if (part.type === "reasoning") {
         entries.push({

@@ -59,6 +59,7 @@ export function conversationTranscriptMessages(
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
+  const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
   const subagents = new Map<
     string,
     Extract<TranscriptViewPart, { type: "subagent" }>
@@ -101,6 +102,7 @@ export function conversationTranscriptMessages(
         : eventTimestamp(event),
     };
     tools.set(call.toolCallId, part);
+    standaloneToolMessages.set(call.toolCallId, message);
     messages.push(message);
   };
 
@@ -134,14 +136,24 @@ export function conversationTranscriptMessages(
           continue;
         }
         if (replacedToolIds.has(part.toolCallId)) continue;
-        const tool = {
+        const existing = tools.get(part.toolCallId);
+        const tool = existing ?? {
           type: "tool_call" as const,
           id: part.toolCallId,
           name: part.name,
           status: part.status,
-          ...(part.input === undefined ? {} : { input: part.input }),
         };
-        tools.set(part.toolCallId, tool);
+        tool.name = part.name;
+        if (part.input !== undefined) tool.input = part.input;
+        if (!existing) tools.set(part.toolCallId, tool);
+
+        const standaloneMessage = standaloneToolMessages.get(part.toolCallId);
+        if (standaloneMessage) {
+          tool.startedTimestamp = standaloneMessage.timestamp;
+          const messageIndex = messages.indexOf(standaloneMessage);
+          if (messageIndex >= 0) messages.splice(messageIndex, 1);
+          standaloneToolMessages.delete(part.toolCallId);
+        }
         parts.push(tool);
       }
       if (parts.length > 0) {
