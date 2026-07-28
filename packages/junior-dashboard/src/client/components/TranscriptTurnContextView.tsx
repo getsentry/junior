@@ -1,4 +1,4 @@
-import { Brain, Braces, X } from "lucide-react";
+import { Brain, Braces, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { TranscriptViewTurnContext } from "../types";
@@ -176,46 +176,68 @@ function MemoryRecall(props: {
   memories: MemoryRecallContent["memories"];
 }) {
   return (
-    <div>
+    <div className="overflow-hidden rounded-lg border border-white/10">
       {props.memories.map((memory, index) => (
-        <article
-          className="border-t border-white/8 py-4 first:border-t-0 first:pt-0 last:pb-0"
+        <details
+          className="group/memory border-t border-white/10 first:border-t-0"
           key={memory.id}
         >
-          <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-white/80">
-            <HighlightText text={memory.content} />
+          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+            <ChevronRight
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-white/35 transition-transform group-open/memory:rotate-90"
+              size={15}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-3">
+                <span className="text-[0.72rem] font-medium text-white/45">
+                  Memory {index + 1}
+                </span>
+                <span className="shrink-0 text-[0.68rem] text-white/30">
+                  {memory.kind} · {memory.scope}
+                </span>
+              </span>
+              <span className="mt-1 block truncate text-[0.8rem] text-white/75">
+                <HighlightText text={memory.content} />
+              </span>
+            </span>
+          </summary>
+
+          <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
+            <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-white/80">
+              <HighlightText text={memory.content} />
+            </div>
+
+            <dl className="mt-4 grid gap-2 text-xs">
+              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                <dt className="text-white/35">Memory ID</dt>
+                <dd className="m-0 break-all font-mono text-white/60">
+                  <HighlightText text={memory.id} />
+                </dd>
+              </div>
+              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                <dt className="text-white/35">Observed</dt>
+                <dd className="m-0 text-white/60">
+                  {formatMessageTimestamp(memory.observedAtMs)}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                <dt className="text-white/35">Scope</dt>
+                <dd className="m-0 text-white/60">{memory.scope}</dd>
+              </div>
+              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                <dt className="text-white/35">Kind</dt>
+                <dd className="m-0 text-white/60">{memory.kind}</dd>
+              </div>
+            </dl>
           </div>
-
-          <dl className="mt-4 grid gap-2 text-xs">
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-              <dt className="text-white/35">Memory ID</dt>
-              <dd className="m-0 break-all font-mono text-white/60">
-                <HighlightText text={memory.id} />
-              </dd>
-            </div>
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-              <dt className="text-white/35">Observed</dt>
-              <dd className="m-0 text-white/60">
-                {formatMessageTimestamp(memory.observedAtMs)}
-              </dd>
-            </div>
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-              <dt className="text-white/35">Scope</dt>
-              <dd className="m-0 text-white/60">{memory.scope}</dd>
-            </div>
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-              <dt className="text-white/35">Kind</dt>
-              <dd className="m-0 text-white/60">{memory.kind}</dd>
-            </div>
-          </dl>
-
-          {index === props.memories.length - 1 ? (
-            <p className="m-0 mt-4 text-[0.7rem] text-white/30">
-              Loaded {formatMessageTimestamp(Date.parse(props.loadedAt))}
-            </p>
-          ) : null}
-        </article>
+        </details>
       ))}
+      <p className="m-0 border-t border-white/10 px-3 py-2 text-[0.68rem] text-white/30">
+        {props.memories.length}{" "}
+        {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
+        {formatMessageTimestamp(Date.parse(props.loadedAt))}
+      </p>
     </div>
   );
 }

@@ -3031,8 +3031,13 @@ WHERE id = '${superseded.memory.id}'
           ],
         },
       });
-      expect(contribution.renderPrompt()).toContain(
-        conversation.memory.content,
+      expect(contribution.renderPrompt()).toBe(
+        [
+          "Relevant memories for this request:",
+          "- Observed 2026-06-19: Release notes live in Notion.",
+          "",
+          "Treat these as possibly stale context. Current user instructions and repository evidence take priority.",
+        ].join("\n"),
       );
     } finally {
       await fixture.close();
