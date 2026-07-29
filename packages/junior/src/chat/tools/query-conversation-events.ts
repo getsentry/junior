@@ -18,6 +18,10 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+const MAX_EVENT_DATA_BYTES = 4_000;
+const MAX_EVENTS_JSON_BYTES = 20_000;
+const MAX_IDENTITY_CHARS = 256;
+const textEncoder = new TextEncoder();
 const CONVERSATION_EVENTS_TOOL_SOURCE = {
   id: "conversation-events",
   description:
@@ -49,7 +53,7 @@ const projectedEventSchema = z
     data: z
       .record(z.string(), z.unknown())
       .describe(
-        "Event payload. The type field identifies the event; replacement-history events report replacement_history_count instead of replaying the full model context.",
+        "Event data. Oversized payloads are replaced by identifying fields, payload_omitted, and payload_json_bytes.",
       ),
   })
   .strict();
@@ -67,6 +71,14 @@ const queryConversationEventsOutputSchema = juniorToolResultSchema.extend({
     .describe(
       "Whether matching events exist after this page; request them with after_seq set to the last returned seq.",
     ),
+  omitted_event_count: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "Fetched events omitted to keep this response bounded. Continue with the pagination cursor for the omitted direction.",
+    ),
 });
 
 interface QueryAccessScope {
@@ -76,7 +88,7 @@ interface QueryAccessScope {
   providerTenantId?: string;
 }
 
-/** Create a deferred tool that returns a bounded raw conversation event page. */
+/** Create a deferred tool that returns a bounded conversation event page. */
 export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
@@ -197,15 +209,22 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
         ...(beforeSeq === undefined ? {} : { beforeSeq }),
         ...(types === undefined ? {} : { types }),
       });
-      const events = projectEventsForTool(page);
+      const newestFirst = afterSeq === undefined;
+      const projected = projectEventsForTool(page, { newestFirst });
 
       return {
         ok: true,
         status: "success" as const,
         conversation_id: conversationId,
-        events,
-        has_older: page.hasOlder,
-        has_newer: page.hasNewer,
+        events: projected.events,
+        has_older:
+          page.hasOlder || (newestFirst && projected.omittedEventCount > 0),
+        has_newer:
+          page.hasNewer || (!newestFirst && projected.omittedEventCount > 0),
+        truncated: projected.omittedEventCount > 0,
+        ...(projected.omittedEventCount > 0
+          ? { omitted_event_count: projected.omittedEventCount }
+          : {}),
       };
     },
   });
@@ -338,12 +357,36 @@ function assertCanQueryConversationEvents(args: {
   );
 }
 
-function projectEventsForTool(page: ConversationEventPage) {
-  return page.events.map(projectEvent);
+function projectEventsForTool(
+  page: ConversationEventPage,
+  options: { newestFirst: boolean },
+) {
+  const projected = page.events.map(projectEvent);
+  const events = [];
+  let jsonBytes = 2;
+  const candidates = options.newestFirst ? [...projected].reverse() : projected;
+
+  for (const event of candidates) {
+    const eventBytes = jsonByteLength(event);
+    const separatorBytes = events.length === 0 ? 0 : 1;
+    if (jsonBytes + separatorBytes + eventBytes > MAX_EVENTS_JSON_BYTES) {
+      break;
+    }
+    events.push(event);
+    jsonBytes += separatorBytes + eventBytes;
+  }
+
+  if (options.newestFirst) {
+    events.reverse();
+  }
+  return {
+    events,
+    omittedEventCount: projected.length - events.length,
+  };
 }
 
 function projectEvent(event: ConversationEvent) {
-  const data = stripReplacementHistory(event.data);
+  const data = boundEventData(stripReplacementHistory(event.data));
   return {
     seq: event.seq,
     history_version: event.historyVersion,
@@ -351,6 +394,55 @@ function projectEvent(event: ConversationEvent) {
     ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : {}),
     data,
   };
+}
+
+function boundEventData(
+  data: ConversationEvent["data"] | Record<string, unknown>,
+) {
+  const payloadJsonBytes = jsonByteLength(data);
+  if (payloadJsonBytes <= MAX_EVENT_DATA_BYTES) {
+    return data;
+  }
+
+  return {
+    ...eventIdentity(data),
+    payload_omitted: true,
+    payload_json_bytes: payloadJsonBytes,
+  };
+}
+
+function jsonByteLength(value: unknown): number {
+  return textEncoder.encode(JSON.stringify(value)).byteLength;
+}
+
+function eventIdentity(data: Record<string, unknown>) {
+  const identityKeys = [
+    "type",
+    "originalType",
+    "messageId",
+    "role",
+    "turnId",
+    "toolCallId",
+    "toolName",
+    "subagentInvocationId",
+    "subagentKind",
+    "childConversationId",
+    "outcome",
+    "failureCode",
+    "provider",
+    "kind",
+    "modelProfile",
+    "modelId",
+  ] as const;
+
+  return Object.fromEntries(
+    identityKeys.flatMap((key) => {
+      const value = data[key];
+      return typeof value === "string"
+        ? [[key, value.slice(0, MAX_IDENTITY_CHARS)]]
+        : [];
+    }),
+  );
 }
 
 function stripReplacementHistory(

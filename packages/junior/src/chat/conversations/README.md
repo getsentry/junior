@@ -71,9 +71,11 @@ assistant reasoning. Mixed reasoning and tool history extends the existing
 `tool_calls` event with ordering metadata; reasoning-only history uses
 `assistant_message`. Tool payloads and lifecycle remain owned by `tool_calls`.
 The deferred `queryConversationEvents` tool is the agent-facing
-observational reader for that same log: it returns bounded raw events for the
+observational reader for that same log: it returns bounded events for the
 current conversation tree, or for another retained public conversation in the
-same Slack workspace.
+same Slack workspace. Oversized event data is represented by identifying
+fields and its original JSON byte size. The complete event array also has a
+fixed byte budget and reports omitted events through its pagination contract.
 
 ## Stored Event Compatibility
 
