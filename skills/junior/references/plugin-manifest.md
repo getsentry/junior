@@ -103,10 +103,12 @@ mcp: {
   call `prepare` first so an initial authorization pause happens before they
   persist pending work.
 - Successful calls contain the provider's original `content` and optional
-  `structuredContent`. Authorization pauses contain no provider content.
-- Wrapper implementations must handle `authorization_pending` before reading
-  successful provider content. See `packages/junior-linear/src/tools/create-issue.ts`
-  for a durable mutation example.
+  `structuredContent`. Definitive provider rejections return `status: "error"`;
+  authorization pauses contain no provider content; transport failures throw.
+- Durable mutation wrappers must clear pending idempotency state for
+  `authorization_pending` and `error` results, but retain it after a thrown
+  transport failure whose provider outcome is uncertain. See
+  `packages/junior-linear/src/tools/create-issue.ts` for an example.
 
 ## Parser traps
 

@@ -83,8 +83,15 @@ export type PluginMcpAuthorizationPending = {
   status: "authorization_pending";
 };
 
+/** Definitive provider rejection; transport and session failures still throw. */
+export type PluginMcpToolError = {
+  message: string;
+  status: "error";
+};
+
 export type PluginMcpToolResult =
   | PluginMcpAuthorizationPending
+  | PluginMcpToolError
   | PluginMcpToolSuccess;
 
 /** Access to this plugin's hosted MCP provider without exposing credentials. */
@@ -93,7 +100,8 @@ export interface PluginMcp {
    * Call a provider tool declared in `wrappedTools`.
    *
    * The host activates the provider when needed. Successful calls return the
-   * provider's original content; authorization pauses return no tool content.
+   * provider's original content, provider rejections return an error result,
+   * and authorization pauses return no tool content. Transport failures throw.
    */
   callTool(input: {
     arguments?: Record<string, unknown>;

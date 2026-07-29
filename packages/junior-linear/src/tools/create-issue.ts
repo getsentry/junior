@@ -263,6 +263,10 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             await ctx.state.delete(key);
             return toolResult(null, "Authorization pending.");
           }
+          if (result.status === "error") {
+            await ctx.state.delete(key);
+            throw new Error(result.message);
+          }
           const text = providerText(result);
           const issue = extractIssue(result);
           const completedState: CreateIssueState = {

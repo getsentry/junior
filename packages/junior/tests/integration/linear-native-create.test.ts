@@ -239,4 +239,90 @@ describe("Linear native create tool", () => {
       setPlugins(previousPlugins);
     }
   });
+
+  it("retries provider rejections but blocks uncertain transport failures", async () => {
+    const registration = linearPlugin();
+    const previousPlugins = setPlugins([registration]);
+    const conversationId = "local:test:linear-native-create-failures";
+    const callCounts = new Map<string, number>();
+    const activeProviders = new Set(["linear"]);
+    try {
+      await getConversationStore().recordActivity({
+        conversationId,
+        nowMs: Date.now(),
+        source: "local",
+        title: "Linear native create failures",
+      });
+      const tools = getPluginTools({
+        conversationId,
+        destination: { platform: "local", conversationId },
+        egress: {
+          async fetch() {
+            return new Response("unused");
+          },
+        },
+        mcpToolManager: {
+          async activateProvider() {
+            activeProviders.add("linear");
+            return true;
+          },
+          async callWrappedTool(
+            _provider: string,
+            _name: string,
+            _arguments: Record<string, unknown>,
+            options?: { toolCallId?: string },
+          ) {
+            const toolCallId = options?.toolCallId ?? "";
+            const callCount = (callCounts.get(toolCallId) ?? 0) + 1;
+            callCounts.set(toolCallId, callCount);
+
+            if (toolCallId === "call-rejected" && callCount === 1) {
+              return {
+                status: "error" as const,
+                message: "Team is invalid",
+              };
+            }
+            if (toolCallId === "call-uncertain") {
+              throw new Error("MCP transport failed");
+            }
+            return {
+              status: "success" as const,
+              content: [{ type: "text" as const, text: "Created" }],
+            };
+          },
+          getActiveProviders() {
+            return [...activeProviders];
+          },
+        } as never,
+        source: createLocalSource(conversationId),
+        workspace: {} as never,
+      });
+      const createIssue = tools.linear_createIssue;
+      if (!createIssue?.execute) {
+        throw new Error("Linear createIssue tool is unavailable");
+      }
+      const input = { team: "Engineering", title: "Failure semantics" };
+
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-rejected" }),
+      ).rejects.toThrow("Team is invalid");
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-rejected" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        status: "success",
+      });
+      expect(callCounts.get("call-rejected")).toBe(2);
+
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-uncertain" }),
+      ).rejects.toThrow("MCP transport failed");
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-uncertain" }),
+      ).rejects.toThrow("uncertain pending result");
+      expect(callCounts.get("call-uncertain")).toBe(1);
+    } finally {
+      setPlugins(previousPlugins);
+    }
+  });
 });

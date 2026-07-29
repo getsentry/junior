@@ -617,6 +617,30 @@ describe("McpToolManager", () => {
     expect(manager.getActiveProviders()).toEqual([]);
   });
 
+  it("returns definitive provider rejections to wrapped tools", async () => {
+    const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
+    listToolsMock.mockResolvedValue([
+      {
+        name: "create_issue",
+        description: "Create an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ]);
+    callToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "Team is invalid" }],
+      isError: true,
+    });
+    const manager = new McpToolManager([plugin]);
+    await manager.activateProvider("linear");
+
+    await expect(
+      manager.callWrappedTool("linear", "create_issue", {}),
+    ).resolves.toEqual({
+      status: "error",
+      message: "Team is invalid",
+    });
+  });
+
   it("fails activation when a wrapped MCP tool is missing", async () => {
     const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
     const manager = new McpToolManager([plugin]);

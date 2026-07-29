@@ -707,10 +707,18 @@ export class McpToolManager {
         `MCP provider ${provider} does not expose tool ${rawName}`,
       );
     }
-    const result = await tool.execute(args, {
-      conversationPrivacy: "private",
-      ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
-    });
+    let result: ManagedMcpToolResult;
+    try {
+      result = await tool.execute(args, {
+        conversationPrivacy: "private",
+        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+      });
+    } catch (error) {
+      if (error instanceof McpToolError) {
+        return { status: "error", message: error.message };
+      }
+      throw error;
+    }
     if (result.authorizationPending) {
       return { status: "authorization_pending" };
     }
