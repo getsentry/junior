@@ -6,7 +6,7 @@
 | ------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------- |
 | Consumer app                                | `pnpm exec junior check`                       | Prints `Validation passed` or only expected warnings.                   |
 | Consumer app from another directory         | `pnpm exec junior check path/to/app`           | Same as above.                                                          |
-| This repo core skill files                  | `pnpm skills:check`                            | Reports skill validation passed.                                        |
+| Built-in and repository-development skills  | `pnpm skills:check`                            | Reports skill validation passed.                                        |
 | Packaged plugin manifest                    | configured app startup or targeted parser test | The package `plugin.yaml` is parsed without errors.                     |
 | Runtime code changed                        | `pnpm typecheck` and targeted tests            | Typecheck and tests pass.                                               |
 | Docs changed                                | `pnpm docs:check`                              | Docs checker passes.                                                    |

@@ -1,6 +1,6 @@
 ---
 name: junior-qa
-description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, `pnpm cli -- <command> ...`, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
+description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, another `pnpm cli` command, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
 ---
 
 Use the local Junior CLI to exercise behavior the test suite does not prove well.

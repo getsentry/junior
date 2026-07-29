@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
+import { sandboxSkillFile } from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
+import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
 
 const temporaryDirectories: string[] = [];
 
@@ -32,6 +34,7 @@ function immediateSpan<T>(
 }
 
 afterEach(async () => {
+  resetSkillDiscoveryCache();
   await Promise.all(
     temporaryDirectories.splice(0).map(async (directory) => {
       await fs.rm(directory, { recursive: true, force: true });
@@ -40,6 +43,34 @@ afterEach(async () => {
 });
 
 describe("sandbox skill sync", () => {
+  it("copies discovered built-in skills into the sandbox", async () => {
+    const builtInSkill = (await discoverSkills()).find(
+      (skill) => skill.name === "jr-rpc",
+    );
+    if (!builtInSkill) {
+      throw new Error("Expected the jr-rpc built-in skill");
+    }
+
+    const writtenPaths: string[] = [];
+    const sandbox = {
+      async mkDir() {},
+      async readFileToBuffer() {
+        return null;
+      },
+      async writeFiles(files: Array<{ path: string }>) {
+        writtenPaths.push(...files.map((file) => file.path));
+      },
+    } as unknown as SandboxSession;
+
+    await syncSkillsToSandbox({
+      sandbox,
+      skills: [builtInSkill],
+      withSpan: immediateSpan,
+    });
+
+    expect(writtenPaths).toContain(sandboxSkillFile("jr-rpc"));
+  });
+
   it("creates sibling directories concurrently after their parents", async () => {
     const skillPath = await makeSkill();
     let parentMissing = false;

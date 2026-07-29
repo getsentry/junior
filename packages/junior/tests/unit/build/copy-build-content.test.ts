@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  copyAppAndPluginContent,
   copyIncludedFiles,
+  copyRuntimeContent,
 } from "@/build/copy-build-content";
 
 const tempDirs: string[] = [];
@@ -216,15 +216,43 @@ describe("copyIncludedFiles", () => {
   });
 });
 
-describe("copyAppAndPluginContent", () => {
-  it("copies configured plugin packages resolved from ancestor node_modules", () => {
+describe("copyRuntimeContent", () => {
+  it("fails when the Junior package omits its built-in skills", () => {
     const workspaceRoot = makeTempDir();
     const cwd = path.join(workspaceRoot, "apps", "example");
     const serverRoot = makeTempDir();
+    writePackage(workspaceRoot, "@sentry/junior", { entryPoint: false });
+    fs.mkdirSync(cwd, { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ name: "example" }),
+      "utf8",
+    );
+
+    expect(() => copyRuntimeContent(cwd, serverRoot)).toThrow(
+      "@sentry/junior is missing its built-in skills directory",
+    );
+  });
+
+  it("copies built-in skills and configured plugin packages", () => {
+    const workspaceRoot = makeTempDir();
+    const cwd = path.join(workspaceRoot, "apps", "example");
+    const serverRoot = makeTempDir();
+    const juniorPackageDir = writePackage(workspaceRoot, "@sentry/junior", {
+      entryPoint: false,
+    });
     const packageDir = writePackage(workspaceRoot, "@acme/ancestor-plugin", {
       entryPoint: false,
     });
 
+    fs.mkdirSync(path.join(juniorPackageDir, "skills", "jr-rpc"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(juniorPackageDir, "skills", "jr-rpc", "SKILL.md"),
+      "---\nname: jr-rpc\ndescription: Junior runtime commands\n---\n",
+      "utf8",
+    );
     fs.mkdirSync(path.join(packageDir, "skills", "demo"), { recursive: true });
     fs.mkdirSync(path.join(packageDir, "migrations"), { recursive: true });
     fs.writeFileSync(
@@ -259,8 +287,21 @@ describe("copyAppAndPluginContent", () => {
       "utf8",
     );
 
-    copyAppAndPluginContent(cwd, serverRoot, ["@acme/ancestor-plugin"]);
+    copyRuntimeContent(cwd, serverRoot, ["@acme/ancestor-plugin"]);
 
+    expect(
+      fs.existsSync(
+        path.join(
+          serverRoot,
+          "node_modules",
+          "@sentry",
+          "junior",
+          "skills",
+          "jr-rpc",
+          "SKILL.md",
+        ),
+      ),
+    ).toBe(true);
     expect(
       fs.existsSync(
         path.join(

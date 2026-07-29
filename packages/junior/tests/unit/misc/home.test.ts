@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  builtInSkillsDir,
   dataDir,
   dataRoots,
   descriptionPath,
@@ -48,7 +49,8 @@ describe("home paths", () => {
   it("resolves skills and plugins from canonical app root", () => {
     const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
     expect(skillsDir()).toBe(canonicalSkills);
-    expect(skillRoots()).toEqual([canonicalSkills]);
+    expect(builtInSkillsDir()).toBe(path.resolve(process.cwd(), "skills"));
+    expect(skillRoots()).toEqual([builtInSkillsDir(), canonicalSkills]);
 
     const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
     expect(pluginsDir()).toBe(canonicalPlugins);

@@ -1,6 +1,7 @@
 import fs, { statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolvePackageDir } from "@/package-resolution";
 
 // ---------------------------------------------------------------------------
 // Filesystem helpers
@@ -272,6 +273,23 @@ function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
   return [path.join(homeDir(), subdir)];
 }
 
+/** Return the built-in skills directory in source and packaged builds. */
+export function builtInSkillsDir(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  if (path.basename(moduleDir) === "dist") {
+    return path.join(path.dirname(moduleDir), "skills");
+  }
+  if (
+    path.basename(moduleDir) === "chat" &&
+    path.basename(path.dirname(moduleDir)) === "src"
+  ) {
+    return path.resolve(moduleDir, "../../skills");
+  }
+
+  const packageDir = resolvePackageDir(process.cwd(), "@sentry/junior");
+  return path.join(packageDir ?? moduleDir, "skills");
+}
+
 /** Return the data directory (same as homeDir). */
 export function dataDir(): string {
   return resolveContentRoots("data")[0];
@@ -309,7 +327,7 @@ export function dataRoots(): string[] {
 
 /** Return all unique skill root directories. */
 export function skillRoots(): string[] {
-  return unique(resolveContentRoots("skills"));
+  return unique([builtInSkillsDir(), ...resolveContentRoots("skills")]);
 }
 
 /** Return all unique plugin root directories. */

@@ -82,6 +82,14 @@ describe("skills", () => {
     }
   });
 
+  it("discovers built-in skills without exposing repo development skills", async () => {
+    const skills = await discoverSkills();
+    const names = skills.map((skill) => skill.name);
+
+    expect(names).toContain("jr-rpc");
+    expect(names).not.toContain("junior");
+  });
+
   it("does not parse invocation without an explicit skill reference", () => {
     expect(
       parseSkillInvocation("please summarize this candidate", stubSkills),

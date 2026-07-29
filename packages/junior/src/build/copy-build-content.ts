@@ -5,15 +5,34 @@ import { globToRegex } from "@/build/glob-to-regex";
 import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
 const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
+const JUNIOR_PACKAGE_NAME = "@sentry/junior";
 const DASHBOARD_ASSET_NAMES = ["client.js", "tailwind.css"] as const;
 
-/** Copy app and declared plugin package content into the server output. */
-export function copyAppAndPluginContent(
+/** Copy app, built-in skill, and declared plugin content into server output. */
+export function copyRuntimeContent(
   cwd: string,
   serverRoot: string,
   packageNames?: unknown,
 ): void {
   copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
+
+  const juniorPackageDir = resolvePackageDir(cwd, JUNIOR_PACKAGE_NAME);
+  if (!juniorPackageDir) {
+    throw new Error(
+      `Cannot resolve ${JUNIOR_PACKAGE_NAME} while copying runtime content`,
+    );
+  }
+  const builtInSkillsDir = path.join(juniorPackageDir, "skills");
+  if (
+    !copyIfExists(
+      builtInSkillsDir,
+      path.join(serverRoot, "node_modules", JUNIOR_PACKAGE_NAME, "skills"),
+    )
+  ) {
+    throw new Error(
+      `${JUNIOR_PACKAGE_NAME} is missing its built-in skills directory`,
+    );
+  }
 
   const packagedContent = discoverInstalledPluginPackageContent(cwd, {
     packageNames,

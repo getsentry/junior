@@ -3,8 +3,8 @@ import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
   copyDashboardAssets,
-  copyAppAndPluginContent,
   copyIncludedFiles,
+  copyRuntimeContent,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
@@ -290,7 +290,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           const pluginSet = await loadConfiguredPluginSet();
           const compiledPluginCatalogConfig =
             pluginCatalogConfigFromPluginSet(pluginSet);
-          copyAppAndPluginContent(
+          copyRuntimeContent(
             cwd,
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,

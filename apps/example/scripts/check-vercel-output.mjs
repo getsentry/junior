@@ -76,6 +76,17 @@ function assertQueueTrigger() {
 
 function assertFunctionHasJuniorContent(functionDir, pluginPackages) {
   requireFile(path.join(functionDir, "index.mjs"));
+  requireFile(
+    path.join(
+      functionDir,
+      "node_modules",
+      "@sentry",
+      "junior",
+      "skills",
+      "jr-rpc",
+      "SKILL.md",
+    ),
+  );
   requireFile(path.join(functionDir, "app", "SOUL.md"));
   requireFile(
     path.join(functionDir, "app", "plugins", "example-bundle", "plugin.yaml"),

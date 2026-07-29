@@ -24,7 +24,7 @@ Last updated: 2026-05-07
 
 | Decision                                                                  | Status   |
 | ------------------------------------------------------------------------- | -------- |
-| Skill name/path: `packages/junior/skills/junior`                          | adopted  |
+| Skill name/path: `skills/junior`                                          | adopted  |
 | Shape: reference-backed router                                            | adopted  |
 | Central rule: `SKILL.md` describes behavior; `plugin.yaml` owns authority | adopted  |
 | Examples stay in a reference, not `SKILL.md`                              | adopted  |
