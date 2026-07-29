@@ -3279,7 +3279,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-unrelated",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -3322,7 +3322,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-empty",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -3362,7 +3362,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-failure",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
