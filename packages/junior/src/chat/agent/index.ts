@@ -65,21 +65,18 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   extractAssistantText,
-  getPiMessageRole,
   isAssistantMessage,
   retainRuntimeTurnContext,
-  trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import {
-  buildTurnResult,
-  classifyAssistantMessage,
-} from "@/chat/services/turn-result";
+import { buildTurnResult } from "@/chat/services/turn-result";
+import { classifyAssistantOutput } from "@/chat/services/assistant-output";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
+import { nextOutputRecovery } from "@/chat/services/output-recovery";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -879,12 +876,11 @@ async function executeAgentRunInPrivacyContext(
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      const disposition = classifyAssistantMessage(message, {
-        rejectOpaqueToolFragments: hasCompactedConversationContext(
-          currentAgentMessages(),
-        ),
-      });
-      if (disposition.kind !== "deliver" || !delivery) {
+      const output = classifyAssistantOutput(
+        message,
+        hasCompactedConversationContext(currentAgentMessages()),
+      );
+      if (output.kind !== "deliver" || !delivery) {
         return;
       }
       try {
@@ -1290,56 +1286,35 @@ async function executeAgentRunInPrivacyContext(
                 throw pendingAuthPause;
               }
 
-              const compactedContext = hasCompactedConversationContext(
-                agent!.state.messages,
-              );
-              const outputDisposition =
-                compactedContext && !lastAssistant
-                  ? ({ kind: "reject", reason: "empty" } as const)
-                  : lastAssistant &&
-                      lastAssistant.stopReason !== "error" &&
-                      lastAssistant.stopReason !== "aborted"
-                    ? classifyAssistantMessage(lastAssistant, {
-                        rejectOpaqueToolFragments: compactedContext,
-                      })
-                    : undefined;
-              if (compactedContext && outputDisposition?.kind === "reject") {
-                const recoveryMessages = trimTrailingAssistantMessages(
-                  agent!.state.messages,
+              const outputRecovery = nextOutputRecovery({
+                attempt: outputRecoveryAttempt,
+                lastAssistant,
+                messages: agent!.state.messages,
+              });
+              if (outputRecovery.kind === "retry") {
+                outputRecoveryAttempt += 1;
+                retryUsage = currentPhaseUsage;
+                agent!.state.messages = outputRecovery.messages;
+                await runResume.persistSafeBoundary(outputRecovery.messages);
+                logWarn(
+                  "agent_turn_output_recovery",
+                  spanContext,
+                  {
+                    "app.ai.output_rejection.reason": outputRecovery.reason,
+                    "app.ai.output_recovery.attempt": outputRecoveryAttempt,
+                  },
+                  "Retrying rejected post-compaction assistant output",
                 );
-                const recoveryTailRole = getPiMessageRole(
-                  recoveryMessages.at(-1),
-                );
-                if (
-                  outputRecoveryAttempt === 0 &&
-                  (!lastAssistant ||
-                    recoveryMessages.length < agent!.state.messages.length) &&
-                  (recoveryTailRole === "user" ||
-                    recoveryTailRole === "toolResult")
-                ) {
-                  outputRecoveryAttempt += 1;
-                  retryUsage = currentPhaseUsage;
-                  agent!.state.messages = recoveryMessages;
-                  await runResume.persistSafeBoundary(recoveryMessages);
-                  logWarn(
-                    "agent_turn_output_recovery",
-                    spanContext,
-                    {
-                      "app.ai.output_rejection.reason":
-                        outputDisposition.reason,
-                      "app.ai.output_recovery.attempt": outputRecoveryAttempt,
-                    },
-                    "Retrying rejected post-compaction assistant output",
-                  );
-                  signal?.throwIfAborted();
-                  run = agent!.continue();
-                  continue;
-                }
+                signal?.throwIfAborted();
+                run = agent!.continue();
+                continue;
+              }
+              if (outputRecovery.kind === "exhausted") {
                 logWarn(
                   "agent_turn_output_recovery_exhausted",
                   spanContext,
                   {
-                    "app.ai.output_rejection.reason": outputDisposition.reason,
+                    "app.ai.output_rejection.reason": outputRecovery.reason,
                     "app.ai.output_recovery.attempt": outputRecoveryAttempt,
                   },
                   "Post-compaction assistant output recovery exhausted",
@@ -1425,9 +1400,6 @@ async function executeAgentRunInPrivacyContext(
       executionProfile: turnRoute,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
-      rejectOpaqueToolFragments: hasCompactedConversationContext(
-        agent.state.messages,
-      ),
     });
     return {
       status: "completed",

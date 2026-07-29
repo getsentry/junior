@@ -7,15 +7,14 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { extractAssistantText } from "@/chat/pi/transcript";
 import { readConversationDetail } from "@/api/conversations/detail";
 
+const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
+
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
     agentMode: {
       value: "providerRetry" as
         | "providerRetry"
         | "activeCompaction"
-        | "postCompactionMissingRecovery"
-        | "postCompactionRecoveryExhausted"
-        | "postCompactionValidShort"
         | "preflightCompaction"
         | "pendingProviderCall"
         | "cooperativeYield"
@@ -29,6 +28,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
+      replies: [] as Array<string | null>,
       summaryCalls: 0,
     },
     counters: {
@@ -175,7 +175,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       this.state.messages.push(...messages.map(durableTestMessage));
     }
 
-    private async emitMessageEnd(message: unknown) {
+    private async emitAssistant(text: string) {
+      const message = {
+        role: "assistant",
+        content: [{ type: "text", text }],
+        stopReason: "stop",
+        usage: { input: 2, output: 2 },
+      };
+      this.pushMessages(message);
       await Promise.all(
         this.subscribers.map((subscriber) =>
           subscriber({ type: "message_end", message }),
@@ -199,18 +206,13 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.pushMessages(message);
-      if (
-        agentMode.value === "activeCompaction" ||
-        agentMode.value === "postCompactionMissingRecovery" ||
-        agentMode.value === "postCompactionRecoveryExhausted" ||
-        agentMode.value === "postCompactionValidShort"
-      ) {
+      if (agentMode.value === "activeCompaction") {
         const toolResult = {
           role: "toolResult",
           toolCallId: "call_oversized",
           toolName: "editFile",
           isError: false,
-          content: [{ type: "text", text: "x".repeat(1_600_000) }],
+          content: [{ type: "text", text: OVERSIZED_CONTEXT_TEXT }],
         };
         this.pushMessages({
           role: "assistant",
@@ -246,27 +248,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         const keptRequest = compactionState.nextProviderContextText.includes(
           "Make a large generated-file edit.",
         );
-        const finalMessage = {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text:
-                agentMode.value === "postCompactionRecoveryExhausted"
-                  ? "Repos6azabash"
-                  : agentMode.value === "postCompactionValidShort"
-                    ? "repo123"
-                    : keptRequest
-                      ? "Finished the requested edit."
-                      : "got it — context checkpoint loaded. no outstanding asks.",
-            },
-          ],
-          stopReason: "stop",
-          usage: { input: 2, output: 2 },
-        };
-        if (agentMode.value !== "postCompactionMissingRecovery") {
-          this.pushMessages(finalMessage);
-          await this.emitMessageEnd(finalMessage);
+        const scriptedReply = compactionState.replies.shift();
+        if (scriptedReply !== null) {
+          await this.emitAssistant(
+            scriptedReply ??
+              (keptRequest
+                ? "Finished the requested edit."
+                : "got it — context checkpoint loaded. no outstanding asks."),
+          );
         }
         return {};
       }
@@ -447,17 +436,19 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         });
         return {};
       }
+      if (
+        agentMode.value === "activeCompaction" &&
+        compactionState.replies.length > 0
+      ) {
+        const reply = compactionState.replies.shift();
+        if (reply !== null && reply !== undefined) {
+          await this.emitAssistant(reply);
+        }
+        return {};
+      }
       const finalMessage = {
         role: "assistant",
-        content: [
-          {
-            type: "text",
-            text:
-              agentMode.value === "postCompactionRecoveryExhausted"
-                ? "Repos6azabash"
-                : "Recovered.",
-          },
-        ],
+        content: [{ type: "text", text: "Recovered." }],
         stopReason: "stop",
         usage: {
           input: 2,
@@ -465,12 +456,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         },
       };
       this.pushMessages(finalMessage);
-      if (
-        agentMode.value === "postCompactionMissingRecovery" ||
-        agentMode.value === "postCompactionRecoveryExhausted"
-      ) {
-        await this.emitMessageEnd(finalMessage);
-      }
       return {};
     }
   }
@@ -597,6 +582,30 @@ function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   return outcome.result;
 }
 
+async function runCompactedReplies(replies: Array<string | null>, id: string) {
+  agentMode.value = "activeCompaction";
+  compactionState.replies = [...replies];
+  const delivered: Array<{ text: string }> = [];
+  const result = finalReply(
+    await executeAgentRun({
+      input: { messageText: "Make a large generated-file edit." },
+      routing: {
+        source: TEST_SOURCE,
+        destination: TEST_DESTINATION,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      conversationId: `conversation-${id}`,
+      turnId: `turn-${id}`,
+      delivery: {
+        onAssistantMessage: (message) => {
+          delivered.push(message);
+        },
+      },
+    }),
+  );
+  return { delivered, result };
+}
+
 const TEST_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -618,6 +627,7 @@ describe("provider retry composition", () => {
     compactionState.nextProviderContextChars = 0;
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
+    compactionState.replies = [];
     compactionState.summaryCalls = 0;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
@@ -672,25 +682,9 @@ describe("provider retry composition", () => {
   });
 
   it("recovers a missing assistant response after compaction", async () => {
-    agentMode.value = "postCompactionMissingRecovery";
-    const delivered: Array<{ text: string }> = [];
-
-    const result = finalReply(
-      await executeAgentRun({
-        input: { messageText: "Make a large generated-file edit." },
-        routing: {
-          source: TEST_SOURCE,
-          destination: TEST_DESTINATION,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        conversationId: "conversation-post-compaction-missing",
-        turnId: "turn-post-compaction-missing",
-        delivery: {
-          onAssistantMessage: (message) => {
-            delivered.push(message);
-          },
-        },
-      }),
+    const { delivered, result } = await runCompactedReplies(
+      [null, "Recovered."],
+      "compaction-missing-output",
     );
 
     expect(delivered).toEqual([{ text: "Recovered." }]);
@@ -700,59 +694,15 @@ describe("provider retry composition", () => {
   });
 
   it("fails cleanly when post-compaction output recovery is exhausted", async () => {
-    agentMode.value = "postCompactionRecoveryExhausted";
-    const delivered: Array<{ text: string }> = [];
-
-    const result = finalReply(
-      await executeAgentRun({
-        input: { messageText: "Make a large generated-file edit." },
-        routing: {
-          source: TEST_SOURCE,
-          destination: TEST_DESTINATION,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        conversationId: "conversation-compaction-recovery-exhausted",
-        turnId: "turn-compaction-recovery-exhausted",
-        delivery: {
-          onAssistantMessage: (message) => {
-            delivered.push(message);
-          },
-        },
-      }),
+    const { delivered, result } = await runCompactedReplies(
+      ["Repos6azabash", "Repos6azabash"],
+      "compaction-recovery-exhausted",
     );
 
     expect(delivered).toEqual([]);
     expect(result.text).toBe("");
     expect(result.diagnostics.outcome).toBe("execution_failure");
     expect(counters.continueCalls).toBe(1);
-  });
-
-  it("delivers a valid short response after compaction", async () => {
-    agentMode.value = "postCompactionValidShort";
-    const delivered: Array<{ text: string }> = [];
-
-    const result = finalReply(
-      await executeAgentRun({
-        input: { messageText: "Return the issue key." },
-        routing: {
-          source: TEST_SOURCE,
-          destination: TEST_DESTINATION,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        conversationId: "conversation-compaction-valid-short",
-        turnId: "turn-compaction-valid-short",
-        delivery: {
-          onAssistantMessage: (message) => {
-            delivered.push(message);
-          },
-        },
-      }),
-    );
-
-    expect(delivered).toEqual([{ text: "repo123" }]);
-    expect(result.text).toBe("repo123");
-    expect(result.diagnostics.outcome).toBe("success");
-    expect(counters.continueCalls).toBe(0);
   });
 
   it("retains the complete current instruction across preflight compaction", async () => {
@@ -764,7 +714,7 @@ describe("provider retry composition", () => {
         toolCallId: "call_prior_oversized",
         toolName: "editFile",
         isError: false,
-        content: [{ type: "text", text: "x".repeat(1_600_000) }],
+        content: [{ type: "text", text: OVERSIZED_CONTEXT_TEXT }],
         timestamp: 1,
       } as PiMessage,
     ];

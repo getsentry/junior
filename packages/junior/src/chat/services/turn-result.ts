@@ -15,85 +15,11 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
-
-function isExecutionDeferralResponse(text: string): boolean {
-  return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
-    text,
-  );
-}
-
-function isToolAccessDisclaimerResponse(text: string): boolean {
-  return /\b(i (don't|do not) have access to (active )?tool|tool results came back empty|prior results .* empty|cannot access .*tool|need to (run|load) .*tool .* first)\b/i.test(
-    text,
-  );
-}
-
-/** True when the model produced an escape response instead of executing. */
-function isExecutionEscapeResponse(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  return (
-    isExecutionDeferralResponse(trimmed) ||
-    isToolAccessDisclaimerResponse(trimmed)
-  );
-}
-
-function parseJsonCandidate(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (!fenced) return undefined;
-    try {
-      return JSON.parse(fenced[1]) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-}
-
-function isToolPayloadShape(payload: unknown): boolean {
-  if (!payload || typeof payload !== "object") return false;
-  const record = payload as Record<string, unknown>;
-
-  const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-  if (type.startsWith("tool-")) return true;
-  if (
-    type === "tool_use" ||
-    type === "tool_call" ||
-    type === "tool_result" ||
-    type === "tool_error"
-  )
-    return true;
-
-  const hasToolName =
-    typeof record.toolName === "string" || typeof record.name === "string";
-  const hasToolInput =
-    Object.prototype.hasOwnProperty.call(record, "input") ||
-    Object.prototype.hasOwnProperty.call(record, "args");
-  if (hasToolName && hasToolInput) return true;
-
-  return false;
-}
-
-/** Detect responses that are raw tool payloads leaked as text. */
-function isRawToolPayloadResponse(text: string): boolean {
-  const parsed = parseJsonCandidate(text);
-  if (Array.isArray(parsed)) {
-    return parsed.some((entry) => isToolPayloadShape(entry));
-  }
-  if (isToolPayloadShape(parsed)) {
-    return true;
-  }
-  return false;
-}
-
-const THINKING_XML_BLOCK_PATTERN =
-  /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
-const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
+import {
+  classifyAssistantOutput,
+  sanitizeAssistantText,
+} from "@/chat/services/assistant-output";
+import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -134,101 +60,6 @@ export interface TurnResultInput {
   executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
-  rejectOpaqueToolFragments?: boolean;
-}
-
-function stripThinkingXmlBlocks(text: string): string {
-  let result = "";
-  let cursor = 0;
-
-  for (const match of text.matchAll(FENCED_CODE_BLOCK_PATTERN)) {
-    const start = match.index;
-    if (start === undefined) {
-      continue;
-    }
-    result += text.slice(cursor, start).replace(THINKING_XML_BLOCK_PATTERN, "");
-    result += match[0];
-    cursor = start + match[0].length;
-  }
-
-  result += text.slice(cursor).replace(THINKING_XML_BLOCK_PATTERN, "");
-  return result;
-}
-
-export type AssistantMessageRejectionReason =
-  | "empty"
-  | "execution_escape"
-  | "mixed_no_reply_marker"
-  | "opaque_tool_fragment"
-  | "raw_tool_payload";
-
-export type AssistantMessageDisposition =
-  | { kind: "deliver"; text: string }
-  | { kind: "reject"; reason: AssistantMessageRejectionReason }
-  | { kind: "suppress" };
-
-const INTERNAL_TOOL_FRAGMENT_PATTERN =
-  /bash|edit|file|glob|grep|read|repo|search|shell|tool|write/gi;
-
-function isOpaqueToolFragmentResponse(text: string): boolean {
-  const toolFragments = new Set(
-    text
-      .match(INTERNAL_TOOL_FRAGMENT_PATTERN)
-      ?.map((match) => match.toLowerCase()),
-  );
-  return (
-    text.length >= 8 &&
-    text.length <= 80 &&
-    /^[A-Za-z0-9]+$/.test(text) &&
-    /\d/.test(text) &&
-    /[a-z]/.test(text) &&
-    toolFragments.size >= 2
-  );
-}
-
-/**
- * Classify one completed assistant message before destination delivery.
- *
- * Opaque tool-like fragments are only rejected when the caller knows the
- * model received compacted context; outside that recovery boundary they remain
- * valid short replies to avoid suppressing identifiers.
- */
-export function classifyAssistantMessage(
-  message: Parameters<typeof extractAssistantText>[0],
-  options: { rejectOpaqueToolFragments?: boolean } = {},
-): AssistantMessageDisposition {
-  if (message.content.some((part) => part.type === "toolCall")) {
-    return { kind: "suppress" };
-  }
-
-  const text = stripThinkingXmlBlocks(extractAssistantText(message)).trim();
-  if (!text) {
-    return { kind: "reject", reason: "empty" };
-  }
-  if (isNoReplyMarker(text)) {
-    return { kind: "suppress" };
-  }
-  if (containsNoReplyMarker(text)) {
-    return { kind: "reject", reason: "mixed_no_reply_marker" };
-  }
-  if (isRawToolPayloadResponse(text)) {
-    return { kind: "reject", reason: "raw_tool_payload" };
-  }
-  if (isExecutionEscapeResponse(text)) {
-    return { kind: "reject", reason: "execution_escape" };
-  }
-  if (options.rejectOpaqueToolFragments && isOpaqueToolFragmentResponse(text)) {
-    return { kind: "reject", reason: "opaque_tool_fragment" };
-  }
-  return { kind: "deliver", text };
-}
-
-/** Return destination-visible text from one completed tool-free assistant message. */
-export function getAssistantMessageText(
-  message: Parameters<typeof extractAssistantText>[0],
-): string | undefined {
-  const disposition = classifyAssistantMessage(message);
-  return disposition.kind === "deliver" ? disposition.text : undefined;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -243,14 +74,16 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     usage,
     executionProfile,
     modelId,
-    rejectOpaqueToolFragments = false,
   } = input;
 
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
+  const compactedContext = input.piMessages
+    ? hasCompactedConversationContext(input.piMessages)
+    : false;
 
-  const rawPrimaryText = stripThinkingXmlBlocks(
+  const rawPrimaryText = sanitizeAssistantText(
     terminalAssistantMessages
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
@@ -262,18 +95,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const primaryText = noReplyRequested
     ? ""
     : terminalAssistantMessages
-        .map((message) =>
-          classifyAssistantMessage(message, { rejectOpaqueToolFragments }),
-        )
+        .map((message) => classifyAssistantOutput(message, compactedContext))
         .filter(
-          (
-            disposition,
-          ): disposition is Extract<
-            AssistantMessageDisposition,
-            { kind: "deliver" }
-          > => disposition.kind === "deliver",
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
         )
-        .map((disposition) => disposition.text)
+        .map((output) => output.text)
         .join("\n\n");
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;

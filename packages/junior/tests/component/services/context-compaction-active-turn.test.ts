@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
+const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
 
 function user(text: string, timestamp = 1): PiMessage {
   return {
@@ -85,7 +86,7 @@ describe("active-turn context compaction", () => {
             toolCallId: "read-1",
             toolName: "readFile",
             content: [{ type: "text", text: "Visible result." }],
-            details: { internalPayload: "x".repeat(1_600_000) },
+            details: { internalPayload: OVERSIZED_CONTEXT_TEXT },
             isError: false,
             timestamp: 3,
           } as PiMessage,
@@ -120,7 +121,7 @@ describe("active-turn context compaction", () => {
         role: "toolResult",
         toolCallId: "edit-1",
         toolName: "editFile",
-        content: [{ type: "text", text: "x".repeat(1_600_000) }],
+        content: [{ type: "text", text: OVERSIZED_CONTEXT_TEXT }],
         isError: false,
         timestamp: 5,
       } as PiMessage,
