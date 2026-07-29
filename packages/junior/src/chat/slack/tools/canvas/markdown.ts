@@ -13,7 +13,7 @@ interface Fence {
 }
 
 interface OpenFence extends Fence {
-  unwrapNestedQuote: boolean;
+  quoteDepth: number;
 }
 
 interface FenceLine {
@@ -71,23 +71,33 @@ function isListBlockIndent(indent: number, listItems: ListItem[]): boolean {
 }
 
 function canOpenFence(fenceLine: FenceLine, listItems: ListItem[]) {
-  return fenceLine.indent <= 3 || isListBlockIndent(fenceLine.indent, listItems);
+  return (
+    fenceLine.indent <= 3 || isListBlockIndent(fenceLine.indent, listItems)
+  );
 }
 
 function unwrapNestedBlockquote(
   line: string,
   listItems: ListItem[],
-): { line: string; unwrapped: boolean } {
-  const match = line.match(/^([ \t]+)(?:>[ \t]*)+(.*)$/);
-  if (
-    !match ||
-    !isListBlockIndent(getIndentWidth(match[1] ?? ""), listItems)
-  ) {
-    return { line, unwrapped: false };
+  maxQuoteDepth = Number.POSITIVE_INFINITY,
+): { line: string; quoteDepth: number } {
+  const match = line.match(/^([ \t]+)((?:>[ \t]*)+)(.*)$/);
+  if (!match || !isListBlockIndent(getIndentWidth(match[1] ?? ""), listItems)) {
+    return { line, quoteDepth: 0 };
   }
+
+  let quotePrefix = match[2] ?? "";
+  const quoteDepth = Math.min(
+    quotePrefix.match(/>/g)?.length ?? 0,
+    maxQuoteDepth,
+  );
+  for (let index = 0; index < quoteDepth; index += 1) {
+    quotePrefix = quotePrefix.replace(/^>[ \t]*/, "");
+  }
+
   return {
-    line: `${match[1]}${match[2]}`,
-    unwrapped: true,
+    line: `${match[1]}${quotePrefix}${match[3]}`,
+    quoteDepth,
   };
 }
 
@@ -103,10 +113,15 @@ export function normalizeCanvasMarkdown(
 
   const lines = markdown.split("\n").map((originalLine) => {
     if (openFence) {
-      const unwrapped = openFence.unwrapNestedQuote
-        ? unwrapNestedBlockquote(originalLine, listItems)
-        : { line: originalLine, unwrapped: false };
-      if (unwrapped.unwrapped) {
+      const unwrapped =
+        openFence.quoteDepth > 0
+          ? unwrapNestedBlockquote(
+              originalLine,
+              listItems,
+              openFence.quoteDepth,
+            )
+          : { line: originalLine, quoteDepth: 0 };
+      if (unwrapped.quoteDepth > 0) {
         unwrappedBlockquoteCount += 1;
       }
       const fenceLine = getFence(unwrapped.line);
@@ -123,7 +138,7 @@ export function normalizeCanvasMarkdown(
     const unwrapped = unwrapNestedBlockquote(originalLine, listItems);
     // Slack rejects blockquotes nested inside list items. Unwrap every quote
     // marker before processing syntax that the quote may have hidden.
-    if (unwrapped.unwrapped) {
+    if (unwrapped.quoteDepth > 0) {
       unwrappedBlockquoteCount += 1;
     }
     const line = unwrapped.line;
@@ -139,14 +154,12 @@ export function normalizeCanvasMarkdown(
       }
       openFence = {
         ...fenceLine.fence,
-        unwrapNestedQuote: unwrapped.unwrapped,
+        quoteDepth: unwrapped.quoteDepth,
       };
       return line;
     }
 
-    const listMatch = line.match(
-      /^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/,
-    );
+    const listMatch = line.match(/^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/);
     if (listMatch) {
       const [, whitespace = "", marker = "", gap = "", rawContent = ""] =
         listMatch;
@@ -181,9 +194,7 @@ export function normalizeCanvasMarkdown(
       }
 
       listItems.push({ contentIndent, indent, type, unwrapped: false });
-      return contentMatch
-        ? `${whitespace}${marker}${gap}${content}`
-        : line;
+      return contentMatch ? `${whitespace}${marker}${gap}${content}` : line;
     }
 
     const rootListContentIndent = listItems[0]?.contentIndent;
@@ -202,8 +213,7 @@ export function normalizeCanvasMarkdown(
     if (
       headingMatch &&
       headingIndent !== undefined &&
-      (headingIndent <= 3 ||
-        isListBlockIndent(headingIndent, listItems))
+      (headingIndent <= 3 || isListBlockIndent(headingIndent, listItems))
     ) {
       normalizedHeadingCount += 1;
       return line.replace(

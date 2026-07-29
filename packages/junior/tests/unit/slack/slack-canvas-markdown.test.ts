@@ -110,9 +110,7 @@ describe("normalizeCanvasMarkdown", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   > - Child\n2. Next",
     );
-    expect(normalized.markdown).toBe(
-      "1. Parent\n   • Child\n2. Next",
-    );
+    expect(normalized.markdown).toBe("1. Parent\n   • Child\n2. Next");
     expect(normalized.unwrappedBlockquoteCount).toBe(1);
     expect(normalized.normalizedMixedListCount).toBe(1);
     expect(normalized.normalizedCount).toBe(2);
@@ -122,9 +120,7 @@ describe("normalizeCanvasMarkdown", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   > > #### Deep heading\n2. Next",
     );
-    expect(normalized.markdown).toBe(
-      "1. Parent\n   ### Deep heading\n2. Next",
-    );
+    expect(normalized.markdown).toBe("1. Parent\n   ### Deep heading\n2. Next");
     expect(normalized.unwrappedBlockquoteCount).toBe(1);
     expect(normalized.normalizedHeadingCount).toBe(1);
     expect(normalized.normalizedCount).toBe(2);
@@ -169,6 +165,18 @@ describe("normalizeCanvasMarkdown", () => {
       "1. Parent\n   ```markdown\n   #### Keep heading\n   - Keep bullet\n   ```\n2. Next",
     );
     expect(normalized.unwrappedBlockquoteCount).toBe(4);
+    expect(normalized.normalizedHeadingCount).toBe(0);
+    expect(normalized.normalizedMixedListCount).toBe(0);
+  });
+
+  it("preserves inner quotes in quote-wrapped list code fences", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n   > > ```markdown\n   > > > Quoted example\n   > > ```\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n   ```markdown\n   > Quoted example\n   ```\n2. Next",
+    );
+    expect(normalized.unwrappedBlockquoteCount).toBe(3);
     expect(normalized.normalizedHeadingCount).toBe(0);
     expect(normalized.normalizedMixedListCount).toBe(0);
   });
