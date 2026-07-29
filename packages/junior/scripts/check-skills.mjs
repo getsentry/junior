@@ -176,7 +176,7 @@ async function resolveWorkspaceSkillRoots() {
   try {
     packageEntries = await fs.readdir(packagesRoot, { withFileTypes: true });
   } catch {
-    return [];
+    return unique(roots);
   }
 
   for (const entry of packageEntries) {
