@@ -13,13 +13,22 @@ exported types, tools, and tests are authoritative.
   learning.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
-- The dashboard exposes a read-only **Memories** user page for personal
-  memories owned by actors linked to the signed-in user.
+- The dashboard exposes a searchable, paginated **Memories** user page for
+  personal memories owned by actors linked to the signed-in viewer. Its
+  **Forget** action archives the selected memory.
+- Authenticated REST clients can list and search personal memories through
+  `GET /api/plugins/memory/memories`, read one through
+  `GET /api/plugins/memory/memories/:id`, and archive one through
+  `DELETE /api/plugins/memory/memories/:id`. Personal bearer tokens remain
+  read-only, so mutations require a dashboard browser session.
 
 ## Scope And Visibility
 
 - Memory scope is derived from the active actor and source, never from
   model-supplied ownership fields.
+- Dashboard and REST requests authorize one verified viewer, then resolve every
+  linked platform actor internally so one arbitrary actor is never treated as
+  the viewer's canonical identity.
 - Private conversations and local sources remain private by default.
 - Recall filters candidates by actor, source, visibility, status, and relevance
   before content reaches the model.

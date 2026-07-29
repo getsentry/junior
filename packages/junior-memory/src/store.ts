@@ -384,7 +384,8 @@ function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
 }
 
 /** Parse one SQL row into the public memory record projection. */
-function parseMemoryRow(row: unknown): MemoryRecord {
+/** Parse one SQL row into the public memory projection. */
+export function parseMemoryRow(row: unknown): MemoryRecord {
   const parsed = memoryRowSchema.parse(row);
   return memoryRecordSchema.parse({
     id: parsed.id,
@@ -423,7 +424,8 @@ function visibleScopePredicate(scopes: ResolvedMemoryScope[]): SQL | undefined {
   );
 }
 
-function activeVisiblePredicate(args: {
+/** Build the active-row predicate for already-authorized memory scopes. */
+export function activeVisiblePredicate(args: {
   nowMs: number;
   scopes: ResolvedMemoryScope[];
 }): SQL | undefined {
@@ -525,7 +527,7 @@ async function findByIdempotencyKey(args: {
 /**
  * Archive a bounded batch of expired active rows and remove their derived vectors.
  */
-async function archiveExpiredMemoryBatch(args: {
+export async function archiveExpiredMemoryBatch(args: {
   db: MemoryDb;
   idempotencyKey?: string;
   limit?: number;

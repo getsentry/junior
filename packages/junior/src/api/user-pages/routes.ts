@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   pluginUserPageContentSchema,
+  pluginUserPageInputSchema,
   pluginUserPageLinksSchema,
 } from "@sentry/junior-plugin-api";
 import {
@@ -27,10 +28,25 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
         { status: 401 },
       );
     }
+    const pageInput = pluginUserPageInputSchema.safeParse({
+      cursor: context.req.query("cursor") || undefined,
+      limit: context.req.query("limit")
+        ? Number(context.req.query("limit"))
+        : 20,
+      query: context.req.query("q") || undefined,
+    });
+    if (!pageInput.success) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Invalid user page query." },
+        { status: 400 },
+      );
+    }
     const page = await readPluginUserPage({
       email,
       pageId: context.req.param("pageId"),
       pluginName: context.req.param("pluginName"),
+      query: pageInput.data,
     });
     return page
       ? jsonResponse(pluginUserPageContentSchema, page)

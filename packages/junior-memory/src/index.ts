@@ -1,4 +1,10 @@
 export { memoryPlugin } from "./plugin";
+export {
+  memoryApiSchema,
+  memoryListResponseSchema,
+  type MemoryApi,
+  type MemoryListResponse,
+} from "./api";
 export type { MemoryPluginOptions } from "./plugin";
 export { createMemoryStore } from "./store";
 export type {

@@ -30,6 +30,7 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
+import { readViewerActors } from "@/chat/plugins/viewer-actors";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -705,6 +706,9 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     }
     const app = hook({
       ...basePluginContext(plugin),
+      viewer: {
+        actors: readViewerActors,
+      },
     });
     if (app === undefined) {
       continue;

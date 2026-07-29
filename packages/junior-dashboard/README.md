@@ -12,7 +12,9 @@ state.
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.
 - Plugin user pages use the core `/api/user-pages` contract and appear under
-  the signed-in user menu at `/settings/plugins/:plugin/:page`.
+  the signed-in user menu at `/settings/plugins/:plugin/:page`. Core-rendered
+  lists own search query state, cursor pagination, destructive confirmation,
+  and authenticated plugin REST actions.
 - Conversation detail is a bounded TanStack Query resource that polls while
   active. Earlier event pages use a separate infinite query loaded on demand.
   The client derives one ordered transcript from those immutable responses;

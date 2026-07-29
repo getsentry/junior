@@ -64,6 +64,23 @@ export const plugins = defineJuniorPlugins([
 
 For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set `JUNIOR_DATABASE_DRIVER=postgres`. Local URLs (`localhost`, `127.0.0.1`) automatically use the `postgres` driver.
 
+## Manage personal memories
+
+Signed-in users can search, page through, and forget their personal memories
+from **Profile → Memories** in the dashboard. Forgetting archives the memory so
+Junior no longer recalls it.
+
+The plugin also exposes authenticated REST resources:
+
+| Method   | Path                               | Purpose                                       |
+| -------- | ---------------------------------- | --------------------------------------------- |
+| `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
+| `GET`    | `/api/plugins/memory/memories/:id` | Read one personal memory                      |
+| `DELETE` | `/api/plugins/memory/memories/:id` | Forget one personal memory                    |
+
+Personal API tokens can use the read endpoints. Deletion requires an
+authenticated dashboard browser session.
+
 ## Run migrations
 
 After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin schema:

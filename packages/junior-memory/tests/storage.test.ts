@@ -9,6 +9,7 @@ import {
 import {
   createLocalSource,
   createSlackSource,
+  pluginApiRouteRequestContextSchema,
   pluginUserPageContentSchema,
   PluginToolInputError,
   type PluginLogger,
@@ -22,6 +23,11 @@ import { Command, CommanderError } from "commander";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
+import {
+  createMemoryApi,
+  memoryApiSchema,
+  memoryListResponseSchema,
+} from "../src/api";
 import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
@@ -1809,20 +1815,33 @@ ORDER BY created_at_ms ASC
       if (!memoryPage || !actorContext.actor) {
         throw new Error("Expected Memory dashboard page and actor context");
       }
-      const memoryContent = await memoryPage.read({
-        db: memoryDb(fixture),
-        log: noopLogger,
-        plugin: { name: "memory" },
-        viewer: {
-          actors: [actorContext.actor],
-          email: "person@example.com",
+      const memoryContent = await memoryPage.read(
+        {
+          db: memoryDb(fixture),
+          log: noopLogger,
+          plugin: { name: "memory" },
+          viewer: {
+            actors: [actorContext.actor],
+            email: "person@example.com",
+          },
         },
-      });
+        { limit: 20 },
+      );
       expect(pluginUserPageContentSchema.parse(memoryContent)).toEqual({
         type: "list",
         emptyText: "No personal memories yet.",
+        searchPlaceholder: "Search memories",
         records: [
           {
+            actions: [
+              {
+                confirmation: "Forget this memory?",
+                href: `/api/plugins/memory/memories/${personal.memory.id}`,
+                label: "Forget",
+                method: "DELETE",
+                tone: "danger",
+              },
+            ],
             id: personal.memory.id,
             title: "Prefers short PR summaries.",
             metadata: [
@@ -1833,15 +1852,19 @@ ORDER BY created_at_ms ASC
         ],
       });
       await expect(
-        memoryPage.read({
-          db: memoryDb(fixture),
-          log: noopLogger,
-          plugin: { name: "memory" },
-          viewer: { actors: [], email: "new@example.com" },
-        }),
+        memoryPage.read(
+          {
+            db: memoryDb(fixture),
+            log: noopLogger,
+            plugin: { name: "memory" },
+            viewer: { actors: [], email: "new@example.com" },
+          },
+          { limit: 20 },
+        ),
       ).resolves.toEqual({
         type: "list",
         emptyText: "No personal memories yet.",
+        searchPlaceholder: "Search memories",
         records: [],
       });
       const otherConversationStore = createMemoryStore(
@@ -1892,6 +1915,137 @@ ORDER BY created_at_ms ASC
       await expect(
         store.searchMemories({ query: "summaries" }),
       ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("serves viewer-scoped personal memories through the REST resource", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const firstContext = slackContext({ teamId: "T123", userId: "U123" });
+      const secondContext = slackContext({ teamId: "T456", userId: "U456" });
+      const hiddenContext = slackContext({ teamId: "T999", userId: "U999" });
+      const firstStore = createMemoryStore(memoryDb(fixture), firstContext, {
+        now: () => TEST_NOW_MS,
+      });
+      const secondStore = createMemoryStore(memoryDb(fixture), secondContext, {
+        now: () => TEST_NOW_MS + 1,
+      });
+      const hiddenStore = createMemoryStore(memoryDb(fixture), hiddenContext, {
+        now: () => TEST_NOW_MS + 2,
+      });
+      const first = await firstStore.createMemory({
+        content: "Prefers concise release notes.",
+        idempotencyKey: "api:first",
+        kind: "preference",
+      });
+      const second = await secondStore.createMemory({
+        content: "Deploy runbooks live in Notion.",
+        idempotencyKey: "api:second",
+        kind: "knowledge",
+      });
+      const hidden = await hiddenStore.createMemory({
+        content: "Hidden viewer memory.",
+        idempotencyKey: "api:hidden",
+        kind: "knowledge",
+      });
+      const actors = [firstContext.actor!, secondContext.actor!];
+      const api = createMemoryApi({
+        actors: async () => actors,
+        db: memoryDb(fixture),
+      });
+      const requestContext = pluginApiRouteRequestContextSchema.parse({
+        auth: {
+          user: {
+            email: "person@example.com",
+            emailVerified: true,
+          },
+        },
+        pluginName: "memory",
+      });
+
+      const firstPageResponse = await api.fetch(
+        new Request("http://localhost/memories?limit=1"),
+        requestContext,
+      );
+      expect(firstPageResponse.status).toBe(200);
+      const firstPage = memoryListResponseSchema.parse(
+        await firstPageResponse.json(),
+      );
+      expect(firstPage.memories).toEqual([
+        expect.objectContaining({
+          content: "Deploy runbooks live in Notion.",
+          id: second.memory.id,
+        }),
+      ]);
+      expect(firstPage.nextCursor).toEqual(expect.any(String));
+
+      const secondPageResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+        ),
+        requestContext,
+      );
+      expect(secondPageResponse.status).toBe(200);
+      expect(
+        memoryListResponseSchema.parse(await secondPageResponse.json()),
+      ).toEqual({
+        memories: [
+          expect.objectContaining({
+            content: "Prefers concise release notes.",
+            id: first.memory.id,
+          }),
+        ],
+      });
+
+      const mismatchedCursorResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories?q=runbooks&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+        ),
+        requestContext,
+      );
+      expect(mismatchedCursorResponse.status).toBe(400);
+
+      const searchResponse = await api.fetch(
+        new Request("http://localhost/memories?q=runbooks"),
+        requestContext,
+      );
+      expect(searchResponse.status).toBe(200);
+      expect(
+        memoryListResponseSchema.parse(await searchResponse.json()).memories,
+      ).toEqual([expect.objectContaining({ id: second.memory.id })]);
+
+      const detailResponse = await api.fetch(
+        new Request(`http://localhost/memories/${first.memory.id}`),
+        requestContext,
+      );
+      expect(detailResponse.status).toBe(200);
+      expect(memoryApiSchema.parse(await detailResponse.json())).toMatchObject({
+        content: "Prefers concise release notes.",
+        id: first.memory.id,
+      });
+
+      const deleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${second.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(deleteResponse.status).toBe(204);
+      await expect(secondStore.listPersonalMemories({})).resolves.toEqual([]);
+
+      const hiddenDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${hidden.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(hiddenDeleteResponse.status).toBe(404);
+      await expect(hiddenStore.listPersonalMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: hidden.memory.id }),
+      ]);
     } finally {
       await fixture.close();
     }

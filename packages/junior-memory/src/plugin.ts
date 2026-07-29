@@ -1,5 +1,6 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createMemoryAgent } from "./agent";
+import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
   createMemoryCreateTool,
@@ -110,6 +111,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     },
     userPages: [createMemoryUserPage()],
     hooks: {
+      apiRoutes(ctx) {
+        return createMemoryApi({
+          actors: ctx.viewer.actors,
+          db: ctx.db as MemoryDb,
+        });
+      },
       tools(ctx) {
         const agent = createMemoryAgent(ctx.model);
         const context = memoryToolContext({

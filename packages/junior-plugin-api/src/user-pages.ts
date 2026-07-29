@@ -21,8 +21,21 @@ const pluginUserPageMetadataSchema = z
   })
   .strict();
 
+const pluginUserPageActionSchema = z
+  .object({
+    confirmation: nonBlankStringSchema.max(500).optional(),
+    href: nonBlankStringSchema
+      .max(500)
+      .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
+    label: nonBlankStringSchema.max(80),
+    method: z.literal("DELETE"),
+    tone: z.enum(["danger", "neutral"]).optional(),
+  })
+  .strict();
+
 const pluginUserPageRecordSchema = z
   .object({
+    actions: z.array(pluginUserPageActionSchema).max(4).optional(),
     description: nonBlankStringSchema.max(1_000).optional(),
     id: nonBlankStringSchema.max(128),
     metadata: z.array(pluginUserPageMetadataSchema).max(8).optional(),
@@ -34,7 +47,9 @@ const pluginUserPageRecordSchema = z
 export const pluginUserPageContentSchema = z
   .object({
     emptyText: nonBlankStringSchema.max(500).optional(),
+    nextCursor: nonBlankStringSchema.max(1_000).optional(),
     records: z.array(pluginUserPageRecordSchema).max(100),
+    searchPlaceholder: nonBlankStringSchema.max(120).optional(),
     type: z.literal("list"),
   })
   .strict();
@@ -59,6 +74,17 @@ export const pluginUserPageLinksSchema = z.array(pluginUserPageLinkSchema);
 /** Safe navigation metadata for one registered plugin user page. */
 export type PluginUserPageLink = z.output<typeof pluginUserPageLinkSchema>;
 
+/** Validated query state passed to one plugin user page reader. */
+export const pluginUserPageInputSchema = z
+  .object({
+    cursor: nonBlankStringSchema.max(1_000).optional(),
+    limit: z.number().int().min(1).max(50),
+    query: z.string().trim().max(200).optional(),
+  })
+  .strict();
+
+export type PluginUserPageInput = z.output<typeof pluginUserPageInputSchema>;
+
 /** Runtime-owned actor shapes that may belong to an authenticated viewer. */
 export type PluginUserPageActor = SlackActor | LocalActor;
 
@@ -77,5 +103,6 @@ export interface PluginUserPageDefinition {
   label: string;
   read(
     ctx: PluginUserPageContext,
+    input: PluginUserPageInput,
   ): Promise<PluginUserPageContent> | PluginUserPageContent;
 }

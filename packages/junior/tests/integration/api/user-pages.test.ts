@@ -81,6 +81,49 @@ describe("plugin user page API", () => {
     expect(response.status).toBe(401);
   });
 
+  test("passes validated search and pagination state to the page reader", async () => {
+    let receivedInput: unknown;
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Long-term memory storage and recall.",
+        },
+        userPages: [
+          {
+            id: "memories",
+            label: "Memories",
+            description: "Personal facts Junior remembers about you.",
+            read(_ctx, input) {
+              receivedInput = input;
+              return {
+                type: "list",
+                records: [],
+              };
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const response = await authenticatedApi("viewer@example.com").request(
+      "http://localhost/api/user-pages/memory/memories?q=runbooks&cursor=next-page&limit=12",
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedInput).toEqual({
+      cursor: "next-page",
+      limit: 12,
+      query: "runbooks",
+    });
+
+    const invalid = await authenticatedApi("viewer@example.com").request(
+      "http://localhost/api/user-pages/memory/memories?limit=500",
+    );
+    expect(invalid.status).toBe(400);
+  });
+
   test("passes only actors linked to the authenticated viewer", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);

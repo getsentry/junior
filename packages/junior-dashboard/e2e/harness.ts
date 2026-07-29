@@ -119,8 +119,18 @@ export async function mockDashboardApis(page: Page) {
       json: {
         type: "list",
         emptyText: "No personal memories yet.",
+        searchPlaceholder: "Search memories",
         records: [
           {
+            actions: [
+              {
+                confirmation: "Forget this memory?",
+                href: "/api/plugins/memory/memories/memory-1",
+                label: "Forget",
+                method: "DELETE",
+                tone: "danger",
+              },
+            ],
             id: "memory-1",
             title: "I prefer concise summaries.",
             metadata: [{ label: "Type", value: "Preference" }],

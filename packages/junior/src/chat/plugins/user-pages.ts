@@ -8,6 +8,7 @@ import {
   pluginUserPageContentSchema,
   pluginUserPageLinksSchema,
   type PluginUserPageContent,
+  type PluginUserPageInput,
   type PluginUserPageLink,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -30,11 +31,23 @@ export function readPluginUserPageLinks(): PluginUserPageLink[] {
   );
 }
 
+function actionBelongsToPlugin(href: string, pluginName: string): boolean {
+  const parsed = new URL(href, "http://junior.local");
+  return (
+    parsed.origin === "http://junior.local" &&
+    parsed.pathname === href &&
+    parsed.pathname.startsWith(`/api/plugins/${pluginName}/`) &&
+    !parsed.search &&
+    !parsed.hash
+  );
+}
+
 /** Read one registered plugin user page for the authenticated viewer. */
 export async function readPluginUserPage(input: {
   email: string;
   pageId: string;
   pluginName: string;
+  query: PluginUserPageInput;
 }): Promise<PluginUserPageContent | undefined> {
   const plugin = getPlugins().find(
     (candidate) => candidate.manifest.name === input.pluginName,
@@ -44,15 +57,30 @@ export async function readPluginUserPage(input: {
   );
   if (!plugin || !page) return undefined;
 
-  return pluginUserPageContentSchema.parse(
-    await page.read({
-      db: getDb(),
-      log: createPluginLogger(plugin.manifest.name),
-      plugin: { name: plugin.manifest.name },
-      viewer: {
-        actors: await readViewerActors(input.email),
-        email: input.email,
+  const content = pluginUserPageContentSchema.parse(
+    await page.read(
+      {
+        db: getDb(),
+        log: createPluginLogger(plugin.manifest.name),
+        plugin: { name: plugin.manifest.name },
+        viewer: {
+          actors: await readViewerActors(input.email),
+          email: input.email,
+        },
       },
-    }),
+      input.query,
+    ),
   );
+  if (
+    content.records.some((record) =>
+      record.actions?.some(
+        (action) => !actionBelongsToPlugin(action.href, plugin.manifest.name),
+      ),
+    )
+  ) {
+    throw new Error(
+      `Plugin user page "${plugin.manifest.name}/${page.id}" returned an action outside its API namespace.`,
+    );
+  }
+  return content;
 }

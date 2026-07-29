@@ -1,36 +1,7 @@
-/** Project actor-owned memories into Junior's core-rendered user page. */
-import type {
-  PluginUserPageActor,
-  PluginUserPageDefinition,
-} from "@sentry/junior-plugin-api";
-import { createMemoryStore, type MemoryDb, type MemoryRecord } from "./store";
-import type { MemoryRuntimeContext } from "./types";
-
-const MEMORY_PAGE_LIMIT = 100;
-
-function runtimeContext(
-  actor: PluginUserPageActor,
-): MemoryRuntimeContext | undefined {
-  if (actor.platform === "slack") {
-    return {
-      actor,
-      source: {
-        platform: "slack",
-        type: "priv",
-        teamId: actor.teamId,
-        channelId: "DDASHBOARD",
-      },
-    };
-  }
-  return {
-    actor,
-    source: {
-      platform: "local",
-      type: "priv",
-      conversationId: "local:dashboard:memories",
-    },
-  };
-}
+/** Project viewer-owned memories into Junior's core-rendered user page. */
+import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
+import { createViewerMemories } from "./personal";
+import type { MemoryDb, MemoryRecord } from "./store";
 
 function memoryKindLabel(kind: MemoryRecord["kind"]): string {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
@@ -43,44 +14,38 @@ function rememberedDate(createdAtMs: number): string {
   }).format(new Date(createdAtMs));
 }
 
-async function readPersonalMemories(
-  db: MemoryDb,
-  actors: PluginUserPageActor[],
-): Promise<MemoryRecord[]> {
-  const memories = await Promise.all(
-    actors.flatMap((actor) => {
-      const context = runtimeContext(actor);
-      return context
-        ? [
-            createMemoryStore(db, context).listPersonalMemories({
-              limit: MEMORY_PAGE_LIMIT,
-            }),
-          ]
-        : [];
-    }),
-  );
-  return [
-    ...new Map(memories.flat().map((memory) => [memory.id, memory])).values(),
-  ]
-    .sort((left, right) => right.createdAtMs - left.createdAtMs)
-    .slice(0, MEMORY_PAGE_LIMIT);
-}
-
-/** Create the read-only personal Memories dashboard page. */
+/** Create the interactive personal Memories dashboard page. */
 export function createMemoryUserPage(): PluginUserPageDefinition {
   return {
     id: "memories",
     label: "Memories",
     description: "Personal facts and preferences Junior remembers about you.",
-    async read(ctx) {
-      const memories = await readPersonalMemories(
+    async read(ctx, input) {
+      const page = await createViewerMemories(
         ctx.db as MemoryDb,
         ctx.viewer.actors,
-      );
+      ).list({
+        cursor: input.cursor,
+        limit: input.limit,
+        ...(input.query ? { query: input.query } : {}),
+      });
       return {
         type: "list",
-        emptyText: "No personal memories yet.",
-        records: memories.map((memory) => ({
+        emptyText: input.query
+          ? "No memories matched your search."
+          : "No personal memories yet.",
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        searchPlaceholder: "Search memories",
+        records: page.memories.map((memory) => ({
+          actions: [
+            {
+              confirmation: "Forget this memory?",
+              href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+              label: "Forget",
+              method: "DELETE" as const,
+              tone: "danger" as const,
+            },
+          ],
           id: memory.id,
           title: memory.content,
           metadata: [
