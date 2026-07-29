@@ -49,6 +49,9 @@ describe("assistant output", () => {
       kind: "suppress",
     });
     expect(
+      classifyAssistantOutput(assistant(`Done. ${NO_REPLY_MARKER}`), true),
+    ).toEqual({ kind: "suppress" });
+    expect(
       classifyAssistantOutput(
         assistant(
           JSON.stringify({

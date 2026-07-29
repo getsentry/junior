@@ -12,7 +12,6 @@ const INTERNAL_TOOL_FRAGMENT_PATTERN =
 export type AssistantOutputRejection =
   | "empty"
   | "execution_escape"
-  | "mixed_no_reply_marker"
   | "opaque_tool_fragment"
   | "raw_tool_payload";
 
@@ -108,9 +107,8 @@ export function classifyAssistantOutput(
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "reject", reason: "empty" };
-  if (isNoReplyMarker(text)) return { kind: "suppress" };
-  if (containsNoReplyMarker(text)) {
-    return { kind: "reject", reason: "mixed_no_reply_marker" };
+  if (isNoReplyMarker(text) || containsNoReplyMarker(text)) {
+    return { kind: "suppress" };
   }
   if (isRawToolPayload(text)) {
     return { kind: "reject", reason: "raw_tool_payload" };
