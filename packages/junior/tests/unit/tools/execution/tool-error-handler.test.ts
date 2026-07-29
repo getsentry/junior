@@ -76,7 +76,7 @@ describe("handleToolExecutionError", () => {
       new ToolActionReviewUnavailableError(),
     ]) {
       expect(() =>
-        handleToolExecutionError(error, "deleteRecord", "call_1", true, {}),
+        handleToolExecutionError(error, "deleteRecord", "call_1", true),
       ).toThrow(error);
       expect(logExceptionMock).not.toHaveBeenCalled();
       expect(logWarnMock).not.toHaveBeenCalled();

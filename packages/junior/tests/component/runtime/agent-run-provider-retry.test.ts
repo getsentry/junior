@@ -1191,10 +1191,8 @@ describe("agent run continuation", () => {
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        delivery: {
-          onAssistantMessage: (message) => {
-            delivered.push(message);
-          },
+        delivery: (message) => {
+          delivered.push({ text: extractAssistantText(message) });
         },
       }),
     );
