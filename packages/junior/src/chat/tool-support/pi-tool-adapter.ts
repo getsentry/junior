@@ -314,7 +314,10 @@ export function createPiAgentTools(
     description: toolDef.description,
     parameters: toolDef.inputSchema as AgentTool["parameters"],
     prepareArguments: toolDef.prepareArguments,
-    executionMode: toolDef.executionMode,
+    executionMode:
+      toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
+        ? "sequential"
+        : toolDef.executionMode,
     execute: async (
       toolCallId: unknown,
       params: unknown,

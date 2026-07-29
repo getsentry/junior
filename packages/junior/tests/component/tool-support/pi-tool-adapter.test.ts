@@ -660,6 +660,33 @@ describe("Pi tool adapter", () => {
     expect(editTool?.executionMode).toBe("sequential");
   });
 
+  it("serializes tools whose actions may require review", () => {
+    const sandbox = new SkillSandbox([], []);
+    const [automaticReviewTool, requiredReviewTool] = createPiAgentTools(
+      {
+        automaticReview: {
+          approvalMode: "auto",
+          description: "automatic review",
+          inputSchema: {} as any,
+          executionMode: "parallel",
+          execute: async () => ({ ok: true }),
+        },
+        requiredReview: {
+          approvalMode: "review",
+          description: "required review",
+          inputSchema: {} as any,
+          executionMode: "parallel",
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+    );
+
+    expect(automaticReviewTool?.executionMode).toBe("sequential");
+    expect(requiredReviewTool?.executionMode).toBe("sequential");
+  });
+
   it("marks sandbox bash as sequential", () => {
     const sandbox = new SkillSandbox([], []);
     const [bashTool] = createPiAgentTools(

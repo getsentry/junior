@@ -100,11 +100,12 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         pass: [
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
           "The later request also completes successfully using the demo MCP connection.",
+          "A one-time Eval Auth authorization notice before the connection completes is expected and does not count as a failure.",
         ],
         fail: [
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
-          "Do not post a generic failure message.",
+          "After authorization completes, do not claim Eval Auth is unavailable, ask the user to reconnect, or post a generic failure message.",
         ],
       }),
     });
@@ -162,11 +163,12 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         pass: [
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
           "The later request identifies the connected account as eval-oauth-user.",
+          "A one-time eval-oauth authorization notice before the connection completes is expected and does not count as a failure.",
         ],
         fail: [
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
-          "Do not post a generic failure message.",
+          "After authorization completes, do not claim eval-oauth is unavailable, ask the user to reconnect, or post a generic failure message.",
         ],
       }),
     });
