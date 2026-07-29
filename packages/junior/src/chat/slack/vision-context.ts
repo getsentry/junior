@@ -132,6 +132,23 @@ function buildImageAttachmentPromptText(args: {
   ].join("\n");
 }
 
+function buildImageAttachmentFailurePromptText(args: {
+  filename?: string;
+  mediaType: string;
+  message: string;
+}): string {
+  return [
+    "<image-attachment>",
+    `filename: ${args.filename ?? "unnamed"}`,
+    `media_type: ${args.mediaType}`,
+    "<analysis-error>",
+    args.message,
+    "The image contents are unavailable.",
+    "</analysis-error>",
+    "</image-attachment>",
+  ].join("\n");
+}
+
 async function summarizeImageWithVision(args: {
   completeText: typeof completeText;
   imageData: Buffer;
@@ -358,7 +375,16 @@ async function resolveUserAttachmentsWithDeps(
           },
           "Image attachment processing failed",
         );
-        throw attachmentError;
+        results.push({
+          mediaType,
+          filename: attachment.name,
+          promptText: buildImageAttachmentFailurePromptText({
+            filename: attachment.name,
+            mediaType,
+            message: attachmentError.message,
+          }),
+        });
+        continue;
       }
 
       logWarn(

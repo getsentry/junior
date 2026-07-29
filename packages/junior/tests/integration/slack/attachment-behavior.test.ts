@@ -129,14 +129,30 @@ describe("Slack behavior: attachment handling", () => {
     expect(toPostedText(thread.posts[0])).toContain("chart trend is upward");
   }, 10_000);
 
-  it("posts a fallback error reply when required image analysis fails", async () => {
+  it("lets the agent respond when image analysis fails", async () => {
     const attachmentFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const completeTextMock = vi.fn(async () => {
       throw new Error("vision unavailable");
     });
-    const executeAgentRun = vi.fn(async () =>
-      completedAgentRun({
-        text: "should not post",
+    const executeAgentRun = vi.fn(async (request) => {
+      const attachments =
+        flattenAgentRunRequestForTest(request)?.userAttachments ?? [];
+      expect(attachments).toEqual([
+        expect.objectContaining({
+          filename: "error.png",
+          mediaType: "image/png",
+          promptText: expect.stringContaining(
+            'Image attachment "error.png" could not be analyzed',
+          ),
+        }),
+      ]);
+      await deliverAssistantMessagesForTest(request, [
+        {
+          text: "I couldn’t inspect the attached image. Please try uploading it again.",
+        },
+      ]);
+      return completedAgentRun({
+        text: "I couldn’t inspect the attached image. Please try uploading it again.",
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "fake-agent-model",
@@ -146,8 +162,8 @@ describe("Slack behavior: attachment handling", () => {
           toolResultCount: 0,
           usedPrimaryText: true,
         },
-      }),
-    );
+      });
+    });
 
     const { slackRuntime } = await createRuntime({
       services: {
@@ -184,10 +200,10 @@ describe("Slack behavior: attachment handling", () => {
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
-      "I ran into an internal error while processing that.",
+      "I couldn’t inspect the attached image.",
     );
   });
 });
