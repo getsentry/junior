@@ -9,6 +9,7 @@
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { Reply } from "@/chat/agent/request";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createLocalSource,
@@ -45,7 +46,10 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  commitAcceptedReply,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import {
   ConversationTurnLifecycleService,
@@ -250,6 +254,7 @@ export async function runLocalAgentTurn(
   let assistantMessageDelivered = false;
   /** Print and record one completed assistant message in local conversation order. */
   const deliverAssistantMessage = async (message: {
+    message?: Reply["message"];
     text: string;
   }): Promise<void> => {
     if (!message.text.trim()) {
@@ -258,7 +263,7 @@ export async function runLocalAgentTurn(
     failureCode = "delivery_failed";
     await deps.deliverReply({ text: message.text });
     assistantMessageDelivered = true;
-    recordDeliveredAssistantMessage({
+    const recordedMessageId = recordDeliveredAssistantMessage({
       conversation,
       sessionId: turnId,
       text: message.text,
@@ -266,10 +271,17 @@ export async function runLocalAgentTurn(
     });
     try {
       await persistWithRetry(() =>
-        persistConversationMessages({
-          conversation,
-          conversationId: input.conversationId,
-        }),
+        message.message
+          ? commitAcceptedReply({
+              agentMessage: message.message,
+              conversation,
+              conversationMessageId: recordedMessageId,
+              conversationId: input.conversationId,
+            })
+          : persistConversationMessages({
+              conversation,
+              conversationId: input.conversationId,
+            }),
       );
     } catch (error) {
       logException(
@@ -339,9 +351,7 @@ export async function runLocalAgentTurn(
             await deps.onToolResult?.(result);
           },
         },
-        delivery: {
-          onAssistantMessage: deliverAssistantMessage,
-        },
+        delivery: deliverAssistantMessage,
         durability: {
           onArtifactStateUpdated: async (nextArtifacts) => {
             artifacts = nextArtifacts;

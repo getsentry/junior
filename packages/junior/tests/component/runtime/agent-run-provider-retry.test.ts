@@ -901,10 +901,8 @@ describe("provider retry composition", () => {
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      delivery: {
-        onAssistantMessage: (message) => {
-          delivered.push(message);
-        },
+      delivery: ({ text }) => {
+        delivered.push({ text });
       },
       durability: {
         drainSteeringMessages: async (inject) => {
@@ -941,10 +939,8 @@ describe("provider retry composition", () => {
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      delivery: {
-        onAssistantMessage: (message) => {
-          delivered.push(message);
-        },
+      delivery: ({ text }) => {
+        delivered.push({ text });
       },
       durability: { shouldYield: () => true },
     });
@@ -966,10 +962,8 @@ describe("provider retry composition", () => {
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      delivery: {
-        onAssistantMessage: (message) => {
-          delivered.push(message);
-        },
+      delivery: ({ text }) => {
+        delivered.push({ text });
       },
       durability: {
         drainSteeringMessages: async (inject) => {

@@ -11,6 +11,7 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
+import type { ConversationEventStore } from "./history";
 
 /** Author role of a visible conversation message. */
 export type ConversationMessageRole = "user" | "assistant" | "system";
@@ -88,9 +89,24 @@ export async function persistConversationMessages(args: {
 }): Promise<void> {
   if (!args.conversationId || args.conversation.messages.length === 0) return;
 
-  const history = await getConversationEventStore().loadMessageHistory(
-    args.conversationId,
-  );
+  await appendConversationMessages(getConversationEventStore(), {
+    ...args,
+    conversationId: args.conversationId,
+  });
+}
+
+/** Append visible message facts through a caller-owned event-store transaction. */
+export async function appendConversationMessages(
+  eventStore: ConversationEventStore,
+  args: {
+    conversation: ThreadConversationState;
+    conversationId: string;
+    repliedAtMs?: number;
+  },
+): Promise<void> {
+  if (args.conversation.messages.length === 0) return;
+
+  const history = await eventStore.loadMessageHistory(args.conversationId);
   const existingMessages = new Map(
     projectConversationMessages(history).map((message) => [
       message.id,
@@ -155,5 +171,5 @@ export async function persistConversationMessages(args: {
         : []),
     ];
   });
-  await getConversationEventStore().append(args.conversationId, events);
+  await eventStore.append(args.conversationId, events);
 }

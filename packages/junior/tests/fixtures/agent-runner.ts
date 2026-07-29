@@ -1,7 +1,35 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { AgentAssistantMessage } from "@/chat/agent/request";
+import type { Reply } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import type { PiMessage } from "@/chat/pi/messages";
+import { isAssistantMessage } from "@/chat/pi/transcript";
+
+function assistantMessage(text: string): Reply["message"] {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "responses",
+    provider: "openai",
+    model: "fake-agent",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  };
+}
 
 /**
  * Default harness runner: resolve @/chat/agent-run at call time so a test's
@@ -30,7 +58,7 @@ export function flattenAgentRunRequestForTest(
     ...(request.policy ?? {}),
     ...(request.state ?? {}),
     ...(request.observers ?? {}),
-    ...(request.delivery ?? {}),
+    ...(request.delivery ? { delivery: request.delivery } : {}),
     ...(request.durability ?? {}),
   };
 }
@@ -50,24 +78,40 @@ export function neverRunAgentRunner(): AgentRunner {
 /** Deliver explicitly scripted assistant messages from an inline fake runner. */
 export async function deliverAssistantMessagesForTest(
   request: Parameters<AgentRunner["run"]>[0],
-  messages: AgentAssistantMessage[],
-): Promise<void> {
+  replies: Array<Pick<Reply, "text">>,
+  finalHistory?: PiMessage[],
+): Promise<PiMessage[]> {
   if (!request.delivery) {
     throw new Error("scripted runner requires assistant delivery");
   }
-  for (const message of messages) {
-    await request.delivery.onAssistantMessage(message);
+  const history = finalHistory
+    ? finalHistory.slice(0, -replies.length)
+    : [...(request.input.piMessages ?? [])];
+  const firstReplyIndex = (finalHistory?.length ?? 0) - replies.length;
+  for (const [index, reply] of replies.entries()) {
+    const message =
+      finalHistory?.[firstReplyIndex + index] ?? assistantMessage(reply.text);
+    if (!isAssistantMessage(message)) {
+      throw new Error("scripted reply requires an assistant message");
+    }
+    history.push(message);
+    await request.delivery({ message, text: reply.text });
   }
+  return history;
 }
 
 /** Script completed assistant messages through the production delivery port. */
 export function scriptedAssistantMessageRunner(args: {
-  messages: AgentAssistantMessage[];
+  messages: Array<Pick<Reply, "text">>;
   result: AgentRunResult;
 }): AgentRunner {
   return {
     run: async (request) => {
-      await deliverAssistantMessagesForTest(request, args.messages);
+      await deliverAssistantMessagesForTest(
+        request,
+        args.messages,
+        args.result.piMessages,
+      );
       return completedAgentRun(args.result);
     },
   };

@@ -11,6 +11,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
   type AgentRunRequest,
+  type Reply,
 } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -58,6 +59,7 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
+import { commitAcceptedReply } from "@/chat/conversations/projection";
 import {
   getPersistedThreadState,
   persistThreadStateById,
@@ -547,6 +549,7 @@ export async function resumeSlackTurn(
     };
     /** Post and record one completed assistant message for the resumed turn. */
     const deliverAssistantMessage = async (assistantMessage: {
+      message?: Reply["message"];
       text: string;
     }): Promise<void> => {
       if (!assistantMessage.text.trim()) {
@@ -583,10 +586,17 @@ export async function resumeSlackTurn(
       }
       try {
         await persistWithRetry(() =>
-          persistConversationMessages({
-            conversation: deliveryState.conversation,
-            conversationId,
-          }),
+          assistantMessage.message
+            ? commitAcceptedReply({
+                agentMessage: assistantMessage.message,
+                conversation: deliveryState.conversation,
+                conversationMessageId: recordedMessageId,
+                conversationId,
+              })
+            : persistConversationMessages({
+                conversation: deliveryState.conversation,
+                conversationId,
+              }),
         );
       } catch (error) {
         logException(
@@ -632,9 +642,11 @@ export async function resumeSlackTurn(
       deliveryState.conversation,
       sessionId,
     );
-    const replyContext = createResumeReplyContext(runArgs, status, {
-      onAssistantMessage: deliverAssistantMessage,
-    });
+    const replyContext = createResumeReplyContext(
+      runArgs,
+      status,
+      deliverAssistantMessage,
+    );
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,

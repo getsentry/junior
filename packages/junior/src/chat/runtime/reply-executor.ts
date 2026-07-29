@@ -40,6 +40,7 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
+  type Reply,
   type AgentRunSteeringMessage,
 } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -135,6 +136,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import {
+  commitAcceptedReply,
   commitMessages,
   loadConversationProjection,
 } from "@/chat/conversations/projection";
@@ -1080,7 +1082,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         /** Post and record one completed assistant message in the active thread. */
         const deliverAssistantMessage = async (
-          assistantMessage: { text: string },
+          assistantMessage: {
+            message?: Reply["message"];
+            text: string;
+          },
           terminalDispatchOutcome?: "blocked" | "failed",
         ): Promise<void> => {
           if (!assistantMessage.text.trim()) {
@@ -1143,10 +1148,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation: preparedState.conversation,
-                conversationId,
-              }),
+              assistantMessage.message && conversationId
+                ? commitAcceptedReply({
+                    agentMessage: assistantMessage.message,
+                    conversation: preparedState.conversation,
+                    conversationMessageId: recordedMessageId,
+                    conversationId,
+                  })
+                : persistConversationMessages({
+                    conversation: preparedState.conversation,
+                    conversationId,
+                  }),
             );
           } catch (error) {
             logException(
@@ -1430,9 +1442,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
             },
-            delivery: {
-              onAssistantMessage: deliverAssistantMessage,
-            },
+            delivery: deliverAssistantMessage,
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,

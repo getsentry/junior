@@ -50,12 +50,13 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
-import { actorFromRouting } from "@/chat/agent/request";
+import { actorFromRouting, type Reply } from "@/chat/agent/request";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { commitMessages } from "@/chat/conversations/projection";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
@@ -1904,10 +1905,55 @@ function buildRuntimeServices(
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
             await runRequest.durability?.onInputCommitted?.();
-            await runRequest.delivery?.onAssistantMessage({ text: replyText });
+            const nowMs = Date.now();
+            const message: Reply["message"] = {
+              role: "assistant",
+              content: [{ type: "text", text: replyText }],
+              api: "eval-canned-reply",
+              provider: "eval",
+              model: "eval-reply-text",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
+              },
+              stopReason: "stop",
+              timestamp: nowMs,
+            };
+            const history = [
+              ...(runRequest.input.piMessages ?? []),
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: renderCurrentInstruction(
+                      runRequest.input.messageText,
+                    ),
+                  },
+                ],
+                timestamp: nowMs,
+              },
+              message,
+            ] as PiMessage[];
+            await commitMessages({
+              conversationId: runRequest.conversationId,
+              messages: history.slice(0, -1),
+            });
+            await runRequest.delivery?.({ message, text: replyText });
             replyState.successfulCount += 1;
             return completedAgentRun({
               text: replyText,
+              piMessages: history,
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "eval-reply-text",

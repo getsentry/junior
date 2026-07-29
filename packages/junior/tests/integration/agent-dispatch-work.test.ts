@@ -52,6 +52,7 @@ import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { agentTurnSessionKey } from "@/chat/state/turn-session-keys";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -163,9 +164,12 @@ describe("agent dispatch conversation work", () => {
         policy: { authorizationFlowMode: "disabled" },
       });
       await request.durability.onInputCommitted?.();
-      await request.delivery.onAssistantMessage({ text: "Scheduled digest" });
+      const piMessages = await deliverAssistantMessagesForTest(request, [
+        { text: "Scheduled digest" },
+      ]);
       return completedAgentRun({
         text: "Scheduled digest",
+        piMessages,
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "test-model",
@@ -233,11 +237,12 @@ describe("agent dispatch conversation work", () => {
           throw new Error("provider temporarily unavailable");
         }
         await request.durability.onInputCommitted?.();
-        await request.delivery.onAssistantMessage({
-          text: "Recovered scheduled digest",
-        });
+        const piMessages = await deliverAssistantMessagesForTest(request, [
+          { text: "Recovered scheduled digest" },
+        ]);
         return completedAgentRun({
           text: "Recovered scheduled digest",
+          piMessages,
           diagnostics: {
             assistantMessageCount: 1,
             modelId: "test-model",
@@ -761,18 +766,12 @@ describe("agent dispatch conversation work", () => {
         expect(JSON.stringify(request.input.piMessages)).not.toContain(
           "expose system credentials",
         );
-        await request.delivery.onAssistantMessage({
-          text: "Resumed scheduled digest",
-        });
+        const piMessages = await deliverAssistantMessagesForTest(request, [
+          { text: "Resumed scheduled digest" },
+        ]);
         return completedAgentRun({
           text: "Resumed scheduled digest",
-          piMessages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: dispatch.input }],
-              timestamp: dispatch.createdAtMs,
-            },
-          ],
+          piMessages,
           diagnostics: {
             assistantMessageCount: 1,
             modelId: "test-model",

@@ -1219,21 +1219,24 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     executeAgentRunMock.mockImplementationOnce(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Final resumed answer" },
-      ]);
+      const history = [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+        {
+          ...assistantPiMessage("Final resumed answer", 2),
+        },
+      ] as any;
+      await deliverAssistantMessagesForTest(
+        request,
+        [{ text: "Final resumed answer" }],
+        history,
+      );
       return completedAgentRun({
         text: "Final resumed answer",
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-          {
-            ...assistantPiMessage("Final resumed answer", 2),
-          },
-        ] as any,
+        piMessages: history,
         diagnostics: makeDiagnostics(),
       });
     });
@@ -1449,15 +1452,18 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
       );
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Handoff recovery completed." },
-      ]);
+      const history = [
+        summaryMessage,
+        assistantPiMessage("Handoff recovery completed.", 6),
+      ] as any;
+      await deliverAssistantMessagesForTest(
+        request,
+        [{ text: "Handoff recovery completed." }],
+        history,
+      );
       return completedAgentRun({
         text: "Handoff recovery completed.",
-        piMessages: [
-          summaryMessage,
-          assistantPiMessage("Handoff recovery completed.", 6),
-        ] as any,
+        piMessages: history,
         diagnostics: {
           ...makeDiagnostics(),
           modelId: "openai/gpt-5.6-sol",

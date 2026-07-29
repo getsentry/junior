@@ -700,6 +700,30 @@ describe("bot handlers (integration)", () => {
           turnLifecycle,
           agentRunner: {
             run: async (request) => {
+              const replyMessage = {
+                role: "assistant" as const,
+                content: [{ type: "text" as const, text: finalText }],
+                api: "responses" as const,
+                provider: "openai",
+                model: "gpt-5.3",
+                usage: {
+                  input: 1,
+                  output: 1,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 2,
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    total: 0,
+                  },
+                },
+                stopReason: "stop" as const,
+                timestamp: 2,
+              };
+              const piMessages = [...promptMessages, replyMessage];
               await upsertAgentTurnSessionRecord({
                 modelId: "test/model",
                 conversationId,
@@ -708,37 +732,14 @@ describe("bot handlers (integration)", () => {
                 state: "running",
                 piMessages: promptMessages,
               });
-              await deliverAssistantMessagesForTest(request, [
-                { text: finalText },
-              ]);
+              await deliverAssistantMessagesForTest(
+                request,
+                [{ text: finalText }],
+                piMessages,
+              );
               return completedAgentRun({
                 text: finalText,
-                piMessages: [
-                  ...promptMessages,
-                  {
-                    role: "assistant" as const,
-                    content: [{ type: "text" as const, text: finalText }],
-                    api: "responses" as const,
-                    provider: "openai",
-                    model: "gpt-5.3",
-                    usage: {
-                      input: 1,
-                      output: 1,
-                      cacheRead: 0,
-                      cacheWrite: 0,
-                      totalTokens: 2,
-                      cost: {
-                        input: 0,
-                        output: 0,
-                        cacheRead: 0,
-                        cacheWrite: 0,
-                        total: 0,
-                      },
-                    },
-                    stopReason: "stop" as const,
-                    timestamp: 2,
-                  },
-                ],
+                piMessages,
                 diagnostics: {
                   assistantMessageCount: 1,
                   modelId: "fake-agent-model",

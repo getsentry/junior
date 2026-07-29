@@ -30,6 +30,9 @@ import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import type { ThreadConversationState } from "@/chat/state/conversation";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { appendConversationMessages } from "./messages";
 
 /** Distinct MCP providers durably connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
@@ -250,6 +253,48 @@ export async function commitMessages(args: {
       executor.transaction(
         async () => await commitMessagesLocked(args, executor),
       ),
+  );
+}
+
+/**
+ * Commit an accepted agent reply and its visible message in causal order.
+ *
+ * The destination has already accepted the reply. One transaction prevents
+ * reporting from observing the visible reply before the agent message that
+ * produced it.
+ */
+export async function commitAcceptedReply(args: {
+  agentMessage: AssistantMessage;
+  conversation: ThreadConversationState;
+  conversationMessageId: string;
+  conversationId: string;
+  repliedAtMs?: number;
+}): Promise<void> {
+  const executor = getSqlExecutor();
+  await withConversationEventLock(executor, args.conversationId, async () =>
+    executor.transaction(async () => {
+      const agentMessage = normalizeDurableMessage(args.agentMessage);
+      await createSqlConversationEventStore(executor).append(
+        args.conversationId,
+        [
+          {
+            idempotencyKey: `message:${args.conversationMessageId}:agent`,
+            data: historyItemFromPiMessage(agentMessage, contextProvenance),
+            createdAtMs: messageTimestamp(agentMessage),
+          },
+        ],
+      );
+      await appendConversationMessages(
+        createSqlConversationEventStore(executor),
+        {
+          conversation: args.conversation,
+          conversationId: args.conversationId,
+          ...(args.repliedAtMs === undefined
+            ? {}
+            : { repliedAtMs: args.repliedAtMs }),
+        },
+      );
+    }),
   );
 }
 

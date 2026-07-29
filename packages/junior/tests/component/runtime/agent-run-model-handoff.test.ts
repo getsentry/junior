@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
+import type { Reply } from "@/chat/agent/request";
 
 const observations = vi.hoisted(() => ({
   afterHandoffModelId: "",
@@ -650,6 +651,7 @@ describe("model handoff composition", () => {
   it("delivers only the tool-free assistant message after tool use", async () => {
     observations.progressTool = true;
     const delivered: Array<{ text: string }> = [];
+    let deliveredMessage: Reply["message"] | undefined;
     const conversationId = "local:test:assistant-message-delivery";
 
     const outcome = await executeAgentRun({
@@ -660,15 +662,18 @@ describe("model handoff composition", () => {
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
       },
-      delivery: {
-        onAssistantMessage: (message) => {
-          delivered.push(message);
-        },
+      delivery: ({ message, text }) => {
+        delivered.push({ text });
+        deliveredMessage = message;
       },
     });
 
     expect(outcome.status).toBe("completed");
     expect(delivered).toEqual([{ text: "Handoff model completed it." }]);
+    expect(deliveredMessage).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+    });
   });
 
   it("executes tools before a terminal assistant delivery failure", async () => {
@@ -685,10 +690,8 @@ describe("model handoff composition", () => {
           destination: { platform: "local", conversationId },
           source: createLocalSource(conversationId),
         },
-        delivery: {
-          onAssistantMessage: () => {
-            throw deliveryError;
-          },
+        delivery: () => {
+          throw deliveryError;
         },
         observers: {
           onStatus: ({ text }) => {
@@ -715,14 +718,12 @@ describe("model handoff composition", () => {
         destination: { platform: "local" as const, conversationId },
         source: createLocalSource(conversationId),
       },
-      delivery: {
-        onAssistantMessage: (message: { text: string }) => {
-          deliveryAttempts += 1;
-          if (deliveryAttempts === 1) {
-            throw new RetryableDeliveryError(new Error("Slack unavailable"));
-          }
-          delivered.push(message);
-        },
+      delivery: ({ text }: Reply) => {
+        deliveryAttempts += 1;
+        if (deliveryAttempts === 1) {
+          throw new RetryableDeliveryError(new Error("Slack unavailable"));
+        }
+        delivered.push({ text });
       },
     };
 

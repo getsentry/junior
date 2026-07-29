@@ -216,22 +216,27 @@ describe("oauth callback integration", () => {
             providerDisplayName: "Eval OAuth",
           };
         }
-        await deliverAssistantMessagesForTest(request, [{ text: "uploaded" }]);
+        const history = [
+          ...(request.input.piMessages ?? []),
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "uploaded" }],
+            api: "openai-responses",
+            provider: "openai",
+            model: "test-model",
+            usage: {},
+            stopReason: "stop",
+            timestamp: Date.now(),
+          },
+        ] as NonNullable<AgentRunResult["piMessages"]>;
+        await deliverAssistantMessagesForTest(
+          request,
+          [{ text: "uploaded" }],
+          history,
+        );
         return completedAgentRun({
           text: "uploaded",
-          piMessages: [
-            ...(request.input.piMessages ?? []),
-            {
-              role: "assistant",
-              content: [{ type: "text", text: "uploaded" }],
-              api: "openai-responses",
-              provider: "openai",
-              model: "test-model",
-              usage: {},
-              stopReason: "stop",
-              timestamp: Date.now(),
-            },
-          ] as NonNullable<AgentRunResult["piMessages"]>,
+          piMessages: history,
           diagnostics: makeDiagnostics(),
         });
       }),
