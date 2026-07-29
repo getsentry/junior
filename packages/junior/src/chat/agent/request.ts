@@ -145,19 +145,15 @@ export interface AgentRunObservers {
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
 }
 
-/** One completed tool-free reply ready for destination delivery. */
-export interface Reply {
-  message: AssistantMessage;
-  text: string;
-}
-
 /**
  * Delivers completed tool-free assistant messages in model order.
  *
  * The runner must commit the preceding agent boundary before invoking this
- * port; the accepted reply transaction appends only `reply.message`.
+ * port; the accepted reply transaction appends only this message.
  */
-export type AgentRunDelivery = (reply: Reply) => void | Promise<void>;
+export type AgentRunDelivery = (
+  message: AssistantMessage,
+) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {

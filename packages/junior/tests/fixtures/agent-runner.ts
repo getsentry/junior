@@ -1,34 +1,16 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { Reply } from "@/chat/agent/request";
-import type { AgentRunResult } from "@/chat/services/turn-result";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import {
+  getAssistantMessageText,
+  type AgentRunResult,
+} from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 
-function assistantMessage(text: string): Reply["message"] {
-  return {
-    role: "assistant",
-    content: [{ type: "text", text }],
-    api: "responses",
-    provider: "openai",
-    model: "fake-agent",
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        total: 0,
-      },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
-  };
+function assistantMessage(text: string): AssistantMessage {
+  return fauxAssistantMessage(text);
 }
 
 /**
@@ -78,7 +60,7 @@ export function neverRunAgentRunner(): AgentRunner {
 /** Deliver explicitly scripted assistant messages from an inline fake runner. */
 export async function deliverAssistantMessagesForTest(
   request: Parameters<AgentRunner["run"]>[0],
-  replies: Array<Pick<Reply, "text">>,
+  replies: Array<{ text: string }>,
   finalHistory?: PiMessage[],
 ): Promise<PiMessage[]> {
   if (!request.delivery) {
@@ -94,15 +76,22 @@ export async function deliverAssistantMessagesForTest(
     if (!isAssistantMessage(message)) {
       throw new Error("scripted reply requires an assistant message");
     }
+    const visibleText = getAssistantMessageText(message);
+    if (visibleText !== reply.text.trim()) {
+      throw new Error(
+        `scripted reply text ${JSON.stringify(reply.text)} does not match ` +
+          `its assistant message text ${JSON.stringify(visibleText)}`,
+      );
+    }
     history.push(message);
-    await request.delivery({ message, text: reply.text });
+    await request.delivery(message);
   }
   return history;
 }
 
 /** Script completed assistant messages through the production delivery port. */
 export function scriptedAssistantMessageRunner(args: {
-  messages: Array<Pick<Reply, "text">>;
+  messages: Array<{ text: string }>;
   result: AgentRunResult;
 }): AgentRunner {
   return {

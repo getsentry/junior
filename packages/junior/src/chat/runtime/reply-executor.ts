@@ -40,7 +40,6 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
-  type Reply,
   type AgentRunSteeringMessage,
 } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -122,6 +121,8 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { getAssistantMessageText } from "@/chat/services/turn-result";
 import {
   abandonAgentTurnSessionRecord,
   failAgentTurnSessionRecord,
@@ -1082,13 +1083,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         /** Post and record one completed assistant message in the active thread. */
         const deliverAssistantMessage = async (
-          assistantMessage: {
-            message?: Reply["message"];
-            text: string;
-          },
+          reply: AssistantMessage | string,
           terminalDispatchOutcome?: "blocked" | "failed",
         ): Promise<void> => {
-          if (!assistantMessage.text.trim()) {
+          const agentMessage = typeof reply === "string" ? undefined : reply;
+          const text =
+            typeof reply === "string" ? reply : getAssistantMessageText(reply);
+          if (!text?.trim()) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
@@ -1101,12 +1102,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackTs = await sendSlackReply({
                 channelId,
                 conversationId,
-                text: assistantMessage.text,
+                text,
                 ...(threadTs ? { threadTs } : {}),
               });
             } else {
-              for (const text of splitSlackReplyText(assistantMessage.text)) {
-                slackTs = (await thread.post(buildSlackOutputMessage(text))).id;
+              for (const part of splitSlackReplyText(text)) {
+                slackTs = (await thread.post(buildSlackOutputMessage(part))).id;
               }
             }
           } catch (error) {
@@ -1136,7 +1137,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
-            text: assistantMessage.text,
+            text,
             userMessageId: preparedState.userMessageId,
           });
           if (slackTs) {
@@ -1148,9 +1149,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             await persistWithRetry(() =>
-              assistantMessage.message && conversationId
+              agentMessage && conversationId
                 ? commitAcceptedReply({
-                    agentMessage: assistantMessage.message,
+                    agentMessage,
                     conversation: preparedState.conversation,
                     conversationMessageId: recordedMessageId,
                     conversationId,
@@ -1483,7 +1484,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 "Subscribed Slack turn could not continue without user authorization",
               );
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
-              await deliverAssistantMessage({ text });
+              await deliverAssistantMessage(text);
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
@@ -1585,7 +1586,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             reply = finalized.reply;
             finalizedFailureEventId = finalized.eventId;
-            await deliverAssistantMessage({ text: reply.text });
+            await deliverAssistantMessage(reply.text);
           }
           const turnResult: DispatchTurnResult =
             reply.diagnostics.outcome === "success"
@@ -1841,10 +1842,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 ? failureCause.message
                 : "Agent turn failed after creating a canvas";
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
-            await deliverAssistantMessage(
-              { text: recoveryText },
-              dispatchOutcome,
-            );
+            await deliverAssistantMessage(recoveryText, dispatchOutcome);
             if (conversationId) {
               const sessionRecord = await getAgentTurnSessionRecord(
                 conversationId,

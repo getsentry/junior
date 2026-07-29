@@ -114,6 +114,7 @@ import {
 } from "../../../src/behavior-harness";
 import type { AgentRunDelivery } from "@/chat/agent/request";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
+import { loadProjection } from "@/chat/conversations/projection";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 
@@ -163,7 +164,12 @@ describe("behavior harness", () => {
       initialEvents: [],
       overrides: { reply_texts: ["Canned reply"] },
     });
-    const delivery = vi.fn<AgentRunDelivery>(async () => {});
+    let historyAtDelivery: Awaited<ReturnType<typeof loadProjection>> = [];
+    const delivery = vi.fn<AgentRunDelivery>(async () => {
+      historyAtDelivery = await loadProjection({
+        conversationId: "eval:test:canned-delivery",
+      });
+    });
     const result = await runtimeState.agentRunner?.run({
       conversationId: "eval:test:canned-delivery",
       turnId: "turn-canned-delivery",
@@ -176,15 +182,23 @@ describe("behavior harness", () => {
     });
 
     expect(delivery).toHaveBeenCalledOnce();
-    const reply = delivery.mock.calls[0]?.[0];
-    expect(reply).toMatchObject({
-      text: "Canned reply",
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: "Canned reply" }],
-        stopReason: "stop",
-      },
+    const message = delivery.mock.calls[0]?.[0];
+    expect(message).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "Canned reply" }],
+      stopReason: "stop",
     });
+    expect(historyAtDelivery).toMatchObject([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: renderCurrentInstruction("Current instruction"),
+          },
+        ],
+      },
+    ]);
     expect(result).toMatchObject({
       status: "completed",
       result: {
@@ -198,7 +212,7 @@ describe("behavior harness", () => {
               },
             ],
           },
-          reply?.message,
+          message,
         ],
       },
     });

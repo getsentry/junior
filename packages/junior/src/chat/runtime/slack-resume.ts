@@ -11,9 +11,12 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
   type AgentRunRequest,
-  type Reply,
 } from "@/chat/agent/request";
-import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  getAssistantMessageText,
+  type AgentRunResult,
+} from "@/chat/services/turn-result";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
@@ -548,11 +551,13 @@ export async function resumeSlackTurn(
       };
     };
     /** Post and record one completed assistant message for the resumed turn. */
-    const deliverAssistantMessage = async (assistantMessage: {
-      message?: Reply["message"];
-      text: string;
-    }): Promise<void> => {
-      if (!assistantMessage.text.trim()) {
+    const deliverAssistantMessage = async (
+      reply: AssistantMessage | string,
+    ): Promise<void> => {
+      const message = typeof reply === "string" ? undefined : reply;
+      const text =
+        typeof reply === "string" ? reply : getAssistantMessageText(reply);
+      if (!text?.trim()) {
         return;
       }
       failureCode = "delivery_failed";
@@ -562,7 +567,7 @@ export async function resumeSlackTurn(
         messageTs = await sendSlackReply({
           channelId: runArgs.channelId,
           conversationId: runArgs.conversationId,
-          text: assistantMessage.text,
+          text,
           threadTs: runArgs.threadTs,
         });
       } catch (error) {
@@ -576,7 +581,7 @@ export async function resumeSlackTurn(
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
-        text: assistantMessage.text,
+        text,
         userMessageId: deliveryState.userMessageId,
       });
       if (messageTs) {
@@ -586,9 +591,9 @@ export async function resumeSlackTurn(
       }
       try {
         await persistWithRetry(() =>
-          assistantMessage.message
+          message
             ? commitAcceptedReply({
-                agentMessage: assistantMessage.message,
+                agentMessage: message,
                 conversation: deliveryState.conversation,
                 conversationMessageId: recordedMessageId,
                 conversationId,
@@ -724,7 +729,7 @@ export async function resumeSlackTurn(
             `Agent turn ended with ${reply.diagnostics.outcome}.`)
           : undefined;
       if (reply.diagnostics.outcome !== "success") {
-        await deliverAssistantMessage({ text: reply.text });
+        await deliverAssistantMessage(reply.text);
       }
       runResultHandled = true;
 

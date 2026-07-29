@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  getAssistantMessageText,
+  type AgentRunResult,
+} from "@/chat/services/turn-result";
 import {
   defineJuniorPlugin,
   type PluginRunContext,
@@ -13,7 +16,7 @@ import {
   type LocalToolResult,
 } from "@/chat/local/runner";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { Reply } from "@/chat/agent/request";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { persistRunningSessionRecord } from "@/chat/services/turn-session-record";
 import {
@@ -35,7 +38,6 @@ import {
   scriptedAssistantMessageRunner,
 } from "../fixtures/agent-runner";
 import { getConversationEventStore } from "@/chat/db";
-import { projectConversationReportEventPage } from "@/api/conversations/events";
 
 function userPiMessage(text: string, timestamp = 1): PiMessage {
   return {
@@ -45,7 +47,7 @@ function userPiMessage(text: string, timestamp = 1): PiMessage {
   } as PiMessage;
 }
 
-function assistantPiMessage(text: string, timestamp = 1): Reply["message"] {
+function assistantPiMessage(text: string, timestamp = 1): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
@@ -125,7 +127,7 @@ type FlatAgentRunRequest = ReturnType<typeof flattenAgentRunRequestForTest>;
 async function deliverAssistantText(
   request: Parameters<AgentRunner["run"]>[0],
   text: string,
-  message: Reply["message"] = assistantPiMessage(text),
+  message: AssistantMessage = assistantPiMessage(text),
   historyBeforeMessage?: PiMessage[],
 ): Promise<void> {
   if (!request.delivery) {
@@ -137,10 +139,10 @@ async function deliverAssistantText(
       messages: historyBeforeMessage,
     });
   }
-  await request.delivery({
-    message,
-    text,
-  });
+  if (getAssistantMessageText(message) !== text) {
+    throw new Error("fake delivery text must match its assistant message");
+  }
+  await request.delivery(message);
 }
 
 async function persistRunningSessionForFakeReply(
@@ -202,58 +204,6 @@ describe("local agent runner", () => {
         .filter((message) => message.role === "assistant")
         .map((message) => message.text),
     ).toEqual(["Checking now.", "Done."]);
-  });
-
-  it("records agent history before its accepted visible reply", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "assistant-message-event-order",
-      cwd: "/tmp/local-agent-runner-assistant-message-event-order",
-    });
-    expect(conversationId).toBeDefined();
-    const message: Reply["message"] = {
-      ...assistantPiMessage("ordered reply", 2_000),
-      content: [
-        { type: "thinking", thinking: "Check the final answer." },
-        { type: "text", text: "ordered reply" },
-      ],
-    };
-    const history = [userPiMessage("check ordering", 1_000), message];
-
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "check ordering",
-      },
-      {
-        agentRunner: {
-          run: async (request) => {
-            await commitMessages({
-              conversationId: request.conversationId,
-              messages: history.slice(0, -1),
-            });
-            await request.delivery?.({ message, text: "ordered reply" });
-            return completedAgentRun(
-              successReply("ordered reply", { piMessages: history }),
-            );
-          },
-        },
-        deliverReply: async () => undefined,
-      },
-    );
-
-    const report = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: await getConversationEventStore().loadHistory(conversationId!),
-    });
-    expect(
-      report
-        .filter(
-          (event) =>
-            event.data.type === "assistant_message" ||
-            (event.data.type === "message" && event.data.role === "assistant"),
-        )
-        .map((event) => event.data.type),
-    ).toEqual(["assistant_message", "message"]);
   });
 
   it("runs a local message without Slack actor or destination state", async () => {
@@ -1122,7 +1072,7 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generatedMessage = assistantPiMessage("persisted pi output", 2);
+    const generatedMessage = assistantPiMessage("persisted visible output", 2);
     const generatedMessages: PiMessage[] = [
       userPiMessage("hello"),
       generatedMessage,

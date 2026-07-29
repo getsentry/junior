@@ -50,7 +50,7 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
-import { actorFromRouting, type Reply } from "@/chat/agent/request";
+import { actorFromRouting, type AgentRunDelivery } from "@/chat/agent/request";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -1904,9 +1904,8 @@ function buildRuntimeServices(
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
-            await runRequest.durability?.onInputCommitted?.();
             const nowMs = Date.now();
-            const message: Reply["message"] = {
+            const message: Parameters<AgentRunDelivery>[0] = {
               role: "assistant",
               content: [{ type: "text", text: replyText }],
               api: "eval-canned-reply",
@@ -1949,7 +1948,8 @@ function buildRuntimeServices(
               conversationId: runRequest.conversationId,
               messages: history.slice(0, -1),
             });
-            await runRequest.delivery?.({ message, text: replyText });
+            await runRequest.durability?.onInputCommitted?.();
+            await runRequest.delivery?.(message);
             replyState.successfulCount += 1;
             return completedAgentRun({
               text: replyText,

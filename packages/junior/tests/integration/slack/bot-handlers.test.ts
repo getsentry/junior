@@ -8,9 +8,12 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { instructionActors } from "@/chat/conversations/provenance";
 import {
+  commitMessages,
   loadProjection,
   loadConversationProjection,
 } from "@/chat/conversations/projection";
+import { projectConversationReportEventPage } from "@/api/conversations/events";
+import { getConversationEventStore } from "@/chat/db";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -702,7 +705,13 @@ describe("bot handlers (integration)", () => {
             run: async (request) => {
               const replyMessage = {
                 role: "assistant" as const,
-                content: [{ type: "text" as const, text: finalText }],
+                content: [
+                  {
+                    type: "thinking" as const,
+                    thinking: "Check the final answer.",
+                  },
+                  { type: "text" as const, text: finalText },
+                ],
                 api: "responses" as const,
                 provider: "openai",
                 model: "gpt-5.3",
@@ -731,6 +740,10 @@ describe("bot handlers (integration)", () => {
                 sliceId: 1,
                 state: "running",
                 piMessages: promptMessages,
+              });
+              await commitMessages({
+                conversationId,
+                messages: promptMessages,
               });
               await deliverAssistantMessagesForTest(
                 request,
@@ -824,6 +837,19 @@ describe("bot handlers (integration)", () => {
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
     );
+    const report = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: await getConversationEventStore().loadHistory(conversationId),
+    });
+    expect(
+      report
+        .filter(
+          (event) =>
+            event.data.type === "assistant_message" ||
+            (event.data.type === "message" && event.data.role === "assistant"),
+        )
+        .map((event) => event.data.type),
+    ).toEqual(["assistant_message", "message"]);
     expect(turnLifecycle.fail).toHaveBeenCalledWith(
       expect.objectContaining({
         eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),

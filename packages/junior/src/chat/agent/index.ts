@@ -905,7 +905,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
-        await delivery({ message, text });
+        await delivery(message);
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
           error,

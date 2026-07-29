@@ -6,11 +6,14 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts each completed tool-free assistant message.
  */
-import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  getAssistantMessageText,
+  type AgentRunResult,
+} from "@/chat/services/turn-result";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { Reply } from "@/chat/agent/request";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   createLocalSource,
   localDestinationSchema,
@@ -253,27 +256,29 @@ export async function runLocalAgentTurn(
   };
   let assistantMessageDelivered = false;
   /** Print and record one completed assistant message in local conversation order. */
-  const deliverAssistantMessage = async (message: {
-    message?: Reply["message"];
-    text: string;
-  }): Promise<void> => {
-    if (!message.text.trim()) {
+  const deliverAssistantMessage = async (
+    reply: AssistantMessage | string,
+  ): Promise<void> => {
+    const message = typeof reply === "string" ? undefined : reply;
+    const text =
+      typeof reply === "string" ? reply : getAssistantMessageText(reply);
+    if (!text?.trim()) {
       return;
     }
     failureCode = "delivery_failed";
-    await deps.deliverReply({ text: message.text });
+    await deps.deliverReply({ text });
     assistantMessageDelivered = true;
     const recordedMessageId = recordDeliveredAssistantMessage({
       conversation,
       sessionId: turnId,
-      text: message.text,
+      text,
       userMessageId,
     });
     try {
       await persistWithRetry(() =>
-        message.message
+        message
           ? commitAcceptedReply({
-              agentMessage: message.message,
+              agentMessage: message,
               conversation,
               conversationMessageId: recordedMessageId,
               conversationId: input.conversationId,
@@ -432,7 +437,7 @@ export async function runLocalAgentTurn(
     modelFailureEventId = finalized.eventId;
 
     if (reply.diagnostics.outcome !== "success") {
-      await deliverAssistantMessage({ text: reply.text });
+      await deliverAssistantMessage(reply.text);
     }
 
     completedState = buildDeliveredTurnStatePatch({
