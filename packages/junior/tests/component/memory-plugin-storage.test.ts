@@ -2,7 +2,7 @@ import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
-  createMemoryPlugin,
+  memoryPlugin,
   createMemoryStore,
   type MemoryDb,
 } from "@sentry/junior-memory";
@@ -196,7 +196,7 @@ CREATE TABLE junior_schema_migrations (
       }).length;
       await expect(
         migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
+          pluginSet: defineJuniorPlugins([memoryPlugin()]),
           sqlExecutor: fixture.sql,
         }),
       ).resolves.toEqual({
@@ -234,7 +234,7 @@ WHERE table_name = 'junior_memory_memories'
       const totalMigrationCount = coreMigrationCount + memoryMigrationCount;
       const lines: string[] = [];
       const pluginSet = defineJuniorPlugins([
-        createMemoryPlugin(),
+        memoryPlugin(),
         defineJuniorPlugin({
           manifest: {
             description: "Plugin without SQL migrations",
@@ -268,7 +268,7 @@ WHERE table_name = 'junior_memory_memories'
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([createMemoryPlugin()]);
+    const previousPlugins = setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
     try {

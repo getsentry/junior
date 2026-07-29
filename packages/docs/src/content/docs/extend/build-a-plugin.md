@@ -126,7 +126,9 @@ app code; Junior never loads them from `plugin.yaml`.
 Hook contexts include `ctx.plugin` and `ctx.log`. Use `ctx.log` for
 plugin-scoped structured logs instead of writing directly to stdout.
 
-Export a factory from the plugin package:
+Export one factory from the plugin package. Name it after the plugin domain
+followed by `Plugin`, such as `myProviderPlugin`. The factory must remain
+callable even when it accepts no options:
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -155,6 +157,11 @@ export function myProviderPlugin() {
   });
 }
 ```
+
+Do not prefix the public factory with `create` or export a prebuilt registration
+under the domain name. A single callable `<domain>Plugin(options?)` export keeps
+registration consistent across plugins. Call it as `myProviderPlugin()` when it
+has no configuration, or pass options when the package defines them.
 
 Do not ship `plugin.yaml` for the same plugin. The JavaScript definition owns
 both the manifest surface and the hooks. If the same package also ships

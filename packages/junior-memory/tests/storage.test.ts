@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
-import { createMemoryPlugin } from "../src/plugin";
+import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
   createMemoryCreateTool,
@@ -474,7 +474,7 @@ describe("memory plugin storage", () => {
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
-    const plugin = createMemoryPlugin({
+    const plugin = memoryPlugin({
       modelId: "anthropic/claude-sonnet-4.6",
     });
 
@@ -488,7 +488,7 @@ describe("memory plugin storage", () => {
     delete process.env.AI_MEMORY_MODEL;
 
     try {
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       expect(plugin.model).toEqual({
         structuredModel: "default",
       });
@@ -643,7 +643,7 @@ describe("memory plugin storage", () => {
     process.env.AI_MEMORY_MODEL = "anthropic/claude-sonnet-4.6";
 
     try {
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       expect(plugin.model).toEqual({
         structuredModelId: "anthropic/claude-sonnet-4.6",
       });
@@ -1805,7 +1805,7 @@ ORDER BY created_at_ms ASC
         [],
       );
 
-      const memoryPage = createMemoryPlugin().userPages?.[0];
+      const memoryPage = memoryPlugin().userPages?.[0];
       if (!memoryPage || !actorContext.actor) {
         throw new Error("Expected Memory dashboard page and actor context");
       }
@@ -3004,7 +3004,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-other-user",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -3046,7 +3046,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-conversation-context",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -3102,7 +3102,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-blank",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -3140,7 +3140,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-semantic",
       });
 
-      const plugin = createMemoryPlugin();
+      const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),

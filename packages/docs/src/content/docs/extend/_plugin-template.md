@@ -38,6 +38,10 @@ import { examplePlugin } from "@sentry/junior-example";
 export const plugins = defineJuniorPlugins([examplePlugin()]);
 ```
 
+Name a runtime plugin factory `<domain>Plugin`, export it as a function, and
+call it even when it has no options. Do not document a `create<Domain>Plugin`
+alias or a prebuilt plugin registration.
+
 Do not register a factory-based plugin as a bare package-name string. A bare string does not run runtime hooks, so the plugin will not activate its runtime behavior. Check the plugin package's README or setup page to confirm which registration style it requires.
 
 ## Configure environment variables

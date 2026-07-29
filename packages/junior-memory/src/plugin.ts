@@ -85,8 +85,8 @@ function memoryCreateToolContext(ctx: {
   };
 }
 
-/** Create Junior's long-term memory plugin registration. */
-export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
+/** Register Junior's long-term memory plugin. */
+export function memoryPlugin(options: MemoryPluginOptions = {}) {
   const modelId = memoryModelId(options);
   return defineJuniorPlugin({
     manifest: {
@@ -147,5 +147,3 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
     },
   });
 }
-
-export const memoryPlugin = createMemoryPlugin();

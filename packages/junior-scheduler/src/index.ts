@@ -1,4 +1,4 @@
-export { createSchedulerPlugin, schedulerPlugin } from "./plugin";
+export { schedulerPlugin } from "./plugin";
 export {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,

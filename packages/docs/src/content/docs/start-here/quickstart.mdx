@@ -131,13 +131,13 @@ Add them to the plugin set in `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
-import { createMemoryPlugin } from "@sentry/junior-memory";
+import { memoryPlugin } from "@sentry/junior-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { vercelPlugin } from "@sentry/junior-vercel";
 
 export const plugins = defineJuniorPlugins([
-  createMemoryPlugin(),
+  memoryPlugin(),
   "@sentry/junior-maintenance",
   "@sentry/junior-agent-browser",
   "@sentry/junior-amplitude",

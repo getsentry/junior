@@ -8,6 +8,11 @@ exported TypeScript types and runtime validators are authoritative.
 Use `defineJuniorPlugin({ manifest, hooks, tasks, cli, model })`. A plugin name
 is a lowercase identifier and is unique within the enabled app plugin set.
 
+Packages with JavaScript registration export one callable factory named
+`<domain>Plugin`, such as `githubPlugin(options?)`. Do not use a public
+`create<Domain>Plugin` alias or export a prebuilt registration. Call the factory
+even when it accepts no options.
+
 A plugin may instead be a declarative `plugin.yaml` package when it has no
 host-executed hooks. Do not combine an inline manifest with a second YAML
 definition for the same plugin.

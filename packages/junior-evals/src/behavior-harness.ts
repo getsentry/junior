@@ -68,7 +68,7 @@ import {
   type SchedulerDb,
 } from "@sentry/junior-scheduler";
 import { githubPlugin } from "@sentry/junior-github";
-import { createMemoryPlugin } from "@sentry/junior-memory";
+import { memoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import {
   buildDispatchRoutingContext,
@@ -1545,7 +1545,7 @@ function runtimePluginsForScenario(
     ...(packages.has("@sentry/junior-github")
       ? [githubPlugin({ appPermissions: { deployments: "read" } })]
       : []),
-    ...(packages.has("@sentry/junior-memory") ? [createMemoryPlugin()] : []),
+    ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
   ];
 }
 

@@ -12,7 +12,7 @@ related:
 
 The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Junior recalls relevant memories before each user turn, exposes explicit memory tools (remember, list, search, remove), and passively extracts memories from completed public-channel and local sessions.
 
-New apps created with `junior init` include `createMemoryPlugin()` in `plugins.ts` by default.
+New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 
 ## Prerequisites
 
@@ -28,13 +28,13 @@ pnpm add @sentry/junior @sentry/junior-memory
 
 ## Runtime setup
 
-The memory plugin requires a factory function call to register its tools and session hooks. Add `createMemoryPlugin()` to the plugin set exported from `plugins.ts`:
+The memory plugin requires a factory function call to register its tools and session hooks. Add `memoryPlugin()` to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
-import { createMemoryPlugin } from "@sentry/junior-memory";
+import { memoryPlugin } from "@sentry/junior-memory";
 
-export const plugins = defineJuniorPlugins([createMemoryPlugin()]);
+export const plugins = defineJuniorPlugins([memoryPlugin()]);
 ```
 
 Do not register `@sentry/junior-memory` as a bare package-name string. The memory plugin uses `defineJuniorPlugin` with runtime hooks for tool registration and session processing; a bare string skips those hooks and the plugin will not activate its runtime behavior.
@@ -43,10 +43,10 @@ Pass `modelId` to override the model used for memory classification and consolid
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
-import { createMemoryPlugin } from "@sentry/junior-memory";
+import { memoryPlugin } from "@sentry/junior-memory";
 
 export const plugins = defineJuniorPlugins([
-  createMemoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" }),
+  memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" }),
 ]);
 ```
 
@@ -100,7 +100,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 
 ## Failure modes
 
-- **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `createMemoryPlugin()`. Switch to the factory call and redeploy.
+- **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `memoryPlugin()`. Switch to the factory call and redeploy.
 - **Migration error — extension "vector" does not exist**: the Postgres database does not have pgvector available. Use a provider that supports pgvector or install it manually with `CREATE EXTENSION vector`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.

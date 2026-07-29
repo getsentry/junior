@@ -52,7 +52,7 @@ exported types, tools, and tests are authoritative.
 
 ## Configuration
 
-- `AI_MEMORY_MODEL` or `createMemoryPlugin({ modelId })` selects the structured
+- `AI_MEMORY_MODEL` or `memoryPlugin({ modelId })` selects the structured
   review model.
 - `MEMORY_RECALL_MAX_VECTOR_DISTANCE` or
   `recallMaxVectorDistance` configures the vector candidate threshold.

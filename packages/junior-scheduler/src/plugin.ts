@@ -414,8 +414,8 @@ async function buildSchedulerOperationalReport(args: {
   };
 }
 
-/** Create Junior's built-in trusted scheduler plugin. */
-export function createSchedulerPlugin() {
+/** Register Junior's built-in trusted scheduler plugin. */
+export function schedulerPlugin() {
   return defineJuniorPlugin({
     manifest: {
       name: "scheduler",
@@ -584,6 +584,3 @@ export function createSchedulerPlugin() {
     },
   });
 }
-
-/** Register scheduler runtime hooks for scheduled Junior tasks. */
-export const schedulerPlugin = createSchedulerPlugin;

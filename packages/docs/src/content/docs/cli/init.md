@@ -27,7 +27,7 @@ The scaffold includes:
 
 - `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `@sentry/junior-memory`, `hono`, `nitro`, `typescript`, `jiti`, and `@types/node`
 - `pnpm-workspace.yaml` with a 24-hour dependency release delay and an immediate exception for the `@sentry/*` package scope
-- `plugins.ts` with `@sentry/junior-maintenance` and `createMemoryPlugin()` enabled
+- `plugins.ts` with `@sentry/junior-maintenance` and `memoryPlugin()` enabled
 - `server.ts`
 - `nitro.config.ts` pointing at `./plugins`
 - `tsconfig.json` extending Nitro's TypeScript config
@@ -43,7 +43,7 @@ The scaffold includes:
 
 `SOUL.md` sets Junior's default voice, `WORLD.md` holds operational context, and `DESCRIPTION.md` powers the user-facing app description. Add other `app/*.md` files only when you want optional reference material available to the agent at runtime. `ABOUT.md` is not part of the scaffold and is not supported.
 
-The generated `plugins.ts` enables `@sentry/junior-maintenance` and `createMemoryPlugin()` by default. Maintenance provides the `self-update` skill for keeping Junior packages current, and memory provides long-term recall once you configure Postgres with pgvector. `plugins.ts` is also the place to add other packaged plugins later.
+The generated `plugins.ts` enables `@sentry/junior-maintenance` and `memoryPlugin()` by default. Maintenance provides the `self-update` skill for keeping Junior packages current, and memory provides long-term recall once you configure Postgres with pgvector. `plugins.ts` is also the place to add other packaged plugins later.
 
 This gives you the supported app shape needed to run Junior locally, keep the app updated, and continue with plugin or skill setup.
 
