@@ -100,6 +100,13 @@ describe("dashboard canonical-event Markdown export", () => {
           content: {
             memories: [
               {
+                id: "memory-personal",
+                content: "Prefers release summaries with risks first.",
+                observedAtMs: Date.parse("2026-01-02T00:00:00.000Z"),
+                scope: "personal",
+                kind: "preference",
+              },
+              {
                 id: "memory-1",
                 content: "Release notes live in Notion.",
                 observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
@@ -113,6 +120,9 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("#### Recalled memories");
+    expect(markdown).toContain("Prefers release summaries with risks first.");
+    expect(markdown).toContain("`memory-personal`");
+    expect(markdown).toContain("Scope: personal");
     expect(markdown).toContain("Release notes live in Notion.");
     expect(markdown).toContain("`memory-1`");
     expect(markdown).toContain("Scope: conversation");

@@ -3330,7 +3330,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("keeps personal memory recall out of durable prompt context", async () => {
+  it("retains personal and conversation memory recall as structured prompt context", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -3382,11 +3382,33 @@ WHERE id = '${superseded.memory.id}'
       });
 
       const contribution = result?.[0];
-      expect(contribution && "text" in contribution).toBe(true);
-      if (!contribution || !("text" in contribution)) {
-        throw new Error("Memory recall did not return prompt text");
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
       }
-      const text = contribution.text;
+      expect(contribution.context).toEqual({
+        kind: "recall",
+        version: 1,
+        content: {
+          memories: [
+            {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
+              scope: "conversation",
+            },
+            {
+              id: personal.memory.id,
+              content: personal.memory.content,
+              kind: personal.memory.kind,
+              observedAtMs: personal.memory.observedAtMs,
+              scope: "personal",
+            },
+          ],
+        },
+      });
+      const text = contribution.renderPrompt();
       expect(text).toContain(`Observed 2026-06-19: ${personal.memory.content}`);
       expect(text).toContain(conversation.memory.content);
       expect(text).not.toContain(personal.memory.id);
@@ -3652,11 +3674,11 @@ WHERE id = '${superseded.memory.id}'
         text: query,
       });
       const contribution = result?.[0];
-      expect(contribution && "text" in contribution).toBe(true);
-      if (!contribution || !("text" in contribution)) {
-        throw new Error("Memory recall did not return prompt text");
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
       }
-      expect(contribution.text).toContain(memory);
+      expect(contribution.renderPrompt()).toContain(memory);
     } finally {
       await fixture.close();
     }

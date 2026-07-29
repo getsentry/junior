@@ -108,12 +108,7 @@ const memoryRecallContext = definePromptContext({
   renderPrompt: (content) => renderMemoryPrompt(content.memories),
 });
 
-/**
- * Build active memory recall contributions.
- *
- * Personal recall remains prompt-only so conversation reporting cannot widen
- * actor-scoped memory visibility.
- */
+/** Build active memory recall contributions. */
 export async function createMemoryPromptContributions(
   context: MemoryRecallContext,
 ): Promise<UserPromptContribution[] | undefined> {
@@ -161,9 +156,6 @@ export async function createMemoryPromptContributions(
   const selected = selectPromptMemories(relevant);
   if (selected.length === 0) {
     return undefined;
-  }
-  if (selected.some((memory) => memory.scope === "personal")) {
-    return [{ text: renderMemoryPrompt(selected) }];
   }
   return [memoryRecallContext({ memories: selected })];
 }
