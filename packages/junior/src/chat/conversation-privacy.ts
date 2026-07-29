@@ -301,6 +301,7 @@ export function toGenAiMessagesTraceAttributes(
   return {
     [`${prefix}.message_count`]: messages.length,
     [`${prefix}.content_chars`]: contentChars,
+    [`${prefix}.messages.size`]: contentChars,
     ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : {}),
     ...(partTypes.size > 0 ? { [`${prefix}.part_types`]: [...partTypes] } : {}),
   };

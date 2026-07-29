@@ -112,6 +112,7 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.output.type"]).toBe("text");
     expect(opts.attributes["gen_ai.input.message_count"]).toBe(1);
     expect(opts.attributes["gen_ai.input.content_chars"]).toBe(5);
+    expect(opts.attributes["gen_ai.input.messages.size"]).toBe(5);
     expect(opts.attributes["gen_ai.input.roles"]).toEqual(["user"]);
     expect(opts.attributes["gen_ai.system_instructions.content_chars"]).toBe(
       14,
@@ -167,6 +168,7 @@ describe("createTracedStreamFn", () => {
     );
     expect(endAttributes["gen_ai.output.message_count"]).toBe(1);
     expect(endAttributes["gen_ai.output.content_chars"]).toBe(6);
+    expect(endAttributes["gen_ai.output.messages.size"]).toBe(6);
     expect(endAttributes["gen_ai.output.messages"]).toBeUndefined();
   });
 
