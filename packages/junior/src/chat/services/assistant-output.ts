@@ -5,14 +5,11 @@ import { extractAssistantText } from "@/chat/pi/transcript";
 const THINKING_XML_BLOCK_PATTERN =
   /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
-const INTERNAL_TOOL_FRAGMENT_PATTERN =
-  /bash|edit|file|glob|grep|read|repo|search|shell|tool|write/gi;
 
 /** Stable reason recorded when assistant output cannot be delivered. */
 export type AssistantOutputRejection =
   | "empty"
   | "execution_escape"
-  | "opaque_tool_fragment"
   | "raw_tool_payload";
 
 export type AssistantOutput =
@@ -63,23 +60,6 @@ function isRawToolPayload(text: string): boolean {
     : isToolPayload(parsed);
 }
 
-function isOpaqueToolFragment(text: string): boolean {
-  // Limit the heuristic to observed tool-name concatenations; ordinary short
-  // identifiers remain valid assistant output.
-  const fragments = new Set(
-    text
-      .match(INTERNAL_TOOL_FRAGMENT_PATTERN)
-      ?.map((match) => match.toLowerCase()),
-  );
-  return (
-    text.length >= 8 &&
-    text.length <= 80 &&
-    /^[A-Za-z0-9]+$/.test(text) &&
-    /\d/.test(text) &&
-    fragments.size >= 2
-  );
-}
-
 /** Remove provider reasoning wrappers while preserving fenced code examples. */
 export function sanitizeAssistantText(text: string): string {
   let result = "";
@@ -99,7 +79,6 @@ export function sanitizeAssistantText(text: string): string {
 /** Decide whether one completed assistant message may be delivered. */
 export function classifyAssistantOutput(
   message: AssistantMessage,
-  compactedContext = false,
 ): AssistantOutput {
   if (message.content.some((part) => part.type === "toolCall")) {
     return { kind: "suppress" };
@@ -115,9 +94,6 @@ export function classifyAssistantOutput(
   }
   if (isExecutionEscape(text)) {
     return { kind: "reject", reason: "execution_escape" };
-  }
-  if (compactedContext && isOpaqueToolFragment(text)) {
-    return { kind: "reject", reason: "opaque_tool_fragment" };
   }
   return { kind: "deliver", text };
 }

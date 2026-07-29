@@ -19,7 +19,6 @@ import {
   classifyAssistantOutput,
   sanitizeAssistantText,
 } from "@/chat/services/assistant-output";
-import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -79,9 +78,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
-  const compactedContext = input.piMessages
-    ? hasCompactedConversationContext(input.piMessages)
-    : false;
 
   const rawPrimaryText = sanitizeAssistantText(
     terminalAssistantMessages
@@ -95,7 +91,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const primaryText = noReplyRequested
     ? ""
     : terminalAssistantMessages
-        .map((message) => classifyAssistantOutput(message, compactedContext))
+        .map((message) => classifyAssistantOutput(message))
         .filter(
           (output): output is { kind: "deliver"; text: string } =>
             output.kind === "deliver",

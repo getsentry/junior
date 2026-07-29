@@ -66,9 +66,9 @@ delegation without becoming the execution actor or a general task owner.
 
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant output handling settles before the turn is finalized.
-- Empty, escaped, or opaque tool-like output after a history replacement is
-  withheld from delivery and retried once from the last user or tool-result
-  boundary. A second rejected output ends as an execution failure.
+- Empty, escaped, or leaked tool output after a history replacement is withheld
+  from delivery and retried once from the last user or tool-result boundary. A
+  second rejected output ends as an execution failure.
 - Tool-bearing assistant text stays in agent history but is not destination
   output; explicit progress uses the runtime status surface.
 - Tool failures remain internal agent-loop data unless the final result exposes

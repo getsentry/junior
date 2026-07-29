@@ -131,7 +131,6 @@ import {
   compactActiveContextIfNeeded,
   compactContextForHandoff,
 } from "@/chat/services/context-compaction";
-import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 import {
   createHandoffTool,
   HANDOFF_TOOL_NAME,
@@ -876,10 +875,7 @@ async function executeAgentRunInPrivacyContext(
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      const output = classifyAssistantOutput(
-        message,
-        hasCompactedConversationContext(currentAgentMessages()),
-      );
+      const output = classifyAssistantOutput(message);
       if (output.kind !== "deliver" || !delivery) {
         return;
       }

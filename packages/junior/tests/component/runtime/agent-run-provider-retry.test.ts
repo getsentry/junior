@@ -8,6 +8,11 @@ import { extractAssistantText } from "@/chat/pi/transcript";
 import { readConversationDetail } from "@/api/conversations/detail";
 
 const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
+const LEAKED_TOOL_CALL_TEXT = JSON.stringify({
+  type: "tool_call",
+  name: "bash",
+  input: {},
+});
 
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
@@ -695,7 +700,7 @@ describe("provider retry composition", () => {
 
   it("fails cleanly when post-compaction output recovery is exhausted", async () => {
     const { delivered, result } = await runCompactedReplies(
-      ["Repos6azabash", "Repos6azabash"],
+      [LEAKED_TOOL_CALL_TEXT, LEAKED_TOOL_CALL_TEXT],
       "compaction-recovery-exhausted",
     );
 

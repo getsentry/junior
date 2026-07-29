@@ -36,7 +36,7 @@ export function nextOutputRecovery(args: {
   }
 
   const output = args.lastAssistant
-    ? classifyAssistantOutput(args.lastAssistant, true)
+    ? classifyAssistantOutput(args.lastAssistant)
     : ({ kind: "reject", reason: "empty" } as const);
   if (output.kind !== "reject") {
     return { kind: "none" };

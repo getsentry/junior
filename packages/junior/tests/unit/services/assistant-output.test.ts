@@ -49,7 +49,7 @@ describe("assistant output", () => {
       kind: "suppress",
     });
     expect(
-      classifyAssistantOutput(assistant(`Done. ${NO_REPLY_MARKER}`), true),
+      classifyAssistantOutput(assistant(`Done. ${NO_REPLY_MARKER}`)),
     ).toEqual({ kind: "suppress" });
     expect(
       classifyAssistantOutput(
@@ -70,21 +70,6 @@ describe("assistant output", () => {
     expect(
       classifyAssistantOutput(assistant("Let me do that now.", true)),
     ).toEqual({ kind: "suppress" });
-  });
-
-  it("only rejects opaque tool fragments in compacted context", () => {
-    expect(classifyAssistantOutput(assistant("Repos6azabash"))).toEqual({
-      kind: "deliver",
-      text: "Repos6azabash",
-    });
-    expect(classifyAssistantOutput(assistant("Repos6azabash"), true)).toEqual({
-      kind: "reject",
-      reason: "opaque_tool_fragment",
-    });
-    expect(classifyAssistantOutput(assistant("repo123"), true)).toEqual({
-      kind: "deliver",
-      text: "repo123",
-    });
   });
 
   it("keeps prose that quotes a tool payload fragment", () => {
