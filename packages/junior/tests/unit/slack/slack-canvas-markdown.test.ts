@@ -47,18 +47,18 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
   });
 
-  it("uses numbered markers for bullet items nested inside numbered lists", () => {
+  it("uses plain bullet markers inside numbered lists", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   - Child\n2. Next",
     );
-    expect(normalized.markdown).toBe("1. Parent\n   1. Child\n2. Next");
+    expect(normalized.markdown).toBe("1. Parent\n   • Child\n2. Next");
     expect(normalized.normalizedMixedListCount).toBe(1);
     expect(normalized.normalizedCount).toBe(1);
   });
 
-  it("uses bullet markers for numbered items nested inside bullet lists", () => {
+  it("uses plain numbered markers inside bullet lists", () => {
     const normalized = normalizeCanvasMarkdown("- Parent\n  1. Child");
-    expect(normalized.markdown).toBe("- Parent\n  - Child");
+    expect(normalized.markdown).toBe("- Parent\n  1: Child");
     expect(normalized.normalizedMixedListCount).toBe(1);
   });
 
@@ -67,7 +67,7 @@ describe("normalizeCanvasMarkdown", () => {
       "1. Parent\n   - First\n   - Second\n2. Next",
     );
     expect(normalized.markdown).toBe(
-      "1. Parent\n   1. First\n   1. Second\n2. Next",
+      "1. Parent\n   • First\n   • Second\n2. Next",
     );
     expect(normalized.normalizedMixedListCount).toBe(2);
   });
@@ -77,7 +77,7 @@ describe("normalizeCanvasMarkdown", () => {
       "1. Root\n   - Child\n     - Grandchild\n2. Next",
     );
     expect(normalized.markdown).toBe(
-      "1. Root\n   1. Child\n     1. Grandchild\n2. Next",
+      "1. Root\n   • Child\n     • Grandchild\n2. Next",
     );
     expect(normalized.normalizedMixedListCount).toBe(2);
   });
@@ -103,7 +103,7 @@ describe("normalizeCanvasMarkdown", () => {
       "1. Parent\n   > - Child\n2. Next",
     );
     expect(normalized.markdown).toBe(
-      "1. Parent\n   1. Child\n2. Next",
+      "1. Parent\n   • Child\n2. Next",
     );
     expect(normalized.unwrappedBlockquoteCount).toBe(1);
     expect(normalized.normalizedMixedListCount).toBe(1);
@@ -120,6 +120,39 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalized.unwrappedBlockquoteCount).toBe(1);
     expect(normalized.normalizedHeadingCount).toBe(1);
     expect(normalized.normalizedCount).toBe(2);
+  });
+
+  it("normalizes deeply indented headings inside list items", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n     #### Deep heading\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n     ### Deep heading\n2. Next",
+    );
+    expect(normalized.normalizedHeadingCount).toBe(1);
+  });
+
+  it("preserves deeply indented heading syntax outside lists", () => {
+    const markdown = "    #### Indented code";
+    expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
+  });
+
+  it("preserves syntax inside deeply indented list code fences", () => {
+    const markdown =
+      "1. Parent\n     ```markdown\n     1. Example\n        - Keep bullet\n     #### Keep heading\n     ```\n2. Next";
+    expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
+  });
+
+  it("unwraps quote-wrapped list code fences without changing their content", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. Parent\n   > ```markdown\n   > #### Keep heading\n   > - Keep bullet\n   > ```\n2. Next",
+    );
+    expect(normalized.markdown).toBe(
+      "1. Parent\n   ```markdown\n   #### Keep heading\n   - Keep bullet\n   ```\n2. Next",
+    );
+    expect(normalized.unwrappedBlockquoteCount).toBe(4);
+    expect(normalized.normalizedHeadingCount).toBe(0);
+    expect(normalized.normalizedMixedListCount).toBe(0);
   });
 
   it("preserves top-level blockquotes", () => {
