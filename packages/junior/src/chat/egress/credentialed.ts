@@ -612,6 +612,7 @@ export async function executeCredentialedEgressRequest(input: {
           status: 403,
         }),
         ...routingAttributes(request, upstreamUrl),
+        "app.sandbox.egress.policy.reason": error.message,
       });
       return policyDeniedResponse(error);
     }

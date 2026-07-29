@@ -17,6 +17,7 @@ import {
 } from "../fixtures/plugin-app";
 import { githubPlugin } from "@sentry/junior-github";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -50,9 +51,11 @@ const managedEgressReadResultSchema = pluginToolResultSchema.extend({
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress/policy");
 type EgressProxyModule = typeof import("@/chat/sandbox/egress/proxy");
 type EgressSessionModule = typeof import("@/chat/sandbox/egress/session");
+type LoggingModule = typeof import("@/chat/logging");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 
 interface LoadedModules {
+  logging: LoggingModule;
   policy: EgressPolicyModule;
   proxy: EgressProxyModule;
   session: EgressSessionModule;
@@ -61,7 +64,8 @@ interface LoadedModules {
 
 async function loadModules(): Promise<LoadedModules> {
   vi.resetModules();
-  const [policy, proxy, session, state] = await Promise.all([
+  const [logging, policy, proxy, session, state] = await Promise.all([
+    import("@/chat/logging"),
     import("@/chat/sandbox/egress/policy"),
     import("@/chat/sandbox/egress/proxy"),
     import("@/chat/sandbox/egress/session"),
@@ -69,7 +73,7 @@ async function loadModules(): Promise<LoadedModules> {
   ]);
   await state.disconnectStateAdapter();
   await state.getStateAdapter().connect();
-  return { policy, proxy, session, state };
+  return { logging, policy, proxy, session, state };
 }
 
 function forwardUrlFor(policy: unknown, host: string): string {
@@ -1316,6 +1320,10 @@ describe("sandbox egress proxy integration", () => {
 
   it("denies oversized raw GitHub GraphQL before credential injection", async () => {
     await registerGitHubPlugin();
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
@@ -1327,26 +1335,31 @@ describe("sandbox egress proxy integration", () => {
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
-      proxiedRequest({
-        body: JSON.stringify({
-          query:
-            "mutation CreateIssue($input: CreateIssueInput!) { createIssue(input: $input) { issue { number } } }",
-          variables: {
-            input: { repositoryId: "repo", title: "test" },
-            filler: "x".repeat(70 * 1024),
-          },
+    let response: Response;
+    try {
+      response = await modules.proxy.proxySandboxEgressRequest(
+        proxiedRequest({
+          body: JSON.stringify({
+            query:
+              "mutation CreateIssue($input: CreateIssueInput!) { createIssue(input: $input) { issue { number } } }",
+            variables: {
+              input: { repositoryId: "repo", title: "test" },
+              filler: "x".repeat(70 * 1024),
+            },
+          }),
+          forwardURL,
+          method: "POST",
+          upstreamHost: GITHUB_API_HOST,
+          upstreamPath: "/graphql",
         }),
-        forwardURL,
-        method: "POST",
-        upstreamHost: GITHUB_API_HOST,
-        upstreamPath: "/graphql",
-      }),
-      {
-        fetch: upstreamFetch as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
+        {
+          fetch: upstreamFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        },
+      );
+    } finally {
+      unregister();
+    }
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -1354,6 +1367,14 @@ describe("sandbox egress proxy integration", () => {
         "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.policy.denied",
+      )?.attributes,
+    ).toMatchObject({
+      "app.sandbox.egress.policy.reason":
+        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+    });
   });
 
   it("records plugin write auth needs over earlier read failures", async () => {
