@@ -122,7 +122,7 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { getAssistantMessageText } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
   abandonAgentTurnSessionRecord,
   failAgentTurnSessionRecord,
@@ -1057,7 +1057,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         ): Promise<void> => {
           const agentMessage = typeof reply === "string" ? undefined : reply;
           const text =
-            typeof reply === "string" ? reply : getAssistantMessageText(reply);
+            typeof reply === "string" ? reply : getAssistantReplyText(reply);
           if (!text?.trim()) {
             return;
           }

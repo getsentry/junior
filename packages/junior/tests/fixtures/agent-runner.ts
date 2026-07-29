@@ -1,10 +1,8 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import {
-  getAssistantMessageText,
-  type AgentRunResult,
-} from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
@@ -76,7 +74,7 @@ export async function deliverAssistantMessagesForTest(
     if (!isAssistantMessage(message)) {
       throw new Error("scripted reply requires an assistant message");
     }
-    const visibleText = getAssistantMessageText(message);
+    const visibleText = getAssistantReplyText(message);
     if (visibleText !== reply.text.trim()) {
       throw new Error(
         `scripted reply text ${JSON.stringify(reply.text)} does not match ` +

@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { getAssistantMessageText } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AgentRunRequest } from "@/chat/agent/request";
 
 const observations = vi.hoisted(() => ({
@@ -665,7 +665,7 @@ describe("model handoff composition", () => {
         source: createLocalSource(conversationId),
       },
       delivery: (message) => {
-        const text = getAssistantMessageText(message);
+        const text = getAssistantReplyText(message);
         if (text) delivered.push({ text });
         deliveredMessage = message;
       },
@@ -726,7 +726,7 @@ describe("model handoff composition", () => {
         if (deliveryAttempts === 1) {
           throw new RetryableDeliveryError(new Error("Slack unavailable"));
         }
-        const text = getAssistantMessageText(message);
+        const text = getAssistantReplyText(message);
         if (text) delivered.push({ text });
       },
     };

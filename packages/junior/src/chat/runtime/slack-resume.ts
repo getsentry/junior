@@ -12,10 +12,8 @@ import {
   RetryableDeliveryError,
   type AgentRunRequest,
 } from "@/chat/agent/request";
-import {
-  getAssistantMessageText,
-  type AgentRunResult,
-} from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -553,7 +551,7 @@ async function resumeSlackTurnInContext(
     ): Promise<void> => {
       const message = typeof reply === "string" ? undefined : reply;
       const text =
-        typeof reply === "string" ? reply : getAssistantMessageText(reply);
+        typeof reply === "string" ? reply : getAssistantReplyText(reply);
       if (!text?.trim()) {
         return;
       }

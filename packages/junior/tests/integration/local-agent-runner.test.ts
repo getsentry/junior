@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  getAssistantMessageText,
-  type AgentRunResult,
-} from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
   defineJuniorPlugin,
   type PluginRunContext,
@@ -140,7 +138,7 @@ async function deliverAssistantText(
       messages: historyBeforeMessage,
     });
   }
-  if (getAssistantMessageText(message) !== text) {
+  if (getAssistantReplyText(message) !== text) {
     throw new Error("fake delivery text must match its assistant message");
   }
   await request.delivery(message);

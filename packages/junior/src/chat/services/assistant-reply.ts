@@ -92,3 +92,11 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
   }
   return { kind: "deliver", text };
 }
+
+/** Return destination-visible reply text when the message is deliverable. */
+export function getAssistantReplyText(
+  message: AssistantMessage,
+): string | undefined {
+  const decision = decideReply(message);
+  return decision.kind === "deliver" ? decision.text : undefined;
+}

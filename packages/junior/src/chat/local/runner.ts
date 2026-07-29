@@ -6,10 +6,8 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts each completed tool-free assistant message.
  */
-import {
-  getAssistantMessageText,
-  type AgentRunResult,
-} from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -277,7 +275,7 @@ async function runLocalAgentTurnInContext(
   ): Promise<void> => {
     const message = typeof reply === "string" ? undefined : reply;
     const text =
-      typeof reply === "string" ? reply : getAssistantMessageText(reply);
+      typeof reply === "string" ? reply : getAssistantReplyText(reply);
     if (!text?.trim()) {
       return;
     }
