@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
-import * as juniorApi from "@sentry/junior/api";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
 import {
@@ -9,6 +8,14 @@ import {
   type DashboardAuth,
   type DashboardSession,
 } from "../src/auth";
+
+const { authenticatePersonalToken } = vi.hoisted(() => ({
+  authenticatePersonalToken: vi.fn(),
+}));
+vi.mock("@sentry/junior/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  authenticatePersonalToken,
+}));
 
 const dashboardEnvNames = [
   "BETTER_AUTH_SECRET",
@@ -72,13 +79,13 @@ function mockDashboardVirtualConfig() {
 describe("dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authenticatePersonalToken.mockReset();
     for (const name of dashboardEnvNames) {
       delete process.env[name];
     }
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
     vi.doUnmock("#junior/config");
     for (const name of dashboardEnvNames) {
       delete process.env[name];
@@ -797,9 +804,7 @@ describe("dashboard routes", () => {
   });
 
   it("rejects personal bearer token writes before plugin dispatch", async () => {
-    const authenticateToken = vi
-      .spyOn(juniorApi, "authenticatePersonalToken")
-      .mockResolvedValue("person@sentry.io");
+    authenticatePersonalToken.mockResolvedValue("person@sentry.io");
     let dispatched = false;
     const pluginApp = new Hono();
     pluginApp.delete("/memories/:id", (c) => {
@@ -820,7 +825,7 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(authenticateToken).not.toHaveBeenCalled();
+    expect(authenticatePersonalToken).not.toHaveBeenCalled();
     expect(dispatched).toBe(false);
   });
 
