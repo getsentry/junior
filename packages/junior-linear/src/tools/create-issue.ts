@@ -56,7 +56,7 @@ const outputSchema = pluginToolResultSchema.extend({
   issue: issueSchema.nullable(),
 });
 
-const completedStateSchema = z
+const currentCompletedStateSchema = z
   .object({
     createdAtMs: z.number(),
     content: z.array(pluginToolContentSchema),
@@ -64,6 +64,28 @@ const completedStateSchema = z
     status: z.literal("completed"),
   })
   .strict();
+
+const legacyCompletedStateSchema = z
+  .object({
+    createdAtMs: z.number(),
+    issue: issueSchema.nullable(),
+    providerText: z.string(),
+    status: z.literal("completed"),
+  })
+  .strict();
+
+const completedStateSchema = z
+  .union([currentCompletedStateSchema, legacyCompletedStateSchema])
+  .transform((state) =>
+    "content" in state
+      ? state
+      : {
+          status: state.status,
+          createdAtMs: state.createdAtMs,
+          content: [{ type: "text" as const, text: state.providerText }],
+          issue: state.issue,
+        },
+  );
 
 const pendingStateSchema = z
   .object({

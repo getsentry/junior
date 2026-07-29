@@ -9,6 +9,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
+import { createPluginState } from "@/chat/plugins/state";
 import { mswServer } from "../msw/server";
 import { z } from "zod";
 
@@ -184,6 +185,30 @@ describe("Linear native issue tools", () => {
           ok: true,
           status: "success",
           target: "updateIssue",
+        },
+      });
+
+      await createPluginState("linear").set(
+        `createIssue:${conversationId}:call-legacy`,
+        {
+          status: "completed",
+          createdAtMs: Date.now(),
+          issue: null,
+          providerText:
+            "Created [ENG-122](https://linear.app/acme/issue/ENG-122/legacy-issue)",
+        },
+      );
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-legacy" }),
+      ).resolves.toMatchObject({
+        content: [
+          {
+            type: "text",
+            text: "Created [ENG-122](https://linear.app/acme/issue/ENG-122/legacy-issue)",
+          },
+        ],
+        details: {
+          issue: null,
         },
       });
 
