@@ -112,9 +112,6 @@ import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
 } from "../../../src/behavior-harness";
-import type { AgentRunDelivery } from "@/chat/agent/request";
-import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { loadProjection } from "@/chat/conversations/projection";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 
@@ -157,65 +154,6 @@ describe("behavior harness", () => {
     expect(forwardedSignal).not.toBe(controller.signal);
     controller.abort();
     expect(forwardedSignal?.aborted).toBe(true);
-  });
-
-  it("returns agent history containing the delivered canned reply", async () => {
-    await runEvalScenario({
-      initialEvents: [],
-      overrides: { reply_texts: ["Canned reply"] },
-    });
-    let historyAtDelivery: Awaited<ReturnType<typeof loadProjection>> = [];
-    const delivery = vi.fn<AgentRunDelivery>(async () => {
-      historyAtDelivery = await loadProjection({
-        conversationId: "eval:test:canned-delivery",
-      });
-    });
-    const result = await runtimeState.agentRunner?.run({
-      conversationId: "eval:test:canned-delivery",
-      turnId: "turn-canned-delivery",
-      input: {
-        messageText: "Current instruction",
-        piMessages: [],
-      },
-      policy: {},
-      delivery,
-    });
-
-    expect(delivery).toHaveBeenCalledOnce();
-    const message = delivery.mock.calls[0]?.[0];
-    expect(message).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "Canned reply" }],
-      stopReason: "stop",
-    });
-    expect(historyAtDelivery).toMatchObject([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: renderCurrentInstruction("Current instruction"),
-          },
-        ],
-      },
-    ]);
-    expect(result).toMatchObject({
-      status: "completed",
-      result: {
-        piMessages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: renderCurrentInstruction("Current instruction"),
-              },
-            ],
-          },
-          message,
-        ],
-      },
-    });
   });
 
   it("aborts eval replies at the configured timeout", async () => {

@@ -16,6 +16,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
+import {
+  createFauxCore,
+  fauxAssistantMessage,
+} from "@earendil-works/pi-ai/providers/faux";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
@@ -50,13 +54,12 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
-import { actorFromRouting, type AgentRunDelivery } from "@/chat/agent/request";
+import { actorFromRouting } from "@/chat/agent/request";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { commitMessages } from "@/chat/conversations/projection";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
@@ -1903,67 +1906,13 @@ function buildRuntimeServices(
           }
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           const replyText = replyTexts[replyState.successfulCount];
+          let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
           if (typeof replyText === "string") {
-            const nowMs = Date.now();
-            const message: Parameters<AgentRunDelivery>[0] = {
-              role: "assistant",
-              content: [{ type: "text", text: replyText }],
-              api: "eval-canned-reply",
+            scriptedStream = createFauxCore({
+              api: "eval",
               provider: "eval",
-              model: "eval-reply-text",
-              usage: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: {
-                  input: 0,
-                  output: 0,
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                  total: 0,
-                },
-              },
-              stopReason: "stop",
-              timestamp: nowMs,
-            };
-            const history = [
-              ...(runRequest.input.piMessages ?? []),
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: renderCurrentInstruction(
-                      runRequest.input.messageText,
-                    ),
-                  },
-                ],
-                timestamp: nowMs,
-              },
-              message,
-            ] as PiMessage[];
-            await commitMessages({
-              conversationId: runRequest.conversationId,
-              messages: history.slice(0, -1),
             });
-            await runRequest.durability?.onInputCommitted?.();
-            await runRequest.delivery?.(message);
-            replyState.successfulCount += 1;
-            return completedAgentRun({
-              text: replyText,
-              piMessages: history,
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "eval-reply-text",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+            scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
           }
 
           const gatewaySnapshot = snapshotEnv([
@@ -2008,50 +1957,54 @@ function buildRuntimeServices(
               AbortSignal.timeout(replyTimeoutMs),
             ]);
             const outcome = await raceWithAbort(replySignal, () =>
-              executeAgentRun({
-                ...runRequest,
-                policy: {
-                  ...runRequest.policy,
-                  signal: replySignal,
-                  turnDeadlineAtMs: Math.min(
-                    runRequest.policy?.turnDeadlineAtMs ??
-                      Number.POSITIVE_INFINITY,
-                    Date.now() + replyTimeoutMs,
-                  ),
-                  ...(env.configuredSkillDirs.length > 0
-                    ? { skillDirs: env.configuredSkillDirs }
-                    : {}),
-                  toolOverrides,
-                },
-                observers: {
-                  ...runRequest.observers,
-                  onToolInvocation: (invocation) => {
-                    const evalInvocation = toEvalToolInvocation(invocation);
-                    observations.toolInvocations.push(evalInvocation);
-                    pendingToolInvocations.push(evalInvocation);
+              executeAgentRun(
+                {
+                  ...runRequest,
+                  policy: {
+                    ...runRequest.policy,
+                    signal: replySignal,
+                    turnDeadlineAtMs: Math.min(
+                      runRequest.policy?.turnDeadlineAtMs ??
+                        Number.POSITIVE_INFINITY,
+                      Date.now() + replyTimeoutMs,
+                    ),
+                    ...(env.configuredSkillDirs.length > 0
+                      ? { skillDirs: env.configuredSkillDirs }
+                      : {}),
+                    toolOverrides,
                   },
-                  onToolResult: (result) => {
-                    const pendingIndex = pendingToolInvocations.findIndex(
-                      (candidate) => candidate.toolCallId === result.toolCallId,
-                    );
-                    if (pendingIndex === -1) {
-                      return;
-                    }
-                    const [invocation] = pendingToolInvocations.splice(
-                      pendingIndex,
-                      1,
-                    );
-                    invocation.completed = true;
-                    invocation.ok = result.ok;
-                    if (result.error) {
-                      invocation.error = result.error;
-                    }
-                    if (result.result !== undefined) {
-                      invocation.result = result.result;
-                    }
+                  observers: {
+                    ...runRequest.observers,
+                    onToolInvocation: (invocation) => {
+                      const evalInvocation = toEvalToolInvocation(invocation);
+                      observations.toolInvocations.push(evalInvocation);
+                      pendingToolInvocations.push(evalInvocation);
+                    },
+                    onToolResult: (result) => {
+                      const pendingIndex = pendingToolInvocations.findIndex(
+                        (candidate) =>
+                          candidate.toolCallId === result.toolCallId,
+                      );
+                      if (pendingIndex === -1) {
+                        return;
+                      }
+                      const [invocation] = pendingToolInvocations.splice(
+                        pendingIndex,
+                        1,
+                      );
+                      invocation.completed = true;
+                      invocation.ok = result.ok;
+                      if (result.error) {
+                        invocation.error = result.error;
+                      }
+                      if (result.result !== undefined) {
+                        invocation.result = result.result;
+                      }
+                    },
                   },
                 },
-              }),
+                scriptedStream?.stream,
+              ),
             );
             const usage =
               outcome.status === "completed"

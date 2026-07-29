@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@chat-adapter/slack": "4.29.0",
+    "@earendil-works/pi-ai": "0.80.6",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",

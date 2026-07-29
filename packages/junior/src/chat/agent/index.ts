@@ -10,7 +10,11 @@
  * diagnostics, artifacts, and transcript state for destination-owned
  * completion.
  */
-import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  type AgentLoopTurnUpdate,
+  type StreamFn,
+} from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -176,9 +180,15 @@ function waitForAbortSettlement(
   });
 }
 
-/** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
+/**
+ * Run a full agent turn, optionally using a caller-provided model stream.
+ *
+ * The stream changes model output only; prompt assembly, persistence, tools,
+ * delivery, and completion still use the normal agent runtime.
+ */
 export async function executeAgentRun(
   request: AgentRunRequest,
+  streamFn?: StreamFn,
 ): Promise<AgentRunOutcome> {
   if (!request.routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
@@ -232,6 +242,7 @@ export async function executeAgentRun(
         request,
         conversationPrivacy,
         runLogContext,
+        streamFn,
       ),
     ),
   );
@@ -241,6 +252,7 @@ async function executeAgentRunInPrivacyContext(
   request: AgentRunRequest,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
+  streamFn: StreamFn | undefined,
 ): Promise<AgentRunOutcome> {
   const { conversationId, input, routing, runId, turnId } = request;
   const policy = request.policy ?? {};
@@ -986,7 +998,10 @@ async function executeAgentRunInPrivacyContext(
     let pendingPiHookError: Error | undefined;
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
-      streamFn: createTracedStreamFn({ conversationPrivacy }),
+      streamFn: createTracedStreamFn({
+        conversationPrivacy,
+        ...(streamFn ? { base: streamFn } : {}),
+      }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(

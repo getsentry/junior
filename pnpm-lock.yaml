@@ -365,6 +365,9 @@ importers:
       '@chat-adapter/slack':
         specifier: 4.29.0
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
+      '@earendil-works/pi-ai':
+        specifier: 0.80.6
+        version: 0.80.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@sentry/junior':
         specifier: workspace:*
         version: file:packages/junior
