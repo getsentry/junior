@@ -8,17 +8,18 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-linear
 ```
 
-Then add the package name to the plugin set exported from `plugins.ts`:
+Then add the plugin to the set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { linearPlugin } from "@sentry/junior-linear";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-linear"]);
+export const plugins = defineJuniorPlugins([linearPlugin()]);
 ```
 
 This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app for the default setup. Each user connects their own Linear account the first time Junior calls a Linear MCP tool. Junior sends the authorization link privately and resumes the same Slack thread automatically after the user authorizes.
 
-The package is designed for ticket-centric work: finding issues, creating issues, updating fields, adding comments, and moving work through the normal Linear workflow without leaving Slack.
+Issue creation uses a Junior-owned tool backed by Linear's hosted MCP connection. This lets Junior prevent duplicate retries and link created issues to the conversation while keeping Linear's existing OAuth flow. Other Linear operations continue to use the hosted MCP tools.
 
 Optional: set channel defaults when a Slack thread usually routes work to the same Linear destination:
 

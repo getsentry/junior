@@ -270,6 +270,7 @@ export interface McpToolManagerOptions {
 
 export interface ManagedMcpToolResult {
   content: Array<TextContent | ImageContent>;
+  structuredContent?: unknown;
 }
 
 export interface ManagedMcpToolDescriptor {
@@ -362,6 +363,7 @@ export class McpToolManager {
     try {
       const client = await this.getClient(plugin);
       const tools = this.filterListedTools(plugin, await client.listTools());
+      this.assertWrappedToolsAvailable(plugin, tools);
       this.toolsByProvider.set(
         provider,
         tools.map((tool) => this.toManagedTool(plugin, client, tool)),
@@ -430,6 +432,25 @@ export class McpToolManager {
 
     const allowedToolSet = new Set(allowedTools);
     return tools.filter((tool) => allowedToolSet.has(tool.name));
+  }
+
+  private assertWrappedToolsAvailable(
+    plugin: PluginDefinition,
+    tools: PluginMcpListedTool[],
+  ): void {
+    const wrappedTools = plugin.manifest.mcp?.wrappedTools ?? [];
+    if (wrappedTools.length === 0) {
+      return;
+    }
+    const availableToolNames = new Set(tools.map((tool) => tool.name));
+    const missingTools = wrappedTools.filter(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (missingTools.length > 0) {
+      throw new Error(
+        `Plugin ${plugin.manifest.name} MCP discovery missing wrapped tools: ${missingTools.join(", ")}`,
+      );
+    }
   }
 
   private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
@@ -541,6 +562,9 @@ export class McpToolManager {
 
               return {
                 content: toModelVisibleMcpContent(result),
+                ...(result.structuredContent !== undefined
+                  ? { structuredContent: result.structuredContent }
+                  : {}),
               };
             } catch (error) {
               if (
@@ -625,10 +649,41 @@ export class McpToolManager {
         continue;
       }
 
-      resolved.push(...(this.toolsByProvider.get(provider) ?? []));
+      const wrappedTools = new Set(
+        this.pluginsByProvider.get(provider)?.manifest.mcp?.wrappedTools ?? [],
+      );
+      resolved.push(
+        ...(this.toolsByProvider.get(provider) ?? []).filter(
+          (tool) => !wrappedTools.has(tool.rawName),
+        ),
+      );
     }
 
     return resolved;
+  }
+
+  /** Call one active provider tool, including a plugin-owned wrapped tool. */
+  async callProviderTool(
+    provider: string,
+    rawName: string,
+    args: Record<string, unknown>,
+    options?: { toolCallId?: string },
+  ): Promise<ManagedMcpToolResult> {
+    if (!this.activeProviders.has(provider)) {
+      throw new McpToolError(`MCP provider is not active: ${provider}`);
+    }
+    const tool = (this.toolsByProvider.get(provider) ?? []).find(
+      (candidate) => candidate.rawName === rawName,
+    );
+    if (!tool) {
+      throw new McpToolError(
+        `MCP provider ${provider} does not expose tool ${rawName}`,
+      );
+    }
+    return await tool.execute(args, {
+      conversationPrivacy: "private",
+      ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+    });
   }
 
   private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {

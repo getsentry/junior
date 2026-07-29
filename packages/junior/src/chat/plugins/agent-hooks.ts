@@ -4,6 +4,7 @@ import {
   resourceEventSchema,
 } from "@sentry/junior-plugin-api";
 import type {
+  PluginMcp,
   PluginReadState,
   PluginRoute,
   PluginRouteMethod,
@@ -164,6 +165,39 @@ function invocationPluginContext(
     ...common,
     destination: context.destination,
     actor: context.actor?.platform === "local" ? context.actor : undefined,
+  };
+}
+
+function pluginMcpContext(
+  plugin: PluginRegistration,
+  context: ToolRuntimeContext,
+): PluginMcp | undefined {
+  const manager = context.mcpToolManager;
+  const wrappedTools = new Set(plugin.manifest.mcp?.wrappedTools ?? []);
+  if (!manager || wrappedTools.size === 0) {
+    return undefined;
+  }
+  const provider = plugin.manifest.name;
+  return {
+    async prepare() {
+      await manager.activateProvider(provider);
+      return manager.getActiveProviders().includes(provider)
+        ? "ready"
+        : "authorization_pending";
+    },
+    async callTool(input) {
+      if (!wrappedTools.has(input.name)) {
+        throw new Error(
+          `Plugin ${provider} cannot call unwrapped MCP tool ${input.name}`,
+        );
+      }
+      return await manager.callProviderTool(
+        provider,
+        input.name,
+        input.arguments ?? {},
+        input.toolCallId ? { toolCallId: input.toolCallId } : undefined,
+      );
+    },
   };
 }
 
@@ -506,6 +540,7 @@ export function getPluginTools(
           plugin: pluginName,
         })
       : undefined;
+    const mcp = pluginMcpContext(plugin, context);
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -524,6 +559,7 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
+        ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };
@@ -543,6 +579,7 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
+        ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };

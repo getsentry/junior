@@ -78,4 +78,19 @@ describe("inline plugin manifests", () => {
       EXAMPLE_SAFE_TOKEN: "${EXAMPLE_SAFE_TOKEN}",
     });
   });
+
+  it("preserves wrapped MCP tool declarations", () => {
+    const manifest = parse({
+      name: "linear",
+      displayName: "Linear",
+      description: "Linear issue tracking",
+      mcp: {
+        transport: "http",
+        url: "https://mcp.linear.app/mcp",
+        wrappedTools: ["create_issue"],
+      },
+    });
+
+    expect(manifest.mcp?.wrappedTools).toEqual(["create_issue"]);
+  });
 });

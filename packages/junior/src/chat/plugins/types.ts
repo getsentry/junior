@@ -50,6 +50,7 @@ export interface PluginMcpHttpConfig {
   url: string;
   headers?: Record<string, string>;
   allowedTools?: string[];
+  wrappedTools?: string[];
 }
 
 export type PluginMcpConfig = PluginMcpHttpConfig;
@@ -132,6 +133,7 @@ export interface PluginManifestConfig {
     url?: string;
     headers?: Record<string, string | null> | null;
     allowedTools?: string[] | null;
+    wrappedTools?: string[] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
   target?: {

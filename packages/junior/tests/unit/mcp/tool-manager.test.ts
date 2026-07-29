@@ -63,7 +63,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 
 function buildPlugin(
   name = "demo",
-  options: { allowedTools?: string[] } = {},
+  options: { allowedTools?: string[]; wrappedTools?: string[] } = {},
 ): PluginDefinition {
   return {
     dir: `/tmp/plugins/${name}`,
@@ -77,6 +77,7 @@ function buildPlugin(
         transport: "http",
         url: "https://mcp.example.com",
         ...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
+        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : {}),
       },
     },
   };
@@ -535,6 +536,57 @@ describe("McpToolManager", () => {
 
     await expect(manager.activateProvider("notion")).rejects.toThrow(
       "Plugin notion MCP discovery missing allowlisted tools: notion-fetch",
+    );
+  });
+
+  it("hides wrapped tools from discovery but keeps them callable", async () => {
+    const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
+    listToolsMock.mockResolvedValue([
+      {
+        name: "create_issue",
+        description: "Create an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "get_issue",
+        description: "Get an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ]);
+    callToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "ENG-123" }],
+      structuredContent: { identifier: "ENG-123" },
+      isError: false,
+    });
+    const manager = new McpToolManager([plugin]);
+
+    await manager.activateProvider("linear");
+
+    expect(manager.getActiveToolCatalog()).toMatchObject([
+      { provider: "linear", rawName: "get_issue" },
+    ]);
+    await expect(
+      manager.callProviderTool("linear", "create_issue", {
+        team: "Engineering",
+        title: "Wrapped issue",
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ identifier: "ENG-123" }, null, 2),
+        },
+      ],
+      structuredContent: { identifier: "ENG-123" },
+    });
+  });
+
+  it("fails activation when a wrapped MCP tool is missing", async () => {
+    const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
+    const manager = new McpToolManager([plugin]);
+
+    await expect(manager.activateProvider("linear")).rejects.toThrow(
+      "Plugin linear MCP discovery missing wrapped tools: create_issue",
     );
   });
 });

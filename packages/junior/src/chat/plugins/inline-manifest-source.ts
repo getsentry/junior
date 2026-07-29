@@ -64,6 +64,7 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   setDefined(result, "url", mcp.url);
   setDefined(result, "headers", mcp.headers);
   setDefined(result, "allowed-tools", mcp.allowedTools);
+  setDefined(result, "wrapped-tools", mcp.wrappedTools);
   return result;
 }
 

@@ -1,5 +1,6 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
+import { linearPlugin } from "@sentry/junior-linear";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { vercelPlugin } from "@sentry/junior-vercel";
@@ -17,7 +18,7 @@ export const plugins = defineJuniorPlugins([
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
   "@sentry/junior-hex",
-  "@sentry/junior-linear",
+  linearPlugin(),
   memoryPlugin(),
   "@sentry/junior-notion",
   schedulerPlugin(),

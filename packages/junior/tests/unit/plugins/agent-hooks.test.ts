@@ -660,6 +660,71 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("gives MCP wrapper tools access only to their declared provider tools", async () => {
+    let captured: ToolRegistrationHookContext | undefined;
+    const activateProvider = vi.fn(async () => true);
+    const callProviderTool = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "created" }],
+      structuredContent: { identifier: "ENG-123" },
+    }));
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "linear",
+          displayName: "Linear",
+          description: "Linear",
+          mcp: {
+            transport: "http",
+            url: "https://mcp.linear.example.test/mcp",
+            wrappedTools: ["create_issue"],
+          },
+        },
+        hooks: {
+          tools(ctx) {
+            captured = ctx;
+            return {};
+          },
+        },
+      }),
+    ]);
+    try {
+      getPluginTools({
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        mcpToolManager: {
+          activateProvider,
+          callProviderTool,
+          getActiveProviders: () => ["linear"],
+        } as never,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+
+      await expect(captured?.mcp?.prepare()).resolves.toBe("ready");
+      await expect(
+        captured?.mcp?.callTool({
+          name: "create_issue",
+          arguments: { title: "Wrapped issue" },
+          toolCallId: "call-1",
+        }),
+      ).resolves.toMatchObject({
+        structuredContent: { identifier: "ENG-123" },
+      });
+      expect(activateProvider).toHaveBeenCalledWith("linear");
+      expect(callProviderTool).toHaveBeenCalledWith(
+        "linear",
+        "create_issue",
+        { title: "Wrapped issue" },
+        { toolCallId: "call-1" },
+      );
+      await expect(
+        captured?.mcp?.callTool({ name: "get_issue" }),
+      ).rejects.toThrow("cannot call unwrapped MCP tool get_issue");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("validates plugin task registration names", () => {
     const previous = setPlugins([]);
     try {

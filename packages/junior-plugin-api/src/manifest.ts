@@ -57,6 +57,8 @@ export interface PluginMcpConfig {
   headers?: Record<string, string>;
   transport: "http";
   url: string;
+  /** Provider tools exposed only through plugin-owned wrapper tools. */
+  wrappedTools?: string[];
 }
 
 export interface PluginEnvVarDeclaration {

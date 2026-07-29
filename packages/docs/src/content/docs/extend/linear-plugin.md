@@ -2,6 +2,7 @@
 title: Linear Plugin
 description: Configure the hosted Linear MCP server for issue search and ticket workflow operations.
 type: tutorial
+summary: Connect Linear and create conversation-linked issues without replacing Linear's hosted OAuth flow.
 prerequisites:
   - /extend/
 related:
@@ -23,12 +24,13 @@ pnpm add @sentry/junior @sentry/junior-linear
 
 ## Runtime setup
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Add the plugin to the set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { linearPlugin } from "@sentry/junior-linear";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-linear"]);
+export const plugins = defineJuniorPlugins([linearPlugin()]);
 ```
 
 ## Auth model
@@ -37,6 +39,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-linear"]);
 - Each user completes Linear's MCP OAuth flow the first time Junior calls a Linear MCP tool on their behalf.
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 - The packaged plugin is optimized for interactive user-driven work in Slack rather than unattended background automation.
+
+Junior creates issues through a native `linear_createIssue` tool backed by the hosted MCP connection. The tool links created issues to the Junior conversation and prevents an uncertain retry from creating a duplicate. Reads, updates, comments, and workflow operations continue to use Linear's hosted MCP tools.
 
 ## Optional channel defaults
 

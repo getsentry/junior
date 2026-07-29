@@ -237,6 +237,7 @@ const mcpSourceSchema = z
     url: httpsUrlString,
     headers: stringMapSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
+    "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
   })
   .passthrough();
 
@@ -360,6 +361,7 @@ function manifestConfigPatch(
       setDefined(mcp, "url", config.mcp.url);
       setDefined(mcp, "headers", config.mcp.headers);
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
+      setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
       result.mcp = mcp;
     }
   }
@@ -949,6 +951,9 @@ function normalizeMcp(
     ...(headers ? { headers } : {}),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
+      : {}),
+    ...(result.data["wrapped-tools"]
+      ? { wrappedTools: result.data["wrapped-tools"] }
       : {}),
   } satisfies PluginMcpConfig;
 }

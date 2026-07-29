@@ -67,6 +67,25 @@ export interface PluginEgress {
   }): Promise<Response>;
 }
 
+export type PluginMcpContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+export interface PluginMcpToolResult {
+  content: PluginMcpContent[];
+  structuredContent?: unknown;
+}
+
+/** Access to this plugin's hosted MCP provider without exposing credentials. */
+export interface PluginMcp {
+  callTool(input: {
+    arguments?: Record<string, unknown>;
+    name: string;
+    toolCallId?: string;
+  }): Promise<PluginMcpToolResult>;
+  prepare(): Promise<"authorization_pending" | "ready">;
+}
+
 export interface SandboxPrepareHookContext extends PluginContext {
   actor?: Actor;
   sandbox: PluginSandbox;
@@ -350,6 +369,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   embedder: PluginEmbedder;
   egress: PluginEgress;
+  mcp?: PluginMcp;
   model: PluginModel;
   state: PluginState;
   userText?: string;

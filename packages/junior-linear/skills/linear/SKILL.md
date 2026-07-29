@@ -63,10 +63,11 @@ Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice
 - No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
 - Body structure matches complexity — no empty sections, no restated title, no raw research dump.
 
-If any gate fails, revise and re-check before calling the MCP create/update tool.
+If any gate fails, revise and re-check before calling the Linear create/update tool.
 
 6. Execute:
 
+- Create new issues with `linear_createIssue`. Do not call the raw Linear `create_issue` MCP tool.
 - For updates, prefer partial changes over full rewrites. Fetch current issue state first if the mutation could overwrite structured fields or duplicate an existing comment.
 - Check for duplicates silently before creating a new issue when the request appears related to existing work.
 
