@@ -1,0 +1,1 @@
+CREATE INDEX "junior_memory_memories_search_idx" ON "junior_memory_memories" USING gin (to_tsvector('english', "content")) WHERE "junior_memory_memories"."archived_at_ms" IS NULL AND "junior_memory_memories"."superseded_at_ms" IS NULL AND "junior_memory_memories"."superseded_by_id" IS NULL;

@@ -140,6 +140,7 @@ function invocationPluginContext(
     ...base,
     conversationId: context.conversationId,
     embedder: createPluginEmbedder(plugin.manifest.name),
+    model: createPluginModel(plugin.manifest.name, plugin.model),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),

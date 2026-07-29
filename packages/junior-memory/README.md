@@ -34,6 +34,8 @@ exported types, tools, and tests are authoritative.
 - Records retain provenance, lifecycle status, supersession relationships, and
   timestamps needed for review and deletion.
 - Embeddings are derived indexes, not independent memory authority.
+- Embedding distance never decides that two memories are duplicates. Exact
+  content and preference review own duplicate and supersession decisions.
 - Writes are idempotent where a completed session or tool retry can repeat.
 - Removal and supersession preserve enough lifecycle information to prevent
   deleted facts from being recalled or silently recreated.
@@ -45,10 +47,15 @@ exported types, tools, and tests are authoritative.
 - Passive extraction creates only durable, reusable facts—not transient tasks,
   conversation summaries, secrets, or speculative interpretation.
 - Candidate review resolves duplicates and supersession before activation.
-- Recall is bounded and relevance-ranked; an empty result contributes no filler
-  prompt text.
-- Model or embedding failures fail the owning hook/task without corrupting
-  existing memory state.
+- Search combines independently ranked vector and PostgreSQL full-text matches
+  with reciprocal rank fusion; provider-specific raw scores are never added
+  together.
+- Automatic recall retrieves a broad candidate window, then uses the
+  memory-owned relevance model to admit at most five directly useful memories.
+  An empty result contributes no filler prompt text.
+- Automatic recall degrades to no prompt contribution when relevance selection
+  fails. Review, extraction, and write failures still fail their owning
+  hook/task without corrupting existing memory state.
 
 ## Configuration
 

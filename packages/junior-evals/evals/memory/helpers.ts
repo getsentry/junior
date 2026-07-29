@@ -43,8 +43,7 @@ export async function seedMemory(args: {
       messageTs: args.thread.thread_ts,
       teamId: memoryTeamId,
       threadTs: args.thread.thread_ts,
-
-      type: "priv",
+      type: args.thread.channel_type === "channel" ? "pub" : "priv",
     }),
   });
   const input = {

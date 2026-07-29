@@ -218,6 +218,36 @@ function createTestEmbedder(
   };
 }
 
+function recallModel(select: (candidates: string[]) => string[]): PluginModel {
+  return {
+    async completeObject(input) {
+      const encoded =
+        /<candidate-memories>\n(.+)\n<\/candidate-memories>/s.exec(
+          input.prompt,
+        )?.[1];
+      const candidates = JSON.parse(
+        (encoded ?? "[]")
+          .replaceAll("&lt;", "<")
+          .replaceAll("&gt;", ">")
+          .replaceAll("&amp;", "&"),
+      ) as Array<{
+        content: string;
+        id: string;
+      }>;
+      return {
+        object: {
+          relevantIds: select(candidates.map(({ content }) => content)).map(
+            (content) =>
+              candidates.find((candidate) => candidate.content === content)!.id,
+          ),
+        },
+      };
+    },
+  };
+}
+
+const selectAllRecallModel = recallModel((candidates) => candidates);
+
 function extractionModel(
   memories: Array<{
     content: string;
@@ -471,6 +501,38 @@ describe("memory plugin storage", () => {
       content: "Uses qa-structured-output in CLI QA.",
     });
     expect(calls[0]?.schema).toBeDefined();
+  });
+
+  it("normalizes recall selection to known unique candidate ids", async () => {
+    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
+    const model: PluginModel = {
+      async completeObject(input) {
+        calls.push(input);
+        return {
+          object: {
+            relevantIds: ["memory-2", "unknown", "memory-2", "memory-1"],
+          },
+        };
+      },
+    };
+    const agent = createMemoryAgent(model);
+
+    await expect(
+      agent.selectRelevantMemories({
+        candidates: [
+          { content: "Release notes live in Notion.", id: "memory-1" },
+          {
+            content: "getsentry/junior CI runs package tests with pnpm.",
+            id: "memory-2",
+          },
+        ],
+        userRequest: "How does CI work in getsentry/junior?",
+      }),
+    ).resolves.toEqual(["memory-2", "memory-1"]);
+    expect(calls[0]?.system).toContain(
+      "Reject memories that merely share a company",
+    );
+    expect(calls[0]?.prompt).toContain("<candidate-memories>");
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -2077,6 +2139,46 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("applies the vector cutoff to automatic recall without narrowing explicit search", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const query = "semantic needle";
+      const closeContent = "Close vector-only memory.";
+      const weakContent = "Weak vector-only memory.";
+      const embedder = createTestEmbedder({
+        [query]: unitEmbedding(0),
+        [closeContent]: cosineEmbedding(0.8),
+        [weakContent]: cosineEmbedding(0.5),
+      });
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        maxVectorDistance: 0.45,
+        now: () => TEST_NOW_MS,
+      });
+      const close = await store.createMemory({
+        content: closeContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-distance-close",
+      });
+      const weak = await store.createMemory({
+        content: weakContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-distance-weak",
+      });
+
+      await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual([
+        expect.objectContaining({ id: close.memory.id }),
+      ]);
+      await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
+        expect.objectContaining({ id: close.memory.id }),
+        expect.objectContaining({ id: weak.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("fuses vector and lexical matches before applying the search limit", async () => {
     const fixture = await createMemoryFixture();
 
@@ -2085,7 +2187,7 @@ WHERE id = '${superseded.memory.id}'
       const vectorMemories = [
         "Uses server components for dashboard filters.",
         "Keeps migrations generated through drizzle-kit.",
-        "Prefers short-lived QA branches.",
+        "Maintains short-lived QA branches.",
         "Stores runbooks near deploy checklists.",
       ];
       const lexicalMemory = "Exact lexical preference lives in this memory.";
@@ -2126,6 +2228,69 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         vectorStore.searchMemories({ limit: 1, query }),
       ).resolves.toEqual([expect.objectContaining({ id: lexical.memory.id })]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps exact structured identifiers ahead of generic lexical overlap", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 1;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const exact = await store.createConversationMemory({
+        content: "getsentry/junior CI runs package tests with pnpm.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-exact",
+      });
+      nowMs += 1;
+      await store.createConversationMemory({
+        content:
+          "CI work is documented with repository tests and engineering notes.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-generic",
+      });
+
+      await expect(
+        store.searchMemories({
+          limit: 1,
+          query: "How does CI work in getsentry/junior?",
+        }),
+      ).resolves.toEqual([expect.objectContaining({ id: exact.memory.id })]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not treat a longer repository name as an exact identifier match", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 1;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const exact = await store.createConversationMemory({
+        content: "getsentry/junior CI runs package tests with pnpm.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-boundary-exact",
+      });
+      nowMs += 1;
+      await store.createConversationMemory({
+        content: "getsentry/junior-old CI runs package tests with pnpm.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-boundary-prefix",
+      });
+
+      await expect(
+        store.searchMemories({
+          limit: 1,
+          query: "How does CI work in getsentry/junior?",
+        }),
+      ).resolves.toEqual([expect.objectContaining({ id: exact.memory.id })]);
     } finally {
       await fixture.close();
     }
@@ -2440,7 +2605,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("preserves vector duplicate retry identity", async () => {
+  it("preserves retry identity for a distinct semantic neighbor", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -2455,46 +2620,46 @@ WHERE id = '${superseded.memory.id}'
         now: () => TEST_NOW_MS,
       });
 
-      const created = await store.createMemory({
+      const first = await store.createMemory({
         content: firstContent,
         kind: "preference",
         idempotencyKey: "memory-test:vector-dedup-idempotent-original",
       });
-      await expect(
-        store.createMemory({
-          content: duplicateContent,
-          kind: "preference",
-          idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
-        }),
-      ).resolves.toMatchObject({
-        created: false,
-        memory: { id: created.memory.id, content: firstContent },
+      const second = await store.createMemory({
+        content: duplicateContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
       });
+      expect(second).toMatchObject({
+        created: true,
+        memory: { content: duplicateContent },
+      });
+      expect(second.memory.id).not.toBe(first.memory.id);
       await expect(
         store.createMemory({
-          content: "Changed retry content should stay deduped.",
+          content:
+            "Changed retry content should resolve to its original write.",
           kind: "preference",
           idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
         }),
       ).resolves.toMatchObject({
         created: false,
-        memory: { id: created.memory.id, content: firstContent },
+        memory: { id: second.memory.id, content: duplicateContent },
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: created.memory.id }),
-      ]);
+      await expect(store.listMemories({})).resolves.toHaveLength(2);
     } finally {
       await fixture.close();
     }
   }, 15_000);
 
-  it("returns an existing same-kind memory for high-confidence vector duplicates", async () => {
+  it("does not collapse distinct facts with identical embeddings", async () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const firstContent = "Prefers weekly summaries in bullet form.";
-      const duplicateContent = "Likes weekly updates as bullet lists.";
+      const firstContent = "getsentry/junior CI runs package tests with pnpm.";
+      const duplicateContent =
+        "getsentry/junior-old CI runs package tests with pnpm.";
       const embedder = createTestEmbedder({
         [firstContent]: unitEmbedding(1),
         [duplicateContent]: unitEmbedding(1),
@@ -2506,28 +2671,24 @@ WHERE id = '${superseded.memory.id}'
 
       const created = await store.createMemory({
         content: firstContent,
-        kind: "preference",
+        kind: "knowledge",
         idempotencyKey: "memory-test:vector-dedup-original",
       });
-      await expect(
-        store.createMemory({
-          content: duplicateContent,
-          kind: "preference",
-          idempotencyKey: "memory-test:vector-dedup-repeat",
-        }),
-      ).resolves.toMatchObject({
-        created: false,
-        memory: { id: created.memory.id, content: firstContent },
+      const neighbor = await store.createMemory({
+        content: duplicateContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:vector-dedup-repeat",
       });
+      expect(neighbor).toMatchObject({
+        created: true,
+        memory: { content: duplicateContent },
+      });
+      expect(neighbor.memory.id).not.toBe(created.memory.id);
 
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: created.memory.id }),
-      ]);
+      await expect(store.listMemories({})).resolves.toHaveLength(2);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toEqual([
-        expect.objectContaining({ memoryId: created.memory.id }),
-      ]);
+      ).resolves.toHaveLength(2);
     } finally {
       await fixture.close();
     }
@@ -3011,6 +3172,7 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
+        model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
@@ -3053,6 +3215,7 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
+        model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
         text: "Where do release notes live?",
@@ -3091,6 +3254,138 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("filters candidates that only share repository and CI vocabulary", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      });
+      const relevant = await store.createConversationMemory({
+        content: "getsentry/junior CI runs package tests with pnpm.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-relevant",
+      });
+      await store.createConversationMemory({
+        content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-vocabulary",
+      });
+      await store.createConversationMemory({
+        content:
+          "Single-tenant repository access is configured in the admin dashboard.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-unrelated",
+      });
+
+      const plugin = createMemoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        log: noopLogger,
+        model: recallModel((candidates) =>
+          candidates.filter((content) => content.includes("getsentry/junior")),
+        ),
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "How does CI work in getsentry/junior?",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      expect(contribution.context.content).toMatchObject({
+        memories: [{ id: relevant.memory.id }],
+      });
+      expect(contribution.renderPrompt()).not.toContain("autofix");
+      expect(contribution.renderPrompt()).not.toContain("Single-tenant");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("omits memory context when no candidate is directly relevant", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      await createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-empty",
+      });
+
+      const plugin = createMemoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          destination: slackDestination(context),
+          db: memoryDb(fixture),
+          embedder: createTestEmbedder(),
+          log: noopLogger,
+          model: recallModel(() => []),
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: "How does CI work in getsentry/junior?",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("continues without recalled context when relevance selection fails", async () => {
+    const fixture = await createMemoryFixture();
+    const warnings: string[] = [];
+    const log: PluginLogger = {
+      error() {},
+      info() {},
+      warn(message) {
+        warnings.push(message);
+      },
+    };
+
+    try {
+      const context = slackContext();
+      await createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "Release notes live in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-gate-failure",
+      });
+
+      const plugin = createMemoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          destination: slackDestination(context),
+          db: memoryDb(fixture),
+          embedder: createTestEmbedder(),
+          log,
+          model: {
+            async completeObject() {
+              throw new Error("model unavailable");
+            },
+          },
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: "Where do release notes live?",
+        }),
+      ).resolves.toBeUndefined();
+      expect(warnings).toEqual(["memory_recall_selection_failed"]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("skips user prompt memory recall when prompt text is blank", async () => {
     const fixture = await createMemoryFixture();
 
@@ -3110,6 +3405,7 @@ WHERE id = '${superseded.memory.id}'
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log: noopLogger,
+          model: selectAllRecallModel,
           plugin: { name: "memory" },
           state: memoryState,
           text: "   ",
@@ -3147,6 +3443,7 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder,
         log: noopLogger,
+        model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
         text: query,

@@ -2,9 +2,11 @@ import {
   definePromptContext,
   type UserPromptContribution,
   type Actor,
+  type PluginLogger,
   type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import type { MemoryAgent } from "./agent";
 import {
   createMemoryStore,
   type MemoryDb,
@@ -14,13 +16,16 @@ import {
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
+const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
 
 export interface MemoryRecallContext {
+  agent: Pick<MemoryAgent, "selectRelevantMemories">;
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
+  log: PluginLogger;
   /** Maximum cosine distance for vector recall. Passed through to the memory store. */
   maxVectorDistance?: number;
   actor?: Actor;
@@ -122,16 +127,38 @@ export async function createMemoryPromptContributions(
     ...(context.actor ? { actor: context.actor } : {}),
     source: context.source,
   });
-  const memories = await createMemoryStore(context.db, runtimeContext, {
+  const candidates = await createMemoryStore(context.db, runtimeContext, {
     ...(context.embedder ? { embedder: context.embedder } : {}),
     ...(context.maxVectorDistance !== undefined
       ? { maxVectorDistance: context.maxVectorDistance }
       : {}),
-  }).searchMemories({
+  }).recallMemories({
     query: context.text,
-    limit: DEFAULT_RECALL_LIMIT,
+    limit: RECALL_CANDIDATE_LIMIT,
   });
-  const selected = selectPromptMemories(memories);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  let relevantIds: string[];
+  try {
+    relevantIds = await context.agent.selectRelevantMemories({
+      candidates: candidates.map(({ content, id }) => ({ content, id })),
+      userRequest: context.text,
+    });
+  } catch {
+    // Automatic recall is optional context; a relevance-model failure must not
+    // prevent the user's turn from continuing without recalled memory.
+    context.log.warn("memory_recall_selection_failed");
+    return undefined;
+  }
+  const candidatesById = new Map(
+    candidates.map((memory) => [memory.id, memory]),
+  );
+  const relevant = relevantIds
+    .map((id) => candidatesById.get(id))
+    .filter((memory): memory is MemoryRecord => memory !== undefined)
+    .slice(0, DEFAULT_RECALL_LIMIT);
+  const selected = selectPromptMemories(relevant);
   if (selected.length === 0) {
     return undefined;
   }

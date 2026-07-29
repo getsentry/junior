@@ -58,6 +58,11 @@ export const juniorMemoryMemories = pgTable(
       .where(
         sql`${table.archivedAtMs} IS NULL AND ${table.expiresAtMs} IS NOT NULL`,
       ),
+    index("junior_memory_memories_search_idx")
+      .using("gin", sql`to_tsvector('english', ${table.content})`)
+      .where(
+        sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
+      ),
     uniqueIndex("junior_memory_memories_idempotency_idx")
       .on(table.scope, table.scopeKey, table.idempotencyKey)
       .where(

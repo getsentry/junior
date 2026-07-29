@@ -135,10 +135,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       async userPrompt(ctx) {
         return await createMemoryPromptContributions({
+          agent: createMemoryAgent(ctx.model),
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
           ...(ctx.actor ? { actor: ctx.actor } : {}),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
+          log: ctx.log,
           maxVectorDistance: recallMaxVectorDistance(options),
           source: ctx.source,
           text: ctx.text,

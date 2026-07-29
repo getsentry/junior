@@ -10,7 +10,7 @@ related:
   - /start-here/quickstart/
 ---
 
-The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Junior recalls relevant memories before each user turn, exposes explicit memory tools (remember, list, search, remove), and passively extracts memories from completed public-channel and local sessions.
+The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed public-channel and local sessions.
 
 New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 
@@ -39,7 +39,7 @@ export const plugins = defineJuniorPlugins([memoryPlugin()]);
 
 Do not register `@sentry/junior-memory` as a bare package-name string. The memory plugin uses `defineJuniorPlugin` with runtime hooks for tool registration and session processing; a bare string skips those hooks and the plugin will not activate its runtime behavior.
 
-Pass `modelId` to override the model used for memory classification and consolidation:
+Pass `modelId` to override the model used for memory classification, consolidation, and automatic recall relevance:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -57,7 +57,7 @@ export const plugins = defineJuniorPlugins([
 | `DATABASE_URL`                      | Yes      | Postgres connection string for memory storage.                                                                                                                                                               |
 | `JUNIOR_DATABASE_DRIVER`            | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments.                                                                                                                  |
 | `AI_EMBEDDING_MODEL`                | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).                                                                                                                  |
-| `AI_MEMORY_MODEL`                   | No       | Model for memory classification and consolidation. Defaults to the app's structured model.                                                                                                                   |
+| `AI_MEMORY_MODEL`                   | No       | Model for memory classification, consolidation, and automatic recall relevance. Defaults to the app's structured model.                                                                                      |
 | `MEMORY_RECALL_MAX_VECTOR_DISTANCE` | No       | Maximum cosine distance for vector recall candidates. Values 0–1; lower = stricter. Values above 1 are clamped to 1. Default `0.45` suits `text-embedding-3-small`. Tune when changing `AI_EMBEDDING_MODEL`. |
 
 `AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
@@ -105,7 +105,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.
-- **Memories not recalled**: the database migration has not run yet. Run `pnpm junior upgrade` against the production database.
+- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance or may not be directly relevant to the request.
 
 ## Next step
 

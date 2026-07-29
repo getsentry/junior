@@ -23,6 +23,28 @@ const memoryRejectReasonSchema = z.enum([
   "assistant_or_system_detail",
   "unsupported_scope",
 ]);
+const memoryRecallCandidateSchema = z
+  .object({
+    content: z.string().min(1),
+    id: z.string().min(1),
+  })
+  .strict();
+const memoryRecallInputSchema = z
+  .object({
+    candidates: z.array(memoryRecallCandidateSchema).min(1).max(20),
+    userRequest: z.string().min(1),
+  })
+  .strict();
+const memoryRecallDecisionSchema = z
+  .object({
+    relevantIds: z
+      .array(z.string().min(1))
+      .max(20)
+      .describe(
+        "Candidate ids whose memories directly help with the current request, ordered by relevance.",
+      ),
+  })
+  .strict();
 const createMemoryRequestSchema = z
   .object({
     content: z.string().min(1),
@@ -169,6 +191,7 @@ type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
+export type MemoryRecallInput = z.output<typeof memoryRecallInputSchema>;
 
 export type CreateMemoryRequest = z.output<typeof createMemoryRequestSchema>;
 export type ExtractSessionRequest = z.output<
@@ -177,6 +200,10 @@ export type ExtractSessionRequest = z.output<
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
 export interface MemoryAgent {
+  /** Select candidate memories that directly help with the current request. */
+  selectRelevantMemories(
+    request: MemoryRecallInput,
+  ): Promise<string[]> | string[];
   /** Classify a new preference against related active preferences. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
@@ -202,6 +229,13 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
+].join("\n");
+const MEMORY_RECALL_SYSTEM = [
+  "You are Junior's memory recall relevance agent.",
+  "Select only memories that would directly help answer the user's current request.",
+  "Reject memories that merely share a company, product family, repository vocabulary, programming language, or general engineering context.",
+  "Prefer specific matches on the exact repository, workflow, command, test, CI setup, project, or user preference being asked about.",
+  "An empty relevantIds array is correct when no candidate is directly helpful.",
 ].join("\n");
 const MEMORY_PREFERENCE_ADJUDICATION_SYSTEM = [
   "You are Junior's memory preference adjudication agent.",
@@ -444,6 +478,22 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   ].join("\n");
 }
 
+function recallRelevancePrompt(request: MemoryRecallInput): string {
+  return [
+    "<memory-recall-input>",
+    "<user-request>",
+    escapeXml(request.userRequest),
+    "</user-request>",
+    "",
+    "<candidate-memories>",
+    escapeXml(JSON.stringify(request.candidates)),
+    "</candidate-memories>",
+    "",
+    "Return only ids from candidate-memories. Preserve the most relevant candidates first.",
+    "</memory-recall-input>",
+  ].join("\n");
+}
+
 function preferenceAdjudicationPrompt(
   request: MemorySupersessionInput,
 ): string {
@@ -477,9 +527,23 @@ function preferenceAdjudicationPrompt(
   ].join("\n");
 }
 
-/** Create the memory-owned agent that reviews and extracts memory candidates. */
+/** Create the memory-owned agent that reviews, extracts, and recalls memories. */
 export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
+    async selectRelevantMemories(rawRequest) {
+      const request = memoryRecallInputSchema.parse(rawRequest);
+      const result = await model.completeObject({
+        schema: memoryRecallDecisionSchema,
+        system: MEMORY_RECALL_SYSTEM,
+        prompt: recallRelevancePrompt(request),
+        maxTokens: 400,
+      });
+      const decision = memoryRecallDecisionSchema.parse(result.object);
+      const candidateIds = new Set(request.candidates.map(({ id }) => id));
+      return [...new Set(decision.relevantIds)].filter((id) =>
+        candidateIds.has(id),
+      );
+    },
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({

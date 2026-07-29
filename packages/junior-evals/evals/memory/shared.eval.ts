@@ -8,10 +8,69 @@ import {
   type MemoryThread,
   memoryPluginOverrides,
   readMemories,
+  seedMemory,
   visibleAssistantText,
 } from "./helpers";
 
 describeEval("Shared Memory", slackEvals, (it) => {
+  const recallRelevanceThread = {
+    channel_type: "channel",
+    id: "thread-memory-recall-relevance",
+    channel_id: "CMEMORYRECALLRELEVANCE",
+    thread_ts: "17000000.000000",
+  } satisfies MemoryThread;
+
+  it("when retrieved memories share generic engineering vocabulary, recall only the directly useful fact", async ({
+    run,
+  }) => {
+    await clearMemories();
+    await seedMemory({
+      content: "getsentry/junior CI runs package tests with pnpm.",
+      idempotencyKey: "eval-memory-recall-relevant",
+      kind: "knowledge",
+      scope: "conversation",
+      thread: recallRelevanceThread,
+    });
+    await seedMemory({
+      content:
+        "getsentry/sentry autofix pull request tests use a dashboard workflow.",
+      idempotencyKey: "eval-memory-recall-vocabulary",
+      kind: "knowledge",
+      scope: "conversation",
+      thread: recallRelevanceThread,
+    });
+    await seedMemory({
+      content:
+        "Single-tenant repository access is configured in the admin dashboard.",
+      idempotencyKey: "eval-memory-recall-unrelated",
+      kind: "knowledge",
+      scope: "conversation",
+      thread: recallRelevanceThread,
+    });
+
+    await run({
+      overrides: memoryPluginOverrides,
+      initialEvents: [
+        mention(
+          "What do you remember about how CI works in getsentry/junior? Reply with a textual answer using only existing conversation context; do not inspect files or use tools.",
+          {
+            thread: recallRelevanceThread,
+          },
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant says getsentry/junior CI runs package tests with pnpm.",
+          "The answer stays scoped to getsentry/junior.",
+        ],
+        fail: [
+          "Do not mention getsentry/sentry autofix, a dashboard workflow, or single-tenant repository access.",
+          "Do not blend generic engineering memories into the answer.",
+        ],
+      }),
+    });
+  });
+
   const explicitTaskProcedureThread = {
     channel_type: "channel",
     id: "thread-memory-explicit-task-procedure",

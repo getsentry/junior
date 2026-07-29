@@ -12,7 +12,6 @@ import {
   desc,
   eq,
   gt,
-  ilike,
   inArray,
   isNull,
   isNotNull,
@@ -28,6 +27,7 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import * as memorySqlSchema from "./db/schema";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_SCOPES,
@@ -49,23 +49,13 @@ import {
 const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
-const HIGH_CONFIDENCE_DUPLICATE_DISTANCE = 0.015;
 const PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT = 10;
 const PREFERENCE_ADJUDICATION_VECTOR_LIMIT = 5;
 const VECTOR_SEARCH_OVERFETCH = 4;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const RELEVANCE_NEAR_TIE_DELTA = 0.01;
-const SOURCE_CHANNEL_BOOST = 0.05;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
-
-interface SearchCandidate {
-  memory: MemoryRecord;
-  score: number;
-  sourceKey: string;
-}
 
 interface MemoryEmbedding {
   model: string;
@@ -326,6 +316,11 @@ export interface MemoryStore {
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
   /** List active personal memories owned by the current actor. */
   listPersonalMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
+  /**
+   * Retrieve a broad relevance-ranked candidate window for automatic recall.
+   * Prompt admission remains owned by the recall boundary.
+   */
+  recallMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
   /** Search active memories visible in the current runtime context. */
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
 }
@@ -583,25 +578,36 @@ async function archiveExpiredMemoryBatch(args: {
   return { archivedCount: archivedIds.length };
 }
 
-function searchScore(memory: MemoryRecord, terms: string[]): number {
-  const haystack = memory.content.toLowerCase();
-  // Lexical score is a retrieval fallback signal, not a memory policy decision.
-  return terms.reduce(
-    (score, term) => score + (haystack.includes(term) ? 1 : 0),
-    0,
-  );
-}
-
-function searchTerms(query: string): string[] {
+/**
+ * Find path-like, dotted, underscored, and multi-part hyphenated identifiers.
+ * Two-part hyphenated prose such as "long-running" remains ordinary text.
+ */
+function structuredQueryIdentifiers(query: string): string[] {
   return [
     ...new Set(
       query
         .toLowerCase()
-        .split(/[^a-z0-9_'-]+/)
-        .map((term) => term.trim())
-        .filter((term) => term.length >= 2),
+        .match(
+          /(?:[a-z0-9][a-z0-9._-]*\/)+[a-z0-9][a-z0-9._-]*|[a-z0-9]+(?:[._][a-z0-9]+)+|[a-z0-9]+(?:-[a-z0-9]+){2,}/g,
+        ) ?? [],
     ),
   ];
+}
+
+function denseRanks<T>(
+  values: T[],
+  key: (value: T) => string | number,
+): number[] {
+  let previous: string | number | undefined;
+  let rank = 0;
+  return values.map((value, index) => {
+    const current = key(value);
+    if (index === 0 || current !== previous) {
+      rank = index + 1;
+      previous = current;
+    }
+    return rank;
+  });
 }
 
 async function embedOne(
@@ -733,52 +739,6 @@ async function findExactDuplicateMemory(args: {
     )
     .limit(1);
   return rows[0] ? parseMemoryRow(rows[0]) : undefined;
-}
-
-async function findVectorDuplicateMemory(args: {
-  db: MemoryDb;
-  embedding: MemoryEmbedding;
-  kind: MemoryRecord["kind"];
-  nowMs: number;
-  scope: ResolvedMemoryScope;
-  subject: ResolvedMemorySubject;
-}): Promise<MemoryRecord | undefined> {
-  const distance = cosineDistance(
-    juniorMemoryEmbeddings.embedding,
-    args.embedding.vector,
-  );
-  const rows = await args.db
-    .select({
-      contentHash: juniorMemoryEmbeddings.contentHash,
-      distance,
-      memory: juniorMemoryMemories,
-    })
-    .from(juniorMemoryMemories)
-    .innerJoin(
-      juniorMemoryEmbeddings,
-      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-    )
-    .where(
-      and(
-        activeScopedSubjectPredicate(args),
-        eq(juniorMemoryEmbeddings.provider, args.embedding.provider),
-        eq(juniorMemoryEmbeddings.model, args.embedding.model),
-        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
-        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
-        lte(distance, HIGH_CONFIDENCE_DUPLICATE_DISTANCE),
-      ),
-    )
-    .orderBy(
-      distance,
-      desc(juniorMemoryMemories.createdAtMs),
-      asc(juniorMemoryMemories.id),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row || hashEmbeddedContent(row.memory.content) !== row.contentHash) {
-    return undefined;
-  }
-  return parseMemoryRow(row.memory);
 }
 
 async function rememberDuplicateIdempotency(args: {
@@ -989,38 +949,65 @@ async function listVisibleMemories(args: {
   return rows.map(parseMemoryRow);
 }
 
-/** Search active visible records with the V1 lexical matcher. */
-async function searchVisibleMemories(args: {
+/** Search active visible records with PostgreSQL full-text ranking. */
+async function searchVisibleLexicalMemories(args: {
   db: MemoryDb;
+  limit: number;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
-}): Promise<SearchCandidate[]> {
-  const terms = searchTerms(args.query);
-  if (terms.length === 0) {
-    return [];
-  }
+}): Promise<MemoryMatch[]> {
   const predicate = activeVisiblePredicate(args);
   if (!predicate) {
     return [];
   }
+  const queryVector = sql`to_tsvector('english', ${args.query})`;
+  const tsquery = sql`(
+    SELECT COALESCE(
+      string_agg(quote_literal(term), ' | ')::tsquery,
+      ''::tsquery
+    )
+    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
+  )`;
+  const textsearch = sql`to_tsvector('english', ${juniorMemoryMemories.content})`;
+  const textRank = sql<number>`ts_rank_cd(${textsearch}, ${tsquery})`;
+  const identifiers = structuredQueryIdentifiers(args.query);
+  const contentTokens = sql`regexp_split_to_array(lower(${juniorMemoryMemories.content}), '[^a-z0-9._/-]+')`;
+  const identifierArray =
+    identifiers.length > 0
+      ? sql`ARRAY[${sql.join(
+          identifiers.map((identifier) => sql`${identifier}`),
+          sql`, `,
+        )}]::text[]`
+      : undefined;
+  const exactIdentifierMatch =
+    identifierArray !== undefined
+      ? sql<boolean>`${contentTokens} && ${identifierArray}`
+      : sql<boolean>`false`;
   const rows = await args.db
-    .select()
+    .select({
+      exactIdentifierMatch,
+      memory: juniorMemoryMemories,
+      textRank,
+    })
     .from(juniorMemoryMemories)
-    .where(
-      and(
-        predicate,
-        or(
-          ...terms.map((term) =>
-            ilike(juniorMemoryMemories.content, `%${term}%`),
-          ),
-        ),
-      ),
-    );
-  return rows.map((row) => ({
-    memory: parseMemoryRow(row),
-    score: 0,
-    sourceKey: row.sourceKey,
+    .where(and(predicate, sql`${textsearch} @@ ${tsquery}`))
+    .orderBy(
+      ...(identifiers.length > 0 ? [desc(exactIdentifierMatch)] : []),
+      desc(textRank),
+      desc(juniorMemoryMemories.observedAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(args.limit);
+  const ranks = denseRanks(
+    rows,
+    (row) => `${row.exactIdentifierMatch}:${Number(row.textRank)}`,
+  );
+  return rows.map((row, index) => ({
+    exactIdentifier: row.exactIdentifierMatch,
+    lexical: { rank: ranks[index] },
+    memory: parseMemoryRow(row.memory),
+    sourceKey: row.memory.sourceKey,
   }));
 }
 
@@ -1033,7 +1020,7 @@ async function searchVisibleVectorMemories(args: {
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
-}): Promise<SearchCandidate[]> {
+}): Promise<MemoryMatch[]> {
   if (!args.embedder) {
     return [];
   }
@@ -1077,7 +1064,8 @@ async function searchVisibleVectorMemories(args: {
       asc(juniorMemoryMemories.id),
     )
     .limit(args.limit);
-  return rows.flatMap((row) => {
+  const ranks = denseRanks(rows, (row) => Number(row.distance));
+  return rows.flatMap((row, index) => {
     const distanceValue = Number(row.distance);
     if (
       row.distance === null ||
@@ -1091,87 +1079,15 @@ async function searchVisibleVectorMemories(args: {
     }
     return [
       {
+        exactIdentifier: false,
         memory: parseMemoryRow(row.memory),
-        score: 1 / (1 + Math.max(0, distanceValue)),
         sourceKey: row.memory.sourceKey,
+        vector: {
+          rank: ranks[index],
+        },
       },
     ];
   });
-}
-
-function sourceBoost(
-  candidate: Pick<SearchCandidate, "sourceKey">,
-  currentChannelPrefix: string | undefined,
-): number {
-  if (!currentChannelPrefix) {
-    return 0;
-  }
-  return candidate.sourceKey.startsWith(currentChannelPrefix)
-    ? SOURCE_CHANNEL_BOOST
-    : 0;
-}
-
-/** Score only observation age for near-tie reranking; this is not lifecycle decay. */
-function observedAgeBoost(memory: MemoryRecord, nowMs: number): number {
-  const ageMs = Math.max(0, nowMs - memory.observedAtMs);
-  if (ageMs <= 7 * ONE_DAY_MS) {
-    return 0.15;
-  }
-  if (ageMs <= 30 * ONE_DAY_MS) {
-    return 0.1;
-  }
-  if (ageMs <= 90 * ONE_DAY_MS) {
-    return 0.05;
-  }
-  return 0;
-}
-
-/** Fuse retrieval candidates while keeping observed age to near-tie reranking. */
-function mergeSearchCandidates(
-  candidates: SearchCandidate[],
-  nowMs: number,
-  currentChannelKey?: string,
-): MemoryRecord[] {
-  const byId = new Map<
-    string,
-    {
-      memory: MemoryRecord;
-      score: number;
-      sourceKey: string;
-    }
-  >();
-  for (const candidate of candidates) {
-    const existing = byId.get(candidate.memory.id);
-    if (existing) {
-      existing.score += candidate.score;
-      continue;
-    }
-    byId.set(candidate.memory.id, {
-      memory: candidate.memory,
-      score: candidate.score,
-      sourceKey: candidate.sourceKey,
-    });
-  }
-  return [...byId.values()]
-    .sort((left, right) => {
-      const scoreDelta = right.score - left.score;
-      if (Math.abs(scoreDelta) > RELEVANCE_NEAR_TIE_DELTA) {
-        return scoreDelta;
-      }
-      const sourceDelta =
-        sourceBoost(right, currentChannelKey) -
-        sourceBoost(left, currentChannelKey);
-      if (sourceDelta !== 0) {
-        return sourceDelta;
-      }
-      return (
-        observedAgeBoost(right.memory, nowMs) -
-          observedAgeBoost(left.memory, nowMs) ||
-        right.memory.observedAtMs - left.memory.observedAtMs ||
-        left.memory.id.localeCompare(right.memory.id)
-      );
-    })
-    .map((candidate) => candidate.memory);
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */
@@ -1294,27 +1210,6 @@ export function createMemoryStore(
         candidateEmbedding = undefined;
       }
     }
-    const vectorDuplicate = candidateEmbedding
-      ? await findVectorDuplicateMemory({
-          db,
-          embedding: candidateEmbedding,
-          kind: input.kind,
-          nowMs,
-          scope,
-          subject,
-        })
-      : undefined;
-    if (vectorDuplicate) {
-      return await reuseDuplicateMemory({
-        content,
-        duplicate: vectorDuplicate,
-        idempotencyKey: input.idempotencyKey,
-        nowMs,
-        scope,
-        subject,
-      });
-    }
-
     let supersededIds: string[] = [];
     if (
       scopeKind === "personal" &&
@@ -1440,6 +1335,49 @@ export function createMemoryStore(
     return { created: false, memory: idempotent };
   }
 
+  async function retrieveVisibleMemories(
+    rawInput: SearchMemoriesInput,
+    vectorMaxDistance: number | undefined,
+  ): Promise<MemoryRecord[]> {
+    const input = searchMemoriesInputSchema.parse(rawInput);
+    const nowMs = getNowMs();
+    const scopes = deriveVisibleMemoryScopes(runtimeContext);
+    await archiveExpiredMemoryBatch({
+      db,
+      nowMs,
+      scopes,
+    });
+    const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
+    const candidateLimit = limit * VECTOR_SEARCH_OVERFETCH;
+    const [vectorMatches, lexicalMatches] = await Promise.all([
+      searchVisibleVectorMemories({
+        db,
+        embedder,
+        limit: candidateLimit,
+        ...(vectorMaxDistance !== undefined
+          ? { maxDistance: vectorMaxDistance }
+          : {}),
+        nowMs,
+        query: input.query,
+        scopes,
+      }),
+      searchVisibleLexicalMemories({
+        db,
+        limit: candidateLimit,
+        nowMs,
+        query: input.query,
+        scopes,
+      }),
+    ]);
+    const channelPrefix = sourceChannelPrefix(runtimeContext);
+    return rankMemoryMatches([...vectorMatches, ...lexicalMatches], {
+      nowMs,
+      ...(channelPrefix ? { channelPrefix } : {}),
+    })
+      .slice(0, limit)
+      .map(({ memory }) => memory);
+  }
+
   return {
     async archiveExpiredMemories(input) {
       return await archiveExpiredVisibleMemories(input, getNowMs());
@@ -1487,45 +1425,12 @@ export function createMemoryStore(
       });
     },
 
+    async recallMemories(input) {
+      return await retrieveVisibleMemories(input, maxVectorDistance);
+    },
+
     async searchMemories(input) {
-      input = searchMemoriesInputSchema.parse(input);
-      const nowMs = getNowMs();
-      const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      await archiveExpiredMemoryBatch({
-        db,
-        nowMs,
-        scopes,
-      });
-      const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
-      const vectorCandidates = await searchVisibleVectorMemories({
-        db,
-        embedder,
-        limit: limit * VECTOR_SEARCH_OVERFETCH,
-        ...(maxVectorDistance !== undefined
-          ? { maxDistance: maxVectorDistance }
-          : {}),
-        nowMs,
-        query: input.query,
-        scopes,
-      });
-      const candidates = await searchVisibleMemories({
-        db,
-        nowMs,
-        query: input.query,
-        scopes,
-      });
-      const terms = searchTerms(input.query);
-      const lexicalCandidates = candidates
-        .map((candidate) => ({
-          ...candidate,
-          score: searchScore(candidate.memory, terms),
-        }))
-        .filter((item) => item.score > 0);
-      return mergeSearchCandidates(
-        [...vectorCandidates, ...lexicalCandidates],
-        nowMs,
-        sourceChannelPrefix(runtimeContext),
-      ).slice(0, limit);
+      return await retrieveVisibleMemories(input, undefined);
     },
 
     async archiveMemory(input) {
