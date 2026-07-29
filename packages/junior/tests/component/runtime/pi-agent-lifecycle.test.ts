@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import type { PiMessage } from "@/chat/pi/messages";
+import { isAssistantMessage } from "@/chat/pi/transcript";
+import { decideReply } from "@/chat/services/assistant-reply";
+import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
+import { nextReplyRecovery } from "@/chat/services/reply-recovery";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -18,7 +23,7 @@ const usage = {
   },
 };
 
-function assistantResponse(): StreamResponse {
+function assistantResponse(text = "done"): StreamResponse {
   const message = {
     role: "assistant" as const,
     api: "test",
@@ -26,7 +31,7 @@ function assistantResponse(): StreamResponse {
     model: "test",
     usage,
     stopReason: "stop" as const,
-    content: [{ type: "text" as const, text: "done" }],
+    content: [{ type: "text" as const, text }],
     timestamp: Date.now(),
   };
 
@@ -74,5 +79,65 @@ describe("Pi Agent lifecycle", () => {
       stopReason: "error",
       errorMessage: prepareError.message,
     });
+  });
+
+  it("continues once from a rejected reply without delivering it", async () => {
+    const replies = ["", "Recovered."];
+    const streamFn = vi.fn(async () => assistantResponse(replies.shift()));
+    const delivered: string[] = [];
+    const agent = new Agent({
+      initialState: {
+        systemPrompt: "System prompt",
+        model: {
+          id: "test",
+          name: "test",
+          api: "test",
+          provider: "test",
+          baseUrl: "",
+          reasoning: false,
+          input: [],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 0,
+          maxTokens: 0,
+        },
+        thinkingLevel: "off",
+        tools: [],
+      },
+      streamFn,
+    });
+    agent.subscribe((event) => {
+      if (event.type !== "message_end" || !isAssistantMessage(event.message)) {
+        return;
+      }
+      const reply = decideReply(event.message);
+      if (reply.kind === "deliver") {
+        delivered.push(reply.text);
+      }
+    });
+
+    await agent.prompt(
+      `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue the task.`,
+    );
+    const lastAssistant = agent.state.messages
+      .filter(isAssistantMessage)
+      .at(-1);
+    const recovery = nextReplyRecovery({
+      attempt: 0,
+      lastAssistant,
+      messages: agent.state.messages as PiMessage[],
+    });
+    expect(recovery).toMatchObject({
+      kind: "retry",
+      reason: "empty",
+    });
+    if (recovery.kind !== "retry") {
+      throw new Error("Expected reply recovery");
+    }
+
+    agent.state.messages = recovery.messages;
+    await agent.continue();
+
+    expect(streamFn).toHaveBeenCalledTimes(2);
+    expect(delivered).toEqual(["Recovered."]);
   });
 });

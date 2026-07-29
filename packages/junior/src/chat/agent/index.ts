@@ -3,12 +3,11 @@
  *
  * Composition root and execution loop for one agent run slice after
  * runtime/ingress code has parsed and routed the request. Wires the phase
- * modules (session restore, skills, tools, prompt, resume), runs the Pi
- * agent with the inline provider retry loop, and translates expected run
- * endings into `AgentRunOutcome` values. It emits every completed, tool-free
- * visible assistant message through the delivery port; the result carries
- * diagnostics, artifacts, and transcript state for destination-owned
- * completion.
+ * modules (session restore, skills, tools, prompt, resume), runs the Pi agent
+ * with inline retry handling, and translates expected run endings into
+ * `AgentRunOutcome` values. It emits every completed, tool-free visible
+ * assistant message through the delivery port; the result carries diagnostics,
+ * artifacts, and transcript state for destination-owned completion.
  */
 import {
   Agent,
@@ -77,6 +76,7 @@ import { decideReply } from "@/chat/services/assistant-reply";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextReplyRecovery } from "@/chat/services/reply-recovery";
+import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -1227,9 +1227,18 @@ async function executeAgentRunInPrivacyContext(
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
-          let retryUsage: AgentTurnUsage | undefined;
+          let discardedRetryUsage: AgentTurnUsage | undefined;
           let providerRetryAttempt = 0;
           let replyRecoveryAttempt = 0;
+          const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
+            discardedRetryUsage = addAgentTurnUsage(
+              discardedRetryUsage,
+              getDiscardedRetryUsage(agent!.state.messages, messages),
+            );
+            agent!.state.messages = messages;
+            await runResume.persistSafeBoundary(messages);
+            signal?.throwIfAborted();
+          };
           try {
             for (;;) {
               await runAgentStep(run);
@@ -1253,7 +1262,7 @@ async function executeAgentRunInPrivacyContext(
                 ? usageSummary
                 : undefined;
               const currentPhaseUsage = addAgentTurnUsage(
-                retryUsage,
+                discardedRetryUsage,
                 currentUsage,
               );
               turnUsage = addAgentTurnUsage(priorPhaseUsage, currentPhaseUsage);
@@ -1272,7 +1281,7 @@ async function executeAgentRunInPrivacyContext(
                       ],
                     }
                   : {}),
-                ...extractGenAiUsageAttributes(usageSummary),
+                ...extractGenAiUsageAttributes(currentPhaseUsage),
               });
               const pendingAuthPause = getPendingAuthPause();
               if (pendingAuthPause) {
@@ -1289,31 +1298,24 @@ async function executeAgentRunInPrivacyContext(
               });
               if (replyRecovery.kind === "retry") {
                 replyRecoveryAttempt += 1;
-                retryUsage = currentPhaseUsage;
-                agent!.state.messages = replyRecovery.messages;
-                await runResume.persistSafeBoundary(replyRecovery.messages);
+                await prepareRetry(replyRecovery.messages);
                 logWarn(
-                  "agent_turn_reply_recovery",
-                  spanContext,
+                  "agent.turn.reply_recovery.retrying",
                   {
                     "app.ai.reply_rejection.reason": replyRecovery.reason,
                     "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
-                  "Retrying rejected assistant reply after history replacement",
                 );
-                signal?.throwIfAborted();
                 run = agent!.continue();
                 continue;
               }
               if (replyRecovery.kind === "exhausted") {
                 logWarn(
-                  "agent_turn_reply_recovery_exhausted",
-                  spanContext,
+                  "agent.turn.reply_recovery.exhausted",
                   {
                     "app.ai.reply_rejection.reason": replyRecovery.reason,
                     "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
-                  "Assistant reply recovery exhausted",
                 );
               }
 
@@ -1327,12 +1329,9 @@ async function executeAgentRunInPrivacyContext(
               }
 
               providerRetryAttempt += 1;
-              retryUsage = currentPhaseUsage;
-              agent!.state.messages = providerRetry.messages;
-              await runResume.persistSafeBoundary(providerRetry.messages);
+              await prepareRetry(providerRetry.messages);
               logWarn("agent.turn.provider.retrying");
               await sleep(providerRetry.delayMs, signal);
-              signal?.throwIfAborted();
               run = agent!.continue();
             }
           } catch (error) {

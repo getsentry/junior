@@ -33,9 +33,10 @@ function assistant(text: string): AssistantMessage {
 }
 
 describe("reply recovery", () => {
-  it("does not roll back across an earlier assistant reply", () => {
+  it("preserves an earlier delivered reply across later user input", () => {
     const summary = user(`${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue.`);
     const delivered = assistant("Progress already delivered.");
+    const steering = user("Also check the session log.");
     const rejected = assistant(
       JSON.stringify({ type: "tool_call", name: "bash", input: {} }),
     );
@@ -44,8 +45,25 @@ describe("reply recovery", () => {
       nextReplyRecovery({
         attempt: 0,
         lastAssistant: rejected,
-        messages: [summary, delivered, rejected],
+        messages: [summary, delivered, steering, rejected],
       }),
-    ).toEqual({ kind: "exhausted", reason: "raw_tool_payload" });
+    ).toEqual({
+      kind: "retry",
+      messages: [summary, delivered, steering],
+      reason: "raw_tool_payload",
+    });
+  });
+
+  it("exhausts recovery after one rejected continuation", () => {
+    const summary = user(`${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue.`);
+    const rejected = assistant("");
+
+    expect(
+      nextReplyRecovery({
+        attempt: 1,
+        lastAssistant: rejected,
+        messages: [summary, rejected],
+      }),
+    ).toEqual({ kind: "exhausted", reason: "empty" });
   });
 });

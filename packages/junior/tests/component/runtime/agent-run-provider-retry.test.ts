@@ -8,12 +8,6 @@ import { extractAssistantText } from "@/chat/pi/transcript";
 import { readConversationDetail } from "@/api/conversations/detail";
 
 const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
-const LEAKED_TOOL_CALL_TEXT = JSON.stringify({
-  type: "tool_call",
-  name: "bash",
-  input: {},
-});
-
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
     agentMode: {
@@ -33,7 +27,6 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
-      replies: [] as string[],
       summaryCalls: 0,
     },
     counters: {
@@ -253,12 +246,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         const keptRequest = compactionState.nextProviderContextText.includes(
           "Make a large generated-file edit.",
         );
-        const scriptedReply = compactionState.replies.shift();
         await this.emitAssistant(
-          scriptedReply ??
-            (keptRequest
-              ? "Finished the requested edit."
-              : "got it — context checkpoint loaded. no outstanding asks."),
+          keptRequest
+            ? "Finished the requested edit."
+            : "got it — context checkpoint loaded. no outstanding asks.",
         );
         return {};
       }
@@ -390,7 +381,24 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         return {};
       }
       this.pushMessages({
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "test-tool-call",
+            name: "bash",
+            arguments: {},
+          },
+        ],
+        stopReason: "toolUse",
+        usage: {
+          input: 4,
+          output: 1,
+        },
+      });
+      this.pushMessages({
         role: "toolResult",
+        toolCallId: "test-tool-call",
         toolName: "bash",
         isError: false,
         content: [{ type: "text", text: "ok" }],
@@ -437,16 +445,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
             output: 2,
           },
         });
-        return {};
-      }
-      if (
-        agentMode.value === "activeCompaction" &&
-        compactionState.replies.length > 0
-      ) {
-        const reply = compactionState.replies.shift();
-        if (reply !== undefined) {
-          await this.emitAssistant(reply);
-        }
         return {};
       }
       const finalMessage = {
@@ -585,30 +583,6 @@ function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   return outcome.result;
 }
 
-async function runCompactedReplies(replies: string[], id: string) {
-  agentMode.value = "activeCompaction";
-  compactionState.replies = [...replies];
-  const delivered: Array<{ text: string }> = [];
-  const result = finalReply(
-    await executeAgentRun({
-      input: { messageText: "Make a large generated-file edit." },
-      routing: {
-        source: TEST_SOURCE,
-        destination: TEST_DESTINATION,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      conversationId: `conversation-${id}`,
-      turnId: `turn-${id}`,
-      delivery: {
-        onAssistantMessage: (message) => {
-          delivered.push(message);
-        },
-      },
-    }),
-  );
-  return { delivered, result };
-}
-
 const TEST_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -630,7 +604,6 @@ describe("agent run continuation", () => {
     compactionState.nextProviderContextChars = 0;
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
-    compactionState.replies = [];
     compactionState.summaryCalls = 0;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
@@ -682,30 +655,6 @@ describe("agent run continuation", () => {
     expect(history.some((event) => event.data.type === "compaction")).toBe(
       true,
     );
-  });
-
-  it("recovers an empty assistant reply after compaction", async () => {
-    const { delivered, result } = await runCompactedReplies(
-      ["", "Recovered."],
-      "compaction-empty-reply",
-    );
-
-    expect(delivered).toEqual([{ text: "Recovered." }]);
-    expect(result.text).toBe("Recovered.");
-    expect(result.diagnostics.outcome).toBe("success");
-    expect(counters.continueCalls).toBe(1);
-  });
-
-  it("fails cleanly when reply recovery is exhausted", async () => {
-    const { delivered, result } = await runCompactedReplies(
-      [LEAKED_TOOL_CALL_TEXT, LEAKED_TOOL_CALL_TEXT],
-      "compaction-recovery-exhausted",
-    );
-
-    expect(delivered).toEqual([]);
-    expect(result.text).toBe("");
-    expect(result.diagnostics.outcome).toBe("execution_failure");
-    expect(counters.continueCalls).toBe(1);
   });
 
   it("retains the complete current instruction across preflight compaction", async () => {
@@ -775,14 +724,15 @@ describe("agent run continuation", () => {
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.toolResultCount).toBe(1);
     expect(reply.diagnostics.usage).toMatchObject({
-      inputTokens: 12,
-      outputTokens: 3,
+      inputTokens: 16,
+      outputTokens: 4,
     });
     expect(counters.promptCalls).toBe(1);
     expect(counters.continueCalls).toBe(1);
 
     expect(reply.piMessages?.map((message) => message.role)).toEqual([
       "user",
+      "assistant",
       "toolResult",
       "assistant",
     ]);
@@ -796,8 +746,29 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
+      "assistant",
       "toolResult",
     ]);
+
+    await persistCompletedSessionRecord({
+      modelId: "test-model",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      allMessages: reply.piMessages ?? [],
+      currentUsage: reply.diagnostics.usage,
+    });
+    const completedSessionRecord =
+      await turnSessionState.getAgentTurnSessionRecord(
+        "conversation-1",
+        "turn-1",
+      );
+    expect(completedSessionRecord).toMatchObject({
+      state: "completed",
+      cumulativeUsage: {
+        inputTokens: 16,
+        outputTokens: 4,
+      },
+    });
   }, 40_000);
 
   it("stops provider retry backoff when the host request is cancelled", async () => {

@@ -69,6 +69,9 @@ delegation without becoming the execution actor or a general task owner.
 - Empty, escaped, or leaked tool text after a history replacement is withheld
   and retried once from the last user or tool-result boundary. A second
   rejection ends as an execution failure.
+- Retry continuations retain an exact transcript prefix. Usage from discarded
+  assistant tails is carried forward separately so retained messages are
+  counted once.
 - Tool-bearing assistant text stays in agent history but is not destination
   output; explicit progress uses the runtime status surface.
 - Tool failures remain internal agent-loop data unless the final result exposes
