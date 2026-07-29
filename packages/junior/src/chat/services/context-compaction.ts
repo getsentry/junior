@@ -7,6 +7,7 @@
  * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
  * may later append the current bootstrap; future replacement strips it again.
  */
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
 import {
   renderCurrentInstruction,
@@ -384,14 +385,9 @@ async function summarizeContext(
   return summary.slice(0, MAX_SUMMARY_CHARS);
 }
 
+/** Measure provider-visible history without counting host-only message fields. */
 function estimateHistoryTokens(messages: PiMessage[]): number {
-  // Capacity checks must measure the live provider input. Runtime turn context
-  // is stripped only when the replacement is persisted for later turns.
-  return messages.reduce(
-    (total, message) =>
-      total + estimateTextTokens(JSON.stringify(message) ?? ""),
-    0,
-  );
+  return estimateContextTokens(messages).tokens;
 }
 
 /**

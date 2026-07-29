@@ -89,7 +89,9 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
   };
 });
 
-vi.mock("@earendil-works/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   class FakeAgent {
     state: {
       messages: unknown[];
@@ -138,7 +140,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
   }
 
-  return { Agent: FakeAgent };
+  return { ...actual, Agent: FakeAgent };
 });
 
 const ORIGINAL_ENV = { ...process.env };

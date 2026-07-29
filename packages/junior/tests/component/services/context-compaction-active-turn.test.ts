@@ -11,6 +11,36 @@ function user(text: string, timestamp = 1): PiMessage {
   } as PiMessage;
 }
 
+function assistantWithUsage(
+  text: string,
+  totalTokens: number,
+  timestamp = 1,
+): PiMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {
+      input: totalTokens,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason: "stop",
+    timestamp,
+  } as PiMessage;
+}
+
 function textOf(message: PiMessage): string {
   return (
     (message as { content?: Array<{ text?: string }> }).content
@@ -37,6 +67,37 @@ describe("active-turn context compaction", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("uses provider usage and ignores trailing tool details outside model input", async () => {
+    const { compactActiveContextIfNeeded } =
+      await import("@/chat/services/context-compaction");
+    const completeText = vi.fn();
+
+    const result = await compactActiveContextIfNeeded(
+      {
+        conversationId: "conversation-tool-details",
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        piMessages: [
+          user("Inspect the tool result.", 1),
+          assistantWithUsage("Reading the requested file.", 20_000, 2),
+          {
+            role: "toolResult",
+            toolCallId: "read-1",
+            toolName: "readFile",
+            content: [{ type: "text", text: "Visible result." }],
+            details: { internalPayload: "x".repeat(1_600_000) },
+            isError: false,
+            timestamp: 3,
+          } as PiMessage,
+        ],
+      },
+      { completeText },
+    );
+
+    expect(result).toEqual({ compacted: false, reason: "below_threshold" });
+    expect(completeText).not.toHaveBeenCalled();
+  });
+
   it("replaces oversized tool history with continuation state", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
@@ -54,13 +115,14 @@ describe("active-turn context compaction", () => {
         2,
       ),
       user("Make the requested edit.", 3),
+      assistantWithUsage("I will apply the edit.", 20_000, 4),
       {
         role: "toolResult",
         toolCallId: "edit-1",
         toolName: "editFile",
         content: [{ type: "text", text: "x".repeat(1_600_000) }],
         isError: false,
-        timestamp: 4,
+        timestamp: 5,
       } as PiMessage,
     ];
     const result = await compactActiveContextIfNeeded(
@@ -72,7 +134,7 @@ describe("active-turn context compaction", () => {
           {
             message: user(
               "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
-              5,
+              6,
             ),
             provenance: {
               authority: "instruction",
@@ -137,7 +199,7 @@ describe("active-turn context compaction", () => {
         reason: "capacity",
         triggerTokens: 360_000,
         inputLimitTokens: 380_000,
-        inputMessageCount: 4,
+        inputMessageCount: 5,
         retainedMessageCount: 1,
         summaryChars: 20,
       },

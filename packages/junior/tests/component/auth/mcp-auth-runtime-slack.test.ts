@@ -112,7 +112,9 @@ vi.mock("@/chat/services/turn-router", async () => {
   };
 });
 
-vi.mock("@earendil-works/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   class FakeAgent {
     state: {
       messages: unknown[];
@@ -309,6 +311,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
   }
 
   return {
+    ...actual,
     Agent: FakeAgent,
     estimateContextTokens: () => ({ tokens: 0 }),
     estimateTokens: () => 0,

@@ -94,7 +94,9 @@ const TEST_ACTOR = {
   userId: "U123",
 } as const;
 
-vi.mock("@earendil-works/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   function assistantMessage(text: string) {
     return {
       role: "assistant",
@@ -290,7 +292,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
   }
 
-  return { Agent: MockAgent };
+  return { ...actual, Agent: MockAgent };
 });
 
 vi.mock("@/chat/oauth-flow", async (importOriginal) => ({

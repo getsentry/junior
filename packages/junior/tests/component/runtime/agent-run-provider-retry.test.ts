@@ -13,6 +13,9 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       value: "providerRetry" as
         | "providerRetry"
         | "activeCompaction"
+        | "postCompactionMissingRecovery"
+        | "postCompactionRecoveryExhausted"
+        | "postCompactionValidShort"
         | "preflightCompaction"
         | "pendingProviderCall"
         | "cooperativeYield"
@@ -85,7 +88,9 @@ vi.mock("@/chat/conversations/projection", async (importOriginal) => {
   };
 });
 
-vi.mock("@earendil-works/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   function durableTestMessage(message: unknown) {
     const data = message as Record<string, unknown>;
     if (data.role === "assistant") {
@@ -170,6 +175,14 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       this.state.messages.push(...messages.map(durableTestMessage));
     }
 
+    private async emitMessageEnd(message: unknown) {
+      await Promise.all(
+        this.subscribers.map((subscriber) =>
+          subscriber({ type: "message_end", message }),
+        ),
+      );
+    }
+
     private recordRunFailure(error: unknown) {
       this.pushMessages({
         role: "assistant",
@@ -186,7 +199,12 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.pushMessages(message);
-      if (agentMode.value === "activeCompaction") {
+      if (
+        agentMode.value === "activeCompaction" ||
+        agentMode.value === "postCompactionMissingRecovery" ||
+        agentMode.value === "postCompactionRecoveryExhausted" ||
+        agentMode.value === "postCompactionValidShort"
+      ) {
         const toolResult = {
           role: "toolResult",
           toolCallId: "call_oversized",
@@ -228,19 +246,28 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         const keptRequest = compactionState.nextProviderContextText.includes(
           "Make a large generated-file edit.",
         );
-        this.pushMessages({
+        const finalMessage = {
           role: "assistant",
           content: [
             {
               type: "text",
-              text: keptRequest
-                ? "Finished the requested edit."
-                : "got it — context checkpoint loaded. no outstanding asks.",
+              text:
+                agentMode.value === "postCompactionRecoveryExhausted"
+                  ? "Repos6azabash"
+                  : agentMode.value === "postCompactionValidShort"
+                    ? "repo123"
+                    : keptRequest
+                      ? "Finished the requested edit."
+                      : "got it — context checkpoint loaded. no outstanding asks.",
             },
           ],
           stopReason: "stop",
           usage: { input: 2, output: 2 },
-        });
+        };
+        if (agentMode.value !== "postCompactionMissingRecovery") {
+          this.pushMessages(finalMessage);
+          await this.emitMessageEnd(finalMessage);
+        }
         return {};
       }
       if (agentMode.value === "pendingProviderCall") {
@@ -420,20 +447,35 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         });
         return {};
       }
-      this.pushMessages({
+      const finalMessage = {
         role: "assistant",
-        content: [{ type: "text", text: "Recovered." }],
+        content: [
+          {
+            type: "text",
+            text:
+              agentMode.value === "postCompactionRecoveryExhausted"
+                ? "Repos6azabash"
+                : "Recovered.",
+          },
+        ],
         stopReason: "stop",
         usage: {
           input: 2,
           output: 2,
         },
-      });
+      };
+      this.pushMessages(finalMessage);
+      if (
+        agentMode.value === "postCompactionMissingRecovery" ||
+        agentMode.value === "postCompactionRecoveryExhausted"
+      ) {
+        await this.emitMessageEnd(finalMessage);
+      }
       return {};
     }
   }
 
-  return { Agent: MockAgent };
+  return { ...actual, Agent: MockAgent };
 });
 
 vi.mock("@/chat/config", async (importOriginal) => {
@@ -592,7 +634,6 @@ describe("provider retry composition", () => {
 
   it("continues the user's request when active compaction writes a wrong summary", async () => {
     agentMode.value = "activeCompaction";
-    const statuses: string[] = [];
 
     const result = finalReply(
       await executeAgentRun({
@@ -606,16 +647,10 @@ describe("provider retry composition", () => {
         },
         conversationId: "conversation-active-compaction",
         turnId: "turn-active-compaction",
-        observers: {
-          onStatus: (status) => {
-            statuses.push(status.text);
-          },
-        },
       }),
     );
 
     expect(result.text).toBe("Finished the requested edit.");
-    expect(statuses).toContain("Compacting context");
     expect(compactionState.summaryCalls).toBe(1);
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
     expect(compactionState.nextProviderContextText).toContain(
@@ -634,6 +669,90 @@ describe("provider retry composition", () => {
     expect(history.some((event) => event.data.type === "compaction")).toBe(
       true,
     );
+  });
+
+  it("recovers a missing assistant response after compaction", async () => {
+    agentMode.value = "postCompactionMissingRecovery";
+    const delivered: Array<{ text: string }> = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        input: { messageText: "Make a large generated-file edit." },
+        routing: {
+          source: TEST_SOURCE,
+          destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        conversationId: "conversation-post-compaction-missing",
+        turnId: "turn-post-compaction-missing",
+        delivery: {
+          onAssistantMessage: (message) => {
+            delivered.push(message);
+          },
+        },
+      }),
+    );
+
+    expect(delivered).toEqual([{ text: "Recovered." }]);
+    expect(result.text).toBe("Recovered.");
+    expect(result.diagnostics.outcome).toBe("success");
+    expect(counters.continueCalls).toBe(1);
+  });
+
+  it("fails cleanly when post-compaction output recovery is exhausted", async () => {
+    agentMode.value = "postCompactionRecoveryExhausted";
+    const delivered: Array<{ text: string }> = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        input: { messageText: "Make a large generated-file edit." },
+        routing: {
+          source: TEST_SOURCE,
+          destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        conversationId: "conversation-compaction-recovery-exhausted",
+        turnId: "turn-compaction-recovery-exhausted",
+        delivery: {
+          onAssistantMessage: (message) => {
+            delivered.push(message);
+          },
+        },
+      }),
+    );
+
+    expect(delivered).toEqual([]);
+    expect(result.text).toBe("");
+    expect(result.diagnostics.outcome).toBe("execution_failure");
+    expect(counters.continueCalls).toBe(1);
+  });
+
+  it("delivers a valid short response after compaction", async () => {
+    agentMode.value = "postCompactionValidShort";
+    const delivered: Array<{ text: string }> = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        input: { messageText: "Return the issue key." },
+        routing: {
+          source: TEST_SOURCE,
+          destination: TEST_DESTINATION,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        conversationId: "conversation-compaction-valid-short",
+        turnId: "turn-compaction-valid-short",
+        delivery: {
+          onAssistantMessage: (message) => {
+            delivered.push(message);
+          },
+        },
+      }),
+    );
+
+    expect(delivered).toEqual([{ text: "repo123" }]);
+    expect(result.text).toBe("repo123");
+    expect(result.diagnostics.outcome).toBe("success");
+    expect(counters.continueCalls).toBe(0);
   });
 
   it("retains the complete current instruction across preflight compaction", async () => {

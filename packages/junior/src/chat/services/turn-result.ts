@@ -134,6 +134,7 @@ export interface TurnResultInput {
   executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
+  rejectOpaqueToolFragments?: boolean;
 }
 
 function stripThinkingXmlBlocks(text: string): string {
@@ -154,31 +155,80 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
-function getVisibleAssistantText(rawText: string): string | undefined {
-  const text = stripThinkingXmlBlocks(rawText).trim();
-  if (
-    !text ||
-    isNoReplyMarker(text) ||
-    containsNoReplyMarker(text) ||
-    isRawToolPayloadResponse(text)
-  ) {
-    return undefined;
+export type AssistantMessageRejectionReason =
+  | "empty"
+  | "execution_escape"
+  | "mixed_no_reply_marker"
+  | "opaque_tool_fragment"
+  | "raw_tool_payload";
+
+export type AssistantMessageDisposition =
+  | { kind: "deliver"; text: string }
+  | { kind: "reject"; reason: AssistantMessageRejectionReason }
+  | { kind: "suppress" };
+
+const INTERNAL_TOOL_FRAGMENT_PATTERN =
+  /bash|edit|file|glob|grep|read|repo|search|shell|tool|write/gi;
+
+function isOpaqueToolFragmentResponse(text: string): boolean {
+  const toolFragments = new Set(
+    text
+      .match(INTERNAL_TOOL_FRAGMENT_PATTERN)
+      ?.map((match) => match.toLowerCase()),
+  );
+  return (
+    text.length >= 8 &&
+    text.length <= 80 &&
+    /^[A-Za-z0-9]+$/.test(text) &&
+    /\d/.test(text) &&
+    /[a-z]/.test(text) &&
+    toolFragments.size >= 2
+  );
+}
+
+/**
+ * Classify one completed assistant message before destination delivery.
+ *
+ * Opaque tool-like fragments are only rejected when the caller knows the
+ * model received compacted context; outside that recovery boundary they remain
+ * valid short replies to avoid suppressing identifiers.
+ */
+export function classifyAssistantMessage(
+  message: Parameters<typeof extractAssistantText>[0],
+  options: { rejectOpaqueToolFragments?: boolean } = {},
+): AssistantMessageDisposition {
+  if (message.content.some((part) => part.type === "toolCall")) {
+    return { kind: "suppress" };
   }
-  return text;
+
+  const text = stripThinkingXmlBlocks(extractAssistantText(message)).trim();
+  if (!text) {
+    return { kind: "reject", reason: "empty" };
+  }
+  if (isNoReplyMarker(text)) {
+    return { kind: "suppress" };
+  }
+  if (containsNoReplyMarker(text)) {
+    return { kind: "reject", reason: "mixed_no_reply_marker" };
+  }
+  if (isRawToolPayloadResponse(text)) {
+    return { kind: "reject", reason: "raw_tool_payload" };
+  }
+  if (isExecutionEscapeResponse(text)) {
+    return { kind: "reject", reason: "execution_escape" };
+  }
+  if (options.rejectOpaqueToolFragments && isOpaqueToolFragmentResponse(text)) {
+    return { kind: "reject", reason: "opaque_tool_fragment" };
+  }
+  return { kind: "deliver", text };
 }
 
 /** Return destination-visible text from one completed tool-free assistant message. */
 export function getAssistantMessageText(
   message: Parameters<typeof extractAssistantText>[0],
 ): string | undefined {
-  if (message.content.some((part) => part.type === "toolCall")) {
-    return undefined;
-  }
-  const text = getVisibleAssistantText(extractAssistantText(message));
-  if (!text) {
-    return undefined;
-  }
-  return isExecutionEscapeResponse(text) ? undefined : text;
+  const disposition = classifyAssistantMessage(message);
+  return disposition.kind === "deliver" ? disposition.text : undefined;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -193,6 +243,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     usage,
     executionProfile,
     modelId,
+    rejectOpaqueToolFragments = false,
   } = input;
 
   const toolResults = newMessages.filter(isToolResultMessage);
@@ -211,8 +262,18 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const primaryText = noReplyRequested
     ? ""
     : terminalAssistantMessages
-        .map((message) => getAssistantMessageText(message))
-        .filter((text): text is string => Boolean(text))
+        .map((message) =>
+          classifyAssistantMessage(message, { rejectOpaqueToolFragments }),
+        )
+        .filter(
+          (
+            disposition,
+          ): disposition is Extract<
+            AssistantMessageDisposition,
+            { kind: "deliver" }
+          > => disposition.kind === "deliver",
+        )
+        .map((disposition) => disposition.text)
         .join("\n\n");
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
