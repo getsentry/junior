@@ -63,7 +63,7 @@ function normalizeDeploymentEvent(
   const parsed = parseDeploymentEvent(body);
   if (!parsed || parsed.action !== "created") return [];
   const eventType = "deployment.created";
-  return deploymentSourceResources(parsed).map((resource) => ({
+  return deploymentSourceTargets(parsed).map(({ resource }) => ({
     eventKey: gitHubEventKey(deliveryId, eventType),
     eventType,
     occurredAtMs: providerTime(parsed.createdAt) ?? Date.now(),
@@ -153,30 +153,38 @@ function normalizeDeploymentStatusEvent(
     eventType === "deployment.succeeded" ||
     eventType === "deployment.failed" ||
     eventType === "deployment.error";
-  return deploymentSourceResources(parsed).map((resource) => ({
-    eventKey: gitHubEventKey(deliveryId, eventType),
-    eventType,
-    occurredAtMs: providerTime(parsed.statusCreatedAt) ?? Date.now(),
-    provider: "github",
-    resourceRef: resource.resourceRef,
-    ...(terminal ? { terminal: true } : {}),
-    trustedSummary: `${resource.label} ${outcome} (deployment ${parsed.deploymentId}).`,
-    untrustedText: parsed.description ?? undefined,
-  }));
+  return deploymentSourceTargets(parsed).map(
+    ({ completeOnTerminalEvent, resource }) => ({
+      eventKey: gitHubEventKey(deliveryId, eventType),
+      eventType,
+      occurredAtMs: providerTime(parsed.statusCreatedAt) ?? Date.now(),
+      provider: "github",
+      resourceRef: resource.resourceRef,
+      ...(terminal && completeOnTerminalEvent ? { terminal: true } : {}),
+      trustedSummary: `${resource.label} ${outcome} (deployment ${parsed.deploymentId}).`,
+      untrustedText: parsed.description ?? undefined,
+    }),
+  );
 }
 
 /** Address one deployment through both its exact environment and its commit. */
-function deploymentSourceResources(input: {
+function deploymentSourceTargets(input: {
   commitSha: string;
   environment: string;
   repo: string;
 }) {
   return [
-    gitHubDeploymentSourceResource(input),
-    gitHubDeploymentSourceResource({
-      commitSha: input.commitSha,
-      repo: input.repo,
-    }),
+    {
+      completeOnTerminalEvent: true,
+      resource: gitHubDeploymentSourceResource(input),
+    },
+    {
+      completeOnTerminalEvent: false,
+      resource: gitHubDeploymentSourceResource({
+        commitSha: input.commitSha,
+        repo: input.repo,
+      }),
+    },
   ];
 }
 

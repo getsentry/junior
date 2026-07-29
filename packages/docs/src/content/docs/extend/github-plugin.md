@@ -172,10 +172,12 @@ resource events:
 | `deployment` created        | `deployment.created`                                                                                                                 |
 | `deployment_status` created | `deployment.queued`, `deployment.pending`, `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`, `deployment.error` |
 
-Success, failure, and error complete the subscription after Junior accepts the
-event. Creation and progress events keep the watch active. GitHub does not send
-a `deployment_status` webhook for the `inactive` state, so Junior does not
-offer an inactive event.
+For an environment-specific watch, success, failure, and error complete the
+subscription after Junior accepts the event. A commit-wide watch remains active
+across terminal outcomes so it can observe deployments in later environments;
+it ends through cancellation or its configured TTL. Creation and progress
+events keep either watch active. GitHub does not send a `deployment_status`
+webhook for the `inactive` state, so Junior does not offer an inactive event.
 
 The GitHub plugin classifies a pull request or issue as Junior-owned on its
 signed `opened` event when the author matches the bot login derived from

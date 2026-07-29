@@ -88,6 +88,8 @@ webhooks are configured, its result can subscribe the current conversation to
 deployment creation, progress, success, failure, and error events. Omitting the
 environment watches deployments for that commit across environments. The
 subscription remains available when GitHub has not created the deployment yet.
+Commit-wide watches remain active across terminal outcomes so later
+environments for the same commit can also notify the conversation.
 
 ```bash
 vercel env add GITHUB_WEBHOOK_SECRET production

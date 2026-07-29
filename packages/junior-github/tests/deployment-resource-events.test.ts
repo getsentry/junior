@@ -75,25 +75,23 @@ describe("GitHub deployment resource events", () => {
         provider: "github",
         resourceRef:
           "github:deployment-source:getsentry/junior-prod:c610b5d6a88c9da5d65627a1cdb3829b05c14f75",
-        terminal: true,
         trustedSummary:
           "GitHub deployment for getsentry/junior-prod at c610b5d6a88c failed (deployment 5634510476).",
         untrustedText: "Deployment has failed",
       },
     ]);
 
-    expect(
-      normalizeGitHubResourceEvents({
-        body: {
-          action: "created",
-          deployment,
-          deployment_status: { state: "success" },
-          repository,
-        },
-        deliveryId: "delivery-success",
-        eventName: "deployment_status",
-      }),
-    ).toEqual([
+    const successEvents = normalizeGitHubResourceEvents({
+      body: {
+        action: "created",
+        deployment,
+        deployment_status: { state: "success" },
+        repository,
+      },
+      deliveryId: "delivery-success",
+      eventName: "deployment_status",
+    });
+    expect(successEvents).toEqual([
       expect.objectContaining({
         eventType: "deployment.succeeded",
         resourceRef:
@@ -106,11 +104,11 @@ describe("GitHub deployment resource events", () => {
         eventType: "deployment.succeeded",
         resourceRef:
           "github:deployment-source:getsentry/junior-prod:c610b5d6a88c9da5d65627a1cdb3829b05c14f75",
-        terminal: true,
         trustedSummary:
           "GitHub deployment for getsentry/junior-prod at c610b5d6a88c succeeded (deployment 5634510476).",
       }),
     ]);
+    expect(successEvents[1]).not.toHaveProperty("terminal");
   });
 
   it("keeps provider-controlled environment names out of trusted summaries", () => {
