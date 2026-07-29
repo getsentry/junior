@@ -9,7 +9,6 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
-import { createPluginState } from "@/chat/plugins/state";
 import { mswServer } from "../msw/server";
 import { z } from "zod";
 
@@ -188,31 +187,7 @@ describe("Linear native issue tools", () => {
         },
       });
 
-      await createPluginState("linear").set(
-        `createIssue:${conversationId}:call-legacy`,
-        {
-          status: "completed",
-          createdAtMs: Date.now(),
-          issue: null,
-          providerText:
-            "Created [ENG-122](https://linear.app/acme/issue/ENG-122/legacy-issue)",
-        },
-      );
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-legacy" }),
-      ).resolves.toMatchObject({
-        content: [
-          {
-            type: "text",
-            text: "Created [ENG-122](https://linear.app/acme/issue/ENG-122/legacy-issue)",
-          },
-        ],
-        details: {
-          issue: null,
-        },
-      });
-
-      expect(saveCalls).toEqual([input, updateInput]);
+      expect(saveCalls).toEqual([input, input, updateInput]);
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toMatchObject([
@@ -311,7 +286,7 @@ describe("Linear native issue tools", () => {
     }
   });
 
-  it("retries provider rejections but blocks uncertain transport failures", async () => {
+  it("allows caller retries after provider and transport failures", async () => {
     const registration = linearPlugin();
     const previousPlugins = setPlugins([registration]);
     const conversationId = "local:test:linear-native-create-failures";
@@ -353,7 +328,7 @@ describe("Linear native issue tools", () => {
                 message: "Team is invalid",
               };
             }
-            if (toolCallId === "call-uncertain") {
+            if (toolCallId === "call-uncertain" && callCount === 1) {
               throw new Error("MCP transport failed");
             }
             return {
@@ -393,8 +368,10 @@ describe("Linear native issue tools", () => {
       ).rejects.toThrow("MCP transport failed");
       await expect(
         createIssue.execute(input, { toolCallId: "call-uncertain" }),
-      ).rejects.toThrow("uncertain pending result");
-      expect(callCounts.get("call-uncertain")).toBe(1);
+      ).resolves.toMatchObject({
+        content: [{ type: "text", text: "Created" }],
+      });
+      expect(callCounts.get("call-uncertain")).toBe(2);
     } finally {
       setPlugins(previousPlugins);
     }

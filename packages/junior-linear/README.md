@@ -19,7 +19,7 @@ export const plugins = defineJuniorPlugins([linearPlugin()]);
 
 This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app for the default setup. Each user connects their own Linear account the first time Junior calls a Linear MCP tool. Junior sends the authorization link privately and resumes the same Slack thread automatically after the user authorizes.
 
-Issue creation uses a Junior-owned tool backed by Linear's hosted MCP connection. This lets Junior prevent duplicate retries and link created issues to the conversation while keeping Linear's existing OAuth flow. Other Linear operations continue to use the hosted MCP tools.
+Issue creation uses a Junior-owned tool backed by Linear's hosted MCP connection. This lets Junior link created issues to the conversation while keeping Linear's existing OAuth flow. Other Linear operations continue to use the hosted MCP tools.
 
 Optional: set channel defaults when a Slack thread usually routes work to the same Linear destination:
 
