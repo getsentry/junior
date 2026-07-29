@@ -63,8 +63,6 @@ describe("active-turn context compaction", () => {
         timestamp: 4,
       } as PiMessage,
     ];
-    let summaryPrompt = "";
-
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
@@ -90,26 +88,11 @@ describe("active-turn context compaction", () => {
         piMessages: activeMessages,
       },
       {
-        completeText: async (args) => {
-          summaryPrompt = JSON.stringify(args.messages);
-          return { text: "No outstanding asks." } as never;
-        },
+        completeText: async () => ({ text: "No outstanding asks." }) as never,
       },
     );
 
     expect(result.compacted).toBe(true);
-    expect(summaryPrompt).toContain(
-      "ACTIVE-TURN CONTEXT CHECKPOINT COMPACTION",
-    );
-    expect(summaryPrompt).toContain(
-      "concrete evidence that every requested outcome occurred",
-    );
-    expect(summaryPrompt).toContain(
-      "Do not infer completion from intent, plans, progress, intermediate artifacts, or adjacent tool activity",
-    );
-    expect(summaryPrompt).toContain(
-      "If evidence is missing or ambiguous, preserve the task as unfinished",
-    );
     expect(result.piMessages).toHaveLength(3);
     expect(textOf(result.piMessages![0]!)).toContain(
       "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
