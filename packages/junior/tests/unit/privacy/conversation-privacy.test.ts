@@ -75,6 +75,9 @@ describe("conversation privacy metadata", () => {
     expect(attributes["gen_ai.tool.call.arguments.keys"]).not.toContain(
       "privateKey20",
     );
+    expect(attributes["gen_ai.tool.call.arguments.size"]).toBe(
+      JSON.stringify(payload).length,
+    );
     expect(JSON.stringify(metadata)).not.toContain("private value");
   });
 });

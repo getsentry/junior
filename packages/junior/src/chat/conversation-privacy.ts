@@ -134,9 +134,11 @@ export function toGenAiPayloadTraceAttributes(
   prefix: "gen_ai.tool.call.arguments" | "gen_ai.tool.call.result",
   payload: unknown,
 ): Record<string, TraceAttributeValue> {
+  const size = serializedLength(payload);
   const attributes: Record<string, TraceAttributeValue> = {
     [`${prefix}.type`]: payloadType(payload),
-    [`${prefix}.size_chars`]: serializedLength(payload),
+    [`${prefix}.size_chars`]: size,
+    [`${prefix}.size`]: size,
   };
   const keys = payloadKeys(payload);
   if (keys) {

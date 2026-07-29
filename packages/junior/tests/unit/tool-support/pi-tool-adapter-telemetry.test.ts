@@ -75,6 +75,13 @@ describe("createPiAgentTools telemetry", () => {
     expect(endAttributes.value["gen_ai.tool.call.result.keys"]).toContain(
       "secret",
     );
+    expect(endAttributes.value["gen_ai.tool.call.result.size"]).toBe(
+      JSON.stringify({
+        ok: true,
+        status: "success",
+        secret: "private result",
+      }).length,
+    );
   });
 
   it("lets sandbox tools add safe attributes to the tool call span", async () => {

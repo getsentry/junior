@@ -72,8 +72,16 @@ Tool failures or slow tool calls.
 
 ```text
 dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:"<tool_name>"'
-fields=timestamp,trace,span.description,span.duration,gen_ai.conversation.id,error.type
+fields=timestamp,trace,span.description,span.duration,gen_ai.conversation.id,gen_ai.tool.call.result.size,error.type
 sort=-timestamp
+```
+
+Large tool results.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.call.result.size:>20000'
+fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.result.size,span.duration
+sort=-gen_ai.tool.call.result.size
 ```
 
 Search tool volume, truncation, and raw output size.
@@ -160,7 +168,8 @@ Events: `agent_tool_call_failed`, `mcp_tool_call_failed`,
 Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 `sandbox.snapshot.resolve`, `sandbox.sync_skills`, `bash`
 
-Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.call.result`, `mcp.method.name`,
+Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
+`gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
 `process.executable.name`, `process.exit.code`, `app.sandbox.source`,
 `app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
 `app.sandbox.search.parsed_records`,
