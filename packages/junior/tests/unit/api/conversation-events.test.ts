@@ -275,6 +275,57 @@ describe("conversation report event projection", () => {
     });
   });
 
+  it("drops provider-redacted thinking before reporting", () => {
+    const redactedOnly = [
+      event(
+        1,
+        assistantMessage([
+          {
+            type: "thinking",
+            thinking: "provider-private reasoning",
+            redacted: true,
+          },
+        ]),
+      ),
+    ];
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: redactedOnly,
+      }),
+    ).toEqual([]);
+
+    const withTool = [
+      event(
+        1,
+        assistantMessage([
+          {
+            type: "thinking",
+            thinking: "provider-private reasoning",
+            redacted: true,
+          },
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "search",
+            arguments: { query: "visible query" },
+          },
+        ]),
+      ),
+    ];
+    const projected = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: withTool,
+    });
+    expect(projected[0]?.data).toMatchObject({
+      type: "tool_calls",
+      calls: [{ toolCallId: "call-1", name: "search" }],
+    });
+    expect(JSON.stringify(projected)).not.toContain(
+      "provider-private reasoning",
+    );
+  });
+
   it("projects parallel calls, structured outcomes, and safe native content", () => {
     const projected = projectConversationReportEventPage({
       canExposePayload: true,

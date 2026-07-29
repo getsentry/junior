@@ -67,6 +67,7 @@ const reportingReasoningPartSchema = z
   .object({
     type: z.literal("thinking"),
     thinking: z.string(),
+    redacted: z.literal(true).optional(),
   })
   .passthrough();
 
@@ -155,7 +156,11 @@ function reportAssistantMessage(args: {
 
   const hasReasoning = message.data.content.some((part) => {
     const reasoning = reportingReasoningPartSchema.safeParse(part);
-    return reasoning.success && reasoning.data.thinking.trim().length > 0;
+    return (
+      reasoning.success &&
+      reasoning.data.redacted !== true &&
+      reasoning.data.thinking.trim().length > 0
+    );
   });
   if (!hasReasoning) return reportToolCalls(args);
 
@@ -169,7 +174,10 @@ function reportAssistantMessage(args: {
   for (const part of message.data.content) {
     const reasoning = reportingReasoningPartSchema.safeParse(part);
     if (reasoning.success) {
-      if (reasoning.data.thinking.trim().length > 0) {
+      if (
+        reasoning.data.redacted !== true &&
+        reasoning.data.thinking.trim().length > 0
+      ) {
         const projected = {
           type: "reasoning" as const,
           ...(args.canExposePayload
