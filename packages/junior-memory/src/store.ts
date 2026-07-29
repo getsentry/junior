@@ -583,14 +583,14 @@ async function archiveExpiredMemoryBatch(args: {
  * Two-part hyphenated prose such as "long-running" remains ordinary text.
  */
 function structuredQueryIdentifiers(query: string): string[] {
+  const matches =
+    query
+      .toLowerCase()
+      .match(
+        /(?:[a-z0-9][a-z0-9._-]*\/)+[a-z0-9][a-z0-9._-]*|[a-z0-9]+(?:[._][a-z0-9]+)+|[a-z0-9]+(?:-[a-z0-9]+){2,}/g,
+      ) ?? [];
   return [
-    ...new Set(
-      query
-        .toLowerCase()
-        .match(
-          /(?:[a-z0-9][a-z0-9._-]*\/)+[a-z0-9][a-z0-9._-]*|[a-z0-9]+(?:[._][a-z0-9]+)+|[a-z0-9]+(?:-[a-z0-9]+){2,}/g,
-        ) ?? [],
-    ),
+    ...new Set(matches.map((identifier) => identifier.replace(/\.+$/, ""))),
   ];
 }
 
@@ -982,7 +982,15 @@ async function searchVisibleLexicalMemories(args: {
       : undefined;
   const exactIdentifierMatch =
     identifierArray !== undefined
-      ? sql<boolean>`${contentTokens} && ${identifierArray}`
+      ? sql<boolean>`EXISTS (
+          SELECT 1
+          FROM unnest(${contentTokens}) AS content_token(value)
+          CROSS JOIN unnest(${identifierArray}) AS query_identifier(value)
+          WHERE strpos(
+            '/' || regexp_replace(content_token.value, '\\.+$', '') || '/',
+            '/' || query_identifier.value || '/'
+          ) > 0
+        )`
       : sql<boolean>`false`;
   const rows = await args.db
     .select({

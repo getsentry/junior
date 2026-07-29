@@ -2265,6 +2265,55 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("matches structured identifiers inside URLs and before sentence punctuation", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 3;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const url = await store.createConversationMemory({
+        content: "CI docs live at https://github.com/getsentry/junior.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-url",
+      });
+      nowMs += 1;
+      await store.createConversationMemory({
+        content: "CI docs for getsentry/junior-old explain package tests.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-url-prefix",
+      });
+      nowMs += 1;
+      const sentence = await store.createConversationMemory({
+        content: "Primary service repository is acme/service.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-sentence",
+      });
+      nowMs += 1;
+      await store.createConversationMemory({
+        content: "Primary service repository is acme/service-old.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:identifier-sentence-prefix",
+      });
+
+      await expect(
+        store.searchMemories({
+          limit: 1,
+          query: "How does CI work in getsentry/junior?",
+        }),
+      ).resolves.toEqual([expect.objectContaining({ id: url.memory.id })]);
+      await expect(
+        store.searchMemories({
+          limit: 1,
+          query: "Where is acme/service.",
+        }),
+      ).resolves.toEqual([expect.objectContaining({ id: sentence.memory.id })]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("does not treat a longer repository name as an exact identifier match", async () => {
     const fixture = await createMemoryFixture();
 
