@@ -32,7 +32,9 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Testing And Validation
 
-- Follow `policies/testing.md` and `policies/evals.md`: prefer integration tests for product/runtime behavior, evals for agent interpretation and reply quality, and unit tests for local deterministic logic.
+- Follow `policies/testing.md` and `policies/evals.md`. Product/runtime behavior belongs in integration tests through real Junior wiring; agent interpretation and reply quality belong in evals; unit tests are reserved for isolated deterministic logic.
+- Before adding a test, search every test layer for the behavior and extend its primary owning scenario. A source change does not automatically require a new test, and equal- or higher-fidelity existing coverage is sufficient.
+- Do not repeat the same behavioral assertion at multiple layers or add one test per implementation branch. Add cross-layer coverage only for a distinct contract or failure boundary, and use representative cases unless exhaustive inputs protect a local deterministic invariant.
 - Test harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.
 - For local evals, run `pnpm dev:env` once, run `docker compose up -d postgres redis`, and ensure `cloudflared` is on `PATH`. Do not bind environment variables manually; the eval config loads repo env files and provisions test databases.
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.

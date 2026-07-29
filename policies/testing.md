@@ -21,9 +21,18 @@ routine refactors do not churn brittle unit tests.
 - Use unit tests only for tightly local deterministic logic where integration or
   eval coverage would be materially slower, less deterministic, or less
   diagnostic.
+- Before adding coverage, search unit, component, integration, and eval suites
+  for the behavior's primary owning scenario. Extend that scenario instead of
+  creating nearby coverage around the changed implementation.
+- A source change does not automatically require a new test. Existing coverage
+  is sufficient when an equal- or higher-fidelity test exercises the changed
+  contract and would fail for the regression being prevented.
 - Give each behavior contract one primary owning layer. Add cross-layer
   coverage only for a distinct contract or materially different failure
   boundary, not as duplicate confidence.
+- Do not add one test per implementation branch. Use representative cases for
+  product behavior, and reserve exhaustive tables for local deterministic
+  invariants where the full input matrix is itself the contract.
 - Keep coverage proportional: one representative happy path and one realistic
   failure per distinct product outcome, safety invariant, or irreversible
   delivery, persistence, migration, or recovery boundary. Consolidate examples
