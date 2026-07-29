@@ -154,10 +154,10 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   } else {
     outcome = "execution_failure";
   }
-  const rejectedPrimaryText = Boolean(
+  const suppressedPrimaryText = Boolean(
     rawPrimaryText && !noReplyRequested && !primaryText,
   );
-  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = rejectedPrimaryText
+  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = suppressedPrimaryText
     ? "execution_failure"
     : outcome;
 

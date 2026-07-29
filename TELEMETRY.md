@@ -145,8 +145,8 @@ The turn timed out, returned no useful answer, or used unexpected reasoning.
 Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
-`agent.turn.reply_recovery.retrying`,
-`agent.turn.reply_recovery.exhausted`, `assistant.reply.generation.failed`
+`agent.turn.empty_output.retrying`,
+`agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
@@ -156,7 +156,7 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
 `gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
 `gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
-`app.ai.reply_recovery.attempt`,
+`app.ai.empty_output.attempt`,
 `app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
 `app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
 `app.ai.cost.total_usd`

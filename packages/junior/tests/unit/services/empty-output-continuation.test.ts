@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
-import { nextReplyRecovery } from "@/chat/services/reply-recovery";
+import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 
 function user(text: string): PiMessage {
   return {
@@ -32,7 +32,7 @@ function assistant(text: string): AssistantMessage {
   };
 }
 
-describe("reply recovery", () => {
+describe("empty output continuation", () => {
   it("preserves an earlier delivered reply across later user input", () => {
     const summary = user(`${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue.`);
     const delivered = assistant("Progress already delivered.");
@@ -40,7 +40,7 @@ describe("reply recovery", () => {
     const empty = assistant("");
 
     expect(
-      nextReplyRecovery({
+      nextEmptyOutputContinuation({
         attempt: 0,
         lastAssistant: empty,
         messages: [summary, delivered, steering, empty],
@@ -51,15 +51,15 @@ describe("reply recovery", () => {
     });
   });
 
-  it("exhausts recovery after one rejected continuation", () => {
+  it("stops after one empty continuation", () => {
     const summary = user(`${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue.`);
-    const rejected = assistant("");
+    const emptyOutput = assistant("");
 
     expect(
-      nextReplyRecovery({
+      nextEmptyOutputContinuation({
         attempt: 1,
-        lastAssistant: rejected,
-        messages: [summary, rejected],
+        lastAssistant: emptyOutput,
+        messages: [summary, emptyOutput],
       }),
     ).toEqual({ kind: "exhausted" });
   });

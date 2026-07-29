@@ -5,7 +5,9 @@
  * `logException` with a stable dot-namespaced event name and only attributes
  * specific to that occurrence:
  *
- * `logWarn("agent.turn.reply_recovery.exhausted", { "app.retry.attempt": 2 })`
+ * `logWarn("agent.turn.empty_output.exhausted", {
+ *   "app.ai.empty_output.attempt": 1,
+ * })`
  *
  * Event names describe the semantic domain, operation, and outcome. They are
  * lowercase, use dots for namespaces, use snake case within a namespace

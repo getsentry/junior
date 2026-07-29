@@ -40,8 +40,8 @@ describe("structured log events", () => {
           runId: "run-123",
         },
         async () => {
-          logWarn("agent.turn.reply_recovery.exhausted", {
-            "app.retry.attempt": 2,
+          logWarn("agent.turn.empty_output.exhausted", {
+            "app.ai.empty_output.attempt": 1,
           });
         },
       );
@@ -51,13 +51,13 @@ describe("structured log events", () => {
 
     expect(records).toEqual([
       expect.objectContaining({
-        body: "agent.turn.reply_recovery.exhausted",
-        eventName: "agent.turn.reply_recovery.exhausted",
+        body: "agent.turn.empty_output.exhausted",
+        eventName: "agent.turn.empty_output.exhausted",
         level: "warn",
         attributes: expect.objectContaining({
-          "app.retry.attempt": 2,
+          "app.ai.empty_output.attempt": 1,
           "app.run.id": "run-123",
-          "event.name": "agent.turn.reply_recovery.exhausted",
+          "event.name": "agent.turn.empty_output.exhausted",
           "gen_ai.conversation.id": "conversation-123",
           span_id: "span-123",
           trace_id: "trace-123",

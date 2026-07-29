@@ -75,7 +75,7 @@ import { buildTurnResult } from "@/chat/services/turn-result";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
-import { nextReplyRecovery } from "@/chat/services/reply-recovery";
+import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
@@ -1229,7 +1229,7 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           let discardedRetryUsage: AgentTurnUsage | undefined;
           let providerRetryAttempt = 0;
-          let replyRecoveryAttempt = 0;
+          let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
             discardedRetryUsage = addAgentTurnUsage(
               discardedRetryUsage,
@@ -1291,30 +1291,24 @@ async function executeAgentRunInPrivacyContext(
                 throw pendingAuthPause;
               }
 
-              const replyRecovery = nextReplyRecovery({
-                attempt: replyRecoveryAttempt,
+              const emptyOutputContinuation = nextEmptyOutputContinuation({
+                attempt: emptyOutputAttempt,
                 lastAssistant,
                 messages: agent!.state.messages,
               });
-              if (replyRecovery.kind === "retry") {
-                replyRecoveryAttempt += 1;
-                await prepareRetry(replyRecovery.messages);
-                logWarn(
-                  "agent.turn.reply_recovery.retrying",
-                  {
-                    "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
-                  },
-                );
+              if (emptyOutputContinuation.kind === "retry") {
+                emptyOutputAttempt += 1;
+                await prepareRetry(emptyOutputContinuation.messages);
+                logWarn("agent.turn.empty_output.retrying", {
+                  "app.ai.empty_output.attempt": emptyOutputAttempt,
+                });
                 run = agent!.continue();
                 continue;
               }
-              if (replyRecovery.kind === "exhausted") {
-                logWarn(
-                  "agent.turn.reply_recovery.exhausted",
-                  {
-                    "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
-                  },
-                );
+              if (emptyOutputContinuation.kind === "exhausted") {
+                logWarn("agent.turn.empty_output.exhausted", {
+                  "app.ai.empty_output.attempt": emptyOutputAttempt,
+                });
               }
 
               const providerRetry = nextProviderRetry({

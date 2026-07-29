@@ -4,7 +4,7 @@ import { isContinuablePiBoundary } from "@/chat/pi/transcript";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
-type ReplyRecovery =
+type EmptyOutputContinuation =
   | { kind: "none" }
   | {
       kind: "retry";
@@ -16,11 +16,11 @@ type ReplyRecovery =
  * Decide whether empty assistant output gets one continuation after a
  * history replacement.
  */
-export function nextReplyRecovery(args: {
+export function nextEmptyOutputContinuation(args: {
   attempt: number;
   lastAssistant?: AssistantMessage;
   messages: PiMessage[];
-}): ReplyRecovery {
+}): EmptyOutputContinuation {
   if (!hasCompactedConversationContext(args.messages)) {
     return { kind: "none" };
   }

@@ -4,7 +4,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
-import { nextReplyRecovery } from "@/chat/services/reply-recovery";
+import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -81,7 +81,7 @@ describe("Pi Agent lifecycle", () => {
     });
   });
 
-  it("continues once from a rejected reply without delivering it", async () => {
+  it("continues once after empty output without delivering it", async () => {
     const replies = ["", "Recovered."];
     const streamFn = vi.fn(async () => assistantResponse(replies.shift()));
     const delivered: string[] = [];
@@ -121,19 +121,19 @@ describe("Pi Agent lifecycle", () => {
     const lastAssistant = agent.state.messages
       .filter(isAssistantMessage)
       .at(-1);
-    const recovery = nextReplyRecovery({
+    const continuation = nextEmptyOutputContinuation({
       attempt: 0,
       lastAssistant,
       messages: agent.state.messages as PiMessage[],
     });
-    expect(recovery).toMatchObject({
+    expect(continuation).toMatchObject({
       kind: "retry",
     });
-    if (recovery.kind !== "retry") {
-      throw new Error("Expected reply recovery");
+    if (continuation.kind !== "retry") {
+      throw new Error("Expected empty output continuation");
     }
 
-    agent.state.messages = recovery.messages;
+    agent.state.messages = continuation.messages;
     await agent.continue();
 
     expect(streamFn).toHaveBeenCalledTimes(2);

@@ -34,8 +34,8 @@ describe("retry usage", () => {
       isError: false,
       timestamp: 2,
     } as PiMessage;
-    const rejected = assistant("", { input: 10, output: 2 });
-    const messages = [user, toolCall, toolResult, rejected];
+    const emptyOutput = assistant("", { input: 10, output: 2 });
+    const messages = [user, toolCall, toolResult, emptyOutput];
 
     expect(getDiscardedRetryUsage(messages, messages.slice(0, -1))).toEqual({
       inputTokens: 10,
