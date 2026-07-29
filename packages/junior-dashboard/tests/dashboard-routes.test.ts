@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
+import * as juniorApi from "@sentry/junior/api";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
 import {
@@ -77,6 +78,7 @@ describe("dashboard routes", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.doUnmock("#junior/config");
     for (const name of dashboardEnvNames) {
       delete process.env[name];
@@ -792,6 +794,34 @@ describe("dashboard routes", () => {
       path: "/memories",
       ok: true,
     });
+  });
+
+  it("rejects personal bearer token writes before plugin dispatch", async () => {
+    const authenticateToken = vi
+      .spyOn(juniorApi, "authenticatePersonalToken")
+      .mockResolvedValue("person@sentry.io");
+    let dispatched = false;
+    const pluginApp = new Hono();
+    pluginApp.delete("/memories/:id", (c) => {
+      dispatched = true;
+      return c.body(null, 204);
+    });
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null),
+      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/plugins/memory/memories/memory-1", {
+        headers: { authorization: "Bearer jr_pat_valid" },
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(authenticateToken).not.toHaveBeenCalled();
+    expect(dispatched).toBe(false);
   });
 
   it("passes sanitized auth context to plugin API route apps", async () => {

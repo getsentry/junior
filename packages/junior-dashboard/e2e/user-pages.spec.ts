@@ -120,10 +120,21 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   await page.goto(`${server.baseURL}/settings/plugins/memory/memories`);
   await expect(page.getByText("First page memory.")).toBeVisible();
+  const searchbox = page.getByRole("searchbox", { name: "Search memories" });
+  await searchbox.fill("runbook");
+  await expect(page).toHaveURL(/q=runbook/);
+  await expect(
+    page.getByRole("button", { name: "Load more" }),
+  ).not.toBeVisible();
+  await expect(searchbox).toBeFocused();
+  await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
+
+  await searchbox.fill("");
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.getByText("First page memory.")).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
   await expect(page.getByText("Second page memory.")).toBeVisible();
 
-  const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
   await expect(searchbox).toBeFocused();

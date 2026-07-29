@@ -206,7 +206,7 @@ export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
                 ) : null}
               </Card>
             ))}
-            {query.hasNextPage ? (
+            {!query.isPlaceholderData && query.hasNextPage ? (
               <Button
                 className="justify-self-center"
                 disabled={query.isFetchingNextPage}
