@@ -55,12 +55,12 @@ describe("callMcpTool", () => {
     });
   });
 
-  it("resolves the underlying MCP action metadata for core review", async () => {
+  it("uses the managed MCP provider as the trusted review source", async () => {
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
-          name: "mcp__demo__search",
+          name: "search",
           rawName: "search",
           provider: "demo",
           description: "Search the remote workspace.",
@@ -78,7 +78,7 @@ describe("callMcpTool", () => {
 
     expect(
       await callMcpTool.resolveApprovalMetadata?.({
-        tool_name: "mcp__demo__search",
+        tool_name: "search",
         arguments: { query: "errors" },
       }),
     ).toEqual({
@@ -88,7 +88,7 @@ describe("callMcpTool", () => {
         readOnlyHint: true,
       },
       description: "Search the remote workspace.",
-      name: "mcp__demo__search",
+      name: "search",
       source: {
         id: "demo",
         description: "MCP provider demo",

@@ -89,14 +89,10 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           : {}),
         description: activeTool.description,
         name: tool_name,
-        ...(provider
-          ? {
-              source: {
-                id: provider,
-                description: `MCP provider ${provider}`,
-              },
-            }
-          : {}),
+        source: {
+          id: activeTool.provider,
+          description: `MCP provider ${activeTool.provider}`,
+        },
       };
     },
     execute: async (input, options) => {
