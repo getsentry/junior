@@ -44,7 +44,12 @@ const inputSchema = z
       .describe("Linear priority. Use null to clear.")
       .optional(),
     project: nullableName("Project name or identifier. Use null to clear."),
-    state: nullableName("Workflow state name or identifier."),
+    state: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("Workflow state name or identifier.")
+      .optional(),
     team: z
       .string()
       .trim()

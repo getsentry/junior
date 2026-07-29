@@ -168,6 +168,9 @@ describe("Linear native issue tools", () => {
         id: "ENG-123",
         state: "In Progress",
       };
+      expect(() =>
+        updateIssue.prepareArguments?.({ id: "ENG-123", state: null }),
+      ).toThrow("Invalid tool arguments: state:");
       await expect(
         updateIssue.execute(updateInput, { toolCallId: "call-update" }),
       ).resolves.toMatchObject({
