@@ -338,6 +338,7 @@ async function summarizeContext(
           "- Durable constraints, user preferences, IDs, URLs, artifacts, sandbox references, auth state, and unresolved blockers",
           "",
           "Do not write a user-facing reply, announce a plan, or imply that the task is complete unless the source history proves it is complete.",
+          "For file delivery, only a successful sendFiles tool result proves delivery. imageGenerate creates files and viewImage inspects them; neither sends files to the user.",
         ]
       : [
           "You are performing a CONTEXT CHECKPOINT COMPACTION for Junior.",

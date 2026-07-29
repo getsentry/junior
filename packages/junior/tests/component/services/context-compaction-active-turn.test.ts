@@ -101,6 +101,12 @@ describe("active-turn context compaction", () => {
     expect(summaryPrompt).toContain(
       "ACTIVE-TURN CONTEXT CHECKPOINT COMPACTION",
     );
+    expect(summaryPrompt).toContain(
+      "only a successful sendFiles tool result proves delivery",
+    );
+    expect(summaryPrompt).toContain(
+      "imageGenerate creates files and viewImage inspects them",
+    );
     expect(result.piMessages).toHaveLength(3);
     expect(textOf(result.piMessages![0]!)).toContain(
       "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
