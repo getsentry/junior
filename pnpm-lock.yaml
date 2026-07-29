@@ -7,6 +7,12 @@ settings:
 
 catalogs:
   default:
+    '@earendil-works/pi-agent-core':
+      specifier: 0.82.1
+      version: 0.82.1
+    '@earendil-works/pi-ai':
+      specifier: 0.82.1
+      version: 0.82.1
     '@sentry/node':
       specifier: 10.65.0
       version: 10.65.0
@@ -155,10 +161,10 @@ importers:
         specifier: 4.29.0
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       '@earendil-works/pi-agent-core':
-        specifier: 0.82.1
+        specifier: 'catalog:'
         version: 0.82.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@earendil-works/pi-ai':
-        specifier: 0.82.1
+        specifier: 'catalog:'
         version: 0.82.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@logtape/logtape':
         specifier: ^2.1.1
@@ -366,7 +372,7 @@ importers:
         specifier: 4.29.0
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       '@earendil-works/pi-ai':
-        specifier: 0.82.1
+        specifier: 'catalog:'
         version: 0.82.1(zod@4.4.3)
       '@sentry/junior':
         specifier: workspace:*

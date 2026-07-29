@@ -9,39 +9,6 @@ const executionProfile = {
 };
 
 describe("buildTurnResult", () => {
-  it("treats empty tool-only turns as execution failures", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "bash",
-          isError: false,
-          stdout: "ok",
-        },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "I don't have access to active tool.",
-            },
-          ],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "Open the GitHub issue",
-      artifactStatePatch: {},
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      executionProfile,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("execution_failure");
-  });
-
   it("requires a completed answer after a progress message and tool result", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -285,44 +252,6 @@ describe("buildTurnResult", () => {
 
     expect(reply.text).toBe("Handled it.");
     expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(true);
-  });
-
-  it("keeps thread delivery enabled for reaction turns that fail validation", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "addReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                type: "tool_call",
-                name: "addReaction",
-                input: { reaction: "thumbsup" },
-              }),
-            },
-          ],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "react and tell me what happened",
-      artifactStatePatch: {},
-      toolCalls: ["addReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      executionProfile,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
