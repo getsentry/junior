@@ -376,7 +376,7 @@ const SAFETY_RULES = [
 const FAILURE_RULES = [
   "- For tool/runtime failures, run the named check before diagnosing and report the exact failed command plus stderr/exit code.",
   "- If a fact cannot be verified after focused checks, say what you checked and what blocked a stronger answer.",
-  "- Do not surface raw tool payloads, execution-escape text, or internal routing metadata as the final answer.",
+  "- Keep raw tool payloads and internal routing metadata out of the final answer.",
 ];
 
 function renderRuleSection(tag: string, lines: string[]): string {

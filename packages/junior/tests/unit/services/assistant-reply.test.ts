@@ -44,34 +44,24 @@ describe("assistant reply", () => {
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
-  it("suppresses protocol and execution-only text", () => {
+  it("suppresses explicit protocol output", () => {
     expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
       kind: "suppress",
     });
     expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
       kind: "suppress",
     });
-    expect(
-      decideReply(
-        assistant(
-          JSON.stringify({
-            type: "tool_call",
-            name: "addReaction",
-            input: { emoji: "eyes" },
-          }),
-        ),
-      ),
-    ).toEqual({ kind: "reject", reason: "raw_tool_payload" });
-    expect(
-      decideReply(assistant("Let me do that now. Give me a moment.")),
-    ).toEqual({ kind: "reject", reason: "execution_escape" });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
     });
   });
 
-  it("keeps prose that discusses tool payloads", () => {
-    const text = 'The field `"type": "tool_call"` identifies a tool call.';
+  it("delivers nonempty tool-free text without interpreting it", () => {
+    const text = `\`\`\`json
+{"type":"tool_call","name":"example","input":{}}
+\`\`\`
+
+Should I proceed with the real call?`;
     expect(decideReply(assistant(text))).toEqual({
       kind: "deliver",
       text,

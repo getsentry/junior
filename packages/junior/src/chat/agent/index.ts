@@ -1302,7 +1302,6 @@ async function executeAgentRunInPrivacyContext(
                 logWarn(
                   "agent.turn.reply_recovery.retrying",
                   {
-                    "app.ai.reply_rejection.reason": replyRecovery.reason,
                     "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
                 );
@@ -1313,7 +1312,6 @@ async function executeAgentRunInPrivacyContext(
                 logWarn(
                   "agent.turn.reply_recovery.exhausted",
                   {
-                    "app.ai.reply_rejection.reason": replyRecovery.reason,
                     "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
                 );

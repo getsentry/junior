@@ -1,10 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isContinuablePiBoundary } from "@/chat/pi/transcript";
-import {
-  decideReply,
-  type ReplyRejection,
-} from "@/chat/services/assistant-reply";
+import { decideReply } from "@/chat/services/assistant-reply";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 type ReplyRecovery =
@@ -12,12 +9,11 @@ type ReplyRecovery =
   | {
       kind: "retry";
       messages: PiMessage[];
-      reason: ReplyRejection;
     }
-  | { kind: "exhausted"; reason: ReplyRejection };
+  | { kind: "exhausted" };
 
 /**
- * Decide whether a rejected assistant message gets one continuation after a
+ * Decide whether empty assistant output gets one continuation after a
  * history replacement.
  */
 export function nextReplyRecovery(args: {
@@ -35,14 +31,11 @@ export function nextReplyRecovery(args: {
     return { kind: "none" };
   }
 
-  const decision = args.lastAssistant
-    ? decideReply(args.lastAssistant)
-    : ({ kind: "reject", reason: "empty" } as const);
-  if (decision.kind !== "reject") {
+  if (args.lastAssistant && decideReply(args.lastAssistant).kind !== "empty") {
     return { kind: "none" };
   }
   if (args.attempt > 0) {
-    return { kind: "exhausted", reason: decision.reason };
+    return { kind: "exhausted" };
   }
 
   if (!args.lastAssistant) {
@@ -50,18 +43,17 @@ export function nextReplyRecovery(args: {
       ? {
           kind: "retry",
           messages: [...args.messages],
-          reason: decision.reason,
         }
-      : { kind: "exhausted", reason: decision.reason };
+      : { kind: "exhausted" };
   }
 
   if (args.messages.at(-1) !== args.lastAssistant) {
-    return { kind: "exhausted", reason: decision.reason };
+    return { kind: "exhausted" };
   }
   // Earlier assistant messages may already be delivered. Remove only the
-  // rejected message, then continue only if the remaining tail is safe.
+  // empty message, then continue only if the remaining tail is safe.
   const messages = args.messages.slice(0, -1);
   return isContinuablePiBoundary(messages)
-    ? { kind: "retry", messages, reason: decision.reason }
-    : { kind: "exhausted", reason: decision.reason };
+    ? { kind: "retry", messages }
+    : { kind: "exhausted" };
 }

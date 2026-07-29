@@ -66,9 +66,9 @@ delegation without becoming the execution actor or a general task owner.
 
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
-- Empty, escaped, or leaked tool text after a history replacement is withheld
-  and retried once from the last user or tool-result boundary. A second
-  rejection ends as an execution failure.
+- Empty assistant output after a history replacement is retried once from the
+  last user or tool-result boundary. A second empty response ends as an
+  execution failure.
 - Retry continuations retain an exact transcript prefix. Usage from discarded
   assistant tails is carried forward separately so retained messages are
   counted once.

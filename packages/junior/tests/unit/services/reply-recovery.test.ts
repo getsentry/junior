@@ -37,20 +37,17 @@ describe("reply recovery", () => {
     const summary = user(`${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\nContinue.`);
     const delivered = assistant("Progress already delivered.");
     const steering = user("Also check the session log.");
-    const rejected = assistant(
-      JSON.stringify({ type: "tool_call", name: "bash", input: {} }),
-    );
+    const empty = assistant("");
 
     expect(
       nextReplyRecovery({
         attempt: 0,
-        lastAssistant: rejected,
-        messages: [summary, delivered, steering, rejected],
+        lastAssistant: empty,
+        messages: [summary, delivered, steering, empty],
       }),
     ).toEqual({
       kind: "retry",
       messages: [summary, delivered, steering],
-      reason: "raw_tool_payload",
     });
   });
 
@@ -64,6 +61,6 @@ describe("reply recovery", () => {
         lastAssistant: rejected,
         messages: [summary, rejected],
       }),
-    ).toEqual({ kind: "exhausted", reason: "empty" });
+    ).toEqual({ kind: "exhausted" });
   });
 });

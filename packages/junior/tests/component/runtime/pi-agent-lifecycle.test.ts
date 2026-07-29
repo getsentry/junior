@@ -128,7 +128,6 @@ describe("Pi Agent lifecycle", () => {
     });
     expect(recovery).toMatchObject({
       kind: "retry",
-      reason: "empty",
     });
     if (recovery.kind !== "retry") {
       throw new Error("Expected reply recovery");
