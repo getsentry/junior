@@ -117,6 +117,30 @@ describe("getDeployment", () => {
     expect(adapter.requests()).toHaveLength(1);
   });
 
+  it("watches every environment for a commit when environment is omitted", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    const { adapter, tool } = toolContext([{ body: [] }]);
+
+    await expect(
+      tool.execute?.(
+        {
+          commitSha: COMMIT_SHA,
+          repo: "GetSentry/Junior-Prod",
+        },
+        { toolCallId: "watch-commit-deployments" },
+      ),
+    ).resolves.toMatchObject({
+      deployment: null,
+      environment: null,
+      subscribable: {
+        resourceRef: `github:deployment-source:getsentry/junior-prod:${COMMIT_SHA}`,
+      },
+    });
+    const [request] = adapter.requests();
+    expect(request?.request.url).toContain(`sha=${COMMIT_SHA}`);
+    expect(request?.request.url).not.toContain("environment=");
+  });
+
   it("reports a missing repository as a repairable tool error", async () => {
     const { tool } = toolContext([
       { body: { message: "Not Found" }, status: 404 },

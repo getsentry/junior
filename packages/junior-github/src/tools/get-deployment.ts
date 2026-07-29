@@ -21,7 +21,10 @@ const inputSchema = z
       .string()
       .trim()
       .min(1)
-      .describe('GitHub deployment environment, such as "Production".'),
+      .describe(
+        'Optional GitHub deployment environment, such as "Production". Omit to inspect and watch deployments for the commit across environments.',
+      )
+      .optional(),
   })
   .strict();
 const statusSchema = z
@@ -53,7 +56,7 @@ const deploymentSourceSchema = z
   .object({
     commitSha: commitShaSchema,
     deployment: deploymentSchema.nullable(),
-    environment: z.string(),
+    environment: z.string().nullable(),
     repo: z.string(),
     subscribable: subscribableResourceSchema.optional(),
   })
@@ -155,7 +158,7 @@ export function createGitHubGetDeploymentTool(
 ) {
   return definePluginTool({
     description:
-      "Get the latest GitHub deployment and status for an exact repository, environment, and full commit SHA. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
+      "Get the latest GitHub deployment and status for an exact repository and full commit SHA, optionally limited to one environment. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -163,7 +166,9 @@ export function createGitHubGetDeploymentTool(
       const commitSha = input.commitSha.toLowerCase();
       const deploymentsUrl = new URL(repositoryUrl(repo, "deployments"));
       deploymentsUrl.searchParams.set("sha", commitSha);
-      deploymentsUrl.searchParams.set("environment", input.environment);
+      if (input.environment) {
+        deploymentsUrl.searchParams.set("environment", input.environment);
+      }
       deploymentsUrl.searchParams.set("per_page", "1");
       const deploymentsResponse = await ctx.egress.fetch({
         provider: "github",
@@ -245,7 +250,7 @@ export function createGitHubGetDeploymentTool(
       const data: DeploymentSource = {
         commitSha,
         deployment,
-        environment: input.environment,
+        environment: input.environment ?? null,
         repo: repo.ref,
         ...(subscribable ? { subscribable } : {}),
       };

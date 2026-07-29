@@ -155,12 +155,13 @@ Webhook events are delivered as normal queued conversation messages. They do not
 
 ## Watch deployment events
 
-Use `github_getDeployment` when Junior should inspect or watch the deployment
-for an exact repository, environment, and full commit SHA. The result includes
-the latest matching deployment and its latest status when GitHub has created
-one. It also remains subscribable before the deployment exists, which lets
-Junior wait for a deployment that will be created after a branch merge or
-release action.
+Use `github_getDeployment` when Junior should inspect or watch deployments for
+an exact repository and full commit SHA. Supply an environment to limit the
+lookup and watch to that environment, or omit it to watch deployments for the
+commit across environments. The result includes the latest matching deployment
+and its latest status when GitHub has created one. It also remains subscribable
+before the deployment exists, which lets Junior wait for a deployment that
+will be created after a branch merge or release action.
 
 The GitHub App needs `Deployments: read`, and its webhook must subscribe to
 both Deployment and Deployment status. Junior maps those deliveries to these

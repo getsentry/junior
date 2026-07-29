@@ -3,13 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
+const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
+
 function toolContext() {
   const adapter = createGitHubApiTestAdapter([
     {
       body: {
         base: { ref: "main" },
         draft: false,
-        head: { ref: "feat/resource-events" },
+        head: { ref: "feat/resource-events", sha: HEAD_SHA },
         html_url: "https://github.com/getsentry/junior/pull/691",
         merged: false,
         number: 691,
@@ -39,6 +41,7 @@ describe("getPullRequest", () => {
         { toolCallId: "get-pr" },
       ),
     ).resolves.toMatchObject({
+      headSha: HEAD_SHA,
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",

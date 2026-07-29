@@ -83,10 +83,11 @@ status, Issue comment, Pull request review, and Pull request review comment
 events.
 
 `github_getDeployment` reads the latest deployment and status for an exact
-repository, environment, and commit SHA. When webhooks are configured, its
-result can subscribe the current conversation to deployment creation, progress,
-success, failure, and error events. The subscription remains available when
-GitHub has not created the deployment yet.
+repository and commit SHA, optionally limited to one environment. When
+webhooks are configured, its result can subscribe the current conversation to
+deployment creation, progress, success, failure, and error events. Omitting the
+environment watches deployments for that commit across environments. The
+subscription remains available when GitHub has not created the deployment yet.
 
 ```bash
 vercel env add GITHUB_WEBHOOK_SECRET production

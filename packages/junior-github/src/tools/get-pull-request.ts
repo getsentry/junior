@@ -10,6 +10,7 @@ import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
 
+const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
@@ -20,6 +21,7 @@ const pullRequestSchema = z.object({
   base: z.string(),
   draft: z.boolean(),
   head: z.string(),
+  headSha: commitShaSchema,
   merged: z.boolean(),
   number: z.number(),
   state: z.string(),
@@ -92,7 +94,7 @@ export function createGitHubGetPullRequestTool(
         .object({
           base: z.object({ ref: z.string() }),
           draft: z.boolean(),
-          head: z.object({ ref: z.string() }),
+          head: z.object({ ref: z.string(), sha: commitShaSchema }),
           html_url: z.string(),
           merged: z.boolean().optional().default(false),
           number: z.number(),
@@ -108,6 +110,7 @@ export function createGitHubGetPullRequestTool(
         base: providerResult.base.ref,
         draft: providerResult.draft,
         head: providerResult.head.ref,
+        headSha: providerResult.head.sha.toLowerCase(),
         merged: providerResult.merged,
         number: providerResult.number,
         state: providerResult.state,
