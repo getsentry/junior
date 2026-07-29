@@ -72,6 +72,9 @@ test("searches, paginates, and forgets plugin page records", async ({
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
     const cursor = url.searchParams.get("cursor");
+    if (query) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     const records = forgotMemory
       ? []
       : query
@@ -120,10 +123,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.getByRole("button", { name: "Load more" }).click();
   await expect(page.getByText("Second page memory.")).toBeVisible();
 
-  await page
-    .getByRole("searchbox", { name: "Search memories" })
-    .fill("runbook");
+  const searchbox = page.getByRole("searchbox", { name: "Search memories" });
+  await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
+  await expect(searchbox).toBeFocused();
   await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());

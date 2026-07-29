@@ -69,6 +69,7 @@ export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
       );
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
+    placeholderData: (previousData) => previousData,
     retry: false,
   });
   const records = useMemo(
@@ -216,7 +217,7 @@ export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
             ) : null}
             {action.error ? (
               <p className="m-0 text-center text-sm text-rose-300">
-                Could not update this memory. Try again.
+                Could not complete this action. Try again.
               </p>
             ) : null}
           </div>
