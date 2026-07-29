@@ -188,18 +188,16 @@ describe("Linear native create tool", () => {
             activeProviders.add("linear");
             return true;
           },
-          async callProviderTool() {
+          async callWrappedTool() {
             callCount += 1;
             if (callCount === 1) {
               activeProviders.delete("linear");
               return {
-                authorizationPending: true,
-                content: [
-                  { type: "text" as const, text: "Authorization pending." },
-                ],
+                status: "authorization_pending" as const,
               };
             }
             return {
+              status: "success" as const,
               content: [{ type: "text" as const, text: "Created ENG-456" }],
               structuredContent: {
                 issue: {

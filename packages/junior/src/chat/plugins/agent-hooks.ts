@@ -178,20 +178,19 @@ function pluginMcpContext(
     return undefined;
   }
   const provider = plugin.manifest.name;
+  const prepare: PluginMcp["prepare"] = async () => {
+    await manager.activateProvider(provider);
+    return manager.getActiveProviders().includes(provider)
+      ? "ready"
+      : "authorization_pending";
+  };
   return {
-    async prepare() {
-      await manager.activateProvider(provider);
-      return manager.getActiveProviders().includes(provider)
-        ? "ready"
-        : "authorization_pending";
-    },
+    prepare,
     async callTool(input) {
-      if (!wrappedTools.has(input.name)) {
-        throw new Error(
-          `Plugin ${provider} cannot call unwrapped MCP tool ${input.name}`,
-        );
+      if ((await prepare()) === "authorization_pending") {
+        return { status: "authorization_pending" };
       }
-      return await manager.callProviderTool(
+      return await manager.callWrappedTool(
         provider,
         input.name,
         input.arguments ?? {},

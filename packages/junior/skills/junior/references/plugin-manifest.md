@@ -27,7 +27,7 @@ description: Internal provider workflows
 | `target`               | target/config metadata      | `config-key` must be in `config-keys`                                               |
 | `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                   |
 | `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                             |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools`                                               |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools` and `wrapped-tools`                           |
 
 ## OAuth bearer
 
@@ -79,6 +79,34 @@ mcp:
     - search
     - fetch
 ```
+
+### MCP wrapper tools
+
+Code plugins can replace selected provider tools with plugin-owned tools:
+
+```ts
+mcp: {
+  transport: "http",
+  url: "https://mcp.example.com/mcp",
+  allowedTools: ["search", "fetch"],
+  wrappedTools: ["create_item"],
+}
+```
+
+- `allowedTools` lists provider tools exposed directly to the model.
+- `wrappedTools` lists provider tools hidden from the model and callable only
+  through that plugin's `ctx.mcp` capability.
+- Register the replacement as a normal plugin tool from `hooks.tools`.
+- The host loads the union of both lists, so wrapped tools do not need to be
+  repeated in `allowedTools`.
+- `callTool` activates the provider when needed. Durable mutation wrappers can
+  call `prepare` first so an initial authorization pause happens before they
+  persist pending work.
+- Successful calls contain the provider's original `content` and optional
+  `structuredContent`. Authorization pauses contain no provider content.
+- Wrapper implementations must handle `authorization_pending` before reading
+  successful provider content. See `packages/junior-linear/src/tools/create-issue.ts`
+  for a durable mutation example.
 
 ## Parser traps
 

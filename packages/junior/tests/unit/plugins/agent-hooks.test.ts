@@ -660,10 +660,18 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("gives MCP wrapper tools access only to their declared provider tools", async () => {
+  it("activates MCP providers for wrapper tool calls", async () => {
     let captured: ToolRegistrationHookContext | undefined;
-    const activateProvider = vi.fn(async () => true);
-    const callProviderTool = vi.fn(async () => ({
+    const activeProviders = new Set<string>();
+    let authorizationPending = false;
+    const activateProvider = vi.fn(async (provider: string) => {
+      if (!authorizationPending) {
+        activeProviders.add(provider);
+      }
+      return !authorizationPending;
+    });
+    const callWrappedTool = vi.fn(async () => ({
+      status: "success" as const,
       content: [{ type: "text" as const, text: "created" }],
       structuredContent: { identifier: "ENG-123" },
     }));
@@ -693,14 +701,13 @@ describe("agent plugin hooks", () => {
         egress: TEST_EGRESS,
         mcpToolManager: {
           activateProvider,
-          callProviderTool,
-          getActiveProviders: () => ["linear"],
+          callWrappedTool,
+          getActiveProviders: () => [...activeProviders],
         } as never,
         source: LOCAL_SOURCE,
         workspace: {} as any,
       });
 
-      await expect(captured?.mcp?.prepare()).resolves.toBe("ready");
       await expect(
         captured?.mcp?.callTool({
           name: "create_issue",
@@ -708,18 +715,23 @@ describe("agent plugin hooks", () => {
           toolCallId: "call-1",
         }),
       ).resolves.toMatchObject({
+        status: "success",
         structuredContent: { identifier: "ENG-123" },
       });
       expect(activateProvider).toHaveBeenCalledWith("linear");
-      expect(callProviderTool).toHaveBeenCalledWith(
+      expect(callWrappedTool).toHaveBeenCalledWith(
         "linear",
         "create_issue",
         { title: "Wrapped issue" },
         { toolCallId: "call-1" },
       );
+      authorizationPending = true;
+      activeProviders.clear();
+      callWrappedTool.mockClear();
       await expect(
-        captured?.mcp?.callTool({ name: "get_issue" }),
-      ).rejects.toThrow("cannot call unwrapped MCP tool get_issue");
+        captured?.mcp?.callTool({ name: "create_issue" }),
+      ).resolves.toEqual({ status: "authorization_pending" });
+      expect(callWrappedTool).not.toHaveBeenCalled();
     } finally {
       setPlugins(previous);
     }

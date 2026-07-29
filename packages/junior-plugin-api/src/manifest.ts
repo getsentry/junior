@@ -53,11 +53,12 @@ export interface PluginRuntimePostinstallCommand {
 }
 
 export interface PluginMcpConfig {
+  /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
   headers?: Record<string, string>;
   transport: "http";
   url: string;
-  /** Provider tools exposed only through plugin-owned wrapper tools. */
+  /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */
   wrappedTools?: string[];
 }
 

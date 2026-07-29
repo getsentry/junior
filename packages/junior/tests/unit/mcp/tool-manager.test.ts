@@ -541,7 +541,10 @@ describe("McpToolManager", () => {
   });
 
   it("hides wrapped tools from discovery but keeps them callable", async () => {
-    const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
+    const plugin = buildPlugin("linear", {
+      allowedTools: ["get_issue"],
+      wrappedTools: ["create_issue"],
+    });
     listToolsMock.mockResolvedValue([
       {
         name: "create_issue",
@@ -551,6 +554,11 @@ describe("McpToolManager", () => {
       {
         name: "get_issue",
         description: "Get an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "delete_issue",
+        description: "Delete an issue",
         inputSchema: { type: "object", properties: {} },
       },
     ]);
@@ -567,20 +575,18 @@ describe("McpToolManager", () => {
       { provider: "linear", rawName: "get_issue" },
     ]);
     await expect(
-      manager.callProviderTool("linear", "create_issue", {
+      manager.callWrappedTool("linear", "create_issue", {
         team: "Engineering",
         title: "Wrapped issue",
       }),
     ).resolves.toMatchObject({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({ identifier: "ENG-123" }, null, 2),
-        },
-      ],
-      providerContent: [{ type: "text", text: "ENG-123" }],
+      status: "success",
+      content: [{ type: "text", text: "ENG-123" }],
       structuredContent: { identifier: "ENG-123" },
     });
+    await expect(
+      manager.callWrappedTool("linear", "get_issue", {}),
+    ).rejects.toThrow("cannot call unwrapped MCP tool get_issue");
   });
 
   it("marks handled authorization challenges during wrapped tool calls", async () => {
@@ -604,10 +610,9 @@ describe("McpToolManager", () => {
     await manager.activateProvider("linear");
 
     await expect(
-      manager.callProviderTool("linear", "create_issue", {}),
-    ).resolves.toMatchObject({
-      authorizationPending: true,
-      content: [{ type: "text", text: "Authorization pending." }],
+      manager.callWrappedTool("linear", "create_issue", {}),
+    ).resolves.toEqual({
+      status: "authorization_pending",
     });
     expect(manager.getActiveProviders()).toEqual([]);
   });

@@ -1,7 +1,7 @@
 import {
   definePluginTool,
   PluginToolInputError,
-  type PluginMcpToolResult,
+  type PluginMcpToolSuccess,
   type PluginToolExecuteOptions,
   type PluginToolResult,
   type ToolRegistrationHookContext,
@@ -118,8 +118,8 @@ function stringField(
   return undefined;
 }
 
-function providerText(result: PluginMcpToolResult): string {
-  return (result.providerContent ?? result.content)
+function providerText(result: PluginMcpToolSuccess): string {
+  return result.content
     .filter(
       (part): part is Extract<typeof part, { type: "text" }> =>
         part.type === "text",
@@ -137,7 +137,7 @@ function parseJsonText(text: string): unknown {
   }
 }
 
-function extractIssue(result: PluginMcpToolResult): LinearIssue | null {
+function extractIssue(result: PluginMcpToolSuccess): LinearIssue | null {
   const text = providerText(result);
   const objects: Record<string, unknown>[] = [];
   collectObjects(result.structuredContent, objects);
@@ -206,7 +206,7 @@ function required(value: string | undefined, name: string): string {
 export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
     description:
-      "Create a Linear issue through Linear's hosted MCP provider and link the created issue to the current Junior conversation. Use this instead of the raw Linear create_issue MCP tool.",
+      "Create a Linear issue through Linear's hosted MCP provider and link the created issue to the current Junior conversation.",
     inputSchema,
     outputSchema,
     annotations: {
@@ -259,7 +259,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             arguments: input,
             toolCallId,
           });
-          if (result.authorizationPending) {
+          if (result.status === "authorization_pending") {
             await ctx.state.delete(key);
             return toolResult(null, "Authorization pending.");
           }
