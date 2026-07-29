@@ -1262,45 +1262,67 @@ async function listTasksCreatedByFromSql(
     return [];
   }
   const query = normalizedTaskQuery(input.query);
-  const rows = await db
-    .select({ record: juniorSchedulerTasks.record })
-    .from(juniorSchedulerTasks)
-    .where(
-      and(
-        ne(juniorSchedulerTasks.status, "deleted"),
-        or(
-          ...input.creators.map((creator) =>
-            and(
-              eq(juniorSchedulerTasks.teamId, creator.teamId),
-              eq(juniorSchedulerTasks.creatorSlackUserId, creator.slackUserId),
+  const tasks: ScheduledTask[] = [];
+  let before = input.before;
+
+  while (tasks.length < input.limit) {
+    const rows = await db
+      .select({
+        createdAtMs: juniorSchedulerTasks.createdAtMs,
+        id: juniorSchedulerTasks.id,
+        record: juniorSchedulerTasks.record,
+      })
+      .from(juniorSchedulerTasks)
+      .where(
+        and(
+          ne(juniorSchedulerTasks.status, "deleted"),
+          or(
+            ...input.creators.map((creator) =>
+              and(
+                eq(juniorSchedulerTasks.teamId, creator.teamId),
+                eq(
+                  juniorSchedulerTasks.creatorSlackUserId,
+                  creator.slackUserId,
+                ),
+              ),
             ),
           ),
+          before
+            ? or(
+                lt(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+                and(
+                  eq(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+                  lt(juniorSchedulerTasks.id, before.id),
+                ),
+              )
+            : undefined,
+          query
+            ? or(
+                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
+                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
+                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
+                sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
+              )
+            : undefined,
         ),
-        input.before
-          ? or(
-              lt(juniorSchedulerTasks.createdAtMs, input.before.createdAtMs),
-              and(
-                eq(juniorSchedulerTasks.createdAtMs, input.before.createdAtMs),
-                lt(juniorSchedulerTasks.id, input.before.id),
-              ),
-            )
-          : undefined,
-        query
-          ? or(
-              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
-              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
-              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
-              sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
-            )
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(juniorSchedulerTasks.createdAtMs),
-      desc(juniorSchedulerTasks.id),
-    )
-    .limit(input.limit);
-  return rows.map(parseSqlTaskRow).filter(present);
+      )
+      .orderBy(
+        desc(juniorSchedulerTasks.createdAtMs),
+        desc(juniorSchedulerTasks.id),
+      )
+      .limit(input.limit);
+    tasks.push(...rows.map(parseSqlTaskRow).filter(present));
+    if (rows.length < input.limit) {
+      break;
+    }
+    const last = rows.at(-1)!;
+    before = {
+      createdAtMs: last.createdAtMs,
+      id: last.id,
+    };
+  }
+
+  return tasks.slice(0, input.limit);
 }
 
 async function listTasksForTeamFromSql(

@@ -358,6 +358,26 @@ ORDER BY tablename
       });
       await store.saveTask(visibleOld);
       await store.saveTask(visibleNew);
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_scheduler_tasks (
+  id,
+  team_id,
+  creator_slack_user_id,
+  status,
+  created_at_ms,
+  record
+) VALUES ($1, $2, $3, $4, $5, $6)
+`,
+        [
+          "sched_malformed_between_pages",
+          visibleNew.destination.teamId,
+          visibleNew.createdBy.slackUserId,
+          "active",
+          TEST_RUN_AT_MS + 150,
+          JSON.stringify({ id: "sched_malformed_between_pages" }),
+        ],
+      );
       await store.saveTask(
         createTask({
           createdAtMs: TEST_RUN_AT_MS + 300,
