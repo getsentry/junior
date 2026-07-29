@@ -7,6 +7,7 @@ export const juniorSchedulerTasks = pgTable(
   {
     id: text("id").primaryKey(),
     teamId: text("team_id").notNull(),
+    creatorSlackUserId: text("creator_slack_user_id"),
     status: text("status").notNull(),
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
@@ -14,6 +15,9 @@ export const juniorSchedulerTasks = pgTable(
     record: jsonb("record").$type<ScheduledTask>().notNull(),
   },
   (table) => [
+    index("junior_scheduler_tasks_creator_idx")
+      .on(table.teamId, table.creatorSlackUserId, table.createdAtMs, table.id)
+      .where(sql`${table.status} <> 'deleted'`),
     index("junior_scheduler_tasks_team_status_idx")
       .on(table.teamId, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),

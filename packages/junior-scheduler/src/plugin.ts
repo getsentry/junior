@@ -34,6 +34,8 @@ import {
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
 } from "./schedule-tools";
+import { createSchedulerApi } from "./api";
+import { createSchedulerUserPage } from "./user-pages";
 
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 const DASHBOARD_TABLE_LIMIT = 5;
@@ -423,7 +425,14 @@ export function schedulerPlugin() {
       description: "Scheduled Junior task management and heartbeat dispatch",
     },
     packageName: "@sentry/junior-scheduler",
+    userPages: [createSchedulerUserPage()],
     hooks: {
+      apiRoutes(ctx) {
+        return createSchedulerApi({
+          actors: ctx.viewer.actors,
+          db: ctx.db as SchedulerDb,
+        });
+      },
       systemPrompt(ctx) {
         if (ctx.platform !== "slack") {
           return [];

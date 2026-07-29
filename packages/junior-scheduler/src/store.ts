@@ -8,9 +8,11 @@ import {
 import {
   and,
   asc,
+  desc,
   eq,
   inArray,
   isNotNull,
+  lt,
   lte,
   ne,
   or,
@@ -145,6 +147,7 @@ export interface SchedulerStore {
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listIncompleteRuns(): Promise<ScheduledRun[]>;
   listTasks(): Promise<ScheduledTask[]>;
+  listTasksCreatedBy(input: ListTasksCreatedByInput): Promise<ScheduledTask[]>;
   listTasksForTeam(teamId: string): Promise<ScheduledTask[]>;
   markRunBlocked(args: {
     completedAtMs: number;
@@ -184,9 +187,62 @@ export interface SchedulerStore {
   }): Promise<void>;
 }
 
+export interface ListTasksCreatedByInput {
+  before?: { createdAtMs: number; id: string };
+  creators: Array<{ slackUserId: string; teamId: string }>;
+  limit: number;
+  query?: string;
+}
+
 export interface SchedulerOperationalStore {
   listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
   listTasks(): Promise<ScheduledTask[]>;
+}
+
+function normalizedTaskQuery(query: string | undefined): string | undefined {
+  return query?.trim().toLowerCase() || undefined;
+}
+
+function taskCreatorKey(task: ScheduledTask): string {
+  return `${task.destination.teamId}:${task.createdBy.slackUserId}`;
+}
+
+function listedAfter(
+  task: ScheduledTask,
+  before: { createdAtMs: number; id: string },
+): boolean {
+  return (
+    task.createdAtMs < before.createdAtMs ||
+    (task.createdAtMs === before.createdAtMs && task.id < before.id)
+  );
+}
+
+function taskMatchesQuery(task: ScheduledTask, query: string): boolean {
+  return [
+    task.task.text,
+    task.schedule.description,
+    task.schedule.timezone,
+    task.status,
+  ].some((value) => value.toLowerCase().includes(query));
+}
+
+function listCreatedTasks(
+  tasks: ScheduledTask[],
+  input: ListTasksCreatedByInput,
+): ScheduledTask[] {
+  const creators = new Set(
+    input.creators.map((creator) => `${creator.teamId}:${creator.slackUserId}`),
+  );
+  const query = normalizedTaskQuery(input.query);
+  return tasks
+    .filter((task) => creators.has(taskCreatorKey(task)))
+    .filter((task) => !query || taskMatchesQuery(task, query))
+    .sort(
+      (left, right) =>
+        right.createdAtMs - left.createdAtMs || right.id.localeCompare(left.id),
+    )
+    .filter((task) => !input.before || listedAfter(task, input.before))
+    .slice(0, input.limit);
 }
 
 function taskKey(taskId: string): string {
@@ -680,6 +736,12 @@ class PluginStateSchedulerStore implements SchedulerStore {
     return await listTasksFromState(this.state, globalTaskIndexKey());
   }
 
+  async listTasksCreatedBy(
+    input: ListTasksCreatedByInput,
+  ): Promise<ScheduledTask[]> {
+    return listCreatedTasks(await this.listTasks(), input);
+  }
+
   async listTasksForTeam(teamId: string): Promise<ScheduledTask[]> {
     return await listTasksFromState(this.state, teamTaskIndexKey(teamId));
   }
@@ -1113,6 +1175,7 @@ async function upsertSqlTask(
     .insert(juniorSchedulerTasks)
     .values({
       createdAtMs: task.createdAtMs,
+      creatorSlackUserId: task.createdBy.slackUserId,
       id: task.id,
       nextRunAtMs: task.nextRunAtMs,
       record: task,
@@ -1124,6 +1187,7 @@ async function upsertSqlTask(
       target: juniorSchedulerTasks.id,
       set: {
         createdAtMs: sql`excluded.created_at_ms`,
+        creatorSlackUserId: sql`excluded.creator_slack_user_id`,
         nextRunAtMs: sql`excluded.next_run_at_ms`,
         record: sql`excluded.record`,
         runNowAtMs: sql`excluded.run_now_at_ms`,
@@ -1187,6 +1251,55 @@ async function listTasksFromSql(db: SchedulerDb): Promise<ScheduledTask[]> {
       asc(juniorSchedulerTasks.createdAtMs),
       asc(juniorSchedulerTasks.id),
     );
+  return rows.map(parseSqlTaskRow).filter(present);
+}
+
+async function listTasksCreatedByFromSql(
+  db: SchedulerDb,
+  input: ListTasksCreatedByInput,
+): Promise<ScheduledTask[]> {
+  if (input.creators.length === 0) {
+    return [];
+  }
+  const query = normalizedTaskQuery(input.query);
+  const rows = await db
+    .select({ record: juniorSchedulerTasks.record })
+    .from(juniorSchedulerTasks)
+    .where(
+      and(
+        ne(juniorSchedulerTasks.status, "deleted"),
+        or(
+          ...input.creators.map((creator) =>
+            and(
+              eq(juniorSchedulerTasks.teamId, creator.teamId),
+              eq(juniorSchedulerTasks.creatorSlackUserId, creator.slackUserId),
+            ),
+          ),
+        ),
+        input.before
+          ? or(
+              lt(juniorSchedulerTasks.createdAtMs, input.before.createdAtMs),
+              and(
+                eq(juniorSchedulerTasks.createdAtMs, input.before.createdAtMs),
+                lt(juniorSchedulerTasks.id, input.before.id),
+              ),
+            )
+          : undefined,
+        query
+          ? or(
+              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
+              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
+              sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
+              sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(
+      desc(juniorSchedulerTasks.createdAtMs),
+      desc(juniorSchedulerTasks.id),
+    )
+    .limit(input.limit);
   return rows.map(parseSqlTaskRow).filter(present);
 }
 
@@ -1290,6 +1403,12 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
 
   async listTasks(): Promise<ScheduledTask[]> {
     return await listTasksFromSql(this.db);
+  }
+
+  async listTasksCreatedBy(
+    input: ListTasksCreatedByInput,
+  ): Promise<ScheduledTask[]> {
+    return await listTasksCreatedByFromSql(this.db, input);
   }
 
   async listTasksForTeam(teamId: string): Promise<ScheduledTask[]> {

@@ -15,6 +15,13 @@
       "when": 1783964295816,
       "tag": "0001_explicit_credential_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785341122333,
+      "tag": "0002_lying_risque",
+      "breakpoints": true
     }
   ]
 }

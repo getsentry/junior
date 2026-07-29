@@ -48,12 +48,18 @@ Junior's durable agent runtime.
   remains disabled.
 - Stored creator attribution grants no broader task-management or execution
   authority.
-- User-visible schedule management remains scoped to the active Slack context.
+- Slack tool management remains scoped to the active Slack context. The
+  dashboard may list and delete a viewer's own tasks across linked Slack
+  workspaces.
 
 ## Operations
 
 The plugin exposes create, update, delete, list, and run-now tools plus bounded
-operational reporting. Generate schema changes with
+operational reporting. The dashboard exposes a searchable **Scheduled tasks**
+user page containing non-deleted tasks created by the signed-in viewer's linked
+Slack actors. A viewer may delete those tasks from the page.
+
+Generate schema changes with
 `pnpm --filter @sentry/junior-scheduler db:generate`.
 
 Follow `../../policies/serverless-background-work.md`,
