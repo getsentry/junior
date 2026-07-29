@@ -8,6 +8,7 @@ import {
   pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { linearProviderText } from "./mcp-result.js";
 
 const CREATE_ISSUE_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CREATE_ISSUE_LOCK_TTL_MS = 60_000;
@@ -118,17 +119,6 @@ function stringField(
   return undefined;
 }
 
-function providerText(result: PluginMcpToolSuccess): string {
-  return result.content
-    .filter(
-      (part): part is Extract<typeof part, { type: "text" }> =>
-        part.type === "text",
-    )
-    .map((part) => part.text)
-    .join("\n\n")
-    .trim();
-}
-
 function parseJsonText(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -138,7 +128,7 @@ function parseJsonText(text: string): unknown {
 }
 
 function extractIssue(result: PluginMcpToolSuccess): LinearIssue | null {
-  const text = providerText(result);
+  const text = linearProviderText(result);
   const objects: Record<string, unknown>[] = [];
   collectObjects(result.structuredContent, objects);
   collectObjects(parseJsonText(text), objects);
@@ -255,7 +245,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             CREATE_ISSUE_STATE_TTL_MS,
           );
           const result = await mcp.callTool({
-            name: "create_issue",
+            name: "save_issue",
             arguments: input,
             toolCallId,
           });
@@ -267,7 +257,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             await ctx.state.delete(key);
             throw new Error(result.message);
           }
-          const text = providerText(result);
+          const text = linearProviderText(result);
           const issue = extractIssue(result);
           const completedState: CreateIssueState = {
             status: "completed",

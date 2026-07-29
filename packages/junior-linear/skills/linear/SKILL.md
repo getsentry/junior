@@ -68,6 +68,7 @@ If any gate fails, revise and re-check before calling the Linear create/update t
 6. Execute:
 
 - Create new issues with `linear_createIssue`.
+- Update existing issues with `linear_updateIssue`.
 - For updates, prefer partial changes over full rewrites. Fetch current issue state first if the mutation could overwrite structured fields or duplicate an existing comment.
 - Check for duplicates silently before creating a new issue when the request appears related to existing work.
 

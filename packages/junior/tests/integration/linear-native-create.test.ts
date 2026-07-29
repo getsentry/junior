@@ -12,7 +12,7 @@ import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
 import { z } from "zod";
 
-describe("Linear native create tool", () => {
+describe("Linear native issue tools", () => {
   let manager: McpToolManager | undefined;
   let transport: WebStandardStreamableHTTPServerTransport | undefined;
 
@@ -23,28 +23,31 @@ describe("Linear native create tool", () => {
     transport = undefined;
   });
 
-  it("creates through hosted MCP, hides the raw tool, and annotates once", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+  it("creates and updates through hosted MCP while hiding the raw tool", async () => {
+    const saveCalls: Array<Record<string, unknown>> = [];
     const server = new McpServer({ name: "linear-test", version: "1.0.0" });
     server.registerTool(
-      "create_issue",
+      "save_issue",
       {
-        description: "Create a Linear issue",
+        description: "Create or update a Linear issue",
         inputSchema: {
-          team: z.string(),
-          title: z.string(),
+          id: z.string().optional(),
+          team: z.string().optional(),
+          title: z.string().optional(),
           description: z.string().optional(),
           priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
           project: z.string().optional(),
+          state: z.string().optional(),
         },
       },
       (input) => {
-        createCalls.push(input);
+        saveCalls.push(input);
+        const action = input.id ? "Updated" : "Created";
         return {
           content: [
             {
               type: "text",
-              text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+              text: `${action} [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)`,
             },
           ],
           structuredContent: {
@@ -114,8 +117,9 @@ describe("Linear native create tool", () => {
         workspace: {} as never,
       });
       const createIssue = tools.linear_createIssue;
-      if (!createIssue?.execute) {
-        throw new Error("Linear createIssue tool is unavailable");
+      const updateIssue = tools.linear_updateIssue;
+      if (!createIssue?.execute || !updateIssue?.execute) {
+        throw new Error("Linear native issue tools are unavailable");
       }
 
       expect(await manager.activateProvider("linear")).toBe(true);
@@ -143,7 +147,21 @@ describe("Linear native create tool", () => {
       });
       await createIssue.execute(input, { toolCallId: "call-create" });
 
-      expect(createCalls).toEqual([input]);
+      const updateInput = {
+        id: "ENG-123",
+        state: "In Progress",
+      };
+      await expect(
+        updateIssue.execute(updateInput, { toolCallId: "call-update" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        providerText:
+          "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+        status: "success",
+        target: "updateIssue",
+      });
+
+      expect(saveCalls).toEqual([input, updateInput]);
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toMatchObject([

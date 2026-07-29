@@ -3,6 +3,7 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { createLinearIssueTool } from "./tools/create-issue.js";
+import { createLinearUpdateIssueTool } from "./tools/update-issue.js";
 
 /** Register Linear's hosted MCP provider and Junior-owned wrapper tools. */
 export function linearPlugin(): PluginRegistration {
@@ -15,7 +16,7 @@ export function linearPlugin(): PluginRegistration {
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
-        wrappedTools: ["create_issue"],
+        wrappedTools: ["save_issue"],
       },
       name: "linear",
     },
@@ -23,6 +24,7 @@ export function linearPlugin(): PluginRegistration {
       tools(ctx) {
         return {
           createIssue: createLinearIssueTool(ctx),
+          updateIssue: createLinearUpdateIssueTool(ctx),
         };
       },
     },
