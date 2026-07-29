@@ -191,7 +191,7 @@ function ConversationAnnotations(props: {
       <div className="flex flex-wrap gap-2">
         {links.map((link) => (
           <a
-            className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-3 py-2 text-sm text-cyan-50 no-underline"
+            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-[0.68rem] leading-snug text-cyan-50 no-underline"
             href={link.url}
             key={`${link.plugin}:${link.key}`}
             rel="noreferrer"
@@ -239,7 +239,7 @@ function ResourceStatus(props: {
 
   return (
     <span className={status.className} title={status.label}>
-      <status.Icon aria-hidden="true" size={16} strokeWidth={2.25} />
+      <status.Icon aria-hidden="true" size={12} strokeWidth={2.25} />
       <span className="sr-only">{status.label}</span>
     </span>
   );
