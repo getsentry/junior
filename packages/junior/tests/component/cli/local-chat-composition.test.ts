@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 const executeAgentRunMock = vi.hoisted(() => vi.fn());
 
@@ -39,7 +39,7 @@ function successReply(text: string): AgentRunResult {
   };
 }
 
-describe("local chat CLI integration", () => {
+describe("local chat CLI composition", () => {
   beforeEach(() => {
     vi.resetModules();
     executeAgentRunMock.mockReset();

@@ -19,620 +19,147 @@ function makeInput(
   };
 }
 
-describe("decideSubscribedThreadReply", () => {
-  it("preflight-skips a leading mention addressed to another named party", () => {
-    const decision = getSubscribedReplyPreflightDecision({
-      botUserName: "junior",
+function classify(
+  object: {
+    should_reply: boolean;
+    should_unsubscribe: boolean;
+    confidence: number;
+    reason: string;
+  },
+  input = makeInput(),
+) {
+  return decideSubscribedThreadReply({
+    botUserName: "junior",
+    modelId: "router-model",
+    input,
+    completeObject: vi.fn(async () => ({ object })),
+    logClassifierFailure: vi.fn(),
+  });
+}
+
+describe("subscribed reply decision", () => {
+  it.each([
+    {
+      name: "a leading named mention",
       rawText: "@Cursor can you take this one?",
       text: "@Cursor can you take this one?",
-      isExplicitMention: false,
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.DirectedToOtherParty,
-      reasonDetail: "named_mention:Cursor",
-    });
-  });
-
-  it("does not preflight-skip when junior is also addressed", () => {
-    const decision = getSubscribedReplyPreflightDecision({
-      botUserName: "junior",
-      rawText: "@Cursor and @junior can one of you take this?",
-      text: "@Cursor and @junior can one of you take this?",
-      isExplicitMention: false,
-    });
-
-    expect(decision).toBeUndefined();
-  });
-
-  it("does not preflight-skip non-address mentions in the middle of the sentence", () => {
-    const decision = getSubscribedReplyPreflightDecision({
-      botUserName: "junior",
-      rawText: "please ask @Cursor to look at this later",
-      text: "please ask @Cursor to look at this later",
-      isExplicitMention: false,
-    });
-
-    expect(decision).toBeUndefined();
-  });
-
-  it("replies directly to explicit mentions in subscribed threads", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: true,
-        confidence: 0.95,
-        reason: "direct mention asking junior for help",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ isExplicitMention: true }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.ExplicitMention,
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("short-circuits pure acknowledgment text without calling the classifier", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: true,
-        confidence: 1,
-        reason: "this should never be used",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "thanks!", rawText: "thanks!" }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "acknowledgment",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("uses the configured bot name throughout the router prompt", async () => {
-    const completeObject = vi.fn(async (_args: { system: string }) => ({
-      object: {
-        should_reply: false,
-        should_unsubscribe: false,
-        confidence: 0.95,
-        reason: "side conversation",
-      },
-    }));
-
-    await decideSubscribedThreadReply({
-      botUserName: "marky",
-      modelId: "router-model",
-      input: makeInput(),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(completeObject).toHaveBeenCalledOnce();
-    const system = completeObject.mock.calls[0]![0].system;
-    expect(system).toContain("assistant named marky");
-    expect(system).toContain("whether marky should reply");
-    expect(system).not.toContain("Junior");
-  });
-
-  it("routes acknowledgment text with attachments through the classifier", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: false,
-        should_unsubscribe: false,
-        confidence: 0.95,
-        reason: "attachment acknowledgment",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "thanks!",
-        rawText: "thanks!",
-        hasAttachments: true,
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "attachment acknowledgment",
-    });
-    expect(completeObject).toHaveBeenCalled();
-  });
-
-  it("short-circuits immediate directed follow-ups after the assistant replied", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: true,
-        confidence: 0.95,
-        reason: "follow-up to assistant response",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "what did you just say about the budget?",
-        rawText: "what did you just say about the budget?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: Budget is due Friday.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.DirectedFollowUp,
-      reasonDetail: "immediate directed follow-up cue",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("short-circuits immediate terse clarifications after the assistant replied", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: false,
-        confidence: 0.95,
-        reason: "this should never be used",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "Which one?",
-        rawText: "Which one?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: The deploy changed billing, auth, and the API gateway.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.DirectedFollowUp,
-      reasonDetail: "immediate terse clarification",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("does not suppress acknowledgment text when it is an explicit mention", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: true,
-        confidence: 0.95,
-        reason: "direct mention acknowledgment",
-      },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "thanks!",
-        rawText: "thanks!",
-        isExplicitMention: true,
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.ExplicitMention,
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("still honors explicit stop instructions before mention short-circuiting", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        rawText: "<@U0APP> stop watching or participating in this thread",
-        text: "stop watching or participating in this thread",
-        isExplicitMention: true,
-      }),
-      completeObject: vi.fn(),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: SubscribedReplyReason.ThreadOptOut,
-      reasonDetail: "explicit stop instruction",
-    });
-  });
-
-  it("skips leading slack mentions addressed to another party before classifier", async () => {
-    const completeObject = vi.fn();
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        rawText: "<@UCURSOR> can you handle this?",
-        text: "<@UCURSOR> can you handle this?",
+      expected: "named_mention:Cursor",
+    },
+    {
+      name: "a leading Slack mention",
+      rawText: "<@UCURSOR> can you take this one?",
+      text: "<@UCURSOR> can you take this one?",
+      expected: "slack_mention",
+    },
+  ])("preflight-skips $name addressed to another party", (fixture) => {
+    expect(
+      getSubscribedReplyPreflightDecision({
+        botUserName: "junior",
+        rawText: fixture.rawText,
+        text: fixture.text,
         isExplicitMention: false,
       }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
+    ).toEqual({
       shouldReply: false,
       reason: SubscribedReplyReason.DirectedToOtherParty,
-      reasonDetail: "slack_mention",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("skips empty message without attachments", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "   ", rawText: "   " }),
-      completeObject: vi.fn(),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.EmptyMessage);
-    expect(decision.shouldReply).toBe(false);
-  });
-
-  it("routes attachment-only messages through the classifier instead of auto-replying", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "", rawText: "", hasAttachments: true }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: false,
-          should_unsubscribe: false,
-          confidence: 0.95,
-          reason: "passive attachment",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "passive attachment",
+      reasonDetail: fixture.expected,
     });
   });
 
-  it("accepts lower-confidence clarification when junior was the last speaker", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "which one?",
-        rawText: "which one?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: The deploy touched billing, auth, and API gateway.\n</thread-transcript>",
+  it.each([
+    "@Cursor and @junior can one of you take this?",
+    "please ask @Cursor to look at this later",
+  ])("does not preflight-skip %s", (text) => {
+    expect(
+      getSubscribedReplyPreflightDecision({
+        botUserName: "junior",
+        rawText: text,
+        text,
+        isExplicitMention: false,
       }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          confidence: 0.65,
-          reason: "immediate clarification for assistant",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.DirectedFollowUp,
-      reasonDetail: "immediate terse clarification",
-    });
+    ).toBeUndefined();
   });
 
-  it("skips a generic immediate question that does not clearly turn back to junior", async () => {
-    const completeObject = vi.fn(async () => ({
+  it.each([
+    {
+      name: "a negative decision",
+      object: {
+        should_reply: false,
+        should_unsubscribe: false,
+        confidence: 0.95,
+        reason: "status chatter",
+      },
+      expected: {
+        shouldReply: false,
+        reason: SubscribedReplyReason.SideConversation,
+        reasonDetail: "status chatter",
+      },
+    },
+    {
+      name: "a confident unsubscribe",
+      object: {
+        should_reply: false,
+        should_unsubscribe: true,
+        confidence: 0.95,
+        reason: "stop participating",
+      },
+      expected: {
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: SubscribedReplyReason.ThreadOptOut,
+        reasonDetail: "stop participating",
+      },
+    },
+    {
+      name: "a low-confidence reply",
       object: {
         should_reply: true,
-        confidence: 1,
-        reason: "this should never be used",
+        should_unsubscribe: false,
+        confidence: 0.75,
+        reason: "maybe follow-up",
       },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "is that the right approach?",
-        rawText: "is that the right approach?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: The deploy changed billing and auth.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "generic immediate side conversation",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("routes generic immediate attachment follow-ups through the classifier", async () => {
-    const completeObject = vi.fn(async () => ({
+      expected: {
+        shouldReply: false,
+        reason: SubscribedReplyReason.LowConfidence,
+        reasonDetail: "0.75: maybe follow-up",
+      },
+    },
+    {
+      name: "a confident reply",
       object: {
         should_reply: true,
         should_unsubscribe: false,
         confidence: 0.95,
-        reason: "attachment follow-up",
+        reason: "direct question",
       },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "can you check on this?",
-        rawText: "can you check on this?",
-        hasAttachments: true,
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: Please upload a screenshot.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "attachment follow-up",
-    });
-    expect(completeObject).toHaveBeenCalled();
-  });
-
-  it("skips long 'what about' topic continuation after junior speaks", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        should_reply: true,
-        confidence: 1,
-        reason: "this should never be used",
+      expected: {
+        shouldReply: true,
+        reason: SubscribedReplyReason.Classifier,
+        reasonDetail: "direct question",
       },
-    }));
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "what about the billing worker timeline?",
-        rawText: "what about the billing worker timeline?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: The billing worker handles invoice retries.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "generic immediate side conversation",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
+    },
+  ])("maps $name onto the runtime decision contract", async (fixture) => {
+    await expect(classify(fixture.object)).resolves.toEqual(fixture.expected);
   });
 
-  it("requires stronger confidence after humans keep talking in the thread", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "what about the billing worker timeline?",
-        rawText: "what about the billing worker timeline?",
-        conversationContext: [
-          "<thread-transcript>",
-          "[assistant] junior: The deploy changed billing, auth, and the API gateway.",
-          "[user] sam: I think we should revert auth first.",
-          "[user] alex: I can take that rollback.",
-          "</thread-transcript>",
-        ].join("\n"),
-      }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          should_unsubscribe: false,
-          confidence: 0.85,
-          reason: "maybe follow-up",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.LowConfidence,
-      reasonDetail: "0.85: maybe follow-up",
-    });
-  });
-
-  it("requires stronger confidence after one human takes the floor", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "what about the billing worker timeline?",
-        rawText: "what about the billing worker timeline?",
-        conversationContext: [
-          "<thread-transcript>",
-          "[assistant] junior: The deploy changed billing, auth, and the API gateway.",
-          "[user] sam: I think we should revert auth first.",
-          "</thread-transcript>",
-        ].join("\n"),
-      }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          should_unsubscribe: false,
-          confidence: 0.85,
-          reason: "maybe follow-up",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.LowConfidence,
-      reasonDetail: "0.85: maybe follow-up",
-    });
-  });
-
-  it("uses classifier and maps false decision to side conversation", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "some new text", rawText: "some new text" }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: false,
-          should_unsubscribe: false,
-          confidence: 0.95,
-          reason: "status chatter",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
-    expect(decision.reasonDetail).toBe("status chatter");
-    expect(decision.shouldReply).toBe(false);
-  });
-
-  it("maps classifier unsubscribe decisions to thread opt-out", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "please stop participating here",
-        rawText: "please stop participating here",
-      }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: false,
-          should_unsubscribe: true,
-          confidence: 0.95,
-          reason: "user asked junior to stop participating in the thread",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: SubscribedReplyReason.ThreadOptOut,
-      reasonDetail: "user asked junior to stop participating in the thread",
-    });
-  });
-
-  it("accepts long classifier reasons without failing schema parsing", async () => {
-    const longReason =
-      "User is making a casual comment about Junior, not asking for assistance or requesting Junior to perform a task. This is side conversation and not a direct request for help.";
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "some new text", rawText: "some new text" }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: false,
-          should_unsubscribe: false,
-          confidence: 0.95,
-          reason: longReason,
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
-    expect(decision.reasonDetail).toBe(longReason);
-    expect(decision.shouldReply).toBe(false);
-  });
-
-  it("uses classifier and rejects low-confidence true", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "some new text", rawText: "some new text" }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          should_unsubscribe: false,
-          confidence: 0.75,
-          reason: "maybe follow-up",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.LowConfidence);
-    expect(decision.shouldReply).toBe(false);
-  });
-
-  it("uses classifier and returns reply on high confidence", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "some new text", rawText: "some new text" }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          should_unsubscribe: false,
-          confidence: 0.95,
-          reason: "direct question",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.Classifier);
-    expect(decision.reasonDetail).toBe("direct question");
-    expect(decision.shouldReply).toBe(true);
-  });
-
-  it("fails closed on classifier errors", async () => {
+  it("fails closed when the classifier result is invalid", async () => {
     const logClassifierFailure = vi.fn();
-    const input = makeInput({
-      text: "some new text",
-      rawText: "some new text",
-    });
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input,
-      completeObject: vi.fn(async () => {
-        throw new Error("router failed");
-      }),
-      logClassifierFailure,
-    });
+    const input = makeInput();
 
-    expect(decision.reason).toBe(SubscribedReplyReason.ClassifierError);
-    expect(decision.shouldReply).toBe(false);
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input,
+        completeObject: vi.fn(async () => ({
+          object: { should_reply: "yes" },
+        })),
+        logClassifierFailure,
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.ClassifierError,
+    });
     expect(logClassifierFailure).toHaveBeenCalledWith(expect.any(Error), input);
   });
 });

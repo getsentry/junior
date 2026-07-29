@@ -4,16 +4,16 @@ import type { z } from "zod";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 import {
   createTestMessage,
   createTestThread,
   type TestThread,
-} from "../fixtures/slack-harness";
+} from "../../fixtures/slack-harness";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
-} from "../fixtures/plugin-app";
+} from "../../fixtures/plugin-app";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
@@ -144,7 +144,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   __dirname,
-  "../fixtures/plugins/eval-oauth",
+  "../../fixtures/plugins/eval-oauth",
 );
 
 async function mirrorThreadStateToAdapter(
@@ -166,7 +166,9 @@ async function mirrorThreadStateToAdapter(
 
 describe("plugin auth runtime slack integration", () => {
   let pluginApp: PluginAppFixture | undefined;
-  let chatRuntimeModule: typeof import("../fixtures/chat-runtime") | undefined;
+  let chatRuntimeModule:
+    | typeof import("../../fixtures/chat-runtime")
+    | undefined;
   let stateAdapterModule: typeof import("@/chat/state/adapter") | undefined;
   let threadStateModule:
     | typeof import("@/chat/runtime/thread-state")
@@ -183,7 +185,7 @@ describe("plugin auth runtime slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
 
     vi.resetModules();
-    chatRuntimeModule = await import("../fixtures/chat-runtime");
+    chatRuntimeModule = await import("../../fixtures/chat-runtime");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
 

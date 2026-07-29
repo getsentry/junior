@@ -34,6 +34,8 @@ routine refactors do not churn brittle unit tests.
 - Mock one boundary per test, and only the boundary allowed for that test layer.
   Do not stack mocks across persistence, runtime, delivery, and reply execution
   to simulate a product workflow.
+- Integration tests must not mock Junior-owned modules. Compose real Junior
+  wiring and fake only the external boundary named by the test harness.
 - Prefer existing harnesses, shared fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
 - Assert user-visible outcomes and external contracts before implementation

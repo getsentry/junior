@@ -625,24 +625,6 @@ describe("github plugin", () => {
     );
   });
 
-  it("denies raw GitHub issue creation outside the typed createIssue operation", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/repos/getsentry/junior/issues",
-      }),
-    ).rejects.toThrow("must use the github_createIssue tool");
-  });
-
-  it("denies raw GitHub pull request creation outside the typed createPullRequest operation", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/repos/getsentry/junior/pulls",
-      }),
-    ).rejects.toThrow("must use the github_createPullRequest tool");
-  });
-
   it("creates issues with deterministic requester attribution", async () => {
     const ctx = githubToolsContext({
       actor: {

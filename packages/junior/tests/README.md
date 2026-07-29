@@ -13,6 +13,11 @@ documents the package-local harness and commands.
 - `msw/`: shared outbound HTTP interception and captured request helpers.
 - `fixtures/slack/`: canonical Slack payload and identifier factories.
 
+Integration tests may fake an external boundary through the shared harnesses,
+but may not mock Junior-owned `@/` modules. `pnpm test-architecture:check`
+enforces this rule. A test that needs internal module replacement belongs in
+`component/` unless it is rewritten to use real wiring.
+
 Use `../../junior-evals/README.md` for model-dependent behavior and
 `../../docs/src/content/docs/contribute/local-agent-validation.md` for local
 app-facing validation.

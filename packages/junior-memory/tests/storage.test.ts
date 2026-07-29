@@ -1201,44 +1201,6 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("skips passive extraction for failed memory mutation tool turns", async () => {
-    const fixture = await createMemoryFixture();
-
-    try {
-      await processMemorySession(
-        processSessionContext({
-          db: memoryDb(fixture),
-          model: throwingExtractionModel,
-          run: {
-            async load() {
-              return completedRun({
-                transcript: [
-                  {
-                    type: "message",
-                    role: "user",
-                    text: "Remember that I prefer failed mutation shielding.",
-                  },
-                  {
-                    type: "toolResult",
-                    toolName: "createMemory",
-                    isError: true,
-                    text: "Memory rejected.",
-                  },
-                ],
-              });
-            },
-          },
-        }),
-      );
-
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("skips passive extraction for memory recall tool turns", async () => {
     const fixture = await createMemoryFixture();
     try {

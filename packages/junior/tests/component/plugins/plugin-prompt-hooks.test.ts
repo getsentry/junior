@@ -125,7 +125,7 @@ const LOCAL_DESTINATION = {
 } satisfies Destination;
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
-describe("plugin prompt hooks", () => {
+describe("plugin prompt hook composition", () => {
   let previousPlugins: ReturnType<typeof setPlugins>;
 
   beforeEach(() => {

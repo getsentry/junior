@@ -252,7 +252,7 @@ function expectedHandoffReplacementHistory() {
   ];
 }
 
-describe("executeAgentRun model handoff", () => {
+describe("model handoff composition", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     observations.afterHandoffModelId = "";

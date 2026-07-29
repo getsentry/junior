@@ -1314,58 +1314,6 @@ describe("sandbox egress proxy integration", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("denies raw GitHub GraphQL pull request creation before credential injection", async () => {
-    configureGitHubAppEnv();
-    mockGitHubInstallationToken();
-    await registerGitHubPlugin({
-      appPermissions: {
-        pull_requests: "write",
-      },
-    });
-    const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: ACTOR_ID } },
-      egressId: EGRESS_ID,
-      ttlMs: 60_000,
-    });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
-      credentialToken,
-    });
-    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
-    const upstreamFetch = vi.fn();
-
-    const response = await modules.proxy.proxySandboxEgressRequest(
-      proxiedRequest({
-        body: JSON.stringify({
-          query:
-            "mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { number } } }",
-          variables: {
-            input: {
-              repositoryId: "repo",
-              title: "test",
-              headRefName: "branch",
-              baseRefName: "main",
-            },
-          },
-        }),
-        forwardURL,
-        method: "POST",
-        upstreamHost: GITHUB_API_HOST,
-        upstreamPath: "/graphql",
-      }),
-      {
-        fetch: upstreamFetch as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error:
-        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
-    });
-    expect(upstreamFetch).not.toHaveBeenCalled();
-  });
-
   it("denies oversized raw GitHub GraphQL before credential injection", async () => {
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({

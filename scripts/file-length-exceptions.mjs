@@ -62,11 +62,11 @@ export const fileLengthExceptions = {
     "Existing broad heartbeat suite; split by behavior.",
   "packages/junior/tests/integration/local-agent-runner.test.ts":
     "Existing broad local runner suite; split by behavior.",
-  "packages/junior/tests/integration/mcp-auth-runtime-slack.test.ts":
+  "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":
     "Existing broad MCP auth suite; split by behavior.",
   "packages/junior/tests/integration/mcp-oauth-callback.test.ts":
     "Existing broad MCP OAuth suite; split by behavior.",
-  "packages/junior/tests/integration/runtime/agent-run-provider-retry.test.ts":
+  "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts":
     "Existing broad provider retry suite; split by behavior.",
   "packages/junior/tests/integration/sandbox-egress-proxy.test.ts":
     "Existing broad sandbox egress suite; split by behavior.",
@@ -80,8 +80,6 @@ export const fileLengthExceptions = {
     "Existing broad subscribed-message suite; split by behavior.",
   "packages/junior/tests/unit/api/conversation-events.test.ts":
     "Existing broad conversation events suite; split by behavior.",
-  "packages/junior/tests/unit/handlers/sandbox-egress-proxy.test.ts":
-    "Existing broad egress handler suite; split by behavior.",
   "packages/junior/tests/unit/plugins/agent-hooks.test.ts":
     "Existing broad agent hooks suite; split by hook.",
 };

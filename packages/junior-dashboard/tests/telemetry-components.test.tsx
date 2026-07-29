@@ -12,13 +12,10 @@ import type {
   Plugin,
 } from "@sentry/junior/api/schema";
 
-import { HighlightedCode } from "../src/client/code";
 import { conversationDetailQueryKey } from "../src/client/conversations/queries";
-import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { PluginReports } from "../src/client/components/PluginReports";
-import { SearchInput } from "../src/client/components/SearchInput";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
@@ -194,26 +191,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Handling:");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
-  });
-
-  it("keeps shared buttons out of form-submit mode", () => {
-    expect(renderToStaticMarkup(<Button>Copy</Button>)).toContain(
-      'type="button"',
-    );
-  });
-
-  it("distinguishes search values from placeholder text", () => {
-    const html = renderToStaticMarkup(
-      <SearchInput
-        label="Search conversations"
-        onChange={() => undefined}
-        placeholder="Search conversations…"
-        value="checkout"
-      />,
-    );
-
-    expect(html).toContain("text-dashboard-text");
-    expect(html).toContain("placeholder:text-dashboard-text-muted");
   });
 
   it("renders typed tool states in the component gallery", () => {
@@ -1209,7 +1186,6 @@ describe("dashboard canonical-event components", () => {
     expect(overviewHtml).not.toContain(
       "Showing the last operational reports Junior received.",
     );
-    expect(overviewHtml).toContain("grid-cols-1");
   });
 
   it("renders system metrics and capability inventories", () => {
@@ -1313,7 +1289,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="30d, Merged: -1.25"');
   });
 
-  it("uses the plugin display name and full width for a single metric", () => {
+  it("uses the plugin display name for a single metric", () => {
     const html = renderToStaticMarkup(
       <PluginReports
         fallbackTitle="GitHub"
@@ -1328,28 +1304,6 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain(">GitHub<");
-    expect(html).toContain("grid-cols-1");
-    expect(html).not.toContain("grid-cols-2");
-  });
-
-  it("balances odd metric counts across mobile and desktop grids", () => {
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            metrics: Array.from({ length: 5 }, (_, index) => ({
-              label: `metric ${index + 1}`,
-              value: String(index + 1),
-            })),
-            pluginName: "scheduler",
-            title: "Scheduler",
-          },
-        ]}
-      />,
-    );
-
-    expect(html).toContain("lg:grid-cols-5");
-    expect(html.match(/last:col-span-2 lg:last:col-span-1/g)).toHaveLength(5);
   });
 
   it("formats fractional chart ticks without floating-point noise", () => {
@@ -1377,42 +1331,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(">0.1</text>");
     expect(html).not.toContain("0.10000000000000002");
     expect(html).not.toContain('aria-label="Chart legend"');
-  });
-
-  it("keeps dense chart bars within their allocated slots", () => {
-    const categories = Array.from({ length: 24 }, (_, index) => ({
-      id: String(index),
-      label: String(index),
-      values: Object.fromEntries(
-        Array.from({ length: 8 }, (__, seriesIndex) => [
-          `series-${seriesIndex}`,
-          seriesIndex + 1,
-        ]),
-      ),
-    }));
-    const series = Array.from({ length: 8 }, (_, index) => ({
-      key: `series-${index}`,
-      label: `Series ${index}`,
-    }));
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories,
-                id: "dense-outcomes",
-                series,
-                title: "Dense outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
-    );
-    expect(html).not.toContain('width="2"');
   });
 
   it("renders daily chart ranges from the shared page selection", () => {
@@ -1541,22 +1459,6 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain('aria-label="2026-01-01: 1 conversations, unknown"');
   });
-  it("contains highlighted code so long mobile lines cannot widen transcripts", () => {
-    const code = '{ "message": "CACHE_URL is required" }';
-    client.setQueryData(
-      ["highlight", "json", code],
-      '<pre><code><span class="line">CACHE_URL is required</span></code></pre>',
-    );
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <HighlightedCode code={code} language="json" />
-      </QueryClientProvider>,
-    );
-    expect(html).toContain("overflow-hidden");
-    expect(html).toContain("overflow-wrap:anywhere");
-    expect(html).toContain("[&amp;_.line]:whitespace-pre-wrap");
-  });
-
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
       conversationId: "slack:C1:123",

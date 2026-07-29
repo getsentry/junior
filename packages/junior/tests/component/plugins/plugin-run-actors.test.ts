@@ -145,7 +145,7 @@ const BATCHED_ACTOR = {
   fullName: "Batched Actor",
 } as const;
 
-describe("run actors threading", () => {
+describe("run actor composition", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
   });

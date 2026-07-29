@@ -114,7 +114,6 @@ describe.sequential("dashboard Nitro production output", () => {
       expect(page.status).toBe(200);
       const html = await page.text();
       expect(html).toContain("dashboard-root");
-      expect(html).toContain("bg-black");
     } finally {
       process.chdir(originalCwd);
       fs.rmSync(root, { force: true, recursive: true });

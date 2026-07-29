@@ -566,7 +566,7 @@ const TEST_SOURCE = createSlackSource({
   type: "priv",
 });
 
-describe("executeAgentRun provider retry", () => {
+describe("provider retry composition", () => {
   beforeEach(async () => {
     agentMode.value = "providerRetry";
     counters.abortCalls = 0;

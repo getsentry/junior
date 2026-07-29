@@ -300,7 +300,7 @@ const TEST_ACTOR = {
   userId: "U123",
 } as const;
 
-describe("executeAgentRun agent continuation", () => {
+describe("agent continuation composition", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     continueCalls.value = 0;

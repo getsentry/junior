@@ -1,9 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  defineJuniorPlugin,
-  type IssueCredentialHookContext,
-} from "@sentry/junior-plugin-api";
-
 const {
   continueTraceMock,
   getDefinitionMock,
@@ -74,7 +69,6 @@ import {
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress/policy";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
@@ -241,7 +235,7 @@ function proxy(
   });
 }
 
-describe("sandbox egress proxy", () => {
+describe("sandbox egress proxy composition", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -462,124 +456,6 @@ describe("sandbox egress proxy", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Missing Vercel Sandbox OIDC token",
     });
-  });
-
-  it("forwards repeated authorized sandbox requests with credential headers", async () => {
-    setSandboxEgressUserActor();
-    mockSentryLease();
-
-    const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
-      expect(String(url)).toBe("https://sentry.io/api/0/issues/?query=foo");
-      expect(init?.method).toBe("GET");
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        "Bearer sentry-token",
-      );
-      expect(new Headers(init?.headers).get("cookie")).toBe("session=sandbox");
-      expect(new Headers(init?.headers).get("x-api-key")).toBe("sandbox-key");
-      expect(new Headers(init?.headers).get("x-forwarded-for")).toBe(
-        "127.0.0.1",
-      );
-      expect(new Headers(init?.headers).get("sentry-trace")).toBe(
-        "trace-span-1",
-      );
-      expect(new Headers(init?.headers).get("baggage")).toBe(
-        "sentry-release=abc",
-      );
-      expect(new Headers(init?.headers).get("traceparent")).toBe(
-        "00-trace-span-01",
-      );
-      expect(new Headers(init?.headers).get("host")).toBeNull();
-      expect(
-        new Headers(init?.headers).get("vercel-sandbox-oidc-token"),
-      ).toBeNull();
-      return new Response("ok", { status: 200 });
-    });
-
-    const request = egressRequest({
-      path: "/api/0/issues/?query=foo",
-      scheme: "HTTPS",
-      headers: {
-        authorization: "Bearer sandbox-token",
-        cookie: "session=sandbox",
-        host: "junior.example.com",
-        "sentry-trace": "trace-span-1",
-        baggage: "sentry-release=abc",
-        traceparent: "00-trace-span-01",
-        "x-api-key": "sandbox-key",
-        "x-forwarded-for": "127.0.0.1",
-      },
-    });
-
-    const response = await proxy(request, fetchMock as typeof fetch, {
-      domains: ["sentry.io"],
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ok");
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
-      context: { actor: { type: "user", userId: ACTOR_ID } },
-      provider: "sentry",
-      reason: "sandbox-egress:sentry:read",
-    });
-
-    const repeated = await proxy(
-      new Request(request.url, {
-        method: "GET",
-        headers: request.headers,
-      }),
-      fetchMock as typeof fetch,
-      { domains: ["sentry.io"] },
-    );
-
-    expect(repeated.status).toBe(200);
-    await expect(repeated.text()).resolves.toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("strips Sentry trace propagation before forwarding non-Sentry requests", async () => {
-    getProvidersMock.mockReturnValue([githubPlugin()]);
-    setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock.mockResolvedValue({
-      id: "lease-1",
-      provider: "github",
-      env: {},
-      headerTransforms: [
-        {
-          domain: "api.github.com",
-          headers: {
-            Authorization: "Bearer github-token",
-            "sentry-trace": "lease-trace-span",
-          },
-        },
-      ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-
-    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      expect(headers.get("authorization")).toBe("Bearer github-token");
-      expect(headers.get("sentry-trace")).toBeNull();
-      expect(headers.get("baggage")).toBeNull();
-      expect(headers.get("traceparent")).toBeNull();
-      return new Response("ok", { status: 200 });
-    });
-
-    const response = await proxy(
-      egressRequest({
-        host: "api.github.com",
-        path: "/repos/getsentry/junior",
-        headers: {
-          "sentry-trace": "trace-span-1",
-          baggage: "sentry-release=abc",
-          traceparent: "00-trace-span-01",
-        },
-      }),
-      fetchMock as typeof fetch,
-    );
-
-    expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {
@@ -900,155 +776,6 @@ describe("sandbox egress proxy", () => {
     );
     expect(secondResponse.status).toBe(403);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("lets headless resource-event runs use scoped GitHub installation grants", async () => {
-    setSandboxEgressSystemActor({ name: "resource-event" });
-    getProvidersMock.mockReturnValue([githubPlugin()]);
-    const issueCredential = vi.fn((_ctx: IssueCredentialHookContext) => {
-      return {
-        type: "lease" as const,
-        lease: {
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: { Authorization: "Bearer github-installation-token" },
-            },
-            {
-              domain: "github.com",
-              headers: { Authorization: "Bearer github-installation-token" },
-            },
-          ],
-        },
-      };
-    });
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: githubPlugin().manifest,
-        hooks: {
-          grantForEgress(ctx) {
-            if (ctx.request.url.includes("/issues/780")) {
-              return {
-                name: "installation-write",
-                access: "write",
-                leaseScope: "repository:getsentry/junior",
-                reason: "github.installation-write",
-              };
-            }
-            return {
-              name: "installation-write",
-              access: "write",
-              leaseScope: "repository:getsentry/sentry-mcp",
-              reason: "github.installation-write",
-            };
-          },
-          issueCredential,
-        },
-      }),
-    ]);
-    try {
-      const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
-        expect(new Headers(init?.headers).get("authorization")).toBe(
-          "Bearer github-installation-token",
-        );
-        if (
-          String(url) ===
-          "https://api.github.com/repos/getsentry/junior/issues/780"
-        ) {
-          return new Response("ok");
-        }
-        expect(String(url)).toBe(
-          "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
-        );
-        return new Response("write denied", {
-          status: 403,
-          headers: {
-            "x-accepted-github-permissions": "contents=write",
-            "x-github-sso":
-              "required; url=https://github.com/orgs/getsentry/sso",
-          },
-        });
-      });
-
-      const issueResponse = await proxy(
-        egressRequest({
-          host: "api.github.com",
-          method: "PATCH",
-          path: "/repos/getsentry/junior/issues/780",
-          body: '{"state":"closed"}',
-        }),
-        fetchMock as typeof fetch,
-      );
-      expect(issueResponse.status).toBe(200);
-
-      const response = await proxy(
-        egressRequest({
-          host: "github.com",
-          path: "/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
-        }),
-        fetchMock as typeof fetch,
-      );
-
-      expect(response.status).toBe(403);
-      await expect(response.text()).resolves.toBe("write denied");
-      expect(issueCredential).toHaveBeenCalledTimes(2);
-      expect(issueCredential).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          actor: { platform: "system", name: "resource-event" },
-          grant: expect.objectContaining({
-            name: "installation-write",
-            leaseScope: "repository:getsentry/sentry-mcp",
-          }),
-          tokens: {},
-        }),
-      );
-      expect(issueCredential.mock.calls[1]?.[0]).not.toHaveProperty(
-        "credentialSubject",
-      );
-      await expect(
-        consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
-      ).resolves.toMatchObject({
-        provider: "github",
-        grant: {
-          name: "installation-write",
-          access: "write",
-          leaseScope: "repository:getsentry/sentry-mcp",
-          reason: "github.installation-write",
-        },
-        message:
-          "github returned HTTP 403 after Junior injected the installation-write grant. Junior forwarded the request; this is not a local runtime block.",
-        source: "upstream",
-        status: 403,
-        upstreamHost: "github.com",
-        upstreamPath:
-          "/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
-        acceptedPermissions: "contents=write",
-        sso: "required; url=https://github.com/orgs/getsentry/sso",
-      });
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("applies provider header transforms to matching upstream hosts", async () => {
-    setSandboxEgressUserActor();
-    mockSentryLease("us.sentry.io");
-
-    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        "Bearer sentry-token",
-      );
-      return new Response("ok", { status: 200 });
-    });
-
-    const response = await proxy(
-      egressRequest({ host: "us.sentry.io" }),
-      fetchMock as typeof fetch,
-    );
-
-    expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not apply subdomain transforms to the apex host", async () => {

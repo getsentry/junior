@@ -241,7 +241,7 @@ async function waitForToolStart(): Promise<void> {
   throw new Error("Expected sandbox tool execution to start");
 }
 
-describe("executeAgentRun tool timeout continuation", () => {
+describe("tool timeout continuation composition", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     observations.continuationMessages = [];

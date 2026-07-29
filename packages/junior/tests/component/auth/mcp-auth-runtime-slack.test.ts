@@ -1,20 +1,20 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
+import { EVAL_MCP_AUTH_PROVIDER } from "../../msw/handlers/eval-mcp-auth";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 import {
   createTestMessage,
   createTestThread,
   type TestThread,
-} from "../fixtures/slack-harness";
+} from "../../fixtures/slack-harness";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
-} from "../fixtures/plugin-app";
+} from "../../fixtures/plugin-app";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -318,13 +318,13 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
-  "../fixtures/plugins/eval-auth",
+  "../../fixtures/plugins/eval-auth",
 );
 
-type ChatRuntimeModule = typeof import("../fixtures/chat-runtime");
+type ChatRuntimeModule = typeof import("../../fixtures/chat-runtime");
 type McpAuthStoreModule = typeof import("@/chat/mcp/auth-store");
 type McpOauthCallbackHarnessModule =
-  typeof import("../fixtures/mcp-oauth-callback-harness");
+  typeof import("../../fixtures/mcp-oauth-callback-harness");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
@@ -408,10 +408,10 @@ describe("mcp auth runtime slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
-    chatRuntimeModule = await import("../fixtures/chat-runtime");
+    chatRuntimeModule = await import("../../fixtures/chat-runtime");
     mcpAuthStoreModule = await import("@/chat/mcp/auth-store");
     mcpOauthCallbackHarnessModule =
-      await import("../fixtures/mcp-oauth-callback-harness");
+      await import("../../fixtures/mcp-oauth-callback-harness");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
