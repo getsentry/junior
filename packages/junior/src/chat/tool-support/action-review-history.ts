@@ -7,6 +7,7 @@ import {
 } from "@/chat/conversations/provenance";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import {
+  toolActionKey,
   toolActionRejectionKey,
   type ToolActionRejection,
 } from "@/chat/tool-support/action-review";
@@ -78,21 +79,59 @@ export function getToolActionRejectionMarker(
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Return whether durable history is awaiting a reply to Guardian's latest ask. */
+/** Return whether durable history contains an ask whose exact action has not completed. */
 export function hasPendingToolActionAsk(
   messages: readonly PiMessage[],
 ): boolean {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "user") {
-      return false;
+  const pendingActionKeys = new Set<string>();
+  const toolCallActionKeys = new Map<string, string>();
+
+  for (const message of messages) {
+    const record = message as unknown as Record<string, unknown>;
+    if (record.role === "assistant" && Array.isArray(record.content)) {
+      for (const part of record.content) {
+        if (
+          !isRecord(part) ||
+          part.type !== "toolCall" ||
+          typeof part.id !== "string" ||
+          typeof part.name !== "string" ||
+          !isRecord(part.arguments)
+        ) {
+          continue;
+        }
+        const actionKey = toolActionKey(part.name, part.arguments);
+        if (actionKey) {
+          toolCallActionKeys.set(part.id, actionKey);
+        }
+      }
     }
+
     const rejection = getToolActionRejectionMarker(message);
     if (rejection) {
-      return rejection.decision === "ask";
+      const actionKey =
+        typeof record.toolCallId === "string"
+          ? (toolCallActionKeys.get(record.toolCallId) ?? rejection.actionKey)
+          : rejection.actionKey;
+      if (rejection.decision === "ask") {
+        pendingActionKeys.add(actionKey);
+      } else {
+        pendingActionKeys.delete(actionKey);
+      }
+      continue;
+    }
+
+    if (
+      record.role === "toolResult" &&
+      record.isError !== true &&
+      typeof record.toolCallId === "string"
+    ) {
+      const actionKey = toolCallActionKeys.get(record.toolCallId);
+      if (actionKey) {
+        pendingActionKeys.delete(actionKey);
+      }
     }
   }
-  return false;
+  return pendingActionKeys.size > 0;
 }
 
 /**

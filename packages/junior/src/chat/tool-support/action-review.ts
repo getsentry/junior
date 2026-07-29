@@ -454,7 +454,7 @@ export async function reviewToolAction(
   let proposal: ToolActionProposal;
   let decision: ToolActionReviewDecision;
   try {
-    const resolved = tool.resolveApprovalMetadata?.(input);
+    const resolved = await tool.resolveApprovalMetadata?.(input);
     if (effectiveApprovalMode(tool, resolved) === "approve") {
       return;
     }

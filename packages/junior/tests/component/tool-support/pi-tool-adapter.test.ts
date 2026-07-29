@@ -8,6 +8,7 @@ import type {
   ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 
@@ -329,6 +330,87 @@ describe("Pi tool adapter", () => {
       {},
     );
     expect(execute).toHaveBeenCalledOnce();
+    expect(review.mock.invocationCallOrder[0]).toBeLessThan(
+      execute.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("activates an MCP provider before reviewing the dispatched action", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "deleted" }],
+    }));
+    const managedTool = {
+      name: "mcp__demo__delete-workspace",
+      rawName: "delete-workspace",
+      provider: "demo",
+      description: "Permanently delete a workspace.",
+      parameters: {},
+      annotations: {
+        destructiveHint: true,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
+      execute,
+    };
+    let activeTools = [] as (typeof managedTool)[];
+    const activateProvider = vi.fn(async () => {
+      activeTools = [managedTool];
+      return true;
+    });
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow" as const,
+      reason: "The user explicitly requested this deletion.",
+      riskLevel: "high" as const,
+      userAuthorization: "high" as const,
+    }));
+    const callMcpTool = createCallMcpToolTool({
+      activateProvider,
+      getResolvedActiveTools: () => activeTools,
+    });
+    const tools = createPiAgentTools(
+      { callMcpTool },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+      undefined,
+      actionReview({ review }, "Delete preview-42."),
+    );
+    const piCallMcpTool = tools.find(
+      (candidate) => candidate.name === "callMcpTool",
+    );
+    if (!piCallMcpTool) {
+      throw new Error("callMcpTool was not registered");
+    }
+
+    await piCallMcpTool.execute("tool-mcp", {
+      tool_name: managedTool.name,
+      arguments: { workspace: "preview-42" },
+    });
+
+    expect(review).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          tool_name: managedTool.name,
+          arguments: { workspace: "preview-42" },
+        },
+        tool: expect.objectContaining({
+          annotations: managedTool.annotations,
+          description: managedTool.description,
+          dispatcherName: "callMcpTool",
+          name: managedTool.name,
+        }),
+      }),
+      {},
+    );
+    expect(activateProvider.mock.invocationCallOrder[0]).toBeLessThan(
+      review.mock.invocationCallOrder[0]!,
+    );
     expect(review.mock.invocationCallOrder[0]).toBeLessThan(
       execute.mock.invocationCallOrder[0]!,
     );

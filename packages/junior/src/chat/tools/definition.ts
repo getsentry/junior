@@ -72,7 +72,12 @@ interface BaseToolDefinition<
    *
    * Descriptions and annotations inform review; they do not grant authority.
    */
-  resolveApprovalMetadata?(input: TInput): ToolApprovalResolution;
+  resolveApprovalMetadata?(
+    input: TInput,
+  ):
+    | Promise<ToolApprovalResolution | undefined>
+    | ToolApprovalResolution
+    | undefined;
   executionMode?: ToolExecutionMode;
   execute?: (
     input: TInput,
@@ -127,7 +132,12 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    *
    * Descriptions and annotations inform review; they do not grant authority.
    */
-  resolveApprovalMetadata?(input: unknown): ToolApprovalResolution;
+  resolveApprovalMetadata?(
+    input: unknown,
+  ):
+    | Promise<ToolApprovalResolution | undefined>
+    | ToolApprovalResolution
+    | undefined;
 }
 
 /** Name-indexed heterogeneous tool definitions accepted by the agent runtime. */

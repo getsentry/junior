@@ -324,8 +324,6 @@ const TOOL_POLICY_RULES = [
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
   "- After changing files, name the changed paths and summarize the completed result in the final answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
-  "- For file changes, use file or shell tools and verify the result before claiming success. Never report a file as created or changed from intent alone.",
-  "- After changing files, name the changed paths and summarize the resulting value or behavior in the final reply.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
   "- When a tool result includes a subscribable resource, use resource-event subscriptions for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the subscription can deliver. Use the suggested events when they fit and write a concise intent summary.",
   "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis only when it offers a profile that better matches the task. Do not switch merely because the task involves code.",

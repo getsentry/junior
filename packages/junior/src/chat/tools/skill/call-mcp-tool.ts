@@ -72,17 +72,22 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           .optional(),
       })
       .passthrough(),
-    resolveApprovalMetadata: ({ tool_name }) => {
+    resolveApprovalMetadata: async ({ tool_name }) => {
+      const provider = parseMcpProviderFromToolName(tool_name);
+      if (provider) {
+        await mcpToolManager.activateProvider(provider);
+      }
       const activeTool = mcpToolManager
         .getResolvedActiveTools()
         .find((candidate) => candidate.name === tool_name);
-      const provider = parseMcpProviderFromToolName(tool_name);
+      if (!activeTool) {
+        return undefined;
+      }
       return {
-        ...(activeTool?.annotations
+        ...(activeTool.annotations
           ? { annotations: activeTool.annotations }
           : {}),
-        description:
-          activeTool?.description ?? `Call the MCP tool ${tool_name}.`,
+        description: activeTool.description,
         name: tool_name,
         ...(provider
           ? {

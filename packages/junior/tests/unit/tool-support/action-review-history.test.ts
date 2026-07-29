@@ -57,9 +57,11 @@ const PROVENANCE = [
 ];
 
 describe("action review history", () => {
-  it("identifies an ask awaiting the next user reply", () => {
+  it("keeps an ask pending until the exact action succeeds", () => {
     const messages = transcript(
       {
+        // Core computes this after trusted hooks adjust input, so it does not
+        // have to equal the raw Pi tool-call key.
         actionKey: "a".repeat(64),
         decision: "ask",
         reason: "Confirm the deletion.",
@@ -78,8 +80,35 @@ describe("action review history", () => {
 
     messages.push({
       role: "user",
-      content: [{ type: "text", text: "Yes." }],
+      content: [
+        {
+          type: "text",
+          text: "Before I decide, what exactly would that remove?",
+        },
+      ],
     } as PiMessage);
+    expect(hasPendingToolActionAsk(messages)).toBe(true);
+
+    messages.push(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-2",
+            name: "deleteWorkspace",
+            arguments: { workspaceId: "production" },
+          },
+        ],
+      } as unknown as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "call-2",
+        toolName: "deleteWorkspace",
+        isError: false,
+        content: [{ type: "text", text: "deleted" }],
+      } as PiMessage,
+    );
     expect(hasPendingToolActionAsk(messages)).toBe(false);
   });
 

@@ -35,7 +35,7 @@ describeEval("Memory Management", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant recommends structuring the PR summary with risks first, following the stored preference without requiring explicit memory narration.",
+          "The assistant uses memory to say the user prefers PR summaries with risks first.",
           "The assistant does not ask the user to restate the preference.",
         ],
         fail: [

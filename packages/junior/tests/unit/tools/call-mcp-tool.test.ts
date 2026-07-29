@@ -55,7 +55,7 @@ describe("callMcpTool", () => {
     });
   });
 
-  it("resolves the underlying MCP action metadata for core review", () => {
+  it("resolves the underlying MCP action metadata for core review", async () => {
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
@@ -77,7 +77,7 @@ describe("callMcpTool", () => {
     const callMcpTool = createCallMcpToolTool(manager);
 
     expect(
-      callMcpTool.resolveApprovalMetadata?.({
+      await callMcpTool.resolveApprovalMetadata?.({
         tool_name: "mcp__demo__search",
         arguments: { query: "errors" },
       }),

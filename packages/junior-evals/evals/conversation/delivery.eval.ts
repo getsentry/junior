@@ -4,7 +4,6 @@ import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   hasImageAttachment,
   mention,
-  reactionEmojis,
   rubric,
   slackEvals,
   visibleAssistantText,
@@ -28,7 +27,9 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       ],
     });
 
-    expect(reactionEmojis(result.session)).toContain("white_check_mark");
+    expect(toolCalls(result.session).map((call) => call.name)).toContain(
+      "addReaction",
+    );
     expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
   });

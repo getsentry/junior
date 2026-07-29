@@ -32,12 +32,10 @@ describe("tool action review evidence", () => {
     ] as PiMessage[]);
 
     expect(evidence).toEqual({
-      entries: [
-        { role: "user", text: "Create the weekly report." },
-        { role: "assistant", text: "I will create that report." },
-      ],
+      entries: [{ role: "user", text: "Create the weekly report." }],
       omittedEntries: 0,
     });
+    expect(JSON.stringify(evidence)).not.toContain("I will create");
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
     expect(JSON.stringify(evidence)).not.toContain("secret-value");
   });

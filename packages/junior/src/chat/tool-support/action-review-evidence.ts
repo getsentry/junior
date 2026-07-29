@@ -38,7 +38,10 @@ export function buildToolActionEvidence(
       if (text) {
         candidates.push({ role: "user", text });
       }
-    } else if (isAssistantMessage(message)) {
+    } else if (
+      isAssistantMessage(message) &&
+      !message.content.some((part) => part.type === "toolCall")
+    ) {
       const text = extractAssistantText(message).trim();
       if (text) {
         candidates.push({ role: "assistant", text });
