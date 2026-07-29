@@ -119,7 +119,7 @@ function stringField(
 }
 
 function providerText(result: PluginMcpToolResult): string {
-  return result.content
+  return (result.providerContent ?? result.content)
     .filter(
       (part): part is Extract<typeof part, { type: "text" }> =>
         part.type === "text",
@@ -259,6 +259,10 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             arguments: input,
             toolCallId,
           });
+          if (result.authorizationPending) {
+            await ctx.state.delete(key);
+            return toolResult(null, "Authorization pending.");
+          }
           const text = providerText(result);
           const issue = extractIssue(result);
           const completedState: CreateIssueState = {

@@ -560,8 +560,12 @@ export class McpToolManager {
                 });
               }
 
+              const providerContent = boundMcpContent(
+                toAgentToolContent(result),
+              );
               return {
                 content: toModelVisibleMcpContent(result),
+                providerContent,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
                   : {}),
@@ -582,7 +586,9 @@ export class McpToolManager {
                 // and let the aborted turn park cleanly instead of surfacing a
                 // spurious tool failure to the model.
                 return {
+                  authorizationPending: true,
                   content: parkedContent,
+                  providerContent: parkedContent,
                 };
               }
               const errorAttributes = {

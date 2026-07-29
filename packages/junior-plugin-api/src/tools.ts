@@ -72,7 +72,9 @@ export type PluginMcpContent =
   | { type: "image"; data: string; mimeType: string };
 
 export interface PluginMcpToolResult {
+  authorizationPending?: boolean;
   content: PluginMcpContent[];
+  providerContent?: PluginMcpContent[];
   structuredContent?: unknown;
 }
 

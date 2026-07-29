@@ -499,6 +499,7 @@ describe("McpToolManager", () => {
       .find((t) => t.name === "mcp__notion__notion-create-pages");
     await expect(createPagesTool!.execute({})).resolves.toEqual({
       content: [{ type: "text", text: "pong" }],
+      providerContent: [{ type: "text", text: "pong" }],
     });
   });
 
@@ -577,8 +578,38 @@ describe("McpToolManager", () => {
           text: JSON.stringify({ identifier: "ENG-123" }, null, 2),
         },
       ],
+      providerContent: [{ type: "text", text: "ENG-123" }],
       structuredContent: { identifier: "ENG-123" },
     });
+  });
+
+  it("marks handled authorization challenges during wrapped tool calls", async () => {
+    const plugin = buildPlugin("linear", { wrappedTools: ["create_issue"] });
+    listToolsMock.mockResolvedValue([
+      {
+        name: "create_issue",
+        description: "Create an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ]);
+    const authError = new McpAuthorizationRequiredError(
+      "linear",
+      "authorization required",
+    );
+    callToolMock.mockRejectedValue(authError);
+    onAuthorizationRequiredMock.mockResolvedValue(true);
+    const manager = new McpToolManager([plugin], {
+      onAuthorizationRequired: onAuthorizationRequiredMock,
+    });
+    await manager.activateProvider("linear");
+
+    await expect(
+      manager.callProviderTool("linear", "create_issue", {}),
+    ).resolves.toMatchObject({
+      authorizationPending: true,
+      content: [{ type: "text", text: "Authorization pending." }],
+    });
+    expect(manager.getActiveProviders()).toEqual([]);
   });
 
   it("fails activation when a wrapped MCP tool is missing", async () => {

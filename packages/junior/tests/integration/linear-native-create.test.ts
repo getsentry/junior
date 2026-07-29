@@ -41,13 +41,16 @@ describe("Linear native create tool", () => {
       (input) => {
         createCalls.push(input);
         return {
-          content: [{ type: "text", text: "Created ENG-123" }],
+          content: [
+            {
+              type: "text",
+              text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+            },
+          ],
           structuredContent: {
             issue: {
               id: "issue-id",
-              identifier: "ENG-123",
               title: input.title,
-              url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
             },
           },
         };
@@ -156,6 +159,86 @@ describe("Linear native create tool", () => {
     } finally {
       setPlugins(previousPlugins);
       await server.close();
+    }
+  });
+
+  it("retries the same create after authorization pauses during the provider call", async () => {
+    const registration = linearPlugin();
+    const previousPlugins = setPlugins([registration]);
+    const conversationId = "local:test:linear-native-auth-resume";
+    let callCount = 0;
+    const activeProviders = new Set(["linear"]);
+    try {
+      await getConversationStore().recordActivity({
+        conversationId,
+        nowMs: Date.now(),
+        source: "local",
+        title: "Linear native auth resume",
+      });
+      const tools = getPluginTools({
+        conversationId,
+        destination: { platform: "local", conversationId },
+        egress: {
+          async fetch() {
+            return new Response("unused");
+          },
+        },
+        mcpToolManager: {
+          async activateProvider() {
+            activeProviders.add("linear");
+            return true;
+          },
+          async callProviderTool() {
+            callCount += 1;
+            if (callCount === 1) {
+              activeProviders.delete("linear");
+              return {
+                authorizationPending: true,
+                content: [
+                  { type: "text" as const, text: "Authorization pending." },
+                ],
+              };
+            }
+            return {
+              content: [{ type: "text" as const, text: "Created ENG-456" }],
+              structuredContent: {
+                issue: {
+                  identifier: "ENG-456",
+                  url: "https://linear.app/acme/issue/ENG-456/auth-resume",
+                },
+              },
+            };
+          },
+          getActiveProviders() {
+            return [...activeProviders];
+          },
+        } as never,
+        source: createLocalSource(conversationId),
+        workspace: {} as never,
+      });
+      const createIssue = tools.linear_createIssue;
+      if (!createIssue?.execute) {
+        throw new Error("Linear createIssue tool is unavailable");
+      }
+      const input = { team: "Engineering", title: "Resume after auth" };
+
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-auth" }),
+      ).resolves.toMatchObject({
+        issue: null,
+        providerText: "Authorization pending.",
+      });
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-auth" }),
+      ).resolves.toMatchObject({
+        issue: {
+          identifier: "ENG-456",
+          url: "https://linear.app/acme/issue/ENG-456/auth-resume",
+        },
+      });
+      expect(callCount).toBe(2);
+    } finally {
+      setPlugins(previousPlugins);
     }
   });
 });
