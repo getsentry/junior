@@ -98,6 +98,14 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalized.normalizedCount).toBe(2);
   });
 
+  it("uses absolute tab stops for list content indentation", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1.\tParent\n    > Quoted child\n2. Next",
+    );
+    expect(normalized.markdown).toBe("1.\tParent\n    Quoted child\n2. Next");
+    expect(normalized.unwrappedBlockquoteCount).toBe(1);
+  });
+
   it("unwraps blockquotes that start in same-line list content", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. > > Same-line quote\n2. Next",

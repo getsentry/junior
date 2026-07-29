@@ -38,12 +38,12 @@ function getPlainListMarker(marker: string, type: ListType): string {
   return type === "numbered" ? `${marker.match(/^\d+/)?.[0] ?? "1"}:` : "•";
 }
 
-function getIndentWidth(whitespace: string): number {
-  let width = 0;
+function getIndentWidth(whitespace: string, startColumn = 0): number {
+  let column = startColumn;
   for (const character of whitespace) {
-    width += character === "\t" ? 4 - (width % 4) : 1;
+    column += character === "\t" ? 4 - (column % 4) : 1;
   }
-  return width;
+  return column - startColumn;
 }
 
 function getLineIndent(line: string): number {
@@ -165,8 +165,8 @@ export function normalizeCanvasMarkdown(
         listMatch;
       const indent = getIndentWidth(whitespace);
       const type = getListType(marker);
-      const contentIndent =
-        indent + getIndentWidth(marker) + getIndentWidth(gap);
+      const markerEnd = indent + getIndentWidth(marker);
+      const contentIndent = markerEnd + getIndentWidth(gap, markerEnd);
       const contentMatch = rawContent.match(/^(?:>[ \t]*)+(.*)$/);
       const content = contentMatch?.[1] ?? rawContent;
       if (contentMatch) {
