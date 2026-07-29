@@ -98,6 +98,14 @@ describe("normalizeCanvasMarkdown", () => {
     expect(normalized.normalizedCount).toBe(2);
   });
 
+  it("unwraps blockquotes that start in same-line list content", () => {
+    const normalized = normalizeCanvasMarkdown(
+      "1. > > Same-line quote\n2. Next",
+    );
+    expect(normalized.markdown).toBe("1. Same-line quote\n2. Next");
+    expect(normalized.unwrappedBlockquoteCount).toBe(1);
+  });
+
   it("normalizes list syntax revealed by unwrapped blockquotes", () => {
     const normalized = normalizeCanvasMarkdown(
       "1. Parent\n   > - Child\n2. Next",
@@ -134,6 +142,16 @@ describe("normalizeCanvasMarkdown", () => {
 
   it("preserves deeply indented heading syntax outside lists", () => {
     const markdown = "    #### Indented code";
+    expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
+  });
+
+  it("preserves headings in list-item indented code", () => {
+    const markdown = "1. Parent\n       #### Indented code\n2. Next";
+    expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
+  });
+
+  it("preserves quote markers in list-item indented code", () => {
+    const markdown = "1. Parent\n       > Indented code\n2. Next";
     expect(normalizeCanvasMarkdown(markdown).markdown).toBe(markdown);
   });
 

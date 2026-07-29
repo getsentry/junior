@@ -64,19 +64,14 @@ function getFence(line: string): FenceLine | undefined {
   };
 }
 
-function isInsideListItem(indent: number, listItems: ListItem[]): boolean {
-  return listItems.some((item) => indent >= item.contentIndent);
+function isListBlockIndent(indent: number, listItems: ListItem[]): boolean {
+  return listItems.some(
+    (item) => indent >= item.contentIndent && indent <= item.contentIndent + 3,
+  );
 }
 
 function canOpenFence(fenceLine: FenceLine, listItems: ListItem[]) {
-  return (
-    fenceLine.indent <= 3 ||
-    listItems.some(
-      (item) =>
-        fenceLine.indent >= item.contentIndent &&
-        fenceLine.indent <= item.contentIndent + 3,
-    )
-  );
+  return fenceLine.indent <= 3 || isListBlockIndent(fenceLine.indent, listItems);
 }
 
 function unwrapNestedBlockquote(
@@ -86,7 +81,7 @@ function unwrapNestedBlockquote(
   const match = line.match(/^([ \t]+)(?:>[ \t]*)+(.*)$/);
   if (
     !match ||
-    !isInsideListItem(getIndentWidth(match[1] ?? ""), listItems)
+    !isListBlockIndent(getIndentWidth(match[1] ?? ""), listItems)
   ) {
     return { line, unwrapped: false };
   }
@@ -153,12 +148,17 @@ export function normalizeCanvasMarkdown(
       /^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/,
     );
     if (listMatch) {
-      const [, whitespace = "", marker = "", gap = "", content = ""] =
+      const [, whitespace = "", marker = "", gap = "", rawContent = ""] =
         listMatch;
       const indent = getIndentWidth(whitespace);
       const type = getListType(marker);
       const contentIndent =
         indent + getIndentWidth(marker) + getIndentWidth(gap);
+      const contentMatch = rawContent.match(/^(?:>[ \t]*)+(.*)$/);
+      const content = contentMatch?.[1] ?? rawContent;
+      if (contentMatch) {
+        unwrappedBlockquoteCount += 1;
+      }
 
       while (
         listItems.length > 0 &&
@@ -181,7 +181,9 @@ export function normalizeCanvasMarkdown(
       }
 
       listItems.push({ contentIndent, indent, type, unwrapped: false });
-      return line;
+      return contentMatch
+        ? `${whitespace}${marker}${gap}${content}`
+        : line;
     }
 
     const rootListContentIndent = listItems[0]?.contentIndent;
@@ -201,7 +203,7 @@ export function normalizeCanvasMarkdown(
       headingMatch &&
       headingIndent !== undefined &&
       (headingIndent <= 3 ||
-        isInsideListItem(headingIndent, listItems))
+        isListBlockIndent(headingIndent, listItems))
     ) {
       normalizedHeadingCount += 1;
       return line.replace(
