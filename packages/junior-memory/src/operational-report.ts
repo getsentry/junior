@@ -41,8 +41,8 @@ async function aggregateMemoryDays(args: { db: MemoryDb; nowMs: number }) {
   const result = await args.db.execute(sql`
     WITH days AS (
       SELECT generate_series(
-        ${start}::date,
-        ${end}::date,
+        date_trunc('day', ${start}::timestamptz AT TIME ZONE 'UTC'),
+        date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
         interval '1 day'
       ) AS day
     ), daily AS (

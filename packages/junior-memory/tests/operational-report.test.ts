@@ -58,6 +58,46 @@ function testEmbedder() {
 }
 
 describe("memory operational report", () => {
+  it("keeps chart days in UTC when the database session uses another timezone", async () => {
+    const fixture = await createMemoryFixture();
+    try {
+      await fixture.execute("SET TIME ZONE 'America/Los_Angeles'");
+      await fixture
+        .db()
+        .insert(juniorMemoryMemories)
+        .values({
+          content: "A memory created shortly after UTC midnight.",
+          createdAtMs: Date.parse("2026-07-28T00:30:00.000Z"),
+          id: "utc-boundary-memory",
+          kind: "knowledge",
+          observedAtMs: Date.parse("2026-07-28T00:30:00.000Z"),
+          scope: "personal",
+          scopeKey: "local:report-user",
+          sourceKey: "local:junior:memory-report",
+          sourcePlatform: "local",
+          subjectKey: "report-user",
+          subjectType: "user",
+        });
+
+      const report = await buildMemoryOperationalReport({
+        db: fixture.db(),
+        nowMs: TEST_NOW_MS,
+      });
+
+      expect(report.widgets?.[0]?.categories).toHaveLength(90);
+      expect(report.widgets?.[0]?.categories.at(-1)).toEqual({
+        id: "2026-07-28",
+        label: "2026-07-28",
+        values: {
+          conversation: 0,
+          personal: 1,
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reports an empty memory system", async () => {
     const fixture = await createMemoryFixture();
     try {
