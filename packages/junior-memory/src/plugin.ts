@@ -13,6 +13,7 @@ import {
 } from "./tools";
 import { processMemorySession } from "./process-session";
 import { createMemoryPromptContributions } from "./recall";
+import { buildMemoryOperationalReport } from "./operational-report";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
@@ -111,6 +112,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     },
     userPages: [createMemoryUserPage()],
     hooks: {
+      async operationalReport(ctx) {
+        return await buildMemoryOperationalReport({
+          db: ctx.db as MemoryDb,
+          nowMs: ctx.nowMs,
+        });
+      },
       apiRoutes(ctx) {
         return createMemoryApi({
           actors: ctx.viewer.actors,
