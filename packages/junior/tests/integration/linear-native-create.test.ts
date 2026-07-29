@@ -137,15 +137,32 @@ describe("Linear native issue tools", () => {
       await expect(
         createIssue.execute(input, { toolCallId: "call-create" }),
       ).resolves.toMatchObject({
-        ok: true,
-        status: "success",
-        target: "createIssue",
-        issue: {
-          identifier: "ENG-123",
-          url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+        content: [
+          {
+            type: "text",
+            text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+          },
+        ],
+        details: {
+          ok: true,
+          status: "success",
+          target: "createIssue",
+          issue: {
+            identifier: "ENG-123",
+            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+          },
         },
       });
-      await createIssue.execute(input, { toolCallId: "call-create" });
+      await expect(
+        createIssue.execute(input, { toolCallId: "call-create" }),
+      ).resolves.toMatchObject({
+        content: [
+          {
+            type: "text",
+            text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+          },
+        ],
+      });
 
       const updateInput = {
         id: "ENG-123",
@@ -154,11 +171,17 @@ describe("Linear native issue tools", () => {
       await expect(
         updateIssue.execute(updateInput, { toolCallId: "call-update" }),
       ).resolves.toMatchObject({
-        ok: true,
-        providerText:
-          "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
-        status: "success",
-        target: "updateIssue",
+        content: [
+          {
+            type: "text",
+            text: "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+          },
+        ],
+        details: {
+          ok: true,
+          status: "success",
+          target: "updateIssue",
+        },
       });
 
       expect(saveCalls).toEqual([input, updateInput]);
@@ -241,15 +264,17 @@ describe("Linear native issue tools", () => {
       await expect(
         createIssue.execute(input, { toolCallId: "call-auth" }),
       ).resolves.toMatchObject({
-        issue: null,
-        providerText: "Authorization pending.",
+        content: [{ type: "text", text: "Authorization pending." }],
+        details: { issue: null },
       });
       await expect(
         createIssue.execute(input, { toolCallId: "call-auth" }),
       ).resolves.toMatchObject({
-        issue: {
-          identifier: "ENG-456",
-          url: "https://linear.app/acme/issue/ENG-456/auth-resume",
+        details: {
+          issue: {
+            identifier: "ENG-456",
+            url: "https://linear.app/acme/issue/ENG-456/auth-resume",
+          },
         },
       });
       expect(callCount).toBe(2);
@@ -327,8 +352,11 @@ describe("Linear native issue tools", () => {
       await expect(
         createIssue.execute(input, { toolCallId: "call-rejected" }),
       ).resolves.toMatchObject({
-        ok: true,
-        status: "success",
+        content: [{ type: "text", text: "Created" }],
+        details: {
+          ok: true,
+          status: "success",
+        },
       });
       expect(callCounts.get("call-rejected")).toBe(2);
 

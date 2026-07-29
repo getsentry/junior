@@ -134,6 +134,75 @@ describe("definePluginTool", () => {
     expect(tool.privateTraceResult?.(result!)).toEqual({ count: 3 });
   });
 
+  it("preserves standard content envelopes and validates their details", async () => {
+    const tool = definePluginTool({
+      description: "Return provider content.",
+      inputSchema: z.object({}),
+      outputSchema: countResultSchema,
+      execute: async () => ({
+        content: [
+          { type: "text" as const, text: "Created LIN-123" },
+          {
+            type: "image" as const,
+            data: "base64-image",
+            mimeType: "image/png",
+          },
+        ],
+        details: {
+          ok: true as const,
+          status: "success" as const,
+          count: 1,
+          data: { count: 1 },
+        },
+      }),
+    });
+
+    if (!tool.execute || !tool.prepareArguments) {
+      throw new Error("Expected an executable plugin tool.");
+    }
+    await expect(tool.execute(tool.prepareArguments({}), {})).resolves.toEqual({
+      content: [
+        { type: "text", text: "Created LIN-123" },
+        {
+          type: "image",
+          data: "base64-image",
+          mimeType: "image/png",
+        },
+      ],
+      details: {
+        ok: true,
+        status: "success",
+        count: 1,
+        data: { count: 1 },
+      },
+    });
+  });
+
+  it("rejects invalid content envelope details", async () => {
+    const tool = definePluginTool({
+      description: "Return invalid provider details.",
+      inputSchema: z.object({}),
+      outputSchema: countResultSchema,
+      execute: async () =>
+        ({
+          content: [{ type: "text", text: "Created LIN-123" }],
+          details: {
+            ok: true,
+            status: "success",
+            count: "one",
+            data: { count: 1 },
+          },
+        }) as never,
+    });
+
+    if (!tool.execute || !tool.prepareArguments) {
+      throw new Error("Expected an executable plugin tool.");
+    }
+    await expect(tool.execute(tool.prepareArguments({}), {})).rejects.toThrow(
+      "Invalid input: expected number",
+    );
+  });
+
   it("rejects parser schemas that cannot be represented as JSON Schema", () => {
     expect(() =>
       definePluginTool({

@@ -151,7 +151,7 @@ describe("zodTool", () => {
     );
   });
 
-  it("rejects content envelopes when an output schema is declared", async () => {
+  it("preserves content envelopes and validates their details", async () => {
     const tool = zodTool({
       description: "Return result.",
       inputSchema: z.object({ value: z.string() }),
@@ -160,22 +160,28 @@ describe("zodTool", () => {
           value: z.string(),
         }),
       }),
-      execute: async (input) =>
-        ({
-          content: [{ type: "text" as const, text: `value: ${input.value}` }],
-          details: {
-            ok: true,
-            status: "success" as const,
-            data: {
-              value: input.value,
-            },
+      execute: async (input) => ({
+        content: [{ type: "text" as const, text: `value: ${input.value}` }],
+        details: {
+          ok: true,
+          status: "success" as const,
+          data: {
+            value: input.value,
           },
-        }) as never,
+        },
+      }),
     });
 
     await expect(
       tool.execute?.(tool.prepareArguments!({ value: "hello" }), {}),
-    ).rejects.toThrow("Invalid input: expected boolean");
+    ).resolves.toEqual({
+      content: [{ type: "text", text: "value: hello" }],
+      details: {
+        ok: true,
+        status: "success",
+        data: { value: "hello" },
+      },
+    });
   });
 
   it("allows native content tools without a structured output schema", async () => {

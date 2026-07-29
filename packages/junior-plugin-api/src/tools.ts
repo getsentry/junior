@@ -67,9 +67,27 @@ export interface PluginEgress {
   }): Promise<Response>;
 }
 
-export type PluginMcpContent =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
+export const pluginToolContentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal("image"),
+      data: z.string(),
+      mimeType: z.string(),
+    })
+    .strict(),
+]);
+
+/** Model-visible content returned by a plugin tool. */
+export type PluginToolContent = z.output<typeof pluginToolContentSchema>;
+
+/** Standard tool result envelope with separate model content and runtime details. */
+export interface PluginToolResultEnvelope<TDetails = PluginToolResult> {
+  content: PluginToolContent[];
+  details: TDetails;
+}
+
+export type PluginMcpContent = PluginToolContent;
 
 /** Successful raw provider result returned to a plugin-owned wrapper tool. */
 export type PluginMcpToolSuccess = {
@@ -234,6 +252,7 @@ export interface ToolApprovalMetadata<TInput = unknown> {
 export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
+  TExecuteOutput = TOutput,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
@@ -257,12 +276,15 @@ export interface PluginToolDefinition<
    * future major version.
    */
   promptSnippet?: string;
-  execute?: PluginToolExecute<TInput, TOutput>;
+  execute?: PluginToolExecute<TInput, TExecuteOutput>;
 }
 
 type ZodPluginToolDefinition<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<PluginToolResult>,
+  TExecuteResult extends
+    | z.input<TOutputSchema>
+    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
 > = Omit<
   PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -273,8 +295,24 @@ type ZodPluginToolDefinition<
   execute?: (
     input: z.output<TInputSchema>,
     options: PluginToolExecuteOptions,
-  ) => Promise<z.input<TOutputSchema>> | z.input<TOutputSchema>;
+  ) => Promise<TExecuteResult> | TExecuteResult;
 };
+
+type ParsedPluginToolExecuteResult<TOutputSchema extends ZodTypeAny, TResult> =
+  TResult extends PluginToolResultEnvelope<unknown>
+    ? PluginToolResultEnvelope<z.output<TOutputSchema>>
+    : z.output<TOutputSchema>;
+
+function isPluginToolResultEnvelope(
+  value: unknown,
+): value is PluginToolResultEnvelope<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Array.isArray((value as { content?: unknown }).content) &&
+    "details" in value
+  );
+}
 
 function formatZodPath(path: readonly PropertyKey[]): string {
   return path.length > 0 ? path.map(String).join(".") : "root";
@@ -304,10 +342,21 @@ function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
 function createZodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<PluginToolResult>,
+  TExecuteResult extends
+    | z.input<TOutputSchema>
+    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
 >(
-  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
+  definition: ZodPluginToolDefinition<
+    TInputSchema,
+    TOutputSchema,
+    TExecuteResult
+  >,
   helperName: "definePluginTool" | "zodTool",
-): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+): PluginToolDefinition<
+  z.output<TInputSchema>,
+  z.output<TOutputSchema>,
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+> {
   const { inputSchema, outputSchema, prepareArguments, execute, ...tool } =
     definition;
   let modelInputSchema: unknown;
@@ -345,20 +394,43 @@ function createZodTool<
               input as z.output<TInputSchema>,
               options,
             );
+            if (isPluginToolResultEnvelope(result)) {
+              return {
+                content: z.array(pluginToolContentSchema).parse(result.content),
+                details: outputSchema.parse(
+                  pluginToolResultSchema.parse(result.details),
+                ),
+              };
+            }
             return outputSchema.parse(pluginToolResultSchema.parse(result));
           },
         }
       : {}),
-  };
+  } as PluginToolDefinition<
+    z.output<TInputSchema>,
+    z.output<TOutputSchema>,
+    ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  >;
 }
 
 /** Define a plugin tool with Zod input parsing and validated structured results. */
 export function zodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<PluginToolResult>,
+  TExecuteResult extends
+    | z.input<TOutputSchema>
+    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
 >(
-  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
-): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+  definition: ZodPluginToolDefinition<
+    TInputSchema,
+    TOutputSchema,
+    TExecuteResult
+  >,
+): PluginToolDefinition<
+  z.output<TInputSchema>,
+  z.output<TOutputSchema>,
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+> {
   return createZodTool(definition, "zodTool");
 }
 
@@ -366,9 +438,20 @@ export function zodTool<
 export function definePluginTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<PluginToolResult>,
+  TExecuteResult extends
+    | z.input<TOutputSchema>
+    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
 >(
-  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
-): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+  definition: ZodPluginToolDefinition<
+    TInputSchema,
+    TOutputSchema,
+    TExecuteResult
+  >,
+): PluginToolDefinition<
+  z.output<TInputSchema>,
+  z.output<TOutputSchema>,
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+> {
   return createZodTool(definition, "definePluginTool");
 }
 

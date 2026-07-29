@@ -1,12 +1,13 @@
 import {
   definePluginTool,
+  type PluginToolContent,
   type PluginToolExecuteOptions,
   type PluginToolResult,
+  type PluginToolResultEnvelope,
   type ToolRegistrationHookContext,
   pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { linearProviderText } from "./mcp-result.js";
 
 const nullableName = (description: string) =>
   z.string().trim().min(1).nullable().describe(description).optional();
@@ -68,30 +69,29 @@ const outputSchema = pluginToolResultSchema.extend({
   ok: z.literal(true),
   status: z.literal("success"),
   target: z.literal("updateIssue"),
-  data: z.object({
-    providerText: z.string(),
-  }),
-  providerText: z.string(),
 });
 
 interface UpdateLinearIssueResult extends PluginToolResult {
-  data: {
-    providerText: string;
-  };
   ok: true;
-  providerText: string;
   status: "success";
   target: "updateIssue";
 }
 
-function toolResult(providerText: string): UpdateLinearIssueResult {
+function toolResult(
+  content: PluginToolContent[],
+): PluginToolResultEnvelope<UpdateLinearIssueResult> {
   return {
-    ok: true,
-    status: "success",
-    target: "updateIssue",
-    data: { providerText },
-    providerText,
+    content,
+    details: {
+      ok: true,
+      status: "success",
+      target: "updateIssue",
+    },
   };
+}
+
+function authorizationPendingResult(): PluginToolResultEnvelope<UpdateLinearIssueResult> {
+  return toolResult([{ type: "text", text: "Authorization pending." }]);
 }
 
 /** Update a Linear issue through the hosted MCP provider. */
@@ -120,7 +120,7 @@ export function createLinearUpdateIssueTool(ctx: ToolRegistrationHookContext) {
         throw new Error("Linear MCP provider is unavailable.");
       }
       if ((await mcp.prepare()) === "authorization_pending") {
-        return toolResult("Authorization pending.");
+        return authorizationPendingResult();
       }
 
       const result = await mcp.callTool({
@@ -129,12 +129,12 @@ export function createLinearUpdateIssueTool(ctx: ToolRegistrationHookContext) {
         toolCallId: options.toolCallId,
       });
       if (result.status === "authorization_pending") {
-        return toolResult("Authorization pending.");
+        return authorizationPendingResult();
       }
       if (result.status === "error") {
         throw new Error(result.message);
       }
-      return toolResult(linearProviderText(result));
+      return toolResult(result.content);
     },
   });
 }

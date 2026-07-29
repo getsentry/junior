@@ -30,7 +30,14 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
 
 type StructuredToolExecuteResult<
   TOutputSchema extends ZodType<JuniorToolResult>,
-> = z.input<TOutputSchema>;
+> =
+  | z.input<TOutputSchema>
+  | StructuredToolResultEnvelope<z.input<TOutputSchema>>;
+
+interface StructuredToolResultEnvelope<TDetails> {
+  content: Array<TextContent | ImageContent>;
+  details: TDetails;
+}
 
 export interface ContentOnlyToolResult {
   content: Array<TextContent | ImageContent>;
@@ -40,15 +47,14 @@ export interface ContentOnlyToolResult {
 type StructuredZodToolDefinition<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 > = ZodToolDefinitionBase<TInputSchema> & {
   outputSchema: TOutputSchema;
   privateTraceResult?(result: z.output<TOutputSchema>): unknown;
   execute?: (
     input: z.output<TInputSchema>,
     options: ToolExecuteOptions,
-  ) =>
-    | Promise<StructuredToolExecuteResult<TOutputSchema>>
-    | StructuredToolExecuteResult<TOutputSchema>;
+  ) => Promise<TExecuteResult> | TExecuteResult;
 };
 
 type ContentZodToolDefinition<TInputSchema extends ZodTypeAny> =
@@ -63,13 +69,23 @@ type ContentZodToolDefinition<TInputSchema extends ZodTypeAny> =
 type ZodToolDefinition<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 > =
-  | StructuredZodToolDefinition<TInputSchema, TOutputSchema>
+  | StructuredZodToolDefinition<TInputSchema, TOutputSchema, TExecuteResult>
   | ContentZodToolDefinition<TInputSchema>;
+
+type ParsedStructuredToolExecuteResult<
+  TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult,
+> =
+  TExecuteResult extends StructuredToolResultEnvelope<unknown>
+    ? StructuredToolResultEnvelope<z.output<TOutputSchema>>
+    : z.output<TOutputSchema>;
 
 type StructuredZodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult,
 > = Omit<
   AnyToolDefinition,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -80,7 +96,9 @@ type StructuredZodTool<
   execute?: (
     input: unknown,
     options: ToolExecuteOptions,
-  ) => Promise<z.output<TOutputSchema>> | z.output<TOutputSchema>;
+  ) =>
+    | Promise<ParsedStructuredToolExecuteResult<TOutputSchema, TExecuteResult>>
+    | ParsedStructuredToolExecuteResult<TOutputSchema, TExecuteResult>;
 };
 
 type ContentZodTool<TInputSchema extends ZodTypeAny> = Omit<
@@ -105,6 +123,38 @@ function isContentOnlyToolResult(
     Array.isArray((value as { content?: unknown }).content) &&
     !("details" in value)
   );
+}
+
+function isStructuredToolResultEnvelope(
+  value: unknown,
+): value is StructuredToolResultEnvelope<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Array.isArray((value as { content?: unknown }).content) &&
+    "details" in value
+  );
+}
+
+function parseToolContent(
+  content: Array<TextContent | ImageContent>,
+): Array<TextContent | ImageContent> {
+  for (const item of content) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      (item.type === "text"
+        ? typeof item.text !== "string"
+        : item.type === "image"
+          ? typeof item.data !== "string" || typeof item.mimeType !== "string"
+          : true)
+    ) {
+      throw new TypeError(
+        "zodTool() content must contain valid text or image items.",
+      );
+    }
+  }
+  return content;
 }
 
 function formatZodPath(path: readonly PropertyKey[]): string {
@@ -138,17 +188,23 @@ function parseToolInput<TInputSchema extends ZodTypeAny>(
 export function zodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 >(
-  definition: StructuredZodToolDefinition<TInputSchema, TOutputSchema>,
-): StructuredZodTool<TInputSchema, TOutputSchema>;
+  definition: StructuredZodToolDefinition<
+    TInputSchema,
+    TOutputSchema,
+    TExecuteResult
+  >,
+): StructuredZodTool<TInputSchema, TOutputSchema, TExecuteResult>;
 export function zodTool<TInputSchema extends ZodTypeAny>(
   definition: ContentZodToolDefinition<TInputSchema>,
 ): ContentZodTool<TInputSchema>;
 export function zodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,
+  TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 >(
-  definition: ZodToolDefinition<TInputSchema, TOutputSchema>,
+  definition: ZodToolDefinition<TInputSchema, TOutputSchema, TExecuteResult>,
 ): AnyToolDefinition {
   const { inputSchema, outputSchema, prepareArguments, execute, ...toolDef } =
     definition;
@@ -196,6 +252,14 @@ export function zodTool<
               throw new TypeError(
                 "zodTool() content-only tools must return { content } without details.",
               );
+            }
+            if (isStructuredToolResultEnvelope(result)) {
+              return {
+                content: parseToolContent(result.content),
+                details: outputSchema.parse(
+                  juniorToolResultSchema.parse(result.details),
+                ),
+              };
             }
             return outputSchema.parse(juniorToolResultSchema.parse(result));
           },

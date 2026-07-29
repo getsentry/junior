@@ -1,14 +1,16 @@
 import {
   definePluginTool,
   PluginToolInputError,
+  pluginToolContentSchema,
   type PluginMcpToolSuccess,
+  type PluginToolContent,
   type PluginToolExecuteOptions,
   type PluginToolResult,
+  type PluginToolResultEnvelope,
   type ToolRegistrationHookContext,
   pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { linearProviderText } from "./mcp-result.js";
 
 const CREATE_ISSUE_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CREATE_ISSUE_LOCK_TTL_MS = 60_000;
@@ -50,17 +52,15 @@ const outputSchema = pluginToolResultSchema.extend({
   target: z.literal("createIssue"),
   data: z.object({
     issue: issueSchema.nullable(),
-    providerText: z.string(),
   }),
   issue: issueSchema.nullable(),
-  providerText: z.string(),
 });
 
 const completedStateSchema = z
   .object({
     createdAtMs: z.number(),
+    content: z.array(pluginToolContentSchema),
     issue: issueSchema.nullable(),
-    providerText: z.string(),
     status: z.literal("completed"),
   })
   .strict();
@@ -78,11 +78,9 @@ type CreateIssueState = z.output<typeof stateSchema>;
 interface LinearIssueToolResult extends PluginToolResult {
   data: {
     issue: LinearIssue | null;
-    providerText: string;
   };
   issue: LinearIssue | null;
   ok: true;
-  providerText: string;
   status: "success";
   target: "createIssue";
 }
@@ -128,15 +126,25 @@ function parseJsonText(text: string): unknown {
 }
 
 function extractIssue(result: PluginMcpToolSuccess): LinearIssue | null {
-  const text = linearProviderText(result);
   const objects: Record<string, unknown>[] = [];
   collectObjects(result.structuredContent, objects);
-  collectObjects(parseJsonText(text), objects);
-
-  const urlMatch = text.match(
-    /https:\/\/linear\.app\/[^\s<>)"']+\/issue\/([A-Z][A-Z0-9]*-\d+)[^\s<>)"']*/i,
+  const textParts = result.content.flatMap((part) =>
+    part.type === "text" ? [part.text] : [],
   );
-  const identifierMatch = text.match(/\b[A-Z][A-Z0-9]*-\d+\b/);
+  for (const text of textParts) {
+    collectObjects(parseJsonText(text), objects);
+  }
+
+  const urlMatch = textParts
+    .map((text) =>
+      text.match(
+        /https:\/\/linear\.app\/[^\s<>)"']+\/issue\/([A-Z][A-Z0-9]*-\d+)[^\s<>)"']*/i,
+      ),
+    )
+    .find((match) => match !== null);
+  const identifierMatch = textParts
+    .map((text) => text.match(/\b[A-Z][A-Z0-9]*-\d+\b/))
+    .find((match) => match !== null);
   const issue = {
     id: stringField(objects, "id"),
     identifier:
@@ -159,16 +167,23 @@ function extractIssue(result: PluginMcpToolSuccess): LinearIssue | null {
 
 function toolResult(
   issue: LinearIssue | null,
-  text: string,
-): LinearIssueToolResult {
-  const data = { issue, providerText: text };
+  content: PluginToolContent[],
+): PluginToolResultEnvelope<LinearIssueToolResult> {
+  const data = { issue };
   return {
-    ok: true,
-    status: "success",
-    target: "createIssue",
-    data,
-    ...data,
+    content,
+    details: {
+      ok: true,
+      status: "success",
+      target: "createIssue",
+      data,
+      ...data,
+    },
   };
+}
+
+function authorizationPendingResult(): PluginToolResultEnvelope<LinearIssueToolResult> {
+  return toolResult(null, [{ type: "text", text: "Authorization pending." }]);
 }
 
 async function annotateIssue(
@@ -220,7 +235,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
       const conversationId = required(ctx.conversationId, "conversationId");
       const toolCallId = required(options.toolCallId, "toolCallId");
       if ((await mcp.prepare()) === "authorization_pending") {
-        return toolResult(null, "Authorization pending.");
+        return authorizationPendingResult();
       }
 
       const key = `createIssue:${conversationId}:${toolCallId}`;
@@ -231,7 +246,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
           const state = parseState(await ctx.state.get(key));
           if (state?.status === "completed") {
             await annotateIssue(ctx, state.issue);
-            return toolResult(state.issue, state.providerText);
+            return toolResult(state.issue, state.content);
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -251,19 +266,18 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
           });
           if (result.status === "authorization_pending") {
             await ctx.state.delete(key);
-            return toolResult(null, "Authorization pending.");
+            return authorizationPendingResult();
           }
           if (result.status === "error") {
             await ctx.state.delete(key);
             throw new Error(result.message);
           }
-          const text = linearProviderText(result);
           const issue = extractIssue(result);
           const completedState: CreateIssueState = {
             status: "completed",
             createdAtMs: Date.now(),
+            content: result.content,
             issue,
-            providerText: text,
           };
           try {
             await ctx.state.set(key, completedState, CREATE_ISSUE_STATE_TTL_MS);
@@ -274,7 +288,7 @@ export function createLinearIssueTool(ctx: ToolRegistrationHookContext) {
             );
           }
           await annotateIssue(ctx, issue);
-          return toolResult(issue, text);
+          return toolResult(issue, result.content);
         },
       );
     },
