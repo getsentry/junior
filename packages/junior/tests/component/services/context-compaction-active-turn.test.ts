@@ -14,8 +14,15 @@ function user(text: string, timestamp = 1): PiMessage {
 
 function assistantWithUsage(
   text: string,
-  totalTokens: number,
-  timestamp = 1,
+  {
+    totalTokens,
+    outputTokens = 0,
+    timestamp = 1,
+  }: {
+    totalTokens: number;
+    outputTokens?: number;
+    timestamp?: number;
+  },
 ): PiMessage {
   return {
     role: "assistant",
@@ -24,8 +31,8 @@ function assistantWithUsage(
     provider: "openai",
     model: "test-model",
     usage: {
-      input: totalTokens,
-      output: 0,
+      input: totalTokens - outputTokens,
+      output: outputTokens,
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens,
@@ -68,7 +75,35 @@ describe("active-turn context compaction", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("uses provider usage and ignores trailing tool details outside model input", async () => {
+  it("includes provider output in measured context usage", async () => {
+    const { compactActiveContextIfNeeded } =
+      await import("@/chat/services/context-compaction");
+    const completeText = vi.fn(
+      async () => ({ text: "Continue from the summary." }) as never,
+    );
+
+    const result = await compactActiveContextIfNeeded(
+      {
+        conversationId: "conversation-provider-usage",
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        piMessages: [
+          user("Continue the task.", 1),
+          assistantWithUsage("Work completed so far.", {
+            totalTokens: 360_001,
+            outputTokens: 160_001,
+            timestamp: 2,
+          }),
+        ],
+      },
+      { completeText },
+    );
+
+    expect(result.compacted).toBe(true);
+    expect(completeText).toHaveBeenCalledOnce();
+  });
+
+  it("ignores trailing tool details outside model input", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
     const completeText = vi.fn();
@@ -80,7 +115,10 @@ describe("active-turn context compaction", () => {
         modelProfile: "standard",
         piMessages: [
           user("Inspect the tool result.", 1),
-          assistantWithUsage("Reading the requested file.", 20_000, 2),
+          assistantWithUsage("Reading the requested file.", {
+            totalTokens: 20_000,
+            timestamp: 2,
+          }),
           {
             role: "toolResult",
             toolCallId: "read-1",
@@ -116,7 +154,10 @@ describe("active-turn context compaction", () => {
         2,
       ),
       user("Make the requested edit.", 3),
-      assistantWithUsage("I will apply the edit.", 20_000, 4),
+      assistantWithUsage("I will apply the edit.", {
+        totalTokens: 20_000,
+        timestamp: 4,
+      }),
       {
         role: "toolResult",
         toolCallId: "edit-1",

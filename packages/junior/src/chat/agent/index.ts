@@ -73,10 +73,10 @@ import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { classifyAssistantOutput } from "@/chat/services/assistant-output";
+import { decideReply } from "@/chat/services/assistant-reply";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
-import { nextOutputRecovery } from "@/chat/services/output-recovery";
+import { nextReplyRecovery } from "@/chat/services/reply-recovery";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import {
   configuredTurnRoute,
@@ -875,8 +875,8 @@ async function executeAgentRunInPrivacyContext(
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      const output = classifyAssistantOutput(message);
-      if (output.kind !== "deliver" || !delivery) {
+      const decision = decideReply(message);
+      if (decision.kind !== "deliver" || !delivery) {
         return;
       }
       try {
@@ -1229,7 +1229,7 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           let retryUsage: AgentTurnUsage | undefined;
           let providerRetryAttempt = 0;
-          let outputRecoveryAttempt = 0;
+          let replyRecoveryAttempt = 0;
           try {
             for (;;) {
               await runAgentStep(run);
@@ -1282,38 +1282,38 @@ async function executeAgentRunInPrivacyContext(
                 throw pendingAuthPause;
               }
 
-              const outputRecovery = nextOutputRecovery({
-                attempt: outputRecoveryAttempt,
+              const replyRecovery = nextReplyRecovery({
+                attempt: replyRecoveryAttempt,
                 lastAssistant,
                 messages: agent!.state.messages,
               });
-              if (outputRecovery.kind === "retry") {
-                outputRecoveryAttempt += 1;
+              if (replyRecovery.kind === "retry") {
+                replyRecoveryAttempt += 1;
                 retryUsage = currentPhaseUsage;
-                agent!.state.messages = outputRecovery.messages;
-                await runResume.persistSafeBoundary(outputRecovery.messages);
+                agent!.state.messages = replyRecovery.messages;
+                await runResume.persistSafeBoundary(replyRecovery.messages);
                 logWarn(
-                  "agent_turn_output_recovery",
+                  "agent_turn_reply_recovery",
                   spanContext,
                   {
-                    "app.ai.output_rejection.reason": outputRecovery.reason,
-                    "app.ai.output_recovery.attempt": outputRecoveryAttempt,
+                    "app.ai.reply_rejection.reason": replyRecovery.reason,
+                    "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
-                  "Retrying rejected post-compaction assistant output",
+                  "Retrying rejected assistant reply after history replacement",
                 );
                 signal?.throwIfAborted();
                 run = agent!.continue();
                 continue;
               }
-              if (outputRecovery.kind === "exhausted") {
+              if (replyRecovery.kind === "exhausted") {
                 logWarn(
-                  "agent_turn_output_recovery_exhausted",
+                  "agent_turn_reply_recovery_exhausted",
                   spanContext,
                   {
-                    "app.ai.output_rejection.reason": outputRecovery.reason,
-                    "app.ai.output_recovery.attempt": outputRecoveryAttempt,
+                    "app.ai.reply_rejection.reason": replyRecovery.reason,
+                    "app.ai.reply_recovery.attempt": replyRecoveryAttempt,
                   },
-                  "Post-compaction assistant output recovery exhausted",
+                  "Assistant reply recovery exhausted",
                 );
               }
 

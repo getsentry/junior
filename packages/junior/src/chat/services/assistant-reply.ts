@@ -6,15 +6,12 @@ const THINKING_XML_BLOCK_PATTERN =
   /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
-/** Stable reason recorded when assistant output cannot be delivered. */
-export type AssistantOutputRejection =
-  | "empty"
-  | "execution_escape"
-  | "raw_tool_payload";
+/** Stable reason recorded when an assistant message is rejected. */
+export type ReplyRejection = "empty" | "execution_escape" | "raw_tool_payload";
 
-export type AssistantOutput =
+type ReplyDecision =
   | { kind: "deliver"; text: string }
-  | { kind: "reject"; reason: AssistantOutputRejection }
+  | { kind: "reject"; reason: ReplyRejection }
   | { kind: "suppress" };
 
 function isExecutionEscape(text: string): boolean {
@@ -76,10 +73,8 @@ export function sanitizeAssistantText(text: string): string {
   ).trim();
 }
 
-/** Decide whether one completed assistant message may be delivered. */
-export function classifyAssistantOutput(
-  message: AssistantMessage,
-): AssistantOutput {
+/** Decide whether one completed assistant message becomes a reply. */
+export function decideReply(message: AssistantMessage): ReplyDecision {
   if (message.content.some((part) => part.type === "toolCall")) {
     return { kind: "suppress" };
   }

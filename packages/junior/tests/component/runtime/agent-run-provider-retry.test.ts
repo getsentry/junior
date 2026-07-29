@@ -33,7 +33,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
-      replies: [] as Array<string | null>,
+      replies: [] as string[],
       summaryCalls: 0,
     },
     counters: {
@@ -254,14 +254,12 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           "Make a large generated-file edit.",
         );
         const scriptedReply = compactionState.replies.shift();
-        if (scriptedReply !== null) {
-          await this.emitAssistant(
-            scriptedReply ??
-              (keptRequest
-                ? "Finished the requested edit."
-                : "got it — context checkpoint loaded. no outstanding asks."),
-          );
-        }
+        await this.emitAssistant(
+          scriptedReply ??
+            (keptRequest
+              ? "Finished the requested edit."
+              : "got it — context checkpoint loaded. no outstanding asks."),
+        );
         return {};
       }
       if (agentMode.value === "pendingProviderCall") {
@@ -446,7 +444,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         compactionState.replies.length > 0
       ) {
         const reply = compactionState.replies.shift();
-        if (reply !== null && reply !== undefined) {
+        if (reply !== undefined) {
           await this.emitAssistant(reply);
         }
         return {};
@@ -587,7 +585,7 @@ function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   return outcome.result;
 }
 
-async function runCompactedReplies(replies: Array<string | null>, id: string) {
+async function runCompactedReplies(replies: string[], id: string) {
   agentMode.value = "activeCompaction";
   compactionState.replies = [...replies];
   const delivered: Array<{ text: string }> = [];
@@ -623,7 +621,7 @@ const TEST_SOURCE = createSlackSource({
   type: "priv",
 });
 
-describe("provider retry composition", () => {
+describe("agent run continuation", () => {
   beforeEach(async () => {
     agentMode.value = "providerRetry";
     counters.abortCalls = 0;
@@ -686,10 +684,10 @@ describe("provider retry composition", () => {
     );
   });
 
-  it("recovers a missing assistant response after compaction", async () => {
+  it("recovers an empty assistant reply after compaction", async () => {
     const { delivered, result } = await runCompactedReplies(
-      [null, "Recovered."],
-      "compaction-missing-output",
+      ["", "Recovered."],
+      "compaction-empty-reply",
     );
 
     expect(delivered).toEqual([{ text: "Recovered." }]);
@@ -698,7 +696,7 @@ describe("provider retry composition", () => {
     expect(counters.continueCalls).toBe(1);
   });
 
-  it("fails cleanly when post-compaction output recovery is exhausted", async () => {
+  it("fails cleanly when reply recovery is exhausted", async () => {
     const { delivered, result } = await runCompactedReplies(
       [LEAKED_TOOL_CALL_TEXT, LEAKED_TOOL_CALL_TEXT],
       "compaction-recovery-exhausted",

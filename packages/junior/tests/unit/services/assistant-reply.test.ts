@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { classifyAssistantOutput } from "@/chat/services/assistant-output";
+import { decideReply } from "@/chat/services/assistant-reply";
 
 function assistant(text: string, withToolCall = false): AssistantMessage {
   return {
@@ -35,24 +35,24 @@ function assistant(text: string, withToolCall = false): AssistantMessage {
   };
 }
 
-describe("assistant output", () => {
+describe("assistant reply", () => {
   it("returns visible text without thinking content", () => {
     expect(
-      classifyAssistantOutput(
+      decideReply(
         assistant("<thinking>private reasoning</thinking>Visible answer."),
       ),
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
-  it("suppresses protocol and execution-only output", () => {
-    expect(classifyAssistantOutput(assistant(NO_REPLY_MARKER))).toEqual({
+  it("suppresses protocol and execution-only text", () => {
+    expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
+      kind: "suppress",
+    });
+    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
       kind: "suppress",
     });
     expect(
-      classifyAssistantOutput(assistant(`Done. ${NO_REPLY_MARKER}`)),
-    ).toEqual({ kind: "suppress" });
-    expect(
-      classifyAssistantOutput(
+      decideReply(
         assistant(
           JSON.stringify({
             type: "tool_call",
@@ -63,18 +63,16 @@ describe("assistant output", () => {
       ),
     ).toEqual({ kind: "reject", reason: "raw_tool_payload" });
     expect(
-      classifyAssistantOutput(
-        assistant("Let me do that now. Give me a moment."),
-      ),
+      decideReply(assistant("Let me do that now. Give me a moment.")),
     ).toEqual({ kind: "reject", reason: "execution_escape" });
-    expect(
-      classifyAssistantOutput(assistant("Let me do that now.", true)),
-    ).toEqual({ kind: "suppress" });
+    expect(decideReply(assistant("Let me do that now.", true))).toEqual({
+      kind: "suppress",
+    });
   });
 
-  it("keeps prose that quotes a tool payload fragment", () => {
+  it("keeps prose that discusses tool payloads", () => {
     const text = 'The field `"type": "tool_call"` identifies a tool call.';
-    expect(classifyAssistantOutput(assistant(text))).toEqual({
+    expect(decideReply(assistant(text))).toEqual({
       kind: "deliver",
       text,
     });

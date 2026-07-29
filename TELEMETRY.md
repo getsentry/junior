@@ -145,7 +145,8 @@ The turn timed out, returned no useful answer, or used unexpected reasoning.
 Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
-`assistant.reply.generation.failed`
+`agent.turn.reply_recovery.retrying`,
+`agent.turn.reply_recovery.exhausted`, `assistant.reply.generation.failed`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`

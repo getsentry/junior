@@ -16,9 +16,9 @@ import {
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
 import {
-  classifyAssistantOutput,
+  decideReply,
   sanitizeAssistantText,
-} from "@/chat/services/assistant-output";
+} from "@/chat/services/assistant-reply";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -91,7 +91,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const primaryText = noReplyRequested
     ? ""
     : terminalAssistantMessages
-        .map((message) => classifyAssistantOutput(message))
+        .map((message) => decideReply(message))
         .filter(
           (output): output is { kind: "deliver"; text: string } =>
             output.kind === "deliver",
