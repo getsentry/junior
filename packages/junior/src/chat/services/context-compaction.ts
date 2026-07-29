@@ -337,8 +337,8 @@ async function summarizeContext(
           "- The immediate next action",
           "- Durable constraints, user preferences, IDs, URLs, artifacts, sandbox references, auth state, and unresolved blockers",
           "",
-          "Do not write a user-facing reply, announce a plan, or imply that the task is complete unless the source history proves it is complete.",
-          "For file delivery, only a successful sendFiles tool result proves delivery. imageGenerate creates files and viewImage inspects them; neither sends files to the user.",
+          "Do not write a user-facing reply or announce a plan.",
+          "Treat the task as complete only when the source history contains concrete evidence that every requested outcome occurred. Do not infer completion from intent, plans, progress, intermediate artifacts, or adjacent tool activity. If evidence is missing or ambiguous, preserve the task as unfinished and state the next required action.",
         ]
       : [
           "You are performing a CONTEXT CHECKPOINT COMPACTION for Junior.",

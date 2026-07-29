@@ -102,10 +102,13 @@ describe("active-turn context compaction", () => {
       "ACTIVE-TURN CONTEXT CHECKPOINT COMPACTION",
     );
     expect(summaryPrompt).toContain(
-      "only a successful sendFiles tool result proves delivery",
+      "concrete evidence that every requested outcome occurred",
     );
     expect(summaryPrompt).toContain(
-      "imageGenerate creates files and viewImage inspects them",
+      "Do not infer completion from intent, plans, progress, intermediate artifacts, or adjacent tool activity",
+    );
+    expect(summaryPrompt).toContain(
+      "If evidence is missing or ambiguous, preserve the task as unfinished",
     );
     expect(result.piMessages).toHaveLength(3);
     expect(textOf(result.piMessages![0]!)).toContain(
