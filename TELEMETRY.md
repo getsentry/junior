@@ -63,7 +63,7 @@ sort=timestamp
 Recent failed or timed-out agent runs.
 
 ```text
-dataset=logs query='event.name:agent_turn_timeout OR event.name:agent_turn_failed OR event.name:agent_turn_provider_error'
+dataset=logs query='event.name:agent.turn.timed_out OR event.name:agent.turn.failed OR event.name:agent.turn.provider_error'
 fields=timestamp,event.name,trace_id,span_id,gen_ai.conversation.id,gen_ai.request.model,error.type
 sort=-timestamp
 ```
@@ -95,7 +95,7 @@ sort=-timestamp
 Slack delivery failures after the agent turn ran.
 
 ```text
-dataset=logs query='event.name:slack_thread_post_failed app.slack.error_code:*'
+dataset=logs query='event.name:slack.thread.post.failed app.slack.error_code:*'
 fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,app.slack.reply_stage,app.slack.error_code,app.slack.api_error,exception.message
 sort=-timestamp
 ```
@@ -114,8 +114,9 @@ sort=-timestamp
 
 Slack or Vercel webhook delivery/routing failures.
 
-Events: `webhook_platform_unknown`, `webhook_non_success_response`,
-`webhook_handler_failed`, `slack_message_changed_side_channel_failed`
+Events: `webhook.response.unsuccessful`, `webhook.handler.failed`,
+`slack.event.persist.failed`, `slack.event.routing.failed`,
+`slack.event.enqueue.failed`
 
 Spans: `http.server.request`
 
@@ -126,9 +127,9 @@ Attributes: `http.request.method`, `http.response.status_code`, `url.path`,
 
 Slack accepted the request but no final reply appeared.
 
-Events: `agent_turn_started`, `agent_turn_completed`, `agent_turn_failed`,
-`slack_thread_post_failed`, `assistant_status_update_failed`,
-`slack_action_failed`, `slack_action_retrying`
+Events: `agent.turn.started`, `agent.turn.completed`, `agent.turn.failed`,
+`slack.thread.post.failed`, `assistant.status.update.failed`,
+`slack.action.failed`, `slack.action.retrying`
 
 Spans: `chat.turn`, `chat.reply`, `chat.slash_command`,
 `chat.app_home_opened`, `chat.app_home_disconnect`
@@ -141,9 +142,10 @@ Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
 
 The turn timed out, returned no useful answer, or used unexpected reasoning.
 
-Events: `agent_message_in`, `agent_message_out`, `agent_turn_timeout`,
-`agent_turn_provider_error`, `agent_turn_execution_failure`,
-`assistant_reply_generation_failed`
+Events: `agent.message.received`, `agent.message.generated`,
+`agent.turn.timed_out`,
+`agent.turn.provider_error`, `agent.turn.execution.failed`,
+`assistant.reply.generation.failed`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
@@ -161,9 +163,9 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 
 A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
 
-Events: `agent_tool_call_failed`, `mcp_tool_call_failed`,
-`mcp_tool_manager_close_failed`, `sandbox_boot_requested`,
-`sandbox_network_policy_restore_failed`
+Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
+`mcp.tool_manager.close.failed`, `sandbox.boot.requested`,
+`sandbox.network_policy_restore.failed`
 
 Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 `sandbox.snapshot.resolve`, `sandbox.sync_skills`, `bash`
@@ -181,11 +183,12 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 
 A turn parked for auth, resumed late, or failed after callback.
 
-Events: `credential_issue_failed`, `credential_issue_request`,
-`credential_issue_success`, `mention_handler_auth_pause`,
-`subscribed_message_handler_auth_pause`, `agent_continue_schedule_failed`,
-`agent_continue_lock_busy`, `oauth_callback_resume_complete`,
-`mcp_oauth_callback_failed`
+Events: `sandbox.egress.credential.needed`,
+`sandbox.egress.credential.unavailable`, `plugin.credential.rejected`,
+`subscribed_message.authorization.required`, `agent.continue.schedule.failed`,
+`agent.continue.lock.busy`, `agent.continue.lock.retrying`,
+`oauth.callback.resume.completed`, `oauth.callback.resume.busy`,
+`mcp.oauth_callback.failed`
 
 Spans: resumed `chat.turn`, `chat.reply`
 
@@ -197,9 +200,9 @@ Attributes: `app.credential.provider`, `app.credential.delivery`,
 
 A skill/tool is missing, plugin discovery failed, or capability activation looks wrong.
 
-Events: `startup_discovery_summary`, `plugin_loaded`,
-`capability_catalog_loaded`, `skill_directory_read_failed`,
-`skill_frontmatter_invalid`, `skill_load_stat_failed`, `plugin_root_read_failed`
+Events: `startup.discovery.completed`, `plugin.loaded`,
+`skill.directory.read.failed`, `skill.frontmatter.invalid`,
+`skill.load.stat.failed`, `plugin.root.read.failed`
 
 Spans: active turn spans carry plugin/skill attributes
 
@@ -211,9 +214,9 @@ Attributes: `app.skill.name`, `app.skill.count`, `app.plugin.name`,
 
 Screenshots, file attachments, image context, or web search failed.
 
-Events: `attachment_resolution_failed`, `attachment_skipped_size_limit`,
-`image_attachment_processing_failed`, `conversation_image_context_hydrated`,
-`conversation_image_vision_failed`, `web_search_failed`
+Events: `attachment.resolution.failed`, `attachment.size_limit.skipped`,
+`image.attachment.processing.failed`, `conversation.image.context.hydrated`,
+`conversation.image.vision.failed`, `web.search.failed`
 
 Spans: model/tool spans around vision or search calls
 

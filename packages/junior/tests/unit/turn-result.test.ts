@@ -126,7 +126,6 @@ describe("buildTurnResult", () => {
       toolCalls: [],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -159,7 +158,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["webSearch"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -196,7 +194,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["sendFiles"],
       generatedFileCount: 1,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -230,7 +227,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["webSearch"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -267,7 +263,6 @@ describe("buildTurnResult", () => {
       toolCalls: [],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -306,7 +301,6 @@ describe("buildTurnResult", () => {
       toolCalls: [],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -345,7 +339,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["bash"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -378,7 +371,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["addReaction"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -417,7 +409,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["addReaction"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -441,7 +432,6 @@ describe("buildTurnResult", () => {
       toolCalls: [],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -465,7 +455,6 @@ describe("buildTurnResult", () => {
       toolCalls: [],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -494,7 +483,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["sendFiles"],
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -530,7 +518,6 @@ describe("buildTurnResult", () => {
       toolCalls: ["sendFiles"],
       generatedFileCount: 1,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
     });
@@ -554,7 +541,6 @@ describe("buildTurnResult", () => {
       durationMs: 1532,
       generatedFileCount: 0,
       shouldTrace: false,
-      spanContext: {},
       modelId: "test-model",
       executionProfile,
       usage: {

@@ -19,7 +19,7 @@ import {
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
   getChannelConfigurationServiceById,
@@ -150,13 +150,11 @@ async function failSessionRecordBestEffort(args: {
   } catch (error) {
     logException(
       error,
-      "oauth_callback_session_record_fail_persist_failed",
-      {},
+      "oauth.callback.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.conversationId,
         "app.ai.session_id": args.sessionId,
       },
-      "Failed to mark OAuth-resumed turn session record failed",
     );
   }
 }
@@ -448,16 +446,11 @@ async function resumeOAuthSessionRecordTurn(
           },
         },
         commitResult: async (reply: AgentRunResult) => {
-          logInfo(
-            "oauth_callback_resume_complete",
-            {},
-            {
-              "app.credential.provider": stored.provider,
-              "app.ai.outcome": reply.diagnostics.outcome,
-              "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
-            },
-            "OAuth callback auto-resumed session record finished replying",
-          );
+          logInfo("oauth.callback.resume.completed", {
+            "app.credential.provider": stored.provider,
+            "app.ai.outcome": reply.diagnostics.outcome,
+            "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
+          });
           await persistCompletedOAuthReplyState({
             conversationId: stored.resumeConversationId!,
             sessionId: lockedSessionId,
@@ -615,10 +608,8 @@ export async function GET(
     });
   } catch {
     logWarn(
-      "oauth_token_exchange_failed",
-      {},
+      "oauth.token_exchange.failed",
       oauthTokenErrorAttributes(provider, providerConfig.tokenEndpoint),
-      "OAuth token exchange request failed",
     );
     return htmlErrorResponse(
       "Connection failed",
@@ -629,14 +620,12 @@ export async function GET(
 
   if (!tokenResponse.ok) {
     logWarn(
-      "oauth_token_exchange_failed",
-      {},
+      "oauth.token_exchange.failed",
       oauthTokenErrorAttributes(
         provider,
         providerConfig.tokenEndpoint,
         tokenResponse.status,
       ),
-      "OAuth token exchange was rejected",
     );
     return htmlErrorResponse(
       "Connection failed",
@@ -653,14 +642,12 @@ export async function GET(
     });
   } catch {
     logWarn(
-      "oauth_token_exchange_failed",
-      {},
+      "oauth.token_exchange.failed",
       oauthTokenErrorAttributes(
         provider,
         providerConfig.tokenEndpoint,
         tokenResponse.status,
       ),
-      "OAuth token exchange returned an invalid response",
     );
     return htmlErrorResponse(
       "Connection failed",
@@ -716,35 +703,30 @@ export async function GET(
     stored.resumeSessionId,
   );
   if (resumesAgentTurn) {
-    waitUntil(async () => {
-      try {
-        // Agent OAuth links resume their durable session record. Do not rebuild
-        // a turn from pending message text when that record is missing.
-        await resumeOAuthSessionRecordTurn(stored, options);
-      } catch (error) {
-        if (error instanceof ResumeTurnBusyError) {
-          logWarn(
-            "oauth_callback_resume_busy",
-            {
-              ...(stored.resumeConversationId && {
-                conversationId: stored.resumeConversationId,
-              }),
-              ...(stored.userId && { actorId: stored.userId }),
-              ...(stored.channelId && { channelId: stored.channelId }),
-            },
-            {
-              "app.credential.provider": stored.provider,
-              ...(stored.resumeSessionId && {
-                "app.ai.session_id": stored.resumeSessionId,
-              }),
-            },
-            "OAuth callback resume was busy; user must send another message to continue",
-          );
-          return;
-        }
-        throw error;
-      }
-    });
+    waitUntil(() =>
+      withLogContext(
+        { conversationId: stored.resumeConversationId },
+        async () => {
+          try {
+            // Agent OAuth links resume their durable session record. Do not
+            // rebuild a turn from pending message text when that record is
+            // missing.
+            await resumeOAuthSessionRecordTurn(stored, options);
+          } catch (error) {
+            if (error instanceof ResumeTurnBusyError) {
+              logWarn("oauth.callback.resume.busy", {
+                "app.credential.provider": stored.provider,
+                ...(stored.resumeSessionId && {
+                  "app.ai.session_id": stored.resumeSessionId,
+                }),
+              });
+              return;
+            }
+            throw error;
+          }
+        },
+      ),
+    );
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>

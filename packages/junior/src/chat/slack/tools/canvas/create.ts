@@ -25,16 +25,11 @@ export function createSlackCanvasCreateTool(
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.destinationChannelId;
       if (!isConversationScopedChannel(targetChannelId)) {
-        logError(
-          "slack_canvas_create_invalid_context",
-          {},
-          {
-            "gen_ai.tool.name": "slackCanvasCreate",
-            "messaging.destination.name": targetChannelId ?? "none",
-            "app.slack.canvas.has_channel_context": Boolean(targetChannelId),
-          },
-          "Canvas create failed due to missing or invalid assistant channel context",
-        );
+        logError("slack.canvas.create.context_invalid", {
+          "gen_ai.tool.name": "slackCanvasCreate",
+          "messaging.destination.name": targetChannelId ?? "none",
+          "app.slack.canvas.has_channel_context": Boolean(targetChannelId),
+        });
         throw new Error(
           "Cannot create a canvas without an active assistant channel context (C/G/D).",
         );

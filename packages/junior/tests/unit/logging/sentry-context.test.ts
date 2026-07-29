@@ -162,14 +162,11 @@ describe("Sentry context", () => {
         userEmail: "Alice@Example.COM",
       },
       async () => {
-        setTags({ assistantUserName: "junior" });
-        return logException(
-          new Error("boom"),
-          "turn_failed",
-          { modelId: "openai/gpt-5.4" },
-          {},
-          "Turn failed",
-        );
+        setTags({
+          assistantUserName: "junior",
+          modelId: "openai/gpt-5.4",
+        });
+        return logException(new Error("boom"), "turn.failed");
       },
     );
 

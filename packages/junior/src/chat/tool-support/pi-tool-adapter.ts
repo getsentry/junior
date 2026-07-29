@@ -87,16 +87,11 @@ export function createPiAgentTools(
     try {
       await onToolResult?.(report);
     } catch (error) {
-      logWarn(
-        "tool_result_observer_failed",
-        spanContext,
-        {
-          "gen_ai.tool.name": report.toolName,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Tool result observer failed",
-      );
+      logWarn("tool.result.observer.failed", {
+        "gen_ai.tool.name": report.toolName,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
     }
   };
   const toolResultOk = (details: unknown): boolean => {
@@ -191,15 +186,10 @@ export function createPiAgentTools(
           toolDef.privateTraceResult(resultAttributeValue);
         hasProjectedPrivateResult = projectedPrivateResult !== undefined;
       } catch (error) {
-        logWarn(
-          "tool_private_trace_projection_failed",
-          spanContext,
-          {
-            "error.type": error instanceof Error ? error.name : typeof error,
-            "gen_ai.tool.name": toolName,
-          },
-          "Tool private trace projection failed",
-        );
+        logWarn("tool.private.trace_projection.failed", {
+          "error.type": error instanceof Error ? error.name : typeof error,
+          "gen_ai.tool.name": toolName,
+        });
       }
     }
     const toolResultAttribute =
@@ -335,7 +325,6 @@ export function createPiAgentTools(
               executionToolName,
               toolCallId,
               shouldTrace,
-              spanContext,
               effectiveConversationPrivacy,
               setSpanAttributes,
             );

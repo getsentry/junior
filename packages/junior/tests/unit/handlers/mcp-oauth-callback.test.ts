@@ -154,15 +154,13 @@ describe("mcp oauth callback handler", () => {
     );
     expect(logExceptionMock).toHaveBeenCalledWith(
       expect.any(McpProviderError),
-      "mcp_oauth_callback_failed",
-      {},
+      "mcp.oauth_callback.failed",
       expect.objectContaining({
         "app.credential.provider": "demo",
         "app.mcp.error.phase": "oauth_callback",
         "http.response.status_code": 502,
         "server.address": "mcp.example.com",
       }),
-      "Failed to process MCP OAuth callback",
     );
     expect(waitUntil.pendingCount()).toBe(0);
   });

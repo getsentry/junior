@@ -31,11 +31,11 @@ related:
 
 ## Useful signals
 
-- `webhook_handler_failed`
-- `conversation_work_failed`
-- `conversation_work_pending_requeued`
-- `agent_turn_failed`
-- `sandbox_egress_credential_unavailable`
+- `webhook.handler.failed`
+- `conversation.work.failed`
+- `conversation.work.pending.requeued`
+- `agent.turn.failed`
+- `sandbox.egress.credential.unavailable`
 
 ## Recovery order
 

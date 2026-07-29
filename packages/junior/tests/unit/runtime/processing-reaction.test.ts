@@ -45,7 +45,6 @@ describe("processing reaction session", () => {
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007301.000000"),
       logException: () => undefined,
-      logContext: {},
     });
 
     await session.complete();
@@ -79,7 +78,6 @@ describe("processing reaction session", () => {
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007302.000000"),
       logException: () => undefined,
-      logContext: {},
     });
 
     await session.complete();
@@ -97,7 +95,6 @@ describe("processing reaction session", () => {
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007303.000000"),
       logException: () => undefined,
-      logContext: {},
     });
 
     session.keep();

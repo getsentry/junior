@@ -7,7 +7,7 @@
  * so no expiry is ever stored and a public↔private flip takes effect on the next
  * pass. Storage write paths own no TTLs.
  */
-import { logException, logInfo } from "@/chat/logging";
+import { logException, logInfo, withLogContext } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { purgeConversationTree, selectExpiredRoots } from "./sql/purge";
 
@@ -56,42 +56,33 @@ export async function runRetentionPurge(
   let failed = 0;
   let conversations = 0;
   for (const root of roots) {
-    try {
-      const result = await purgeConversationTree(executor, {
-        rootConversationId: root.conversationId,
-        nowMs: args.nowMs,
-        retention: {
-          publicWindowMs: CONTENT_RETENTION_MS.public,
-          privateWindowMs: CONTENT_RETENTION_MS.private,
-        },
-      });
-      if (result.purged) {
-        purged += 1;
-        conversations += result.conversations;
+    await withLogContext({ conversationId: root.conversationId }, async () => {
+      try {
+        const result = await purgeConversationTree(executor, {
+          rootConversationId: root.conversationId,
+          nowMs: args.nowMs,
+          retention: {
+            publicWindowMs: CONTENT_RETENTION_MS.public,
+            privateWindowMs: CONTENT_RETENTION_MS.private,
+          },
+        });
+        if (result.purged) {
+          purged += 1;
+          conversations += result.conversations;
+        }
+      } catch (error) {
+        failed += 1;
+        logException(error, "retention.purge.tree.failed");
       }
-    } catch (error) {
-      failed += 1;
-      logException(
-        error,
-        "retention_purge_tree_failed",
-        { conversationId: root.conversationId },
-        {},
-        "Retention purge failed for one conversation tree",
-      );
-    }
+    });
   }
-  logInfo(
-    "retention_purge_completed",
-    {},
-    {
-      "app.retention.scanned": roots.length,
-      "app.retention.purged": purged,
-      "app.retention.failed": failed,
-      "app.retention.conversations": conversations,
-      "app.retention.duration_ms": Date.now() - startedAtMs,
-    },
-    "Retention purge batch completed",
-  );
+  logInfo("retention.purge.completed", {
+    "app.retention.scanned": roots.length,
+    "app.retention.purged": purged,
+    "app.retention.failed": failed,
+    "app.retention.conversations": conversations,
+    "app.retention.duration_ms": Date.now() - startedAtMs,
+  });
   return { scanned: roots.length, purged, failed, conversations };
 }
 

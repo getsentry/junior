@@ -3,7 +3,6 @@ import {
   logInfo,
   logWarn,
   setSpanAttributes,
-  type LogContext,
   type SetSpanAttributes,
 } from "@/chat/logging";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
@@ -64,7 +63,6 @@ export function handleToolExecutionError(
   toolName: string,
   toolCallId: string | undefined,
   shouldTrace: boolean,
-  traceContext: LogContext,
   conversationPrivacy?: ConversationPrivacy,
   setExecutionSpanAttributes?: SetSpanAttributes,
 ): never {
@@ -86,35 +84,25 @@ export function handleToolExecutionError(
 
   if (error instanceof PluginCredentialFailureError) {
     if (shouldTrace) {
-      logInfo(
-        "plugin_credential_rejected",
-        traceContext,
-        {
-          "app.credential.provider": error.provider,
-          "gen_ai.operation.name": "execute_tool",
-          "gen_ai.tool.name": toolName,
-          ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-          "error.type": errorType,
-        },
-        "Plugin credentials were rejected during tool execution",
-      );
+      logInfo("plugin.credential.rejected", {
+        "app.credential.provider": error.provider,
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": toolName,
+        ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+        "error.type": errorType,
+      });
     }
     throw error;
   }
 
   if (shouldTrace) {
-    logWarn(
-      "agent_tool_call_failed",
-      traceContext,
-      {
-        "gen_ai.operation.name": "execute_tool",
-        "gen_ai.tool.name": toolName,
-        ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        ...errorAttributes,
-        "exception.message": errorMessage,
-      },
-      "Agent tool call failed",
-    );
+    logWarn("agent.tool_call.failed", {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": toolName,
+      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+      ...errorAttributes,
+      "exception.message": errorMessage,
+    });
   }
 
   // Expected tool failures (MCP errors, model input errors) are not Sentry exceptions.
@@ -123,19 +111,13 @@ export function handleToolExecutionError(
     error instanceof ToolInputError ||
     isPluginToolInputError(error);
   if (!isExpectedToolFailure) {
-    logException(
-      error,
-      "agent_tool_call_failed",
-      {},
-      {
-        "gen_ai.operation.name": "execute_tool",
-        "gen_ai.tool.name": toolName,
-        ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        ...errorAttributes,
-        ...getToolErrorAttributes(error),
-      },
-      "Agent tool call failed",
-    );
+    logException(error, "agent.tool_call.failed", {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": toolName,
+      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+      ...errorAttributes,
+      ...getToolErrorAttributes(error),
+    });
   }
 
   throw error;

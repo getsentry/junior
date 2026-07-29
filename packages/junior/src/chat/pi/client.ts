@@ -235,15 +235,10 @@ export async function completeText(params: {
       if (message.stopReason === "error") {
         const providerMessage =
           message.errorMessage?.trim() || "Unknown provider error";
-        logWarn(
-          "ai_completion_provider_error",
-          {},
-          {
-            ...baseAttributes,
-            "exception.message": providerMessage,
-          },
-          "AI completion returned provider error",
-        );
+        logWarn("ai.completion.provider_error", {
+          ...baseAttributes,
+          "exception.message": providerMessage,
+        });
         throw createProviderError(providerMessage, { modelId: params.modelId });
       }
 
@@ -428,17 +423,11 @@ export async function embedTexts(params: {
       throw providerError;
     }
 
-    logException(
-      providerError,
-      "ai_embeddings_failed",
-      {},
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
-        "gen_ai.request.model": params.modelId,
-      },
-      "AI embeddings failed",
-    );
+    logException(providerError, "ai.embeddings.failed", {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+      "gen_ai.request.model": params.modelId,
+    });
     throw providerError;
   }
 }

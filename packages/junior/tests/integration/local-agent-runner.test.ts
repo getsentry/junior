@@ -8,6 +8,7 @@ import {
   type PluginRunContext,
 } from "@sentry/junior-plugin-api";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
+import { getLogContextAttributes } from "@/chat/logging";
 import {
   runLocalAgentTurn,
   type LocalAgentReply,
@@ -161,7 +162,6 @@ async function persistRunningSessionForFakeReply(
     sessionId,
     sliceId: 1,
     messages: piMessages.slice(0, -1),
-    logContext: {},
     surface: context.surface,
     turnStartMessageIndex: context.piMessages?.length ?? 0,
   });
@@ -528,7 +528,17 @@ describe("local agent runner", () => {
     });
     const rawError = "raw-run-error-sentinel token=secret";
     const eventId = "11111111111111111111111111111111";
-    const capture = vi.fn().mockReturnValue(eventId);
+    let capturedLogContext: ReturnType<typeof getLogContextAttributes>;
+    const capture = vi.fn(
+      (
+        _error: unknown,
+        _eventName: string,
+        _attributes?: Record<string, unknown>,
+      ) => {
+        capturedLogContext = getLogContextAttributes();
+        return eventId;
+      },
+    );
     const cancelAuthorization = vi.fn();
 
     await expect(
@@ -559,8 +569,12 @@ describe("local agent runner", () => {
       eventId,
     });
     expect(capture).toHaveBeenCalledOnce();
-    expect(capture.mock.calls[0]?.[2]).toMatchObject({
-      runId: expect.stringMatching(/^local-run-[0-9a-f-]{36}$/),
+    expect(capture.mock.calls[0]?.[2]).toEqual({
+      "app.ai.failure_code": "agent_run_failed",
+    });
+    expect(capturedLogContext!).toMatchObject({
+      "app.run.id": expect.stringMatching(/^local-run-[0-9a-f-]{36}$/),
+      "gen_ai.conversation.id": conversationId,
     });
     expect(cancelAuthorization).toHaveBeenCalledOnce();
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);

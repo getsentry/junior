@@ -33,7 +33,6 @@ describe("agent resume", () => {
       getLoadedSkillNames: () => [],
       getModelId: () => "test/model",
       getReasoningLevel: () => undefined,
-      logContext: {},
       recordActiveMcpProviders: async () => {
         throw new Error("provider metadata unavailable");
       },

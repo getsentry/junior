@@ -199,7 +199,6 @@ describe("oauth callback integration", () => {
             currentSliceId: 1,
             destination: request.routing.destination,
             errorMessage: "eval-oauth authorization required",
-            logContext: {},
             messages: [],
             modelId: "fake-local-oauth",
             sessionId: request.turnId,

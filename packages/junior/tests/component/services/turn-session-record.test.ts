@@ -140,7 +140,6 @@ describe("persistAuthPauseSessionRecord", () => {
       currentSliceId: 1,
       messages: [],
       errorMessage: "plugin auth pause",
-      logContext: {},
     });
 
     expect(authSessionRecord?.sliceId).toBe(2);
@@ -593,7 +592,6 @@ describe("persistAuthPauseSessionRecord", () => {
       sliceId: 1,
       messages: [aliceMessage],
       actor: alice,
-      logContext: {},
     });
     // A second human steers the same run; their message commits as an
     // instruction attributed to bob, while Alice remains the bound run actor.
@@ -605,7 +603,6 @@ describe("persistAuthPauseSessionRecord", () => {
       messages: [aliceMessage, bobMessage],
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
-      logContext: {},
     });
 
     // getAgentTurnSessionRecord re-materializes from the stored record and the
@@ -693,7 +690,6 @@ describe("persistAuthPauseSessionRecord", () => {
       },
       messages: [],
       errorMessage: "timed out again",
-      logContext: {},
     });
 
     const sessionRecord = await getAgentTurnSessionRecord(
@@ -753,7 +749,6 @@ describe("persistAuthPauseSessionRecord", () => {
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
-        logContext: {},
       }),
     ).resolves.toMatchObject({
       state: "failed",
@@ -828,7 +823,6 @@ describe("persistAuthPauseSessionRecord", () => {
         },
       ],
       errorMessage: "plugin auth pause",
-      logContext: {},
     });
 
     expect(authSessionRecord).toMatchObject({
@@ -863,7 +857,6 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "openai/gpt-5.5",
       reasoningLevel: "high",
       errorMessage: "auth pause",
-      logContext: {},
     });
 
     expect(authRecord).toMatchObject({
@@ -894,7 +887,6 @@ describe("persistAuthPauseSessionRecord", () => {
         currentSliceId: 1,
         messages: [],
         errorMessage: "timeout",
-        logContext: {},
       }),
     ).resolves.toBeUndefined();
 
@@ -1093,7 +1085,6 @@ describe("persistAuthPauseSessionRecord", () => {
         sessionId: "turn-1",
         sliceId: 1,
         messages: userBoundary,
-        logContext: {},
       }),
     ).resolves.toBe(true);
 
@@ -1104,7 +1095,6 @@ describe("persistAuthPauseSessionRecord", () => {
         sessionId: "turn-1",
         sliceId: 1,
         messages: unsafeAssistantBoundary,
-        logContext: {},
       }),
     ).resolves.toBe(false);
 
@@ -1124,7 +1114,6 @@ describe("persistAuthPauseSessionRecord", () => {
         sessionId: "turn-1",
         sliceId: 1,
         messages: toolResultBoundary,
-        logContext: {},
       }),
     ).resolves.toBe(true);
 
@@ -1162,7 +1151,6 @@ describe("persistAuthPauseSessionRecord", () => {
             timestamp: 1,
           },
         ],
-        logContext: {},
       }),
     ).resolves.toBe(false);
   });
@@ -1186,7 +1174,6 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId: "turn-1",
       sliceId: 1,
       messages,
-      logContext: {},
     });
 
     await persistContinuationSessionRecord({
@@ -1197,7 +1184,6 @@ describe("persistAuthPauseSessionRecord", () => {
       currentSliceId: 1,
       messages: [],
       errorMessage: "provider stream interrupted",
-      logContext: {},
     });
 
     const sessionRecord = await getAgentTurnSessionRecord(

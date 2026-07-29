@@ -479,22 +479,10 @@ async function maybeCompactWithDeps(
       deps,
     );
   } catch (error) {
-    logWarn(
-      "context_compaction_summary_failed",
-      {
-        messageConversationId: args.metadata?.threadId,
-        userId: args.metadata?.actorId,
-        destinationName: args.metadata?.channelId,
-        runId: args.metadata?.runId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.fastModelId,
-      },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Context compaction failed; continuing with prior history",
-    );
+    logWarn("context_compaction.summary.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return { compacted: false, reason: "summary_failed" };
   }
 
@@ -683,24 +671,12 @@ export async function compactActiveContextIfNeeded(
         inputLimitTokens,
       );
     }
-    logWarn(
-      "active_context_compaction_summary_failed",
-      {
-        messageConversationId: args.metadata?.threadId,
-        userId: args.metadata?.actorId,
-        destinationName: args.metadata?.channelId,
-        runId: args.metadata?.runId,
-        assistantUserName: botConfig.userName,
-        modelId: args.modelId,
-      },
-      {
-        "app.context_input_limit_tokens": inputLimitTokens,
-        "app.context_tokens_estimated": source.estimatedTokens,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Active context compaction failed below the hard input limit",
-    );
+    logWarn("context_compaction.active.summary.failed", {
+      "app.context_input_limit_tokens": inputLimitTokens,
+      "app.context_tokens_estimated": source.estimatedTokens,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return { compacted: false, reason: "summary_failed" };
   }
 

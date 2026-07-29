@@ -589,15 +589,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const slackMessageTs = getSlackMessageTs(message);
         const turnId =
           options.execution?.turnId ?? buildDeterministicTurnId(message.id);
-        const turnTraceContext = {
-          conversationId,
-          messageConversationId: threadId,
-          userId: message.author.userId,
-          destinationName: channelId,
-          runId,
-          assistantUserName: botConfig.userName,
-          modelId: standardModelId(botConfig),
-        };
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -631,17 +622,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await thread.post(buildSlackOutputMessage(text));
             }
           } catch (error) {
-            logException(
-              error,
-              "slack_auth_pause_notice_post_failed",
-              turnTraceContext,
-              {
-                "app.slack.reply_stage": "thread_reply_auth_pause_notice",
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                ...getSlackErrorObservabilityAttributes(error),
-              },
-              "Failed to post auth pause notice",
-            );
+            logException(error, "slack.auth_pause.notice_post.failed", {
+              "app.slack.reply_stage": "thread_reply_auth_pause_notice",
+              ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+              ...getSlackErrorObservabilityAttributes(error),
+            });
           }
         };
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
@@ -820,18 +805,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             try {
               await deps.services.scheduleAgentContinue(resumeRequest);
             } catch (error) {
-              logException(
-                error,
-                "agent_continue_schedule_failed",
-                turnTraceContext,
-                {
-                  "app.ai.resume_session_version":
-                    resumeRequest.expectedVersion,
-                  "app.ai.resume_session_id": resumeRequest.sessionId,
-                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                },
-                "Failed to reschedule active agent continuation",
-              );
+              logException(error, "agent.continue.schedule.failed", {
+                "app.ai.resume_session_version": resumeRequest.expectedVersion,
+                "app.ai.resume_session_id": resumeRequest.sessionId,
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+              });
               throw error;
             }
 
@@ -967,28 +945,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             source,
             traceId: getActiveTraceId(),
           }).catch((error) => {
-            logException(
-              error,
-              "agent_turn_summary_record_failed",
-              turnTraceContext,
-              { "app.agent.turn.state": "running" },
-              "Failed to record running turn summary",
-            );
+            logException(error, "agent.turn.summary_record.failed", {
+              "app.agent.turn.state": "running",
+            });
           });
         }
         setTags({
           conversationId,
         });
         if (shouldEmitDevAgentTrace()) {
-          logInfo(
-            "agent_turn_started",
-            turnTraceContext,
-            {
-              "app.message.id": message.id,
-              ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-            },
-            "Agent turn started",
-          );
+          logInfo("agent.turn.started", {
+            "app.message.id": message.id,
+            ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+          });
         }
         await persistThreadState(thread, {
           conversation: preparedState.conversation,
@@ -1114,17 +1083,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             if (isRetryableSlackPostError(error)) {
               throw new RetryableDeliveryError(error);
             }
-            const eventId = logException(
-              error,
-              "slack_thread_post_failed",
-              turnTraceContext,
-              {
-                "app.slack.reply_stage": "thread_reply",
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                ...getSlackErrorObservabilityAttributes(error),
-              },
-              "Failed to post Slack thread reply",
-            );
+            const eventId = logException(error, "slack.thread.post.failed", {
+              "app.slack.reply_stage": "thread_reply",
+              ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+              ...getSlackErrorObservabilityAttributes(error),
+            });
             throw new ConversationTurnBoundaryError({
               cause: error,
               ...(eventId ? { eventId } : {}),
@@ -1164,13 +1127,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           } catch (error) {
             logException(
               new Error("Accepted assistant message persistence failed"),
-              "slack_assistant_message_post_delivery_persist_failed",
-              turnTraceContext,
+              "slack.assistant.message_post_delivery_persist.failed",
               {
                 "error.type":
                   error instanceof Error ? error.name : typeof error,
               },
-              "Failed to persist an accepted Slack assistant message",
             );
           }
           if (slackTs && options.execution?.dispatch?.id) {
@@ -1195,13 +1156,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 }),
               );
             } catch (error) {
-              logException(
-                error,
-                "agent_turn_delivery_receipt_persist_failed",
-                turnTraceContext,
-                {},
-                "Failed to persist accepted turn delivery receipt",
-              );
+              logException(error, "agent.turn.delivery_receipt_persist.failed");
             }
           }
           boundaryFailureCode = "agent_run_failed";
@@ -1331,13 +1286,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     title: titleUpdateResult.title,
                   });
                 } catch (error) {
-                  logException(
-                    error,
-                    "conversation_title_persist_failed",
-                    turnTraceContext,
-                    {},
-                    "Failed to persist generated conversation title",
-                  );
+                  logException(error, "conversation.title.persist.failed");
                 }
               }
 
@@ -1346,23 +1295,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   artifacts: latestArtifacts,
                 });
               } catch (error) {
-                logException(
-                  error,
-                  "assistant_title_artifact_persist_failed",
-                  turnTraceContext,
-                  {},
-                  "Failed to persist async assistant title artifact state",
-                );
+                logException(error, "assistant.title.artifact_persist.failed");
               }
             })
             .catch((error) => {
-              logException(
-                error,
-                "assistant_title_task_failed",
-                turnTraceContext,
-                {},
-                "Async assistant title task failed",
-              );
+              logException(error, "assistant.title.task.failed");
             });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
@@ -1478,10 +1415,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 new Error(
                   `Subscribed Slack turn requires ${outcome.providerDisplayName} authorization`,
                 ),
-                "slack_subscribed_turn_authorization_required",
-                turnTraceContext,
+                "subscribed_message.authorization.required",
                 { "app.ai.failure_code": "agent_run_failed" },
-                "Subscribed Slack turn could not continue without user authorization",
               );
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
               await deliverAssistantMessage(text);
@@ -1549,16 +1484,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
               shouldPersistFailureState = false;
             } catch (scheduleError) {
-              logException(
-                scheduleError,
-                "agent_continue_schedule_failed",
-                turnTraceContext,
-                {
-                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                  "app.ai.resume_session_version": outcome.resumeVersion,
-                },
-                "Failed to schedule agent continuation",
-              );
+              logException(scheduleError, "agent.continue.schedule.failed", {
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                "app.ai.resume_session_version": outcome.resumeVersion,
+              });
               shouldPersistFailureState = true;
               agentContinueScheduleError = scheduleError;
               throw scheduleError;
@@ -1567,14 +1496,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           let reply = outcome.result;
-          const diagnosticsContext = {
-            messageConversationId: threadId,
-            userId: message.author.userId,
-            destinationName: channelId,
-            runId,
-            assistantUserName: botConfig.userName,
-            modelId: reply.diagnostics.modelId,
-          };
+          setTags({ modelId: reply.diagnostics.modelId });
           const diagnosticsAttributes =
             getAgentTurnDiagnosticsAttributes(reply);
           setSpanAttributes(diagnosticsAttributes);
@@ -1582,7 +1504,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const finalized = finalizeFailedTurnReplyWithEvent({
               reply,
               logException,
-              context: diagnosticsContext,
             });
             reply = finalized.reply;
             finalizedFailureEventId = finalized.eventId;
@@ -1702,10 +1623,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             // record the persistence failure for operators.
             const persistenceEventId = logException(
               commitError,
-              "slack_reply_post_delivery_commit_failed",
-              turnTraceContext,
+              "slack.reply.post_delivery_commit.failed",
               messageTs ? { "messaging.message.id": messageTs } : {},
-              "Post-delivery turn state persistence failed after Slack accepted the reply",
             );
             if (conversationId && !lifecycleTerminalized) {
               await deps.services.turnLifecycle.fail({
@@ -1743,16 +1662,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             lifecycleTerminalized = true;
           }
           if (shouldEmitDevAgentTrace()) {
-            logInfo(
-              "agent_turn_completed",
-              turnTraceContext,
-              {
-                "app.ai.outcome": reply.diagnostics.outcome,
-                "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-                "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
-              },
-              "Agent turn completed",
-            );
+            logInfo("agent.turn.completed", {
+              "app.ai.outcome": reply.diagnostics.outcome,
+              "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
+              "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+            });
           }
           await notifyTurnCompleted();
           if (reply.diagnostics.outcome === "success" && conversationId) {
@@ -1764,10 +1678,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             } catch (error) {
               logException(
                 error,
-                "plugin_session_completed_task_schedule_failed",
-                turnTraceContext,
-                {},
-                "Plugin session.completed task scheduling failed",
+                "plugin.session.completed_task_schedule.failed",
               );
             }
           }
@@ -1782,20 +1693,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             shouldPersistFailureState = false;
             logException(
               error,
-              "slack_reply_post_delivery_commit_failed",
-              turnTraceContext,
+              "slack.reply.post_delivery_commit.failed",
               messageTs ? { "messaging.message.id": messageTs } : {},
-              "Post-delivery turn work failed after Slack accepted the reply",
             );
             try {
               await notifyTurnCompleted();
             } catch (completionError) {
               logException(
                 completionError,
-                "slack_reply_post_delivery_completion_callback_failed",
-                turnTraceContext,
+                "slack.reply.post_delivery_completion_callback.failed",
                 messageTs ? { "messaging.message.id": messageTs } : {},
-                "Post-delivery turn completion callback failed after Slack accepted the reply",
               );
             }
             return;
@@ -1824,13 +1731,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             classifiedFailure?.failureCode ?? boundaryFailureCode;
           const failureEventId =
             classifiedFailure?.eventId ??
-            logException(
-              failureCause,
-              "slack_turn_execution_failed",
-              turnTraceContext,
-              { "app.ai.failure_code": failureCode },
-              "Slack turn failed at its reply execution boundary",
-            );
+            logException(failureCause, "slack.turn.execution.failed", {
+              "app.ai.failure_code": failureCode,
+            });
           const createdCanvasUrl = getCurrentTurnCanvasUrl({
             before: preparedState.artifacts,
             after: latestArtifacts,
@@ -1941,10 +1844,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               } catch (recordError) {
                 logException(
                   recordError,
-                  "agent_turn_failed_session_record_persist_failed",
-                  turnTraceContext,
-                  {},
-                  "Failed to mark failed turn session record",
+                  "agent.turn.failed_session_record_persist.failed",
                 );
               }
             }
@@ -1952,12 +1852,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               conversation: preparedState.conversation,
             });
             if (shouldEmitDevAgentTrace()) {
-              logWarn(
-                "agent_turn_failed",
-                turnTraceContext,
-                {},
-                "Agent turn failed",
-              );
+              logWarn("agent.turn.failed");
             }
           }
           await status.clear();

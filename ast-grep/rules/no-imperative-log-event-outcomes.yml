@@ -1,0 +1,28 @@
+id: no-imperative-log-event-outcomes
+language: TypeScript
+severity: error
+message: Log event names describe observations. Use a past-participle outcome, an in-progress participle such as retrying, or an observed state.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+rule:
+  any:
+    - pattern: logInfo($EVENT)
+    - pattern: logInfo($EVENT, $$$ARGS)
+    - pattern: logWarn($EVENT)
+    - pattern: logWarn($EVENT, $$$ARGS)
+    - pattern: logError($EVENT)
+    - pattern: logError($EVENT, $$$ARGS)
+    - pattern: logException($ERROR, $EVENT)
+    - pattern: logException($ERROR, $EVENT, $$$ARGS)
+    - pattern: $LOGGER.logInfo($EVENT)
+    - pattern: $LOGGER.logInfo($EVENT, $$$ARGS)
+    - pattern: $LOGGER.logWarn($EVENT)
+    - pattern: $LOGGER.logWarn($EVENT, $$$ARGS)
+    - pattern: $LOGGER.logError($EVENT)
+    - pattern: $LOGGER.logError($EVENT, $$$ARGS)
+    - pattern: $LOGGER.logException($ERROR, $EVENT)
+    - pattern: $LOGGER.logException($ERROR, $EVENT, $$$ARGS)
+constraints:
+  EVENT:
+    regex: '^["''].*\.(retry|start|complete|fail|reject|skip|yield|unlink|in|out|fallback)["'']$'

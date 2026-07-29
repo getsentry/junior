@@ -279,16 +279,11 @@ function logInvalidPromptContributions(args: {
   hookName: "systemPrompt" | "userPrompt";
   pluginName: string;
 }): void {
-  logWarn(
-    "plugin_prompt_contribution_result_invalid",
-    {},
-    {
-      "app.plugin.hook": args.hookName,
-      "app.plugin.name": args.pluginName,
-      "app.plugin.validation_reason": "invalid_shape",
-    },
-    "Plugin prompt contribution result invalid",
-  );
+  logWarn("plugin.prompt.contribution_result.invalid", {
+    "app.plugin.hook": args.hookName,
+    "app.plugin.name": args.pluginName,
+    "app.plugin.validation_reason": "invalid_shape",
+  });
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
@@ -379,28 +374,18 @@ export async function getPluginSystemPromptContributions(
         totalChars + pluginContributionChars >
         PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
       ) {
-        logWarn(
-          "plugin_system_prompt_contribution_budget_exceeded",
-          {},
-          {
-            "app.plugin.name": pluginName,
-          },
-          "Plugin system prompt contributions exceeded budget",
-        );
+        logWarn("plugin.system_prompt.contribution_budget_exceeded", {
+          "app.plugin.name": pluginName,
+        });
         continue;
       }
       totalChars += pluginContributionChars;
       contributions.push(...acceptedContributions);
     } catch (error) {
-      logWarn(
-        "plugin_system_prompt_hook_failed",
-        {},
-        {
-          "app.plugin.name": pluginName,
-          "exception.message": safeErrorMessage(error),
-        },
-        "Plugin system prompt hook failed",
-      );
+      logWarn("plugin.system_prompt.hook.failed", {
+        "app.plugin.name": pluginName,
+        "exception.message": safeErrorMessage(error),
+      });
     }
   }
   return contributions;
@@ -472,29 +457,19 @@ export async function getPluginUserPromptContributions(args: {
         totalContextBytes + pluginContextBytes >
           PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES
       ) {
-        logWarn(
-          "plugin_user_prompt_contribution_budget_exceeded",
-          {},
-          {
-            "app.plugin.name": pluginName,
-          },
-          "Plugin user prompt contributions exceeded budget",
-        );
+        logWarn("plugin.user_prompt.contribution_budget_exceeded", {
+          "app.plugin.name": pluginName,
+        });
         continue;
       }
       totalChars += pluginContributionChars;
       totalContextBytes += pluginContextBytes;
       contributions.push(...validContributions);
     } catch (error) {
-      logWarn(
-        "plugin_user_prompt_hook_failed",
-        {},
-        {
-          "app.plugin.name": pluginName,
-          "exception.message": safeErrorMessage(error),
-        },
-        "Plugin user prompt hook failed",
-      );
+      logWarn("plugin.user_prompt.hook.failed", {
+        "app.plugin.name": pluginName,
+        "exception.message": safeErrorMessage(error),
+      });
     }
   }
   return contributions;
@@ -1188,12 +1163,9 @@ export function createPluginHookRunner(
         if (!hook) {
           continue;
         }
-        logInfo(
-          "agent_plugin_hook_sandbox_prepare",
-          {},
-          { "app.plugin.name": pluginName },
-          "Running agent plugin sandbox prepare hook",
-        );
+        logInfo("agent.plugin.sandbox_preparation.started", {
+          "app.plugin.name": pluginName,
+        });
         await hook({
           ...basePluginContext(plugin),
           actor: input.actor,

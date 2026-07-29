@@ -215,14 +215,10 @@ describe("selectTurnRoute", () => {
       reason: "classifier_error_default",
     });
     expect(mocks.logWarn).toHaveBeenCalledWith(
-      "turn_router_classifier_failed",
-      expect.objectContaining({
-        modelId: "openai/gpt-5.4-mini",
-      }),
+      "turn.router.classifier.failed",
       {
         "exception.message": "router failed",
       },
-      "Turn router classifier failed; using the default route",
     );
   });
 

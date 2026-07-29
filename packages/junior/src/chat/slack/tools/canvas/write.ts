@@ -68,15 +68,10 @@ export function createSlackCanvasWriteTool(state: ToolState) {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "canvas write failed";
-        logWarn(
-          "slack_canvas_write_failed",
-          {},
-          {
-            "gen_ai.tool.name": "slackCanvasWrite",
-            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-          },
-          message,
-        );
+        logWarn("slack.canvas.write.failed", {
+          "gen_ai.tool.name": "slackCanvasWrite",
+          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
+        });
         return {
           ok: false,
           status: "error" as const,

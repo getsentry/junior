@@ -284,29 +284,19 @@ export async function proxySandboxEgressRequest(
       oidcToken,
     );
   } catch (error) {
-    logWarn(
-      "sandbox_egress_oidc_verification_failed",
-      {},
-      {
-        "app.sandbox.oidc_error":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Sandbox egress OIDC verification failed",
-    );
+    logWarn("sandbox.egress.oidc_verification.failed", {
+      "app.sandbox.oidc_error":
+        error instanceof Error ? error.message : String(error),
+    });
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }
 
   const activeEgressId = sandboxIdFromPayload(oidcPayload);
   if (!activeEgressId) {
-    logWarn(
-      "sandbox_egress_oidc_session_missing",
-      {},
-      {
-        "http.request.method": request.method,
-        "url.path": redactedProxyPath(new URL(request.url).pathname),
-      },
-      "Sandbox egress OIDC payload did not include a VM session id",
-    );
+    logWarn("sandbox.egress.oidc_session.missing", {
+      "http.request.method": request.method,
+      "url.path": redactedProxyPath(new URL(request.url).pathname),
+    });
     return jsonError(
       "Vercel Sandbox OIDC token did not include sandbox_id",
       401,
@@ -315,41 +305,31 @@ export async function proxySandboxEgressRequest(
 
   const upstreamResult = buildUpstreamUrl(request);
   if (!upstreamResult.ok) {
-    logWarn(
-      "sandbox_egress_upstream_url_invalid",
-      {},
-      {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          method: request.method,
-          path: redactedProxyPath(new URL(request.url).pathname),
-          status: 400,
-        }),
-        ...routingAttributes(request),
-      },
-      "Sandbox egress forwarded request had invalid upstream routing headers",
-    );
+    logWarn("sandbox.egress.upstream_url.invalid", {
+      ...egressAttributes({
+        egressId: activeEgressId,
+        method: request.method,
+        path: redactedProxyPath(new URL(request.url).pathname),
+        status: 400,
+      }),
+      ...routingAttributes(request),
+    });
     return jsonError(upstreamResult.error, 400);
   }
   const upstreamUrl = upstreamResult.url;
 
   const provider = resolveSandboxEgressProviderForHost(upstreamUrl.hostname);
   if (!provider) {
-    logWarn(
-      "sandbox_egress_provider_unresolved",
-      {},
-      {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          status: 403,
-        }),
-        ...routingAttributes(request, upstreamUrl),
-      },
-      "Sandbox egress forwarded host is not owned by any credential provider",
-    );
+    logWarn("sandbox.egress.provider.unresolved", {
+      ...egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        status: 403,
+      }),
+      ...routingAttributes(request, upstreamUrl),
+    });
     return jsonError("No provider owns forwarded host", 403);
   }
 
@@ -360,22 +340,17 @@ export async function proxySandboxEgressRequest(
     credentialTokenFromRequest(request),
   );
   if (!credentialContext || credentialContext.egressId !== activeEgressId) {
-    logWarn(
-      "sandbox_egress_credential_context_unauthorized",
-      {},
-      {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          provider,
-          status: 403,
-        }),
-        ...routingAttributes(request, upstreamUrl),
-      },
-      "Sandbox egress request did not include a valid credential context for the VM session",
-    );
+    logWarn("sandbox.egress.credential_context.unauthorized", {
+      ...egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        provider,
+        status: 403,
+      }),
+      ...routingAttributes(request, upstreamUrl),
+    });
     return jsonError(
       "Sandbox egress credential context is not authorized",
       403,

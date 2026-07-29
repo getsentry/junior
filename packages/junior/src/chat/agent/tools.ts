@@ -97,7 +97,7 @@ interface ToolWiringArgs {
 }
 
 /** Record optional reporting without changing the loadSkill outcome. */
-async function tryRecordSkillLoadStat(skill: Skill, spanContext: LogContext) {
+async function tryRecordSkillLoadStat(skill: Skill) {
   if (!process.env.DATABASE_URL) return;
   try {
     await incrementStat({
@@ -106,17 +106,12 @@ async function tryRecordSkillLoadStat(skill: Skill, spanContext: LogContext) {
       name: skill.name,
     });
   } catch (error) {
-    logWarn(
-      "skill_load_stat_failed",
-      spanContext,
-      {
-        "app.skill.name": skill.name,
-        "app.plugin.name": skill.pluginProvider,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to record skill load stat",
-    );
+    logWarn("skill.load.stat.failed", {
+      "app.skill.name": skill.name,
+      "app.plugin.name": skill.pluginProvider,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -320,7 +315,7 @@ export async function wireAgentTools(
         if (await mcpToolManager.activateForSkill(effective)) {
           await args.recordConnectedMcpProvider(effective.pluginProvider!);
         }
-        await tryRecordSkillLoadStat(effective, args.spanContext);
+        await tryRecordSkillLoadStat(effective);
         if (mcpAuth.getPendingPause()) {
           // Auth pause requested — suppress loadSkill failure and let the
           // aborted run park cleanly.
@@ -418,16 +413,11 @@ export async function wireAgentTools(
         toolName,
       });
     } catch (error) {
-      logWarn(
-        "tool_invocation_observer_failed",
-        args.spanContext,
-        {
-          "gen_ai.tool.name": toolName,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Tool invocation observer failed",
-      );
+      logWarn("tool.invocation.observer.failed", {
+        "gen_ai.tool.name": toolName,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
     }
   };
   const agentTools = createPiAgentTools(
@@ -461,18 +451,13 @@ export async function wireAgentTools(
       try {
         await mcpToolManager.close();
       } catch (closeError) {
-        logWarn(
-          "mcp_tool_manager_close_failed",
-          {},
-          {
-            ...getMcpProviderErrorAttributes(closeError),
-            "exception.message": getMcpAwareTelemetryMessage(
-              closeError,
-              args.conversationPrivacy,
-            ),
-          },
-          "Failed to close MCP tool manager",
-        );
+        logWarn("mcp.tool_manager.close.failed", {
+          ...getMcpProviderErrorAttributes(closeError),
+          "exception.message": getMcpAwareTelemetryMessage(
+            closeError,
+            args.conversationPrivacy,
+          ),
+        });
       }
     },
     toolGuidance,

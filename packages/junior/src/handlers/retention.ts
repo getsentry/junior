@@ -41,13 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     });
     return Response.json(result, { status: 200 });
   } catch (error) {
-    logException(
-      error,
-      "retention_run_failed",
-      {},
-      {},
-      "Retention purge run failed",
-    );
+    logException(error, "retention.run.failed");
     return new Response("Retention purge failed", { status: 500 });
   }
 }

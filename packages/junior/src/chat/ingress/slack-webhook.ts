@@ -34,7 +34,12 @@ import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
-import { logException, withSpan } from "@/chat/logging";
+import {
+  logException,
+  withLogContext,
+  withSpan,
+  type LogContext,
+} from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
 type SlackMessageEvent = {
@@ -57,6 +62,22 @@ type SlackEventEnvelope = {
   team_id?: string;
   type?: string;
 };
+
+function slackEventLogContext(
+  event: SlackMessageEvent | undefined,
+): LogContext {
+  const channelId = event?.channel?.trim() || undefined;
+  const threadTs = event?.thread_ts?.trim() || event?.ts?.trim() || undefined;
+  const conversationId =
+    channelId && threadTs ? `slack:${channelId}:${threadTs}` : undefined;
+  return {
+    platform: "slack",
+    conversationId,
+    messageConversationId: conversationId,
+    destinationName: channelId,
+    userId: event?.user?.trim() || undefined,
+  };
+}
 
 const IGNORED_MESSAGE_SUBTYPES = new Set([
   "message_changed",
@@ -330,17 +351,17 @@ async function handleSlackEvent(args: {
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
-    try {
-      await publishAppHomeView(
-        getSlackClient(),
-        userId,
-        getUserTokenStore(args.services),
-      );
-    } catch (error) {
-      logException(error, "slack_app_home_publish_failed", {
-        userId,
-      });
-    }
+    await withLogContext({ platform: "slack", userId }, async () => {
+      try {
+        await publishAppHomeView(
+          getSlackClient(),
+          userId,
+          getUserTokenStore(args.services),
+        );
+      } catch (error) {
+        logException(error, "slack.app_home.publish.failed");
+      }
+    });
   }
 
   await runWithWorkspaceTeamId(installation.teamId, () =>
@@ -534,23 +555,17 @@ async function handleInteractivePayload(args: {
       try {
         await unlinkProvider(userId, provider, args.userTokenStore);
       } catch (error) {
-        logException(
-          error,
-          "app_home_disconnect_unlink_failed",
-          { userId: userId },
-          { "app.credential.provider": provider },
-        );
+        logException(error, "app_home.disconnect_unlink.failed", {
+          "app.credential.provider": provider,
+        });
       }
 
       try {
         await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
       } catch (error) {
-        logException(
-          error,
-          "app_home_disconnect_publish_failed",
-          { userId: userId },
-          { "app.credential.provider": provider },
-        );
+        logException(error, "app_home.disconnect_publish.failed", {
+          "app.credential.provider": provider,
+        });
       }
     },
   );
@@ -589,23 +604,28 @@ async function handleSlackForm(args: {
     const installation = installationFromForm(params);
     enqueue(
       args.waitUntil,
-      runWithWorkspaceTeamId(installation.teamId, () =>
-        runWithSlackInstallation({
-          adapter,
-          installation,
-          state,
-          task: () =>
-            handleSlashCommandForm({
+      withLogContext(
+        {
+          platform: "slack",
+          userId: params.get("user_id")?.trim() || undefined,
+        },
+        () =>
+          runWithWorkspaceTeamId(installation.teamId, () =>
+            runWithSlackInstallation({
               adapter,
-              params,
+              installation,
               state,
+              task: () =>
+                handleSlashCommandForm({
+                  adapter,
+                  params,
+                  state,
+                }),
             }),
-        }),
-      ).catch((error) => {
-        logException(error, "slash_command_failed", {
-          userId: params.get("user_id") ?? undefined,
-        });
-      }),
+          ).catch((error) => {
+            logException(error, "slash_command.failed");
+          }),
+      ),
     );
     return new Response("", { status: 200 });
   }
@@ -622,22 +642,27 @@ async function handleSlackForm(args: {
 
   enqueue(
     args.waitUntil,
-    runWithWorkspaceTeamId(installation.teamId, () =>
-      runWithSlackInstallation({
-        adapter,
-        installation,
-        state,
-        task: () =>
-          handleInteractivePayload({
-            payload,
-            userTokenStore: getUserTokenStore(args.services),
-          }),
-      }),
-    ).catch((error) => {
-      logException(error, "slack_interactive_payload_failed", {
+    withLogContext(
+      {
+        platform: "slack",
         userId: payload.user?.id?.trim() || undefined,
-      });
-    }),
+      },
+      () =>
+        runWithWorkspaceTeamId(installation.teamId, () =>
+          runWithSlackInstallation({
+            adapter,
+            installation,
+            state,
+            task: () =>
+              handleInteractivePayload({
+                payload,
+                userTokenStore: getUserTokenStore(args.services),
+              }),
+          }),
+        ).catch((error) => {
+          logException(error, "slack.interactive.payload.failed");
+        }),
+    ),
   );
   return new Response("", { status: 200 });
 }
@@ -675,30 +700,44 @@ export async function handleSlackWebhook(args: {
   }
 
   if (parsed.type === "event_callback") {
-    const eventTask = handleSlackEvent({
-      body: parsed,
-      services: args.services,
-    });
+    const eventLogContext = slackEventLogContext(parsed.event);
     if (shouldPersistBeforeAck(parsed)) {
-      try {
-        await eventTask;
-      } catch (error) {
-        // Any failure before durable mailbox append — installation/token
-        // resolution, routing-state reads, persistence — must be retryable.
-        // Acking 200 here would silently drop the user's message.
-        if (error instanceof SlackEventPersistenceError) {
-          logException(error.cause, "slack_event_persist_failed");
-        } else {
-          logException(error, "slack_event_routing_failed");
-        }
-        return new Response("Slack event handling failed", { status: 503 });
+      const failureResponse = await withLogContext(
+        eventLogContext,
+        async () => {
+          try {
+            await handleSlackEvent({
+              body: parsed,
+              services: args.services,
+            });
+          } catch (error) {
+            // Any failure before durable mailbox append — installation/token
+            // resolution, routing-state reads, persistence — must be retryable.
+            // Acking 200 here would silently drop the user's message.
+            if (error instanceof SlackEventPersistenceError) {
+              logException(error.cause, "slack.event.persist.failed");
+            } else {
+              logException(error, "slack.event.routing.failed");
+            }
+            return new Response("Slack event handling failed", { status: 503 });
+          }
+          return undefined;
+        },
+      );
+      if (failureResponse) {
+        return failureResponse;
       }
     } else {
       enqueue(
         args.waitUntil,
-        eventTask.catch((error) => {
-          logException(error, "slack_event_enqueue_failed");
-        }),
+        withLogContext(eventLogContext, () =>
+          handleSlackEvent({
+            body: parsed,
+            services: args.services,
+          }).catch((error) => {
+            logException(error, "slack.event.enqueue.failed");
+          }),
+        ),
       );
     }
   }

@@ -194,22 +194,16 @@ export async function handleWebhookRequest(
               } catch {
                 responseBodySnippet = undefined;
               }
-              logWarn(
-                "webhook_non_success_response",
-                {},
-                {
-                  "http.response.status_code": response.status,
-                  "http.request.header.x_slack_signature":
-                    request.headers.get("x-slack-signature") ?? undefined,
-                  "http.request.header.x_slack_request_timestamp":
-                    request.headers.get("x-slack-request-timestamp") ??
-                    undefined,
-                  ...(responseBodySnippet
-                    ? { "app.webhook.response_body": responseBodySnippet }
-                    : {}),
-                },
-                `Webhook ${platform} returned ${response.status}`,
-              );
+              logWarn("webhook.response.unsuccessful", {
+                "http.response.status_code": response.status,
+                "http.request.header.x_slack_signature":
+                  request.headers.get("x-slack-signature") ?? undefined,
+                "http.request.header.x_slack_request_timestamp":
+                  request.headers.get("x-slack-request-timestamp") ?? undefined,
+                ...(responseBodySnippet
+                  ? { "app.webhook.response_body": responseBodySnippet }
+                  : {}),
+              });
             }
 
             setSpanAttributes({
@@ -228,7 +222,7 @@ export async function handleWebhookRequest(
         },
       );
     } catch (error) {
-      logException(error, "webhook_handler_failed");
+      logException(error, "webhook.handler.failed");
       throw error;
     }
   });

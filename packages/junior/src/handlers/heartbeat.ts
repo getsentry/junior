@@ -46,13 +46,9 @@ export async function GET(
       conversationWorkQueue: options.conversationWorkQueue,
       nowMs,
     }).catch((error) => {
-      logException(
-        error,
-        "heartbeat_failed",
-        {},
-        { "app.heartbeat.now_ms": nowMs },
-        "Heartbeat failed",
-      );
+      logException(error, "heartbeat.failed", {
+        "app.heartbeat.now_ms": nowMs,
+      });
     }),
   );
 

@@ -39,7 +39,6 @@ describe("finalizeFailedTurnReply", () => {
         text: "Error: ECONNRESET at redis.js:42",
       }),
       logException,
-      context: {},
     });
 
     expect(finalized.text).not.toContain("ECONNRESET");
@@ -61,10 +60,9 @@ describe("finalizeFailedTurnReply", () => {
         text: "",
       }),
       logException,
-      context: {},
     });
 
-    const attributes = logException.mock.calls[0]?.[3];
+    const attributes = logException.mock.calls[0]?.[2];
     expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.retryable": true,
@@ -103,7 +101,6 @@ describe("finalizeFailedTurnReply", () => {
           text: "",
         }),
         logException: vi.fn().mockReturnValue("evt_terminal"),
-        context: {},
       });
 
       expect(finalized.text).toContain(explanation);
@@ -121,7 +118,6 @@ describe("finalizeFailedTurnReply", () => {
         text: "Here is what I found so far",
       }),
       logException,
-      context: {},
     });
 
     expect(finalized.text).toBe(

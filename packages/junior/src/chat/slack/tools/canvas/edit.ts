@@ -1,8 +1,5 @@
 import { logWarn } from "@/chat/logging";
-import {
-  readCanvas,
-  writeCanvasMarkdown,
-} from "@/chat/slack/tools/canvas/api";
+import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { normalizeCanvasMarkdown } from "@/chat/slack/tools/canvas/markdown";
 import { z } from "zod";
@@ -132,15 +129,10 @@ export function createSlackCanvasEditTool(state: ToolState) {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "canvas edit failed";
-        logWarn(
-          "slack_canvas_edit_failed",
-          {},
-          {
-            "gen_ai.tool.name": "slackCanvasEdit",
-            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-          },
-          message,
-        );
+        logWarn("slack.canvas.edit.failed", {
+          "gen_ai.tool.name": "slackCanvasEdit",
+          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
+        });
         return {
           ok: false,
           status: "error" as const,

@@ -5,7 +5,7 @@
  * handles from durable Pi history and explicit invocation, so resumed slices
  * keep the skill state the conversation already established.
  */
-import { logInfo, type LogContext } from "@/chat/logging";
+import { logInfo } from "@/chat/logging";
 import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { inferLoadedSkillNamesFromPiMessages } from "@/chat/pi/derived-state";
@@ -32,7 +32,6 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
 export async function discoverRunSkills(args: {
   skillDirs?: string[];
-  spanContext: LogContext;
 }): Promise<SkillMetadata[]> {
   const availableSkills = await discoverSkills({
     additionalRoots: args.skillDirs,
@@ -43,20 +42,13 @@ export async function discoverRunSkills(args: {
     const roots = [
       ...new Set(availableSkills.map((skill) => skill.skillPath)),
     ].sort();
-    logInfo(
-      "startup_discovery_summary",
-      args.spanContext,
-      {
-        "app.skill.count": availableSkills.length,
-        "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
-        "app.file.directories": roots,
-        "app.plugin.count": plugins.length,
-        "app.plugin.names": plugins
-          .map((plugin) => plugin.manifest.name)
-          .sort(),
-      },
-      "Discovered startup SOUL/skills/plugins",
-    );
+    logInfo("startup.discovery.completed", {
+      "app.skill.count": availableSkills.length,
+      "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
+      "app.file.directories": roots,
+      "app.plugin.count": plugins.length,
+      "app.plugin.names": plugins.map((plugin) => plugin.manifest.name).sort(),
+    });
   }
   return availableSkills;
 }

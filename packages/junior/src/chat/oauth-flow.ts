@@ -135,12 +135,9 @@ export async function deliverPrivateMessage(input: {
   try {
     client = getSlackClient();
   } catch {
-    logWarn(
-      "oauth_private_delivery_skip",
-      {},
-      { "app.reason": "missing_bot_token" },
-      "Skipped private message delivery — no SLACK_BOT_TOKEN",
-    );
+    logWarn("oauth.private_delivery.skipped", {
+      "app.reason": "missing_bot_token",
+    });
     return false;
   }
 
@@ -162,16 +159,11 @@ export async function deliverPrivateMessage(input: {
       }
       return "in_context";
     } catch (error) {
-      logWarn(
-        "oauth_private_delivery_failed",
-        {},
-        {
-          "app.slack.error":
-            error instanceof Error ? error.message : String(error),
-          "app.slack.channel": input.channelId,
-        },
-        "Private message delivery failed, falling back to DM",
-      );
+      logWarn("oauth.private_delivery.failed", {
+        "app.slack.error":
+          error instanceof Error ? error.message : String(error),
+        "app.slack.channel": input.channelId,
+      });
     }
   }
 
@@ -187,27 +179,16 @@ export async function deliverPrivateMessage(input: {
       )
     ).channel?.id;
     if (!dmChannelId) {
-      logWarn(
-        "oauth_dm_fallback_failed",
-        {},
-        { "app.reason": "no_dm_channel_id" },
-        "conversations.open returned no channel ID",
-      );
+      logWarn("oauth.dm.fallback.failed", { "app.reason": "no_dm_channel_id" });
       return false;
     }
 
     await postSlackMessage({ channelId: dmChannelId, text: input.text });
     return "fallback_dm";
   } catch (error) {
-    logWarn(
-      "oauth_dm_fallback_failed",
-      {},
-      {
-        "app.slack.error":
-          error instanceof Error ? error.message : String(error),
-      },
-      "DM fallback delivery failed",
-    );
+    logWarn("oauth.dm.fallback.failed", {
+      "app.slack.error": error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -306,17 +287,12 @@ export async function startOAuthFlow(
     authorizeParams.set(key, value);
   }
 
-  logInfo(
-    "jr_rpc_oauth_start",
-    {},
-    {
-      "app.credential.provider": provider,
-      ...(input.activeSkillName
-        ? { "app.skill.name": input.activeSkillName }
-        : {}),
-    },
-    "Initiated OAuth authorization code flow",
-  );
+  logInfo("jr_rpc.oauth.started", {
+    "app.credential.provider": provider,
+    ...(input.activeSkillName
+      ? { "app.skill.name": input.activeSkillName }
+      : {}),
+  });
 
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   const authorizationRequest = {

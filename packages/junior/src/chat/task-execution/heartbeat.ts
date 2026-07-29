@@ -1,5 +1,5 @@
 import type { StateAdapter } from "chat";
-import { logException, logInfo } from "@/chat/logging";
+import { logException, logInfo, withLogContext } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
   clearExpiredConversationLease,
@@ -47,117 +47,97 @@ export async function recoverConversationWork(args: {
   });
 
   for (const conversationId of ids) {
-    let work: ConversationWorkState | undefined;
-    try {
-      work = await getConversationWorkState({
-        conversationId,
-        state: args.state,
-      });
-    } catch (error) {
-      logException(
-        error,
-        "conversation_work_recovery_failed",
-        { conversationId },
-        {},
-        "Conversation work heartbeat recovery failed",
-      );
-      // An invalid record can never become runnable again; drop it from the
-      // bounded oldest-first scan so it cannot starve recovery for every
-      // other conversation.
-      if (isInvalidConversationRecordError(error)) {
-        await removeActiveConversation({
+    await withLogContext({ conversationId }, async () => {
+      let work: ConversationWorkState | undefined;
+      try {
+        work = await getConversationWorkState({
           conversationId,
           state: args.state,
         });
-      }
-      continue;
-    }
-    try {
-      if (!work) {
-        await removeActiveConversation({
-          conversationId,
-          state: args.state,
-        });
-        continue;
-      }
-
-      if (work.execution.status === "idle") {
-        await removeActiveConversation({
-          conversationId,
-          state: args.state,
-        });
-        continue;
-      }
-
-      if (
-        work.execution.lease &&
-        work.execution.lease.expiresAtMs <= args.nowMs
-      ) {
-        const cleared = await clearExpiredConversationLease({
-          conversationId,
-          nowMs: args.nowMs,
-          state: args.state,
-        });
-        if (!cleared) {
-          continue;
+      } catch (error) {
+        logException(error, "conversation.work.recovery.failed");
+        // An invalid record can never become runnable again; drop it from the
+        // bounded oldest-first scan so it cannot starve recovery for every
+        // other conversation.
+        if (isInvalidConversationRecordError(error)) {
+          await removeActiveConversation({
+            conversationId,
+            state: args.state,
+          });
         }
+        return;
+      }
+      try {
+        if (!work) {
+          await removeActiveConversation({
+            conversationId,
+            state: args.state,
+          });
+          return;
+        }
+
+        if (work.execution.status === "idle") {
+          await removeActiveConversation({
+            conversationId,
+            state: args.state,
+          });
+          return;
+        }
+
+        if (
+          work.execution.lease &&
+          work.execution.lease.expiresAtMs <= args.nowMs
+        ) {
+          const cleared = await clearExpiredConversationLease({
+            conversationId,
+            nowMs: args.nowMs,
+            state: args.state,
+          });
+          if (!cleared) {
+            return;
+          }
+          const wake = await ensureConversationWake({
+            conversationId,
+            idempotencyKey: heartbeatIdempotencyKey(
+              "lease",
+              conversationId,
+              args.nowMs,
+            ),
+            nowMs: args.nowMs,
+            queue: args.queue,
+            replaceExistingWake: true,
+            state: args.state,
+          });
+          if (wake.status === "enqueued") {
+            result.expiredLeaseCount += 1;
+            logInfo("conversation.work.lease_expired.requeued");
+          }
+          return;
+        }
+
+        if (work.execution.lease || !hasRunnableConversationWork(work)) {
+          return;
+        }
+
         const wake = await ensureConversationWake({
           conversationId,
           idempotencyKey: heartbeatIdempotencyKey(
-            "lease",
+            "pending",
             conversationId,
             args.nowMs,
           ),
           nowMs: args.nowMs,
           queue: args.queue,
-          replaceExistingWake: true,
           state: args.state,
         });
         if (wake.status === "enqueued") {
-          result.expiredLeaseCount += 1;
-          logInfo(
-            "conversation_work_lease_expired_requeued",
-            { conversationId },
-            {},
-            "Heartbeat requeued expired conversation work lease",
-          );
+          result.pendingCount += 1;
+          logInfo("conversation.work.pending.requeued");
         }
-        continue;
+      } catch (error) {
+        logException(error, "conversation.work.recovery.failed");
       }
-
-      if (work.execution.lease || !hasRunnableConversationWork(work)) {
-        continue;
-      }
-
-      const wake = await ensureConversationWake({
-        conversationId,
-        idempotencyKey: heartbeatIdempotencyKey(
-          "pending",
-          conversationId,
-          args.nowMs,
-        ),
-        nowMs: args.nowMs,
-        queue: args.queue,
-        state: args.state,
-      });
-      if (wake.status === "enqueued") {
-        result.pendingCount += 1;
-        logInfo(
-          "conversation_work_pending_requeued",
-          { conversationId },
-          {},
-          "Heartbeat requeued pending conversation work",
-        );
-      }
-    } catch (error) {
-      logException(
-        error,
-        "conversation_work_recovery_failed",
-        { conversationId },
-        {},
-        "Conversation work heartbeat recovery failed",
-      );
-    }
+    });
   }
 
   return result;

@@ -5,29 +5,24 @@ import { logException, logInfo, logWarn } from "@/chat/logging";
 export function createPluginLogger(plugin: string): PluginLogger {
   return {
     info(message, metadata) {
-      logInfo(
-        "agent_plugin_log_info",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
+      logInfo("plugin.log.info", {
+        "app.log.message": message,
+        "app.plugin.name": plugin,
+        ...metadata,
+      });
     },
     warn(message, metadata) {
-      logWarn(
-        "agent_plugin_log_warn",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
+      logWarn("plugin.log.warn", {
+        "app.log.message": message,
+        "app.plugin.name": plugin,
+        ...metadata,
+      });
     },
     error(message, metadata) {
-      logException(
-        new Error(message),
-        "agent_plugin_log_error",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
+      logException(new Error(message), "plugin.log.error", {
+        "app.plugin.name": plugin,
+        ...metadata,
+      });
     },
   };
 }

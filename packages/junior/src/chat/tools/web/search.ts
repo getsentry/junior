@@ -144,18 +144,12 @@ export function createWebSearchTool(
         // Every ok:false path surfaces to Sentry. The tool swallows the
         // exception for the model, so without an explicit capture the
         // failure is otherwise invisible to us.
-        logException(
-          error,
-          "web_search_failed",
-          {},
-          {
-            "gen_ai.tool.name": "webSearch",
-            "app.web_search.timeout": timeout,
-            "app.web_search.retryable": retryable,
-            "app.web_search.query": query,
-          },
-          message,
-        );
+        logException(error, "web.search.failed", {
+          "gen_ai.tool.name": "webSearch",
+          "app.web_search.timeout": timeout,
+          "app.web_search.retryable": retryable,
+          "app.web_search.query": query,
+        });
         return {
           ok: false,
           status: "error" as const,

@@ -89,15 +89,10 @@ export function createSlackCanvasReadTool() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "canvas read failed";
-        logWarn(
-          "slack_canvas_read_failed",
-          {},
-          {
-            "gen_ai.tool.name": "slackCanvasRead",
-            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-          },
-          message,
-        );
+        logWarn("slack.canvas.read.failed", {
+          "gen_ai.tool.name": "slackCanvasRead",
+          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
+        });
         return {
           ok: false,
           status: "error" as const,

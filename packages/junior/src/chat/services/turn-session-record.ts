@@ -32,44 +32,20 @@ export interface TurnSessionState {
   existingSessionRecord?: AgentTurnSessionRecord;
 }
 
-interface SessionRecordLogContext {
-  threadId?: string;
-  actorId?: string;
-  channelId?: string;
-  runId?: string;
-  assistantUserName?: string;
-}
-
 function logSessionRecordError(
   error: unknown,
   eventName: string,
   args: {
     conversationId: string;
     sessionId: string;
-    logContext: SessionRecordLogContext;
-    modelId: string;
   },
   attributes: Record<string, string | number>,
-  message: string,
 ): void {
-  logException(
-    error,
-    eventName,
-    {
-      messageConversationId: args.logContext.threadId,
-      userId: args.logContext.actorId,
-      destinationName: args.logContext.channelId,
-      runId: args.logContext.runId,
-      assistantUserName: args.logContext.assistantUserName,
-      modelId: args.modelId,
-    },
-    {
-      "app.ai.resume_conversation_id": args.conversationId,
-      "app.ai.resume_session_id": args.sessionId,
-      ...attributes,
-    },
-    message,
-  );
+  logException(error, eventName, {
+    "app.ai.resume_conversation_id": args.conversationId,
+    "app.ai.resume_session_id": args.sessionId,
+    ...attributes,
+  });
 }
 
 function addDurationMs(
@@ -134,7 +110,6 @@ export async function persistRunningSessionRecord(args: {
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   loadedSkillNames?: string[];
-  logContext: SessionRecordLogContext;
   modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
@@ -202,12 +177,11 @@ export async function persistRunningSessionRecord(args: {
   } catch (recordError) {
     logSessionRecordError(
       recordError,
-      "agent_turn_running_session_record_failed",
+      "agent.turn.running_session_record.failed",
       args,
       {
         "app.ai.resume_slice_id": args.sliceId,
       },
-      "Failed to persist running turn session record",
     );
     return false;
   }
@@ -403,7 +377,6 @@ export async function persistAuthPauseSessionRecord(args: {
   loadedSkillNames?: string[];
   modelId: string;
   errorMessage: string;
-  logContext: SessionRecordLogContext;
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
@@ -473,13 +446,12 @@ export async function persistAuthPauseSessionRecord(args: {
   } catch (recordError) {
     logSessionRecordError(
       recordError,
-      "agent_turn_auth_resume_session_record_failed",
+      "agent.turn.auth_resume_session_record.failed",
       args,
       {
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },
-      "Failed to persist auth session record before retry",
     );
   }
   return undefined;
@@ -499,7 +471,6 @@ interface ContinuationRecordInput {
   loadedSkillNames?: string[];
   modelId: string;
   errorMessage: string;
-  logContext: SessionRecordLogContext;
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
@@ -630,13 +601,12 @@ export async function persistContinuationSessionRecord(
   } catch (recordError) {
     logSessionRecordError(
       recordError,
-      "agent_continue_session_record_failed",
+      "agent.continue.session_record.failed",
       args,
       {
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },
-      "Failed to persist session record before scheduling agent continuation",
     );
     return undefined;
   }
@@ -659,7 +629,6 @@ export async function persistYieldSessionRecord(args: {
   loadedSkillNames?: string[];
   modelId: string;
   errorMessage: string;
-  logContext: SessionRecordLogContext;
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
@@ -727,12 +696,11 @@ export async function persistYieldSessionRecord(args: {
   } catch (recordError) {
     logSessionRecordError(
       recordError,
-      "agent_turn_yield_session_record_failed",
+      "agent.turn.yield_session_record.failed",
       args,
       {
         "app.ai.resume_slice_id": args.currentSliceId,
       },
-      "Failed to persist cooperative yield session record",
     );
     return undefined;
   }

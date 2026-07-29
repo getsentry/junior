@@ -71,24 +71,15 @@ export async function runPluginHeartbeats(args: {
         typeof result?.dispatchCount === "number" &&
         result.dispatchCount > 0
       ) {
-        logInfo(
-          "plugin_heartbeat_dispatched",
-          {},
-          {
-            "app.dispatch.count": result.dispatchCount,
-            "app.plugin.name": pluginName,
-          },
-          "Plugin heartbeat dispatched agent work",
-        );
+        logInfo("plugin.heartbeat.dispatched", {
+          "app.dispatch.count": result.dispatchCount,
+          "app.plugin.name": pluginName,
+        });
       }
     } catch (error) {
-      logException(
-        error,
-        "plugin_heartbeat_failed",
-        {},
-        { "app.plugin.name": pluginName },
-        "Plugin heartbeat failed",
-      );
+      logException(error, "plugin.heartbeat.failed", {
+        "app.plugin.name": pluginName,
+      });
     }
   }
 }
@@ -127,13 +118,9 @@ export async function recoverPendingDispatchMailboxAppends(args: {
         queue: args.conversationWorkQueue,
       });
     } catch (error) {
-      logException(
-        error,
-        "dispatch_mailbox_append_recovery_failed",
-        {},
-        { "app.dispatch.id": id },
-        "Pending dispatch mailbox append recovery failed",
-      );
+      logException(error, "dispatch.mailbox.append_recovery.failed", {
+        "app.dispatch.id": id,
+      });
     }
   }
 }

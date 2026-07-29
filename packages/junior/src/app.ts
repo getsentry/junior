@@ -646,7 +646,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const app = new Hono();
 
   app.onError((err, c) => {
-    logException(err, "unhandled_route_error");
+    logException(err, "route.unhandled.exception");
     return c.text("Internal Server Error", 500);
   });
 

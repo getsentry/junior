@@ -306,24 +306,6 @@ async function executeAgentRunInPrivacyContext(
     routing.destination.platform === "slack" ? routing.destination : undefined;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
-  const credentialActor = routing.credentialContext?.actor;
-  const credentialActorLogContext = credentialActor
-    ? {
-        actorType: "type" in credentialActor ? credentialActor.type : "system",
-        actorId:
-          "type" in credentialActor
-            ? credentialActor.userId
-            : credentialActor.name,
-      }
-    : {};
-  const sessionRecordLogContext = {
-    threadId: slackSource ? conversationId : undefined,
-    actorId: slackActor?.userId,
-    channelId: slackDestination?.channelId,
-    runId,
-    ...credentialActorLogContext,
-    assistantUserName: botConfig.userName,
-  };
   const recordConnectedMcpProvider = async (provider: string) => {
     if (connectedMcpProviders.has(provider)) {
       return;
@@ -353,26 +335,20 @@ async function executeAgentRunInPrivacyContext(
     // ── Skill discovery ──────────────────────────────────────────────
     const availableSkills = await discoverRunSkills({
       skillDirs: policy.skillDirs,
-      spanContext,
     });
     if (shouldTrace) {
       const inboundAttachmentCount = input.inboundAttachmentCount ?? 0;
       const promptAttachmentCount = input.userAttachments?.length ?? 0;
-      logInfo(
-        "agent_message_in",
-        spanContext,
-        {
-          "app.message.kind": "user_inbound",
-          "app.message.length": userInput.length,
-          "app.message.input": summarizeMessageText(userInput),
-          // Log both counts so image uploads filtered by vision/config do not
-          // look indistinguishable from Slack ingress dropping attachments.
-          "app.message.attachment_count": inboundAttachmentCount,
-          "app.message.prompt_attachment_count": promptAttachmentCount,
-          "messaging.message.id": slackSource?.messageTs ?? "",
-        },
-        "Agent message received",
-      );
+      logInfo("agent.message.received", {
+        "app.message.kind": "user_inbound",
+        "app.message.length": userInput.length,
+        "app.message.input": summarizeMessageText(userInput),
+        // Log both counts so image uploads filtered by vision/config do not
+        // look indistinguishable from Slack ingress dropping attachments.
+        "app.message.attachment_count": inboundAttachmentCount,
+        "app.message.prompt_attachment_count": promptAttachmentCount,
+        "messaging.message.id": slackSource?.messageTs ?? "",
+      });
     }
     const skillInvocation = parseSkillInvocation(userInput, availableSkills);
     const invokedSkill = skillInvocation
@@ -414,7 +390,6 @@ async function executeAgentRunInPrivacyContext(
       durability,
       getLoadedSkillNames: () => loadedSkillNamesForResume,
       getReasoningLevel: () => turnRoute?.reasoningLevel,
-      logContext: sessionRecordLogContext,
       getModelId: () => activeModelId,
       recordActiveMcpProviders,
       actor,
@@ -440,15 +415,9 @@ async function executeAgentRunInPrivacyContext(
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
-        logException(
-          error,
-          "agent_turn_session_log_append_failed",
-          spanContext,
-          {
-            "gen_ai.tool.name": event.toolName,
-          },
-          "Failed to record host-only tool execution start",
-        );
+        logException(error, "agent.turn.session_log_append.failed", {
+          "gen_ai.tool.name": event.toolName,
+        });
       }
     };
     const persistedConfigurationValues = policy.channelConfiguration
@@ -645,15 +614,10 @@ async function executeAgentRunInPrivacyContext(
       void (async () => {
         await observers.onStatus?.({ text: "Switching models" });
       })().catch((error) => {
-        logWarn(
-          "assistant_status_observer_failed",
-          {},
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Failed to report assistant status",
-        );
+        logWarn("assistant.status.observer.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
       });
       const handoffMessages = await compactContextForHandoff(
         {
@@ -965,28 +929,18 @@ async function executeAgentRunInPrivacyContext(
           steeredMessageCount += piMessages.length;
         });
         if (steeredMessageCount > 0) {
-          logInfo(
-            "agent_turn_steering_messages_accepted",
-            spanContext,
-            {
-              "app.ai.steering_message_count": steeredMessageCount,
-            },
-            "Agent turn steering messages accepted",
-          );
+          logInfo("agent.turn.steering_messages.accepted", {
+            "app.ai.steering_message_count": steeredMessageCount,
+          });
         }
       } catch (error) {
         if (isTurnInputCommitLostError(error)) {
           throw error;
         }
-        logWarn(
-          "agent_turn_steering_messages_drain_failed",
-          spanContext,
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Agent turn steering message drain failed",
-        );
+        logWarn("agent.turn.steering_messages_drain.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
       }
       return acceptedMessages;
     };
@@ -1176,41 +1130,30 @@ async function executeAgentRunInPrivacyContext(
               );
             } catch (error) {
               if (runResume.timedOut) {
-                logWarn(
-                  "agent_turn_timeout",
-                  {},
-                  {
-                    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                    "gen_ai.operation.name": "invoke_agent",
-                    "gen_ai.request.model": activeModelId,
-                    ...(turnRoute
-                      ? {
-                          "gen_ai.request.reasoning.level":
-                            turnRoute.reasoningLevel,
-                        }
-                      : {}),
-                    "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
-                    "app.ai.turn_deadline_remaining_ms": Math.max(
-                      0,
-                      turnDeadlineAtMs - Date.now(),
-                    ),
-                  },
-                  "Agent turn timed out and was aborted",
-                );
+                logWarn("agent.turn.timed_out", {
+                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                  "gen_ai.operation.name": "invoke_agent",
+                  "gen_ai.request.model": activeModelId,
+                  ...(turnRoute
+                    ? {
+                        "gen_ai.request.reasoning.level":
+                          turnRoute.reasoningLevel,
+                      }
+                    : {}),
+                  "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
+                  "app.ai.turn_deadline_remaining_ms": Math.max(
+                    0,
+                    turnDeadlineAtMs - Date.now(),
+                  ),
+                });
                 const settled = await waitForAbortSettlement(
                   run,
                   AGENT_ABORT_SETTLE_GRACE_MS,
                 );
                 if (!settled) {
-                  logWarn(
-                    "agent_turn_abort_settle_timeout",
-                    {},
-                    {
-                      "app.ai.abort_settle_grace_ms":
-                        AGENT_ABORT_SETTLE_GRACE_MS,
-                    },
-                    "Timed-out agent run did not settle after abort before resume snapshot",
-                  );
+                  logWarn("agent.turn.abort_settle.timed_out", {
+                    "app.ai.abort_settle_grace_ms": AGENT_ABORT_SETTLE_GRACE_MS,
+                  });
                 }
                 runResume.captureResumeSnapshot(
                   runResume.getResumeSnapshot(currentAgentMessages()),
@@ -1350,12 +1293,7 @@ async function executeAgentRunInPrivacyContext(
               retryUsage = currentPhaseUsage;
               agent!.state.messages = providerRetry.messages;
               await runResume.persistSafeBoundary(providerRetry.messages);
-              logWarn(
-                "agent_turn_provider_retry",
-                spanContext,
-                {},
-                "Retrying transient provider failure",
-              );
+              logWarn("agent.turn.provider.retrying");
               await sleep(providerRetry.delayMs, signal);
               signal?.throwIfAborted();
               run = agent!.continue();
@@ -1417,7 +1355,6 @@ async function executeAgentRunInPrivacyContext(
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
       shouldTrace,
-      spanContext,
       usage: turnUsage,
       executionProfile: turnRoute,
       assistantUserName: botConfig.userName,
@@ -1476,13 +1413,7 @@ async function executeAgentRunInPrivacyContext(
       throw error;
     }
 
-    logException(
-      error,
-      "assistant_reply_generation_failed",
-      { modelId: activeModelId },
-      {},
-      "executeAgentRun failed",
-    );
+    logException(error, "assistant.reply.generation.failed");
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.

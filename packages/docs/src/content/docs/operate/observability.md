@@ -11,13 +11,13 @@ related:
 
 ## Key event signals
 
-- `webhook_handler_failed`
-- `conversation_work_failed`
-- `conversation_work_recovery_failed`
-- `agent_continue_schedule_failed`
-- `agent_turn_failed`
-- `agent_turn_timeout`
-- `agent_tool_call_failed`
+- `webhook.handler.failed`
+- `conversation.work.failed`
+- `conversation.work.recovery.failed`
+- `agent.continue.schedule.failed`
+- `agent.turn.failed`
+- `agent.turn.timed_out`
+- `agent.tool_call.failed`
 
 ## Key spans
 
@@ -40,27 +40,27 @@ related:
 ## Starter queries
 
 ```text
-event.name:webhook_handler_failed
+event.name:webhook.handler.failed
 ```
 
 ```text
-event.name:conversation_work_failed OR event.name:conversation_work_recovery_failed
+event.name:conversation.work.failed OR event.name:conversation.work.recovery.failed
 ```
 
 ```text
-event.name:conversation_work_pending_requeued OR event.name:conversation_work_lease_expired_requeued
+event.name:conversation.work.pending.requeued OR event.name:conversation.work.lease_expired.requeued
 ```
 
 ```text
-event.name:agent_continue_schedule_failed OR event.name:agent_continue_lock_busy
+event.name:agent.continue.schedule.failed OR event.name:agent.continue.lock.busy
 ```
 
 ```text
-event.name:agent_turn_timeout OR event.name:agent_turn_failed
+event.name:agent.turn.timed_out OR event.name:agent.turn.failed
 ```
 
 ```text
-event.name:agent_tool_call_failed
+event.name:agent.tool_call.failed
 ```
 
 ## Next step

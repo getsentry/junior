@@ -86,16 +86,11 @@ export async function lookupSlackUser(
     );
 
     if (!response.ok) {
-      logWarn(
-        "slack_user_lookup_failed",
-        {},
-        {
-          "enduser.id": userId,
-          "app.slack.team_id": teamId,
-          "http.response.status_code": response.status,
-        },
-        "Slack user lookup request failed",
-      );
+      logWarn("slack.user.lookup.failed", {
+        "enduser.id": userId,
+        "app.slack.team_id": teamId,
+        "http.response.status_code": response.status,
+      });
       return null;
     }
 
@@ -115,17 +110,12 @@ export async function lookupSlackUser(
     writeToCache(teamId, userId, result);
     return result;
   } catch (error) {
-    logWarn(
-      "slack_user_lookup_failed",
-      {},
-      {
-        "enduser.id": userId,
-        "app.slack.team_id": teamId,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Slack user lookup failed with exception",
-    );
+    logWarn("slack.user.lookup.failed", {
+      "enduser.id": userId,
+      "app.slack.team_id": teamId,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }

@@ -19,7 +19,7 @@ import {
   localDestinationSchema,
   type LocalDestination,
 } from "@sentry/junior-plugin-api";
-import { logException } from "@/chat/logging";
+import { logException, setTags, withLogContext } from "@/chat/logging";
 import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
@@ -72,10 +72,10 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
 const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
-  agent_run_failed: "local_agent_run_failed",
-  delivery_failed: "local_reply_delivery_failed",
-  model_execution_failed: "local_model_execution_failed",
-  persistence_failed: "local_turn_persistence_failed",
+  agent_run_failed: "local.agent_run.failed",
+  delivery_failed: "local.reply.delivery.failed",
+  model_execution_failed: "local.model.execution.failed",
+  persistence_failed: "local.turn.persistence.failed",
 };
 
 export interface LocalAgentTurnInput {
@@ -148,15 +148,14 @@ function captureLocalBoundaryFailure(args: {
   failureCode: ConversationTurnFailureCode;
   runId?: string;
 }): string | undefined {
+  setTags({
+    conversationId: args.conversationId,
+    ...(args.runId ? { runId: args.runId } : {}),
+  });
   const eventId = args.capture(
     args.error,
     LOCAL_FAILURE_EVENT_NAMES[args.failureCode],
-    {
-      conversationId: args.conversationId,
-      ...(args.runId ? { runId: args.runId } : {}),
-    },
     { "app.ai.failure_code": args.failureCode },
-    "Local agent turn failed at its owning runtime boundary",
   );
   return eventId && SENTRY_EVENT_ID_PATTERN.test(eventId) ? eventId : undefined;
 }
@@ -176,6 +175,23 @@ async function loadLocalPiMessages(args: {
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
 export async function runLocalAgentTurn(
+  input: LocalAgentTurnInput,
+  deps: LocalAgentTurnDeps,
+): Promise<LocalAgentTurnResult> {
+  return withLogContext(
+    {
+      conversationId: input.conversationId,
+      destinationName: input.conversationId,
+      messageConversationId: input.conversationId,
+      platform: "local",
+      userId: "local-cli",
+      userName: "local",
+    },
+    () => runLocalAgentTurnInContext(input, deps),
+  );
+}
+
+async function runLocalAgentTurnInContext(
   input: LocalAgentTurnInput,
   deps: LocalAgentTurnDeps,
 ): Promise<LocalAgentTurnResult> {
@@ -291,10 +307,8 @@ export async function runLocalAgentTurn(
     } catch (error) {
       logException(
         new Error("Accepted assistant message persistence failed"),
-        "local_assistant_message_post_delivery_persist_failed",
-        { conversationId: input.conversationId },
+        "local.assistant.message_post_delivery_persist.failed",
         { "error.type": error instanceof Error ? error.name : typeof error },
-        "Failed to persist an accepted local assistant message",
       );
     }
     failureCode = "agent_run_failed";
@@ -307,6 +321,7 @@ export async function runLocalAgentTurn(
     failureCode = "agent_run_failed";
     const runAgent = async (messages: PiMessage[] | undefined) => {
       currentRunId = localRunId();
+      setTags({ runId: currentRunId });
       const authorization = deps.authorization
         ? {
             createState: deps.authorization.createState,
@@ -431,7 +446,6 @@ export async function runLocalAgentTurn(
     const finalized = finalizeFailedTurnReplyWithEvent({
       reply,
       logException: deps.logException ?? logException,
-      context: { conversationId: input.conversationId },
     });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
@@ -577,31 +591,23 @@ export async function runLocalAgentTurn(
             } catch (error) {
               logException(
                 error,
-                "local_plugin_session_completed_task_failed",
-                {},
+                "local.plugin.session_completion_task.failed",
                 {
                   conversationId: input.conversationId,
                   pluginName: message.plugin,
                   taskName: message.name,
                   turnId,
                 },
-                "Local plugin session.completed task failed after reply delivery",
               );
             }
           },
         },
       );
     } catch (error) {
-      logException(
-        error,
-        "local_plugin_session_completed_task_failed",
-        {},
-        {
-          conversationId: input.conversationId,
-          turnId,
-        },
-        "Local plugin session.completed task failed after reply delivery",
-      );
+      logException(error, "local.plugin.session_completion_task.failed", {
+        conversationId: input.conversationId,
+        turnId,
+      });
     }
   }
 

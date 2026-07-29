@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -116,6 +117,8 @@ describe("agent continuation scheduling", () => {
     await state.connect();
     const lock = await state.acquireLock(conversationId, 90_000);
     expect(lock).toBeTruthy();
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => records.push(record));
     const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
     const { continueSlackAgentRunWithLockRetry } =
       await import("@/chat/runtime/agent-continue-runner");
@@ -130,13 +133,23 @@ describe("agent continuation scheduling", () => {
       { agentRunner: agentRunnerShouldNotRun, scheduleAgentContinue },
     );
 
-    await vi.advanceTimersByTimeAsync(4_000);
-    await expect(continued).resolves.toBe(true);
+    try {
+      await vi.advanceTimersByTimeAsync(4_000);
+      await expect(continued).resolves.toBe(true);
+    } finally {
+      unregister();
+    }
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination: SLACK_DESTINATION,
       sessionId: "turn_msg_2",
       expectedVersion: 1,
+    });
+    expect(
+      records.find((record) => record.eventName === "agent.continue.lock.busy")
+        ?.attributes,
+    ).toMatchObject({
+      "gen_ai.conversation.id": conversationId,
     });
     if (lock) {
       await state.releaseLock(lock);

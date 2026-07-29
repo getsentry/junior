@@ -28,18 +28,13 @@ function logPluginTaskQueueMessageRejected(
   reason: PluginTaskQueueRejectReason,
   metadata: MessageMetadata,
 ): void {
-  logWarn(
-    "plugin_task_queue_message_rejected",
-    {},
-    {
-      "app.queue.consumer_group": metadata.consumerGroup,
-      "app.queue.delivery_count": metadata.deliveryCount,
-      "app.queue.message_id": metadata.messageId,
-      "app.queue.reject_reason": reason,
-      "app.queue.topic_name": metadata.topicName,
-    },
-    "Plugin task queue message rejected without retry",
-  );
+  logWarn("plugin.task.queue_message.rejected", {
+    "app.queue.consumer_group": metadata.consumerGroup,
+    "app.queue.delivery_count": metadata.deliveryCount,
+    "app.queue.message_id": metadata.messageId,
+    "app.queue.reject_reason": reason,
+    "app.queue.topic_name": metadata.topicName,
+  });
 }
 
 /** Parse the queue payload and run only the referenced durable task. */

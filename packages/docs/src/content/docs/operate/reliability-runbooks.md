@@ -15,8 +15,8 @@ Question: are webhook requests accepted and routed correctly?
 
 Check:
 
-- `event.name:webhook_handler_failed`
-- `event.name:webhook_non_success_response`
+- `event.name:webhook.handler.failed`
+- `event.name:webhook.response.unsuccessful`
 - `span.op:http.server url.path:"/api/webhooks"`
 
 ## Queue callback failures
@@ -25,9 +25,9 @@ Question: are messages enqueued and processed successfully?
 
 Check:
 
-- `event.name:conversation_work_failed OR event.name:conversation_work_recovery_failed`
-- `event.name:conversation_work_pending_requeued OR event.name:conversation_work_lease_expired_requeued`
-- `event.name:agent_continue_schedule_failed OR event.name:agent_continue_lock_busy`
+- `event.name:conversation.work.failed OR event.name:conversation.work.recovery.failed`
+- `event.name:conversation.work.pending.requeued OR event.name:conversation.work.lease_expired.requeued`
+- `event.name:agent.continue.schedule.failed OR event.name:agent.continue.lock.busy`
 - `span.op:queue.process_message`
 
 ## Turn execution failures
@@ -36,8 +36,8 @@ Question: are assistant turns timing out or failing due to provider/tool issues?
 
 Check:
 
-- `event.name:agent_turn_timeout`
-- `event.name:agent_turn_failed OR event.name:agent_turn_provider_error`
+- `event.name:agent.turn.timed_out`
+- `event.name:agent.turn.failed OR event.name:agent.turn.provider_error`
 - `span.op:gen_ai.invoke_agent`
 
 ## Tool failure hotspots
@@ -46,8 +46,8 @@ Question: which tools fail most and why?
 
 Check:
 
-- `event.name:agent_tool_call_failed`
-- `event.name:agent_tool_call_invalid_input`
+- `event.name:agent.tool_call.failed`
+- `event.name:agent.tool_call.input_invalid`
 - `span.op:gen_ai.execute_tool`
 
 ## Recovery order

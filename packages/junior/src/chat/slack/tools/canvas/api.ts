@@ -124,20 +124,13 @@ async function grantChannelCanvasAccess(
         },
       },
     );
-  } catch (error) {
-    logWarn(
-      "slack_canvas_access_set_failed",
-      {},
-      {
-        "app.slack.action": "canvases.access.set",
-        "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
-        "app.slack.canvas.channel_id_prefix": channelId.slice(0, 1),
-        "app.slack.canvas.access_level": "write",
-      },
-      error instanceof Error
-        ? error.message
-        : "Failed to grant channel access to canvas",
-    );
+  } catch {
+    logWarn("slack.canvas.access_set.failed", {
+      "app.slack.action": "canvases.access.set",
+      "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
+      "app.slack.canvas.channel_id_prefix": channelId.slice(0, 1),
+      "app.slack.canvas.access_level": "write",
+    });
   }
 }
 

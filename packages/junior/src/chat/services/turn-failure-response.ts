@@ -1,4 +1,3 @@
-import type { LogContext } from "@/chat/logging";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
@@ -11,9 +10,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 type LogException = (
   error: unknown,
   eventName: string,
-  context?: LogContext,
   attributes?: Record<string, unknown>,
-  body?: string,
 ) => string | undefined;
 
 /** Require captured turn failures to carry a real Sentry event reference. */
@@ -55,7 +52,7 @@ function getFailureCapture(reply: AgentRunResult): {
 } {
   if (reply.diagnostics.outcome === "provider_error") {
     return {
-      eventName: "agent_turn_provider_error",
+      eventName: "agent.turn.provider_error",
       error:
         reply.diagnostics.providerError ??
         new Error(
@@ -72,7 +69,7 @@ function getFailureCapture(reply: AgentRunResult): {
 
   const failureReason = getExecutionFailureReason(reply);
   return {
-    eventName: "agent_turn_execution_failure",
+    eventName: "agent.turn.execution.failed",
     error: new Error(`Agent turn execution failure: ${failureReason}`),
     attributes: {
       "app.ai.execution_failure_reason": failureReason,
@@ -119,7 +116,6 @@ export interface FinalizedTurnFailure {
 export function finalizeFailedTurnReplyWithEvent(args: {
   reply: AgentRunResult;
   logException: LogException;
-  context: LogContext;
   attributes?: Record<string, unknown>;
 }): FinalizedTurnFailure {
   if (args.reply.diagnostics.outcome === "success") {
@@ -128,17 +124,11 @@ export function finalizeFailedTurnReplyWithEvent(args: {
 
   const capture = getFailureCapture(args.reply);
   const eventId = requireTurnFailureEventId(
-    args.logException(
-      capture.error,
-      capture.eventName,
-      args.context,
-      {
-        ...getAgentTurnDiagnosticsAttributes(args.reply),
-        ...args.attributes,
-        ...capture.attributes,
-      },
-      capture.body,
-    ),
+    args.logException(capture.error, capture.eventName, {
+      ...getAgentTurnDiagnosticsAttributes(args.reply),
+      ...args.attributes,
+      ...capture.attributes,
+    }),
     capture.eventName,
   );
 

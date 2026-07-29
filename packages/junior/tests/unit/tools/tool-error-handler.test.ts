@@ -37,7 +37,6 @@ describe("handleToolExecutionError", () => {
         "callMcpTool",
         "tool-call-id",
         true,
-        {},
         "private",
       ),
     ).toThrow(error);
@@ -46,8 +45,7 @@ describe("handleToolExecutionError", () => {
       "error.type": "tool_error",
     });
     expect(logWarnMock).toHaveBeenCalledWith(
-      "agent_tool_call_failed",
-      {},
+      "agent.tool_call.failed",
       expect.objectContaining({
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": "callMcpTool",
@@ -55,7 +53,6 @@ describe("handleToolExecutionError", () => {
         "error.type": "tool_error",
         "exception.message": "MCP tool call failed",
       }),
-      "Agent tool call failed",
     );
     expect(JSON.stringify(logWarnMock.mock.calls)).not.toContain(
       "remote tool failed",
@@ -72,12 +69,11 @@ describe("handleToolExecutionError", () => {
     });
 
     expect(() =>
-      handleToolExecutionError(error, "bash", "tool-call-id", true, {}),
+      handleToolExecutionError(error, "bash", "tool-call-id", true),
     ).toThrow(error);
 
     expect(logWarnMock).toHaveBeenCalledWith(
-      "agent_tool_call_failed",
-      {},
+      "agent.tool_call.failed",
       expect.objectContaining({
         "app.credential.provider": "sentry",
         "app.oauth.error.phase": "token_refresh",
@@ -86,19 +82,16 @@ describe("handleToolExecutionError", () => {
         "http.response.status_code": 503,
         "server.address": "sentry.io",
       }),
-      "Agent tool call failed",
     );
     expect(logExceptionMock).toHaveBeenCalledWith(
       error,
-      "agent_tool_call_failed",
-      {},
+      "agent.tool_call.failed",
       expect.objectContaining({
         "app.credential.provider": "sentry",
         "app.oauth.error.phase": "token_refresh",
         "http.response.status_code": 503,
         "server.address": "sentry.io",
       }),
-      "Agent tool call failed",
     );
   });
 
@@ -109,7 +102,7 @@ describe("handleToolExecutionError", () => {
     );
 
     expect(() =>
-      handleToolExecutionError(error, "bash", "tool-call-id", true, {}),
+      handleToolExecutionError(error, "bash", "tool-call-id", true),
     ).toThrow(error);
 
     expect(setSpanAttributesMock).toHaveBeenCalledWith({
@@ -117,8 +110,7 @@ describe("handleToolExecutionError", () => {
       "error.type": "PluginCredentialFailureError",
     });
     expect(logInfoMock).toHaveBeenCalledWith(
-      "plugin_credential_rejected",
-      {},
+      "plugin.credential.rejected",
       expect.objectContaining({
         "app.credential.provider": "github",
         "gen_ai.operation.name": "execute_tool",
@@ -126,7 +118,6 @@ describe("handleToolExecutionError", () => {
         "gen_ai.tool.call.id": "tool-call-id",
         "error.type": "PluginCredentialFailureError",
       }),
-      "Plugin credentials were rejected during tool execution",
     );
     expect(logWarnMock).not.toHaveBeenCalled();
     expect(logExceptionMock).not.toHaveBeenCalled();

@@ -179,19 +179,14 @@ async function handleConfigCommand(
         updatedBy: deps.actorId,
         source: "jr-rpc",
       });
-      logInfo(
-        "jr_rpc_config_set",
-        {},
-        {
-          "app.config.key": entry.key,
-          "app.config.scope": entry.scope,
-          "app.config.source": entry.source ?? "jr-rpc",
-          ...(deps.activeSkill?.name
-            ? { "app.skill.name": deps.activeSkill.name }
-            : {}),
-        },
-        "Set channel configuration via jr-rpc",
-      );
+      logInfo("jr_rpc.config.updated", {
+        "app.config.key": entry.key,
+        "app.config.scope": entry.scope,
+        "app.config.source": entry.source ?? "jr-rpc",
+        ...(deps.activeSkill?.name
+          ? { "app.skill.name": deps.activeSkill.name }
+          : {}),
+      });
       deps.onConfigurationValueChanged?.(entry.key, entry.value);
       return commandResult({
         stdout: {
@@ -224,17 +219,12 @@ async function handleConfigCommand(
     }
     const deleted = await configuration.unset(key);
     if (deleted) {
-      logInfo(
-        "jr_rpc_config_unset",
-        {},
-        {
-          "app.config.key": key,
-          ...(deps.activeSkill?.name
-            ? { "app.skill.name": deps.activeSkill.name }
-            : {}),
-        },
-        "Unset channel configuration via jr-rpc",
-      );
+      logInfo("jr_rpc.config.removed", {
+        "app.config.key": key,
+        ...(deps.activeSkill?.name
+          ? { "app.skill.name": deps.activeSkill.name }
+          : {}),
+      });
       deps.onConfigurationValueChanged?.(key, undefined);
     }
     return commandResult({

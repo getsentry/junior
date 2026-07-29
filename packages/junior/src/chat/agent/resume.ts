@@ -45,10 +45,6 @@ import type { PluginTurnContext } from "@/chat/plugins/prompt";
 type LoadedSessionRecordState = Awaited<
   ReturnType<typeof loadTurnSessionRecord>
 >;
-type SessionRecordLogContext = NonNullable<
-  Parameters<typeof persistRunningSessionRecord>[0]["logContext"]
->;
-
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
@@ -56,7 +52,6 @@ interface ResumeStateArgs {
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
   getModelId: () => string;
-  logContext: SessionRecordLogContext;
   getReasoningLevel: () => string | undefined;
   recordActiveMcpProviders: () => Promise<void>;
   actor?: Actor;
@@ -101,7 +96,6 @@ export function createResumeState(args: ResumeStateArgs) {
     source: args.runSource,
     sessionId: args.turnId,
     loadedSkillNames: args.getLoadedSkillNames(),
-    logContext: args.logContext,
     modelId: args.getModelId(),
     ...(args.getReasoningLevel()
       ? { reasoningLevel: args.getReasoningLevel() }

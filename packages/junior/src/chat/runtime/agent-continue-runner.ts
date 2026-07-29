@@ -10,6 +10,7 @@ import {
   buildTurnFailureResponse,
   logException,
   logWarn,
+  withLogContext,
 } from "@/chat/logging";
 import {
   ResumeTurnBusyError,
@@ -152,13 +153,11 @@ async function failSessionRecordBestEffort(args: {
   } catch (error) {
     logException(
       error,
-      "agent_continue_session_record_fail_persist_failed",
-      {},
+      "agent.continue.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.sessionRecord.conversationId,
         "app.ai.session_id": args.sessionRecord.sessionId,
       },
-      "Failed to mark paused agent run session record failed",
     );
   }
 }
@@ -210,13 +209,11 @@ async function failContinuationStartup(args: {
     });
     logException(
       persistError,
-      "agent_continue_startup_failure_persist_failed",
-      {},
+      "agent.continue.startup_failure_persist.failed",
       {
         "app.ai.conversation_id": args.sessionRecord.conversationId,
         "app.ai.session_id": args.sessionRecord.sessionId,
       },
-      "Failed to persist paused agent run startup failure",
     );
   }
 }
@@ -315,6 +312,16 @@ export async function continueSlackAgentRun(
   payload: AgentContinueRequest,
   options: AgentContinueRunnerOptions,
   runOptions: AgentContinueRunOptions = {},
+): Promise<boolean> {
+  return withLogContext({ conversationId: payload.conversationId }, () =>
+    continueSlackAgentRunInContext(payload, options, runOptions),
+  );
+}
+
+async function continueSlackAgentRunInContext(
+  payload: AgentContinueRequest,
+  options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions,
 ): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   const destination = requireSlackDestination(
@@ -543,15 +550,10 @@ export async function continueSlackAgentRun(
               threadStateId: payload.conversationId,
             });
             await recordDispatchOutcome("blocked");
-            logWarn(
-              "agent_continue_reparked_for_auth",
-              {},
-              {
-                "app.ai.conversation_id": payload.conversationId,
-                "app.ai.session_id": payload.sessionId,
-              },
-              "Continued agent run parked for auth",
-            );
+            logWarn("agent.continue.reparked_for_auth", {
+              "app.ai.conversation_id": payload.conversationId,
+              "app.ai.session_id": payload.sessionId,
+            });
           },
           onSuspend: async (resumeVersion) => {
             await scheduleAgentContinue({
@@ -619,17 +621,11 @@ async function failStrandedSessionWithFallback(args: {
   });
   await persistThreadStateById(args.conversationId, { conversation });
 
-  const eventName = "agent_turn_stranded_session_failed";
-  const eventId = logException(
-    new Error(args.errorMessage),
-    eventName,
-    { conversationId: args.conversationId },
-    {
-      "app.ai.conversation_id": args.conversationId,
-      "app.ai.session_id": args.sessionRecord.sessionId,
-    },
-    "Stranded running agent session terminally failed",
-  );
+  const eventName = "agent.turn.stranded_session.failed";
+  const eventId = logException(new Error(args.errorMessage), eventName, {
+    "app.ai.conversation_id": args.conversationId,
+    "app.ai.session_id": args.sessionRecord.sessionId,
+  });
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
     thread?.channelId ??
@@ -693,7 +689,6 @@ async function recoverStrandedRunningSession(args: {
     source: sessionRecord.source,
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
-    logContext: {},
     modelId,
     actor: sessionRecord.actor,
     surface: sessionRecord.surface,
@@ -745,6 +740,20 @@ export async function resumeAwaitingSlackContinuation(
   conversationId: string,
   options: AgentContinueRunnerOptions,
   runOptions: AgentContinueRunOptions = {},
+): Promise<boolean> {
+  return withLogContext({ conversationId }, () =>
+    resumeAwaitingSlackContinuationInContext(
+      conversationId,
+      options,
+      runOptions,
+    ),
+  );
+}
+
+async function resumeAwaitingSlackContinuationInContext(
+  conversationId: string,
+  options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions,
 ): Promise<boolean> {
   const summaries =
     await listAgentTurnSessionSummariesForConversation(conversationId);
@@ -810,6 +819,16 @@ export async function continueSlackAgentRunWithLockRetry(
   options: AgentContinueRunnerOptions,
   runOptions: AgentContinueRunOptions = {},
 ): Promise<boolean> {
+  return withLogContext({ conversationId: payload.conversationId }, () =>
+    continueSlackAgentRunWithLockRetryInContext(payload, options, runOptions),
+  );
+}
+
+async function continueSlackAgentRunWithLockRetryInContext(
+  payload: AgentContinueRequest,
+  options: AgentContinueRunnerOptions,
+  runOptions: AgentContinueRunOptions,
+): Promise<boolean> {
   const scheduleAgentContinue =
     options.scheduleAgentContinue ?? defaultScheduleAgentContinue;
   for (const [attempt, delayMs] of [
@@ -823,31 +842,21 @@ export async function continueSlackAgentRunWithLockRetry(
         throw error;
       }
       if (typeof delayMs !== "number") {
-        logWarn(
-          "agent_continue_lock_busy",
-          {},
-          {
-            "app.ai.conversation_id": payload.conversationId,
-            "app.ai.session_id": payload.sessionId,
-            "app.ai.resume_lock_retry_count": attempt,
-          },
-          "Rescheduling agent continuation because another run still owns the thread lock",
-        );
+        logWarn("agent.continue.lock.busy", {
+          "app.ai.conversation_id": payload.conversationId,
+          "app.ai.session_id": payload.sessionId,
+          "app.ai.resume_lock_retry_count": attempt,
+        });
         await scheduleAgentContinue(payload);
         return true;
       }
 
-      logWarn(
-        "agent_continue_lock_busy_retrying",
-        {},
-        {
-          "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.sessionId,
-          "app.ai.resume_lock_retry_attempt": attempt + 1,
-          "app.ai.resume_lock_retry_delay_ms": delayMs,
-        },
-        "Agent continuation lock was busy; retrying",
-      );
+      logWarn("agent.continue.lock.retrying", {
+        "app.ai.conversation_id": payload.conversationId,
+        "app.ai.session_id": payload.sessionId,
+        "app.ai.resume_lock_retry_attempt": attempt + 1,
+        "app.ai.resume_lock_retry_delay_ms": delayMs,
+      });
       await sleep(delayMs);
     }
   }

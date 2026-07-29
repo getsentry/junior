@@ -615,12 +615,7 @@ export class McpToolManager {
               };
               setSpanAttributes(errorAttributes);
               if (error instanceof McpToolError) {
-                logWarn(
-                  "mcp_tool_call_failed",
-                  {},
-                  errorAttributes,
-                  "MCP tool call failed",
-                );
+                logWarn("mcp.tool_call.failed", errorAttributes);
               }
               throw error;
             }

@@ -306,15 +306,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       return;
     }
 
-    logInfo(
-      "sandbox_boot_requested",
-      traceContext,
-      {
-        "app.sandbox.boot.trigger": trigger,
-        ...details,
-      },
-      "Sandbox boot requested",
-    );
+    logInfo("sandbox.boot.requested", {
+      "app.sandbox.boot.trigger": trigger,
+      ...details,
+    });
   };
 
   const executeBashTool = async <T>(

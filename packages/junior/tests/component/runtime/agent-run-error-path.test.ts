@@ -85,7 +85,7 @@ describe("executeAgentRun error path", () => {
     }
 
     const failure = records.find(
-      (record) => record.eventName === "assistant_reply_generation_failed",
+      (record) => record.eventName === "assistant.reply.generation.failed",
     );
     expect(failure?.attributes).toMatchObject({
       "app.platform": "local",

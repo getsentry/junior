@@ -6,7 +6,7 @@ import {
 } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
-import { logWarn } from "@/chat/logging";
+import { logWarn, withLogContext } from "@/chat/logging";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -122,18 +122,15 @@ function logConversationQueueMessageRejected(
   metadata: MessageMetadata,
   context: { conversationId?: string } = {},
 ): void {
-  logWarn(
-    "conversation_queue_message_rejected",
-    context.conversationId ? { conversationId: context.conversationId } : {},
-    {
+  withLogContext({ conversationId: context.conversationId }, () => {
+    logWarn("conversation.queue.message.rejected", {
       "app.queue.consumer_group": metadata.consumerGroup,
       "app.queue.delivery_count": metadata.deliveryCount,
       "app.queue.message_id": metadata.messageId,
       "app.queue.reject_reason": reason,
       "app.queue.topic_name": metadata.topicName,
-    },
-    "Conversation queue message rejected without retry",
-  );
+    });
+  });
 }
 
 /** Acknowledge permanently rejected queue messages while preserving normal retries. */

@@ -355,21 +355,10 @@ async function classifyTurn(args: {
       source: "router",
     };
   } catch (error) {
-    logWarn(
-      "turn_router_classifier_failed",
-      {
-        messageConversationId: args.metadata.threadId,
-        destinationName: args.metadata.channelId,
-        userId: args.metadata.actorId,
-        runId: args.metadata.runId,
-        modelId: args.fastModelId,
-      },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Turn router classifier failed; using the default route",
-    );
+    logWarn("turn.router.classifier.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return {
       profile: STANDARD_MODEL_PROFILE,
       reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,

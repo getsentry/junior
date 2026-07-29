@@ -40,22 +40,16 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
       maxTokens: 1024,
     });
     if (text && text.trim().length > 0) {
-      logInfo(
-        "image_prompt_enriched",
-        {},
-        { "app.image.enriched_prompt_length": text.trim().length },
-        "Image prompt enriched with persona",
-      );
+      logInfo("image.prompt.enriched", {
+        "app.image.enriched_prompt_length": text.trim().length,
+      });
       return text.trim();
     }
     return rawPrompt;
   } catch (error) {
-    logWarn(
-      "image_prompt_enrichment_failed",
-      {},
-      { "exception.message": String(error) },
-      "Image prompt enrichment failed, using raw prompt",
-    );
+    logWarn("image.prompt.enrichment.failed", {
+      "exception.message": String(error),
+    });
     return rawPrompt;
   }
 }

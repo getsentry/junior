@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
@@ -793,6 +794,8 @@ describe("conversation work execution", () => {
 
   it("loads queue routing from persisted conversation work", async () => {
     const queue = createConversationWorkQueueTestAdapter();
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => records.push(record));
     const run = vi.fn(async (context) => {
       expect(context.destination).toEqual(SLACK_DESTINATION);
       await context.attempt.ack();
@@ -800,11 +803,22 @@ describe("conversation work execution", () => {
     });
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
-    await expect(
-      processConversationWork(conversationQueueMessage(), { queue, run }),
-    ).resolves.toEqual({ status: "completed" });
+    try {
+      await expect(
+        processConversationWork(conversationQueueMessage(), { queue, run }),
+      ).resolves.toEqual({ status: "completed" });
+    } finally {
+      unregister();
+    }
 
     expect(run).toHaveBeenCalledOnce();
+    expect(
+      records.find(
+        (record) => record.eventName === "conversation.work.completed",
+      )?.attributes,
+    ).toMatchObject({
+      "gen_ai.conversation.id": CONVERSATION_ID,
+    });
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -1807,12 +1821,18 @@ describe("conversation work execution", () => {
 
   it("runs conversation work recovery from the core heartbeat", async () => {
     const queue = createConversationWorkQueueTestAdapter();
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => records.push(record));
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
-    await runHeartbeat({
-      nowMs: 62_000,
-      conversationWorkQueue: queue,
-    });
+    try {
+      await runHeartbeat({
+        nowMs: 62_000,
+        conversationWorkQueue: queue,
+      });
+    } finally {
+      unregister();
+    }
 
     expect(queue.sentRecords()).toEqual([
       {
@@ -1820,6 +1840,13 @@ describe("conversation work execution", () => {
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
+    expect(
+      records.find(
+        (record) => record.eventName === "conversation.work.pending.requeued",
+      )?.attributes,
+    ).toMatchObject({
+      "gen_ai.conversation.id": CONVERSATION_ID,
+    });
   });
 
   it("injects messages that arrive during active execution at a safe boundary", async () => {

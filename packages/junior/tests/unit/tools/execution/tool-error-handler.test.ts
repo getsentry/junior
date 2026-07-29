@@ -29,7 +29,7 @@ describe("handleToolExecutionError", () => {
   it("reports system errors to Sentry via logException", () => {
     const error = new Error("sandbox API failed");
     expect(() =>
-      handleToolExecutionError(error, "editFile", "call_1", true, {}),
+      handleToolExecutionError(error, "editFile", "call_1", true),
     ).toThrow(error);
 
     expect(logExceptionMock).toHaveBeenCalledTimes(1);
@@ -41,7 +41,7 @@ describe("handleToolExecutionError", () => {
   it("does not report ToolInputError to Sentry", () => {
     const error = new ToolInputError("Could not find edits[0] in file.ts");
     expect(() =>
-      handleToolExecutionError(error, "editFile", "call_1", true, {}),
+      handleToolExecutionError(error, "editFile", "call_1", true),
     ).toThrow(error);
 
     expect(logExceptionMock).not.toHaveBeenCalled();
@@ -54,7 +54,7 @@ describe("handleToolExecutionError", () => {
   it("does not report McpToolError to Sentry", () => {
     const error = new McpToolError("mcp tool failed");
     expect(() =>
-      handleToolExecutionError(error, "mcpTool", "call_1", true, {}),
+      handleToolExecutionError(error, "mcpTool", "call_1", true),
     ).toThrow(error);
 
     expect(logExceptionMock).not.toHaveBeenCalled();

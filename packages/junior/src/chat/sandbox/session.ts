@@ -525,21 +525,17 @@ export function createSandboxRuntime(
         ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
         : {}),
     });
-    logInfo(
-      "sandbox_hint_discarded_profile_mismatch",
-      traceContext,
-      {
-        ...(sandboxRef.profileHash
-          ? {
-              "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
-            }
-          : {}),
-        ...(dependencyProfileHash
-          ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-          : {}),
-      },
-      "Dependency profile changed; discarding sandbox hint and creating fresh session",
-    );
+    logInfo("sandbox.hint.discarded", {
+      "app.decision.reason": "dependency_profile_mismatch",
+      ...(sandboxRef.profileHash
+        ? {
+            "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
+          }
+        : {}),
+      ...(dependencyProfileHash
+        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
+        : {}),
+    });
     sandboxRef = undefined;
   };
 

@@ -180,13 +180,11 @@ async function failSessionRecordBestEffort(args: {
   } catch (error) {
     logException(
       error,
-      "mcp_oauth_callback_session_record_fail_persist_failed",
-      {},
+      "mcp.oauth_callback.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.conversationId,
         "app.ai.session_id": args.sessionId,
       },
-      "Failed to mark MCP OAuth-resumed turn session record failed",
     );
   }
 }
@@ -455,10 +453,8 @@ async function resumeAuthorizedMcpTurn(args: {
           } catch (persistError) {
             logException(
               persistError,
-              "mcp_oauth_callback_resume_failure_persist_failed",
-              {},
+              "mcp.oauth_callback.resume_failure_persist.failed",
               { "app.credential.provider": provider },
-              "Failed to persist failed MCP resume state",
             );
           }
         },
@@ -467,12 +463,9 @@ async function resumeAuthorizedMcpTurn(args: {
             sessionId: lockedSessionId,
             threadStateId: threadId,
           });
-          logWarn(
-            "mcp_oauth_callback_resume_reparked_for_auth",
-            {},
-            { "app.credential.provider": provider },
-            "Resumed MCP turn requested another authorization flow",
-          );
+          logWarn("mcp.oauth_callback.resume.reparked_for_auth", {
+            "app.credential.provider": provider,
+          });
         },
         onSuspend: async (resumeVersion) => {
           await scheduleAgentContinue({
@@ -604,13 +597,9 @@ export async function GET(
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {
-      logException(
-        cleanupError,
-        "mcp_oauth_callback_session_cleanup_failed",
-        {},
-        { "app.credential.provider": provider },
-        "Failed to delete completed MCP auth session",
-      );
+      logException(cleanupError, "mcp.oauth_callback.session_cleanup.failed", {
+        "app.credential.provider": provider,
+      });
     }
 
     if (authSession.destination?.platform !== "local") {
@@ -631,16 +620,10 @@ export async function GET(
       await deleteMcpAuthSession(state);
       return htmlResponse("expired");
     }
-    logException(
-      callbackError,
-      "mcp_oauth_callback_failed",
-      {},
-      {
-        "app.credential.provider": provider,
-        ...getMcpProviderErrorAttributes(callbackError),
-      },
-      "Failed to process MCP OAuth callback",
-    );
+    logException(callbackError, "mcp.oauth_callback.failed", {
+      "app.credential.provider": provider,
+      ...getMcpProviderErrorAttributes(callbackError),
+    });
     return htmlResponse("failure");
   }
 }

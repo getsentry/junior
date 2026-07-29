@@ -66,7 +66,7 @@ describe("console log formatting", () => {
     const { log } = await loadLoggingModule();
 
     log.info(
-      "plugin_loaded",
+      "plugin.loaded",
       {
         "app.plugin.name": "github",
         "app.plugin.config_key_count": 1,
@@ -100,7 +100,7 @@ describe("console log formatting", () => {
     const { log } = await loadLoggingModule();
 
     log.info(
-      "plugin_heartbeat_dispatched",
+      "plugin.heartbeat.dispatched",
       {
         "app.dispatch.count": 1,
         "app.plugin.name": "scheduler",
@@ -129,9 +129,10 @@ describe("console log formatting", () => {
     const { log } = await loadLoggingModule();
 
     log.info(
-      "plugin_loaded",
+      "plugin.loaded",
       {
         "app.plugin.name": "github",
+        "messaging.destination.name": "C123",
       },
       "Loaded plugin",
     );
@@ -139,7 +140,16 @@ describe("console log formatting", () => {
     expect(infoSpy).toHaveBeenCalledTimes(1);
     const line = stripAnsi(String(infoSpy.mock.calls[0]?.[0] ?? ""));
     expect(line).toContain("2026-04-14T16:29:00.133Z INF Loaded plugin");
-    expect(line).toContain("event.name=plugin_loaded");
+    expect(line).toContain("event.name=plugin.loaded");
     expect(line).toContain("app.plugin.name=github");
+    expect(line).not.toContain("messaging.destination.name=C123");
+
+    infoSpy.mockClear();
+    log.info("oauth.callback.completed", {
+      "messaging.destination.name": "C123",
+    });
+    expect(String(infoSpy.mock.calls[0]?.[0] ?? "")).toContain(
+      "messaging.destination.name=C123",
+    );
   });
 });

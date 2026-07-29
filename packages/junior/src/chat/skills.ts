@@ -331,15 +331,10 @@ async function readSkillDirectory(
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseSkillFile(raw, path.basename(skillDir));
     if (!parsed.ok) {
-      logWarn(
-        "skill_frontmatter_invalid",
-        {},
-        {
-          "file.path": skillDir,
-          "exception.message": parsed.error,
-        },
-        "Invalid skill frontmatter",
-      );
+      logWarn("skill.frontmatter.invalid", {
+        "file.path": skillDir,
+        "exception.message": parsed.error,
+      });
       return null;
     }
 
@@ -356,16 +351,11 @@ async function readSkillDirectory(
       ...(disableModelInvocation ? { disableModelInvocation } : {}),
     };
   } catch (error) {
-    logWarn(
-      "skill_directory_read_failed",
-      {},
-      {
-        "file.path": skillDir,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to read skill directory",
-    );
+    logWarn("skill.directory.read.failed", {
+      "file.path": skillDir,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -404,16 +394,11 @@ export async function discoverSkills(
         }
       }
     } catch (error) {
-      logWarn(
-        "skill_root_read_failed",
-        {},
-        {
-          "file.directory": root,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Failed to read skill root",
-      );
+      logWarn("skill.root.read.failed", {
+        "file.directory": root,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

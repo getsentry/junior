@@ -60,7 +60,7 @@ describe("deployment log attributes", () => {
 
     try {
       log.warn(
-        "deployment_context_test",
+        "deployment.context.test",
         {
           "deployment.id": "caller-deployment",
           "service.version": "caller-version",

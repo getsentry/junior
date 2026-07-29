@@ -355,23 +355,11 @@ async function summarizeConversationChunk(
       return summary.slice(0, 3500);
     }
   } catch (error) {
-    logWarn(
-      "conversation_compaction_summary_failed",
-      {
-        messageConversationId: context.threadId,
-        userId: context.actorId,
-        destinationName: context.channelId,
-        runId: context.runId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.fastModelId,
-      },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-        "app.compaction_messages_covered": messages.length,
-      },
-      "Compaction summarization failed; using fallback summary",
-    );
+    logWarn("conversation.compaction.summary.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "app.compaction_messages_covered": messages.length,
+    });
   }
 
   return transcript.slice(0, 2800);

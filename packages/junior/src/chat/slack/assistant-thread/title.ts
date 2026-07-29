@@ -61,22 +61,10 @@ export function maybeUpdateAssistantTitle(args: {
     try {
       title = await args.generateThreadTitle(titleSourceMessage.text);
     } catch (error) {
-      logWarn(
-        "thread_title_generation_failed",
-        {
-          messageConversationId: args.threadId,
-          userId: args.actorId,
-          destinationName: args.channelId,
-          runId: args.runId,
-          assistantUserName: args.assistantUserName,
-          modelId: args.modelId,
-        },
-        {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Thread title generation failed",
-      );
+      logWarn("thread.title.generation.failed", {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
       return undefined;
     }
 
@@ -106,35 +94,14 @@ export function maybeUpdateAssistantTitle(args: {
           // title is still returned for dashboard reporting.
           setSpanAttributes(assistantTitleErrorAttributes);
           logError(
-            "thread_title_generation_permission_denied",
-            {
-              messageConversationId: args.threadId,
-              userId: args.actorId,
-              destinationName: args.channelId,
-              runId: args.runId,
-              assistantUserName: args.assistantUserName,
-              modelId: args.modelId,
-            },
+            "thread.title.generation_permission.denied",
             assistantTitleErrorAttributes,
-            "Skipping Slack thread title update due to permission error",
           );
         } else {
-          logWarn(
-            "thread_title_slack_update_failed",
-            {
-              messageConversationId: args.threadId,
-              userId: args.actorId,
-              destinationName: args.channelId,
-              runId: args.runId,
-              assistantUserName: args.assistantUserName,
-              modelId: args.modelId,
-            },
-            {
-              "exception.message":
-                error instanceof Error ? error.message : String(error),
-            },
-            "Slack thread title update failed",
-          );
+          logWarn("thread.title.slack_update.failed", {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
         }
       }
     }

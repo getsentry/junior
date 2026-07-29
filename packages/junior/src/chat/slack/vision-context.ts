@@ -1,6 +1,5 @@
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
 import type { completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
@@ -328,22 +327,10 @@ async function resolveUserAttachmentsWithDeps(
 
       if (!data) continue;
       if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
-        logWarn(
-          "attachment_skipped_size_limit",
-          {
-            messageConversationId: context.threadId,
-            userId: context.actorId,
-            destinationName: context.channelId,
-            runId: context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: standardModelId(botConfig),
-          },
-          {
-            "file.size": data.byteLength,
-            "app.file.mime_type": mediaType,
-          },
-          "Skipping user attachment that exceeds size limit",
-        );
+        logWarn("attachment.size_limit.skipped", {
+          "file.size": data.byteLength,
+          "app.file.mime_type": mediaType,
+        });
         continue;
       }
 
@@ -357,24 +344,12 @@ async function resolveUserAttachmentsWithDeps(
             : createImageAttachmentProcessingError({
                 filename: attachment.name,
               });
-        logWarn(
-          "image_attachment_processing_failed",
-          {
-            messageConversationId: context.threadId,
-            userId: context.actorId,
-            destinationName: context.channelId,
-            runId: context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: botConfig.visionModelId ?? standardModelId(botConfig),
-          },
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-            "app.file.mime_type": mediaType,
-            ...(attachment.name ? { "file.name": attachment.name } : {}),
-          },
-          "Image attachment processing failed",
-        );
+        logWarn("image.attachment.processing.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+          "app.file.mime_type": mediaType,
+          ...(attachment.name ? { "file.name": attachment.name } : {}),
+        });
         results.push({
           mediaType,
           filename: attachment.name,
@@ -387,23 +362,11 @@ async function resolveUserAttachmentsWithDeps(
         continue;
       }
 
-      logWarn(
-        "attachment_resolution_failed",
-        {
-          messageConversationId: context.threadId,
-          userId: context.actorId,
-          destinationName: context.channelId,
-          runId: context.runId,
-          assistantUserName: botConfig.userName,
-          modelId: standardModelId(botConfig),
-        },
-        {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-          "app.file.mime_type": mediaType,
-        },
-        "Failed to resolve user attachment",
-      );
+      logWarn("attachment.resolution.failed", {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+        "app.file.mime_type": mediaType,
+      });
     }
   }
 
@@ -454,24 +417,12 @@ async function summarizeConversationImage(
     }
     return truncateVisionSummary(summary);
   } catch (error) {
-    logWarn(
-      "conversation_image_vision_failed",
-      {
-        messageConversationId: args.context.threadId,
-        userId: args.context.actorId,
-        destinationName: args.context.channelId,
-        runId: args.context.runId,
-        assistantUserName: botConfig.userName,
-        modelId: visionModelId,
-      },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-        "app.file.id": args.fileId,
-        "app.file.mime_type": args.mimeType,
-      },
-      "Image analysis failed while hydrating conversation context",
-    );
+    logWarn("conversation.image.vision.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "app.file.id": args.fileId,
+      "app.file.mime_type": args.mimeType,
+    });
     return undefined;
   }
 }
@@ -528,22 +479,10 @@ async function hydrateConversationVisionContextWithDeps(
       targetMessageTs: [...messagesByTs.keys()],
     });
   } catch (error) {
-    logWarn(
-      "conversation_image_replies_fetch_failed",
-      {
-        messageConversationId: context.threadId,
-        userId: context.actorId,
-        destinationName: context.channelId,
-        runId: context.runId,
-        assistantUserName: botConfig.userName,
-        modelId: standardModelId(botConfig),
-      },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to fetch thread replies for image context hydration",
-    );
+    logWarn("conversation.image.replies_fetch.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return;
   }
 
@@ -612,23 +551,11 @@ async function hydrateConversationVisionContextWithDeps(
           ? file.size
           : undefined;
       if (fileSize && fileSize > MAX_USER_ATTACHMENT_BYTES) {
-        logWarn(
-          "conversation_image_skipped_size_limit",
-          {
-            messageConversationId: context.threadId,
-            userId: context.actorId,
-            destinationName: context.channelId,
-            runId: context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: standardModelId(botConfig),
-          },
-          {
-            "app.file.id": fileId,
-            "file.size": fileSize,
-            "app.file.mime_type": mimeType,
-          },
-          "Skipping thread image that exceeds size limit",
-        );
+        logWarn("conversation.image.size_limit.skipped", {
+          "app.file.id": fileId,
+          "file.size": fileSize,
+          "app.file.mime_type": mimeType,
+        });
         continue;
       }
 
@@ -643,45 +570,21 @@ async function hydrateConversationVisionContextWithDeps(
       try {
         imageData = await deps.downloadFile(downloadUrl);
       } catch (error) {
-        logWarn(
-          "conversation_image_download_failed",
-          {
-            messageConversationId: context.threadId,
-            userId: context.actorId,
-            destinationName: context.channelId,
-            runId: context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: standardModelId(botConfig),
-          },
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-            "app.file.id": fileId,
-            "app.file.mime_type": mimeType,
-          },
-          "Failed to download thread image for context hydration",
-        );
+        logWarn("conversation.image.download.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+          "app.file.id": fileId,
+          "app.file.mime_type": mimeType,
+        });
         continue;
       }
 
       if (imageData.byteLength > MAX_USER_ATTACHMENT_BYTES) {
-        logWarn(
-          "conversation_image_skipped_size_limit",
-          {
-            messageConversationId: context.threadId,
-            userId: context.actorId,
-            destinationName: context.channelId,
-            runId: context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: standardModelId(botConfig),
-          },
-          {
-            "app.file.id": fileId,
-            "file.size": imageData.byteLength,
-            "app.file.mime_type": mimeType,
-          },
-          "Skipping downloaded thread image that exceeds size limit",
-        );
+        logWarn("conversation.image.size_limit.skipped", {
+          "app.file.id": fileId,
+          "file.size": imageData.byteLength,
+          "app.file.mime_type": mimeType,
+        });
         continue;
       }
 
@@ -717,24 +620,12 @@ async function hydrateConversationVisionContextWithDeps(
     analyzed > 0 ||
     hydratedMessageIds.size > 0
   ) {
-    logInfo(
-      "conversation_image_context_hydrated",
-      {
-        messageConversationId: context.threadId,
-        userId: context.actorId,
-        destinationName: context.channelId,
-        runId: context.runId,
-        assistantUserName: botConfig.userName,
-        modelId: standardModelId(botConfig),
-      },
-      {
-        "app.conversation_image.cache_hits": cacheHits,
-        "app.conversation_image.cache_misses": cacheMisses,
-        "app.conversation_image.analyzed": analyzed,
-        "app.conversation_image.messages_hydrated": hydratedMessageIds.size,
-      },
-      "Hydrated conversation image context",
-    );
+    logInfo("conversation.image.context.hydrated", {
+      "app.conversation_image.cache_hits": cacheHits,
+      "app.conversation_image.cache_misses": cacheMisses,
+      "app.conversation_image.analyzed": analyzed,
+      "app.conversation_image.messages_hydrated": hydratedMessageIds.size,
+    });
   }
 
   if (!conversation.vision.backfillCompletedAtMs) {

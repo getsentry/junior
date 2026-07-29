@@ -729,7 +729,6 @@ describe("agent dispatch conversation work", () => {
             destination: dispatch.destination,
             dispatchId: dispatch.id,
             errorMessage: "Conversation worker yielded",
-            logContext: {},
             messages: [
               {
                 role: "user",

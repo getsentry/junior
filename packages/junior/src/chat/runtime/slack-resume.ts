@@ -22,6 +22,8 @@ import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner"
 import {
   buildTurnFailureResponse,
   logException,
+  setTags,
+  withLogContext,
   type LogContext,
 } from "@/chat/logging";
 import {
@@ -255,14 +257,7 @@ async function handleResumeFailure(args: {
   failureCode: ConversationTurnFailureCode;
   resumeArgs: ResumeSlackTurnArgs;
 }): Promise<void> {
-  const logContext = getResumeLogContext(args.resumeArgs, args.lockKey);
-  const capturedEventId = logException(
-    args.error,
-    args.eventName,
-    logContext,
-    {},
-    args.body,
-  );
+  const capturedEventId = logException(args.error, args.eventName);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
   let failureStatePersistError: unknown;
   try {
@@ -270,10 +265,8 @@ async function handleResumeFailure(args: {
   } catch (persistError) {
     const persistEventId = logException(
       persistError,
-      "slack_resume_failure_state_persist_failed",
-      logContext,
+      "slack.resume.failure_state_persist.failed",
       { "app.error.original_event_id": eventId },
-      "Failed to persist resumed turn failure state",
     );
     try {
       await args.turnLifecycle.fail({
@@ -286,10 +279,8 @@ async function handleResumeFailure(args: {
     } catch (lifecycleError) {
       logException(
         lifecycleError,
-        "slack_resume_failure_lifecycle_persist_failed",
-        logContext,
+        "slack.resume.failure_lifecycle_persist.failed",
         { "app.error.original_event_id": eventId },
-        "Failed to record resumed turn persistence failure",
       );
     }
     failureStatePersistError = persistError;
@@ -304,10 +295,8 @@ async function handleResumeFailure(args: {
   } catch (deliveryError) {
     const deliveryEventId = logException(
       deliveryError,
-      "slack_resume_failure_delivery_failed",
-      logContext,
+      "slack.resume.failure_delivery.failed",
       { "app.error.original_event_id": eventId },
-      "Failed to deliver resumed turn failure state",
     );
     try {
       await args.turnLifecycle.fail({
@@ -320,10 +309,8 @@ async function handleResumeFailure(args: {
     } catch (lifecycleError) {
       logException(
         lifecycleError,
-        "slack_resume_failure_lifecycle_persist_failed",
-        logContext,
+        "slack.resume.failure_lifecycle_persist.failed",
         { "app.error.original_event_id": eventId },
-        "Failed to record resumed turn delivery failure",
       );
     }
     throw deliveryError;
@@ -424,6 +411,16 @@ function createResumeReplyContext(
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
+  const lockKey =
+    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
+  return withLogContext(getResumeLogContext(args, lockKey), () =>
+    resumeSlackTurnInContext(args),
+  );
+}
+
+async function resumeSlackTurnInContext(
+  args: ResumeSlackTurnArgs,
+): Promise<boolean> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const lockKey =
@@ -463,6 +460,7 @@ export async function resumeSlackTurn(
     if (preparedArgs) {
       runArgs = { ...args, ...preparedArgs };
     }
+    setTags(getResumeLogContext(runArgs, lockKey));
 
     const activeReplyContext = runArgs.replyContext;
     if (!activeReplyContext) {
@@ -502,7 +500,6 @@ export async function resumeSlackTurn(
         channelId: runArgs.channelId,
         timestamp: runArgs.messageTs,
         logException,
-        logContext: { ...getResumeLogContext(runArgs, lockKey) },
       });
     }
     if (runArgs.initialText) {
@@ -606,10 +603,8 @@ export async function resumeSlackTurn(
       } catch (error) {
         logException(
           new Error("Accepted assistant message persistence failed"),
-          "slack_resume_assistant_message_post_delivery_persist_failed",
-          getResumeLogContext(runArgs, lockKey),
+          "slack.resume.assistant_message_post_delivery_persist.failed",
           { "error.type": error instanceof Error ? error.name : typeof error },
-          "Failed to persist an accepted resumed assistant message",
         );
       }
       const routing = runArgs.replyContext?.routing;
@@ -631,13 +626,7 @@ export async function resumeSlackTurn(
             }),
           );
         } catch (error) {
-          logException(
-            error,
-            "agent_turn_delivery_receipt_persist_failed",
-            getResumeLogContext(runArgs, lockKey),
-            {},
-            "Failed to persist accepted resumed turn delivery receipt",
-          );
+          logException(error, "agent.turn.delivery_receipt_persist.failed");
         }
       }
       failureCode = "agent_run_failed";
@@ -708,7 +697,7 @@ export async function resumeSlackTurn(
             error: new Error(
               `Resumed run ended ${outcome.status} without a pause handler`,
             ),
-            eventName: "slack_resume_turn_failed",
+            eventName: "slack.resume.turn.failed",
             failureCode: "agent_run_failed",
             turnLifecycle,
             lockKey,
@@ -720,7 +709,6 @@ export async function resumeSlackTurn(
       const finalized = finalizeFailedTurnReplyWithEvent({
         reply: outcome.result,
         logException,
-        context: getResumeLogContext(runArgs, lockKey),
       });
       const reply = finalized.reply;
       const dispatchErrorMessage =
@@ -813,10 +801,7 @@ export async function resumeSlackTurn(
         } catch (scheduleError) {
           logException(
             scheduleError,
-            "plugin_session_completed_task_schedule_failed",
-            getResumeLogContext(runArgs, lockKey),
-            {},
-            "Plugin session.completed task scheduling failed",
+            "plugin.session.completed_task_schedule.failed",
           );
         }
       }
@@ -831,10 +816,7 @@ export async function resumeSlackTurn(
       } catch (terminalizeError) {
         logException(
           terminalizeError,
-          "slack_resume_post_delivery_terminalize_failed",
-          getResumeLogContext(runArgs, lockKey),
-          {},
-          "Failed to terminalize resumed turn after post-delivery commit failure",
+          "slack.resume.post_delivery_terminalize.failed",
         );
       }
     } else {
@@ -842,7 +824,7 @@ export async function resumeSlackTurn(
         await handleResumeFailure({
           body: "Failed to resume Slack turn",
           error,
-          eventName: "slack_resume_turn_failed",
+          eventName: "slack.resume.turn.failed",
           failureCode,
           turnLifecycle,
           lockKey,
@@ -862,10 +844,7 @@ export async function resumeSlackTurn(
   if (postDeliveryCommitError) {
     const eventId = logException(
       postDeliveryCommitError,
-      "slack_resume_success_handler_failed",
-      getResumeLogContext(runArgs, lockKey),
-      {},
-      "Failed to persist resumed turn state after assistant output handling",
+      "slack.resume.success_handler.failed",
     );
     await turnLifecycle.fail({
       conversationId: runArgs.conversationId,
@@ -897,7 +876,7 @@ export async function resumeSlackTurn(
       await handleResumeFailure({
         body: "Failed to handle resumed turn pause",
         error: pauseError,
-        eventName: "slack_resume_pause_handler_failed",
+        eventName: "slack.resume.pause_handler.failed",
         failureCode: "persistence_failed",
         turnLifecycle,
         lockKey,

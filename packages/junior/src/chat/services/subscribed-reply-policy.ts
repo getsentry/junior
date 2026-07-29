@@ -29,23 +29,11 @@ export function createSubscribedReplyPolicy(
       modelId: botConfig.fastModelId,
       input: args,
       completeObject: deps.completeObject,
-      logClassifierFailure: (error, input) => {
-        logWarn(
-          "subscribed_message_classifier_failed",
-          {
-            messageConversationId: input.context.threadId,
-            userId: input.context.actorId,
-            destinationName: input.context.channelId,
-            runId: input.context.runId,
-            assistantUserName: botConfig.userName,
-            modelId: botConfig.fastModelId,
-          },
-          {
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Subscribed-message classifier failed; skipping reply",
-        );
+      logClassifierFailure: (error) => {
+        logWarn("subscribed_message.classifier.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
       },
     });
 

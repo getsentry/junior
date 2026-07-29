@@ -46,11 +46,8 @@ export async function startSlackProcessingReaction(args: {
   logException: (
     error: unknown,
     eventName: string,
-    context?: Record<string, unknown>,
     attributes?: Record<string, unknown>,
-    body?: string,
   ) => string | undefined;
-  logContext: Record<string, unknown>;
   message: Message;
   thread: Thread;
 }): Promise<ProcessingReactionSession> {
@@ -68,7 +65,6 @@ export async function startSlackProcessingReaction(args: {
     channelId,
     timestamp: messageTs,
     logException: args.logException,
-    logContext: args.logContext,
   });
 }
 
@@ -79,11 +75,8 @@ export async function startSlackProcessingReactionForMessage(args: {
   logException: (
     error: unknown,
     eventName: string,
-    context?: Record<string, unknown>,
     attributes?: Record<string, unknown>,
-    body?: string,
   ) => string | undefined;
-  logContext: Record<string, unknown>;
 }): Promise<ProcessingReactionSession> {
   try {
     await addReactionToMessage({
@@ -92,17 +85,11 @@ export async function startSlackProcessingReactionForMessage(args: {
       emoji: getChatConfig().slack.processingReactionEmoji,
     });
   } catch (error) {
-    args.logException(
-      error,
-      "slack_processing_reaction_add_failed",
-      args.logContext,
-      {
-        "app.slack.action": "reactions.add",
-        "messaging.message.id": args.timestamp,
-        ...getSlackErrorObservabilityAttributes(error),
-      },
-      "Failed to add Slack processing reaction",
-    );
+    args.logException(error, "slack.processing.reaction_add.failed", {
+      "app.slack.action": "reactions.add",
+      "messaging.message.id": args.timestamp,
+      ...getSlackErrorObservabilityAttributes(error),
+    });
     return noProcessingReaction;
   }
 
@@ -120,17 +107,11 @@ export async function startSlackProcessingReactionForMessage(args: {
       });
       return true;
     } catch (error) {
-      args.logException(
-        error,
-        "slack_processing_reaction_remove_failed",
-        args.logContext,
-        {
-          "app.slack.action": "reactions.remove",
-          "messaging.message.id": args.timestamp,
-          ...getSlackErrorObservabilityAttributes(error),
-        },
-        "Failed to remove Slack processing reaction",
-      );
+      args.logException(error, "slack.processing.reaction_remove.failed", {
+        "app.slack.action": "reactions.remove",
+        "messaging.message.id": args.timestamp,
+        ...getSlackErrorObservabilityAttributes(error),
+      });
       return false;
     }
   };
@@ -154,17 +135,11 @@ export async function startSlackProcessingReactionForMessage(args: {
           emoji: getChatConfig().slack.completedReactionEmoji,
         });
       } catch (error) {
-        args.logException(
-          error,
-          "slack_processing_reaction_complete_failed",
-          args.logContext,
-          {
-            "app.slack.action": "reactions.add",
-            "messaging.message.id": args.timestamp,
-            ...getSlackErrorObservabilityAttributes(error),
-          },
-          "Failed to add Slack completed reaction",
-        );
+        args.logException(error, "slack.processing.reaction_complete.failed", {
+          "app.slack.action": "reactions.add",
+          "messaging.message.id": args.timestamp,
+          ...getSlackErrorObservabilityAttributes(error),
+        });
       }
     },
     keep: () => {

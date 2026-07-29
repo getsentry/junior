@@ -1,7 +1,7 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
@@ -167,7 +167,7 @@ async function requestLostLeaseRecovery(args: {
  * Record one failed delivery attempt and surface dead-lettered messages.
  *
  * Consumption is logged here so every dead-lettered message leaves a
- * `conversation_work_dead_lettered` trail with its terminal attempt count.
+ * `conversation.work.dead_lettered` trail with its terminal attempt count.
  */
 async function recordFailedDeliveryAttempt(args: {
   conversationId: string;
@@ -185,17 +185,12 @@ async function recordFailedDeliveryAttempt(args: {
     state: args.options.state,
   });
   for (const message of failure.deadLetteredMessages) {
-    logWarn(
-      "conversation_work_dead_lettered",
-      { conversationId: args.conversationId },
-      {
-        "app.conversation.source": message.source,
-        "app.inbound.attempt_count": message.attemptCount ?? 0,
-        "app.inbound.message_id": message.inboundMessageId,
-        "app.inbound.pending_count": failure.pendingCount,
-      },
-      "Conversation work message consumed after exceeding the delivery attempt limit",
-    );
+    logWarn("conversation.work.dead_lettered", {
+      "app.conversation.source": message.source,
+      "app.inbound.attempt_count": message.attemptCount ?? 0,
+      "app.inbound.message_id": message.inboundMessageId,
+      "app.inbound.pending_count": failure.pendingCount,
+    });
   }
   return failure;
 }
@@ -227,22 +222,11 @@ function startLeaseCheckIn(args: {
       (checkedIn) => {
         if (!checkedIn) {
           args.onLostLease();
-          logWarn(
-            "conversation_work_check_in_failed",
-            { conversationId: args.conversationId },
-            {},
-            "Conversation work check-in lost its lease",
-          );
+          logWarn("conversation.work.check_in.failed");
         }
       },
       (error) => {
-        logException(
-          error,
-          "conversation_work_check_in_failed",
-          { conversationId: args.conversationId },
-          {},
-          "Conversation work check-in failed",
-        );
+        logException(error, "conversation.work.check_in.failed");
       },
     );
   }, args.options.checkInIntervalMs ?? CONVERSATION_WORK_CHECK_IN_INTERVAL_MS);
@@ -252,6 +236,15 @@ function startLeaseCheckIn(args: {
 
 /** Process one queue wake-up for a conversation. */
 export async function processConversationWork(
+  message: ConversationQueueMessage,
+  options: ProcessConversationWorkOptions,
+): Promise<ConversationWorkProcessResult> {
+  return withLogContext({ conversationId: message.conversationId }, () =>
+    processConversationWorkInContext(message, options),
+  );
+}
+
+async function processConversationWorkInContext(
   message: ConversationQueueMessage,
   options: ProcessConversationWorkOptions,
 ): Promise<ConversationWorkProcessResult> {
@@ -326,14 +319,9 @@ export async function processConversationWork(
       replaceExistingWake: true,
       state: options.state,
     });
-    logInfo(
-      "conversation_work_nudge_deferred_for_active_lease",
-      { conversationId },
-      {
-        "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
-      },
-      "Conversation work nudge deferred for active lease",
-    );
+    logInfo("conversation.work.nudge.deferred", {
+      "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
+    });
     return { status: "active" };
   }
 
@@ -355,15 +343,10 @@ export async function processConversationWork(
     onLostLease: markLeaseLost,
     options,
   });
-  logInfo(
-    "conversation_work_lease_acquired",
-    { conversationId },
-    {
-      "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
-      "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
-    },
-    "Conversation work lease acquired",
-  );
+  logInfo("conversation.work.lease.acquired", {
+    "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
+    "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
+  });
 
   const drain = (
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
@@ -430,15 +413,10 @@ export async function processConversationWork(
     if (!released) {
       return { status: "lost_lease" };
     }
-    logInfo(
-      "conversation_work_cooperative_yield",
-      { conversationId },
-      {
-        "app.worker.elapsed_ms": now(options) - startedAtMs,
-        "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
-      },
-      "Conversation work yielded cooperatively",
-    );
+    logInfo("conversation.work.yielded", {
+      "app.worker.elapsed_ms": now(options) - startedAtMs,
+      "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
+    });
     return { status: "yielded" };
   };
 
@@ -675,14 +653,9 @@ export async function processConversationWork(
         : { status: "completed" };
     }
 
-    logInfo(
-      "conversation_work_completed",
-      { conversationId },
-      {
-        "app.worker.elapsed_ms": now(options) - startedAtMs,
-      },
-      "Conversation work completed",
-    );
+    logInfo("conversation.work.completed", {
+      "app.worker.elapsed_ms": now(options) - startedAtMs,
+    });
     return { status: "completed" };
   } catch (error) {
     const errorNowMs = now(options);
@@ -744,24 +717,12 @@ export async function processConversationWork(
       }
       recoveryRecorded = true;
     } catch (recoveryError) {
-      logException(
-        recoveryError,
-        "conversation_work_requeue_failed",
-        { conversationId },
-        {},
-        "Conversation work recovery failed after runner error",
-      );
+      logException(recoveryError, "conversation.work.requeue.failed");
     }
     if (!isProviderRetryError(error)) {
-      logException(
-        error,
-        "conversation_work_failed",
-        { conversationId },
-        {
-          "app.worker.elapsed_ms": now(options) - startedAtMs,
-        },
-        "Conversation work failed",
-      );
+      logException(error, "conversation.work.failed", {
+        "app.worker.elapsed_ms": now(options) - startedAtMs,
+      });
     }
     if (!recoveryRecorded) {
       throw error;

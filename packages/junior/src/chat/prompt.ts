@@ -48,6 +48,7 @@ function getLoggedMarkdownFiles(): Set<string> {
 function loadOptionalMarkdownFile(
   candidates: string[],
   fileName: string,
+  loadedEventName: string,
 ): string | null {
   for (const resolved of candidates) {
     try {
@@ -57,14 +58,9 @@ function loadOptionalMarkdownFile(
         const logKey = `${fileName}:${resolved}`;
         if (!loggedMarkdownFiles.has(logKey)) {
           loggedMarkdownFiles.add(logKey);
-          logInfo(
-            `${fileName.toLowerCase()}_loaded`,
-            {},
-            {
-              "file.path": resolved,
-            },
-            `Loaded ${fileName}`,
-          );
+          logInfo(loadedEventName, {
+            "file.path": resolved,
+          });
         }
         return raw;
       }
@@ -77,39 +73,37 @@ function loadOptionalMarkdownFile(
 }
 
 function loadSoul(): string {
-  const soul = loadOptionalMarkdownFile(soulPathCandidates(), "SOUL.md");
+  const soul = loadOptionalMarkdownFile(
+    soulPathCandidates(),
+    "SOUL.md",
+    "soul.loaded",
+  );
   if (soul) {
     return soul;
   }
 
-  logWarn(
-    "soul_load_fallback",
-    {},
-    {
-      "app.file.candidates": soulPathCandidates(),
-    },
-    "SOUL.md not found; using built-in default personality",
-  );
+  logWarn("soul.load.defaulted", {
+    "app.file.candidates": soulPathCandidates(),
+  });
   return DEFAULT_SOUL;
 }
 
 function loadWorld(): string | null {
-  return loadOptionalMarkdownFile(worldPathCandidates(), "WORLD.md");
+  return loadOptionalMarkdownFile(
+    worldPathCandidates(),
+    "WORLD.md",
+    "world.loaded",
+  );
 }
 
 export const JUNIOR_PERSONALITY = (() => {
   try {
     return loadSoul();
   } catch (error) {
-    logWarn(
-      "soul_load_failed",
-      {},
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to load SOUL.md; using built-in default personality",
-    );
+    logWarn("soul.load.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return DEFAULT_SOUL;
   }
 })();
@@ -118,15 +112,10 @@ export const JUNIOR_WORLD = (() => {
   try {
     return loadWorld();
   } catch (error) {
-    logWarn(
-      "world_load_failed",
-      {},
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to load WORLD.md; omitting world prompt context",
-    );
+    logWarn("world.load.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 })();

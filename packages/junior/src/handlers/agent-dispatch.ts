@@ -40,13 +40,9 @@ export async function POST(
         queue: options.conversationWorkQueue,
       });
     })().catch((error) => {
-      logException(
-        error,
-        "agent_dispatch_callback_failed",
-        {},
-        { "app.dispatch.id": payload.id },
-        "Legacy dispatch callback failed",
-      );
+      logException(error, "agent.dispatch.callback.failed", {
+        "app.dispatch.id": payload.id,
+      });
     }),
   );
   return new Response("Accepted", { status: 202 });

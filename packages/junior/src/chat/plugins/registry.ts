@@ -331,16 +331,11 @@ function buildLoadedPluginState(
     try {
       rootStat = statSync(pluginsRoot);
     } catch (error) {
-      logWarn(
-        "plugin_root_read_failed",
-        {},
-        {
-          "file.directory": pluginsRoot,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Failed to read plugin root",
-      );
+      logWarn("plugin.root.read.failed", {
+        "file.directory": pluginsRoot,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
       continue;
     }
     if (rootStat.isDirectory()) {
@@ -360,16 +355,11 @@ function buildLoadedPluginState(
     try {
       entries = readdirSync(pluginsRoot);
     } catch (error) {
-      logWarn(
-        "plugin_root_read_failed",
-        {},
-        {
-          "file.directory": pluginsRoot,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Failed to read plugin root",
-      );
+      logWarn("plugin.root.read.failed", {
+        "file.directory": pluginsRoot,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
       continue;
     }
 
@@ -414,20 +404,15 @@ function logLoadedPlugins(state: LoadedPluginState): void {
       continue;
     }
     loggedPluginNames.add(plugin.manifest.name);
-    logInfo(
-      "plugin_loaded",
-      {},
-      {
-        "app.plugin.name": plugin.manifest.name,
-        "app.plugin.config_key_count": plugin.manifest.configKeys.length,
-        "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
-        "file.directory": plugin.dir,
-        ...(plugin.skillsDir
-          ? { "app.file.skill_directory": plugin.skillsDir }
-          : {}),
-      },
-      "Loaded plugin",
-    );
+    logInfo("plugin.loaded", {
+      "app.plugin.name": plugin.manifest.name,
+      "app.plugin.config_key_count": plugin.manifest.configKeys.length,
+      "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
+      "file.directory": plugin.dir,
+      ...(plugin.skillsDir
+        ? { "app.file.skill_directory": plugin.skillsDir }
+        : {}),
+    });
   }
 }
 

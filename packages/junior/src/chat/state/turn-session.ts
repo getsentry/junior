@@ -1002,16 +1002,11 @@ async function readAgentTurnSessionSummariesFromIndex(
     try {
       summary = parseAgentTurnSessionSummary(value);
     } catch (error) {
-      logWarn(
-        "agent_turn_session_summary_parse_failed",
-        {},
-        {
-          "app.state.key": key,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Skipping an invalid turn-session summary index entry",
-      );
+      logWarn("agent.turn.session_summary_parse.failed", {
+        "app.state.key": key,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
       continue;
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;

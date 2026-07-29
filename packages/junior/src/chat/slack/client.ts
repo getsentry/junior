@@ -550,30 +550,20 @@ export async function withSlackRetries<T>(
         attempt >= maxAttempts ||
         remainingDelayBudgetMs <= 0
       ) {
-        logWarn(
-          "slack_action_failed",
-          {},
-          {
-            ...baseLogAttributes,
-            ...(mapped.errorData
-              ? { "app.slack.error_data": mapped.errorData }
-              : {}),
-          },
-          "Slack action failed",
-        );
+        logWarn("slack.action.failed", {
+          ...baseLogAttributes,
+          ...(mapped.errorData
+            ? { "app.slack.error_data": mapped.errorData }
+            : {}),
+        });
         throw mapped;
       }
 
-      logWarn(
-        "slack_action_retrying",
-        {},
-        {
-          ...baseLogAttributes,
-          "app.slack.retry_attempt": attempt,
-          "app.slack.retry_class": retryClass,
-        },
-        "Retrying Slack action after transient failure",
-      );
+      logWarn("slack.action.retrying", {
+        ...baseLogAttributes,
+        "app.slack.retry_attempt": attempt,
+        "app.slack.retry_class": retryClass,
+      });
 
       const retryAfterMs =
         retryClass === "rate_limited" &&

@@ -88,12 +88,9 @@ async function handleUnlink(
   const tokenStore = createUserTokenStore();
   await tokenStore.delete(actorId, provider);
 
-  logInfo(
-    "slash_command_unlink",
-    { userId: actorId },
-    { "app.credential.provider": provider },
-    `Unlinked ${formatProviderLabel(provider)} account via ${getCommandName()} slash command`,
-  );
+  logInfo("slash_command.credential.unlinked", {
+    "app.credential.provider": provider,
+  });
 
   await postEphemeral(
     event,

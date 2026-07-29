@@ -1,3 +1,32 @@
+/**
+ * Structured logging for Junior runtime events.
+ *
+ * Application code should call `logInfo`, `logWarn`, `logError`, or
+ * `logException` with a stable dot-namespaced event name and only attributes
+ * specific to that occurrence:
+ *
+ * `logWarn("agent.turn.reply_recovery.exhausted", { "app.retry.attempt": 2 })`
+ *
+ * Event names describe the semantic domain, operation, and outcome. They are
+ * lowercase, use dots for namespaces, use snake case within a namespace
+ * component, and never contain identifiers or other occurrence-specific data.
+ * Use singular domain and operation nouns unless one event represents a real
+ * collection. End completed events with a past participle such as `completed`,
+ * `failed`, or `skipped`; reserve present participles such as `retrying` for
+ * work currently underway, and adjectives such as `busy` for observed states.
+ *
+ * Correlation context is implicit. Bind authoritative request, conversation,
+ * actor, destination, and run context once with `withContext`,
+ * `withLogContext`, or `withSpan`; nested logs inherit it through
+ * AsyncLocalStorage, and active trace/span IDs are attached during emission.
+ * Durable boundaries such as queues and callbacks must still carry and
+ * reconstruct their context explicitly before binding it.
+ *
+ * Internal event calls do not provide a human-readable body. Export adapters
+ * derive any required display message from the event name. Free-form messages
+ * received from libraries or plugins belong in safe attributes at the adapter
+ * boundary.
+ */
 import path from "node:path";
 import { styleText } from "node:util";
 import {
@@ -65,6 +94,7 @@ interface SentryUserIdentity {
 }
 
 const MAX_STRING_VALUE = 1200;
+const EVENT_NAME_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
 const SECRETS_RE = [
   /\b(sk-[A-Za-z0-9_-]{20,})\b/g,
   /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g,
@@ -343,6 +373,25 @@ function toSnakeCase(value: string): string {
     .toLowerCase();
 }
 
+function normalizeEventName(value: string): string {
+  const segments = value.trim().split(".").map(toSnakeCase).filter(Boolean);
+  const normalized =
+    segments.length === 0
+      ? "log.record.emitted"
+      : segments.length === 1
+        ? `app.${segments[0]}`
+        : segments.join(".");
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (!EVENT_NAME_PATTERN.test(value) || value !== normalized)
+  ) {
+    throw new Error(
+      `Invalid log event name "${value}"; use lowercase dot-delimited namespaces`,
+    );
+  }
+  return normalized;
+}
+
 function isSemanticKey(key: string): boolean {
   return /^[a-z][a-z0-9_]*(\.[a-z0-9_][a-z0-9_-]*)+$/.test(key);
 }
@@ -351,6 +400,9 @@ function normalizeAttributeKey(key: string): string {
   const mapped = LEGACY_KEY_MAP[key];
   if (mapped) {
     return mapped;
+  }
+  if (key === "trace_id" || key === "span_id" || key === "trace_flags") {
+    return key;
   }
 
   if (isSemanticKey(key)) {
@@ -496,7 +548,7 @@ function toEmittedLogRecord(record: LogTapeRecord): EmittedLogRecord {
       )
       .join("");
   const eventName =
-    toOptionalString(attributes["event.name"]) ?? "log_record_emitted";
+    toOptionalString(attributes["event.name"]) ?? "log.record.emitted";
 
   return {
     level: fromLogTapeLevel(record.level),
@@ -681,7 +733,7 @@ function formatConsoleValue(value: AttributeValue): string {
 }
 
 function shouldShowConsoleDestinationName(eventName: string): boolean {
-  return /^(app_home_|oauth_|queue_|slash_command_|slack_|webhook_)/.test(
+  return /^(app_home|oauth|queue|slash_command|slack|webhook)\./.test(
     eventName,
   );
 }
@@ -692,11 +744,11 @@ function shouldShowConsoleModel(level: LogLevel, eventName: string): boolean {
   }
 
   return (
-    eventName.startsWith("ai_") ||
-    eventName.startsWith("assistant_") ||
-    eventName === "agent_turn_started" ||
-    eventName === "agent_turn_completed" ||
-    eventName === "agent_turn_provider_error"
+    eventName.startsWith("ai.") ||
+    eventName.startsWith("assistant.") ||
+    eventName === "agent.turn.started" ||
+    eventName === "agent.turn.completed" ||
+    eventName === "agent.turn.provider_error"
   );
 }
 
@@ -738,7 +790,7 @@ function shouldHideConsoleAttribute(
   }
   if (
     key === "gen_ai.provider.name" &&
-    eventName.startsWith("agent_tool_call_") &&
+    eventName.startsWith("agent.tool_call.") &&
     level !== "warn" &&
     level !== "error"
   ) {
@@ -746,7 +798,7 @@ function shouldHideConsoleAttribute(
   }
   if (
     key === "gen_ai.operation.name" &&
-    eventName.startsWith("agent_tool_call_")
+    eventName.startsWith("agent.tool_call.")
   ) {
     return true;
   }
@@ -827,9 +879,9 @@ function booleanConsoleToken(
 
 function shouldShowPrettyCorrelation(eventName: string): boolean {
   return !(
-    eventName === "plugin_loaded" ||
-    eventName === "startup_discovery_summary" ||
-    eventName.endsWith("_loaded")
+    eventName === "plugin.loaded" ||
+    eventName === "startup.discovery.completed" ||
+    eventName.endsWith(".loaded")
   );
 }
 
@@ -845,7 +897,7 @@ function getPrettyConsoleSummaryTokens(
   );
   pushPrettyConsoleToken(
     tokens,
-    eventName.startsWith("plugin_heartbeat")
+    eventName.startsWith("plugin.heartbeat.")
       ? stringConsoleToken("plugin", attributes["app.plugin.name"])
       : (toOptionalString(attributes["app.plugin.name"]) ?? undefined),
   );
@@ -901,7 +953,7 @@ function getPrettyConsoleSummaryTokens(
   }
 
   const filePath = toOptionalString(attributes["file.path"]);
-  if (filePath && eventName.endsWith("_loaded")) {
+  if (filePath && eventName.endsWith(".loaded")) {
     pushPrettyConsoleToken(tokens, toRelativeConsolePath(filePath));
   }
 
@@ -1080,7 +1132,7 @@ function emitRecord(
 ): void {
   ensureLoggerBackend();
   const traceAttributes = getTraceCorrelationAttributes();
-  const normalizedEventName = toSnakeCase(eventName);
+  const normalizedEventName = normalizeEventName(eventName);
   const message = body ? redactSecrets(body) : normalizedEventName;
   const source = getLogSource([...ROOT_LOGGER_CATEGORY, ...category]);
   const contextAttributes = ownsLogTapeBackend
@@ -1133,6 +1185,12 @@ function emit(
   emitRecord([], level, eventName, attrs, body);
 }
 
+/**
+ * Low-level adapter logger.
+ *
+ * Application runtime code should use the severity helpers below. This surface
+ * exists for adapters that must preserve an external free-form body.
+ */
 export const log = {
   debug(
     eventName: string,
@@ -1167,7 +1225,6 @@ export const log = {
     error: unknown,
     attrs: Record<string, unknown> = {},
     body?: string,
-    context?: LogContext,
   ): string | undefined {
     const normalizedError =
       error instanceof Error ? error : new Error(String(error));
@@ -1181,7 +1238,7 @@ export const log = {
         "exception.message": normalizedError.message,
         "exception.stacktrace": normalizedError.stack,
       },
-      body ?? normalizedError.message,
+      body,
     );
 
     let eventId: string | undefined;
@@ -1201,10 +1258,7 @@ export const log = {
       typeof sentryCaptureException === "function"
     ) {
       sentryWithScope((scope) => {
-        setSentryScopeContext(scope, {
-          ...getBoundLogContext(),
-          ...context,
-        });
+        setSentryScopeContext(scope, getBoundLogContext());
         for (const [key, value] of Object.entries(
           mergeAttributes(getBoundLogAttributes(), attrs),
         )) {
@@ -1216,12 +1270,7 @@ export const log = {
     }
 
     if (typeof sentryCaptureException === "function") {
-      setSentryUser(
-        sentryUserIdentityFromContext({
-          ...getBoundLogContext(),
-          ...context,
-        }),
-      );
+      setSentryUser(sentryUserIdentityFromContext(getBoundLogContext()));
       eventId = sentryCaptureException(normalizedError);
     }
     return eventId;
@@ -1303,10 +1352,10 @@ function createChatSdkLoggerImpl(
       category,
       level === "warn" ? "warn" : level,
       level === "error"
-        ? "chat_sdk_error"
+        ? "chat_sdk.log.error"
         : level === "warn"
-          ? "chat_sdk_warning"
-          : "chat_sdk_log",
+          ? "chat_sdk.log.warn"
+          : "chat_sdk.log",
       args.length > 0
         ? {
             "app.log.args": args.length === 1 ? args[0] : args,
@@ -1340,10 +1389,13 @@ export function createChatSdkLogger(): ChatSdkLogger {
   return createChatSdkLoggerImpl(["chat-sdk"], resolveChatSdkLogLevel());
 }
 
-export function withLogContext<T>(
-  context: LogContext,
-  callback: () => Promise<T>,
-): Promise<T> {
+/**
+ * Run one operation with inherited correlation context.
+ *
+ * Call this at execution boundaries after reconstructing authoritative
+ * context. Nested application logs should not receive the same context again.
+ */
+export function withLogContext<T>(context: LogContext, callback: () => T): T {
   return runWithScopedLogContext(
     context,
     contextToAttributes(context),
@@ -1395,15 +1447,6 @@ export function createLogContextFromRequest(
     urlFull: url.toString(),
     userAgent: request.headers.get("user-agent") ?? undefined,
   };
-}
-
-export function toSpanAttributes(context: LogContext): Record<string, string> {
-  const attrs = contextToAttributes(context);
-  return Object.fromEntries(
-    Object.entries(attrs).filter(
-      ([, value]) => typeof value === "string" && value.length > 0,
-    ),
-  ) as Record<string, string>;
 }
 
 /** Attach filterable non-user context tags to Sentry. */
@@ -1526,69 +1569,68 @@ function setAttributesOnSpan(
   }
 }
 
-/** Capture an error to Sentry and emit an error log record. */
-export function captureException(
-  error: unknown,
-  context: LogContext = {},
-): void {
+/**
+ * Capture an error using context already bound to the current operation.
+ */
+export function captureException(error: unknown): void {
   const normalizedError =
     error instanceof Error ? error : new Error(String(error));
-  log.exception(
-    "exception_captured",
-    normalizedError,
-    toSpanAttributes(context),
-    "Captured exception",
-    context,
-  );
+  log.exception("exception.captured", normalizedError);
 }
 
-/** Log an info-level structured event. */
+/**
+ * Emit an informational event with occurrence-specific attributes.
+ *
+ * Bind correlation context at the owning operation boundary instead of
+ * passing it here.
+ */
 export function logInfo(
   eventName: string,
-  context: LogContext = {},
   attributes: Record<string, unknown> = {},
-  body?: string,
 ): void {
-  log.info(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+  log.info(eventName, attributes);
 }
 
-/** Log a warning-level structured event. */
+/**
+ * Emit a warning event with occurrence-specific attributes.
+ *
+ * Bind correlation context at the owning operation boundary instead of
+ * passing it here.
+ */
 export function logWarn(
   eventName: string,
-  context: LogContext = {},
   attributes: Record<string, unknown> = {},
-  body?: string,
 ): void {
-  log.warn(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+  log.warn(eventName, attributes);
 }
 
-/** Log an error-level structured event. */
+/**
+ * Emit an error event without capturing an exception.
+ *
+ * Use `logException` when an actual exception instance owns the failure.
+ */
 export function logError(
   eventName: string,
-  context: LogContext = {},
   attributes: Record<string, unknown> = {},
-  body?: string,
 ): void {
-  log.error(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+  log.error(eventName, attributes);
 }
 
-/** Log an error with exception capture; returns the Sentry event ID if available. */
+/**
+ * Emit an exception event and capture the exception with bound context.
+ *
+ * Exception event names should end in `.exception` when they describe a
+ * generic operation exception. Existing domain failure events may retain a
+ * `.failed` outcome when the event also covers non-exception failures.
+ */
 export function logException(
   error: unknown,
   eventName: string,
-  context: LogContext = {},
   attributes: Record<string, unknown> = {},
-  body?: string,
 ): string | undefined {
   const normalizedError =
     error instanceof Error ? error : new Error(String(error));
-  return log.exception(
-    eventName,
-    normalizedError,
-    { ...toSpanAttributes(context), ...attributes },
-    body,
-    context,
-  );
+  return log.exception(eventName, normalizedError, attributes);
 }
 
 /** Add context to the current operation and Sentry scope. */

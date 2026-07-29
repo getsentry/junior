@@ -284,26 +284,21 @@ function logSandboxEgressUpstreamRequest(input: {
     return;
   }
 
-  logInfo(
-    "sandbox_egress_upstream_request",
-    {},
-    {
-      ...egressAttributes({
-        egressId: input.egressId,
-        grantAccess: input.grantAccess,
-        grantName: input.grantName,
-        grantReason: input.grantReason,
-        host: input.upstreamUrl.hostname,
-        method: input.request.method,
-        path: input.upstreamUrl.pathname,
-        provider: input.provider,
-        status: input.upstream.status,
-      }),
-      ...routingAttributes(input.request, input.upstreamUrl),
-      "app.sandbox.egress.upstream_ok": input.upstream.ok,
-    },
-    `Sandbox egress ${input.request.method} ${input.upstreamUrl.hostname}${displayedUpstreamPath(input.upstreamUrl)} -> ${input.upstream.status}`,
-  );
+  logInfo("sandbox.egress.upstream.requested", {
+    ...egressAttributes({
+      egressId: input.egressId,
+      grantAccess: input.grantAccess,
+      grantName: input.grantName,
+      grantReason: input.grantReason,
+      host: input.upstreamUrl.hostname,
+      method: input.request.method,
+      path: input.upstreamUrl.pathname,
+      provider: input.provider,
+      status: input.upstream.status,
+    }),
+    ...routingAttributes(input.request, input.upstreamUrl),
+    "app.sandbox.egress.upstream_ok": input.upstream.ok,
+  });
 }
 
 async function requestBodyBytes(
@@ -607,22 +602,17 @@ export async function executeCredentialedEgressRequest(input: {
     });
   } catch (error) {
     if (isEgressPolicyDenied(error)) {
-      logWarn(
-        "sandbox_egress_policy_denied",
-        {},
-        {
-          ...egressAttributes({
-            egressId: activeEgressId,
-            host: upstreamUrl.hostname,
-            method: request.method,
-            path: upstreamUrl.pathname,
-            provider,
-            status: 403,
-          }),
-          ...routingAttributes(request, upstreamUrl),
-        },
-        error.message,
-      );
+      logWarn("sandbox.egress.policy.denied", {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 403,
+        }),
+        ...routingAttributes(request, upstreamUrl),
+      });
       return policyDeniedResponse(error);
     }
     throw error;
@@ -656,9 +646,8 @@ export async function executeCredentialedEgressRequest(input: {
       const isAuthRequired = error.kind === "auth_required";
       logWarn(
         isAuthRequired
-          ? "sandbox_egress_credential_needed"
-          : "sandbox_egress_credential_unavailable",
-        {},
+          ? "sandbox.egress.credential.needed"
+          : "sandbox.egress.credential.unavailable",
         {
           ...egressAttributes({
             egressId: activeEgressId,
@@ -673,9 +662,6 @@ export async function executeCredentialedEgressRequest(input: {
           }),
           ...routingAttributes(request, upstreamUrl),
         },
-        isAuthRequired
-          ? "Sandbox egress grant needs user authorization before issuing a credential lease"
-          : "Sandbox egress credential lease is unavailable for selected grant",
       );
       return authRequiredResponse({
         provider: error.provider,
@@ -698,17 +684,12 @@ export async function executeCredentialedEgressRequest(input: {
     });
 
   if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
-    logWarn(
-      "sandbox_egress_transform_missing",
-      {},
-      {
-        ...attributes(403),
-        "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
-          (transform) => transform.domain,
-        ),
-      },
-      "Sandbox egress credential lease does not cover forwarded host",
-    );
+    logWarn("sandbox.egress.transform.missing", {
+      ...attributes(403),
+      "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
+        (transform) => transform.domain,
+      ),
+    });
     return Response.json(
       { error: "Credential lease does not cover forwarded host" },
       { status: 403 },
@@ -765,14 +746,9 @@ export async function executeCredentialedEgressRequest(input: {
         upstream,
         upstreamUrl,
       });
-      logWarn(
-        "sandbox_egress_upstream_permission_classified",
-        {},
-        {
-          ...attributes(upstream.status, upstream),
-        },
-        "Sandbox egress plugin classified upstream response as permission denied",
-      );
+      logWarn("sandbox.egress.upstream_permission.classified", {
+        ...attributes(upstream.status, upstream),
+      });
     }
   } catch (error) {
     if (!isEgressAuthRequired(error)) {
@@ -786,14 +762,9 @@ export async function executeCredentialedEgressRequest(input: {
       authorization: error.authorization ?? lease.authorization,
       message: error.message,
     });
-    logWarn(
-      "sandbox_egress_upstream_auth_required_classified",
-      {},
-      {
-        ...attributes(upstream.status, upstream),
-      },
-      "Sandbox egress plugin classified upstream response as auth required",
-    );
+    logWarn("sandbox.egress.upstream_auth_requirement.classified", {
+      ...attributes(upstream.status, upstream),
+    });
     await upstream.body?.cancel().catch(() => undefined);
     return authRequiredResponse({
       provider,
@@ -812,36 +783,24 @@ export async function executeCredentialedEgressRequest(input: {
     upstreamUrl,
   });
   if (upstream.status >= 400) {
-    logWarn(
-      "sandbox_egress_upstream_error_response",
-      {},
-      {
-        ...attributes(upstream.status, upstream),
-        "error.type": `http_${upstream.status}`,
-      },
-      `Sandbox egress upstream returned HTTP ${upstream.status}`,
-    );
+    logWarn("sandbox.egress.upstream_response.failed", {
+      ...attributes(upstream.status, upstream),
+      "error.type": `http_${upstream.status}`,
+    });
   }
   if (
     upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
     upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS
   ) {
-    logWarn(
-      "sandbox_egress_upstream_auth_rejected",
-      {},
-      {
-        ...attributes(upstream.status, upstream),
-        ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
-          ? {
-              "app.sandbox.egress.www_authenticate":
-                upstream.headers.get("www-authenticate") ?? undefined,
-            }
-          : {}),
-      },
-      upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
-        ? "Sandbox egress upstream auth rejected injected credential"
-        : "Sandbox egress upstream permission denied",
-    );
+    logWarn("sandbox.egress.upstream_auth.rejected", {
+      ...attributes(upstream.status, upstream),
+      ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
+        ? {
+            "app.sandbox.egress.www_authenticate":
+              upstream.headers.get("www-authenticate") ?? undefined,
+          }
+        : {}),
+    });
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordAuthRequired({

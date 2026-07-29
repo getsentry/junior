@@ -1,6 +1,5 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import type { LogContext } from "@/chat/logging";
 import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
@@ -131,7 +130,6 @@ export interface TurnResultInput {
   durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
-  spanContext: LogContext;
   usage?: AgentTurnUsage;
   executionProfile: TurnRoute;
   assistantUserName?: string;
@@ -192,10 +190,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     sandboxRef,
     durationMs,
     shouldTrace,
-    spanContext,
     usage,
     executionProfile,
-    assistantUserName,
     modelId,
   } = input;
 
@@ -226,11 +222,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       normalizeToolNameFromResult(result) === "addReaction",
   );
   const completedWithoutTerminalText = noReplyRequested;
-  const resultLogContext = {
-    ...spanContext,
-    assistantUserName,
-    modelId,
-  };
   const lastAssistant = terminalAssistantMessages.at(-1) as
     | { stopReason?: unknown; errorMessage?: unknown }
     | undefined;
@@ -246,7 +237,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   if (exactNoReplyMarker) {
     const markerCategory = reactionPerformed ? "reaction" : "none";
-    const markerContext = resultLogContext;
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_category": markerCategory,
@@ -254,36 +244,21 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     };
 
     if (!isProviderError) {
-      logInfo(
-        "ai_no_reply_marker_accepted",
-        markerContext,
-        markerAttributes,
-        "No-reply marker suppressed visible thread text",
-      );
+      logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
   } else if (mixedNoReplyMarker) {
-    logWarn(
-      "ai_no_reply_marker_mixed_text",
-      resultLogContext,
-      {
-        "app.ai.no_reply_marker": true,
-        "app.ai.no_reply_marker_mode": "mixed",
-      },
-      "No-reply marker appeared with visible assistant text",
-    );
+    logWarn("ai.no_reply_marker.mixed_text", {
+      "app.ai.no_reply_marker": true,
+      "app.ai.no_reply_marker_mode": "mixed",
+    });
   }
 
   if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
-    logWarn(
-      "ai_model_response_empty",
-      resultLogContext,
-      {
-        "app.ai.tool_results": toolResults.length,
-        "app.ai.tool_error_results": toolErrorCount,
-        "app.ai.generated_files": input.generatedFileCount,
-      },
-      "Model returned empty text response",
-    );
+    logWarn("ai.model_response.empty", {
+      "app.ai.tool_results": toolResults.length,
+      "app.ai.tool_error_results": toolErrorCount,
+      "app.ai.generated_files": input.generatedFileCount,
+    });
   }
 
   const usedPrimaryText = Boolean(rawPrimaryText);
@@ -303,21 +278,14 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     : outcome;
 
   if (shouldTrace) {
-    logInfo(
-      "agent_message_out",
-      spanContext,
-      {
-        "app.message.kind": "assistant_outbound",
-        "app.message.length": primaryText.length,
-        "app.message.output": summarizeMessageText(primaryText),
-        "app.ai.outcome": resolvedOutcome,
-        "app.ai.assistant_messages": assistantMessages.length,
-        ...(stopReason
-          ? { "gen_ai.response.finish_reasons": [stopReason] }
-          : {}),
-      },
-      "Agent message sent",
-    );
+    logInfo("agent.message.generated", {
+      "app.message.kind": "assistant_outbound",
+      "app.message.length": primaryText.length,
+      "app.message.output": summarizeMessageText(primaryText),
+      "app.ai.outcome": resolvedOutcome,
+      "app.ai.assistant_messages": assistantMessages.length,
+      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : {}),
+    });
   }
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {

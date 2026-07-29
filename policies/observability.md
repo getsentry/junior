@@ -15,11 +15,47 @@ contract and should not drive mocks or assertions outside instrumentation tests.
 
 - Use OpenTelemetry semantic attributes when one exists.
 - Use `app.*` for Junior-owned attributes.
+- Name events `<domain>.<operation>[.<suboperation>].<outcome>`, using lowercase
+  dot-delimited namespaces and snake case only within a namespace component.
+- Use singular count nouns for domains and operations (`message`, `tool_call`,
+  `zebra`). Use a plural only when one event represents a collection or batch,
+  or when preserving a canonical external term such as `embeddings`.
+- The final component says what was observed:
+  - Use a past participle for a completed transition: `started`, `completed`,
+    `failed`, `accepted`, `rejected`, `skipped`, `requeued`, `yielded`.
+  - Use a present participle only for work currently underway: `retrying`.
+  - Use an adjective or established state term for an observation rather than
+    a transition: `busy`, `empty`, `missing`, `invalid`, `provider_error`.
+- Do not end event names with imperative/base verbs (`retry`, `start`, `unlink`)
+  or directional shorthand (`in`, `out`). Event names describe observations,
+  not commands.
+- Event names identify one stable event structure. Never include identifiers,
+  provider names, user-controlled values, or other occurrence-specific data in
+  an event name; record them as attributes.
+- Prefer consistent outcomes such as `started`, `completed`, `failed`,
+  `exception`, `timed_out`, `retrying`, `exhausted`, `rejected`, `denied`, and
+  `skipped`. Use `.exception` for an actual captured exception and `.failed`
+  for an unsuccessful domain outcome that may not be exceptional.
 - Keep operation names stable and low-cardinality.
 - Record correlation identifiers such as conversation, run, task, plugin,
   provider, and sandbox session IDs when they are relevant and safe.
 - Do not encode identifiers or user-controlled values into span operation names.
 - Set error status and capture exceptions at the boundary that owns the failure.
+
+## Emission
+
+- Runtime code emits a stable event name plus occurrence-specific attributes.
+  Do not duplicate the event with a human-readable message.
+- Bind request, conversation, actor, destination, and run correlation once at
+  the owning operation boundary. Nested logs inherit that context and the
+  active trace/span identifiers.
+- Async log context is not durable runtime context. Queues, callbacks, resumed
+  work, and other durable boundaries must carry authoritative context
+  explicitly and bind it again when execution starts.
+- Free-form messages received from providers, libraries, or plugins may be
+  retained as safe attributes by their adapter; they are not event names.
+- Backend adapters own compatibility projections such as Sentry's
+  `event.name`. The provider-neutral record owns the canonical event name.
 
 ## Ownership
 
