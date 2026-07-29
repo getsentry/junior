@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createFauxCore,
+  fauxAssistantMessage,
+  fauxText,
+  fauxThinking,
+} from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
+import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
@@ -8,9 +15,9 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { instructionActors } from "@/chat/conversations/provenance";
 import {
-  commitMessages,
   loadProjection,
   loadConversationProjection,
+  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import { getConversationEventStore } from "@/chat/db";
@@ -691,11 +698,10 @@ describe("bot handlers (integration)", () => {
     );
   });
 
-  it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
+  it("commits real agent history before the Slack reply when later state persistence fails", async () => {
     const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
     const sessionId = "turn_msg-post-delivery";
     const finalText = "Delivered before the state store failed.";
-    const promptMessages = turnPiMessages("please answer");
     const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -703,66 +709,25 @@ describe("bot handlers (integration)", () => {
           turnLifecycle,
           agentRunner: {
             run: async (request) => {
-              const replyMessage = {
-                role: "assistant" as const,
-                content: [
-                  {
-                    type: "thinking" as const,
-                    thinking: "Check the final answer.",
-                  },
-                  { type: "text" as const, text: finalText },
-                ],
-                api: "responses" as const,
-                provider: "openai",
-                model: "gpt-5.3",
-                usage: {
-                  input: 1,
-                  output: 1,
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                  totalTokens: 2,
-                  cost: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    total: 0,
-                  },
-                },
-                stopReason: "stop" as const,
-                timestamp: 2,
-              };
-              const piMessages = [...promptMessages, replyMessage];
-              await upsertAgentTurnSessionRecord({
+              await recordTurnRoute({
+                conversationId,
+                turnId: request.turnId,
+                modelProfile: "standard",
                 modelId: "test/model",
-                conversationId,
-                sessionId,
-                sliceId: 1,
-                state: "running",
-                piMessages: promptMessages,
+                reasoningLevel: "medium",
+                source: "configured",
               });
-              await commitMessages({
-                conversationId,
-                messages: promptMessages,
+              const faux = createFauxCore({
+                api: "test",
+                provider: "test",
               });
-              await deliverAssistantMessagesForTest(
-                request,
-                [{ text: finalText }],
-                piMessages,
-              );
-              return completedAgentRun({
-                text: finalText,
-                piMessages,
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "fake-agent-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
+              faux.setResponses([
+                fauxAssistantMessage([
+                  fauxThinking("Check the final answer."),
+                  fauxText(finalText),
+                ]),
+              ]);
+              return executeAgentRun(request, faux.stream);
             },
           },
         },
@@ -848,8 +813,18 @@ describe("bot handlers (integration)", () => {
             event.data.type === "assistant_message" ||
             (event.data.type === "message" && event.data.role === "assistant"),
         )
-        .map((event) => event.data.type),
-    ).toEqual(["assistant_message", "message"]);
+        .map((event) => event.data),
+    ).toMatchObject([
+      {
+        type: "assistant_message",
+        parts: [{ type: "reasoning", text: "Check the final answer." }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        text: finalText,
+      },
+    ]);
     expect(turnLifecycle.fail).toHaveBeenCalledWith(
       expect.objectContaining({
         eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
