@@ -17,7 +17,6 @@ import {
 } from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { slackOutputPolicy } from "@/chat/slack/output";
 import {
   SANDBOX_DATA_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -424,13 +423,11 @@ function buildOutputSection(platform: PromptPlatform): string {
     ].join("\n");
   }
 
-  const openTag = `<output format="slack-markdown" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
   return [
-    openTag,
+    `<output format="slack-markdown">`,
+    "- Default to the shortest complete reply—usually 1–5 sentences and under 800 characters. Include only the outcome, decisive evidence, and any blocker or required next action. If useful detail would exceed that, put it in a Slack canvas and reply with the link. An explicit user request for detail overrides this target.",
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
-    "- Default to one compact thread reply containing the conclusion and only decisive evidence or action. Do not split an explainer across multiple Slack messages.",
-    "- Put plans, research, and other long or multi-section explainers in a Slack canvas; reply with one or two short sentences plus the link, without recapping the canvas.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");

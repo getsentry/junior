@@ -19,6 +19,29 @@ describe("prompt builders", () => {
     expect(buildSystemPrompt({ source })).toBe(systemPrompt);
   });
 
+  it("puts concise Slack output guidance last without exposing delivery ceilings", () => {
+    const systemPrompt = buildSystemPrompt({
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        type: "priv",
+      }),
+    });
+
+    const outputIndex = systemPrompt.indexOf(
+      '<output format="slack-markdown">',
+    );
+    expect(outputIndex).toBeGreaterThan(
+      systemPrompt.indexOf("</failure-handling>"),
+    );
+    expect(systemPrompt.slice(outputIndex)).toContain(
+      "Default to the shortest complete reply—usually 1–5 sentences and under 800 characters.",
+    );
+    expect(systemPrompt).not.toContain("max_inline_chars");
+    expect(systemPrompt).not.toContain("max_inline_lines");
+    expect(systemPrompt.endsWith("</output>")).toBe(true);
+  });
+
   it("tells Slack agents to use the no-reply marker for silent completion", () => {
     const systemPrompt = buildSystemPrompt({
       source: createSlackSource({

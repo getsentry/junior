@@ -70,7 +70,11 @@ describeEval("Conversation Routing", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
+    const replies = visibleThreadReplies(result.session);
+    expect(replies).toHaveLength(1);
+    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
+      800,
+    );
   });
 
   it("when asked to post in another named channel, explain the limitation instead", async ({

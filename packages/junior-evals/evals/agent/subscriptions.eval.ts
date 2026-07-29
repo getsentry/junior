@@ -6,6 +6,7 @@ import {
   resourceEventNotification,
   rubric,
   slackEvals,
+  visibleAssistantText,
   visibleThreadReplies,
 } from "../../src/helpers";
 
@@ -207,6 +208,10 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     });
 
     expect(toolCalls(result.session)).toHaveLength(0);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
+      800,
+    );
   });
 
   it("when a subscribed event does not serve the intent, stay silent", async ({

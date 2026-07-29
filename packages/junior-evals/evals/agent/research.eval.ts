@@ -1,6 +1,12 @@
 import { expect } from "vitest";
 import { assistantMessages, describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import {
+  mention,
+  rubric,
+  slackEvals,
+  visibleAssistantText,
+  visibleThreadReplies,
+} from "../../src/helpers";
 
 type EvalSession = Parameters<typeof assistantMessages>[0];
 
@@ -38,6 +44,10 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
     });
 
     expect(canvasMessages(result.session)).toHaveLength(0);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
+      800,
+    );
   });
 
   it("when a long-form reference is requested as reusable material, create a canvas and keep the thread reply brief", async ({
