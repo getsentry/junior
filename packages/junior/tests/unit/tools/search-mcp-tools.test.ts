@@ -102,7 +102,17 @@ describe("searchMcpTools", () => {
       input_schema: {
         properties: {
           title: { type: "string", description: "Issue title" },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Issue labels",
+          },
+          metadata: {
+            type: "object",
+            description: "Issue metadata",
+          },
         },
+        required: ["title"],
       },
       output_schema: {
         properties: { id: { type: "string" } },

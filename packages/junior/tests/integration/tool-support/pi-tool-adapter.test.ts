@@ -72,6 +72,10 @@ describe("Pi tool adapter integration", () => {
                     .string()
                     .min(1)
                     .describe("Customer identifier to inspect."),
+                  note: z
+                    .string()
+                    .optional()
+                    .describe("Optional account note."),
                 }),
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
@@ -136,7 +140,21 @@ describe("Pi tool adapter integration", () => {
           {
             tool_name: "agentDemo_lookupCustomer",
             source: "agent-demo",
-            input_schema_summary: "customerId (required)",
+            input_schema: {
+              properties: {
+                customerId: {
+                  description: "Customer identifier to inspect.",
+                  minLength: 1,
+                  type: "string",
+                },
+                note: {
+                  description: "Optional account note.",
+                  type: "string",
+                },
+              },
+              required: ["customerId"],
+              type: "object",
+            },
           },
         ],
       });

@@ -1,5 +1,6 @@
 import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
 
+/** Agent-visible MCP tool descriptor with the provider schema as its argument contract. */
 export interface ExposedToolSummary {
   tool_name: string;
   mcp_tool_name: string;
