@@ -282,6 +282,43 @@ describe("completeText", () => {
     );
   });
 
+  it("keeps a successful object when cost estimation fails", async () => {
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+        totalTokens: 13,
+      },
+    });
+    mocks.calculateCost.mockImplementationOnce(() => {
+      throw new Error("pricing unavailable");
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+    const result = await completeObject({
+      modelId: "openai/gpt-4o-mini",
+      schema: z.object({ ok: z.boolean() }),
+      prompt: "return json",
+    });
+
+    expect(result).toEqual({ object: { ok: true } });
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      "ai.completion.cost_estimate.failed",
+      {
+        "exception.message": "pricing unavailable",
+        "gen_ai.request.model": "openai/gpt-4o-mini",
+      },
+    );
+  });
+
   it("rethrows retryable object provider failures without capturing", async () => {
     mocks.generateObject.mockRejectedValue(
       new Error("Anthropic stream ended before message_stop"),

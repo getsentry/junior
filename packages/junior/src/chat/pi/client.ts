@@ -321,6 +321,22 @@ function objectCompletionCost(
   }).total;
 }
 
+function bestEffortObjectCompletionCost(
+  modelId: string,
+  usage: LanguageModelUsage,
+): number | undefined {
+  try {
+    return objectCompletionCost(modelId, usage);
+  } catch (error) {
+    logWarn("ai.completion.cost_estimate.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "gen_ai.request.model": modelId,
+    });
+    return undefined;
+  }
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -394,7 +410,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : {}),
       },
     );
-    const costUsd = objectCompletionCost(params.modelId, result.usage);
+    const costUsd = bestEffortObjectCompletionCost(
+      params.modelId,
+      result.usage,
+    );
     return {
       object: result.object as z.infer<TSchema>,
       ...(costUsd !== undefined ? { costUsd } : {}),
