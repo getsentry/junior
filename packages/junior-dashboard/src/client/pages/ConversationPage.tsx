@@ -82,7 +82,7 @@ export function ConversationPage(props: {
               Conversation
             </div>
             <div className="min-w-0">
-              <h2 className="m-0 font-display text-2xl font-medium leading-tight tracking-[-0.03em] md:text-[1.75rem]">
+              <h2 className="m-0 truncate font-display text-2xl font-medium leading-tight tracking-[-0.03em] md:text-[1.75rem]">
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
