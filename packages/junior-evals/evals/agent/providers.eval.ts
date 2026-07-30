@@ -82,4 +82,43 @@ describeEval("Skill Providers", slackEvals, (it) => {
       ]),
     );
   });
+
+  it("when an MCP tool has mutually exclusive filters, use only the provided filter", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        plugin_dirs: ["fixtures/plugins"],
+      },
+      initialEvents: [
+        mention(
+          "/eval-directory Find alice@example.com in the directory and tell me whether the account is active.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The answer identifies Alice Example or alice@example.com and says the account is active.",
+          "The lookup succeeds without asking the user for another identifier.",
+        ],
+        fail: [
+          "Do not say the lookup failed because multiple filters were provided.",
+          "Do not ask for a user id, name query, or other information unnecessary for the email lookup.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "callMcpTool",
+          arguments: expect.objectContaining({
+            tool_name: "mcp__eval-mcp__find-person",
+            arguments: {
+              email: "alice@example.com",
+            },
+          }),
+        }),
+      ]),
+    );
+  });
 });

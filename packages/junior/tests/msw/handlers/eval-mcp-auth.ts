@@ -114,6 +114,30 @@ export const evalMcpAuthHandlers = [
               },
             },
             {
+              name: "find-person",
+              title: "Find Person",
+              description:
+                "Find one person using exactly one of user_id, email, or query.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  user_id: {
+                    type: "string",
+                    description: "Exact user id.",
+                  },
+                  email: {
+                    type: "string",
+                    description: "Exact email address.",
+                  },
+                  query: {
+                    type: "string",
+                    description: "Free-text name lookup.",
+                  },
+                },
+                additionalProperties: false,
+              },
+            },
+            {
               name: "create-watchable-pull-request",
               title: "Create Watchable Pull Request",
               description:
@@ -204,6 +228,46 @@ export const evalMcpAuthHandlers = [
                       "state.closed_unmerged",
                     ],
                   },
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "find-person") {
+          const suppliedFilters = ["user_id", "email", "query"].filter(
+            (field) => typeof args?.[field] === "string",
+          );
+          if (suppliedFilters.length !== 1) {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: `Input validation error: find-person expects exactly one filter; received ${suppliedFilters.join(", ") || "none"}.`,
+                },
+              ],
+              isError: true,
+            });
+          }
+          if (args?.email !== "alice@example.com") {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: "No matching person found.",
+                },
+              ],
+              isError: false,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  name: "Alice Example",
+                  email: "alice@example.com",
+                  account_status: "active",
                 }),
               },
             ],
