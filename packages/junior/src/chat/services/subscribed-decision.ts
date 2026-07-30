@@ -43,6 +43,7 @@ interface TranscriptMessage {
 
 interface RouterSignals {
   assistantWasLastSpeaker: boolean;
+  assistantLatestMessageIsOutstandingRequest: boolean;
   currentMessageHasDirectedFollowUpCue: boolean;
   currentMessageHasAttachments: boolean;
   currentMessageIsTerseClarification: boolean;
@@ -103,6 +104,7 @@ function escapeRegExp(value: string): string {
 function containsAssistantInvocation(
   text: string,
   botUserName: string,
+  botUserId?: string,
 ): boolean {
   const escapedUserName = escapeRegExp(botUserName);
   const plainNameMentionRe = new RegExp(`(^|\\s)@${escapedUserName}\\b`, "i");
@@ -111,23 +113,43 @@ function containsAssistantInvocation(
     "i",
   );
 
-  return plainNameMentionRe.test(text) || labeledEntityMentionRe.test(text);
+  if (plainNameMentionRe.test(text) || labeledEntityMentionRe.test(text)) {
+    return true;
+  }
+
+  if (!botUserId) {
+    return false;
+  }
+
+  const escapedUserId = escapeRegExp(botUserId);
+  const plainIdMentionRe = new RegExp(`(^|\\s)@${escapedUserId}\\b`, "i");
+  const slackIdMentionRe = new RegExp(`<@${escapedUserId}(?:\\|[^>]+)?>`, "i");
+  return plainIdMentionRe.test(text) || slackIdMentionRe.test(text);
 }
 
 function detectLeadingOtherPartyAddress(
   rawText: string,
   text: string,
   botUserName: string,
+  botUserId?: string,
 ): string | undefined {
   if (
-    containsAssistantInvocation(rawText, botUserName) ||
-    containsAssistantInvocation(text, botUserName)
+    containsAssistantInvocation(rawText, botUserName, botUserId) ||
+    containsAssistantInvocation(text, botUserName, botUserId)
   ) {
     return undefined;
   }
 
   const leadingSlackMention = rawText.match(LEADING_SLACK_MENTION_RE);
   if (leadingSlackMention) {
+    const mentionedUserId = leadingSlackMention[1]?.trim();
+    if (
+      botUserId &&
+      mentionedUserId &&
+      mentionedUserId.toUpperCase() === botUserId.toUpperCase()
+    ) {
+      return undefined;
+    }
     const label = leadingSlackMention[2]?.trim();
     return label ? `slack_mention:${label}` : "slack_mention";
   }
@@ -140,12 +162,26 @@ function detectLeadingOtherPartyAddress(
   const directedName = leadingNamedMention[1]?.trim();
   if (
     !directedName ||
-    directedName.toLowerCase() === botUserName.toLowerCase()
+    directedName.toLowerCase() === botUserName.toLowerCase() ||
+    (botUserId && directedName.toUpperCase() === botUserId.toUpperCase())
   ) {
     return undefined;
   }
 
   return `named_mention:${directedName}`;
+}
+
+function looksLikeOutstandingRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.includes("?")) {
+    return true;
+  }
+  return /\b(?:can you|could you|would you|please|paste|send|share|provide|need you to|let me know|tell me|give me)\b/i.test(
+    trimmed,
+  );
 }
 
 function isThreadOptOutInstruction(rawText: string, text: string): boolean {
@@ -241,6 +277,9 @@ function buildRouterSignals(input: SubscribedDecisionInput): RouterSignals {
 
   return {
     assistantWasLastSpeaker: latestPriorMessage?.role === "assistant",
+    assistantLatestMessageIsOutstandingRequest: looksLikeOutstandingRequest(
+      latestPriorAssistantMessage?.text || "",
+    ),
     currentMessageHasDirectedFollowUpCue: hasDirectedFollowUpCue(input.text),
     currentMessageHasAttachments: Boolean(input.hasAttachments),
     currentMessageIsTerseClarification: isTerseClarification(input.text),
@@ -265,6 +304,9 @@ function buildRouterPrompt(rawText: string, signals: RouterSignals): string {
     `<latest-message>${escapeXml(rawText.trim() || "[attachment-only message]")}</latest-message>`,
     "<routing-signals>",
     `assistant_was_last_speaker=${signals.assistantWasLastSpeaker ? "true" : "false"}`,
+    `assistant_latest_message_is_outstanding_request=${
+      signals.assistantLatestMessageIsOutstandingRequest ? "true" : "false"
+    }`,
     `human_messages_since_last_assistant=${
       signals.humanMessagesSinceLastAssistant ?? "none"
     }`,
@@ -297,14 +339,19 @@ function getReplyConfidenceThreshold(signals: RouterSignals): number {
   ) {
     if (
       signals.currentMessageHasDirectedFollowUpCue ||
-      signals.currentMessageIsTerseClarification
+      signals.currentMessageIsTerseClarification ||
+      signals.assistantLatestMessageIsOutstandingRequest
     ) {
       threshold = 0.65;
     } else {
       threshold = 0.9;
     }
   } else if (signals.humanMessagesSinceLastAssistant === 1) {
-    threshold = signals.currentMessageHasDirectedFollowUpCue ? 0.8 : 0.9;
+    threshold = signals.currentMessageHasDirectedFollowUpCue
+      ? 0.8
+      : signals.assistantLatestMessageIsOutstandingRequest
+        ? 0.75
+        : 0.9;
   } else if (signals.humanMessagesSinceLastAssistant === undefined) {
     threshold = 0.85;
   } else if (signals.humanMessagesSinceLastAssistant >= 2) {
@@ -317,6 +364,7 @@ function getReplyConfidenceThreshold(signals: RouterSignals): number {
 /** Fast heuristic check before the LLM classifier — skips messages directed at another party. */
 export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
+  botUserId?: string;
   rawText: string;
   text: string;
   isExplicitMention?: boolean;
@@ -332,6 +380,7 @@ export function getSubscribedReplyPreflightDecision(args: {
     rawText,
     text,
     args.botUserName,
+    args.botUserId,
   );
   if (!leadingOtherPartyAddress) {
     return undefined;
@@ -350,12 +399,14 @@ function buildRouterSystemPrompt(botUserName: string): string {
     `You are a message router for a Slack assistant named ${assistantName} in a subscribed Slack thread.`,
     `Decide whether ${assistantName} should reply to the latest message.`,
     "Subscribed threads are passive by default.",
-    `Reply true only when the latest message is aimed at ${assistantName}.`,
+    `Reply true only when the latest message is aimed at ${assistantName} or directly continues ${assistantName}'s outstanding work.`,
     "Use who currently has the conversation floor, not just topic overlap.",
     `If ${assistantName} was the last speaker, only a clear turn back to ${assistantName} should count as an implicit follow-up.`,
+    `If ${assistantName}'s latest prior message asked a person or bot for information, evidence, logs, diffs, or other details, and the latest message supplies that material, set should_reply=true even without an explicit mention of ${assistantName}.`,
+    `That includes answers from other bots when ${assistantName} asked them a question. Delivering the requested answer is a turn back to ${assistantName}.`,
     `Terse clarifications like 'which one?' or 'why?' right after ${assistantName} answers can be should_reply=true.`,
     `Direct self-reference to ${assistantName}'s prior answer like 'what did you just say?' or 'explain that more' can be should_reply=true.`,
-    `If one or more humans spoke after ${assistantName}, require a clear turn back to ${assistantName}. Shared domain vocabulary alone is not enough.`,
+    `If one or more humans spoke after ${assistantName}, require a clear turn back to ${assistantName} unless the latest message is clearly fulfilling ${assistantName}'s outstanding request. Shared domain vocabulary alone is not enough.`,
     `Questions like 'what about auth?' or 'can you check on this?' are usually human-to-human unless the thread clearly turns back to ${assistantName}.`,
     `A vague question like 'is that the right approach?' is still should_reply=false unless it clearly turns back to ${assistantName}.`,
     "Acknowledgments, reactions, status chatter, and team coordination should be should_reply=false.",
@@ -372,6 +423,7 @@ function buildRouterSystemPrompt(botUserName: string): string {
 /** Decide whether to reply to a message in a subscribed thread using an LLM classifier. */
 export async function decideSubscribedThreadReply(args: {
   botUserName: string;
+  botUserId?: string;
   modelId: string;
   input: SubscribedDecisionInput;
   completeObject: (args: {
@@ -392,6 +444,7 @@ export async function decideSubscribedThreadReply(args: {
   const rawText = args.input.rawText.trim();
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
+    botUserId: args.botUserId,
     rawText,
     text,
     isExplicitMention: args.input.isExplicitMention,

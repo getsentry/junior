@@ -101,7 +101,15 @@ function upsertSkippedConversationMessage(
 }
 
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
-  const services = createJuniorRuntimeServices(options.services);
+  const services = createJuniorRuntimeServices({
+    ...options.services,
+    subscribedReplyPolicy: {
+      ...options.services?.subscribedReplyPolicy,
+      getBotUserId:
+        options.services?.subscribedReplyPolicy?.getBotUserId ??
+        (() => options.getSlackAdapter().botUserId),
+    },
+  });
   const prepareTurnState = createPrepareTurnState({
     compactConversationIfNeeded:
       services.conversationMemory.compactConversationIfNeeded,
@@ -120,6 +128,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     AssistantLifecycleEvent
   >({
     assistantUserName: botConfig.userName,
+    getAssistantUserId: () => options.getSlackAdapter().botUserId,
     cancelEventSubscriptions,
     modelId: standardModelId(botConfig),
     now: options.now ?? (() => Date.now()),

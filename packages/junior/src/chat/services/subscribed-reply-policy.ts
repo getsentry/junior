@@ -8,6 +8,7 @@ import type { completeObject } from "@/chat/pi/client";
 
 export interface SubscribedReplyPolicyDeps {
   completeObject: typeof completeObject;
+  getBotUserId?: () => string | undefined;
 }
 
 export interface SubscribedReplyDecision {
@@ -26,6 +27,7 @@ export function createSubscribedReplyPolicy(
   return async (args) => {
     const decision = await decideSubscribedThreadReply({
       botUserName: botConfig.userName,
+      botUserId: deps.getBotUserId?.(),
       modelId: botConfig.fastModelId,
       input: args,
       completeObject: deps.completeObject,
