@@ -13,7 +13,10 @@ catalog:
   drizzle-orm: ^0.45.2
   zod: ^4.4.3
 overrides:
+  "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
+  "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   ai: 6.0.190
+  "astro>vite": 8.0.14
   "@swc/core": 1.15.33
   linkify-it: 5.0.0
   tinyexec: 1.1.2
