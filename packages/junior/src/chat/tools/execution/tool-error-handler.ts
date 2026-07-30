@@ -22,6 +22,7 @@ import { SlackActionError } from "@/chat/slack/client";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   ToolActionRejectedError,
+  ToolActionReviewLimitError,
   ToolActionReviewUnavailableError,
 } from "@/chat/tool-support/action-review";
 
@@ -72,6 +73,7 @@ export function handleToolExecutionError(
 ): never {
   if (
     error instanceof ToolActionRejectedError ||
+    error instanceof ToolActionReviewLimitError ||
     error instanceof ToolActionReviewUnavailableError
   ) {
     throw error;

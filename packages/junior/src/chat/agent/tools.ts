@@ -38,7 +38,6 @@ import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestrati
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -67,7 +66,7 @@ import type { ToolActionReview } from "@/chat/tool-support/action-review";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
 import {
   projectToolActionRejection,
-  restoreToolActionReviewState,
+  restoreToolActionRejections,
 } from "@/chat/tool-support/action-review-history";
 
 interface ToolWiringArgs {
@@ -80,7 +79,6 @@ interface ToolWiringArgs {
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
   currentTurnMessages: readonly PiMessage[];
-  currentTurnProvenance: readonly ConversationMessageProvenance[];
   /** Live same-actor instructions that authorize the pending action. */
   currentUserIntent: () => string;
   artifactStatePatch: Partial<ThreadArtifactsState>;
@@ -312,12 +310,6 @@ export async function wireAgentTools(
       source: runSource,
     };
   }
-  const actionReviewState = restoreToolActionReviewState(
-    args.currentTurnMessages,
-    args.currentTurnProvenance,
-    args.currentActor,
-    args.currentUserIntent(),
-  );
   const actionReview: ToolActionReview = {
     context: {
       actor: args.currentActor,
@@ -328,9 +320,10 @@ export async function wireAgentTools(
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
     },
-    ...actionReviewState,
+    priorRejections: restoreToolActionRejections(args.currentTurnMessages),
+    consecutiveRejections: 0,
     pendingRejections: new Map(),
-    onUnavailable: args.onFatalToolError,
+    onFatal: args.onFatalToolError,
     reviewer: createGuardianActionReviewer({
       completeObject,
       modelId: botConfig.guardianModelId,

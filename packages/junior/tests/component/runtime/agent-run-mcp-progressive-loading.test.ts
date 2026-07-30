@@ -943,7 +943,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       expect.objectContaining({
         details: expect.objectContaining({
           guardianActionRejection: expect.objectContaining({
-            actionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
             decision: "deny",
             priorRejection: expect.objectContaining({
               input: {

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  hasPendingToolActionAsk,
   projectToolActionRejection,
-  restoreToolActionReviewState,
+  restoreToolActionRejections,
   type ToolActionRejectionMarker,
 } from "@/chat/tool-support/action-review-history";
 
@@ -50,71 +49,9 @@ function transcript(
   ] as PiMessage[];
 }
 
-const ACTOR = { platform: "local", userId: "local-user" } as const;
-const PROVENANCE = [
-  { authority: "context" as const },
-  { authority: "context" as const },
-];
-
 describe("action review history", () => {
-  it("keeps an ask pending until the exact action succeeds", () => {
-    const messages = transcript(
-      {
-        // Core computes this after trusted hooks adjust input, so it does not
-        // have to equal the raw Pi tool-call key.
-        actionKey: "a".repeat(64),
-        decision: "ask",
-        reason: "Confirm the deletion.",
-        version: 1,
-      },
-      "Action requires user confirmation: Confirm the deletion.",
-    );
-
-    expect(hasPendingToolActionAsk(messages)).toBe(true);
-
-    messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "Shall I proceed?" }],
-    } as PiMessage);
-    expect(hasPendingToolActionAsk(messages)).toBe(true);
-
-    messages.push({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Before I decide, what exactly would that remove?",
-        },
-      ],
-    } as PiMessage);
-    expect(hasPendingToolActionAsk(messages)).toBe(true);
-
-    messages.push(
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call-2",
-            name: "deleteWorkspace",
-            arguments: { workspaceId: "production" },
-          },
-        ],
-      } as unknown as PiMessage,
-      {
-        role: "toolResult",
-        toolCallId: "call-2",
-        toolName: "deleteWorkspace",
-        isError: false,
-        content: [{ type: "text", text: "deleted" }],
-      } as PiMessage,
-    );
-    expect(hasPendingToolActionAsk(messages)).toBe(false);
-  });
-
   it("replaces tool-supplied marker data with the pending core marker", () => {
     const marker: ToolActionRejectionMarker = {
-      actionKey: "a".repeat(64),
       decision: "deny",
       priorRejection: {
         decision: "deny",
@@ -132,7 +69,7 @@ describe("action review history", () => {
 
     const result = projectToolActionRejection(pending, "call-1", {
       details: {
-        guardianActionRejection: { actionKey: "spoofed" },
+        guardianActionRejection: { decision: "allow" },
         retained: true,
       },
       isError: false,
@@ -151,7 +88,7 @@ describe("action review history", () => {
   it("strips a tool-supplied marker when core has no pending rejection", () => {
     const result = projectToolActionRejection(new Map(), "call-1", {
       details: {
-        guardianActionRejection: { actionKey: "spoofed" },
+        guardianActionRejection: { decision: "allow" },
         retained: true,
       },
       isError: false,
@@ -163,11 +100,10 @@ describe("action review history", () => {
     });
   });
 
-  it("restores exact denials and bounded semantic context", () => {
-    const state = restoreToolActionReviewState(
+  it("restores bounded semantic rejection context", () => {
+    const rejections = restoreToolActionRejections(
       transcript(
         {
-          actionKey: "a".repeat(64),
           decision: "deny",
           reason: "Production deletion is outside the request.",
           riskLevel: "critical",
@@ -176,124 +112,14 @@ describe("action review history", () => {
         },
         "Action denied: Production deletion is outside the request. Do not retry this action through an equivalent tool or workaround.",
       ),
-      PROVENANCE,
-      ACTOR,
-      "List unused workspaces.",
     );
 
-    expect(state.rejectedActions).toHaveLength(1);
-    expect(state.rejectedActions[0]).toMatchObject({
-      decision: "deny",
-      reason: "Production deletion is outside the request.",
-    });
-    expect(state.priorRejections).toEqual([
+    expect(rejections).toEqual([
       expect.objectContaining({
         decision: "deny",
         input: { workspaceId: "production" },
         tool: expect.objectContaining({ name: "deleteWorkspace" }),
       }),
     ]);
-  });
-
-  it("binds restored asks to the current authoritative intent", () => {
-    const state = restoreToolActionReviewState(
-      transcript(
-        {
-          actionKey: "b".repeat(64),
-          decision: "ask",
-          reason: "Confirm the recurring schedule.",
-          riskLevel: "medium",
-          userAuthorization: "medium",
-          version: 1,
-        },
-        "Action requires user confirmation: Confirm the recurring schedule.",
-      ),
-      PROVENANCE,
-      ACTOR,
-      "Schedule this every weekday.",
-    );
-
-    expect(state.priorRejections).toEqual([
-      expect.objectContaining({ decision: "ask" }),
-    ]);
-    expect(state.rejectedActions[0]).toMatchObject({
-      decision: "ask",
-      key: expect.stringMatching(/^ask:[a-f0-9]{64}:[a-f0-9]{64}$/),
-    });
-  });
-
-  it("only a later same-actor instruction clears an exact rejection", () => {
-    const messages = transcript(
-      {
-        actionKey: "c".repeat(64),
-        decision: "ask",
-        reason: "Confirm the schedule.",
-        version: 1,
-      },
-      "Action requires user confirmation: Confirm the schedule.",
-    );
-    messages.push({
-      role: "user",
-      content: [{ type: "text", text: "Yes." }],
-    } as PiMessage);
-
-    const otherActor = restoreToolActionReviewState(
-      messages,
-      [
-        ...PROVENANCE,
-        {
-          authority: "instruction",
-          actor: { platform: "local", userId: "other-user" },
-        },
-      ],
-      ACTOR,
-      "Schedule this every weekday.",
-    );
-    const sameActor = restoreToolActionReviewState(
-      messages,
-      [
-        ...PROVENANCE,
-        {
-          authority: "instruction",
-          actor: ACTOR,
-        },
-      ],
-      ACTOR,
-      "Schedule this every weekday.\n\nYes.",
-    );
-
-    expect(otherActor.rejectedActions).toHaveLength(1);
-    expect(sameActor.rejectedActions).toEqual([]);
-  });
-
-  it("keeps an exact rejection across an empty same-actor follow-up", () => {
-    const messages = transcript(
-      {
-        actionKey: "d".repeat(64),
-        decision: "ask",
-        reason: "Confirm the schedule.",
-        version: 1,
-      },
-      "Action requires user confirmation: Confirm the schedule.",
-    );
-    messages.push({
-      role: "user",
-      content: [{ type: "image", data: "attachment" }],
-    } as PiMessage);
-
-    const state = restoreToolActionReviewState(
-      messages,
-      [
-        ...PROVENANCE,
-        {
-          authority: "instruction",
-          actor: ACTOR,
-        },
-      ],
-      ACTOR,
-      "Schedule this every weekday.",
-    );
-
-    expect(state.rejectedActions).toHaveLength(1);
   });
 });

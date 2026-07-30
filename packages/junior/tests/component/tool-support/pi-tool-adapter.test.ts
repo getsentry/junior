@@ -3,9 +3,10 @@ import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orche
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import type {
-  ToolActionReview,
-  ToolActionReviewer,
+import {
+  ToolActionReviewLimitError,
+  type ToolActionReview,
+  type ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -51,9 +52,9 @@ function actionReview(
       userIntent: () => userIntent,
     },
     priorRejections: [],
+    consecutiveRejections: 0,
     pendingRejections: new Map(),
-    onUnavailable: vi.fn(),
-    rejectedActions: [],
+    onFatal: vi.fn(),
     reviewer,
   };
 }
@@ -476,19 +477,18 @@ describe("Pi tool adapter", () => {
     );
   });
 
-  it("does not execute actions that Guardian asks the user to confirm", async () => {
+  it("reviews each attempt and interrupts after three consecutive rejections", async () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({ ok: true }));
     const onToolResult = vi.fn();
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "ask",
+      reason: "Recurring work should be confirmed.",
+      riskLevel: "medium",
+      userAuthorization: "low",
+    }));
     const reviewState = actionReview(
-      {
-        review: async () => ({
-          decision: "ask",
-          reason: "Recurring work should be confirmed.",
-          riskLevel: "medium",
-          userAuthorization: "low",
-        }),
-      },
+      { review },
       "Create the recurring report.",
     );
     const [demoTool] = createPiAgentTools(
@@ -519,7 +519,6 @@ describe("Pi tool adapter", () => {
     );
     expect(execute).not.toHaveBeenCalled();
     expect(reviewState.pendingRejections.get("tool-demo")).toMatchObject({
-      actionKey: expect.any(String),
       decision: "ask",
       reason: "Recurring work should be confirmed.",
       version: 1,
@@ -540,18 +539,33 @@ describe("Pi tool adapter", () => {
 
     await expect(
       demoTool!.execute("tool-retry", { cadence: "weekly" }),
-    ).rejects.toThrow(
-      "This exact action was already rejected under the current user instruction",
-    );
+    ).rejects.toThrow("Recurring work should be confirmed.");
+    expect(review).toHaveBeenCalledTimes(2);
+    expect(review.mock.calls[1]?.[0].priorRejectedActions).toEqual([
+      expect.objectContaining({
+        decision: "ask",
+        input: { cadence: "weekly" },
+        reason: "Recurring work should be confirmed.",
+      }),
+    ]);
     expect(reviewState.pendingRejections.get("tool-retry")).toMatchObject({
       decision: "ask",
       reason: "Recurring work should be confirmed.",
     });
+
+    await expect(
+      demoTool!.execute("tool-limit", { cadence: "weekly" }),
+    ).rejects.toBeInstanceOf(ToolActionReviewLimitError);
+    expect(review).toHaveBeenCalledTimes(3);
+    expect(reviewState.onFatal).toHaveBeenCalledWith(
+      expect.any(ToolActionReviewLimitError),
+    );
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("escalates unavailable Guardian review to the run boundary", async () => {
     const sandbox = new SkillSandbox([], []);
-    const onUnavailable = vi.fn();
+    const onFatal = vi.fn();
     const reviewState = actionReview(
       {
         review: async () => {
@@ -560,7 +574,7 @@ describe("Pi tool adapter", () => {
       },
       "Create the report.",
     );
-    reviewState.onUnavailable = onUnavailable;
+    reviewState.onFatal = onFatal;
     const [demoTool] = createPiAgentTools(
       {
         demo: {
@@ -587,7 +601,7 @@ describe("Pi tool adapter", () => {
     ).rejects.toThrow(
       "Required action review is unavailable; the action was not executed.",
     );
-    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(onFatal).toHaveBeenCalledOnce();
   });
 
   it("reports structured tool error results to observers", async () => {

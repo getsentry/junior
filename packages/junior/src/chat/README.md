@@ -99,8 +99,10 @@ delegation without becoming the execution actor or a general task owner.
   across asynchronous boundaries.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
-  Unclassified tools retain compatibility behavior; `ask` and `deny` become
-  expected tool failures until durable confirmation owns `ask`.
+  Unclassified tools retain compatibility behavior. Every execution attempt
+  that enters review reaches Guardian; prior rejections are context rather than
+  binding decisions. `ask` and `deny` become expected tool failures, and three
+  consecutive rejections interrupt the execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded visible user/assistant evidence. It cannot
   override deterministic context checks, and unavailable review fails closed.

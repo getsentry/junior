@@ -56,9 +56,9 @@ function reviewContext(
       }),
     },
     priorRejections: [],
+    consecutiveRejections: 0,
     pendingRejections: new Map(),
-    onUnavailable: vi.fn(),
-    rejectedActions: [],
+    onFatal: vi.fn(),
     reviewer,
   };
 }
@@ -182,7 +182,7 @@ describe("tool action review", () => {
     }
   });
 
-  it("blocks an exact denied action and shows denials to alternate tools", async () => {
+  it("shows prior denials to alternate tools", async () => {
     const review = vi
       .fn<ToolActionReviewer["review"]>()
       .mockResolvedValueOnce({
@@ -210,18 +210,6 @@ describe("tool action review", () => {
     ).rejects.toMatchObject({ decision: "deny" });
     await expect(
       reviewToolAction(
-        "deleteWorkspace",
-        definition({ approvalMode: "review" }),
-        input,
-        context,
-      ),
-    ).rejects.toThrow(
-      "This exact action was already rejected under the current user instruction",
-    );
-    expect(review).toHaveBeenCalledTimes(1);
-
-    await expect(
-      reviewToolAction(
         "runWorkspaceCleanup",
         definition({ approvalMode: "review" }),
         { target: "workspace-123", mode: "permanent" },
@@ -234,43 +222,6 @@ describe("tool action review", () => {
         input,
         reason: "Deleting the workspace is outside the request.",
         tool: expect.objectContaining({ name: "deleteWorkspace" }),
-      }),
-    ]);
-  });
-
-  it("does not re-review an ask without new user intent", async () => {
-    let userIntent = "Schedule this every weekday.";
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "ask",
-      reason: "The recurring schedule needs confirmation.",
-      riskLevel: "medium",
-      userAuthorization: "medium",
-    }));
-    const context = reviewContext({ review });
-    context.context.userIntent = () => userIntent;
-    const tool = definition({ approvalMode: "review" });
-    const input = { schedule: "0 9 * * 1-5" };
-
-    await expect(
-      reviewToolAction("createSchedule", tool, input, context),
-    ).rejects.toMatchObject({ decision: "ask" });
-    await expect(
-      reviewToolAction("createSchedule", tool, input, context),
-    ).rejects.toThrow(
-      "This exact action was already rejected under the current user instruction",
-    );
-    expect(review).toHaveBeenCalledTimes(1);
-
-    userIntent = "Yes, create that exact weekday schedule.";
-    await expect(
-      reviewToolAction("createSchedule", tool, input, context),
-    ).rejects.toMatchObject({ decision: "ask" });
-    expect(review).toHaveBeenCalledTimes(2);
-    expect(review.mock.calls[1]?.[0].priorRejectedActions).toEqual([
-      expect.objectContaining({
-        decision: "ask",
-        input,
-        reason: "The recurring schedule needs confirmation.",
       }),
     ]);
   });

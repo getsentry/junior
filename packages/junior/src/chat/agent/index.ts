@@ -721,7 +721,6 @@ async function executeAgentRunInPrivacyContext(
       currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
-      currentTurnProvenance,
       currentUserIntent,
       artifactStatePatch,
       availableSkills,

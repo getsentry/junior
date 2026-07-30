@@ -1,16 +1,5 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { z } from "zod";
-import type { Actor } from "@/chat/actor";
-import {
-  sameActorIdentity,
-  type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
-import { getUserMessageInstructionText } from "@/chat/pi/transcript";
-import {
-  toolActionKey,
-  toolActionRejectionKey,
-  type ToolActionRejection,
-} from "@/chat/tool-support/action-review";
 
 const MAX_VISIBLE_HISTORY_CHARS = 12_000;
 const priorRejectionSchema = z
@@ -50,7 +39,6 @@ export type ToolActionPriorRejection = z.output<typeof priorRejectionSchema>;
 
 const rejectionMarkerSchema = z
   .object({
-    actionKey: z.string().regex(/^[a-f0-9]{64}$/),
     decision: z.enum(["ask", "deny"]),
     priorRejection: priorRejectionSchema,
     reason: z.string().min(1),
@@ -59,7 +47,7 @@ const rejectionMarkerSchema = z
     version: z.literal(1),
   })
   .strict();
-/** Core-owned versioned transcript state binding one rejection to an exact action. */
+/** Core-owned versioned transcript state for one rejected action. */
 export type ToolActionRejectionMarker = z.output<typeof rejectionMarkerSchema>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,61 +65,6 @@ export function getToolActionRejectionMarker(
     message.details.guardianActionRejection,
   );
   return parsed.success ? parsed.data : undefined;
-}
-
-/** Return whether durable history contains an ask whose exact action has not completed. */
-export function hasPendingToolActionAsk(
-  messages: readonly PiMessage[],
-): boolean {
-  const pendingActionKeys = new Set<string>();
-  const toolCallActionKeys = new Map<string, string>();
-
-  for (const message of messages) {
-    const record = message as unknown as Record<string, unknown>;
-    if (record.role === "assistant" && Array.isArray(record.content)) {
-      for (const part of record.content) {
-        if (
-          !isRecord(part) ||
-          part.type !== "toolCall" ||
-          typeof part.id !== "string" ||
-          typeof part.name !== "string" ||
-          !isRecord(part.arguments)
-        ) {
-          continue;
-        }
-        const actionKey = toolActionKey(part.name, part.arguments);
-        if (actionKey) {
-          toolCallActionKeys.set(part.id, actionKey);
-        }
-      }
-    }
-
-    const rejection = getToolActionRejectionMarker(message);
-    if (rejection) {
-      const actionKey =
-        typeof record.toolCallId === "string"
-          ? (toolCallActionKeys.get(record.toolCallId) ?? rejection.actionKey)
-          : rejection.actionKey;
-      if (rejection.decision === "ask") {
-        pendingActionKeys.add(actionKey);
-      } else {
-        pendingActionKeys.delete(actionKey);
-      }
-      continue;
-    }
-
-    if (
-      record.role === "toolResult" &&
-      record.isError !== true &&
-      typeof record.toolCallId === "string"
-    ) {
-      const actionKey = toolCallActionKeys.get(record.toolCallId);
-      if (actionKey) {
-        pendingActionKeys.delete(actionKey);
-      }
-    }
-  }
-  return pendingActionKeys.size > 0;
 }
 
 /**
@@ -178,19 +111,12 @@ export function projectToolActionRejection<
  * Tool results are not general Guardian evidence. Only core-generated action
  * rejection messages are recognized here and paired with their exact tool call.
  */
-export function restoreToolActionReviewState(
+export function restoreToolActionRejections(
   messages: readonly PiMessage[],
-  provenance: readonly ConversationMessageProvenance[],
-  actor: Actor | undefined,
-  userIntent: string,
-): {
-  priorRejections: ToolActionPriorRejection[];
-  rejectedActions: ToolActionRejection[];
-} {
+): ToolActionPriorRejection[] {
   const priorRejections: ToolActionPriorRejection[] = [];
-  const rejectedActions: ToolActionRejection[] = [];
 
-  for (const [messageIndex, message] of messages.entries()) {
+  for (const message of messages) {
     const record = message as unknown as Record<string, unknown>;
     if (record.role !== "toolResult" || record.isError !== true) {
       continue;
@@ -198,33 +124,6 @@ export function restoreToolActionReviewState(
     const rejection = getToolActionRejectionMarker(record);
     if (!rejection) {
       continue;
-    }
-    const hasLaterAuthoritativeIntent = messages
-      .slice(messageIndex + 1)
-      .some((candidate, offset) => {
-        const candidateProvenance = provenance[messageIndex + 1 + offset];
-        return (
-          candidate.role === "user" &&
-          candidateProvenance?.authority === "instruction" &&
-          sameActorIdentity(candidateProvenance.actor, actor) &&
-          getUserMessageInstructionText(candidate).length > 0
-        );
-      });
-    if (!hasLaterAuthoritativeIntent) {
-      rejectedActions.push({
-        decision: rejection.decision,
-        key: toolActionRejectionKey(
-          rejection.decision,
-          userIntent,
-          rejection.actionKey,
-        ),
-        reason: rejection.reason,
-        reviewedAction: rejection.priorRejection,
-        ...(rejection.riskLevel ? { riskLevel: rejection.riskLevel } : {}),
-        ...(rejection.userAuthorization
-          ? { userAuthorization: rejection.userAuthorization }
-          : {}),
-      });
     }
     priorRejections.push(rejection.priorRejection);
     while (
@@ -235,5 +134,5 @@ export function restoreToolActionReviewState(
     }
   }
 
-  return { priorRejections, rejectedActions };
+  return priorRejections;
 }

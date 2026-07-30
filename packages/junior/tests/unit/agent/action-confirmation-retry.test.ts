@@ -45,7 +45,6 @@ function rejectedMessages(): PiMessage[] {
       timestamp: 2,
       details: {
         guardianActionRejection: {
-          actionKey: "a".repeat(64),
           decision: "ask",
           priorRejection: {
             decision: "ask",

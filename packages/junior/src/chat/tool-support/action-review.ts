@@ -9,7 +9,6 @@ import type {
   Source,
   ToolAnnotations,
 } from "@sentry/junior-plugin-api";
-import { createHash } from "node:crypto";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type {
@@ -37,15 +36,6 @@ export interface ToolActionEvidence {
     text: string;
   }>;
   omittedEntries: number;
-}
-
-export interface ToolActionRejection {
-  decision: Exclude<ToolActionDecision, "allow">;
-  key: string;
-  reason: string;
-  reviewedAction?: ToolActionPriorRejection;
-  riskLevel?: ToolActionReviewDecision["riskLevel"];
-  userAuthorization?: ToolActionReviewDecision["userAuthorization"];
 }
 
 /** Exact model-review request; only core-supplied context carries authority. */
@@ -113,12 +103,14 @@ export interface ToolActionReview {
   };
   /** Bounded core-owned rejection context for this run slice. */
   priorRejections: ToolActionPriorRejection[];
-  /** Compact exact rejection keys retained for the full run slice. */
-  rejectedActions: ToolActionRejection[];
+  /** Consecutive Guardian rejections in this execution slice. */
+  consecutiveRejections: number;
   /** Core-owned results awaiting Pi's durable tool-result hook. */
   pendingRejections: Map<string, ToolActionRejectionMarker>;
-  /** Escalate unexpected reviewer failures to the owning agent-run boundary. */
-  onUnavailable(error: ToolActionReviewUnavailableError): void;
+  /** Escalate terminal review failures to the owning agent-run boundary. */
+  onFatal(
+    error: ToolActionReviewUnavailableError | ToolActionReviewLimitError,
+  ): void;
   reviewer: ToolActionReviewer;
 }
 
@@ -175,6 +167,16 @@ export class ToolActionReviewUnavailableError extends Error {
       },
     );
     this.name = "ToolActionReviewUnavailableError";
+  }
+}
+
+/** The execution slice exceeded its bounded sequence of rejected actions. */
+export class ToolActionReviewLimitError extends Error {
+  constructor() {
+    super(
+      "Action review rejected three consecutive tool execution attempts; the run was interrupted.",
+    );
+    this.name = "ToolActionReviewLimitError";
   }
 }
 
@@ -345,6 +347,7 @@ function buildProposal(
 
 const MAX_VISIBLE_DENIAL_CHARS = 12_000;
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
+const MAX_CONSECUTIVE_REJECTIONS = 3;
 
 function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -358,47 +361,6 @@ function canonicalJson(value: unknown): unknown {
     );
   }
   return value;
-}
-
-/** Build the compact key used to reject an exact repeated tool action. */
-export function toolActionKey(
-  toolName: string,
-  input: Record<string, unknown>,
-): string | undefined {
-  try {
-    const canonical = JSON.stringify(
-      canonicalJson({
-        input,
-        toolName,
-      }),
-    );
-    return createHash("sha256").update(canonical).digest("hex");
-  } catch {
-    return undefined;
-  }
-}
-
-/** Bind an exact rejection to one bounded authoritative-intent epoch. */
-export function toolActionRejectionKey(
-  decision: Exclude<ToolActionDecision, "allow">,
-  userIntent: string,
-  actionKey: string,
-): string {
-  const intentKey = createHash("sha256").update(userIntent).digest("hex");
-  return `${decision}:${intentKey}:${actionKey}`;
-}
-
-function rejectionKey(
-  toolName: string,
-  input: Record<string, unknown>,
-  userIntent: string,
-  decision: Exclude<ToolActionDecision, "allow">,
-): string | undefined {
-  const action = toolActionKey(toolName, input);
-  if (!action) {
-    return undefined;
-  }
-  return toolActionRejectionKey(decision, userIntent, action);
 }
 
 function projectedRejection(
@@ -471,31 +433,6 @@ export async function reviewToolAction(
       review.context,
       review.priorRejections,
     );
-    const denialKey = rejectionKey(
-      toolName,
-      input,
-      proposal.context.userIntent,
-      "deny",
-    );
-    const askKey = rejectionKey(
-      toolName,
-      input,
-      proposal.context.userIntent,
-      "ask",
-    );
-    const priorRejection = review.rejectedActions.find(
-      (rejection) => rejection.key === denialKey || rejection.key === askKey,
-    );
-    if (priorRejection) {
-      throw new ToolActionRejectedError(
-        priorRejection.decision,
-        `This exact action was already rejected under the current user instruction: ${priorRejection.reason}`,
-        {
-          ...priorRejection,
-          reviewedAction: priorRejection.reviewedAction,
-        },
-      );
-    }
     decision = await review.reviewer.review(proposal, signal ? { signal } : {});
   } catch (error) {
     if (
@@ -508,25 +445,14 @@ export async function reviewToolAction(
     throw new ToolActionReviewUnavailableError({ cause: error });
   }
   if (decision.decision === "allow") {
+    review.consecutiveRejections = 0;
     return decision;
   }
   const reviewedAction = projectedRejection(proposal, decision);
-  const key = rejectionKey(
-    toolName,
-    input,
-    proposal.context.userIntent,
-    decision.decision,
-  );
-  if (key) {
-    review.rejectedActions.push({
-      decision: decision.decision,
-      key,
-      reason: decision.reason,
-      reviewedAction,
-      riskLevel: decision.riskLevel,
-      userAuthorization: decision.userAuthorization,
-    });
-    appendVisibleRejection(review.priorRejections, reviewedAction);
+  appendVisibleRejection(review.priorRejections, reviewedAction);
+  review.consecutiveRejections += 1;
+  if (review.consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS) {
+    throw new ToolActionReviewLimitError();
   }
   throw new ToolActionRejectedError(decision.decision, decision.reason, {
     riskLevel: decision.riskLevel,

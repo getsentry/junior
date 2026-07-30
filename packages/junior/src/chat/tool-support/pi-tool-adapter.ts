@@ -43,8 +43,8 @@ import {
 } from "@/chat/tools/search-tools";
 import {
   reviewToolAction,
-  toolActionKey,
   ToolActionRejectedError,
+  ToolActionReviewLimitError,
   ToolActionReviewUnavailableError,
   type ToolActionReview,
 } from "@/chat/tool-support/action-review";
@@ -184,14 +184,15 @@ export function createPiAgentTools(
         });
       }
     } catch (error) {
-      if (error instanceof ToolActionReviewUnavailableError) {
-        actionReview?.onUnavailable(error);
+      if (
+        error instanceof ToolActionReviewUnavailableError ||
+        error instanceof ToolActionReviewLimitError
+      ) {
+        actionReview?.onFatal(error);
       }
       if (error instanceof ToolActionRejectedError) {
-        const actionKey = toolActionKey(toolName, toolInput);
-        if (actionKey && error.reviewedAction) {
+        if (error.reviewedAction) {
           actionReview?.pendingRejections.set(toolCallId, {
-            actionKey,
             decision: error.decision,
             priorRejection: error.reviewedAction,
             reason: error.reviewedAction.reason,
