@@ -1270,6 +1270,74 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("keeps captured event data stable when retries include an exact duplicate", async () => {
+    const fixture = await createMemoryFixture();
+    try {
+      const duplicateContent = "Deployment runbooks live in Notion.";
+      const store = createMemoryStore(memoryDb(fixture), localContext(), {
+        now: () => TEST_NOW_MS,
+      });
+      await store.createConversationMemory({
+        content: duplicateContent,
+        idempotencyKey: "memory-test:existing-conversation-fact",
+        kind: "knowledge",
+      });
+      const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
+      let failFirstEmit = true;
+      const context = processSessionContext({
+        db: memoryDb(fixture),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+            if (failFirstEmit) {
+              failFirstEmit = false;
+              throw new Error("event append failed");
+            }
+          },
+        },
+        model: extractionModel([
+          {
+            kind: "preference",
+            content: "Prefers stable memory event retries.",
+          },
+          {
+            kind: "knowledge",
+            content: duplicateContent,
+          },
+        ]).model,
+        run: {
+          async load() {
+            return completedRun({
+              transcript: [
+                instructionMessage(
+                  `I prefer stable memory event retries. ${duplicateContent}`,
+                ),
+              ],
+            });
+          },
+        },
+      });
+
+      await expect(processMemorySession(context)).rejects.toThrow(
+        "event append failed",
+      );
+      await processMemorySession(context);
+
+      expect(emitted).toHaveLength(2);
+      expect(emitted[1]?.data).toEqual(emitted[0]?.data);
+      expect(emitted[0]?.data).toMatchObject({
+        memories: [
+          expect.objectContaining({
+            content: "Prefers stable memory event retries.",
+            kind: "preference",
+          }),
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("skips passive extraction for memory recall tool turns", async () => {
     const fixture = await createMemoryFixture();
     try {

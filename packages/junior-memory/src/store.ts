@@ -443,12 +443,17 @@ export function activeVisiblePredicate(args: {
 }
 
 /** Resolve retry attempts for the same scoped write idempotency key. */
+interface IdempotencyMatch {
+  memory: MemoryRecord;
+  outcome: "created" | "duplicate";
+}
+
 async function findByIdempotencyKey(args: {
   db: MemoryDb;
   idempotencyKey: string;
   nowMs: number;
   scope: ResolvedMemoryScope;
-}): Promise<MemoryRecord | undefined> {
+}): Promise<IdempotencyMatch | undefined> {
   const activeRows = await args.db
     .select()
     .from(juniorMemoryMemories)
@@ -468,7 +473,7 @@ async function findByIdempotencyKey(args: {
     )
     .limit(1);
   if (activeRows[0]) {
-    return parseMemoryRow(activeRows[0]);
+    return { memory: parseMemoryRow(activeRows[0]), outcome: "created" };
   }
 
   const aliasRows = await args.db
@@ -515,7 +520,7 @@ async function findByIdempotencyKey(args: {
       )
       .limit(1);
     if (rows[0]) {
-      return parseMemoryRow(rows[0]);
+      return { memory: parseMemoryRow(rows[0]), outcome: "duplicate" };
     }
   }
   return undefined;
@@ -1185,13 +1190,15 @@ export function createMemoryStore(
       });
       if (idempotent) {
         await storeEmbedding({
-          content: idempotent.content,
+          content: idempotent.memory.content,
           db,
           embedder,
-          memoryId: idempotent.id,
+          memoryId: idempotent.memory.id,
           nowMs,
         });
-        return { created: false, idempotent: true, memory: idempotent };
+        return idempotent.outcome === "created"
+          ? { created: false, idempotent: true, memory: idempotent.memory }
+          : { created: false, memory: idempotent.memory };
       }
     }
 
@@ -1338,13 +1345,15 @@ export function createMemoryStore(
       throw new Error("Memory idempotency conflict did not resolve.");
     }
     await storeEmbedding({
-      content: idempotent.content,
+      content: idempotent.memory.content,
       db,
       embedder,
-      memoryId: idempotent.id,
+      memoryId: idempotent.memory.id,
       nowMs,
     });
-    return { created: false, idempotent: true, memory: idempotent };
+    return idempotent.outcome === "created"
+      ? { created: false, idempotent: true, memory: idempotent.memory }
+      : { created: false, memory: idempotent.memory };
   }
 
   async function retrieveVisibleMemories(
