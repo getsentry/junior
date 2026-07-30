@@ -1109,7 +1109,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Public and private conversations per day");
   });
 
-  it("renders Location detail actors and recent conversations through stale data", () => {
+  it("renders Location detail actors without recent conversations through stale data", () => {
     const detail: LocationDetailReport = {
       active: 0,
       activityDays: [],
@@ -1161,8 +1161,9 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("Location telemetry refresh failed");
-    expect(html).toContain("Investigate checkout");
     expect(html).toContain("avery@example.com");
+    expect(html).not.toContain("Investigate checkout");
+    expect(html).not.toContain("Recent conversations");
   });
 
   it("keeps plugin loading, failure, and stale data states distinct", () => {
