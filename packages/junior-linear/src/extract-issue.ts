@@ -1,79 +1,97 @@
 import type { PluginMcpContent } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 
 export type LinearIssueLink = {
   identifier: string;
   url: string;
 };
 
-function collectObjects(
-  value: unknown,
-  objects: Record<string, unknown>[],
-): void {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectObjects(item, objects);
-    return;
-  }
-  const record = value as Record<string, unknown>;
-  objects.push(record);
-  for (const item of Object.values(record)) collectObjects(item, objects);
+/** Loose Linear issue identity fields returned by hosted MCP tools. */
+const issueFieldsSchema = z
+  .object({
+    identifier: z.string().trim().min(1),
+    url: z.string().url(),
+  })
+  .passthrough();
+
+const nestedIssueSchema = z
+  .object({
+    issue: issueFieldsSchema,
+  })
+  .passthrough();
+
+const ISSUE_URL_RE =
+  /https:\/\/linear\.app\/[^\s<>)"']+\/issue\/([A-Z][A-Z0-9]*-\d+)[^\s<>)"']*/i;
+
+function asIssueLink(value: z.infer<typeof issueFieldsSchema>): LinearIssueLink {
+  return {
+    identifier: value.identifier.toUpperCase(),
+    url: value.url,
+  };
 }
 
-function stringField(
-  objects: Record<string, unknown>[],
-  field: string,
-): string | undefined {
-  for (const object of objects) {
-    const value = object[field];
-    if (typeof value === "string" && value.trim()) return value.trim();
+function fromStructured(value: unknown): LinearIssueLink | null {
+  const nested = nestedIssueSchema.safeParse(value);
+  if (nested.success) {
+    return asIssueLink(nested.data.issue);
   }
-  return undefined;
+  const topLevel = issueFieldsSchema.safeParse(value);
+  if (topLevel.success) {
+    return asIssueLink(topLevel.data);
+  }
+  return null;
 }
 
-function parseJsonText(text: string): unknown {
+function textParts(content: PluginMcpContent[]): string[] {
+  return content.flatMap((part) =>
+    part.type === "text" && typeof part.text === "string" ? [part.text] : [],
+  );
+}
+
+function fromJsonText(text: string): LinearIssueLink | null {
   try {
-    return JSON.parse(text);
+    return fromStructured(JSON.parse(text));
   } catch {
-    return undefined;
+    return null;
   }
 }
 
-/** Extract a Linear issue identifier and URL from an MCP tool result. */
+function fromIssueUrl(text: string): LinearIssueLink | null {
+  const match = text.match(ISSUE_URL_RE);
+  if (!match?.[0] || !match[1]) {
+    return null;
+  }
+  return {
+    identifier: match[1].toUpperCase(),
+    url: match[0],
+  };
+}
+
+/**
+ * Extract a Linear issue identifier and URL from an MCP tool result.
+ *
+ * Prefers structured/JSON issue fields, then falls back to a Linear issue URL
+ * in text content. Returns null when identity cannot be recovered.
+ */
 export function extractLinearIssueLink(result: {
   content: PluginMcpContent[];
   structuredContent?: unknown;
 }): LinearIssueLink | null {
-  const objects: Record<string, unknown>[] = [];
-  collectObjects(result.structuredContent, objects);
-  const textParts = result.content.flatMap((part) =>
-    part.type === "text" && typeof part.text === "string" ? [part.text] : [],
-  );
-  for (const text of textParts) {
-    collectObjects(parseJsonText(text), objects);
+  const structured = fromStructured(result.structuredContent);
+  if (structured) {
+    return structured;
   }
 
-  const urlMatch = textParts
-    .map((text) =>
-      text.match(
-        /https:\/\/linear\.app\/[^\s<>)"']+\/issue\/([A-Z][A-Z0-9]*-\d+)[^\s<>)"']*/i,
-      ),
-    )
-    .find((match) => match !== null);
-  const identifierMatch = textParts
-    .map((text) => text.match(/\b[A-Z][A-Z0-9]*-\d+\b/))
-    .find((match) => match !== null);
-  const identifier =
-    stringField(objects, "identifier") ??
-    urlMatch?.[1]?.toUpperCase() ??
-    identifierMatch?.[0];
-  const url = stringField(objects, "url") ?? urlMatch?.[0];
-  if (!identifier || !url) {
-    return null;
+  for (const text of textParts(result.content)) {
+    const fromJson = fromJsonText(text);
+    if (fromJson) {
+      return fromJson;
+    }
+    const fromUrl = fromIssueUrl(text);
+    if (fromUrl) {
+      return fromUrl;
+    }
   }
-  return {
-    identifier: identifier.toUpperCase(),
-    url,
-  };
+
+  return null;
 }
