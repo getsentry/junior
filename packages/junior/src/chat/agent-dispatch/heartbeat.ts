@@ -1,5 +1,5 @@
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -142,13 +142,10 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
         nowMs: args.nowMs,
         queue: args.conversationWorkQueue,
       });
-    } catch {
-      logWarn(
-        "agent_invocation_mailbox_append_recovery_failed",
-        {},
-        { "app.agent.invocation_id": invocation.invocationId },
-        "Pending agent invocation mailbox append recovery will retry",
-      );
+    } catch (error) {
+      logException(error, "agent.invocation.mailbox.append_recovery.failed", {
+        "app.agent.invocation_id": invocation.invocationId,
+      });
     }
   }
 }

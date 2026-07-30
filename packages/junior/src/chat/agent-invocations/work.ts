@@ -24,7 +24,7 @@ import {
 } from "@/chat/services/turn-session-record";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
-import { getAssistantMessageText } from "@/chat/services/turn-result";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -214,7 +214,7 @@ async function projectTerminalSession(
     return undefined;
   }
   const result = getTerminalAssistantMessages(session.piMessages)
-    .map(getAssistantMessageText)
+    .map(getAssistantReplyText)
     .filter((text): text is string => text !== undefined)
     .join("\n\n");
   const failed = session.state !== "completed" || Boolean(session.errorMessage);
@@ -253,7 +253,6 @@ async function recoverRunningSession(
     currentSliceId: session.sliceId,
     destination: session.destination,
     errorMessage: "Recovered running agent invocation after worker loss",
-    logContext: {},
     messages: session.piMessages,
     modelId: session.modelId,
     actor: session.actor,

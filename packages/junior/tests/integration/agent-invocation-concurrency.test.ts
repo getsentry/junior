@@ -49,7 +49,6 @@ async function successfulRun(
   const persisted = await persistRunningSessionRecord({
     conversationId: request.conversationId,
     destination: request.routing.destination,
-    logContext: {},
     messages: runningMessages,
     modelId: "integration-agent",
     actor: request.routing.actor,
