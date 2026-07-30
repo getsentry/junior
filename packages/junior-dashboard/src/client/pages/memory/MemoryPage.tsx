@@ -36,10 +36,12 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const {
     action,
     content,
+    filter,
     query,
     records,
     searchQuery,
     searchText,
+    setFilter,
     setSearchText,
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
@@ -121,6 +123,12 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           ) : null}
         </div>
 
+        <MemoryCollections
+          activeFilter={filter}
+          onSelect={setFilter}
+          stats={dashboardQuery.data?.stats}
+        />
+
         {query.error ? (
           <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
             <CircleAlert aria-hidden="true" size={18} />
@@ -172,6 +180,71 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function MemoryCollections(props: {
+  activeFilter: string;
+  onSelect(filter: string): void;
+  stats: MemoryDashboardData["stats"] | undefined;
+}) {
+  const collections = [
+    { count: props.stats?.active, filter: "", label: "All" },
+    {
+      count: props.stats?.preference,
+      filter: "preferences",
+      label: "Preferences",
+    },
+    {
+      count: props.stats?.automatic,
+      filter: "automatic",
+      label: "Automatic",
+    },
+    {
+      count: props.stats?.explicit,
+      filter: "explicit",
+      label: "Explicit",
+    },
+  ];
+  return (
+    <div
+      aria-label="Memory collections"
+      className="grid min-w-0 grid-cols-2 gap-1 border-b border-white/[0.06] sm:flex sm:overflow-x-auto"
+      role="tablist"
+    >
+      {collections.map((collection) => {
+        const selected = props.activeFilter === collection.filter;
+        return (
+          <button
+            aria-selected={selected}
+            className={cn(
+              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
+              selected
+                ? "text-cyan-100 after:bg-cyan-300"
+                : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
+            )}
+            key={collection.filter || "all"}
+            onClick={() => props.onSelect(collection.filter)}
+            role="tab"
+            type="button"
+          >
+            {collection.label}
+            {collection.count !== undefined ? (
+              <span
+                className={cn(
+                  "rounded-sm border px-1.5 py-0.5 text-[0.54rem]",
+                  selected
+                    ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+                    : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted",
+                )}
+              >
+                {collection.count.toLocaleString("en-US")}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }

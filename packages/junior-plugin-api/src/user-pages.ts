@@ -90,6 +90,7 @@ export type PluginUserPageLink = z.output<typeof pluginUserPageLinkSchema>;
 export const pluginUserPageInputSchema = z
   .object({
     cursor: nonBlankStringSchema.max(1_000).optional(),
+    filter: nonBlankStringSchema.max(64).optional(),
     limit: z.number().int().min(1).max(50),
     query: z.string().trim().max(200).optional(),
   })

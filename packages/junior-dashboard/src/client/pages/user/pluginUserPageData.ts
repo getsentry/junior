@@ -19,6 +19,7 @@ export type PluginUserPageRecord = PluginUserPageContent["records"][number];
 export function usePluginUserPageData(page: PluginUserPageLink) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const filter = searchParams.get("filter")?.trim() ?? "";
   const searchQuery = searchParams.get("q")?.trim() ?? "";
   const [searchText, setSearchText] = useState(searchQuery);
 
@@ -27,7 +28,10 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     const timeout = window.setTimeout(() => {
       const normalized = searchText.trim();
       if (normalized === searchQuery) return;
-      setSearchParams(normalized ? { q: normalized } : {}, { replace: true });
+      const next = new URLSearchParams(searchParams);
+      if (normalized) next.set("q", normalized);
+      else next.delete("q");
+      setSearchParams(next, { replace: true });
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [searchQuery, searchText, setSearchParams]);
@@ -38,15 +42,17 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
       "plugin-user-page",
       page.pluginName,
       page.id,
+      filter,
       searchQuery,
     ],
-    [page.id, page.pluginName, searchQuery],
+    [filter, page.id, page.pluginName, searchQuery],
   );
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
     queryKey,
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
+      if (filter) params.set("filter", filter);
       if (searchQuery) params.set("q", searchQuery);
       if (pageParam) params.set("cursor", pageParam);
       const search = params.toString();
@@ -88,13 +94,22 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     },
   });
 
+  function setFilter(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set("filter", value);
+    else next.delete("filter");
+    setSearchParams(next, { replace: true });
+  }
+
   return {
     action,
     content: query.data?.pages[0],
+    filter,
     query,
     records,
     searchQuery,
     searchText,
+    setFilter,
     setSearchText,
   };
 }

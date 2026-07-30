@@ -2004,7 +2004,7 @@ describe("memory plugin storage", () => {
       const personal = await store.createMemory({
         content: "Prefers short PR summaries.",
         kind: "preference",
-        idempotencyKey: "memory-test:personal",
+        idempotencyKey: "session:memory-test:personal",
       });
       nowMs = TEST_NOW_MS + 1;
       const conversation = await store.createConversationMemory({
@@ -2103,16 +2103,47 @@ ORDER BY created_at_ms ASC
             title: "Prefers short PR summaries.",
             metadata: [
               { label: "Type", value: "Preference" },
-              { label: "Scope", value: "Personal" },
-              { label: "Subject", value: "User" },
+              { label: "Learned", value: "Automatic" },
+              { label: "Source", value: "Slack" },
               { label: "Remembered", value: "Jun 19, 2026, 12:00 PM" },
               { label: "Observed", value: "Jun 19, 2026, 12:00 PM" },
               { label: "Expires", value: "Never" },
+              { label: "Scope", value: "Personal" },
               { label: "Memory ID", value: personal.memory.id },
             ],
           },
         ],
       });
+      await expect(
+        memoryPage.read(
+          {
+            db: memoryDb(fixture),
+            log: noopLogger,
+            plugin: { name: "memory" },
+            viewer: {
+              actors: [actorContext.actor],
+              email: "person@example.com",
+            },
+          },
+          { filter: "automatic", limit: 20 },
+        ),
+      ).resolves.toMatchObject({
+        records: [expect.objectContaining({ id: personal.memory.id })],
+      });
+      await expect(
+        memoryPage.read(
+          {
+            db: memoryDb(fixture),
+            log: noopLogger,
+            plugin: { name: "memory" },
+            viewer: {
+              actors: [actorContext.actor],
+              email: "person@example.com",
+            },
+          },
+          { filter: "explicit", limit: 20 },
+        ),
+      ).resolves.toMatchObject({ records: [] });
       await expect(
         memoryPage.read(
           {
@@ -2200,12 +2231,12 @@ ORDER BY created_at_ms ASC
       });
       const first = await firstStore.createMemory({
         content: "Prefers concise release notes.",
-        idempotencyKey: "api:first",
+        idempotencyKey: "tool:api:first",
         kind: "preference",
       });
       const second = await secondStore.createMemory({
         content: "Deploy runbooks live in Notion.",
-        idempotencyKey: "api:second",
+        idempotencyKey: "session:api:second",
         kind: "knowledge",
       });
       const hidden = await hiddenStore.createMemory({
@@ -2299,6 +2330,8 @@ ORDER BY created_at_ms ASC
       );
       expect(dashboard.stats).toMatchObject({
         active: 2,
+        automatic: 1,
+        explicit: 1,
         knowledge: 1,
         preference: 1,
         procedure: 0,

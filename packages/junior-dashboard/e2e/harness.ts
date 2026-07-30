@@ -123,32 +123,85 @@ export async function mockDashboardApis(page: Page) {
       ],
     });
   });
-  await page.route("**/api/user-pages/memory/memories", async (route) => {
+  await page.route("**/api/user-pages/memory/memories*", async (route) => {
+    const filter = new URL(route.request().url()).searchParams.get("filter");
+    const allRecords = [
+      {
+        actions: [
+          {
+            confirmation: "Forget this memory?",
+            href: "/api/plugins/memory/memories/memory-1",
+            label: "Forget",
+            method: "DELETE",
+            tone: "danger",
+          },
+        ],
+        id: "memory-1",
+        title: "I prefer concise summaries.",
+        metadata: [
+          { label: "Type", value: "Preference" },
+          { label: "Learned", value: "Automatic" },
+          { label: "Source", value: "Slack" },
+          { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
+          { label: "Memory ID", value: "memory-1" },
+        ],
+      },
+      {
+        actions: [
+          {
+            confirmation: "Forget this memory?",
+            href: "/api/plugins/memory/memories/memory-2",
+            label: "Forget",
+            method: "DELETE",
+            tone: "danger",
+          },
+        ],
+        id: "memory-2",
+        title: "Release notes should include migration risks.",
+        metadata: [
+          { label: "Type", value: "Knowledge" },
+          { label: "Learned", value: "Explicit" },
+          { label: "Source", value: "Local" },
+          { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
+          { label: "Memory ID", value: "memory-2" },
+        ],
+      },
+      {
+        actions: [
+          {
+            confirmation: "Forget this memory?",
+            href: "/api/plugins/memory/memories/memory-3",
+            label: "Forget",
+            method: "DELETE",
+            tone: "danger",
+          },
+        ],
+        id: "memory-3",
+        title: "Start incident reviews with the customer impact.",
+        metadata: [
+          { label: "Type", value: "Procedure" },
+          { label: "Learned", value: "Automatic" },
+          { label: "Source", value: "Slack" },
+          { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
+          { label: "Memory ID", value: "memory-3" },
+        ],
+      },
+    ];
+    const records = allRecords.filter((record) => {
+      const metadata = Object.fromEntries(
+        record.metadata.map((item) => [item.label, item.value]),
+      );
+      if (filter === "preferences") return metadata.Type === "Preference";
+      if (filter === "automatic") return metadata.Learned === "Automatic";
+      if (filter === "explicit") return metadata.Learned === "Explicit";
+      return true;
+    });
     await route.fulfill({
       json: {
         type: "list",
         emptyText: "No personal memories yet.",
         searchPlaceholder: "Search memories",
-        records: [
-          {
-            actions: [
-              {
-                confirmation: "Forget this memory?",
-                href: "/api/plugins/memory/memories/memory-1",
-                label: "Forget",
-                method: "DELETE",
-                tone: "danger",
-              },
-            ],
-            id: "memory-1",
-            title: "I prefer concise summaries.",
-            metadata: [
-              { label: "Type", value: "Preference" },
-              { label: "Scope", value: "Personal" },
-              { label: "Memory ID", value: "memory-1" },
-            ],
-          },
-        ],
+        records,
       },
     });
   });
@@ -184,8 +237,10 @@ export async function mockDashboardApis(page: Page) {
         generatedAt: "2026-07-30T12:00:00.000Z",
         stats: {
           active: 24,
+          automatic: 17,
           createdThirtyDays: 14,
           embedded: 23,
+          explicit: 6,
           knowledge: 8,
           preference: 11,
           procedure: 5,

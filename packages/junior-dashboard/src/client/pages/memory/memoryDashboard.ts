@@ -19,8 +19,10 @@ export const memoryDashboardSchema = z
     stats: z
       .object({
         active: z.number().int().min(0),
+        automatic: z.number().int().min(0),
         createdThirtyDays: z.number().int().min(0),
         embedded: z.number().int().min(0),
+        explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),

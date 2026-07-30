@@ -1,7 +1,8 @@
 /** Project viewer-owned memories into Junior's core-rendered user page. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
 import { createViewerMemories } from "./personal";
-import type { MemoryDb, MemoryRecord } from "./store";
+import type { PersonalMemoryRecord } from "./personal-store";
+import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -15,8 +16,20 @@ function rememberedDate(createdAtMs: number): string {
   }).format(new Date(createdAtMs));
 }
 
-function subjectLabel(memory: MemoryRecord): string {
-  return titleCase(memory.subjectType);
+function originLabel(origin: PersonalMemoryRecord["origin"]): string {
+  if (origin === "automatic") return "Automatic";
+  if (origin === "explicit") return "Explicit";
+  return "Other";
+}
+
+function pageFilter(filter: string | undefined): {
+  kind?: "preference";
+  origin?: "automatic" | "explicit";
+} {
+  if (filter === "preferences") return { kind: "preference" };
+  if (filter === "automatic") return { origin: "automatic" };
+  if (filter === "explicit") return { origin: "explicit" };
+  return {};
 }
 
 /** Create the interactive personal Memories dashboard page. */
@@ -33,6 +46,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
       );
       const page = await memories.list({
         cursor: input.cursor,
+        ...pageFilter(input.filter),
         limit: input.limit,
         ...(input.query ? { query: input.query } : {}),
       });
@@ -57,8 +71,8 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
           title: memory.content,
           metadata: [
             { label: "Type", value: titleCase(memory.kind) },
-            { label: "Scope", value: titleCase(memory.scope) },
-            { label: "Subject", value: subjectLabel(memory) },
+            { label: "Learned", value: originLabel(memory.origin) },
+            { label: "Source", value: titleCase(memory.sourcePlatform) },
             { label: "Remembered", value: rememberedDate(memory.createdAtMs) },
             { label: "Observed", value: rememberedDate(memory.observedAtMs) },
             {
@@ -67,6 +81,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
                 ? rememberedDate(memory.expiresAtMs)
                 : "Never",
             },
+            { label: "Scope", value: titleCase(memory.scope) },
             { label: "Memory ID", value: memory.id },
           ],
         })),

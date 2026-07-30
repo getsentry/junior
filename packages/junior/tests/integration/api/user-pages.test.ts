@@ -109,12 +109,13 @@ describe("plugin user page API", () => {
     ]);
 
     const response = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?q=runbooks&cursor=next-page&limit=12",
+      "http://localhost/api/user-pages/memory/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
     );
 
     expect(response.status).toBe(200);
     expect(receivedInput).toEqual({
       cursor: "next-page",
+      filter: "preferences",
       limit: 12,
       query: "runbooks",
     });

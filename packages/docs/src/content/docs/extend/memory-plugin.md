@@ -68,8 +68,9 @@ For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set 
 
 Signed-in users can search, page through, and forget their personal memories
 from the top-level **Memories** dashboard page. The page shows viewer-scoped
-memory totals, embedding coverage, searchable records, and stored metadata.
-Forgetting archives the memory so
+memory totals, embedding coverage, history, and collections for preferences,
+automatically learned memories, and explicitly saved memories. Each record
+shows its safe source and learning method. Forgetting archives the memory so
 Junior no longer recalls it.
 
 The plugin also exposes authenticated REST resources:

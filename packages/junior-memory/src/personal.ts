@@ -6,27 +6,34 @@
  */
 import { z } from "zod";
 import type { PluginUserPageActor } from "@sentry/junior-plugin-api";
-import { createPersonalMemoryCollection } from "./personal-store";
+import {
+  createPersonalMemoryCollection,
+  type PersonalMemoryRecord,
+} from "./personal-store";
 import type { MemoryDb, MemoryRecord } from "./store";
-import type { MemoryRuntimeContext } from "./types";
+import type { MemoryKind, MemoryRuntimeContext } from "./types";
 
 const cursorSchema = z
   .object({
     createdAtMs: z.number().finite(),
     id: z.string().min(1),
+    kind: z.enum(["preference", "procedure", "knowledge"]).optional(),
+    origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
     version: z.literal(1),
   })
   .strict();
 
 export interface ViewerMemoryPage {
-  memories: MemoryRecord[];
+  memories: PersonalMemoryRecord[];
   nextCursor?: string;
 }
 
 export interface ViewerMemoryPageInput {
   cursor?: string;
+  kind?: MemoryKind;
   limit: number;
+  origin?: "automatic" | "explicit";
   query?: string;
 }
 
@@ -61,13 +68,20 @@ function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
   };
 }
 
-function decodeCursor(value: string | undefined, query: string | undefined) {
+function decodeCursor(
+  value: string | undefined,
+  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query">,
+) {
   if (!value) return undefined;
   try {
     const parsed = cursorSchema.parse(
       JSON.parse(Buffer.from(value, "base64url").toString("utf8")),
     );
-    if (parsed.query !== query) {
+    if (
+      parsed.query !== input.query ||
+      parsed.kind !== input.kind ||
+      parsed.origin !== input.origin
+    ) {
       throw new InvalidMemoryCursorError();
     }
     return { createdAtMs: parsed.createdAtMs, id: parsed.id };
@@ -78,10 +92,16 @@ function decodeCursor(value: string | undefined, query: string | undefined) {
 
 function encodeCursor(
   cursor: { createdAtMs: number; id: string },
-  query: string | undefined,
+  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query">,
 ): string {
   return Buffer.from(
-    JSON.stringify({ ...cursor, ...(query ? { query } : {}), version: 1 }),
+    JSON.stringify({
+      ...cursor,
+      ...(input.query ? { query: input.query } : {}),
+      ...(input.kind ? { kind: input.kind } : {}),
+      ...(input.origin ? { origin: input.origin } : {}),
+      version: 1,
+    }),
     "utf8",
   ).toString("base64url");
 }
@@ -104,15 +124,20 @@ export function createViewerMemories(
     },
     async list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage> {
       const query = input.query?.trim() || undefined;
-      const page = await collection.list({
-        cursor: decodeCursor(input.cursor, query),
-        limit: input.limit,
+      const filters = {
+        ...(input.kind ? { kind: input.kind } : {}),
+        ...(input.origin ? { origin: input.origin } : {}),
         ...(query ? { query } : {}),
+      };
+      const page = await collection.list({
+        cursor: decodeCursor(input.cursor, filters),
+        ...filters,
+        limit: input.limit,
       });
       return {
         memories: page.memories,
         ...(page.nextCursor
-          ? { nextCursor: encodeCursor(page.nextCursor, query) }
+          ? { nextCursor: encodeCursor(page.nextCursor, filters) }
           : {}),
       };
     },

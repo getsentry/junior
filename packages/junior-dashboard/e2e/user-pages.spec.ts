@@ -55,6 +55,10 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
   await ninetyDays.click();
   await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
+  const preferences = page.getByRole("tab", { name: "Preferences 11" });
+  await preferences.click();
+  await expect(preferences).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/filter=preferences/);
   const navLinks = await page.locator("header nav a").allTextContents();
   expect(navLinks.at(-1)?.trim()).toBe("System");
   expect(browserErrors).toEqual([]);
