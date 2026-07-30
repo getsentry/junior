@@ -142,8 +142,8 @@ export async function mockDashboardApis(page: Page) {
           { label: "Type", value: "Preference" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
+          { label: "Visibility", value: "Only you" },
           { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
-          { label: "Memory ID", value: "memory-1" },
         ],
       },
       {
@@ -162,8 +162,8 @@ export async function mockDashboardApis(page: Page) {
           { label: "Type", value: "Knowledge" },
           { label: "Learned", value: "Explicit" },
           { label: "Source", value: "Local" },
+          { label: "Visibility", value: "Only you" },
           { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
-          { label: "Memory ID", value: "memory-2" },
         ],
       },
       {
@@ -182,8 +182,8 @@ export async function mockDashboardApis(page: Page) {
           { label: "Type", value: "Procedure" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
+          { label: "Visibility", value: "Only you" },
           { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
-          { label: "Memory ID", value: "memory-3" },
         ],
       },
     ];

@@ -73,6 +73,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
             { label: "Type", value: titleCase(memory.kind) },
             { label: "Learned", value: originLabel(memory.origin) },
             { label: "Source", value: titleCase(memory.sourcePlatform) },
+            { label: "Visibility", value: "Only you" },
             { label: "Remembered", value: rememberedDate(memory.createdAtMs) },
             { label: "Observed", value: rememberedDate(memory.observedAtMs) },
             {
@@ -81,8 +82,6 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
                 ? rememberedDate(memory.expiresAtMs)
                 : "Never",
             },
-            { label: "Scope", value: titleCase(memory.scope) },
-            { label: "Memory ID", value: memory.id },
           ],
         })),
       };

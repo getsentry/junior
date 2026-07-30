@@ -504,6 +504,7 @@ function MemoryRow(props: {
   const kind = metadataValue(props.record, "Type");
   const learned = metadataValue(props.record, "Learned");
   const remembered = metadataValue(props.record, "Remembered");
+  const visibility = metadataValue(props.record, "Visibility");
   const provenance =
     learned === "Automatic"
       ? "Learned by Junior"
@@ -521,7 +522,7 @@ function MemoryRow(props: {
       >
         <button
           aria-pressed={props.selected}
-          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-0 bg-transparent px-4 py-3.5 text-left"
+          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 border-0 bg-transparent px-4 py-3.5 text-left"
           onClick={props.onSelect}
           type="button"
         >
@@ -549,9 +550,17 @@ function MemoryRow(props: {
                   ·
                 </span>
                 <span>{shortDate(remembered)}</span>
+                <span className="inline-flex items-center gap-1 text-dashboard-text sm:hidden">
+                  <LockKeyhole aria-hidden="true" size={10} />
+                  {visibility}
+                </span>
               </div>
             </div>
           </div>
+          <span className="hidden items-center gap-1.5 rounded border border-white/[0.08] bg-white/[0.025] px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-dashboard-text-muted sm:inline-flex">
+            <LockKeyhole aria-hidden="true" size={11} />
+            {visibility}
+          </span>
           <span
             className={cn(
               "hidden rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",

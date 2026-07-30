@@ -65,6 +65,7 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByRole("button", { name: /^I prefer concise summaries/ }),
   ).toBeVisible();
+  await expect(page.getByText("Only you").last()).toBeVisible();
   const preferences = page.getByRole("tab", { name: "Preferences 11" });
   await preferences.click();
   await expect(preferences).toHaveAttribute("aria-selected", "true");
@@ -124,6 +125,7 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
+  await expect(dialog.getByText("Only you")).toBeVisible();
   await expect(
     dialog.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
