@@ -41,9 +41,9 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page
       .getByRole("region", { name: "Memory summary" })
-      .getByText("Active", { exact: true }),
+      .getByText("Your memories", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Public workspace")).toBeVisible();
+  await expect(page.getByText("Public Slack workspace")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Saved by you/ }),
   ).toHaveAttribute("href", "/plugins/memory/memories/library?filter=explicit");

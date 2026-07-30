@@ -315,18 +315,18 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const coverage = stats.active === 0 ? 0 : stats.embedded / stats.active;
   const items = [
     {
-      detail: "memories about you",
-      label: "Active",
+      detail: "active and available to you",
+      label: "Your memories",
       value: stats.active.toLocaleString("en-US"),
     },
     {
-      detail: "learned in the last 30 days",
-      label: "Recent",
+      detail: "in the last 30 days",
+      label: "Added recently",
       value: `+${stats.createdThirtyDays.toLocaleString("en-US")}`,
     },
     {
-      detail: "ready for semantic recall",
-      label: "Recall ready",
+      detail: "indexed for semantic search",
+      label: "Ready to recall",
       tone: "text-emerald-200",
       value: new Intl.NumberFormat("en-US", {
         maximumFractionDigits: 0,
@@ -334,7 +334,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
       }).format(coverage),
     },
     {
-      detail: "personal preferences",
+      detail: "about how you work",
       label: "Preferences",
       value: stats.preference.toLocaleString("en-US"),
     },
@@ -371,31 +371,31 @@ function MemoryVisibilityPanel(props: { data: MemoryDashboardData }) {
   return (
     <Card className="p-5 sm:p-6">
       <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Workspace storage
+        Memory access
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-        Who can use these memories?
+        Where are memories available?
       </h2>
       <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-        Workspace-wide active memories grouped by their recall boundary.
+        Workspace-wide active memories grouped by who can recall them.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Only the person this memory belongs to"
+          detail="Each memory belongs to one person"
           icon={UserRound}
-          label="Personal"
+          label="One person only"
           value={visibility.personal}
         />
         <OverviewBreakdownRow
-          detail="The original private thread or local conversation"
+          detail="Only the original private thread or local chat"
           icon={LockKeyhole}
-          label="Private conversations"
+          label="One private conversation"
           value={visibility.privateConversation}
         />
         <OverviewBreakdownRow
-          detail="Public Slack channels across the workspace"
+          detail="Across public channels in this Slack workspace"
           icon={Globe2}
-          label="Public workspace"
+          label="Public Slack workspace"
           value={visibility.publicWorkspace}
         />
       </div>
@@ -412,33 +412,33 @@ function MemoryOriginPanel(props: {
   return (
     <Card className="p-5 sm:p-6">
       <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Personal memory
+        Your memories
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-        How was it created?
+        How did they get here?
       </h2>
       <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-        Your active memories grouped by how Junior received them.
+        Your active memories grouped by how they were added.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Junior extracted durable context from conversations"
+          detail="Picked up automatically from a conversation"
           href={`${props.libraryPath}?filter=automatic`}
           icon={Sparkles}
-          label="Learned automatically"
+          label="Learned by Junior"
           value={stats.automatic}
         />
         <OverviewBreakdownRow
-          detail="You explicitly asked Junior to remember something"
+          detail="Added because you asked Junior to remember it"
           href={`${props.libraryPath}?filter=explicit`}
           icon={Bookmark}
           label="Saved by you"
           value={stats.explicit}
         />
         <OverviewBreakdownRow
-          detail="Created before learning method tracking was available"
+          detail="Added before learning method tracking existed"
           icon={BrainCircuit}
-          label="Other"
+          label="Older records"
           value={other}
         />
       </div>
@@ -506,10 +506,10 @@ function MemoryRow(props: {
   const remembered = metadataValue(props.record, "Remembered");
   const provenance =
     learned === "Automatic"
-      ? "Learned automatically"
+      ? "Learned by Junior"
       : learned === "Explicit"
-        ? "Saved explicitly"
-        : "Recorded by Junior";
+        ? "Saved by you"
+        : "Recorded earlier";
   return (
     <>
       <div
