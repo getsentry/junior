@@ -17,12 +17,12 @@ A task can be just a title + 2-3 bullets. Use headed sections only when scope is
 - **Background** — why this task exists, with code snippets if relevant
 - **Scope** — what's included and excluded, quantify when possible
 
-For simple tasks, skip sections and use flat bullets for scope and next step.
+For simple tasks, skip sections and use flat bullets for background and scope.
 
 ## Research guidance
 
 - Minimal research by default. Prefer first-party repository context when available.
-- Include implementation steps only when the thread discusses approach. Otherwise, state the goal and scope.
+- Do not generate implementation steps or approaches. Preserve a specific user-provided plan only when explicitly requested, attribute it, and keep it separate from verified scope.
 - Include dependencies or risks only when material.
 
 ## Context generalization

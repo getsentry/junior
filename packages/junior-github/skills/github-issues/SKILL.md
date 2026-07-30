@@ -57,7 +57,8 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Prefer flat bullet lists over headed sections for simple issues. Remove empty sections.
 - Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying technical problem.
 - Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
-- Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
+- Do not add desired outcome, expected behavior, acceptance criteria, fixes, implementation steps, approaches, or options unless the user explicitly asks to preserve a specific proposal.
+- Never infer a solution from research. If a user-provided proposal must be preserved, attribute it as a proposal and keep it separate from verified diagnosis.
 - Preserve material source references inline.
 
 **Source attribution:**
@@ -74,6 +75,7 @@ Before running the `gh` create/edit command, check each gate. If any fails, revi
 - Title length ≤ 60 characters.
 - No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
 - Body structure matches complexity — no empty sections, no restated title, no raw research dump.
+- No invented or unattributed solution, implementation step, approach, or option appears in the title or body.
 
 Run [references/issue-quality-checklist.md](references/issue-quality-checklist.md) for holistic soft-signal review when the draft warrants it.
 
@@ -93,5 +95,5 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 - Require explicit confirmation only for close/reopen or destructive broad rewrites.
 - Do not overwrite issue fields unless explicitly requested. Prefer partial updates over full body replacement.
-- For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
+- Keep ticket handoffs diagnosis-first. Root-cause evidence can establish what is wrong; it does not justify inventing what should be built or changed.
 - If repository or installation access is missing, stop and return a concrete remediation message.
