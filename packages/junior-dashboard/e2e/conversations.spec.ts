@@ -381,9 +381,9 @@ test("archives and restores a conversation from the sidebar", async ({
   });
   await page.route("**/api/conversations/*/archive", async (route) => {
     const request = route.request().postDataJSON();
-    if (!request.archived) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, request.archived ? 100 : 500),
+    );
     archived = request.archived;
     await route.fulfill({ json: { archived } });
   });
@@ -411,6 +411,8 @@ test("archives and restores a conversation from the sidebar", async ({
   await archiveButton.click();
   const emptyView = page.getByText("No conversations match this view.");
   await expect(emptyView).toHaveCount(0);
+  await page.waitForTimeout(220);
+  await expect(emptyView).toBeVisible();
   const archiveRequest = await archiveRequestPromise;
 
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
@@ -420,7 +422,6 @@ test("archives and restores a conversation from the sidebar", async ({
       hasText: "Dashboard QA edge cases archived",
     }),
   ).toBeVisible();
-  await expect(emptyView).toBeVisible();
 
   const restoreRequestPromise = page.waitForRequest(
     (request) =>

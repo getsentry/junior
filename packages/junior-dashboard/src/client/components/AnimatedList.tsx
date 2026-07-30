@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type AriaRole,
   type ReactNode,
@@ -34,12 +36,22 @@ export function AnimatedList<T>(props: {
       state: "present",
     })),
   );
+  const hasPresentedItems = useRef(props.items.length > 0);
   const exiting = animatedItems.some((item) => item.state === "exiting");
+  const removeAnimatedItem = useCallback((key: string) => {
+    setAnimatedItems((current) => current.filter((item) => item.key !== key));
+  }, []);
 
   useLayoutEffect(() => {
     setAnimatedItems((current) =>
-      mergeAnimatedItems(current, props.items, props.getKey),
+      mergeAnimatedItems(
+        current,
+        props.items,
+        props.getKey,
+        hasPresentedItems.current,
+      ),
     );
+    if (props.items.length > 0) hasPresentedItems.current = true;
   }, [props.getKey, props.items]);
 
   useEffect(() => {
@@ -54,16 +66,6 @@ export function AnimatedList<T>(props: {
     return () => window.cancelAnimationFrame(frame);
   }, [animatedItems, reducedMotion]);
 
-  useEffect(() => {
-    if (!exiting) return;
-    const timeout = window.setTimeout(() => {
-      setAnimatedItems((current) =>
-        current.filter((item) => item.state !== "exiting"),
-      );
-    }, durationMs);
-    return () => window.clearTimeout(timeout);
-  }, [animatedItems, durationMs, exiting]);
-
   return (
     <div
       aria-label={animatedItems.length > 0 ? props.ariaLabel : undefined}
@@ -72,26 +74,13 @@ export function AnimatedList<T>(props: {
     >
       {animatedItems.length > 0
         ? animatedItems.map((animatedItem) => (
-            <div
-              aria-hidden={animatedItem.state === "exiting" ? true : undefined}
-              className={cn(
-                "grid min-w-0 origin-center transition-[grid-template-rows,opacity,transform] motion-reduce:transition-none",
-                animatedItem.state === "present"
-                  ? "grid-rows-[1fr] translate-x-0 scale-100 opacity-100"
-                  : "pointer-events-none grid-rows-[0fr] translate-x-2 scale-[0.98] opacity-0",
-              )}
-              data-presence={animatedItem.state}
-              inert={animatedItem.state === "exiting" ? true : undefined}
+            <AnimatedListRow
+              animatedItem={animatedItem}
+              durationMs={durationMs}
               key={animatedItem.key}
-              style={{
-                transitionDuration: `${durationMs}ms`,
-                transitionTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-              }}
-            >
-              <div className="min-h-0 min-w-0 overflow-hidden">
-                {props.renderItem(animatedItem.item)}
-              </div>
-            </div>
+              onExited={removeAnimatedItem}
+              renderItem={props.renderItem}
+            />
           ))
         : props.empty}
     </div>
@@ -102,6 +91,7 @@ function mergeAnimatedItems<T>(
   current: AnimatedItem<T>[],
   items: T[],
   getKey: (item: T) => string,
+  animateNewItems: boolean,
 ): AnimatedItem<T>[] {
   const currentByKey = new Map(current.map((item) => [item.key, item]));
   const nextKeys = new Set(items.map(getKey));
@@ -114,7 +104,7 @@ function mergeAnimatedItems<T>(
       state:
         previous?.state === "exiting"
           ? "entering"
-          : (previous?.state ?? "entering"),
+          : (previous?.state ?? (animateNewItems ? "entering" : "present")),
     } satisfies AnimatedItem<T>;
   });
 
@@ -126,6 +116,45 @@ function mergeAnimatedItems<T>(
     });
   });
   return next;
+}
+
+function AnimatedListRow<T>(props: {
+  animatedItem: AnimatedItem<T>;
+  durationMs: number;
+  onExited(key: string): void;
+  renderItem(item: T): ReactNode;
+}) {
+  const { animatedItem } = props;
+  useEffect(() => {
+    if (animatedItem.state !== "exiting") return;
+    const timeout = window.setTimeout(
+      () => props.onExited(animatedItem.key),
+      props.durationMs,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [animatedItem.key, animatedItem.state, props.durationMs, props.onExited]);
+
+  return (
+    <div
+      aria-hidden={animatedItem.state === "exiting" ? true : undefined}
+      className={cn(
+        "grid min-w-0 origin-center transition-[grid-template-rows,opacity,transform] motion-reduce:transition-none",
+        animatedItem.state === "present"
+          ? "grid-rows-[1fr] translate-x-0 scale-100 opacity-100"
+          : "pointer-events-none grid-rows-[0fr] translate-x-2 scale-[0.98] opacity-0",
+      )}
+      data-presence={animatedItem.state}
+      inert={animatedItem.state === "exiting" ? true : undefined}
+      style={{
+        transitionDuration: `${props.durationMs}ms`,
+        transitionTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      }}
+    >
+      <div className="min-h-0 min-w-0 overflow-hidden">
+        {props.renderItem(animatedItem.item)}
+      </div>
+    </div>
+  );
 }
 
 function markEnteredItemsPresent<T>(
