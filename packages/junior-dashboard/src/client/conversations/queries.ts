@@ -9,6 +9,7 @@ import {
 import type {
   ConversationDetailReport,
   ConversationEventPage,
+  ConversationFeed,
 } from "@sentry/junior/api/schema";
 import {
   archiveConversationResponseSchema,
@@ -46,8 +47,11 @@ export function conversationDetailQueryOptions(
   });
 }
 
-/** Archive or restore one conversation and refresh its related resources. */
-export function useArchiveConversation(conversationId: string) {
+/** Archive or restore one conversation with an immediate reversible cache update. */
+export function useArchiveConversation(
+  conversationId: string,
+  options?: { onSuccess?(archived: boolean): void },
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
@@ -56,6 +60,51 @@ export function useArchiveConversation(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
         args,
       ),
+    onMutate: async (args) => {
+      const conversationQueries = { queryKey: ["dashboard", "conversations"] };
+      const detailQueryKey = conversationDetailQueryKey(conversationId);
+      await Promise.all([
+        queryClient.cancelQueries(conversationQueries),
+        queryClient.cancelQueries({ queryKey: detailQueryKey }),
+      ]);
+      const previousFeeds =
+        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
+      const previousDetail =
+        queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
+      const archivedAt = args.archived ? new Date().toISOString() : undefined;
+
+      queryClient.setQueriesData<ConversationFeed>(
+        conversationQueries,
+        (feed) =>
+          feed
+            ? {
+                ...feed,
+                conversations: feed.conversations.map((conversation) =>
+                  conversation.conversationId === conversationId
+                    ? { ...conversation, archivedAt }
+                    : conversation,
+                ),
+              }
+            : feed,
+      );
+      queryClient.setQueryData<ConversationDetailReport>(
+        detailQueryKey,
+        (detail) => (detail ? { ...detail, archivedAt } : detail),
+      );
+      return { detailQueryKey, previousDetail, previousFeeds };
+    },
+    onError: (_error, _args, context) => {
+      context?.previousFeeds.forEach(([queryKey, feed]) => {
+        queryClient.setQueryData(queryKey, feed);
+      });
+      if (context) {
+        queryClient.setQueryData(
+          context.detailQueryKey,
+          context.previousDetail,
+        );
+      }
+    },
+    onSuccess: (_result, args) => options?.onSuccess?.(args.archived),
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
