@@ -69,35 +69,24 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
       />
 
       {dashboardQuery.data ? (
-        <section
-          aria-label="Memory overview"
-          className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]"
-        >
-          <MemoryTimeline days={dashboardQuery.data.days} />
-          <MemoryAtAGlance data={dashboardQuery.data} />
-        </section>
-      ) : dashboardQuery.error ? (
-        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
-          <CircleAlert aria-hidden="true" size={18} />
-          Memory history is temporarily unavailable.
-        </Card>
+        <MemorySummary data={dashboardQuery.data} />
       ) : (
-        <Card className="min-h-[21rem] animate-pulse">
-          <span className="sr-only">Loading memory history</span>
-        </Card>
+        <div className="h-24 animate-pulse border-y border-white/[0.06]">
+          <span className="sr-only">Loading memory summary</span>
+        </div>
       )}
 
       <section className="grid gap-4" aria-labelledby="memory-library-title">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-              Stored context
+              Your memories
             </div>
             <h2
               className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
               id="memory-library-title"
             >
-              {searchQuery ? "Search results" : "Memory library"}
+              {searchQuery ? "Search results" : "What Junior remembers"}
             </h2>
           </div>
           {content?.searchPlaceholder ? (
@@ -147,13 +136,6 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           <div className="grid items-start gap-4">
             <div className="grid gap-3">
               <Card padding="none">
-                <div className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_3.5rem] items-center gap-3 border-b border-white/[0.06] px-4 py-2.5 font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid">
-                  <span>Memory</span>
-                  <span>Type</span>
-                  <span>Learned</span>
-                  <span>Source</span>
-                  <span className="sr-only">Actions</span>
-                </div>
                 {records.map((record, index) => (
                   <MemoryRow
                     action={action}
@@ -191,6 +173,19 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           </div>
         )}
       </section>
+
+      {dashboardQuery.data ? (
+        <MemoryTimeline days={dashboardQuery.data.days} />
+      ) : dashboardQuery.error ? (
+        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
+          <CircleAlert aria-hidden="true" size={18} />
+          Memory history is temporarily unavailable.
+        </Card>
+      ) : (
+        <Card className="min-h-64 animate-pulse">
+          <span className="sr-only">Loading memory history</span>
+        </Card>
+      )}
     </div>
   );
 }
@@ -210,12 +205,12 @@ function MemoryCollections(props: {
     {
       count: props.stats?.automatic,
       filter: "automatic",
-      label: "Automatic",
+      label: "Learned",
     },
     {
       count: props.stats?.explicit,
       filter: "explicit",
-      label: "Explicit",
+      label: "Saved",
     },
   ];
   return (
@@ -260,76 +255,59 @@ function MemoryCollections(props: {
   );
 }
 
-function MemoryAtAGlance(props: { data: MemoryDashboardData }) {
+function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const coverage = stats.active === 0 ? 0 : stats.embedded / stats.active;
-  const mix = [
-    { color: "bg-cyan-300", label: "Preferences", value: stats.preference },
-    { color: "bg-amber-300", label: "Procedures", value: stats.procedure },
-    { color: "bg-violet-300", label: "Knowledge", value: stats.knowledge },
+  const items = [
+    {
+      detail: "memories about you",
+      label: "Active",
+      value: stats.active.toLocaleString("en-US"),
+    },
+    {
+      detail: "learned in the last 30 days",
+      label: "Recent",
+      value: `+${stats.createdThirtyDays.toLocaleString("en-US")}`,
+    },
+    {
+      detail: "ready for semantic recall",
+      label: "Recall ready",
+      tone: "text-emerald-200",
+      value: new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 0,
+        style: "percent",
+      }).format(coverage),
+    },
+    {
+      detail: "personal preferences",
+      label: "Preferences",
+      value: stats.preference.toLocaleString("en-US"),
+    },
   ];
   return (
-    <Card className="grid content-start p-5 sm:p-6">
-      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        At a glance
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] lg:grid-cols-1">
-        <div className="bg-[#09090b] p-4">
-          <div className="font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text">
-            {stats.active.toLocaleString("en-US")}
+    <section
+      aria-label="Memory summary"
+      className="grid grid-cols-2 gap-px border-y border-white/[0.06] bg-white/[0.06] lg:grid-cols-4"
+    >
+      {items.map((item) => (
+        <div className="bg-[#050507] px-4 py-4 sm:px-5" key={item.label}>
+          <div className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+            {item.label}
           </div>
-          <div className="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
-            Active memories
+          <div
+            className={cn(
+              "mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text",
+              item.tone,
+            )}
+          >
+            {item.value}
           </div>
-          <div className="mt-2 font-mono text-[0.62rem] text-emerald-200/70">
-            +{stats.createdThirtyDays.toLocaleString("en-US")} in 30 days
-          </div>
-        </div>
-        <div className="bg-[#09090b] p-4">
-          <div className="font-display text-3xl font-light tracking-[-0.04em] text-emerald-200">
-            {new Intl.NumberFormat("en-US", {
-              maximumFractionDigits: 0,
-              style: "percent",
-            }).format(coverage)}
-          </div>
-          <div className="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
-            Search ready
-          </div>
-          <div className="mt-2 font-mono text-[0.62rem] text-dashboard-text-muted">
-            {stats.embedded.toLocaleString("en-US")} embedded
+          <div className="mt-1 font-mono text-[0.62rem] leading-relaxed text-dashboard-text-muted">
+            {item.detail}
           </div>
         </div>
-      </div>
-
-      <div className="mt-5 border-t border-white/[0.06] pt-4">
-        <h3 className="m-0 font-display text-base font-medium text-dashboard-text">
-          Memory mix
-        </h3>
-        <div className="mt-3 grid gap-3">
-          {mix.map((item) => (
-            <div key={item.label}>
-              <div className="flex items-center justify-between gap-3 font-mono text-[0.62rem]">
-                <span className="inline-flex items-center gap-2 text-dashboard-text-muted">
-                  <i className={cn("size-2 rounded-sm", item.color)} />
-                  {item.label}
-                </span>
-                <span className="text-dashboard-text">
-                  {item.value.toLocaleString("en-US")}
-                </span>
-              </div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
-                <div
-                  className={cn("h-full rounded-full opacity-80", item.color)}
-                  style={{
-                    width: `${stats.active === 0 ? 0 : Math.max(3, (item.value / stats.active) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Card>
+      ))}
+    </section>
   );
 }
 
@@ -347,6 +325,13 @@ function MemoryRow(props: {
   const kind = metadataValue(props.record, "Type");
   const learned = metadataValue(props.record, "Learned");
   const source = metadataValue(props.record, "Source");
+  const remembered = metadataValue(props.record, "Remembered");
+  const provenance =
+    learned === "Automatic"
+      ? `Learned from ${source}`
+      : learned === "Explicit"
+        ? `Saved from ${source}`
+        : `Recorded from ${source}`;
   return (
     <>
       <div
@@ -358,7 +343,7 @@ function MemoryRow(props: {
       >
         <button
           aria-pressed={props.selected}
-          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left lg:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_1rem]"
+          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-0 bg-transparent px-4 py-3.5 text-left"
           onClick={props.onSelect}
           type="button"
         >
@@ -377,21 +362,25 @@ function MemoryRow(props: {
               <h3 className="m-0 font-display text-base font-medium leading-snug text-dashboard-text">
                 {props.record.title}
               </h3>
-              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-dashboard-text-muted lg:hidden">
-                <span>{kind}</span>
-                <span>{learned}</span>
-                <span>{source}</span>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
+                <span>{provenance}</span>
+                <span
+                  aria-hidden="true"
+                  className="text-dashboard-text-muted opacity-30"
+                >
+                  ·
+                </span>
+                <span>{shortDate(remembered)}</span>
               </div>
             </div>
           </div>
-          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
+          <span
+            className={cn(
+              "hidden rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
+              memoryKindClass(kind),
+            )}
+          >
             {kind}
-          </span>
-          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
-            {learned}
-          </span>
-          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
-            {source}
           </span>
           <ChevronRight
             aria-hidden="true"
@@ -483,8 +472,21 @@ function MemoryDetails(props: {
   record: PluginUserPageRecord;
 }) {
   const [copied, setCopied] = useState(false);
+  const kind = metadataValue(props.record, "Type");
   const learned = metadataValue(props.record, "Learned");
+  const remembered = metadataValue(props.record, "Remembered");
   const source = metadataValue(props.record, "Source");
+  const story =
+    learned === "Automatic"
+      ? `Junior learned this automatically from ${source} on ${shortDate(remembered)}.`
+      : learned === "Explicit"
+        ? `You explicitly saved this from ${source} on ${shortDate(remembered)}.`
+        : `Junior recorded this from ${source} on ${shortDate(remembered)}.`;
+  const visibleMetadata = props.inline
+    ? (props.record.metadata ?? []).filter(
+        (item) => !["Type", "Learned", "Source"].includes(item.label),
+      )
+    : props.record.metadata;
 
   async function copyId() {
     await navigator.clipboard.writeText(props.record.id);
@@ -494,32 +496,34 @@ function MemoryDetails(props: {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
-        <div>
-          <div className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-cyan-200/65">
-            Memory details
+      {!props.inline ? (
+        <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
+          <div>
+            <div className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-cyan-200/65">
+              Memory details
+            </div>
+            <h3 className="mt-1 mb-0 font-display text-lg font-medium text-dashboard-text">
+              What Junior remembers
+            </h3>
           </div>
-          <h3 className="mt-1 mb-0 font-display text-lg font-medium text-dashboard-text">
-            Stored context
-          </h3>
+          <div className="ml-auto grid size-9 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-100">
+            <BrainCircuit aria-hidden="true" size={17} />
+          </div>
+          {props.onClose ? (
+            <button
+              aria-label="Close memory details"
+              className={cn(
+                "grid size-9 cursor-pointer place-items-center border-0 bg-transparent",
+                dashboardInteractiveTextClass,
+              )}
+              onClick={props.onClose}
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          ) : null}
         </div>
-        <div className="grid size-9 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-100">
-          <BrainCircuit aria-hidden="true" size={17} />
-        </div>
-        {props.onClose ? (
-          <button
-            aria-label="Close memory details"
-            className={cn(
-              "grid size-9 cursor-pointer place-items-center border-0 bg-transparent",
-              dashboardInteractiveTextClass,
-            )}
-            onClick={props.onClose}
-            type="button"
-          >
-            <X aria-hidden="true" size={18} />
-          </button>
-        ) : null}
-      </div>
+      ) : null}
       <div
         className={cn(
           props.inline
@@ -528,15 +532,24 @@ function MemoryDetails(props: {
         )}
       >
         <div>
-          <p className="mt-5 mb-0 font-display text-xl leading-relaxed text-dashboard-text first:mt-0">
-            {props.record.title}
-          </p>
+          {!props.inline ? (
+            <p className="mt-5 mb-0 font-display text-xl leading-relaxed text-dashboard-text">
+              {props.record.title}
+            </p>
+          ) : null}
           {props.record.description ? (
             <p className="mt-3 mb-0 text-sm leading-relaxed text-dashboard-text-muted">
               {props.record.description}
             </p>
           ) : null}
-          <div className="mt-5 flex items-start gap-3 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
+          <div
+            className={cn(
+              "flex items-start gap-3",
+              props.inline
+                ? "pt-1"
+                : "mt-5 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3",
+            )}
+          >
             <BrainCircuit
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-cyan-200/70"
@@ -544,27 +557,31 @@ function MemoryDetails(props: {
             />
             <div>
               <div className="font-mono text-[0.55rem] uppercase tracking-[0.12em] text-cyan-200/65">
-                How this was learned
+                Why Junior remembers this
               </div>
-              <div className="mt-1 font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
-                {learned === "Automatic"
-                  ? `Learned automatically from ${source}.`
-                  : learned === "Explicit"
-                    ? `Saved explicitly from ${source}.`
-                    : `Recorded from ${source}.`}
+              <div
+                className={cn(
+                  "mt-1 leading-relaxed text-dashboard-text",
+                  props.inline
+                    ? "font-display text-lg"
+                    : "font-mono text-[0.66rem]",
+                )}
+              >
+                {story} It is stored as a {kind.toLowerCase()} for future
+                conversations.
               </div>
             </div>
           </div>
         </div>
         <div>
-          {props.record.metadata?.length ? (
+          {visibleMetadata?.length ? (
             <dl
               className={cn(
                 "grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] sm:grid-cols-2",
                 props.inline ? "mt-0" : "mt-6",
               )}
             >
-              {props.record.metadata.map((item) => (
+              {visibleMetadata.map((item) => (
                 <div
                   className="min-w-0 bg-[#09090b] px-3 py-3"
                   key={item.label}
@@ -602,4 +619,18 @@ function MemoryDetails(props: {
 
 function metadataValue(record: PluginUserPageRecord, label: string): string {
   return record.metadata?.find((item) => item.label === label)?.value ?? "—";
+}
+
+function shortDate(value: string): string {
+  return value.split(",").slice(0, 2).join(",");
+}
+
+function memoryKindClass(kind: string): string {
+  if (kind === "Preference") {
+    return "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100";
+  }
+  if (kind === "Procedure") {
+    return "border-amber-300/20 bg-amber-300/[0.07] text-amber-100";
+  }
+  return "border-violet-300/20 bg-violet-300/[0.07] text-violet-100";
 }

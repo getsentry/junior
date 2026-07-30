@@ -17,7 +17,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
   const [range, setRange] = useState<MemoryRange>(30);
   const days = props.days.slice(-range);
   const width = 720;
-  const height = 250;
+  const height = 200;
   const left = 38;
   const right = 12;
   const top = 14;
@@ -33,17 +33,17 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
   const hasMemories = totals.some((total) => total > 0);
 
   return (
-    <Card className="min-h-[21rem] p-4 sm:p-5">
+    <Card className="min-h-[17rem] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
             Memory history
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-            Memories learned over time
+            Memory activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-            New personal memories grouped by the day Junior stored them.
+            When Junior learned new personal context.
           </p>
         </div>
         <div
@@ -90,7 +90,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
       <div className="relative mt-3 overflow-hidden">
         <svg
           aria-label={`Memories learned during the last ${range} days`}
-          className="block h-auto min-h-52 w-full"
+          className="block h-auto min-h-40 w-full"
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >

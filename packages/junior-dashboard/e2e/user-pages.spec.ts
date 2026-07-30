@@ -45,7 +45,9 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByText("Preference", { exact: true }).last(),
   ).toBeVisible();
   await expect(
-    page.getByText("Active memories", { exact: true }),
+    page
+      .getByRole("region", { name: "Memory summary" })
+      .getByText("Active", { exact: true }),
   ).toBeVisible();
   const sevenDays = page.getByRole("button", { name: "7d" });
   const thirtyDays = page.getByRole("button", { name: "30d" });
@@ -91,12 +93,14 @@ test("expands memory details inline on desktop", async ({ page }) => {
     name: /^I prefer concise summaries/,
   });
   await memory.click();
-  await expect(page.getByText("How this was learned").first()).toBeVisible();
+  await expect(
+    page.getByText("Why Junior remembers this").first(),
+  ).toBeVisible();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   await memory.click();
   await expect(
-    page.getByText("How this was learned").first(),
+    page.getByText("Why Junior remembers this").first(),
   ).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });
@@ -111,9 +115,9 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("How this was learned")).toBeVisible();
+  await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
   await expect(
-    dialog.getByText("Learned automatically from Slack."),
+    dialog.getByText(/Junior learned this automatically from Slack/),
   ).toBeVisible();
 
   await page.keyboard.press("Escape");
