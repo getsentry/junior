@@ -13,24 +13,24 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { conversationDetailQueryKey } from "../src/client/conversations/queries";
-import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
-import { ContributionGrid } from "../src/client/components/ContributionGrid";
-import { PluginReports } from "../src/client/components/PluginReports";
+import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
-} from "../src/client/components/SubagentTranscriptDrawer";
-import { Transcript } from "../src/client/components/Transcript";
-import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
-import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
-import { TranscriptText } from "../src/client/components/TranscriptText";
-import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
-import { ConversationPage } from "../src/client/pages/ConversationPage";
+} from "../src/client/conversations/SubagentTranscriptDrawer";
+import { Transcript } from "../src/client/conversations/TranscriptView";
+import { TranscriptHeader } from "../src/client/conversations/TranscriptHeader";
+import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
+import { TranscriptText } from "../src/client/conversations/TranscriptText";
+import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
+import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
+import { ConversationPage } from "../src/client/conversations/ConversationPage";
 import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
+import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
+import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";

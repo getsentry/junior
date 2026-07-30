@@ -12,6 +12,10 @@
     "Liberation Mono", monospace;
   --color-dashboard-text: #f4f4f5;
   --color-dashboard-text-muted: #a1a1aa;
+  --color-dashboard-surface-panel: #09090b;
+  --color-dashboard-surface-raised: #0b0b0b;
+  --color-dashboard-surface-hover: #151515;
+  --color-dashboard-control: #111114;
 }
 
 @layer base {

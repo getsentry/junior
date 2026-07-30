@@ -10,7 +10,7 @@ import { cn } from "./styles";
 import {
   buildSearchDecorations,
   useTranscriptSearch,
-} from "./components/transcriptSearch";
+} from "./conversations/transcriptSearch";
 
 declare const shikiHtmlBrand: unique symbol;
 

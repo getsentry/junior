@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import type { ConversationTranscript, TranscriptViewPart } from "../types";
-import { conversationTranscriptMessages } from "../conversations/eventTranscript";
+import { conversationTranscriptMessages } from "./eventTranscript";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const USER_SCROLL_DELTA_PX = 2;

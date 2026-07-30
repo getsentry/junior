@@ -16,11 +16,11 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
 import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
-import { LocationDirectoryActivityChart } from "../../components/charts/LocationDirectoryActivityChart";
+import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
 
@@ -69,12 +69,7 @@ export function LocationsPageContent(props: {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <PageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -139,7 +134,7 @@ export function LocationsPageContent(props: {
           ) : null}
         </>
       ) : null}
-    </div>
+    </PageLayout>
   );
 }
 

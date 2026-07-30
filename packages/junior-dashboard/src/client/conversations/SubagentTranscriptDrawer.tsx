@@ -2,13 +2,13 @@ import { useEffect } from "react";
 import { Bot, ExternalLink, X } from "lucide-react";
 import { Link } from "react-router";
 
-import { useConversationData } from "../conversations/queries";
+import { useConversationData } from "./queries";
 import { conversationPath, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import type { TranscriptViewSubagentPart } from "../types";
-import { Button } from "./Button";
+import { Button } from "../components/Button";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
-import { Transcript } from "./Transcript";
+import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
@@ -52,7 +52,7 @@ export function SubagentTranscriptDrawer(props: {
         type="button"
       />
       <aside className="absolute right-0 top-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:w-[min(760px,94vw)] md:border-l md:border-white/12">
-        <header className="relative border-b border-white/10 bg-[#0b0b0b] px-4 py-3 md:px-5">
+        <header className="relative border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 md:px-5">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2 pr-24">
               <Bot

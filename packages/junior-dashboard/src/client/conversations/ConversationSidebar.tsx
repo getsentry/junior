@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Archive, MessageSquareText } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "../conversations/queries";
+import { useArchiveConversation } from "./queries";
 import {
   conversationDisplayTitle,
   conversationPath,
@@ -13,8 +13,8 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
-import { EmptyTelemetry } from "./EmptyTelemetry";
-import { SearchInput } from "./SearchInput";
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import { SearchInput } from "../components/SearchInput";
 
 const conversationKey = (conversation: Conversation) => conversation.id;
 

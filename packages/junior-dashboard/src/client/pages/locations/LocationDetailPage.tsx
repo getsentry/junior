@@ -8,14 +8,14 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
 import { StatCard } from "../../components/metrics/StatCard";
 import {
   formatCompactNumber,
   formatRelativeTime,
   peoplePath,
 } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
-import { LocationActivityChart } from "../../components/charts/LocationActivityChart";
+import { LocationActivityChart } from "./LocationActivityChart";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
@@ -33,12 +33,7 @@ export function LocationDetailPageContent(props: {
     return <LoadingView label="Loading location" />;
   }
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <PageLayout>
       {props.error ? (
         <Card padding="sm">
           <EmptyTelemetry>
@@ -49,7 +44,7 @@ export function LocationDetailPageContent(props: {
         </Card>
       ) : null}
       {props.data ? <LocationDetail detail={props.data} /> : null}
-    </div>
+    </PageLayout>
   );
 }
 

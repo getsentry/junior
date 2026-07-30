@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toolCallPreview } from "../src/client/components/toolCallPreview";
+import { toolCallPreview } from "../src/client/conversations/toolCallPreview";
 
 describe("toolCallPreview", () => {
   it("normalizes generic tool arguments", () => {

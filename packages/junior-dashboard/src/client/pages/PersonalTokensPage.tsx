@@ -74,7 +74,7 @@ export function PersonalTokensPage() {
           or script. Tokens expire after 90 days.
         </p>
 
-        <div className="mt-6 rounded-lg border border-white/15 bg-[#0b0b0b] p-5">
+        <div className="mt-6 rounded-lg border border-white/15 bg-dashboard-surface-raised p-5">
           {createdToken ? (
             <div className="mt-5 rounded border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="mt-0 mb-2 text-sm font-semibold">

@@ -8,7 +8,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { useActorProfileData } from "../../api";
-import { ContributionGrid } from "../../components/ContributionGrid";
+import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import {
   TimeRangeSelector,
@@ -16,11 +16,11 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import { Section } from "../../components/Section";
-import { SectionHeader } from "../../components/SectionHeader";
-import { SectionTitle } from "../../components/SectionTitle";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { SectionHeader } from "../../components/layout/SectionHeader";
+import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
@@ -77,17 +77,11 @@ export function Profile(props: { profile: ActorProfileReport }) {
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Runtime telemetry
-          </div>
-          <h2
-            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
-            id="profile-metrics-title"
-          >
-            Usage over time
-          </h2>
-        </div>
+        <SectionIntro
+          eyebrow="Runtime telemetry"
+          id="profile-metrics-title"
+          title="Usage over time"
+        />
         <SystemMetricCharts days={profile.activityDays.slice(-range)} />
       </section>
 
@@ -116,7 +110,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
         </aside>
 
         <div className="grid min-w-0 gap-5 lg:order-1">
-          <Section className="mb-0">
+          <Card as="section" className="mb-0" variant="section">
             <SectionHeader
               actions={
                 <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
@@ -127,7 +121,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
               <SectionTitle>Activity</SectionTitle>
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
-          </Section>
+          </Card>
           <div className="grid min-w-0 gap-5 md:grid-cols-2">
             <LeaderboardSection items={profile.locations} title="Places" />
             <LeaderboardSection items={profile.surfaces} title="Surfaces" />
@@ -144,7 +138,7 @@ function LeaderboardSection(props: {
 }) {
   if (props.items.length <= 1) return null;
   return (
-    <Section className="mb-0">
+    <Card as="section" className="mb-0" variant="section">
       <SectionHeader>
         <SectionTitle>{props.title}</SectionTitle>
       </SectionHeader>
@@ -177,6 +171,6 @@ function LeaderboardSection(props: {
           </li>
         ))}
       </ol>
-    </Section>
+    </Card>
   );
 }

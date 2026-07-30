@@ -11,7 +11,7 @@ import {
   type TokenUsageSummary,
   type ToolCallSummary,
 } from "../format";
-import { MetricValue, type MetricTooltipLine } from "./Metric";
+import { MetricValue, type MetricTooltipLine } from "../components/Metric";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;

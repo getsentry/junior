@@ -3,10 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
-import {
-  memoryRecallContent,
-  type MemoryRecallContent,
-} from "../conversations/turnContext";
+import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 
@@ -89,7 +86,7 @@ function TurnContextPanel(props: {
       <section
         aria-label="Turn context"
         aria-modal="true"
-        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-white/15 bg-[#0b0b0b] shadow-2xl shadow-black/70"
+        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-white/15 bg-dashboard-surface-raised shadow-2xl shadow-black/70"
         id={props.id}
         role="dialog"
       >

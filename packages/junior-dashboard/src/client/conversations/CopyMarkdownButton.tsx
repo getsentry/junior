@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-import { Button } from "./Button";
+import { Button } from "../components/Button";
 
 /** Copy an available Markdown document while exposing clipboard result state. */
 export function CopyMarkdownButton(props: {

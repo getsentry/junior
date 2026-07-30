@@ -17,7 +17,7 @@ import { LoadingView } from "./components/LoadingView";
 import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
-import { ConversationWorkspace } from "./pages/ConversationWorkspace";
+import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";

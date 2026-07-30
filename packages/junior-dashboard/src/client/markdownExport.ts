@@ -13,7 +13,7 @@ import {
 import {
   groupTranscriptMessages,
   messageRawText,
-} from "./components/transcriptRenderModel";
+} from "./conversations/transcriptRenderModel";
 import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import type {

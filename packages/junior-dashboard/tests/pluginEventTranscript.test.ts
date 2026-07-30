@@ -7,8 +7,8 @@ import type {
 import {
   groupTranscriptMessages,
   messageRawText,
-} from "../src/client/components/transcriptRenderModel";
-import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
+} from "../src/client/conversations/transcriptRenderModel";
+import { entryMatchesSearch } from "../src/client/conversations/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import { buildConversationMarkdown } from "../src/client/markdownExport";
 import type { ConversationTranscript } from "../src/client/types";

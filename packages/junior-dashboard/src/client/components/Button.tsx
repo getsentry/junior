@@ -25,7 +25,7 @@ export function Button({
     <button
       {...props}
       className={cn(
-        "rounded border border-white/15 bg-[#0b0b0b] font-mono text-dashboard-text transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-dashboard-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-[#0b0b0b] disabled:hover:text-dashboard-text",
+        "rounded border border-white/15 bg-dashboard-surface-raised font-mono text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
         size === "icon"
           ? "grid size-9 place-items-center p-0"
           : "inline-flex h-9 max-w-full items-center gap-2 px-3 text-[0.82rem] font-semibold leading-none",
@@ -70,6 +70,6 @@ const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
-  pill: "border-white/10 bg-[#0b0b0b] text-dashboard-text-muted hover:border-white/25 hover:bg-[#151515] hover:text-dashboard-text",
+  pill: "border-white/10 bg-dashboard-surface-raised text-dashboard-text-muted hover:border-white/25 hover:bg-dashboard-surface-hover hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };

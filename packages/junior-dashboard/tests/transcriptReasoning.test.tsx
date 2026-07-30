@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { TranscriptReasoningView } from "../src/client/components/TranscriptReasoningView";
-import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
+import { TranscriptReasoningView } from "../src/client/conversations/TranscriptReasoningView";
+import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 
 describe("transcript reasoning", () => {
   it("renders a collapsed reasoning row with preview text", () => {

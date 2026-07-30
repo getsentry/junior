@@ -14,9 +14,9 @@ import {
   useArchiveConversation,
   useConversationData,
   type PendingArchiveConversationUpdate,
-} from "../conversations/queries";
+} from "./queries";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
+import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -39,13 +39,13 @@ import {
   TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
-} from "../components/TelemetryMetrics";
-import { Transcript } from "../components/Transcript";
-import { TranscriptLoading } from "../components/TranscriptLoading";
+} from "./TelemetryMetrics";
+import { Transcript } from "./TranscriptView";
+import { TranscriptLoading } from "./TranscriptLoading";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
-} from "../components/SubagentTranscriptDrawer";
+} from "./SubagentTranscriptDrawer";
 import type { Conversation } from "../types";
 
 /** Render the selected conversation transcript inside the workspace. */

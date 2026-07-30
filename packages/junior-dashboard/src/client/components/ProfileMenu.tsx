@@ -69,8 +69,9 @@ export function ProfileMenu({
         aria-expanded={open}
         aria-label={`Open profile menu for ${name}`}
         className={cn(
-          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-[#0b0b0b] px-1.5 text-dashboard-text transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
-          open && "border-white/30 bg-[#151515] text-dashboard-text",
+          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-1.5 text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
+          open &&
+            "border-white/30 bg-dashboard-surface-hover text-dashboard-text",
         )}
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
@@ -95,7 +96,7 @@ export function ProfileMenu({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-lg border border-white/15 bg-[#0b0b0b] p-1.5 shadow-2xl shadow-black/60"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-lg border border-white/15 bg-dashboard-surface-raised p-1.5 shadow-2xl shadow-black/60"
           id="profile-popover"
         >
           <div className="border-b border-white/10 px-2.5 py-2.5">

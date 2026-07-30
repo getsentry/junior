@@ -1,11 +1,12 @@
 import { RadioTower } from "lucide-react";
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import { formatTime } from "../format";
-import { cn } from "../styles";
+import { formatTime } from "../../format";
+import { cn } from "../../styles";
 import { PluginBarChart } from "./PluginBarChart";
-import type { TimeRangeDays } from "./controls/TimeRangeSelector";
-import { Card } from "./layout/Card";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import { Card } from "../../components/layout/Card";
+import { SectionIntro } from "../../components/layout/SectionIntro";
 
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
@@ -37,16 +38,11 @@ export function PluginReports(props: {
 
   return (
     <div className="grid gap-3">
-      <div className="px-1">
-        <div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Live signals
-          </div>
-          <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-            Operational reports
-          </h2>
-        </div>
-      </div>
+      <SectionIntro
+        className="px-1"
+        eyebrow="Live signals"
+        title="Operational reports"
+      />
       {props.reports.map((report) => (
         <PluginReportView
           fallbackTitle={props.fallbackTitle}
@@ -104,7 +100,7 @@ function PluginReportView(props: {
           {metrics.map((metric) => (
             <div
               className={cn(
-                "min-w-0 bg-[#09090b] px-4 py-4",
+                "min-w-0 bg-dashboard-surface-panel px-4 py-4",
                 metrics.length > 1 &&
                   metrics.length % 2 === 1 &&
                   "last:col-span-2 lg:last:col-span-1",

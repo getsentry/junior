@@ -2,23 +2,19 @@ import { ArrowRight, Boxes, Sparkles } from "lucide-react";
 import { Link } from "react-router";
 
 import { Card } from "../../components/layout/Card";
+import { SectionIntro } from "../../components/layout/SectionIntro";
 import { systemPluginPath, type SystemPlugin } from "./SystemPlugins";
 
 /** Render loaded plugins as useful System overview launch panels. */
 export function PluginPanels(props: { plugins: SystemPlugin[] }) {
   return (
     <section aria-labelledby="system-plugins-heading" className="grid gap-3">
-      <div className="px-1">
-        <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-          Loaded plugins
-        </div>
-        <h2
-          className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text"
-          id="system-plugins-heading"
-        >
-          Plugins
-        </h2>
-      </div>
+      <SectionIntro
+        className="px-1"
+        eyebrow="Loaded plugins"
+        id="system-plugins-heading"
+        title="Plugins"
+      />
       {props.plugins.length ? (
         <div className="grid gap-3">
           {props.plugins.map((plugin) => (
@@ -42,7 +38,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
   );
   return (
     <Link
-      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-[#09090b]/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
+      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
       to={systemPluginPath(props.plugin.name)}
     >
       <div className="flex min-w-0 items-start justify-between gap-4">
@@ -74,7 +70,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         >
           {metrics.slice(0, 2).map((metric) => (
             <div
-              className="min-w-0 bg-[#09090b] px-3 py-2.5"
+              className="min-w-0 bg-dashboard-surface-panel px-3 py-2.5"
               key={metric.label}
             >
               <div className="truncate font-display text-lg font-light text-dashboard-text">

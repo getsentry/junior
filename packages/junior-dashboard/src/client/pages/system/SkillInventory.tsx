@@ -3,6 +3,7 @@ import type { SkillReport } from "@sentry/junior/api/schema";
 import { getDashboardAgentName } from "../../agentName";
 
 import { Card } from "../../components/layout/Card";
+import { SectionIntro } from "../../components/layout/SectionIntro";
 import { formatCompactNumber } from "../../format";
 
 type SkillGroup = { pluginProvider?: string; skills: SkillReport[] };
@@ -17,18 +18,17 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4 max-sm:flex-col">
-        <div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Capability map
-          </div>
-          <h2 className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text">
-            Skills
-          </h2>
-          <p className="mt-1.5 mb-0 max-w-2xl font-mono text-[0.66rem] leading-relaxed text-dashboard-text-muted">
-            The task-specific instructions {getDashboardAgentName()} discovered,
-            grouped by their plugin provider when one is registered.
-          </p>
-        </div>
+        <SectionIntro
+          description={
+            <>
+              The task-specific instructions {getDashboardAgentName()}{" "}
+              discovered, grouped by their plugin provider when one is
+              registered.
+            </>
+          }
+          eyebrow="Capability map"
+          title="Skills"
+        />
         <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-white/[0.07] bg-black/15 max-sm:w-full max-sm:min-w-0">
           <InventoryMetric label="discovered" value={props.skills.length} />
           <InventoryMetric label="from plugins" value={pluginSkillCount} />

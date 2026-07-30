@@ -6,8 +6,8 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { cn } from "../styles";
-import { Button } from "./Button";
-import { SearchInput } from "./SearchInput";
+import { Button } from "../components/Button";
+import { SearchInput } from "../components/SearchInput";
 import { TranscriptHeader } from "./TranscriptHeader";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import {

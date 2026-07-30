@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findTranscriptMarkdownLinks } from "../src/client/components/transcriptMarkdownLinks";
+import { findTranscriptMarkdownLinks } from "../src/client/conversations/transcriptMarkdownLinks";
 
 describe("transcript markdown links", () => {
   it("finds safe markdown links, bare links, and skips unsafe destinations", () => {

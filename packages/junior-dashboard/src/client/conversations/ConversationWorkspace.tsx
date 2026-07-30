@@ -3,11 +3,11 @@ import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
-import { ConversationSidebar } from "../components/ConversationSidebar";
+import { ConversationSidebar } from "./ConversationSidebar";
 import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
-} from "../conversations/queries";
+} from "./queries";
 import {
   buildConversations,
   conversationPath,

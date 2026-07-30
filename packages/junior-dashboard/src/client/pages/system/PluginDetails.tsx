@@ -1,23 +1,19 @@
 import { Boxes, KeyRound, Sparkles } from "lucide-react";
 
 import { Card } from "../../components/layout/Card";
+import { SectionIntro } from "../../components/layout/SectionIntro";
 import type { SystemPlugin } from "./SystemPlugins";
 
 /** Render non-reporting plugin metadata. */
 export function PluginDetails(props: { plugin: SystemPlugin }) {
   return (
     <section aria-labelledby="plugin-details-heading" className="grid gap-3">
-      <div className="px-1">
-        <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-          Plugin information
-        </div>
-        <h2
-          className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text"
-          id="plugin-details-heading"
-        >
-          Details
-        </h2>
-      </div>
+      <SectionIntro
+        className="px-1"
+        eyebrow="Plugin information"
+        id="plugin-details-heading"
+        title="Details"
+      />
       <Card>
         <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-3">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
@@ -73,7 +69,7 @@ export function PluginHeader(props: { plugin: SystemPlugin }) {
 function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   const Icon = props.icon;
   return (
-    <div className="flex items-center gap-3 bg-[#09090b] px-4 py-3.5">
+    <div className="flex items-center gap-3 bg-dashboard-surface-panel px-4 py-3.5">
       <Icon aria-hidden="true" className="text-cyan-200/60" size={15} />
       <div className="min-w-0">
         <div className="truncate font-display text-base font-medium text-dashboard-text">

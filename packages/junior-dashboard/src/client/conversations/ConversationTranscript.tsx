@@ -23,7 +23,7 @@ import {
   visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
-import { conversationTranscriptMessages } from "../conversations/eventTranscript";
+import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -33,7 +33,7 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { MetricList, type MetricListItem } from "./Metric";
+import { MetricList, type MetricListItem } from "../components/Metric";
 import {
   CostMetric,
   DurationMetric,

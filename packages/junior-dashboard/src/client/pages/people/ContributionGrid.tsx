@@ -1,7 +1,7 @@
-import { formatDuration } from "./Duration";
-import { Tooltip } from "./Tooltip";
-import { getDashboardAgentName } from "../agentName";
-import { cn } from "../styles";
+import { formatDuration } from "../../components/Duration";
+import { Tooltip } from "../../components/Tooltip";
+import { getDashboardAgentName } from "../../agentName";
+import { cn } from "../../styles";
 
 type ContributionDay = {
   conversations: number;
@@ -120,7 +120,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
               aria-hidden="true"
               className={cn(
                 "size-3 border border-black/40",
-                level === 0 && "bg-[#151515]",
+                level === 0 && "bg-dashboard-surface-hover",
                 level === 1 && "bg-[#133225]",
                 level === 2 && "bg-[#176a4a]",
                 level === 3 && "bg-[#22a06b]",
@@ -151,7 +151,7 @@ function activityRuntime(day: ContributionDay): string {
 }
 
 function activityClass(count: number, max: number): string {
-  if (count <= 0) return "bg-[#151515]";
+  if (count <= 0) return "bg-dashboard-surface-hover";
   const ratio = count / max;
   if (ratio >= 0.75) return "bg-[#8bdc97]";
   if (ratio >= 0.45) return "bg-[#22a06b]";

@@ -18,7 +18,7 @@ vi.mock("../src/client/components/Metric", () => ({
   ),
 }));
 
-import { CostMetric } from "../src/client/components/TelemetryMetrics";
+import { CostMetric } from "../src/client/conversations/TelemetryMetrics";
 
 describe("CostMetric", () => {
   it.each([

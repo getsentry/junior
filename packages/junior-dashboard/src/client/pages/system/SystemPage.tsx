@@ -7,10 +7,10 @@ import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
-import { PluginReports } from "../../components/PluginReports";
+import { PluginReports } from "./PluginReports";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { cn, dashboardContainerClass } from "../../styles";
+import { PageLayout } from "../../components/layout/PageLayout";
 import type { SystemData } from "../../types";
 import { PluginDetails, PluginHeader } from "./PluginDetails";
 import { PluginPanels } from "./PluginPanels";
@@ -56,12 +56,7 @@ export function SystemPage(props: { data: SystemData }) {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 content-start gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <PageLayout>
       <PageHeader
         actions={
           rangeRelevant ? (
@@ -100,7 +95,7 @@ export function SystemPage(props: { data: SystemData }) {
           )}
         </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

@@ -7,10 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { Button, ToggleButton } from "../../components/Button";
-import { LocationDirectoryActivityChart } from "../../components/charts/LocationDirectoryActivityChart";
-import { PeopleActivityChart } from "../../components/charts/PeopleActivityChart";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import { ContributionGrid } from "../../components/ContributionGrid";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
@@ -21,11 +18,14 @@ import { CardHeader } from "../../components/layout/CardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { StatCard } from "../../components/metrics/StatCard";
-import { TranscriptMarkdown } from "../../components/TranscriptMarkdown";
-import { TranscriptText } from "../../components/TranscriptText";
-import { TranscriptToolView } from "../../components/TranscriptToolView";
+import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
+import { TranscriptText } from "../../conversations/TranscriptText";
+import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
+import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
+import { ContributionGrid } from "../people/ContributionGrid";
+import { PeopleActivityChart } from "../people/PeopleActivityChart";
 
 const EVENT_NOTIFICATION = `[event notification]
 

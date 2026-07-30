@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldCopyRawTranscript } from "../src/client/components/transcriptCopy";
+import { shouldCopyRawTranscript } from "../src/client/conversations/transcriptCopy";
 
 function selection(
   options: {

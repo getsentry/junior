@@ -1,7 +1,7 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import type { TimeRangeDays } from "./controls/TimeRangeSelector";
-import { Tooltip } from "./Tooltip";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import { Tooltip } from "../../components/Tooltip";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
 
@@ -41,7 +41,7 @@ export function PluginBarChart(props: {
   const zeroY = top + (maximum / span) * plotHeight;
 
   return (
-    <div className="overflow-hidden rounded border border-white/[0.07] bg-[#09090b]">
+    <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
       <div className="border-b border-white/[0.06] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
