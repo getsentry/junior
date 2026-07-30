@@ -362,14 +362,13 @@ function MemoryRow(props: {
 }) {
   const kind = metadataValue(props.record, "Type");
   const learned = metadataValue(props.record, "Learned");
-  const source = metadataValue(props.record, "Source");
   const remembered = metadataValue(props.record, "Remembered");
   const provenance =
     learned === "Automatic"
-      ? `Learned from ${source}`
+      ? "Learned automatically"
       : learned === "Explicit"
-        ? `Saved from ${source}`
-        : `Recorded from ${source}`;
+        ? "Saved explicitly"
+        : "Recorded by Junior";
   return (
     <>
       <div
@@ -516,15 +515,16 @@ function MemoryDetails(props: {
   const source = metadataValue(props.record, "Source");
   const story =
     learned === "Automatic"
-      ? `Junior learned this automatically from ${source} on ${shortDate(remembered)}.`
+      ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
-        ? `You explicitly saved this from ${source} on ${shortDate(remembered)}.`
-        : `Junior recorded this from ${source} on ${shortDate(remembered)}.`;
-  const visibleMetadata = props.inline
-    ? (props.record.metadata ?? []).filter(
-        (item) => !["Type", "Learned", "Source"].includes(item.label),
-      )
-    : props.record.metadata;
+        ? `You asked Junior to remember this on ${shortDate(remembered)}.`
+        : `Junior recorded this on ${shortDate(remembered)}.`;
+  const hiddenMetadata = props.inline
+    ? ["Type", "Learned", "Source"]
+    : ["Learned", "Source"];
+  const visibleMetadata = (props.record.metadata ?? []).filter(
+    (item) => !hiddenMetadata.includes(item.label),
+  );
 
   async function copyId() {
     await navigator.clipboard.writeText(props.record.id);

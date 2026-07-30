@@ -121,7 +121,7 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
   await expect(
-    dialog.getByText(/Junior learned this automatically from Slack/),
+    dialog.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
 
   await page.keyboard.press("Escape");

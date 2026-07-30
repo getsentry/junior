@@ -71,8 +71,8 @@ from the top-level **Memories** dashboard page. The page shows viewer-scoped
 memory totals, embedding coverage, and history on **Overview**. The separate
 **Memories** view provides search and collections for preferences,
 automatically learned memories, and explicitly saved memories. Each record
-shows its safe source and learning method. Forgetting archives the memory so
-Junior no longer recalls it.
+explains whether Junior learned it automatically or saved it because the user
+asked. Forgetting archives the memory so Junior no longer recalls it.
 
 The plugin also exposes authenticated REST resources:
 
