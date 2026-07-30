@@ -1,5 +1,5 @@
 import type { ConversationEvent } from "@/chat/conversations/history";
-import { renderJuniorNativeConversationEvent } from "@/chat/conversations/native-events";
+import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { z } from "zod";
 import {
@@ -18,8 +18,7 @@ export const conversationReportSourceEventTypes = [
   "guardian_action_reviewed",
   "turn_started",
   "turn_context",
-  "plugin_event",
-  "native_event",
+  "structured_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -293,25 +292,15 @@ function reportEventData(args: {
   data: ConversationEvent["data"];
 }): ConversationReportEventData | undefined {
   const { data } = args;
-  if (data.type === "plugin_event") {
+  if (data.type === "structured_event") {
     if (!args.canExposePayload) return undefined;
-    const presentation = renderPluginConversationEvent(data);
+    const presentation =
+      data.namespace === "junior"
+        ? renderJuniorNativeConversationEvent(data)
+        : renderPluginConversationEvent(data);
     if (!presentation) return undefined;
     return {
-      type: "plugin_event",
-      namespace: data.namespace,
-      name: data.name,
-      version: data.version,
-      turnId: data.turnId,
-      presentation,
-    };
-  }
-  if (data.type === "native_event") {
-    if (!args.canExposePayload) return undefined;
-    const presentation = renderJuniorNativeConversationEvent(data);
-    if (!presentation) return undefined;
-    return {
-      type: "native_event",
+      type: "structured_event",
       namespace: data.namespace,
       name: data.name,
       version: data.version,

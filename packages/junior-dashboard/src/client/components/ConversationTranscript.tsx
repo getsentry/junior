@@ -48,7 +48,7 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
-import { TranscriptPluginEventView } from "./TranscriptPluginEventView";
+import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
 import { getDashboardAgentName } from "../agentName";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
@@ -72,9 +72,9 @@ type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
 type TranscriptFailureEntry = Extract<TranscriptEntry, { kind: "failure" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
-type TranscriptPluginEventEntry = Extract<
+type TranscriptStructuredEventEntry = Extract<
   TranscriptEntry,
-  { kind: "native_event" | "plugin_event" }
+  { kind: "structured_event" }
 >;
 type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
@@ -332,8 +332,8 @@ function VisibleTranscriptEntries(props: {
           />
         )
       }
-      renderPluginEvent={(entry) => (
-        <TranscriptPluginEventView
+      renderStructuredEvent={(entry) => (
+        <TranscriptStructuredEventView
           part={entry.part}
           timestamp={entry.timestamp}
         />
@@ -370,7 +370,7 @@ function TranscriptEntryList(props: {
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
-  renderPluginEvent: (entry: TranscriptPluginEventEntry) => ReactNode;
+  renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
@@ -418,8 +418,8 @@ function TranscriptEntryList(props: {
             ? props.renderSubagent(entry)
             : entry.kind === "context"
               ? props.renderContext(entry)
-              : entry.kind === "plugin_event" || entry.kind === "native_event"
-                ? props.renderPluginEvent(entry)
+              : entry.kind === "structured_event"
+                ? props.renderStructuredEvent(entry)
                 : entry.kind === "failure"
                   ? props.renderFailure(entry)
                   : props.renderMessage(entry)}
@@ -575,8 +575,8 @@ function RedactedTranscriptView(props: {
           />
         )
       }
-      renderPluginEvent={(entry) => (
-        <TranscriptPluginEventView
+      renderStructuredEvent={(entry) => (
+        <TranscriptStructuredEventView
           part={entry.part}
           timestamp={entry.timestamp}
         />

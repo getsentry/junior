@@ -19,7 +19,7 @@ import {
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
-} from "@/chat/conversations/native-events";
+} from "@/chat/conversations/structured-events";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -518,7 +518,7 @@ async function recordAuthenticationAccountChange(
         provider: args.provider,
       }),
       data: {
-        type: "native_event",
+        type: "structured_event",
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
         name: definition.eventName,
         version: definition.version,

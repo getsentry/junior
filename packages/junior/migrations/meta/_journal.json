@@ -85,6 +85,13 @@
       "when": 1785271740428,
       "tag": "0011_sour_golden_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785454412461,
+      "tag": "0012_structured_conversation_events",
+      "breakpoints": true
     }
   ]
 }

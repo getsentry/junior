@@ -40,7 +40,7 @@ export function createPluginConversationEvents(args: {
             `plugin:${args.plugin.manifest.name}:operation:${args.operationId}:` +
             `event:${definition.eventName}@${definition.version}`,
           data: {
-            type: "plugin_event",
+            type: "structured_event",
             namespace: args.plugin.manifest.name,
             name: definition.eventName,
             version: definition.version,

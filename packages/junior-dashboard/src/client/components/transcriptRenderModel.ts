@@ -1,8 +1,7 @@
 import type {
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
-  TranscriptViewNativeEventPart,
-  TranscriptViewPluginEventPart,
+  TranscriptViewStructuredEventPart,
   TranscriptViewReasoningPart,
   TranscriptViewSubagentPart,
   TranscriptViewTextPart,
@@ -30,17 +29,10 @@ export type RenderedSubagentEntry = {
   timestamp?: number;
 };
 
-export type RenderedPluginEventEntry = {
+export type RenderedStructuredEventEntry = {
   key: string;
-  kind: "plugin_event";
-  part: TranscriptViewPluginEventPart;
-  timestamp?: number;
-};
-
-export type RenderedNativeEventEntry = {
-  key: string;
-  kind: "native_event";
-  part: TranscriptViewNativeEventPart;
+  kind: "structured_event";
+  part: TranscriptViewStructuredEventPart;
   timestamp?: number;
 };
 
@@ -70,8 +62,7 @@ export type RenderedTranscriptEntry =
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
-  | RenderedNativeEventEntry
-  | RenderedPluginEventEntry
+  | RenderedStructuredEventEntry
   | RenderedReasoningEntry
   | RenderedSubagentEntry
   | RenderedToolEntry;
@@ -126,17 +117,10 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
-      } else if (part.type === "plugin_event") {
+      } else if (part.type === "structured_event") {
         entries.push({
-          key: `${message.sourceSeq}:plugin-event:${part.namespace}:${part.name}`,
-          kind: "plugin_event",
-          part,
-          timestamp: message.timestamp,
-        });
-      } else if (part.type === "native_event") {
-        entries.push({
-          key: `${message.sourceSeq}:native-event:${part.namespace}:${part.name}`,
-          kind: "native_event",
+          key: `${message.sourceSeq}:structured-event:${part.namespace}:${part.name}`,
+          kind: "structured_event",
           part,
           timestamp: message.timestamp,
         });
@@ -174,7 +158,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
-      if (part.type === "plugin_event" || part.type === "native_event") {
+      if (part.type === "structured_event") {
         return [
           part.presentation.title,
           part.presentation.preview,

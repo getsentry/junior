@@ -239,24 +239,16 @@ export function conversationTranscriptMessages(
       continue;
     }
 
-    if (data.type === "plugin_event" || data.type === "native_event") {
+    if (data.type === "structured_event") {
       messages.push(
         eventMessage(event, "system", [
-          data.type === "plugin_event"
-            ? {
-                type: "plugin_event",
-                namespace: data.namespace,
-                name: data.name,
-                version: data.version,
-                presentation: data.presentation,
-              }
-            : {
-                type: "native_event",
-                namespace: data.namespace,
-                name: data.name,
-                version: data.version,
-                presentation: data.presentation,
-              },
+          {
+            type: "structured_event",
+            namespace: data.namespace,
+            name: data.name,
+            version: data.version,
+            presentation: data.presentation,
+          },
         ]),
       );
       continue;

@@ -3,7 +3,7 @@ import {
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   renderJuniorNativeConversationEvent,
-} from "@/chat/conversations/native-events";
+} from "@/chat/conversations/structured-events";
 import {
   conversationEventSchema,
   type ConversationEventData,
@@ -51,7 +51,7 @@ describe("junior native authentication events", () => {
 
   it("accepts native authentication events in the durable event schema", () => {
     const data: ConversationEventData = {
-      type: "native_event",
+      type: "structured_event",
       namespace: "junior",
       name: "authentication_linked",
       version: 1,

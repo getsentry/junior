@@ -374,7 +374,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         text: "The canonical event rendering looks sound.",
       }),
       reportEvent(13, iso(Date.parse(startedAt), 60_000), {
-        type: "plugin_event",
+        type: "structured_event",
         namespace: "memory",
         name: "memories_captured",
         version: 1,

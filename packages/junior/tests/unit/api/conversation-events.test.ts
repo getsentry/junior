@@ -73,7 +73,7 @@ describe("conversation report event projection", () => {
       }),
     ]);
     const pluginEvent = event(1, {
-      type: "plugin_event",
+      type: "structured_event",
       namespace: "memory",
       name: "memories_captured",
       version: 1,
@@ -91,7 +91,7 @@ describe("conversation report event projection", () => {
           seq: 1,
           createdAt: new Date(1_000).toISOString(),
           data: {
-            type: "plugin_event",
+            type: "structured_event",
             namespace: "memory",
             name: "memories_captured",
             version: 1,

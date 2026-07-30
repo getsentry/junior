@@ -152,7 +152,7 @@ function appendTranscriptMessages(
       continue;
     }
 
-    if (entry.kind === "plugin_event" || entry.kind === "native_event") {
+    if (entry.kind === "structured_event") {
       lines.push("", `### ${entry.part.presentation.title}`);
       addEventMeta(lines, conversationTranscript, entry.timestamp);
       if (entry.part.presentation.preview) {

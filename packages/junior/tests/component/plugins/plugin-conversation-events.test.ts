@@ -91,8 +91,8 @@ afterEach(async () => {
 describe("plugin conversation events", () => {
   it("binds task events to the plugin and deduplicates task redelivery", async () => {
     const runId = randomUUID();
-    const conversationId = `local:test:plugin-events-${runId}`;
-    const sessionId = `plugin-event-session:${runId}`;
+    const conversationId = `local:test:structured-events-${runId}`;
+    const sessionId = `structured-event-session:${runId}`;
     const completedEvent = defineConversationEvent({
       name: "session_processed",
       version: 1,
@@ -136,11 +136,11 @@ describe("plugin conversation events", () => {
     const events =
       await getConversationEventStore().loadHistory(conversationId);
     expect(
-      events.filter((event) => event.data.type === "plugin_event"),
+      events.filter((event) => event.data.type === "structured_event"),
     ).toEqual([
       expect.objectContaining({
         data: {
-          type: "plugin_event",
+          type: "structured_event",
           namespace: "task-event-demo",
           name: "session_processed",
           version: 1,

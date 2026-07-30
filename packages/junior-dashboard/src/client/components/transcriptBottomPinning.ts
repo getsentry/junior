@@ -359,7 +359,7 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.status,
     ].join(":");
   }
-  if (part.type === "plugin_event" || part.type === "native_event") {
+  if (part.type === "structured_event") {
     return [
       part.type,
       part.namespace,

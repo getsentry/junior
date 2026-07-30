@@ -47,7 +47,7 @@ describe("plugin event transcript projection", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
-          type: "plugin_event",
+          type: "structured_event",
           namespace: "memory",
           name: "memories_captured",
           version: 1,
@@ -70,7 +70,7 @@ describe("plugin event transcript projection", () => {
 
     expect(entries).toEqual([
       expect.objectContaining({
-        kind: "plugin_event",
+        kind: "structured_event",
         part: expect.objectContaining({
           namespace: "memory",
           name: "memories_captured",
@@ -85,7 +85,7 @@ describe("plugin event transcript projection", () => {
     const markdown = buildConversationMarkdown(
       conversation([
         pluginEvent({
-          type: "plugin_event",
+          type: "structured_event",
           namespace: "memory",
           name: "memories_captured",
           version: 1,
@@ -106,7 +106,7 @@ describe("plugin event transcript projection", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
-          type: "native_event",
+          type: "structured_event",
           namespace: "junior",
           name: "authentication_linked",
           version: 1,
@@ -123,7 +123,7 @@ describe("plugin event transcript projection", () => {
 
     expect(entries).toEqual([
       expect.objectContaining({
-        kind: "native_event",
+        kind: "structured_event",
         part: expect.objectContaining({
           namespace: "junior",
           name: "authentication_linked",

@@ -13,15 +13,10 @@ import {
 } from "lucide-react";
 
 import { formatMessageTimestamp } from "../format";
-import type {
-  TranscriptViewNativeEventPart,
-  TranscriptViewPluginEventPart,
-} from "../types";
+import type { TranscriptViewStructuredEventPart } from "../types";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-type TranscriptPresentationEventPart =
-  | TranscriptViewNativeEventPart
-  | TranscriptViewPluginEventPart;
+type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 
 const icons: Record<
   NonNullable<TranscriptPresentationEventPart["presentation"]["icon"]>,
@@ -39,8 +34,8 @@ const icons: Record<
   warning: TriangleAlert,
 };
 
-/** Render one plugin- or native-owned event with core-owned transcript interaction. */
-export function TranscriptPluginEventView(props: {
+/** Render one structured event with core-owned transcript interaction. */
+export function TranscriptStructuredEventView(props: {
   part: TranscriptPresentationEventPart;
   timestamp?: number;
 }) {
