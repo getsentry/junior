@@ -45,17 +45,22 @@ describe("Linear MCP create annotations", () => {
       (input) => {
         saveCalls.push(input);
         const action = input.id ? "Updated" : "Created";
+        const issueUrl =
+          "https://linear.app/acme/issue/ENG-123/native-linear-issue";
         return {
           content: [
             {
               type: "text",
-              text: `${action} [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)`,
+              text: `${action} [ENG-123](${issueUrl})`,
             },
           ],
+          // Model-visible MCP results prefer structuredContent over text.
           structuredContent: {
             issue: {
               id: "issue-id",
+              identifier: "ENG-123",
               title: input.title,
+              url: issueUrl,
             },
           },
         };
@@ -140,14 +145,21 @@ describe("Linear MCP create annotations", () => {
         priority: "high",
         project: "Junior",
       } as const;
-      await expect(saveIssue.execute(createInput)).resolves.toMatchObject({
-        content: [
-          {
-            type: "text",
-            text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+      const createResult = await saveIssue.execute(createInput);
+      expect(createResult).toMatchObject({
+        structuredContent: {
+          issue: {
+            identifier: "ENG-123",
+            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
           },
-        ],
+        },
       });
+      expect(createResult.content).toEqual([
+        {
+          type: "text",
+          text: expect.stringContaining('"identifier": "ENG-123"'),
+        },
+      ]);
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toMatchObject([
@@ -161,18 +173,17 @@ describe("Linear MCP create annotations", () => {
         },
       ]);
 
-      await expect(
-        saveIssue.execute({
-          id: "ENG-123",
-          state: "In Progress",
-        }),
-      ).resolves.toMatchObject({
-        content: [
-          {
-            type: "text",
-            text: "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+      const updateResult = await saveIssue.execute({
+        id: "ENG-123",
+        state: "In Progress",
+      });
+      expect(updateResult).toMatchObject({
+        structuredContent: {
+          issue: {
+            identifier: "ENG-123",
+            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
           },
-        ],
+        },
       });
       await expect(
         listConversationAnnotations(getDb(), conversationId),
