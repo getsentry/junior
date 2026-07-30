@@ -251,6 +251,8 @@ export interface CreateMemoryResult {
   /** True when this call found the memory previously written for the same input identity. */
   idempotent?: true;
   memory: MemoryRecord;
+  /** Memory ids made inactive by this write. */
+  supersededIds?: string[];
 }
 
 export type ListMemoriesInput = z.output<typeof listMemoriesInputSchema>;
@@ -1265,7 +1267,7 @@ export function createMemoryStore(
     }
 
     const id = randomUUID();
-    const rows = await db.transaction(async (tx) => {
+    const write = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(juniorMemoryMemories)
         .values({
@@ -1294,7 +1296,7 @@ export function createMemoryStore(
         .returning();
       const insertedMemory = inserted[0];
       if (!insertedMemory || supersededIds.length === 0) {
-        return inserted;
+        return { inserted, supersededIds: [] };
       }
       const superseded = await tx
         .update(juniorMemoryMemories)
@@ -1320,10 +1322,10 @@ export function createMemoryStore(
           .delete(juniorMemoryEmbeddings)
           .where(inArray(juniorMemoryEmbeddings.memoryId, idsToClean));
       }
-      return inserted;
+      return { inserted, supersededIds: idsToClean };
     });
-    if (rows[0]) {
-      const memory = parseMemoryRow(rows[0]);
+    if (write.inserted[0]) {
+      const memory = parseMemoryRow(write.inserted[0]);
       await storeEmbedding({
         content: memory.content,
         db,
@@ -1332,7 +1334,13 @@ export function createMemoryStore(
         memoryId: memory.id,
         nowMs,
       });
-      return { created: true, memory };
+      return {
+        created: true,
+        memory,
+        ...(write.supersededIds.length > 0
+          ? { supersededIds: write.supersededIds }
+          : {}),
+      };
     }
 
     const idempotent = await findByIdempotencyKey({

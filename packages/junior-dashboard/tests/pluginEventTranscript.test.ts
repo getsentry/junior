@@ -10,6 +10,7 @@ import {
 } from "../src/client/components/transcriptRenderModel";
 import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
+import { buildConversationMarkdown } from "../src/client/markdownExport";
 import type { ConversationTranscript } from "../src/client/types";
 
 function pluginEvent(
@@ -78,5 +79,26 @@ describe("plugin event transcript projection", () => {
     ]);
     expect(entryMatchesSearch(entries[0]!, "pnpm")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("Use pnpm.");
+  });
+
+  it("includes shared event timestamp and offset metadata in Markdown", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        pluginEvent({
+          type: "plugin_event",
+          namespace: "memory",
+          name: "memories_captured",
+          version: 1,
+          turnId: "turn-1",
+          presentation: {
+            title: "Memory captured",
+            preview: "Use pnpm.",
+          },
+        }),
+      ]),
+    );
+
+    expect(markdown).toContain("### Memory captured");
+    expect(markdown).toContain("2026-01-01T00:00:01.000Z - +1.0s");
   });
 });

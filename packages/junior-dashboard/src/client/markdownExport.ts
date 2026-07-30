@@ -154,6 +154,7 @@ function appendTranscriptMessages(
 
     if (entry.kind === "plugin_event") {
       lines.push("", `### ${entry.part.presentation.title}`);
+      addEventMeta(lines, conversationTranscript, entry.timestamp);
       if (entry.part.presentation.preview) {
         lines.push("", entry.part.presentation.preview);
       }

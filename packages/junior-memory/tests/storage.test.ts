@@ -1338,6 +1338,100 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("emits only the final active preference after same-batch supersession", async () => {
+    const fixture = await createMemoryFixture();
+    try {
+      const firstContent = "Prefers Python for automation scripts.";
+      const finalContent = "Prefers TypeScript for automation scripts.";
+      const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
+      let failFirstEmit = true;
+      const model: PluginModel = {
+        async completeObject(input) {
+          if (
+            typeof input.prompt === "string" &&
+            input.prompt.includes("<memory-preference-adjudication-input>")
+          ) {
+            const existingJson =
+              /<existing-memories>\n(.+)\n<\/existing-memories>/s.exec(
+                input.prompt,
+              )?.[1];
+            const existing = existingJson
+              ? (JSON.parse(existingJson) as Array<{ id: string }>)
+              : [];
+            if (existing.length === 0) {
+              return { object: { decision: "distinct" } };
+            }
+            return {
+              object: {
+                decision: "supersedes_old",
+                supersededIds: [existing[0]!.id],
+              },
+            };
+          }
+          return {
+            object: {
+              memories: [
+                {
+                  canonicalFact: firstContent,
+                  expiresAtMs: null,
+                  kind: "preference",
+                  evidenceMessageIndices: [0],
+                },
+                {
+                  canonicalFact: finalContent,
+                  expiresAtMs: null,
+                  kind: "preference",
+                  evidenceMessageIndices: [0],
+                },
+              ],
+            },
+          };
+        },
+      };
+      const context = processSessionContext({
+        db: memoryDb(fixture),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+            if (failFirstEmit) {
+              failFirstEmit = false;
+              throw new Error("event append failed");
+            }
+          },
+        },
+        model,
+        run: {
+          async load() {
+            return completedRun({
+              transcript: [
+                instructionMessage(
+                  "I first preferred Python, but now I prefer TypeScript for automation scripts.",
+                ),
+              ],
+            });
+          },
+        },
+      });
+
+      await expect(processMemorySession(context)).rejects.toThrow(
+        "event append failed",
+      );
+      await processMemorySession(context);
+
+      expect(emitted).toHaveLength(2);
+      expect(emitted[1]?.data).toEqual(emitted[0]?.data);
+      expect(emitted[0]?.data).toMatchObject({
+        memories: [
+          expect.objectContaining({
+            content: finalContent,
+          }),
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("skips passive extraction for memory recall tool turns", async () => {
     const fixture = await createMemoryFixture();
     try {
