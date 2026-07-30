@@ -259,12 +259,8 @@ function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
 
 export interface McpToolSuccessHookInput {
   arguments: Record<string, unknown>;
-  conversationId?: string;
   provider: string;
-  result: {
-    content: Array<TextContent | ImageContent>;
-    structuredContent?: unknown;
-  };
+  structuredContent?: unknown;
   toolName: string;
 }
 
@@ -601,28 +597,14 @@ export class McpToolManager {
                   ? { structuredContent: result.structuredContent }
                   : {}),
               };
-              if (this.options.onToolSuccess) {
-                try {
-                  await this.options.onToolSuccess({
-                    arguments: resolvedArgs,
-                    provider: plugin.manifest.name,
-                    result: {
-                      content: providerContent,
-                      ...(result.structuredContent !== undefined
-                        ? { structuredContent: result.structuredContent }
-                        : {}),
-                    },
-                    toolName: tool.name,
-                  });
-                } catch (error) {
-                  logWarn("mcp.tool_success_hook.failed", {
-                    "app.plugin.name": plugin.manifest.name,
-                    "gen_ai.tool.name": managedToolName,
-                    "exception.message":
-                      error instanceof Error ? error.message : String(error),
-                  });
-                }
-              }
+              await this.options.onToolSuccess?.({
+                arguments: resolvedArgs,
+                provider: plugin.manifest.name,
+                ...(result.structuredContent !== undefined
+                  ? { structuredContent: result.structuredContent }
+                  : {}),
+                toolName: tool.name,
+              });
               return successResult;
             } catch (error) {
               if (

@@ -3,33 +3,42 @@ import {
   type AfterMcpToolHookContext,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { extractLinearIssueLink } from "./extract-issue.js";
+import { z } from "zod";
 
-function isCreateIssueCall(args: Record<string, unknown>): boolean {
-  const id = args.id;
-  return id === undefined || id === null || id === "";
-}
+const saveIssueResultSchema = z
+  .object({
+    issue: z
+      .object({
+        identifier: z.string().trim().min(1),
+        url: z.url(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 /** Link newly created Linear issues to the current Junior conversation. */
 async function annotateCreatedIssue(
   ctx: AfterMcpToolHookContext,
 ): Promise<void> {
-  if (ctx.tool.name !== "save_issue" || !isCreateIssueCall(ctx.tool.arguments)) {
+  if (ctx.tool.name !== "save_issue" || ctx.tool.arguments.id !== undefined) {
     return;
   }
   if (!ctx.annotations) {
     return;
   }
-  const issue = extractLinearIssueLink(ctx.result.structuredContent);
-  if (!issue) {
-    ctx.log.warn("Linear save_issue response did not match the expected schema");
+  const result = saveIssueResultSchema.safeParse(ctx.result.structuredContent);
+  if (!result.success) {
+    ctx.log.warn("linear.issue_annotation.skipped", {
+      "app.reason": "unexpected_save_response",
+    });
     return;
   }
+  const identifier = result.data.issue.identifier.toUpperCase();
   await ctx.annotations.upsert({
     kind: "resource_link",
-    key: issue.identifier,
-    label: issue.identifier,
-    url: issue.url,
+    key: identifier,
+    label: identifier,
+    url: result.data.issue.url,
     status: "open",
   });
 }

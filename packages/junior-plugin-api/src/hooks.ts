@@ -45,7 +45,7 @@ export interface PluginHooks {
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
   /**
-   * Run after a successful hosted MCP tool call on the lazy model path.
+   * Run after a successful hosted MCP tool call.
    *
    * Prefer this for junior-owned side effects such as conversation annotations.
    * Do not use it to invent a parallel tool contract for the provider tool.

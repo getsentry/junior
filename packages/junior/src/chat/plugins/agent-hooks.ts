@@ -5,7 +5,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import type {
   PluginMcp,
-  PluginMcpContent,
   PluginReadState,
   PluginRoute,
   PluginRouteMethod,
@@ -74,10 +73,7 @@ export interface AfterMcpToolHookInput {
   arguments: Record<string, unknown>;
   conversationId?: string;
   provider: string;
-  result: {
-    content: PluginMcpContent[];
-    structuredContent?: unknown;
-  };
+  structuredContent?: unknown;
   toolName: string;
 }
 
@@ -1191,12 +1187,10 @@ export function createPluginHookRunner(
               ? { conversationId: tool.conversationId }
               : {}),
             ...(annotations ? { annotations } : {}),
-            result: {
-              content: tool.result.content,
-              ...(tool.result.structuredContent !== undefined
-                ? { structuredContent: tool.result.structuredContent }
-                : {}),
-            },
+            result:
+              tool.structuredContent !== undefined
+                ? { structuredContent: tool.structuredContent }
+                : {},
             tool: {
               arguments: tool.arguments,
               name: tool.toolName,

@@ -156,9 +156,9 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
 /**
  * Context for post-success MCP tool processing.
  *
- * Runs after a hosted MCP tool succeeds on the model-facing lazy path
- * (`searchMcpTools` / `callMcpTool`). Use for junior-owned side effects such as
- * conversation annotations without replacing the provider tool contract.
+ * Runs after a hosted MCP tool succeeds on the model-facing path. Use for
+ * junior-owned side effects such as conversation annotations without replacing
+ * the provider tool contract.
  */
 export interface AfterMcpToolHookContext extends PluginContext {
   /**
@@ -168,7 +168,6 @@ export interface AfterMcpToolHookContext extends PluginContext {
   conversationId?: string;
   annotations?: PluginAnnotations;
   result: {
-    content: PluginMcpContent[];
     structuredContent?: unknown;
   };
   tool: {

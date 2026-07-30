@@ -14,7 +14,6 @@ function baseContext(
     },
     plugin: { name: "linear" },
     result: {
-      content: [{ type: "text", text: "Created ENG-123" }],
       structuredContent: {
         issue: {
           identifier: "ENG-123",
@@ -87,15 +86,14 @@ describe("linear afterMcpTool annotations", () => {
           warn,
         },
         result: {
-          content: [{ type: "text", text: "Created ENG-123" }],
           structuredContent: { issue: { title: "Incomplete" } },
         },
       }),
     );
 
-    expect(warn).toHaveBeenCalledWith(
-      "Linear save_issue response did not match the expected schema",
-    );
+    expect(warn).toHaveBeenCalledWith("linear.issue_annotation.skipped", {
+      "app.reason": "unexpected_save_response",
+    });
     expect(upsert).not.toHaveBeenCalled();
   });
 
