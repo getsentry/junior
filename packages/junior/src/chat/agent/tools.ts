@@ -62,12 +62,10 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/pi/client";
 import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
-import type { ToolActionReview } from "@/chat/tool-support/action-review";
+import { createToolActionReview } from "@/chat/tool-support/action-review";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
-import {
-  projectToolActionRejection,
-  restoreToolActionRejections,
-} from "@/chat/tool-support/action-review-history";
+import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
+import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -310,7 +308,7 @@ export async function wireAgentTools(
       source: runSource,
     };
   }
-  const actionReview: ToolActionReview = {
+  const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
       conversationId: args.conversationId,
@@ -320,15 +318,23 @@ export async function wireAgentTools(
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
     },
-    priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    consecutiveRejections: 0,
-    pendingRejections: new Map(),
+    onDecision: ({ toolCallId, toolName, decision }) =>
+      recordGuardianActionReviewed({
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+        toolCallId,
+        toolName,
+        decision: decision.decision,
+        riskLevel: decision.riskLevel,
+        userAuthorization: decision.userAuthorization,
+      }),
     onFatal: args.onFatalToolError,
+    priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
       modelId: botConfig.guardianModelId,
     }),
-  };
+  });
   const tools = createTools(
     loadableSkills,
     {
@@ -489,11 +495,7 @@ export async function wireAgentTools(
     mcpToolManager,
     pluginHooks,
     projectActionReviewResult(toolCallId, result) {
-      return projectToolActionRejection(
-        actionReview.pendingRejections,
-        toolCallId,
-        result,
-      );
+      return actionReview.projectToolResult(toolCallId, result);
     },
     getSandboxRef: agentSandbox.sandboxRef,
     async close() {

@@ -247,6 +247,18 @@ const conversationReportTurnRoutedEventDataSchema = z
   })
   .strict();
 
+const conversationReportGuardianActionReviewedEventDataSchema = z
+  .object({
+    type: z.literal("guardian_action_reviewed"),
+    turnId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    decision: z.enum(["allow", "ask", "deny"]),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+  })
+  .strict();
+
 const conversationReportTurnContextEventDataSchema = z
   .object({
     type: z.literal("turn_context"),
@@ -312,6 +324,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
+  conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,
   conversationReportSubagentEventDataSchema,

@@ -165,6 +165,18 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
+const guardianActionReviewedEventDataSchema = z
+  .object({
+    type: z.literal("guardian_action_reviewed"),
+    turnId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    decision: z.enum(["allow", "ask", "deny"]),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+  })
+  .strict();
+
 const conversationMessageRoleSchema = z.union([
   z.literal("user"),
   z.literal("assistant"),
@@ -324,6 +336,7 @@ const appendableConversationEventDataSchema = z.union([
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
+  guardianActionReviewedEventDataSchema,
   messageHandledEventDataSchema,
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
@@ -359,6 +372,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
+  "guardian_action_reviewed",
   "message_handled",
   "messages_summarized",
   "turn_started",

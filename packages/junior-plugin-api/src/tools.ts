@@ -202,9 +202,9 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
 /**
  * Tool-declared approval mode.
  *
- * `auto` delegates to core policy, `review` enters approval review, and
+ * `auto` delegates to core policy, `review` enters Guardian review, and
  * `approve` permits execution without review. Omission leaves the tool outside
- * action review. These values do not select the reviewer.
+ * action review.
  *
  * Core resolves the effective mode immediately before execution.
  */
@@ -215,7 +215,7 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 /**
  * Reviewer signals describing a tool's side-effect behavior.
  *
- * These hints follow the MCP tool annotation contract. Approval review may use
+ * These hints follow the MCP tool annotation contract. Guardian may use
  * them as signals, but they never grant authority or override deterministic
  * authorization.
  */

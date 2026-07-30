@@ -4,6 +4,7 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
+  createToolActionReview,
   ToolActionReviewLimitError,
   type ToolActionReview,
   type ToolActionReviewer,
@@ -35,8 +36,9 @@ const githubSkill: Skill = {
 function actionReview(
   reviewer: ToolActionReviewer,
   userIntent: string,
+  onFatal = vi.fn(),
 ): ToolActionReview {
-  return {
+  return createToolActionReview({
     context: {
       actor: { platform: "local", userId: "local-user" },
       conversationId: "local:tool-review",
@@ -51,12 +53,10 @@ function actionReview(
       },
       userIntent: () => userIntent,
     },
-    priorRejections: [],
-    consecutiveRejections: 0,
-    pendingRejections: new Map(),
-    onFatal: vi.fn(),
+    onDecision: vi.fn(async () => undefined),
+    onFatal,
     reviewer,
-  };
+  });
 }
 
 describe("Pi tool adapter", () => {
@@ -481,6 +481,7 @@ describe("Pi tool adapter", () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({ ok: true }));
     const onToolResult = vi.fn();
+    const onFatal = vi.fn();
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "ask",
       reason: "Recurring work should be confirmed.",
@@ -490,6 +491,7 @@ describe("Pi tool adapter", () => {
     const reviewState = actionReview(
       { review },
       "Create the recurring report.",
+      onFatal,
     );
     const [demoTool] = createPiAgentTools(
       {
@@ -518,10 +520,17 @@ describe("Pi tool adapter", () => {
       "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
     );
     expect(execute).not.toHaveBeenCalled();
-    expect(reviewState.pendingRejections.get("tool-demo")).toMatchObject({
-      decision: "ask",
-      reason: "Recurring work should be confirmed.",
-      version: 1,
+    expect(
+      reviewState.projectToolResult("tool-demo", { isError: true }),
+    ).toMatchObject({
+      details: {
+        guardianActionRejection: {
+          decision: "ask",
+          reason: "Recurring work should be confirmed.",
+          version: 1,
+        },
+      },
+      isError: true,
     });
     expect(onToolResult).toHaveBeenCalledWith({
       error: [
@@ -548,16 +557,22 @@ describe("Pi tool adapter", () => {
         reason: "Recurring work should be confirmed.",
       }),
     ]);
-    expect(reviewState.pendingRejections.get("tool-retry")).toMatchObject({
-      decision: "ask",
-      reason: "Recurring work should be confirmed.",
+    expect(
+      reviewState.projectToolResult("tool-retry", { isError: true }),
+    ).toMatchObject({
+      details: {
+        guardianActionRejection: {
+          decision: "ask",
+          reason: "Recurring work should be confirmed.",
+        },
+      },
     });
 
     await expect(
       demoTool!.execute("tool-limit", { cadence: "weekly" }),
     ).rejects.toBeInstanceOf(ToolActionReviewLimitError);
     expect(review).toHaveBeenCalledTimes(3);
-    expect(reviewState.onFatal).toHaveBeenCalledWith(
+    expect(onFatal).toHaveBeenCalledWith(
       expect.any(ToolActionReviewLimitError),
     );
     expect(execute).not.toHaveBeenCalled();
@@ -573,8 +588,8 @@ describe("Pi tool adapter", () => {
         },
       },
       "Create the report.",
+      onFatal,
     );
-    reviewState.onFatal = onFatal;
     const [demoTool] = createPiAgentTools(
       {
         demo: {

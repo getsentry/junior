@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
+import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
@@ -912,6 +913,17 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(sessionRecord).toMatchObject({
       state: "running",
     });
+    const events =
+      await getConversationEventStore().loadCurrentHistory("conversation-2");
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-2",
+      toolCallId: expect.any(String),
+      toolName: "mcp__demo__ping",
+      decision: "allow",
+      riskLevel: "low",
+      userAuthorization: "high",
+    });
   });
 
   it("wires Guardian denial through the runtime before MCP execution", async () => {
@@ -954,6 +966,18 @@ describe("executeAgentRun progressive MCP loading", () => {
         }),
       }),
     ]);
+    const events = await getConversationEventStore().loadCurrentHistory(
+      "conversation-guardian-deny",
+    );
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-guardian-deny",
+      toolCallId: expect.any(String),
+      toolName: "mcp__demo__ping",
+      decision: "deny",
+      riskLevel: "high",
+      userAuthorization: "low",
+    });
   });
 
   it("escalates unavailable Guardian review to the agent-run boundary", async () => {

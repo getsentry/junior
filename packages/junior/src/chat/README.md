@@ -101,8 +101,10 @@ delegation without becoming the execution actor or a general task owner.
   before execution; hook-injected environment values stay execution-only.
   Unclassified tools retain compatibility behavior. Every execution attempt
   that enters review reaches Guardian; prior rejections are context rather than
-  binding decisions. `ask` and `deny` become expected tool failures, and three
-  consecutive rejections interrupt the execution slice.
+  binding decisions. Each Guardian decision is committed to the conversation
+  event log before the reviewed action can continue. `ask` and `deny` become
+  expected tool failures, and three consecutive rejections interrupt the
+  execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded visible user/assistant evidence. It cannot
   override deterministic context checks, and unavailable review fails closed.

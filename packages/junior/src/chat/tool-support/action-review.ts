@@ -19,6 +19,7 @@ import type {
   ToolActionPriorRejection,
   ToolActionRejectionMarker,
 } from "@/chat/tool-support/action-review-history";
+import { projectToolActionRejection } from "@/chat/tool-support/action-review-history";
 
 /** Outcome available to the action reviewer. */
 export type ToolActionDecision = "allow" | "ask" | "deny";
@@ -82,7 +83,7 @@ export interface ToolActionProposal {
   };
 }
 
-/** Schema-constrained model capability for one action proposal. */
+/** Guardian capability for one schema-constrained action proposal. */
 export interface ToolActionReviewer {
   review(
     proposal: ToolActionProposal,
@@ -90,28 +91,30 @@ export interface ToolActionReviewer {
   ): Promise<ToolActionReviewDecision>;
 }
 
-/** Core-owned context and reviewer used by the tool execution gate. */
+/** Core-owned context used to prepare one exact action for Guardian. */
+export interface ToolActionReviewContext {
+  actor?: Actor;
+  conversationId?: string;
+  credentialContext?: CredentialContext;
+  destination: Destination;
+  source: Source;
+  userIntent?: () => string;
+  evidence?: () => ToolActionEvidence;
+}
+
+/** Review capability used immediately before tool execution. */
 export interface ToolActionReview {
-  context: {
-    actor?: Actor;
-    conversationId?: string;
-    credentialContext?: CredentialContext;
-    destination: Destination;
-    source: Source;
-    userIntent?: () => string;
-    evidence?: () => ToolActionEvidence;
-  };
-  /** Bounded core-owned rejection context for this run slice. */
-  priorRejections: ToolActionPriorRejection[];
-  /** Consecutive Guardian rejections in this execution slice. */
-  consecutiveRejections: number;
-  /** Core-owned results awaiting Pi's durable tool-result hook. */
-  pendingRejections: Map<string, ToolActionRejectionMarker>;
-  /** Escalate terminal review failures to the owning agent-run boundary. */
-  onFatal(
-    error: ToolActionReviewUnavailableError | ToolActionReviewLimitError,
-  ): void;
-  reviewer: ToolActionReviewer;
+  review(
+    toolCallId: string,
+    toolName: string,
+    tool: AnyToolDefinition,
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<ToolActionReviewDecision | undefined>;
+  projectToolResult<TResult extends { details?: unknown; isError?: boolean }>(
+    toolCallId: string,
+    result: TResult,
+  ): TResult;
 }
 
 const ACTION_CONFIRMATION_INSTRUCTIONS = [
@@ -258,8 +261,8 @@ function actionCredential(
 }
 
 function assertAuthoritativeContext(
-  context: ToolActionReview["context"],
-): asserts context is ToolActionReview["context"] & {
+  context: ToolActionReviewContext,
+): asserts context is ToolActionReviewContext & {
   actor: Actor;
   conversationId: string;
   userIntent: () => string;
@@ -301,7 +304,7 @@ function buildProposal(
   tool: AnyToolDefinition,
   input: Record<string, unknown>,
   resolved: ToolApprovalResolution | undefined,
-  context: ToolActionReview["context"] & {
+  context: ToolActionReviewContext & {
     actor: Actor;
     conversationId: string;
     userIntent: () => string;
@@ -402,8 +405,122 @@ function appendVisibleRejection(
   }
 }
 
-/** Review a validated tool action immediately before execution when required. */
+/** Prepare the exact action that Guardian must review, when review is required. */
+async function prepareToolActionReview(
+  toolName: string,
+  tool: AnyToolDefinition,
+  input: Record<string, unknown>,
+  context: ToolActionReviewContext,
+  priorRejections: ToolActionPriorRejection[],
+): Promise<ToolActionProposal | undefined> {
+  if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
+    return;
+  }
+  const resolved = await tool.resolveApprovalMetadata?.(input);
+  if (effectiveApprovalMode(tool, resolved) === "approve") {
+    return;
+  }
+  assertAuthoritativeContext(context);
+  return buildProposal(
+    toolName,
+    tool,
+    input,
+    resolved,
+    context,
+    priorRejections,
+  );
+}
+
+/** Create the core review path that prepares actions and enforces Guardian decisions. */
+export function createToolActionReview(options: {
+  context: ToolActionReviewContext;
+  /** Persist the Guardian decision before the reviewed action can continue. */
+  onDecision(event: {
+    toolCallId: string;
+    toolName: string;
+    decision: ToolActionReviewDecision;
+  }): Promise<void>;
+  /** Escalate terminal review failures to the owning agent-run boundary. */
+  onFatal(
+    error: ToolActionReviewUnavailableError | ToolActionReviewLimitError,
+  ): void;
+  priorRejections?: ToolActionPriorRejection[];
+  reviewer: ToolActionReviewer;
+}): ToolActionReview {
+  const priorRejections = [...(options.priorRejections ?? [])];
+  const pendingRejections = new Map<string, ToolActionRejectionMarker>();
+  let consecutiveRejections = 0;
+
+  return {
+    async review(toolCallId, toolName, tool, input, signal) {
+      let proposal: ToolActionProposal | undefined;
+      let decision: ToolActionReviewDecision;
+      try {
+        proposal = await prepareToolActionReview(
+          toolName,
+          tool,
+          input,
+          options.context,
+          priorRejections,
+        );
+        if (!proposal) {
+          return;
+        }
+        decision = await options.reviewer.review(
+          proposal,
+          signal ? { signal } : {},
+        );
+        await options.onDecision({
+          toolCallId,
+          toolName: proposal.tool.name,
+          decision,
+        });
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        const unavailableError =
+          error instanceof ToolActionReviewUnavailableError
+            ? error
+            : new ToolActionReviewUnavailableError({ cause: error });
+        options.onFatal(unavailableError);
+        throw unavailableError;
+      }
+      if (decision.decision === "allow") {
+        consecutiveRejections = 0;
+        return decision;
+      }
+      const reviewedAction = projectedRejection(proposal, decision);
+      appendVisibleRejection(priorRejections, reviewedAction);
+      consecutiveRejections += 1;
+      if (consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS) {
+        const limitError = new ToolActionReviewLimitError();
+        options.onFatal(limitError);
+        throw limitError;
+      }
+      pendingRejections.set(toolCallId, {
+        decision: decision.decision,
+        priorRejection: reviewedAction,
+        reason: reviewedAction.reason,
+        riskLevel: decision.riskLevel,
+        userAuthorization: decision.userAuthorization,
+        version: 1,
+      });
+      throw new ToolActionRejectedError(decision.decision, decision.reason, {
+        riskLevel: decision.riskLevel,
+        reviewedAction,
+        userAuthorization: decision.userAuthorization,
+      });
+    },
+    projectToolResult(toolCallId, result) {
+      return projectToolActionRejection(pendingRejections, toolCallId, result);
+    },
+  };
+}
+
+/** Review one exact tool action immediately before execution when required. */
 export async function reviewToolAction(
+  toolCallId: string,
   toolName: string,
   tool: AnyToolDefinition,
   input: Record<string, unknown>,
@@ -413,50 +530,8 @@ export async function reviewToolAction(
   if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
     return;
   }
-  let proposal: ToolActionProposal;
-  let decision: ToolActionReviewDecision;
-  try {
-    const resolved = await tool.resolveApprovalMetadata?.(input);
-    if (effectiveApprovalMode(tool, resolved) === "approve") {
-      return;
-    }
-    if (!review) {
-      throw new ToolActionReviewUnavailableError();
-    }
-
-    assertAuthoritativeContext(review.context);
-    proposal = buildProposal(
-      toolName,
-      tool,
-      input,
-      resolved,
-      review.context,
-      review.priorRejections,
-    );
-    decision = await review.reviewer.review(proposal, signal ? { signal } : {});
-  } catch (error) {
-    if (
-      signal?.aborted ||
-      error instanceof ToolActionRejectedError ||
-      error instanceof ToolActionReviewUnavailableError
-    ) {
-      throw error;
-    }
-    throw new ToolActionReviewUnavailableError({ cause: error });
+  if (!review) {
+    throw new ToolActionReviewUnavailableError();
   }
-  if (decision.decision === "allow") {
-    review.consecutiveRejections = 0;
-    return decision;
-  }
-  const reviewedAction = projectedRejection(proposal, decision);
-  appendVisibleRejection(review.priorRejections, reviewedAction);
-  review.consecutiveRejections += 1;
-  if (review.consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS) {
-    throw new ToolActionReviewLimitError();
-  }
-  throw new ToolActionRejectedError(decision.decision, decision.reason, {
-    riskLevel: decision.riskLevel,
-    reviewedAction,
-    userAuthorization: decision.userAuthorization,
-  });
+  return review.review(toolCallId, toolName, tool, input, signal);
 }

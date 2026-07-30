@@ -44,8 +44,6 @@ import {
 import {
   reviewToolAction,
   ToolActionRejectedError,
-  ToolActionReviewLimitError,
-  ToolActionReviewUnavailableError,
   type ToolActionReview,
 } from "@/chat/tool-support/action-review";
 
@@ -170,6 +168,7 @@ export function createPiAgentTools(
     await onToolCall?.(toolCallId, toolName, toolInput);
     try {
       const assessment = await reviewToolAction(
+        toolCallId,
         toolName,
         toolDef,
         toolInput,
@@ -184,25 +183,7 @@ export function createPiAgentTools(
         });
       }
     } catch (error) {
-      if (
-        error instanceof ToolActionReviewUnavailableError ||
-        error instanceof ToolActionReviewLimitError
-      ) {
-        actionReview?.onFatal(error);
-      }
       if (error instanceof ToolActionRejectedError) {
-        if (error.reviewedAction) {
-          actionReview?.pendingRejections.set(toolCallId, {
-            decision: error.decision,
-            priorRejection: error.reviewedAction,
-            reason: error.reviewedAction.reason,
-            ...(error.riskLevel ? { riskLevel: error.riskLevel } : {}),
-            ...(error.userAuthorization
-              ? { userAuthorization: error.userAuthorization }
-              : {}),
-            version: 1,
-          });
-        }
         setSpanAttributes({
           "app.guardian.decision": error.decision,
           ...(error.riskLevel

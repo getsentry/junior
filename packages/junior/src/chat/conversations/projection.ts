@@ -528,3 +528,29 @@ export async function recordToolExecutionStarted(args: {
     },
   ]);
 }
+
+/** Record one privacy-safe Guardian decision before the reviewed action continues. */
+export async function recordGuardianActionReviewed(args: {
+  conversationId: string;
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  decision: "allow" | "ask" | "deny";
+  riskLevel: "low" | "medium" | "high" | "critical";
+  userAuthorization: "high" | "medium" | "low" | "unknown";
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      data: {
+        type: "guardian_action_reviewed",
+        turnId: args.turnId,
+        toolCallId: args.toolCallId,
+        toolName: args.toolName,
+        decision: args.decision,
+        riskLevel: args.riskLevel,
+        userAuthorization: args.userAuthorization,
+      },
+      createdAtMs: Date.now(),
+    },
+  ]);
+}

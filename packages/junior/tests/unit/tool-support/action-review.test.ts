@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import {
+  createToolActionReview,
   reviewToolAction,
   ToolActionReviewUnavailableError,
   type ToolActionReview,
+  type ToolActionReviewContext,
   type ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
 
@@ -18,9 +20,10 @@ const LOCAL_DESTINATION = {
 } as const;
 
 function reviewContext(
-  reviewer: ToolActionReview["reviewer"],
+  reviewer: ToolActionReviewer,
+  overrides: Partial<ToolActionReviewContext> = {},
 ): ToolActionReview {
-  return {
+  return createToolActionReview({
     context: {
       actor: {
         platform: "system",
@@ -54,13 +57,12 @@ function reviewContext(
         ],
         omittedEntries: 2,
       }),
+      ...overrides,
     },
-    priorRejections: [],
-    consecutiveRejections: 0,
-    pendingRejections: new Map(),
+    onDecision: vi.fn(async () => undefined),
     onFatal: vi.fn(),
     reviewer,
-  };
+  });
 }
 
 function definition(
@@ -80,6 +82,7 @@ describe("tool action review", () => {
     const resolveApprovalMetadata = vi.fn();
 
     await reviewToolAction(
+      "tool-call",
       "generateReport",
       definition({ resolveApprovalMetadata }),
       { reportId: "weekly" },
@@ -117,6 +120,7 @@ describe("tool action review", () => {
     });
 
     await reviewToolAction(
+      "tool-call",
       "scheduler_generateReport",
       tool,
       { reportId: "weekly" },
@@ -157,6 +161,7 @@ describe("tool action review", () => {
   it("returns ask and deny decisions as expected tool rejections", async () => {
     for (const decision of ["ask", "deny"] as const) {
       const action = reviewToolAction(
+        "tool-call",
         "generateReport",
         definition({ approvalMode: "review" }),
         { reportId: "weekly" },
@@ -202,6 +207,7 @@ describe("tool action review", () => {
 
     await expect(
       reviewToolAction(
+        "delete-call",
         "deleteWorkspace",
         definition({ approvalMode: "review" }),
         input,
@@ -210,6 +216,7 @@ describe("tool action review", () => {
     ).rejects.toMatchObject({ decision: "deny" });
     await expect(
       reviewToolAction(
+        "cleanup-call",
         "runWorkspaceCleanup",
         definition({ approvalMode: "review" }),
         { target: "workspace-123", mode: "permanent" },
@@ -228,11 +235,11 @@ describe("tool action review", () => {
 
   it("fails closed before Guardian when authoritative context is missing", async () => {
     const reviewer = { review: vi.fn() };
-    const actionReview = reviewContext(reviewer);
-    actionReview.context.actor = undefined;
+    const actionReview = reviewContext(reviewer, { actor: undefined });
 
     await expect(
       reviewToolAction(
+        "tool-call",
         "generateReport",
         definition({ approvalMode: "review" }),
         { reportId: "weekly" },
@@ -245,51 +252,42 @@ describe("tool action review", () => {
   it.each([
     [
       "approval metadata",
-      (
-        tool: AnyToolDefinition,
-        _actionReview: ToolActionReview,
-        failure: Error,
-      ) => {
+      (tool: AnyToolDefinition, failure: Error) => {
         tool.resolveApprovalMetadata = () => {
           throw failure;
         };
+        return {};
       },
     ],
     [
       "proposal description",
-      (
-        tool: AnyToolDefinition,
-        _actionReview: ToolActionReview,
-        failure: Error,
-      ) => {
+      (tool: AnyToolDefinition, failure: Error) => {
         tool.describeProposal = () => {
           throw failure;
         };
+        return {};
       },
     ],
     [
       "conversation evidence",
-      (
-        _tool: AnyToolDefinition,
-        actionReview: ToolActionReview,
-        failure: Error,
-      ) => {
-        actionReview.context.evidence = () => {
+      (_tool: AnyToolDefinition, failure: Error) => ({
+        evidence: () => {
           throw failure;
-        };
-      },
+        },
+      }),
     ],
   ])(
     "fails closed when %s preparation fails",
     async (_name, arrangeFailure) => {
       const reviewer = { review: vi.fn() };
       const tool = definition({ approvalMode: "review" });
-      const actionReview = reviewContext(reviewer);
       const failure = new Error("review setup failed");
-      arrangeFailure(tool, actionReview, failure);
+      const contextOverrides = arrangeFailure(tool, failure);
+      const actionReview = reviewContext(reviewer, contextOverrides);
 
       await expect(
         reviewToolAction(
+          "tool-call",
           "generateReport",
           tool,
           { reportId: "weekly" },
@@ -305,6 +303,7 @@ describe("tool action review", () => {
 
   it("fails closed when Guardian cannot produce a decision", async () => {
     const action = reviewToolAction(
+      "tool-call",
       "generateReport",
       definition({ approvalMode: "review" }),
       { reportId: "weekly" },
@@ -318,5 +317,43 @@ describe("tool action review", () => {
     await expect(action).rejects.toBeInstanceOf(
       ToolActionReviewUnavailableError,
     );
+  });
+
+  it("fails closed when the Guardian decision cannot be recorded", async () => {
+    const failure = new Error("event log unavailable");
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Generate the report.",
+      },
+      onDecision: async () => {
+        throw failure;
+      },
+      onFatal: vi.fn(),
+      reviewer: {
+        review: async () => ({
+          decision: "allow",
+          reason: "The requested report is safe.",
+          riskLevel: "low",
+          userAuthorization: "high",
+        }),
+      },
+    });
+
+    await expect(
+      reviewToolAction(
+        "tool-call",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toMatchObject({
+      cause: failure,
+      name: "ToolActionReviewUnavailableError",
+    });
   });
 });

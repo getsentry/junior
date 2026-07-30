@@ -13,6 +13,7 @@ export const conversationReportSourceEventTypes = [
   "assistant_message",
   "tool_result",
   "tool_execution_started",
+  "guardian_action_reviewed",
   "turn_started",
   "turn_context",
   "turn_routed",
@@ -313,6 +314,16 @@ function reportEventData(args: {
           ? { confidence: data.confidence }
           : {}),
         source: data.source,
+      };
+    case "guardian_action_reviewed":
+      return {
+        type: "guardian_action_reviewed",
+        turnId: data.turnId,
+        toolCallId: data.toolCallId,
+        toolName: data.toolName,
+        decision: data.decision,
+        riskLevel: data.riskLevel,
+        userAuthorization: data.userAuthorization,
       };
     case "turn_completed":
       return {
