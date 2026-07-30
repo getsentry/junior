@@ -90,7 +90,7 @@ describe("updatePullRequest", () => {
       body: expect.stringContaining("Updated body"),
     });
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer** via Junior.");
+    expect(body.body).toContain("Requested by **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );
