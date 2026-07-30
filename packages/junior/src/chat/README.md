@@ -106,8 +106,9 @@ delegation without becoming the execution actor or a general task owner.
   expected tool failures, and three consecutive rejections interrupt the
   execution slice.
 - Guardian receives a projection of credential authority, never signed
-  credential bindings, plus bounded visible user/assistant evidence. It cannot
-  override deterministic context checks, and unavailable review fails closed.
+  credential bindings, plus bounded user, assistant, tool-call, and tool-result
+  evidence selected with the Codex Guardian transcript rules. It cannot override
+  deterministic context checks, and unavailable review fails closed.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in

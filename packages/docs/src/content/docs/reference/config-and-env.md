@@ -26,7 +26,7 @@ related:
 | `AI_MODEL`                                  | No          | Standard model for main agent runs. Defaults to `xai/grok-4.5`.                                                                                                                                  |
 | `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                                        |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                                      |
-| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `AI_MODEL`.                                                                                                                                        |
+| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-5.6-luna`.                                                                                                                             |
 | `AI_HANDOFF_MODEL`                          | No          | Model for the built-in `handoff` profile. Defaults to `openai/gpt-5.6-sol`.                                                                                                                      |
 | `AI_MODEL_PROFILES`                         | No          | JSON object mapping additional named handoff profiles to model IDs, for example `{"coding":"openai/gpt-5.6-sol"}`. Names must match `^[a-z][a-z0-9_-]*$`; `standard` and `handoff` are reserved. |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                                                 |
@@ -54,9 +54,10 @@ those conversations fail until that name is configured again.
 Guardian action review sends the configured Guardian model a bounded review request with
 hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
-context, and recent visible conversation evidence. `AI_GUARDIAN_MODEL` defaults
-to `AI_MODEL`. Input and output payloads from this review are excluded from
-telemetry.
+context, and bounded user, assistant, tool-call, and tool-result evidence using
+the Codex Guardian transcript selection rules. Guardian defaults to
+`openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+payloads from this review are excluded from telemetry.
 
 When `@sentry/junior-memory` is enabled, the configured Postgres database must
 support pgvector because the plugin migration creates the `vector` extension

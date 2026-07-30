@@ -17,7 +17,7 @@ const guardianDecisionSchema = z
 
 type CompleteObject = typeof completeObject;
 const GUARDIAN_REVIEW_TIMEOUT_MS = 60_000;
-const MAX_PROPOSAL_CHARS = 64_000;
+const MAX_PROPOSAL_CHARS = 192_000;
 
 /** Serialize one bounded proposal while keeping its contents untrusted. */
 function guardianPrompt(proposal: ToolActionProposal): string {

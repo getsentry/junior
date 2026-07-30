@@ -33,7 +33,11 @@ export interface ToolActionReviewDecision {
 
 export interface ToolActionEvidence {
   entries: Array<{
-    role: "assistant" | "user";
+    role:
+      | "assistant"
+      | "user"
+      | `tool ${string} call`
+      | `tool ${string} result`;
     text: string;
   }>;
   omittedEntries: number;

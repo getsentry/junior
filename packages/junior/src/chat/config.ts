@@ -192,6 +192,10 @@ const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "anthropic/claude-haiku-4.5",
 ).id;
+const DEFAULT_GUARDIAN_MODEL_ID = getModel(
+  "vercel-ai-gateway",
+  "openai/gpt-5.6-luna",
+).id;
 const DEFAULT_HANDOFF_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-sol",
@@ -293,7 +297,7 @@ function readBotConfig(
     validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
-    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? modelId;
+    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
   const handoffModelId =
     validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 
