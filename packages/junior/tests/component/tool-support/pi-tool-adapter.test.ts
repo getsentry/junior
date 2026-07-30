@@ -13,6 +13,7 @@ import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
+import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 
 const { handleToolExecutionError } = vi.hoisted(() => ({
   handleToolExecutionError: vi.fn((error: unknown) => {
@@ -426,6 +427,17 @@ describe("Pi tool adapter", () => {
       riskLevel: "low" as const,
       userAuthorization: "high" as const,
     }));
+    const pluginHooks = {
+      afterMcpTool: vi.fn(async () => undefined),
+      beforeToolExecute: vi.fn(async () => ({
+        input: {
+          reportId: "monthly",
+          env: { OUTPUT_FORMAT: "summary" },
+        },
+        env: { SECRET_TOKEN: "must-not-reach-guardian" },
+      })),
+      prepareSandbox: vi.fn(),
+    } as PluginHookRunner;
     const [demoTool] = createPiAgentTools(
       {
         demo: {
@@ -441,16 +453,7 @@ describe("Pi tool adapter", () => {
       undefined,
       undefined,
       undefined,
-      {
-        beforeToolExecute: vi.fn(async () => ({
-          input: {
-            reportId: "monthly",
-            env: { OUTPUT_FORMAT: "summary" },
-          },
-          env: { SECRET_TOKEN: "must-not-reach-guardian" },
-        })),
-        prepareSandbox: vi.fn(),
-      },
+      pluginHooks,
       "private",
       undefined,
       actionReview({ review }, "Create the monthly report."),
