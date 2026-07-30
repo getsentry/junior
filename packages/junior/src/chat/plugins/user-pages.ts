@@ -24,6 +24,7 @@ export function readPluginUserPageLinks(): PluginUserPageLink[] {
         description: page.description,
         id: page.id,
         label: page.label,
+        navigation: page.navigation ?? "profile",
         pluginDisplayName: plugin.manifest.displayName,
         pluginName: plugin.manifest.name,
       })),

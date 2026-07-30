@@ -49,7 +49,7 @@ export function usePluginsData() {
   });
 }
 
-/** Fetch plugin-owned pages shown in the signed-in user menu. */
+/** Fetch plugin-owned pages shown in dashboard navigation. */
 export function usePluginUserPagesData() {
   return useQuery({
     queryKey: ["dashboard", "plugin-user-pages"],

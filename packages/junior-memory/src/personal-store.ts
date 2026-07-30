@@ -43,6 +43,16 @@ export interface PersonalMemoryPage {
   nextCursor?: PersonalMemoryCursor;
 }
 
+/** Viewer-scoped active memory totals used by the dashboard. */
+export interface PersonalMemoryStats {
+  active: number;
+  createdThirtyDays: number;
+  embedded: number;
+  knowledge: number;
+  preference: number;
+  procedure: number;
+}
+
 /** Expected failure when a viewer does not own the requested memory. */
 export class PersonalMemoryNotFoundError extends Error {
   constructor() {
@@ -59,6 +69,8 @@ export interface PersonalMemoryCollection {
   get(id: string): Promise<MemoryRecord>;
   /** List one stable page across every linked personal scope. */
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
+  /** Summarize active memories across every linked personal scope. */
+  stats(): Promise<PersonalMemoryStats>;
 }
 
 function personalScopes(
@@ -189,6 +201,60 @@ export function createPersonalMemoryCollection(
               },
             }
           : {}),
+      };
+    },
+
+    async stats() {
+      const nowMs = getNowMs();
+      await archiveExpiredMemoryBatch({ db, nowMs, scopes });
+      const active = activeVisiblePredicate({ nowMs, scopes });
+      if (!active) {
+        return {
+          active: 0,
+          createdThirtyDays: 0,
+          embedded: 0,
+          knowledge: 0,
+          preference: 0,
+          procedure: 0,
+        };
+      }
+      const [counts] = await db
+        .select({
+          active: sql<number>`count(*)`.mapWith(Number),
+          createdThirtyDays:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.createdAtMs} >= ${nowMs - 30 * 24 * 60 * 60 * 1_000})`.mapWith(
+              Number,
+            ),
+          embedded:
+            sql<number>`count(${juniorMemoryEmbeddings.memoryId})`.mapWith(
+              Number,
+            ),
+          knowledge:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
+              Number,
+            ),
+          preference:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
+              Number,
+            ),
+          procedure:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
+              Number,
+            ),
+        })
+        .from(juniorMemoryMemories)
+        .leftJoin(
+          juniorMemoryEmbeddings,
+          eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
+        )
+        .where(active);
+      return {
+        active: counts?.active ?? 0,
+        createdThirtyDays: counts?.createdThirtyDays ?? 0,
+        embedded: counts?.embedded ?? 0,
+        knowledge: counts?.knowledge ?? 0,
+        preference: counts?.preference ?? 0,
+        procedure: counts?.procedure ?? 0,
       };
     },
   };

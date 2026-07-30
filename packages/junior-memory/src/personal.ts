@@ -116,5 +116,8 @@ export function createViewerMemories(
           : {}),
       };
     },
+    async stats() {
+      return await collection.stats();
+    },
   };
 }

@@ -108,8 +108,17 @@ export async function mockDashboardApis(page: Page) {
           description: "Personal facts Junior remembers about you.",
           id: "memories",
           label: "Memories",
+          navigation: "primary",
           pluginDisplayName: "Memory",
           pluginName: "memory",
+        },
+        {
+          description: "Recurring work Junior runs for you.",
+          id: "tasks",
+          label: "Scheduled tasks",
+          navigation: "profile",
+          pluginDisplayName: "Scheduler",
+          pluginName: "scheduler",
         },
       ],
     });
@@ -119,6 +128,30 @@ export async function mockDashboardApis(page: Page) {
       json: {
         type: "list",
         emptyText: "No personal memories yet.",
+        metrics: [
+          {
+            detail: "1 added in the last 30 days",
+            label: "Active memories",
+            tone: "good",
+            value: "1",
+          },
+          {
+            detail: "How Junior adapts to you",
+            label: "Preferences",
+            value: "1",
+          },
+          {
+            detail: "0 procedures",
+            label: "Knowledge",
+            value: "0",
+          },
+          {
+            detail: "1 of 1 searchable by meaning",
+            label: "Search ready",
+            tone: "good",
+            value: "100%",
+          },
+        ],
         searchPlaceholder: "Search memories",
         records: [
           {
@@ -133,7 +166,26 @@ export async function mockDashboardApis(page: Page) {
             ],
             id: "memory-1",
             title: "I prefer concise summaries.",
-            metadata: [{ label: "Type", value: "Preference" }],
+            metadata: [
+              { label: "Type", value: "Preference" },
+              { label: "Scope", value: "Personal" },
+              { label: "Memory ID", value: "memory-1" },
+            ],
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/user-pages/scheduler/tasks", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "list",
+        emptyText: "No scheduled tasks yet.",
+        records: [
+          {
+            id: "task-1",
+            title: "Send the weekly project summary",
+            metadata: [{ label: "Schedule", value: "Every Monday" }],
           },
         ],
       },

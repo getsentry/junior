@@ -1,123 +1,82 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
 import { Boxes, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router";
-import {
-  pluginUserPageContentSchema,
-  type PluginUserPageContent,
-  type PluginUserPageLink,
-} from "@sentry/junior-plugin-api";
+import { Navigate, useParams } from "react-router";
+import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { deleteDashboardResource, fetchDashboardJson } from "../../http";
+import { MemoryPage } from "../memory/MemoryPage";
 import { dashboardContainerClass } from "../../styles";
+import { usePluginUserPageData } from "./pluginUserPageData";
 
-/** Build the dashboard route for a plugin-owned user page. */
+/** Build the canonical dashboard path for a plugin-owned page. */
 export function pluginUserPagePath(pluginName: string, pageId: string): string {
-  return `/settings/plugins/${encodeURIComponent(pluginName)}/${encodeURIComponent(pageId)}`;
+  return `/plugins/${encodeURIComponent(pluginName)}/${encodeURIComponent(pageId)}`;
 }
 
-/** Render a plugin-owned user page from its bounded list response. */
-export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
+/** Select the core renderer for one registered plugin page. */
+export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
   const { pageId, pluginName } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
   const page = props.pages.find(
     (item) => item.pluginName === pluginName && item.id === pageId,
   );
-  const searchQuery = searchParams.get("q")?.trim() ?? "";
-  const [searchText, setSearchText] = useState(searchQuery);
-  useEffect(() => {
-    setSearchText(searchQuery);
-  }, [searchQuery]);
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const normalized = searchText.trim();
-      if (normalized === searchQuery) return;
-      setSearchParams(normalized ? { q: normalized } : {}, { replace: true });
-    }, 250);
-    return () => window.clearTimeout(timeout);
-  }, [searchQuery, searchText, setSearchParams]);
-
-  const queryKey = [
-    "dashboard",
-    "plugin-user-page",
-    pluginName,
-    pageId,
-    searchQuery,
-  ] as const;
-  const query = useInfiniteQuery({
-    enabled: Boolean(page),
-    initialPageParam: undefined as string | undefined,
-    queryKey,
-    queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.set("q", searchQuery);
-      if (pageParam) params.set("cursor", pageParam);
-      const search = params.toString();
-      return fetchDashboardJson(
-        pluginUserPageContentSchema,
-        `/api/user-pages/${encodeURIComponent(pluginName!)}/${encodeURIComponent(pageId!)}${search ? `?${search}` : ""}`,
-        signal,
-      );
-    },
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    placeholderData: (previousData) => previousData,
-    retry: false,
-  });
-  const records = useMemo(
-    () => [
-      ...new Map(
-        (query.data?.pages ?? [])
-          .flatMap((content) => content.records)
-          .map((record) => [record.id, record]),
-      ).values(),
-    ],
-    [query.data?.pages],
-  );
-  const content = query.data?.pages[0];
-  const action = useMutation({
-    mutationFn: async (
-      recordAction: NonNullable<
-        PluginUserPageContent["records"][number]["actions"]
-      >[number],
-    ) => {
-      if (
-        recordAction.confirmation &&
-        !window.confirm(recordAction.confirmation)
-      ) {
-        return false;
-      }
-      await deleteDashboardResource(recordAction.href);
-      return true;
-    },
-    onSuccess: async (changed) => {
-      if (changed) {
-        await queryClient.resetQueries({ queryKey });
-      }
-    },
-  });
-
   if (!page) return <Navigate replace to="/" />;
+
+  /**
+   * Memory temporarily uses a first-class dashboard renderer because its
+   * inspection UI exceeds the generic plugin page contract. The memory plugin
+   * still owns data, authorization, and actions.
+   *
+   * Replace this special case when Junior has a proven custom plugin UI
+   * contract.
+   */
+  if (page.pluginName === "memory" && page.id === "memories") {
+    return <MemoryPage page={page} />;
+  }
+
+  return <PluginUserPage page={page} />;
+}
+
+/** Render a plugin-owned page with the bounded generic list UI. */
+export function PluginUserPage(props: { page: PluginUserPageLink }) {
+  const { action, content, query, records, searchText, setSearchText } =
+    usePluginUserPageData(props.page);
+
   if (!query.data && !query.error) {
-    return <LoadingView label={`Loading ${page.label}`} />;
+    return <LoadingView label={`Loading ${props.page.label}`} />;
   }
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-3xl gap-6">
         <PageHeader
-          description={page.description}
-          eyebrow={page.pluginDisplayName}
-          title={page.label}
+          description={props.page.description}
+          eyebrow={props.page.pluginDisplayName}
+          title={props.page.label}
         />
+        {content?.metrics?.length ? (
+          <section
+            aria-label={`${props.page.label} overview`}
+            className="grid gap-3 sm:grid-cols-2"
+          >
+            {content.metrics.map((metric) => (
+              <Card className="p-4" key={metric.label}>
+                <div className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+                  {metric.label}
+                </div>
+                <div className="mt-3 font-display text-2xl font-light text-dashboard-text">
+                  {metric.value}
+                </div>
+                {metric.detail ? (
+                  <div className="mt-1 font-mono text-[0.65rem] text-dashboard-text-muted">
+                    {metric.detail}
+                  </div>
+                ) : null}
+              </Card>
+            ))}
+          </section>
+        ) : null}
         {content?.searchPlaceholder ? (
           <label className="relative block">
             <Search
@@ -138,7 +97,7 @@ export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
         {query.error ? (
           <Card padding="md">
             <p className="m-0 text-sm text-rose-300">
-              Could not load {page.label.toLowerCase()}. Try again.
+              Could not load {props.page.label.toLowerCase()}. Try again.
             </p>
           </Card>
         ) : records.length === 0 ? (
@@ -148,7 +107,7 @@ export function PluginUserPage(props: { pages: PluginUserPageLink[] }) {
                 <Boxes aria-hidden="true" size={17} />
               </div>
               <p className="m-0 text-sm text-dashboard-text-muted">
-                {content?.emptyText ?? `No ${page.label.toLowerCase()}.`}
+                {content?.emptyText ?? `No ${props.page.label.toLowerCase()}.`}
               </p>
             </div>
           </Card>

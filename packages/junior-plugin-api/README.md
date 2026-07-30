@@ -60,6 +60,9 @@ Register signed-in pages through `userPages` beside `hooks`, `tasks`, and `cli`.
 Each definition owns its navigation metadata and `read(ctx, input)` function,
 so a page cannot be advertised without an implementation. List readers receive
 validated search and cursor input and may return an opaque continuation cursor.
+Set `navigation: "primary"` for a top-level dashboard navigation item. The
+default `profile` placement keeps account-oriented pages in the signed-in user
+menu. Junior always renders core System navigation after plugin pages.
 Records may expose bounded `DELETE` actions inside their own authenticated
 plugin API namespace. Core owns discovery, authentication, actor resolution,
 routing, response validation, rendering, confirmation, and query state.

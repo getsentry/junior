@@ -138,6 +138,15 @@ export function defineJuniorPlugin(
         `Junior plugin "${name}" user page "${page.id}" requires label and description.`,
       );
     }
+    if (
+      page.navigation !== undefined &&
+      page.navigation !== "primary" &&
+      page.navigation !== "profile"
+    ) {
+      throw new Error(
+        `Junior plugin "${name}" user page "${page.id}" navigation must be "primary" or "profile".`,
+      );
+    }
     if (typeof page.read !== "function") {
       throw new Error(
         `Junior plugin "${name}" user page "${page.id}" requires a read function.`,

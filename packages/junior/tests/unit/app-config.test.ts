@@ -849,7 +849,8 @@ describe("createApp plugin config", () => {
     const pluginsPage = await app.fetch(
       new Request("http://localhost/plugins"),
     );
-    expect(pluginsPage.status).toBe(404);
+    expect(pluginsPage.status).toBe(200);
+    await expect(pluginsPage.text()).resolves.toBe("dashboard");
 
     const peopleApi = await app.fetch(
       new Request("http://localhost/api/people"),
@@ -867,7 +868,7 @@ describe("createApp plugin config", () => {
       "/conversations/*",
       "/locations/*",
       "/people/*",
-      "/settings/plugins/*",
+      "/plugins/*",
       "/system",
       "/system/*",
       "/api/user-pages/*",

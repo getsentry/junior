@@ -386,8 +386,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     `${peoplePath}/*`,
     pagePath("system"),
     `${pagePath("system")}/*`,
-    pagePath("settings/plugins"),
-    `${pagePath("settings/plugins")}/*`,
+    pagePath("plugins"),
+    `${pagePath("plugins")}/*`,
     pagePath("settings/api-tokens"),
   ];
   if (dashboard.componentGallery) {

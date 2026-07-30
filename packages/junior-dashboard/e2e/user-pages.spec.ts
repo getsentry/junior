@@ -20,29 +20,53 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
-test("opens a registered plugin page from the user menu", async ({ page }) => {
+test("opens a registered plugin page from primary navigation", async ({
+  page,
+}) => {
   await page.setViewportSize({ height: 900, width: 1600 });
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(server.baseURL);
+
+  const memoriesLink = page.getByRole("link", { name: "Memories" });
+  await expect(memoriesLink).toHaveAttribute(
+    "href",
+    "/plugins/memory/memories",
+  );
+  await memoriesLink.click();
+
+  await expect(page).toHaveURL(`${server.baseURL}/plugins/memory/memories`);
+  await expect(
+    page.getByRole("heading", { name: "Memories", exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^I prefer concise summaries/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Preference", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Active memories", { exact: true }),
+  ).toBeVisible();
+  const navLinks = await page.locator("header nav a").allTextContents();
+  expect(navLinks.at(-1)?.trim()).toBe("System");
+  expect(browserErrors).toEqual([]);
+});
+
+test("keeps other plugin pages on the generic renderer", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
   await page
     .getByRole("button", { name: "Open profile menu for Dashboard User" })
     .click();
-  const memoriesLink = page.getByRole("link", { name: "Memories" });
-  await expect(memoriesLink).toHaveAttribute(
-    "href",
-    "/settings/plugins/memory/memories",
-  );
-  await memoriesLink.click();
+  await page.getByRole("link", { name: "Scheduled tasks" }).click();
 
-  await expect(page).toHaveURL(
-    `${server.baseURL}/settings/plugins/memory/memories`,
-  );
+  await expect(page).toHaveURL(`${server.baseURL}/plugins/scheduler/tasks`);
   await expect(
-    page.getByRole("heading", { name: "Memories", exact: true }),
+    page.getByRole("heading", { name: "Scheduled tasks" }),
   ).toBeVisible();
-  await expect(page.getByText("I prefer concise summaries.")).toBeVisible();
-  await expect(page.getByText("Preference", { exact: true })).toBeVisible();
+  await expect(page.getByText("Send the weekly project summary")).toBeVisible();
+  await expect(page.getByText("Memory system")).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
@@ -58,7 +82,7 @@ test("renders an empty registered plugin page", async ({ page }) => {
   });
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/settings/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
 
   await expect(page.getByText("No personal memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
@@ -118,8 +142,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   );
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/settings/plugins/memory/memories`);
-  await expect(page.getByText("First page memory.")).toBeVisible();
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await expect(
+    page.getByRole("button", { name: /^First page memory/ }),
+  ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
@@ -127,18 +153,26 @@ test("searches, paginates, and forgets plugin page records", async ({
     page.getByRole("button", { name: "Load more" }),
   ).not.toBeVisible();
   await expect(searchbox).toBeFocused();
-  await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+  ).toBeVisible();
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
-  await expect(page.getByText("First page memory.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^First page memory/ }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
-  await expect(page.getByText("Second page memory.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Second page memory/ }),
+  ).toBeVisible();
 
   await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
   await expect(searchbox).toBeFocused();
-  await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+  ).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page

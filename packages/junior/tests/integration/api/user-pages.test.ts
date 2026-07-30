@@ -65,6 +65,7 @@ describe("plugin user page API", () => {
         description: "Personal facts Junior remembers about you.",
         id: "memories",
         label: "Memories",
+        navigation: "profile",
         pluginDisplayName: "Memory",
         pluginName: "memory",
       },

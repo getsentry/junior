@@ -50,6 +50,27 @@ describe("plugin user pages", () => {
         ],
       }),
     ).toThrow('Junior plugin "memory" has duplicate user page id "memories".');
+
+    expect(() =>
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory plugin",
+        },
+        userPages: [
+          {
+            id: "memories",
+            label: "Memories",
+            description: "Personal memories.",
+            navigation: "sidebar" as "primary",
+            read,
+          },
+        ],
+      }),
+    ).toThrow(
+      'Junior plugin "memory" user page "memories" navigation must be "primary" or "profile".',
+    );
   });
 
   it("keeps page-only plugins in the runtime plugin set", () => {

@@ -125,17 +125,19 @@ export function ProfileMenu({
             <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
             API tokens
           </Link>
-          {userPages.map((page) => (
-            <Link
-              className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-              key={`${page.pluginName}:${page.id}`}
-              onClick={() => setOpen(false)}
-              to={pluginUserPagePath(page.pluginName, page.id)}
-            >
-              <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-              {page.label}
-            </Link>
-          ))}
+          {userPages
+            .filter((page) => page.navigation === "profile")
+            .map((page) => (
+              <Link
+                className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+                key={`${page.pluginName}:${page.id}`}
+                onClick={() => setOpen(false)}
+                to={pluginUserPagePath(page.pluginName, page.id)}
+              >
+                <Boxes aria-hidden="true" size={16} strokeWidth={2} />
+                {page.label}
+              </Link>
+            ))}
           <button
             className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => {

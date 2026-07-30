@@ -25,7 +25,10 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
-import { PluginUserPage } from "./pages/user/PluginUserPage";
+import {
+  PluginUserPageRoute,
+  pluginUserPagePath,
+} from "./pages/user/PluginUserPage";
 import {
   cn,
   dashboardContainerClass,
@@ -56,6 +59,9 @@ export function DashboardShell() {
   }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  const primaryUserPages = loggedIn
+    ? userPages.filter((page) => page.navigation === "primary")
+    : [];
   const workspace =
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
@@ -122,6 +128,15 @@ export function DashboardShell() {
             <NavLink className={navLinkClass} to="/people">
               People
             </NavLink>
+            {primaryUserPages.map((page) => (
+              <NavLink
+                className={navLinkClass}
+                key={`${page.pluginName}:${page.id}`}
+                to={pluginUserPagePath(page.pluginName, page.id)}
+              >
+                {page.label}
+              </NavLink>
+            ))}
             <NavLink className={navLinkClass} to="/system">
               System
             </NavLink>
@@ -243,12 +258,12 @@ export function DashboardShell() {
             loading || userPagesQuery.isPending ? (
               <LoadingView label="Loading page" />
             ) : loggedIn && userPagesQuery.data ? (
-              <PluginUserPage pages={userPagesQuery.data} />
+              <PluginUserPageRoute pages={userPagesQuery.data} />
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/settings/plugins/:pluginName/:pageId"
+          path="/plugins/:pluginName/:pageId"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
