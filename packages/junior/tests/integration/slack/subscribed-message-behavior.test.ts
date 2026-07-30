@@ -614,7 +614,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("unsubscribes on explicit stop-thread instructions and only re-engages on a later direct mention", async () => {
+  it("forces unsubscribe on !stop and only re-engages on a later direct mention", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -698,8 +698,8 @@ describe("Slack behavior: subscribed messages", () => {
       thread,
       createTestMessage({
         id: "m-stop-thread-opt-out",
-        text: "<@U0APP> stop watching or participating in this thread",
-        isMention: true,
+        text: "!stop",
+        isMention: false,
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),

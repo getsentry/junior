@@ -79,6 +79,7 @@ const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|system|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
+const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
 const THREAD_OPTOUT_PATTERNS = [
   /\bstop (?:watching|replying|participating)\b/i,
   /\bstay out\b/i,
@@ -146,6 +147,13 @@ function detectLeadingOtherPartyAddress(
   }
 
   return `named_mention:${directedName}`;
+}
+
+function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
+  return (
+    FORCED_THREAD_OPTOUT_RE.test(rawText.trim()) ||
+    FORCED_THREAD_OPTOUT_RE.test(text.trim())
+  );
 }
 
 function isThreadOptOutInstruction(rawText: string, text: string): boolean {
@@ -390,6 +398,14 @@ export async function decideSubscribedThreadReply(args: {
 }): Promise<SubscribedDecisionResult> {
   const text = args.input.text.trim();
   const rawText = args.input.rawText.trim();
+  if (isForcedThreadOptOutCommand(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "forced !stop command",
+    };
+  }
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
     rawText,
