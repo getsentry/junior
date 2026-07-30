@@ -13,6 +13,7 @@ import type { ConversationFeed } from "@sentry/junior/api/schema";
 import {
   useArchiveConversation,
   useConversationData,
+  type PendingArchiveConversationUpdate,
 } from "../conversations/queries";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
@@ -51,6 +52,7 @@ import type { Conversation } from "../types";
 export function ConversationPage(props: {
   conversationId: string;
   data?: { conversations: ConversationFeed };
+  pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
@@ -62,7 +64,10 @@ export function ConversationPage(props: {
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
-  const conversation = conversationFromDetail(detail.data) ?? feedConversation;
+  const conversation = applyPendingArchiveUpdate(
+    conversationFromDetail(detail.data) ?? feedConversation,
+    props.pendingArchiveUpdate,
+  );
   const conversationDetail = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
@@ -177,6 +182,24 @@ export function ConversationPage(props: {
       />
     </div>
   );
+}
+
+function applyPendingArchiveUpdate(
+  conversation: Conversation | undefined,
+  update: PendingArchiveConversationUpdate | undefined,
+): Conversation | undefined {
+  const updatedConversation =
+    conversation ??
+    (update?.conversation
+      ? buildConversations([update.conversation])[0]
+      : undefined);
+  if (!updatedConversation || !update) return updatedConversation;
+  return {
+    ...updatedConversation,
+    archivedAt: update.archived
+      ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
+      : undefined,
+  };
 }
 
 function ConversationAnnotations(props: {

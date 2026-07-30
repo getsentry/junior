@@ -3,6 +3,7 @@ import {
   queryOptions,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -43,6 +44,55 @@ type ArchivedConversationSnapshot = {
   feedQueryHashes: string[];
 };
 
+const archiveConversationMutationKey = [
+  "dashboard",
+  "archive-conversation",
+] as const;
+
+type ArchiveConversationVariables = {
+  archived: boolean;
+  lastSeenAt: string;
+};
+
+type ArchiveConversationMutationContext = {
+  archivedQueryKey: ReturnType<typeof archivedConversationQueryKey>;
+  archivedSnapshot?: ArchivedConversationSnapshot;
+  detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
+  previousArchivedSnapshot?: ArchivedConversationSnapshot;
+  previousDetail?: ConversationDetailReport;
+  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
+};
+
+export type PendingArchiveConversationUpdate = {
+  archived: boolean;
+  conversation?: ConversationSummaryReport;
+  conversationId: string;
+};
+
+/** Read pending archive state so refetches cannot visually replace optimistic UI. */
+export function usePendingArchiveConversationUpdates() {
+  return useMutationState({
+    filters: {
+      mutationKey: archiveConversationMutationKey,
+      status: "pending",
+    },
+    select: (mutation) => {
+      const variables = mutation.state
+        .variables as ArchiveConversationVariables;
+      const context = mutation.state.context as
+        | ArchiveConversationMutationContext
+        | undefined;
+      const conversationId = mutation.options.mutationKey?.[2];
+      return {
+        archived: variables.archived,
+        conversation: context?.archivedSnapshot?.conversation,
+        conversationId:
+          typeof conversationId === "string" ? conversationId : "",
+      } satisfies PendingArchiveConversationUpdate;
+    },
+  });
+}
+
 /** Define the bounded, polling conversation-detail resource. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -67,7 +117,8 @@ export function useArchiveConversation(
 ) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
+    mutationKey: [...archiveConversationMutationKey, conversationId],
+    mutationFn: (args: ArchiveConversationVariables) =>
       patch(
         archiveConversationResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
@@ -132,11 +183,12 @@ export function useArchiveConversation(
       }
       return {
         archivedQueryKey,
+        archivedSnapshot,
         detailQueryKey,
         previousArchivedSnapshot,
         previousDetail,
         previousFeeds,
-      };
+      } satisfies ArchiveConversationMutationContext;
     },
     onError: (_error, _args, context) => {
       context?.previousFeeds.forEach(([queryKey, feed]) => {

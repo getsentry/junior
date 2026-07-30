@@ -5,11 +5,16 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "../components/ConversationSidebar";
 import {
+  usePendingArchiveConversationUpdates,
+  type PendingArchiveConversationUpdate,
+} from "../conversations/queries";
+import {
   buildConversations,
   conversationPath,
   filterConversationList,
 } from "../format";
 import type { DashboardCoreData } from "../types";
+import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 
@@ -23,9 +28,14 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const feed = useConversationsData(
     props.data.config.authRequired ? props.data.me.user.email : undefined,
   );
+  const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const conversations = useMemo(
-    () => buildConversations(feed.data?.conversations ?? []),
-    [feed.data?.conversations],
+    () =>
+      applyPendingArchiveUpdates(
+        buildConversations(feed.data?.conversations ?? []),
+        pendingArchiveUpdates,
+      ),
+    [feed.data?.conversations, pendingArchiveUpdates],
   );
   const visibleConversations = useMemo(
     () =>
@@ -108,6 +118,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                       }
                     : undefined
                 }
+                pendingArchiveUpdate={pendingArchiveUpdates.find(
+                  (update) => update.conversationId === selectedId,
+                )}
               />
             </div>
           </>
@@ -125,5 +138,32 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         )}
       </section>
     </div>
+  );
+}
+
+function applyPendingArchiveUpdates(
+  conversations: Conversation[],
+  updates: PendingArchiveConversationUpdate[],
+): Conversation[] {
+  const byId = new Map(
+    conversations.map((conversation) => [conversation.id, conversation]),
+  );
+  for (const update of updates) {
+    const existing = byId.get(update.conversationId);
+    const conversation =
+      existing ??
+      (update.conversation
+        ? buildConversations([update.conversation])[0]
+        : undefined);
+    if (!conversation) continue;
+    byId.set(update.conversationId, {
+      ...conversation,
+      archivedAt: update.archived
+        ? (conversation.archivedAt ?? conversation.lastSeenAt)
+        : undefined,
+    });
+  }
+  return [...byId.values()].sort((a, b) =>
+    b.lastSeenAt.localeCompare(a.lastSeenAt),
   );
 }

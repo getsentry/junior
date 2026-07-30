@@ -381,9 +381,7 @@ test("archives and restores a conversation from the sidebar", async ({
   });
   await page.route("**/api/conversations/*/archive", async (route) => {
     const request = route.request().postDataJSON();
-    await new Promise((resolve) =>
-      setTimeout(resolve, request.archived ? 100 : 500),
-    );
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     archived = request.archived;
     await route.fulfill({ json: { archived } });
   });
@@ -411,6 +409,17 @@ test("archives and restores a conversation from the sidebar", async ({
   await archiveButton.click();
   const emptyView = page.getByText("No conversations match this view.");
   await expect(emptyView).toHaveCount(0);
+  const archiveFocusRefetch = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
+  );
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await archiveFocusRefetch;
+  await expect(conversationLink).toHaveCount(0);
   await page.waitForTimeout(220);
   await expect(emptyView).toBeVisible();
   const archiveRequest = await archiveRequestPromise;
@@ -432,6 +441,17 @@ test("archives and restores a conversation from the sidebar", async ({
       name: "Undo archive for Dashboard QA edge cases",
     })
     .click();
+  await expect(conversationLink).toBeVisible();
+  const restoreFocusRefetch = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
+  );
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await restoreFocusRefetch;
   await expect(conversationLink).toBeVisible();
   await expect(
     page.getByRole("button", {
