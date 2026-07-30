@@ -227,15 +227,20 @@ function formatToolCallExample(
   name: string,
   schema: unknown,
 ): z.output<typeof toolCallExampleSchema> {
+  const properties = getSchemaProperties(schema);
+  const required = getRequiredFields(schema);
   return {
     tool_name: name,
+    // Only required fields belong in call examples. Filling optionals teaches
+    // models to placeholder-complete every property, which breaks mutually
+    // exclusive or truly-optional tool args at business-logic time.
     arguments: Object.fromEntries(
-      Object.entries(getSchemaProperties(schema)).map(
-        ([field, propertySchema]) => [
+      Object.entries(properties)
+        .filter(([field]) => required.has(field))
+        .map(([field, propertySchema]) => [
           field,
           formatArgumentPlaceholder(field, propertySchema),
-        ],
-      ),
+        ]),
     ),
   };
 }

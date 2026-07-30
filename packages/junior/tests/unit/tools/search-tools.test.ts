@@ -71,6 +71,40 @@ function catalog() {
         { additionalProperties: false },
       ),
     }),
+    agentDemo_listAccounts: tool({
+      description: "List accounts with optional filters for account review.",
+      identity: {
+        id: "agent-demo.listAccounts",
+        name: "listAccounts",
+        plugin: "agent-demo",
+      },
+      source: {
+        id: "agent-demo",
+        description:
+          "Agent demo tools for customer health and account planning.\n\nInternal registration details should not be rendered.",
+      },
+      exposure: "deferred",
+      inputSchema: Type.Object(
+        {
+          query: Type.Optional(
+            Type.String({
+              description: "Optional free-text account filter.",
+            }),
+          ),
+          limit: Type.Optional(
+            Type.Number({
+              description: "Optional max accounts to return.",
+            }),
+          ),
+          cursor: Type.Optional(
+            Type.String({
+              description: "Optional pagination cursor.",
+            }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    }),
   };
 }
 
@@ -101,7 +135,7 @@ describe("searchTools", () => {
             "Agent demo tools for customer health and account planning.",
         },
       ],
-      total_catalog_tools: 3,
+      total_catalog_tools: 4,
       total_matches: 1,
       returned_tools: 1,
       execution_tool: "executeTool",
@@ -262,8 +296,8 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      total_eligible_tools: 3,
-      total_matches: 3,
+      total_eligible_tools: 4,
+      total_matches: 4,
       returned_tools: 1,
     });
     expect(result.tools).toHaveLength(1);
@@ -273,7 +307,7 @@ describe("searchTools", () => {
     const searchTools = createSearchToolsTool(catalog());
 
     const result = await searchTools.execute!(
-      { query: "", max_results: 3 },
+      { query: "", max_results: 4 },
       {},
     );
 
@@ -290,8 +324,12 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      returned_tools: 3,
+      returned_tools: 4,
       tools: [
+        {
+          tool_name: "agentDemo_listAccounts",
+          source: "agent-demo",
+        },
         {
           tool_name: "agentDemo_lookupCustomer",
           source: "agent-demo",
@@ -306,8 +344,32 @@ describe("searchTools", () => {
       ],
     });
     expect(result.tools[0]?.source).toBe("agent-demo");
-    expect(result.tools[2]?.source).toBe("memory");
-    expect(result.tools[1]).not.toHaveProperty("source");
+    expect(result.tools[1]?.source).toBe("agent-demo");
+    expect(result.tools[3]?.source).toBe("memory");
+    expect(result.tools[2]).not.toHaveProperty("source");
+  });
+
+  it("omits optional fields from call examples while keeping them in signatures", async () => {
+    const searchTools = createSearchToolsTool(catalog());
+
+    const result = await searchTools.execute!(
+      { query: "list accounts", max_results: 1 },
+      {},
+    );
+
+    expect(result.tools[0]).toMatchObject({
+      tool_name: "agentDemo_listAccounts",
+      signature:
+        "agentDemo_listAccounts({ query?: string, limit?: number, cursor?: string })",
+      call: {
+        tool_name: "agentDemo_listAccounts",
+        arguments: {},
+      },
+      input_schema_summary: "query, limit, cursor",
+    });
+    expect(result.tools[0]?.call.arguments).not.toHaveProperty("query");
+    expect(result.tools[0]?.call.arguments).not.toHaveProperty("limit");
+    expect(result.tools[0]?.call.arguments).not.toHaveProperty("cursor");
   });
 
   it("summarizes model-visible descriptions", () => {

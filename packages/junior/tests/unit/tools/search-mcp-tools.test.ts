@@ -124,8 +124,6 @@ describe("searchMcpTools", () => {
         tool_name: "mcp__demo__create_issue",
         arguments: {
           title: "<title>",
-          labels: "<array>",
-          metadata: "<object>",
         },
       },
       input_schema_summary: "title (required), labels, metadata",

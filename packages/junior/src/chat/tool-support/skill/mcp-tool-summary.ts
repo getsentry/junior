@@ -105,15 +105,20 @@ function formatMcpToolCallExample(
   toolName: string,
   schema: Record<string, unknown>,
 ): ExposedToolSummary["call"] {
+  const properties = getSchemaProperties(schema);
+  const required = getRequiredFields(schema);
   return {
     tool_name: toolName,
+    // Only required fields belong in call examples. Filling optionals teaches
+    // models to placeholder-complete every property, which breaks mutually
+    // exclusive or truly-optional tool args at business-logic time.
     arguments: Object.fromEntries(
-      Object.entries(getSchemaProperties(schema)).map(
-        ([name, propertySchema]) => [
+      Object.entries(properties)
+        .filter(([name]) => required.has(name))
+        .map(([name, propertySchema]) => [
           name,
           formatArgumentPlaceholder(name, propertySchema),
-        ],
-      ),
+        ]),
     ),
   };
 }
