@@ -4,7 +4,7 @@ import { Card } from "../../components/layout/Card";
 import { cn } from "../../styles";
 import type { MemoryDay } from "./memoryDashboard";
 
-type MemoryRange = 30 | 90;
+type MemoryRange = 7 | 30 | 90;
 
 const series = [
   { color: "#67e8f9", key: "preference", label: "Preferences" },
@@ -50,7 +50,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
           aria-label="Memory timeline range"
           className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
         >
-          {([30, 90] as const).map((days) => (
+          {([7, 30, 90] as const).map((days) => (
             <button
               aria-pressed={range === days}
               className={cn(
