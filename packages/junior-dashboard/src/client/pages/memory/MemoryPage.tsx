@@ -236,6 +236,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
             ) : null}
           </div>
           <MemoryMobileInspector
+            action={action}
             onClose={() => setSelectedRecordId(undefined)}
             record={selectedRecord}
           />
@@ -580,35 +581,10 @@ function MemoryRow(props: {
             size={16}
           />
         </button>
-        {props.record.actions?.map((recordAction) => (
-          <button
-            aria-label={`${recordAction.label}: ${props.record.title}`}
-            className={cn(
-              "grid w-12 shrink-0 cursor-pointer place-items-center border-0 border-l border-white/[0.04] bg-transparent transition-colors",
-              recordAction.tone === "danger"
-                ? "text-dashboard-text-muted hover:text-rose-300"
-                : dashboardInteractiveTextClass,
-            )}
-            disabled={
-              props.action.isPending &&
-              props.action.variables?.href === recordAction.href
-            }
-            key={`${recordAction.method}:${recordAction.href}`}
-            onClick={() => props.action.mutate(recordAction)}
-            title={recordAction.label}
-            type="button"
-          >
-            {recordAction.tone === "danger" ? (
-              <Trash2 aria-hidden="true" size={15} />
-            ) : (
-              recordAction.label
-            )}
-          </button>
-        ))}
       </div>
       {props.selected ? (
         <div className="hidden border-t border-cyan-300/10 bg-black/20 p-5 lg:block">
-          <MemoryDetails inline record={props.record} />
+          <MemoryDetails action={props.action} inline record={props.record} />
         </div>
       ) : null}
     </>
@@ -616,6 +592,11 @@ function MemoryRow(props: {
 }
 
 function MemoryMobileInspector(props: {
+  action: UseMutationResult<
+    boolean,
+    Error,
+    NonNullable<PluginUserPageRecord["actions"]>[number]
+  >;
   onClose(): void;
   record: PluginUserPageRecord | undefined;
 }) {
@@ -647,13 +628,22 @@ function MemoryMobileInspector(props: {
         type="button"
       />
       <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-xl border border-white/10 bg-[#09090b] p-5 shadow-2xl shadow-black sm:inset-x-4 sm:bottom-4 sm:rounded-xl">
-        <MemoryDetails onClose={props.onClose} record={props.record} />
+        <MemoryDetails
+          action={props.action}
+          onClose={props.onClose}
+          record={props.record}
+        />
       </div>
     </div>
   );
 }
 
 function MemoryDetails(props: {
+  action: UseMutationResult<
+    boolean,
+    Error,
+    NonNullable<PluginUserPageRecord["actions"]>[number]
+  >;
   inline?: boolean;
   onClose?: () => void;
   record: PluginUserPageRecord;
@@ -673,6 +663,9 @@ function MemoryDetails(props: {
     : ["Learned", "Source", "Memory ID"];
   const visibleMetadata = (props.record.metadata ?? []).filter(
     (item) => !hiddenMetadata.includes(item.label),
+  );
+  const forgetAction = props.record.actions?.find(
+    (recordAction) => recordAction.tone === "danger",
   );
 
   return (
@@ -776,6 +769,20 @@ function MemoryDetails(props: {
                 </div>
               ))}
             </dl>
+          ) : null}
+          {forgetAction ? (
+            <button
+              className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+              disabled={
+                props.action.isPending &&
+                props.action.variables?.href === forgetAction.href
+              }
+              onClick={() => props.action.mutate(forgetAction)}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={13} />
+              Forget this memory
+            </button>
           ) : null}
         </div>
       </div>

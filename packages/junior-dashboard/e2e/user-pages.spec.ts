@@ -241,10 +241,9 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   page.once("dialog", (dialog) => dialog.accept());
   await page
-    .getByRole("button", {
-      name: "Forget: Deploy runbooks live in Notion.",
-    })
+    .getByRole("button", { name: /^Deploy runbooks live in Notion/ })
     .click();
+  await page.getByRole("button", { name: "Forget this memory" }).click();
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
