@@ -450,6 +450,7 @@ describe("dashboard routes", () => {
       "/system/plugins/github",
       "/settings/api-tokens",
       "/plugins/memory/memories",
+      "/plugins/memory/memories/library",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
 

@@ -263,7 +263,7 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/plugins/:pluginName/:pageId"
+          path="/plugins/:pluginName/:pageId/*"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>

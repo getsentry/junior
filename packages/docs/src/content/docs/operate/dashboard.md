@@ -83,7 +83,7 @@ The dashboard package owns these routes:
 | `/locations/:location`          | Public location activity detail.        |
 | `/people`                       | Actor directory.                        |
 | `/people/:email`                | Actor activity profile.                 |
-| `/plugins/:plugin/:page`        | Core-rendered signed-in plugin page.    |
+| `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.    |
 | `/system`                       | Aggregate metrics and loaded plugins.   |
 | `/system/plugins/:plugin`       | Plugin details and operational reports. |
 | `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle. |

@@ -39,12 +39,6 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByRole("heading", { name: "Memories", exact: true }).first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /^I prefer concise summaries/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Preference", { exact: true }).last(),
-  ).toBeVisible();
-  await expect(
     page
       .getByRole("region", { name: "Memory summary" })
       .getByText("Active", { exact: true }),
@@ -57,6 +51,16 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
   await ninetyDays.click();
   await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("navigation", { name: "Memory navigation" })
+    .getByRole("link", { name: "Memories" })
+    .click();
+  await expect(page).toHaveURL(
+    `${server.baseURL}/plugins/memory/memories/library`,
+  );
+  await expect(
+    page.getByRole("button", { name: /^I prefer concise summaries/ }),
+  ).toBeVisible();
   const preferences = page.getByRole("tab", { name: "Preferences 11" });
   await preferences.click();
   await expect(preferences).toHaveAttribute("aria-selected", "true");
@@ -87,7 +91,7 @@ test("keeps other plugin pages on the generic renderer", async ({ page }) => {
 test("expands memory details inline on desktop", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
   const memory = page.getByRole("button", {
     name: /^I prefer concise summaries/,
@@ -108,7 +112,7 @@ test("expands memory details inline on desktop", async ({ page }) => {
 test("opens memory details in a mobile sheet", async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
   await page
     .getByRole("button", { name: /^I prefer concise summaries/ })
@@ -137,7 +141,7 @@ test("renders an empty registered plugin page", async ({ page }) => {
   });
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
   await expect(page.getByText("No personal memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
@@ -197,7 +201,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   );
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
   await expect(
     page.getByRole("button", { name: /^First page memory/ }),
   ).toBeVisible();

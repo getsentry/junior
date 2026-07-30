@@ -11,8 +11,8 @@ state.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.
-- Plugin user pages use the core `/api/user-pages` contract and render at
-  `/plugins/:plugin/:page`. Plugins choose primary dashboard navigation or the
+- Plugin user pages use the core `/api/user-pages` contract and render under
+  `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the
   signed-in user menu. Core-rendered lists own metrics, search query state,
   cursor pagination, record inspection, destructive confirmation, and
   authenticated plugin REST actions.

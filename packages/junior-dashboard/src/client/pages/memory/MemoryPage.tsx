@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Navigate, NavLink, useLocation } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
@@ -34,6 +35,77 @@ import { MemoryTimeline } from "./MemoryTimeline";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
+  const location = useLocation();
+  const basePath = `/plugins/${encodeURIComponent(props.page.pluginName)}/${encodeURIComponent(props.page.id)}`;
+  const libraryPath = `${basePath}/library`;
+  const overview = location.pathname === basePath;
+  const library = location.pathname === libraryPath;
+  if (!overview && !library) return <Navigate replace to={basePath} />;
+
+  const navigationClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "relative px-1 py-3 font-mono text-[0.64rem] uppercase tracking-[0.12em] no-underline after:absolute after:inset-x-0 after:bottom-0 after:h-px",
+      isActive
+        ? "text-cyan-100 after:bg-cyan-300"
+        : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
+    );
+
+  return (
+    <div
+      className={cn(
+        dashboardContainerClass,
+        "grid content-start gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 md:px-8",
+      )}
+    >
+      <PageHeader
+        description={props.page.description}
+        eyebrow="Memory system"
+        title={props.page.label}
+      />
+      <nav
+        aria-label="Memory navigation"
+        className="flex gap-6 border-b border-white/[0.06]"
+      >
+        <NavLink className={navigationClass} end to={basePath}>
+          Overview
+        </NavLink>
+        <NavLink className={navigationClass} to={libraryPath}>
+          Memories
+        </NavLink>
+      </nav>
+      {overview ? <MemoryOverview /> : <MemoryLibrary page={props.page} />}
+    </div>
+  );
+}
+
+function MemoryOverview() {
+  const dashboardQuery = useMemoryDashboardData();
+  return (
+    <>
+      {dashboardQuery.data ? (
+        <MemorySummary data={dashboardQuery.data} />
+      ) : (
+        <div className="h-24 animate-pulse border-y border-white/[0.06]">
+          <span className="sr-only">Loading memory summary</span>
+        </div>
+      )}
+      {dashboardQuery.data ? (
+        <MemoryTimeline days={dashboardQuery.data.days} />
+      ) : dashboardQuery.error ? (
+        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
+          <CircleAlert aria-hidden="true" size={18} />
+          Memory history is temporarily unavailable.
+        </Card>
+      ) : (
+        <Card className="min-h-64 animate-pulse">
+          <span className="sr-only">Loading memory history</span>
+        </Card>
+      )}
+    </>
+  );
+}
+
+function MemoryLibrary(props: { page: PluginUserPageLink }) {
   const {
     action,
     content,
@@ -56,137 +128,103 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid content-start gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 md:px-8",
-      )}
-    >
-      <PageHeader
-        description={props.page.description}
-        eyebrow="Memory system"
-        title={props.page.label}
+    <section className="grid gap-4" aria-labelledby="memory-library-title">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+            Your memories
+          </div>
+          <h2
+            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
+            id="memory-library-title"
+          >
+            {searchQuery ? "Search results" : "What Junior remembers"}
+          </h2>
+        </div>
+        {content?.searchPlaceholder ? (
+          <label className="relative w-full max-w-md sm:w-auto">
+            <span className="sr-only">{content.searchPlaceholder}</span>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dashboard-text-muted"
+              size={15}
+            />
+            <input
+              className="h-10 w-full min-w-0 rounded border border-white/10 bg-black/20 pr-3 pl-9 font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted/70 focus:border-cyan-300/35"
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder={content.searchPlaceholder}
+              type="search"
+              value={searchText}
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <MemoryCollections
+        activeFilter={filter}
+        onSelect={setFilter}
+        stats={dashboardQuery.data?.stats}
       />
 
-      {dashboardQuery.data ? (
-        <MemorySummary data={dashboardQuery.data} />
-      ) : (
-        <div className="h-24 animate-pulse border-y border-white/[0.06]">
-          <span className="sr-only">Loading memory summary</span>
-        </div>
-      )}
-
-      <section className="grid gap-4" aria-labelledby="memory-library-title">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-              Your memories
-            </div>
-            <h2
-              className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
-              id="memory-library-title"
-            >
-              {searchQuery ? "Search results" : "What Junior remembers"}
-            </h2>
-          </div>
-          {content?.searchPlaceholder ? (
-            <label className="relative w-full max-w-md sm:w-auto">
-              <span className="sr-only">{content.searchPlaceholder}</span>
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dashboard-text-muted"
-                size={15}
-              />
-              <input
-                className="h-10 w-full min-w-0 rounded border border-white/10 bg-black/20 pr-3 pl-9 font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted/70 focus:border-cyan-300/35"
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder={content.searchPlaceholder}
-                type="search"
-                value={searchText}
-              />
-            </label>
-          ) : null}
-        </div>
-
-        <MemoryCollections
-          activeFilter={filter}
-          onSelect={setFilter}
-          stats={dashboardQuery.data?.stats}
-        />
-
-        {query.error ? (
-          <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
-            <CircleAlert aria-hidden="true" size={18} />
-            {query.error.message}
-          </Card>
-        ) : records.length === 0 ? (
-          <Card className="grid min-h-56 place-items-center p-8 text-center">
-            <div>
-              <Database
-                aria-hidden="true"
-                className="mx-auto text-dashboard-text-muted"
-                size={26}
-              />
-              <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
-                {content?.emptyText ?? "No personal memories yet."}
-              </p>
-            </div>
-          </Card>
-        ) : (
-          <div className="grid items-start gap-4">
-            <div className="grid gap-3">
-              <Card padding="none">
-                {records.map((record, index) => (
-                  <MemoryRow
-                    action={action}
-                    first={index === 0}
-                    key={record.id}
-                    onSelect={() =>
-                      setSelectedRecordId((current) =>
-                        current === record.id ? undefined : record.id,
-                      )
-                    }
-                    record={record}
-                    selected={record.id === selectedRecordId}
-                  />
-                ))}
-              </Card>
-              {!query.isPlaceholderData && query.hasNextPage ? (
-                <Button
-                  className="mt-2 justify-self-center"
-                  disabled={query.isFetchingNextPage}
-                  onClick={() => void query.fetchNextPage()}
-                >
-                  {query.isFetchingNextPage ? "Loading…" : "Load more"}
-                </Button>
-              ) : null}
-              {action.error ? (
-                <p className="m-0 text-center text-sm text-rose-300">
-                  Could not complete this action. Try again.
-                </p>
-              ) : null}
-            </div>
-            <MemoryMobileInspector
-              onClose={() => setSelectedRecordId(undefined)}
-              record={selectedRecord}
-            />
-          </div>
-        )}
-      </section>
-
-      {dashboardQuery.data ? (
-        <MemoryTimeline days={dashboardQuery.data.days} />
-      ) : dashboardQuery.error ? (
+      {query.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
-          Memory history is temporarily unavailable.
+          {query.error.message}
+        </Card>
+      ) : records.length === 0 ? (
+        <Card className="grid min-h-56 place-items-center p-8 text-center">
+          <div>
+            <Database
+              aria-hidden="true"
+              className="mx-auto text-dashboard-text-muted"
+              size={26}
+            />
+            <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
+              {content?.emptyText ?? "No personal memories yet."}
+            </p>
+          </div>
         </Card>
       ) : (
-        <Card className="min-h-64 animate-pulse">
-          <span className="sr-only">Loading memory history</span>
-        </Card>
+        <div className="grid items-start gap-4">
+          <div className="grid gap-3">
+            <Card padding="none">
+              {records.map((record, index) => (
+                <MemoryRow
+                  action={action}
+                  first={index === 0}
+                  key={record.id}
+                  onSelect={() =>
+                    setSelectedRecordId((current) =>
+                      current === record.id ? undefined : record.id,
+                    )
+                  }
+                  record={record}
+                  selected={record.id === selectedRecordId}
+                />
+              ))}
+            </Card>
+            {!query.isPlaceholderData && query.hasNextPage ? (
+              <Button
+                className="mt-2 justify-self-center"
+                disabled={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                {query.isFetchingNextPage ? "Loading…" : "Load more"}
+              </Button>
+            ) : null}
+            {action.error ? (
+              <p className="m-0 text-center text-sm text-rose-300">
+                Could not complete this action. Try again.
+              </p>
+            ) : null}
+          </div>
+          <MemoryMobileInspector
+            onClose={() => setSelectedRecordId(undefined)}
+            record={selectedRecord}
+          />
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
