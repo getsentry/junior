@@ -1,10 +1,8 @@
 import type { UseMutationResult } from "@tanstack/react-query";
 import {
   BrainCircuit,
-  Check,
   ChevronRight,
   CircleAlert,
-  Copy,
   Database,
   Search,
   Trash2,
@@ -508,7 +506,6 @@ function MemoryDetails(props: {
   onClose?: () => void;
   record: PluginUserPageRecord;
 }) {
-  const [copied, setCopied] = useState(false);
   const kind = metadataValue(props.record, "Type");
   const learned = metadataValue(props.record, "Learned");
   const remembered = metadataValue(props.record, "Remembered");
@@ -520,17 +517,11 @@ function MemoryDetails(props: {
         ? `You asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
   const hiddenMetadata = props.inline
-    ? ["Type", "Learned", "Source"]
-    : ["Learned", "Source"];
+    ? ["Type", "Learned", "Source", "Memory ID"]
+    : ["Learned", "Source", "Memory ID"];
   const visibleMetadata = (props.record.metadata ?? []).filter(
     (item) => !hiddenMetadata.includes(item.label),
   );
-
-  async function copyId() {
-    await navigator.clipboard.writeText(props.record.id);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_500);
-  }
 
   return (
     <>
@@ -634,21 +625,6 @@ function MemoryDetails(props: {
               ))}
             </dl>
           ) : null}
-          <button
-            className={cn(
-              "mt-4 inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 font-mono text-[0.62rem] uppercase tracking-[0.1em]",
-              dashboardInteractiveTextClass,
-            )}
-            onClick={() => void copyId()}
-            type="button"
-          >
-            {copied ? (
-              <Check aria-hidden="true" size={13} />
-            ) : (
-              <Copy aria-hidden="true" size={13} />
-            )}
-            {copied ? "Copied memory ID" : "Copy memory ID"}
-          </button>
         </div>
       </div>
     </>
