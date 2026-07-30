@@ -437,7 +437,6 @@ async function resumeSlackTurnInContext(
     | {
         providerDisplayName: string;
         actorId: string | undefined;
-        requestText?: string;
       }
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
@@ -677,7 +676,6 @@ async function resumeSlackTurnInContext(
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
-          ...(outcome.requestText ? { requestText: outcome.requestText } : {}),
         };
         deferredPauseHandler = async () => {
           await onAuthPause({
@@ -864,7 +862,6 @@ async function resumeSlackTurnInContext(
           buildAuthPauseResponse(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
-            deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
         );

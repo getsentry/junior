@@ -181,7 +181,9 @@ describe("createMcpAuthOrchestration", () => {
       true,
     );
     expect(orchestration.getPendingPause()).toMatchObject({
-      requestText: "use MCP",
+      provider: "github",
+      providerDisplayName: "GitHub",
+      disposition: "link_sent",
     });
 
     expect(deliverPrivateMessage).toHaveBeenCalledWith(

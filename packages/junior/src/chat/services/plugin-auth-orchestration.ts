@@ -36,9 +36,8 @@ export class PluginAuthorizationPauseError extends AuthorizationPauseError {
     provider: string,
     providerDisplayName: string,
     disposition: "link_already_sent" | "link_sent",
-    requestText?: string,
   ) {
-    super("plugin", provider, providerDisplayName, disposition, requestText);
+    super("plugin", provider, providerDisplayName, disposition);
   }
 }
 
@@ -61,7 +60,6 @@ export interface PluginAuthOrchestrationInput {
   destination?: Destination;
   source?: Source;
   threadTs?: string;
-  userMessage?: string;
   pendingAuth?: ConversationPendingAuthState;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
@@ -224,7 +222,6 @@ export function createPluginAuthOrchestration(
       provider,
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
-      input.userMessage,
     );
     input.abortAgent();
     throw pendingPause;

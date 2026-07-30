@@ -41,9 +41,8 @@ export class McpAuthorizationPauseError extends AuthorizationPauseError {
     provider: string,
     providerDisplayName: string,
     disposition: "link_already_sent" | "link_sent",
-    requestText?: string,
   ) {
-    super("mcp", provider, providerDisplayName, disposition, requestText);
+    super("mcp", provider, providerDisplayName, disposition);
   }
 }
 
@@ -234,7 +233,6 @@ export function createMcpAuthOrchestration(
       provider,
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
-      input.userMessage,
     );
     input.abortAgent();
     return true;
