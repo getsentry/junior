@@ -1,6 +1,6 @@
 # GitHub plugin setup
 
-This plugin exposes three skills — `github-code` (clone, source-code investigation, pull requests), `github-issues` (issue workflows), and `attach-github-assets` (local image/video uploads for GitHub markdown). Junior uses GitHub App installation tokens for reads, workflow dispatches, allowlisted issue and pull request writes, and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as pull request reviews and user-attachment uploads.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, workflow dispatches, allowlisted issue and pull request writes, and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as pull request reviews and user-attachment uploads.
 
 ## 1) Create/install GitHub App
 
