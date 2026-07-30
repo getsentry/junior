@@ -50,12 +50,7 @@ export function TranscriptContextEventView(props: {
             Continuation summary
           </summary>
           <div className="mt-2 text-[0.8rem] leading-relaxed text-dashboard-text-muted">
-            <TranscriptText
-              firstChildIndex={0}
-              lastChildIndex={0}
-              role="system"
-              text={event.summary}
-            />
+            <TranscriptText role="system" text={event.summary} />
           </div>
         </details>
       ) : null}

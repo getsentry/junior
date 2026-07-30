@@ -23,6 +23,7 @@ import {
 import { Transcript } from "../src/client/components/Transcript";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
+import { TranscriptText } from "../src/client/components/TranscriptText";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
@@ -178,6 +179,33 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("some<em");
     expect(html).toContain("<em");
     expect(html).toContain("italic text");
+  });
+
+  it("renders code-like user prose as markdown", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptText
+          role="user"
+          text="The function reads a const value and returns it."
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("<p");
+    expect(html).not.toContain("<pre");
+    expect(html).toContain("function reads a const value");
+  });
+
+  it("renders fenced XML as highlighted code", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("<pre");
+    expect(html).not.toContain("<details");
+    expect(html).toContain("&lt;root /&gt;");
   });
 
   it("renders labeled event sections followed by semantic lists", () => {

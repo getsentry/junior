@@ -8,14 +8,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { countStructuredBlockChildren, HighlightedCode } from "../code";
+import { HighlightedCode } from "../code";
 import {
   detectLanguage,
   transcriptRoleKind,
   formatMessageTimestamp,
   formatTranscriptDuration,
   actorLabel,
-  parseMarkdownBlocks,
   summarizeCost,
   summarizeTurns,
   summarizeToolCalls,
@@ -757,11 +756,6 @@ function TranscriptMessageView(props: {
 }) {
   const rawText = messageRawText(props.message);
   const role = props.message.role;
-  const totalRenderedChildren = props.message.parts.reduce(
-    (count, part) => count + renderedTextChildren(part.text ?? "", role),
-    0,
-  );
-  let seenRenderedChildren = 0;
 
   return (
     <TranscriptMessageShell
@@ -799,19 +793,9 @@ function TranscriptMessageView(props: {
         />
       ) : (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) => {
-            const firstChildIndex = seenRenderedChildren;
-            seenRenderedChildren += renderedTextChildren(part.text ?? "", role);
-            return (
-              <TranscriptText
-                firstChildIndex={firstChildIndex}
-                key={index}
-                lastChildIndex={totalRenderedChildren - 1}
-                role={role}
-                text={part.text ?? ""}
-              />
-            );
-          })}
+          {props.message.parts.map((part, index) => (
+            <TranscriptText key={index} role={role} text={part.text ?? ""} />
+          ))}
         </div>
       )}
       {props.view === "rich" &&
@@ -821,12 +805,6 @@ function TranscriptMessageView(props: {
       ) : null}
     </TranscriptMessageShell>
   );
-}
-
-function renderedTextChildren(text: string, role: string): number {
-  return parseMarkdownBlocks(text, {
-    outputOnly: transcriptRoleKind(role) === "assistant",
-  }).reduce((count, block) => count + countStructuredBlockChildren(block), 0);
 }
 
 function isString(value: string | undefined): value is string {

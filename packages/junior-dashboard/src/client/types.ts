@@ -148,12 +148,3 @@ export type CodeBlock = {
   fenced?: boolean;
   language: BundledLanguage;
 };
-
-export type MarkupNode =
-  | {
-      type: "element";
-      attributes: Array<[string, string]>;
-      children: MarkupNode[];
-      tagName: string;
-    }
-  | { type: "text"; text: string };

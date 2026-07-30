@@ -8,7 +8,6 @@ import type {
 import {
   actorLabel,
   buildConversations,
-  canRenderStructuredMarkup,
   conversationActorLabel,
   conversationDisplayTitle,
   conversationFromDetail,
@@ -319,16 +318,21 @@ describe("dashboard conversation formatting", () => {
   });
 });
 
-describe("structured transcript markup", () => {
-  it("detects fenced and inline structured blocks", () => {
+describe("transcript blocks", () => {
+  it("keeps prose as markdown and preserves fenced languages", () => {
+    expect(
+      parseMarkdownBlocks("The function returns a const value.")[0],
+    ).toMatchObject({
+      fenced: false,
+      language: "markdown",
+    });
     expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
+      fenced: true,
       language: "json",
     });
-    expect(
-      canRenderStructuredMarkup({ code: "<root />", language: "xml" }),
-    ).toBe(true);
-    expect(
-      canRenderStructuredMarkup({ code: "plain", language: "markdown" }),
-    ).toBe(false);
+    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
+      fenced: true,
+      language: "xml",
+    });
   });
 });

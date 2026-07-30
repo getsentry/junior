@@ -346,20 +346,10 @@ export function ComponentsPage() {
           <TranscriptMarkdown text={GFM_SAMPLE} />
         </Fixture>
         <Fixture title="TranscriptText assistant">
-          <TranscriptText
-            firstChildIndex={0}
-            lastChildIndex={0}
-            role="assistant"
-            text={MIXED_ASSISTANT}
-          />
+          <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
         </Fixture>
         <Fixture title="TranscriptText user">
-          <TranscriptText
-            firstChildIndex={0}
-            lastChildIndex={0}
-            role="user"
-            text={EVENT_NOTIFICATION}
-          />
+          <TranscriptText role="user" text={EVENT_NOTIFICATION} />
         </Fixture>
         <Fixture title="Tool calls">
           <ToolCallGallery />

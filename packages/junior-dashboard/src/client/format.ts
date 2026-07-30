@@ -8,7 +8,6 @@ import type {
   CodeBlock,
   Conversation,
   ConversationTranscript,
-  MarkupNode,
   TranscriptViewMessage,
   TranscriptViewPart,
   VisualStatus,
@@ -735,30 +734,8 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
-/**
- * Decide whether a block can use the interactive markup renderer.
- * Only xml/html language blocks qualify; fenced is tracked as metadata but
- * does not gate eligibility — caller controls whether XML detection runs.
- */
-export function canRenderStructuredMarkup(block: CodeBlock): boolean {
-  return block.language === "xml" || block.language === "html";
-}
-
-/**
- * Parse markdown into renderable code blocks while preserving plain text blocks.
- *
- * `outputOnly` (default `false`): when `true`, prose sections use
- * `detectOutputLanguage` (json or markdown only — no xml/html heuristics).
- * Use `outputOnly: true` for LLM-generated text (assistant messages) to
- * prevent Slack autolinks and HTML snippets from triggering the XML tree
- * renderer. Leave `false` (default) for user/system messages that may
- * contain genuine XML runtime context.
- */
-export function parseMarkdownBlocks(
-  text: string,
-  opts: { outputOnly?: boolean } = {},
-): CodeBlock[] {
-  const detectProse = opts.outputOnly ? detectOutputLanguage : detectLanguage;
+/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
+export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
   const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
   let cursor = 0;
@@ -766,7 +743,7 @@ export function parseMarkdownBlocks(
   while ((match = fence.exec(text))) {
     const prose = text.slice(cursor, match.index).trim();
     if (prose) {
-      const language = detectProse(prose);
+      const language = detectOutputLanguage(prose);
       blocks.push({
         code: formatCodeBlock(prose, language),
         fenced: false,
@@ -783,7 +760,7 @@ export function parseMarkdownBlocks(
   }
   const rest = text.slice(cursor).trim();
   if (rest) {
-    const language = detectProse(rest);
+    const language = detectOutputLanguage(rest);
     blocks.push({
       code: formatCodeBlock(rest, language),
       fenced: false,
@@ -791,55 +768,8 @@ export function parseMarkdownBlocks(
     });
   }
   if (blocks.length > 0) return blocks;
-  const language = detectProse(text);
+  const language = detectOutputLanguage(text);
   return [{ code: formatCodeBlock(text, language), fenced: false, language }];
-}
-
-/** Parse XML/HTML-ish fragments for the collapsible transcript renderer. */
-export function parseMarkupNodes(
-  code: string,
-  language: BundledLanguage,
-): MarkupNode[] {
-  const parser = new DOMParser();
-  if (language === "xml") {
-    const document = parser.parseFromString(
-      `<junior-root>${code}</junior-root>`,
-      "text/xml",
-    );
-    if (!document.querySelector("parsererror")) {
-      return Array.from(document.documentElement.childNodes)
-        .map(markupNodeFromDom)
-        .filter(
-          (node) => node.type === "element" || node.text.trim().length > 0,
-        );
-    }
-  }
-
-  const document = parser.parseFromString(code, "text/html");
-  return Array.from(document.body.childNodes)
-    .map(markupNodeFromDom)
-    .filter((node) => node.type === "element" || node.text.trim().length > 0);
-}
-
-function markupNodeFromDom(node: ChildNode): MarkupNode {
-  if (node.nodeType === Node.ELEMENT_NODE) {
-    const element = node as Element;
-    return {
-      type: "element",
-      tagName: element.tagName.toLowerCase(),
-      attributes: Array.from(element.attributes).map((attribute) => [
-        attribute.name,
-        attribute.value,
-      ]),
-      children: Array.from(element.childNodes)
-        .map(markupNodeFromDom)
-        .filter(
-          (child) => child.type === "element" || child.text.trim().length > 0,
-        ),
-    };
-  }
-
-  return { type: "text", text: node.textContent ?? "" };
 }
 
 /** Convert SQL conversation summaries into dashboard rows. */

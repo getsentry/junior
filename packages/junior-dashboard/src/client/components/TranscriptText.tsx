@@ -1,35 +1,15 @@
-import {
-  countStructuredBlockChildren,
-  HighlightedCode,
-  StructuredMarkup,
-} from "../code";
-import {
-  canRenderStructuredMarkup,
-  parseMarkdownBlocks,
-  transcriptRoleKind,
-} from "../format";
+import { HighlightedCode } from "../code";
+import { parseMarkdownBlocks, transcriptRoleKind } from "../format";
 import { TranscriptMarkdown } from "./TranscriptMarkdown";
 
-/** Render transcript markdown/code blocks with structured markup expansion. */
-export function TranscriptText(props: {
-  firstChildIndex: number;
-  lastChildIndex: number;
-  role?: string;
-  text: string;
-}) {
+/** Render transcript prose as Markdown with explicit fenced code blocks. */
+export function TranscriptText(props: { role?: string; text: string }) {
   const roleKind = transcriptRoleKind(props.role ?? "");
-  const blocks = parseMarkdownBlocks(props.text, {
-    outputOnly: roleKind === "assistant",
-  });
-  let seenChildren = props.firstChildIndex;
+  const blocks = parseMarkdownBlocks(props.text);
 
   return (
     <div className="grid min-w-0 gap-2">
       {blocks.map((block, index) => {
-        const firstChildIndex = seenChildren;
-        const childCount = countStructuredBlockChildren(block);
-        seenChildren += childCount;
-
         if (block.language === "markdown" && !block.fenced) {
           return (
             <TranscriptMarkdown
@@ -40,22 +20,11 @@ export function TranscriptText(props: {
           );
         }
 
-        if (!canRenderStructuredMarkup(block)) {
-          return (
-            <HighlightedCode
-              code={block.code}
-              key={index}
-              language={block.language}
-            />
-          );
-        }
-
         return (
-          <StructuredMarkup
-            block={block}
-            firstChildIndex={firstChildIndex}
+          <HighlightedCode
+            code={block.code}
             key={index}
-            lastChildIndex={props.lastChildIndex}
+            language={block.language}
           />
         );
       })}
