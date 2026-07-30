@@ -77,7 +77,7 @@ function definition(
 }
 
 describe("tool action review", () => {
-  it("uses auto policy when approval mode is omitted", async () => {
+  it("preserves execution behavior for unclassified core tools", async () => {
     const reviewer = { review: vi.fn() };
     const resolveApprovalMetadata = vi.fn();
 
@@ -90,10 +90,10 @@ describe("tool action review", () => {
     );
 
     expect(reviewer.review).not.toHaveBeenCalled();
-    expect(resolveApprovalMetadata).toHaveBeenCalledTimes(1);
+    expect(resolveApprovalMetadata).not.toHaveBeenCalled();
   });
 
-  it("reviews plugin actions with omitted approval mode", async () => {
+  it("reviews auto plugin actions with exact input and safe context", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",
       reason: "Matches the scheduled request.",
@@ -101,6 +101,7 @@ describe("tool action review", () => {
       userAuthorization: "high",
     }));
     const tool = definition({
+      approvalMode: "auto",
       annotations: {
         destructiveHint: false,
         idempotentHint: true,

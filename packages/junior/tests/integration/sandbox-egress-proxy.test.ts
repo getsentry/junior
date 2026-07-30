@@ -693,6 +693,13 @@ describe("sandbox egress proxy integration", () => {
       tools(ctx) {
         return {
           managedEgressRead: definePluginTool({
+            approvalMode: "approve",
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: true,
+              readOnlyHint: true,
+            },
             description: "Read managed provider data through host egress",
             inputSchema: z.object({}),
             outputSchema: managedEgressReadResultSchema,

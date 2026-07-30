@@ -187,13 +187,13 @@ export class ToolActionReviewLimitError extends Error {
   }
 }
 
-/** Resolve omitted approval modes through the conservative auto policy. */
+/** Keep core tools outside action review unless they explicitly opt in. */
 function effectiveApprovalMode(
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
 ): "approve" | "review" {
-  const declared = tool.approvalMode ?? "auto";
-  if (declared === "approve") {
+  const declared = tool.approvalMode;
+  if (declared === undefined || declared === "approve") {
     return "approve";
   }
   if (declared === "review") {
@@ -417,7 +417,7 @@ async function prepareToolActionReview(
   context: ToolActionReviewContext,
   priorRejections: ToolActionPriorRejection[],
 ): Promise<ToolActionProposal | undefined> {
-  if (tool.approvalMode === "approve") {
+  if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
@@ -531,14 +531,10 @@ export async function reviewToolAction(
   review: ToolActionReview | undefined,
   signal?: AbortSignal,
 ): Promise<ToolActionReviewDecision | undefined> {
-  if (tool.approvalMode === "approve") {
+  if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
     return;
   }
   if (!review) {
-    const resolved = await tool.resolveApprovalMetadata?.(input);
-    if (effectiveApprovalMode(tool, resolved) === "approve") {
-      return;
-    }
     throw new ToolActionReviewUnavailableError();
   }
   return review.review(toolCallId, toolName, tool, input, signal);

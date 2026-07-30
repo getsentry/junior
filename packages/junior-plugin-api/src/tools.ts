@@ -227,7 +227,8 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
  * Tool-declared approval mode.
  *
  * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Omission behaves like `auto`.
+ * `approve` permits execution without review. Plugin tool helpers normalize
+ * omission to `auto`.
  *
  * Core resolves the effective mode immediately before execution.
  */
@@ -274,7 +275,7 @@ export function missingToolAnnotationKeys(
  * Canonical approval metadata declared by core and plugin tools.
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; omission delegates to core auto policy. */
+  /** Optional declared approval mode; the owning tool boundary selects defaults. */
   approvalMode?: ToolApprovalMode;
   annotations?: ToolAnnotations;
   /**

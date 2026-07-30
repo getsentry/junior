@@ -102,11 +102,12 @@ delegation without becoming the execution actor or a general task owner.
   across asynchronous boundaries.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
-  Omitted approval modes use auto policy. Every execution attempt that enters
-  review reaches Guardian; prior rejections are context rather than binding
-  decisions. Each Guardian decision is committed to the conversation event log
-  before the reviewed action can continue. `ask` and `deny` become expected tool
-  failures, and three consecutive rejections interrupt the execution slice.
+  Plugin tools with omitted approval modes use auto policy; core tools must opt
+  in explicitly. Every execution attempt that enters review reaches Guardian;
+  prior rejections are context rather than binding decisions. Each Guardian
+  decision is committed to the conversation event log before the reviewed
+  action can continue. `ask` and `deny` become expected tool failures, and three
+  consecutive rejections interrupt the execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded user, assistant, tool-call, and tool-result
   evidence selected with the Codex Guardian transcript rules. It cannot override

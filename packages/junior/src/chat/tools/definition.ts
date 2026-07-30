@@ -154,8 +154,5 @@ export function isTypeBoxInputSchema(
 export function tool<TInputSchema extends TSchema>(
   definition: ToolDefinition<TInputSchema>,
 ): ToolDefinition<TInputSchema> {
-  return {
-    ...definition,
-    approvalMode: definition.approvalMode ?? "auto",
-  };
+  return definition;
 }
