@@ -9,17 +9,11 @@ import { z } from "zod";
 /** Reserved namespace for Junior-owned conversation metadata events. */
 export const JUNIOR_NATIVE_EVENT_NAMESPACE = "junior" as const;
 
-const authorizationKindSchema = z.union([
-  z.literal("plugin"),
-  z.literal("mcp"),
-]);
-
 const authenticationEventContentSchema = z
   .object({
     accountLabel: z.string().trim().min(1).max(120).optional(),
     actorId: z.string().min(1),
     authorizationId: z.string().min(1).optional(),
-    kind: authorizationKindSchema,
     provider: z.string().regex(/^[a-z][a-z0-9-]*$/),
     providerLabel: z.string().trim().min(1).max(80).optional(),
   })
@@ -51,7 +45,7 @@ export const authenticationLinkedEvent = defineConversationEvent({
           ...(event.accountLabel
             ? { description: `Connected as \`${event.accountLabel}\`` }
             : {}),
-          metadata: [event.kind, event.provider],
+          metadata: [event.provider],
         },
       ],
     };
@@ -71,7 +65,7 @@ export const authenticationUnlinkedEvent = defineConversationEvent({
       details: [
         {
           title: `${provider} disconnected`,
-          metadata: [event.kind, event.provider],
+          metadata: [event.provider],
         },
       ],
     };

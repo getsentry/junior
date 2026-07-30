@@ -471,7 +471,6 @@ type AuthenticationAccountChangeArgs = {
   actorId: string;
   authorizationId?: string;
   conversationId: string;
-  kind: AuthorizationKind;
   provider: string;
   providerLabel?: string;
   turnId?: string;
@@ -481,7 +480,6 @@ function authenticationEventIdempotencyKey(args: {
   action: "linked" | "unlinked";
   actorId: string;
   authorizationId?: string;
-  kind: AuthorizationKind;
   provider: string;
 }): string {
   if (args.authorizationId) {
@@ -489,7 +487,7 @@ function authenticationEventIdempotencyKey(args: {
   }
   return (
     `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:` +
-    `${args.kind}:${args.provider}:actor:${args.actorId}`
+    `${args.provider}:actor:${args.actorId}`
   );
 }
 
@@ -503,7 +501,6 @@ async function recordAuthenticationAccountChange(
       : authenticationUnlinkedEvent;
   const content = definition.parse({
     actorId: args.actorId,
-    kind: args.kind,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
     ...(args.authorizationId
@@ -518,7 +515,6 @@ async function recordAuthenticationAccountChange(
         action,
         actorId: args.actorId,
         authorizationId: args.authorizationId,
-        kind: args.kind,
         provider: args.provider,
       }),
       data: {

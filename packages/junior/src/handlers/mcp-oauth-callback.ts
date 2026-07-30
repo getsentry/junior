@@ -604,7 +604,6 @@ export async function GET(
     }
     await recordAuthenticationLinked({
       conversationId: authSession.conversationId,
-      kind: "mcp",
       provider,
       actorId: authSession.userId,
       authorizationId: mcpAuthorizationId({

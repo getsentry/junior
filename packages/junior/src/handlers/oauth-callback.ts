@@ -687,7 +687,6 @@ export async function GET(
   if (stored.resumeConversationId) {
     await recordAuthenticationLinked({
       conversationId: stored.resumeConversationId,
-      kind: "plugin",
       provider,
       actorId: stored.userId,
       providerLabel,

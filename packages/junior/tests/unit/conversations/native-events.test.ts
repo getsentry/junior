@@ -14,7 +14,6 @@ describe("junior native authentication events", () => {
     expect(
       authenticationLinkedEvent.renderEvent({
         actorId: "U123",
-        kind: "plugin",
         provider: "github",
         providerLabel: "GitHub",
         accountLabel: "dcramer",
@@ -27,7 +26,7 @@ describe("junior native authentication events", () => {
         {
           title: "GitHub connected",
           description: "Connected as `dcramer`",
-          metadata: ["plugin", "github"],
+          metadata: ["github"],
         },
       ],
     });
@@ -35,7 +34,6 @@ describe("junior native authentication events", () => {
     expect(
       authenticationUnlinkedEvent.renderEvent({
         actorId: "U123",
-        kind: "mcp",
         provider: "linear",
         providerLabel: "Linear",
       }),
@@ -45,7 +43,7 @@ describe("junior native authentication events", () => {
       details: [
         {
           title: "Linear disconnected",
-          metadata: ["mcp", "linear"],
+          metadata: ["linear"],
         },
       ],
     });
@@ -60,7 +58,6 @@ describe("junior native authentication events", () => {
       turnId: "turn-1",
       content: {
         actorId: "U123",
-        kind: "plugin",
         provider: "github",
         providerLabel: "GitHub",
         accountLabel: "dcramer",
@@ -94,7 +91,7 @@ describe("junior native authentication events", () => {
         {
           title: "GitHub connected",
           description: "Connected as `dcramer`",
-          metadata: ["plugin", "github"],
+          metadata: ["github"],
         },
       ],
     });
