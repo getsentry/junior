@@ -872,6 +872,38 @@ function conversationMetricDays(
   return [...days.values()];
 }
 
+function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
+  const metricDays = Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (89 - index));
+    const recentIndex = index - 59;
+    const requests = recentIndex > 0 ? (recentIndex % 5) + 1 : 0;
+    const deny = requests > 2 && recentIndex % 8 === 0 ? 1 : 0;
+    const ask = requests > 1 && recentIndex % 4 === 0 ? 1 : 0;
+    const allow = requests - ask - deny;
+    return {
+      allow,
+      ask,
+      ...(requests ? { costUsd: requests * 0.0009 } : {}),
+      date: date.toISOString().slice(0, 10),
+      deny,
+      requests,
+    };
+  });
+  return metricDays.reduce<ConversationStatsReport["guardian"]>(
+    (result, day) => ({
+      allow: result.allow + day.allow,
+      ask: result.ask + day.ask,
+      costUsd: (result.costUsd ?? 0) + (day.costUsd ?? 0),
+      deny: result.deny + day.deny,
+      metricDays,
+      requests: result.requests + day.requests,
+    }),
+    { allow: 0, ask: 0, costUsd: 0, deny: 0, metricDays, requests: 0 },
+  );
+}
+
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
@@ -1002,6 +1034,7 @@ export function readMockConversationStats(): ConversationStatsReport {
     durationMs: total.durationMs,
     failed: total.failed,
     generatedAt: iso(nowMs),
+    guardian: mockGuardianStats(nowMs),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",

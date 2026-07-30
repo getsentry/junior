@@ -98,6 +98,23 @@ function systemData(): SystemData {
       durationMs: 2_000,
       failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
+      guardian: {
+        allow: 3,
+        ask: 1,
+        costUsd: 0.08,
+        deny: 1,
+        metricDays: [
+          {
+            allow: 3,
+            ask: 1,
+            costUsd: 0.08,
+            date: "2026-01-01",
+            deny: 1,
+            requests: 5,
+          },
+        ],
+        requests: 5,
+      },
       metricDays: [
         {
           costUsd: 4.56,
@@ -1202,6 +1219,9 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
+    expect(systemHtml).toContain("Guardian reviews");
+    expect(systemHtml).toContain("Daily Guardian review results");
+    expect(systemHtml).toContain("Estimated cost");
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);

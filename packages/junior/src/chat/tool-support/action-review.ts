@@ -25,6 +25,7 @@ import { projectToolActionRejection } from "@/chat/tool-support/action-review-hi
 export type ToolActionDecision = "allow" | "ask" | "deny";
 
 export interface ToolActionReviewDecision {
+  costUsd?: number;
   decision: ToolActionDecision;
   reason: string;
   riskLevel: "low" | "medium" | "high" | "critical";

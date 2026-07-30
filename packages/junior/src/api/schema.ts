@@ -36,6 +36,8 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
+  GuardianMetricDay,
+  GuardianStats,
 } from "./schema/conversation";
 export {
   actorDirectoryReportSchema,

@@ -38,6 +38,7 @@ describe("Guardian action review", () => {
         riskLevel: "medium" as const,
         userAuthorization: "low" as const,
       },
+      costUsd: 0.0042,
     }));
     const reviewer = createGuardianActionReviewer({
       modelId: "test/guardian",
@@ -45,6 +46,7 @@ describe("Guardian action review", () => {
     });
 
     await expect(reviewer.review(proposal)).resolves.toEqual({
+      costUsd: 0.0042,
       decision: "ask",
       reason: "Recurring work should be confirmed.",
       riskLevel: "medium",

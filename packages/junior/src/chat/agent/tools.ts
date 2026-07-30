@@ -330,6 +330,7 @@ export async function wireAgentTools(
         turnId: args.turnId,
         toolCallId,
         toolName,
+        costUsd: decision.costUsd,
         decision: decision.decision,
         riskLevel: decision.riskLevel,
         userAuthorization: decision.userAuthorization,

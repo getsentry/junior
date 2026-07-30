@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -13,6 +14,8 @@ import type {
   ConversationMetricDay,
   ConversationStatsItem,
   ConversationStatsReport,
+  GuardianMetricDay,
+  GuardianStats,
 } from "../schema/conversation";
 
 const WINDOW_DAYS = 90;
@@ -174,6 +177,65 @@ function metricDays(
   return days;
 }
 
+function guardianStats(
+  rows: Array<{
+    allow: number;
+    ask: number;
+    costUsd: number | null;
+    date: string;
+    deny: number;
+    requests: number;
+  }>,
+  endMs: number,
+): GuardianStats {
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const end = new Date(endMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (WINDOW_DAYS - 1));
+  const metricDays: GuardianMetricDay[] = [];
+  let allow = 0;
+  let ask = 0;
+  let deny = 0;
+  let requests = 0;
+  let costUsd: number | undefined;
+
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    const row = byDate.get(date);
+    allow += row?.allow ?? 0;
+    ask += row?.ask ?? 0;
+    deny += row?.deny ?? 0;
+    requests += row?.requests ?? 0;
+    if (row?.costUsd !== null && row?.costUsd !== undefined) {
+      costUsd = addUsd(costUsd, row.costUsd);
+    }
+    metricDays.push({
+      allow: row?.allow ?? 0,
+      ask: row?.ask ?? 0,
+      date,
+      deny: row?.deny ?? 0,
+      requests: row?.requests ?? 0,
+      ...(row?.costUsd !== null && row?.costUsd !== undefined
+        ? { costUsd: row.costUsd }
+        : {}),
+    });
+  }
+
+  return {
+    allow,
+    ask,
+    deny,
+    metricDays,
+    requests,
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
+}
+
 async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   const where = statsWhere(start, end);
   const activityDate = sql<string>`TO_CHAR(
@@ -276,15 +338,51 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   return { actorRows, locationRows, metricRows, totals: totalsRows[0] };
 }
 
+async function aggregateGuardianStats(
+  db: JuniorDatabase,
+  start: Date,
+  end: Date,
+) {
+  const date = sql<string>`TO_CHAR(
+    ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD'
+  )`;
+  const decision = sql`${juniorConversationEvents.payload}->>'decision'`;
+  const cost = sql<number | null>`CASE
+    WHEN jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
+      THEN (${juniorConversationEvents.payload}->>'costUsd')::double precision
+    ELSE NULL
+  END`;
+  return await db
+    .select({
+      allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
+      ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
+      costUsd: sql<number | null>`SUM(${cost})::double precision`,
+      date,
+      deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
+      requests: sql<number>`COUNT(*)::integer`,
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+        gte(juniorConversationEvents.createdAt, start),
+        lte(juniorConversationEvents.createdAt, end),
+      ),
+    )
+    .groupBy(date);
+}
+
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
   const { end, start } = statsWindow(nowMs);
-  const { actorRows, locationRows, metricRows, totals } = await aggregateStats(
-    getDb(),
-    start,
-    end,
-  );
+  const db = getDb();
+  const [{ actorRows, locationRows, metricRows, totals }, guardianRows] =
+    await Promise.all([
+      aggregateStats(db, start, end),
+      aggregateGuardianStats(db, start, end),
+    ]);
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
 
@@ -301,6 +399,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     durationMs: totals?.durationMs ?? 0,
     failed: totals?.failed ?? 0,
     generatedAt: new Date(nowMs).toISOString(),
+    guardian: guardianStats(guardianRows, nowMs),
     metricDays: metricDays(metricRows, nowMs),
     locations: statsItems(locations),
     actors: statsItems(actors),

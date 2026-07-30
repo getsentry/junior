@@ -171,6 +171,7 @@ const guardianActionReviewedEventDataSchema = z
     turnId: z.string().min(1),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1),
+    costUsd: z.number().finite().nonnegative().optional(),
     decision: z.enum(["allow", "ask", "deny"]),
     riskLevel: z.enum(["low", "medium", "high", "critical"]),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]),

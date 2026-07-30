@@ -4,6 +4,7 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
+import { GuardianActivity } from "./GuardianActivity";
 
 /** Present selectable daily runtime and model-usage trends. */
 export function SystemActivity(props: {
@@ -27,6 +28,7 @@ export function SystemActivity(props: {
   }
 
   const days = props.stats.metricDays.slice(-props.range);
+  const guardianDays = props.stats.guardian.metricDays.slice(-props.range);
   return (
     <section className="grid gap-4" aria-labelledby="system-metrics-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -48,6 +50,7 @@ export function SystemActivity(props: {
         </div>
       </div>
       <SystemMetricCharts days={days} />
+      <GuardianActivity days={guardianDays} />
     </section>
   );
 }

@@ -62,7 +62,10 @@ export function createGuardianActionReviewer(options: {
           guardianRole: "tool_action_review",
         },
       });
-      return guardianDecisionSchema.parse(result.object);
+      return {
+        ...guardianDecisionSchema.parse(result.object),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      };
     },
   };
 }

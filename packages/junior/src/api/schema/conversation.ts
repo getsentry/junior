@@ -527,6 +527,28 @@ export const conversationMetricDaySchema = z
   })
   .strict();
 
+export const guardianMetricDaySchema = z
+  .object({
+    allow: z.number(),
+    ask: z.number(),
+    costUsd: z.number().optional(),
+    date: z.string(),
+    deny: z.number(),
+    requests: z.number(),
+  })
+  .strict();
+
+export const guardianStatsSchema = z
+  .object({
+    allow: z.number(),
+    ask: z.number(),
+    costUsd: z.number().optional(),
+    deny: z.number(),
+    metricDays: z.array(guardianMetricDaySchema),
+    requests: z.number(),
+  })
+  .strict();
+
 export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
@@ -534,6 +556,7 @@ export const conversationStatsReportSchema = z
     durationMs: z.number(),
     failed: z.number(),
     generatedAt: z.string(),
+    guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
@@ -574,6 +597,8 @@ export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;
 export type ConversationMetricDay = z.infer<typeof conversationMetricDaySchema>;
+export type GuardianMetricDay = z.infer<typeof guardianMetricDaySchema>;
+export type GuardianStats = z.infer<typeof guardianStatsSchema>;
 export type ConversationStatsReport = z.infer<
   typeof conversationStatsReportSchema
 >;

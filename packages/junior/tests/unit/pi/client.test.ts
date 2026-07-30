@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
+  calculateCost: vi.fn(() => ({
+    input: 0.001,
+    output: 0.002,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0.003,
+  })),
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
@@ -32,6 +39,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/chat/pi/sdk", () => ({
+  calculateCost: mocks.calculateCost,
   completeSimple: mocks.completeSimple,
   getEnvApiKey: mocks.getEnvApiKey,
   getModels: mocks.getModels,
@@ -226,7 +234,17 @@ describe("completeText", () => {
     mocks.generateObject.mockResolvedValue({
       object: { ok: true },
       finishReason: "stop",
-      usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 8,
+          cacheReadTokens: 2,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 1 },
+        totalTokens: 13,
+      },
     });
 
     const { completeObject } = await import("@/chat/pi/client");
@@ -240,7 +258,10 @@ describe("completeText", () => {
       system: "structured only",
     });
 
-    expect(result).toEqual({ object: { ok: true } });
+    expect(result).toEqual({
+      costUsd: 0.003,
+      object: { ok: true },
+    });
     expect(mocks.generateObject).toHaveBeenCalledWith(
       expect.objectContaining({
         model: { modelId: "openai/gpt-4o-mini" },

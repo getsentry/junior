@@ -535,6 +535,7 @@ export async function recordGuardianActionReviewed(args: {
   turnId: string;
   toolCallId: string;
   toolName: string;
+  costUsd?: number;
   decision: "allow" | "ask" | "deny";
   riskLevel: "low" | "medium" | "high" | "critical";
   userAuthorization: "high" | "medium" | "low" | "unknown";
@@ -546,6 +547,7 @@ export async function recordGuardianActionReviewed(args: {
         turnId: args.turnId,
         toolCallId: args.toolCallId,
         toolName: args.toolName,
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
         decision: args.decision,
         riskLevel: args.riskLevel,
         userAuthorization: args.userAuthorization,
