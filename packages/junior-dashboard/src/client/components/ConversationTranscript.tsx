@@ -74,7 +74,7 @@ type TranscriptFailureEntry = Extract<TranscriptEntry, { kind: "failure" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
 type TranscriptPluginEventEntry = Extract<
   TranscriptEntry,
-  { kind: "plugin_event" }
+  { kind: "native_event" | "plugin_event" }
 >;
 type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
@@ -418,7 +418,7 @@ function TranscriptEntryList(props: {
             ? props.renderSubagent(entry)
             : entry.kind === "context"
               ? props.renderContext(entry)
-              : entry.kind === "plugin_event"
+              : entry.kind === "plugin_event" || entry.kind === "native_event"
                 ? props.renderPluginEvent(entry)
                 : entry.kind === "failure"
                   ? props.renderFailure(entry)

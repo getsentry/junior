@@ -52,6 +52,7 @@ import {
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
+  recordAuthenticationLinked,
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import {
@@ -682,6 +683,26 @@ export async function GET(
     ...parsedTokenResponse,
     ...(account ? { account } : {}),
   });
+
+  if (stored.resumeConversationId) {
+    await recordAuthenticationLinked({
+      conversationId: stored.resumeConversationId,
+      kind: "plugin",
+      provider,
+      actorId: stored.userId,
+      providerLabel,
+      ...(account?.label ? { accountLabel: account.label } : {}),
+      ...(stored.resumeSessionId
+        ? {
+            authorizationId: pluginAuthorizationId({
+              provider,
+              sessionId: stored.resumeSessionId,
+            }),
+            turnId: stored.resumeSessionId,
+          }
+        : {}),
+    });
+  }
 
   if (stored.destination?.platform !== "local") {
     waitUntil(async () => {

@@ -161,7 +161,7 @@ export function entryMatchesSearch(
     );
   }
 
-  if (entry.kind === "plugin_event") {
+  if (entry.kind === "plugin_event" || entry.kind === "native_event") {
     const presentation = entry.part.presentation;
     return [
       presentation.title,

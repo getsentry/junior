@@ -55,6 +55,11 @@ export function defineJuniorPlugin(
       `Junior plugin registration name "${name}" must be a lowercase plugin identifier.`,
     );
   }
+  if (name === "junior") {
+    throw new Error(
+      'Junior plugin registration name "junior" is reserved for native host events.',
+    );
+  }
   if (
     typeof manifest.displayName !== "string" ||
     !manifest.displayName.trim()

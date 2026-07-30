@@ -88,9 +88,10 @@ routing, response validation, rendering, confirmation, and query state.
 Register plugin-owned event definitions through `conversationEvents`. A
 definition owns one local name, version, content schema, and `renderEvent()`
 projection. The active plugin context supplies the namespace, so plugins cannot
-emit native events or impersonate another plugin. Stored events remain durable
-when a plugin is removed, but normal transcript projection skips definitions
-that are not currently registered.
+emit native events or impersonate another plugin. The `junior` plugin name is
+reserved for host-owned native events. Stored events remain durable when a
+plugin is removed, but normal transcript projection skips definitions that are
+not currently registered.
 
 ## Database
 

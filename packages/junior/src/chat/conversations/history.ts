@@ -292,6 +292,17 @@ const pluginConversationEventDataSchema = z
   })
   .strict();
 
+const nativeConversationEventDataSchema = z
+  .object({
+    type: z.literal("native_event"),
+    namespace: z.literal("junior"),
+    name: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1).optional(),
+    content: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -354,6 +365,7 @@ const appendableConversationEventDataSchema = z.union([
   turnStartedEventDataSchema,
   turnContextEventDataSchema,
   pluginConversationEventDataSchema,
+  nativeConversationEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -391,6 +403,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_started",
   "turn_context",
   "plugin_event",
+  "native_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",

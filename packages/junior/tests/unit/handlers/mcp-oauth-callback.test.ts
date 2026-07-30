@@ -34,6 +34,18 @@ vi.mock("@/chat/runtime/thread-state", async (importOriginal) => ({
   getPersistedThreadState: getPersistedThreadStateMock,
 }));
 
+vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/chat/conversations/projection")
+  >()),
+  recordAuthenticationLinked: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
+  formatProviderLabel: (provider: string) => provider,
+}));
+
 import { GET } from "@/handlers/mcp-oauth-callback";
 import { McpProviderError } from "@/chat/mcp/errors";
 import {

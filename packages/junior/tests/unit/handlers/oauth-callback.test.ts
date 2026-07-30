@@ -106,6 +106,13 @@ vi.mock("@/chat/plugins/credential-hooks", () => ({
   resolvePluginOAuthAccount: resolvePluginOAuthAccountMock,
 }));
 
+vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/chat/conversations/projection")
+  >()),
+  recordAuthenticationLinked: vi.fn(async () => undefined),
+}));
+
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";

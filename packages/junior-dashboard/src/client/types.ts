@@ -78,8 +78,17 @@ export type TranscriptViewPluginEventPart = {
   version: number;
 };
 
+export type TranscriptViewNativeEventPart = {
+  name: string;
+  namespace: "junior";
+  presentation: ConversationEventPresentation;
+  type: "native_event";
+  version: number;
+};
+
 export type TranscriptViewPart =
   | TranscriptViewContextEventPart
+  | TranscriptViewNativeEventPart
   | TranscriptViewPluginEventPart
   | TranscriptViewReasoningPart
   | TranscriptViewSubagentPart

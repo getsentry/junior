@@ -1,4 +1,5 @@
 import type { ConversationEvent } from "@/chat/conversations/history";
+import { renderJuniorNativeConversationEvent } from "@/chat/conversations/native-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { z } from "zod";
 import {
@@ -18,6 +19,7 @@ export const conversationReportSourceEventTypes = [
   "turn_started",
   "turn_context",
   "plugin_event",
+  "native_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -301,6 +303,19 @@ function reportEventData(args: {
       name: data.name,
       version: data.version,
       turnId: data.turnId,
+      presentation,
+    };
+  }
+  if (data.type === "native_event") {
+    if (!args.canExposePayload) return undefined;
+    const presentation = renderJuniorNativeConversationEvent(data);
+    if (!presentation) return undefined;
+    return {
+      type: "native_event",
+      namespace: data.namespace,
+      name: data.name,
+      version: data.version,
+      ...(data.turnId ? { turnId: data.turnId } : {}),
       presentation,
     };
   }

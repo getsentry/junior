@@ -291,6 +291,17 @@ const conversationReportPluginEventDataSchema = z
   })
   .strict();
 
+const conversationReportNativeEventDataSchema = z
+  .object({
+    type: z.literal("native_event"),
+    namespace: z.literal("junior"),
+    name: z.string().min(1),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1).optional(),
+    presentation: conversationEventPresentationSchema,
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -345,6 +356,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
   conversationReportPluginEventDataSchema,
+  conversationReportNativeEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,

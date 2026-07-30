@@ -1,6 +1,7 @@
 import type {
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
+  TranscriptViewNativeEventPart,
   TranscriptViewPluginEventPart,
   TranscriptViewReasoningPart,
   TranscriptViewSubagentPart,
@@ -36,6 +37,13 @@ export type RenderedPluginEventEntry = {
   timestamp?: number;
 };
 
+export type RenderedNativeEventEntry = {
+  key: string;
+  kind: "native_event";
+  part: TranscriptViewNativeEventPart;
+  timestamp?: number;
+};
+
 export type RenderedToolEntry = {
   key: string;
   kind: "tool";
@@ -62,6 +70,7 @@ export type RenderedTranscriptEntry =
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
+  | RenderedNativeEventEntry
   | RenderedPluginEventEntry
   | RenderedReasoningEntry
   | RenderedSubagentEntry
@@ -124,6 +133,13 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
+      } else if (part.type === "native_event") {
+        entries.push({
+          key: `${message.sourceSeq}:native-event:${part.namespace}:${part.name}`,
+          kind: "native_event",
+          part,
+          timestamp: message.timestamp,
+        });
       } else {
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
@@ -158,7 +174,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
       }
-      if (part.type === "plugin_event") {
+      if (part.type === "plugin_event" || part.type === "native_event") {
         return [
           part.presentation.title,
           part.presentation.preview,
