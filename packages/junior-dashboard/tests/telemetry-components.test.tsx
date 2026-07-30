@@ -345,6 +345,29 @@ describe("dashboard canonical-event components", () => {
     expect(completeHtml).toContain("1 tool call");
   });
 
+  it("renders each user message with its own actor", () => {
+    const html = renderTranscript(
+      conversation(
+        [
+          event(0, {
+            type: "message",
+            messageId: "user-1",
+            role: "user",
+            text: "Good catch.",
+            actorIdentity: {
+              fullName: "Taylor Chen",
+              slackUserName: "taylor",
+            },
+          }),
+        ],
+        { actorIdentity: { fullName: "Morgan Lee" } },
+      ),
+    );
+
+    expect(html).toContain("Taylor Chen");
+    expect(html).not.toContain("Morgan Lee");
+  });
+
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(

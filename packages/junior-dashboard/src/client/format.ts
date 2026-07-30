@@ -286,14 +286,19 @@ export type MessageSummary = {
   total: number;
 };
 
-function transcriptMessageAuthor(
+/** Return the best available actor label for one transcript message. */
+export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
-    return actorLabel(conversation.actorIdentity) ?? "User";
+    return (
+      actorLabel(message.actorIdentity) ??
+      actorLabel(conversation.actorIdentity) ??
+      "User"
+    );
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -315,7 +320,7 @@ export function summarizeMessages(
   for (const message of transcriptSource(conversation)) {
     if (!isConversationMessage(message)) continue;
     items.push({
-      author: transcriptMessageAuthor(conversation, message),
+      author: transcriptMessageActorLabel(conversation, message),
       bytes: message.parts.reduce(
         (sum, part) => sum + transcriptPartBytes(part),
         0,
@@ -339,7 +344,7 @@ export function summarizeTurns(
   if (userMessages.length > 0) {
     return {
       items: userMessages.map((message) => ({
-        author: transcriptMessageAuthor(conversation, message),
+        author: transcriptMessageActorLabel(conversation, message),
         bytes: message.parts.reduce(
           (sum, part) => sum + transcriptPartBytes(part),
           0,

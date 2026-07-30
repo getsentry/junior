@@ -14,11 +14,11 @@ import {
   transcriptRoleKind,
   formatMessageTimestamp,
   formatTranscriptDuration,
-  actorLabel,
   summarizeCost,
   summarizeTurns,
   summarizeToolCalls,
   summarizeUsage,
+  transcriptMessageActorLabel,
   unavailableTranscriptLabel,
   visualStatusForSummary,
 } from "../format";
@@ -142,15 +142,10 @@ function turnMarkerClass(
 }
 
 function transcriptRoleLabel(
-  role: string,
+  message: TranscriptViewMessage,
   conversation: ConversationTranscript,
 ): string {
-  const kind = transcriptRoleKind(role);
-  if (kind === "assistant") return getDashboardAgentName();
-  if (kind === "user") return transcriptActorLabel(conversation);
-  if (kind === "system") return "System";
-  if (kind === "tool") return "Tool";
-  return role;
+  return transcriptMessageActorLabel(conversation, message);
 }
 
 function transcriptMessageClass(role: string): string {
@@ -214,7 +209,7 @@ function TranscriptMessageShell(props: {
 
 function TranscriptMessageHeader(props: {
   meta?: Array<string | undefined>;
-  role: string;
+  message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
   const metaText = props.meta?.filter(isString).join(" · ");
@@ -222,11 +217,11 @@ function TranscriptMessageHeader(props: {
   return (
     <TranscriptHeadingRow
       left={
-        <span className={transcriptRoleLabelClass(props.role)}>
-          {transcriptRoleLabel(props.role, props.conversation)}
+        <span className={transcriptRoleLabelClass(props.message.role)}>
+          {transcriptRoleLabel(props.message, props.conversation)}
         </span>
       }
-      leftClassName={transcriptRoleClass(props.role)}
+      leftClassName={transcriptRoleClass(props.message.role)}
       right={
         metaText ? (
           <TranscriptHeadingMeta className="text-[0.78rem] text-dashboard-text-muted">
@@ -600,7 +595,7 @@ function RedactedMessageView(props: {
     <TranscriptMessageShell role={props.message.role}>
       <TranscriptMessageHeader
         meta={meta}
-        role={props.message.role}
+        message={props.message}
         conversation={props.conversation}
       />
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-[0.9rem] leading-snug text-dashboard-text-muted">
@@ -631,10 +626,6 @@ function RedactedMarker() {
       {"<redacted>"}
     </code>
   );
-}
-
-function transcriptActorLabel(conversation: ConversationTranscript): string {
-  return actorLabel(conversation.actorIdentity) ?? "User";
 }
 
 function transcriptMeta(
@@ -783,7 +774,7 @@ function TranscriptMessageView(props: {
             : undefined,
           formatMessageTimestamp(props.message.timestamp),
         ]}
-        role={props.message.role}
+        message={props.message}
         conversation={props.conversation}
       />
       {props.view === "raw" ? (

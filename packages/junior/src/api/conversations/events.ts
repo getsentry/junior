@@ -79,6 +79,14 @@ const reportingMediaPartSchema = z
   })
   .passthrough();
 
+const reportingMessageAuthorSchema = z
+  .object({
+    fullName: z.string().min(1).optional(),
+    userId: z.string().min(1).optional(),
+    userName: z.string().min(1).optional(),
+  })
+  .passthrough();
+
 type ReportingModelContentPart =
   | { type: "text"; text: string }
   | { type: "image" | "audio"; mimeType?: string };
@@ -114,6 +122,20 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
 
   const only = sanitized[0]!;
   return only.type === "text" ? only.text : only;
+}
+
+function reportMessageActorIdentity(
+  data: Extract<ConversationEvent["data"], { type: "message" }>,
+): Extract<ConversationReportEventData, { type: "message" }>["actorIdentity"] {
+  if (data.role !== "user") return undefined;
+  const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
+  if (!author.success) return undefined;
+  const actorIdentity = {
+    ...(author.data.fullName ? { fullName: author.data.fullName } : {}),
+    ...(author.data.userId ? { slackUserId: author.data.userId } : {}),
+    ...(author.data.userName ? { slackUserName: author.data.userName } : {}),
+  };
+  return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
 }
 
 /** Project native assistant tool calls through the existing reporting shape. */
@@ -268,11 +290,15 @@ function reportEventData(args: {
 }): ConversationReportEventData | undefined {
   const { data } = args;
   switch (data.type) {
-    case "message":
+    case "message": {
+      const actorIdentity = args.canExposePayload
+        ? reportMessageActorIdentity(data)
+        : undefined;
       return {
         type: "message",
         messageId: data.messageId,
         role: data.role,
+        ...(actorIdentity ? { actorIdentity } : {}),
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : {}),
@@ -280,6 +306,7 @@ function reportEventData(args: {
           ? { text: data.text }
           : { redacted: true as const }),
       };
+    }
     case "message_handled":
       return {
         type: "message_handled",

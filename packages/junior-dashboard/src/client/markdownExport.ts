@@ -7,7 +7,7 @@ import {
   actorLabel,
   slackLocationLabel,
   stringifyPartValue,
-  transcriptRoleKind,
+  transcriptMessageActorLabel,
   unavailableTranscriptLabel,
 } from "./format";
 import {
@@ -412,13 +412,9 @@ function messageRoleLabel(
   message: TranscriptViewMessage,
   conversationTranscript: ConversationTranscript,
 ): string {
-  const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return getDashboardAgentName();
-  if (kind === "user")
-    return actorLabel(conversationTranscript.actorIdentity) ?? "User";
-  if (kind === "system") return "System";
-  if (kind === "tool") return "Tool";
-  return headingText(message.role || "Unknown");
+  return headingText(
+    transcriptMessageActorLabel(conversationTranscript, message),
+  );
 }
 
 function eventTimestamp(timestamp: number | undefined): string {

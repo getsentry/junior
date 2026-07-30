@@ -159,6 +159,10 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserName: "taylor",
+          },
         }),
         event(1, {
           type: "tool_calls",
@@ -196,13 +200,13 @@ describe("dashboard conversation formatting", () => {
     });
     expect(summarizeMessages(conversation)).toEqual({
       items: [
-        { author: "Alice", bytes: 10 },
+        { author: "Taylor Chen", bytes: 10 },
         { author: "Junior", bytes: 4 },
       ],
       total: 2,
     });
     expect(summarizeTurns(conversation)).toEqual({
-      items: [{ author: "Alice", bytes: 10 }],
+      items: [{ author: "Taylor Chen", bytes: 10 }],
       total: 1,
     });
   });

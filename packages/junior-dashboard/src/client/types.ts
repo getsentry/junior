@@ -5,6 +5,7 @@ import type {
   SkillReport,
 } from "@sentry/junior/api/schema";
 import type {
+  ActorIdentity,
   ConversationStatsReport,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
@@ -84,6 +85,7 @@ export type TranscriptViewTurnContext = {
 };
 
 export type TranscriptViewMessage = {
+  actorIdentity?: ActorIdentity;
   contexts?: TranscriptViewTurnContext[];
   eventType?: string;
   route?: {

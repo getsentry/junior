@@ -201,6 +201,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         messageId: "qa-user",
         role: "user",
         text: "Review the dashboard plan before editing.",
+        actorIdentity: actor(undefined, "Taylor Chen", "taylor"),
       }),
       reportEvent(1, iso(Date.parse(startedAt), 2_000), {
         type: "tool_calls",

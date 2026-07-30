@@ -120,6 +120,7 @@ export function conversationTranscriptMessages(
             ? { type: "text", redacted: true }
             : { type: "text", text: data.text! },
         ]),
+        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
         ...(data.eventType ? { eventType: data.eventType } : {}),
       };
       messages.push(message);

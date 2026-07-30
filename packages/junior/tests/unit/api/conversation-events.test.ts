@@ -61,6 +61,64 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
+  it("projects the stored actor identity for each visible user message", () => {
+    const message = event(1, {
+      type: "message",
+      messageId: "message-1",
+      role: "user",
+      text: "good catch",
+      meta: {
+        author: {
+          fullName: "Taylor Chen",
+          isBot: false,
+          userId: "U0TAYLOR",
+          userName: "taylor",
+        },
+      },
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [message],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "message",
+          messageId: "message-1",
+          role: "user",
+          text: "good catch",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserId: "U0TAYLOR",
+            slackUserName: "taylor",
+          },
+        },
+      },
+    ]);
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events: [message],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "message",
+          messageId: "message-1",
+          role: "user",
+          redacted: true,
+        },
+      },
+    ]);
+  });
+
   it("projects turn context only across the authorized payload boundary", () => {
     const context = event(1, {
       type: "turn_context",

@@ -92,6 +92,7 @@ const conversationReportMessageEventDataSchema = z
     type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
+    actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
@@ -102,6 +103,12 @@ const conversationReportMessageEventDataSchema = z
       context.addIssue({
         code: "custom",
         message: "message content must be text or explicitly redacted",
+      });
+    }
+    if (data.redacted && data.actorIdentity) {
+      context.addIssue({
+        code: "custom",
+        message: "redacted messages must not expose actor identity",
       });
     }
   });
