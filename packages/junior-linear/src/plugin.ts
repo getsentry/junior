@@ -20,8 +20,9 @@ async function annotateCreatedIssue(
   if (!ctx.annotations) {
     return;
   }
-  const issue = extractLinearIssueLink(ctx.result);
+  const issue = extractLinearIssueLink(ctx.result.structuredContent);
   if (!issue) {
+    ctx.log.warn("Linear save_issue response did not match the expected schema");
     return;
   }
   await ctx.annotations.upsert({
