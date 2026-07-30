@@ -43,7 +43,9 @@ test("opens a registered plugin page from primary navigation", async ({
       .getByRole("region", { name: "Memory summary" })
       .getByText("Your memories", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Public Slack workspace")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What does Junior remember?" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Saved by you/ }),
   ).toHaveAttribute("href", "/plugins/memory/memories/library?filter=explicit");
@@ -157,6 +159,11 @@ test("searches, paginates, and forgets plugin page records", async ({
   page,
 }) => {
   let forgotMemory = false;
+  let dashboardRequestCount = 0;
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    dashboardRequestCount += 1;
+    await route.fallback();
+  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -213,17 +220,21 @@ test("searches, paginates, and forgets plugin page records", async ({
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
+  const preferences = page.getByRole("tab", { name: /^Preferences/ });
+  await preferences.click();
+  await expect(page).toHaveURL(/filter=preferences/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
   ).not.toBeVisible();
-  await expect(searchbox).toBeFocused();
   await expect(
     page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
   ).toBeVisible();
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
+  await page.getByRole("tab", { name: /^All/ }).click();
+  await expect(page).not.toHaveURL(/filter=/);
   await expect(
     page.getByRole("button", { name: /^First page memory/ }),
   ).toBeVisible();
@@ -247,5 +258,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+
+  await searchbox.fill("");
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.getByText("No personal memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });

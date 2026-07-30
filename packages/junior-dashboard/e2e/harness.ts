@@ -235,11 +235,6 @@ export async function mockDashboardApis(page: Page) {
       json: {
         days,
         generatedAt: "2026-07-30T12:00:00.000Z",
-        visibility: {
-          personal: 24,
-          privateConversation: 9,
-          publicWorkspace: 41,
-        },
         stats: {
           active: 24,
           automatic: 17,

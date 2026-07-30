@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   Database,
-  Globe2,
   LockKeyhole,
   Search,
   Sparkles,
@@ -100,7 +99,7 @@ function MemoryOverview(props: { libraryPath: string }) {
       {dashboardQuery.data ? (
         <>
           <section className="grid gap-4 md:grid-cols-2">
-            <MemoryVisibilityPanel data={dashboardQuery.data} />
+            <MemoryKindPanel data={dashboardQuery.data} />
             <MemoryOriginPanel
               data={dashboardQuery.data}
               libraryPath={props.libraryPath}
@@ -367,37 +366,37 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   );
 }
 
-function MemoryVisibilityPanel(props: { data: MemoryDashboardData }) {
-  const { visibility } = props.data;
+function MemoryKindPanel(props: { data: MemoryDashboardData }) {
+  const { stats } = props.data;
   return (
     <Card className="p-5 sm:p-6">
       <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Memory access
+        Memory types
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-        Where are memories available?
+        What does Junior remember?
       </h2>
       <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-        Workspace-wide active memories grouped by who can recall them.
+        Your active memories grouped by how Junior uses them.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Each memory belongs to one person"
+          detail="How you like to work"
           icon={UserRound}
-          label="One person only"
-          value={visibility.personal}
+          label="Preferences"
+          value={stats.preference}
         />
         <OverviewBreakdownRow
-          detail="Only the original private thread or local chat"
-          icon={LockKeyhole}
-          label="One private conversation"
-          value={visibility.privateConversation}
+          detail="How you prefer tasks to be done"
+          icon={Database}
+          label="Procedures"
+          value={stats.procedure}
         />
         <OverviewBreakdownRow
-          detail="Across public channels in this Slack workspace"
-          icon={Globe2}
-          label="Public Slack workspace"
-          value={visibility.publicWorkspace}
+          detail="Facts and context that may help later"
+          icon={BrainCircuit}
+          label="Knowledge"
+          value={stats.knowledge}
         />
       </div>
     </Card>

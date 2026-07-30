@@ -28,24 +28,26 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     const timeout = window.setTimeout(() => {
       const normalized = searchText.trim();
       if (normalized === searchQuery) return;
-      const next = new URLSearchParams(searchParams);
-      if (normalized) next.set("q", normalized);
-      else next.delete("q");
-      setSearchParams(next, { replace: true });
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (normalized) next.set("q", normalized);
+          else next.delete("q");
+          return next;
+        },
+        { replace: true },
+      );
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [searchQuery, searchText, setSearchParams]);
 
+  const pluginQueryKey = useMemo(
+    () => ["dashboard", "plugin-user-page", page.pluginName] as const,
+    [page.pluginName],
+  );
   const queryKey = useMemo(
-    () => [
-      "dashboard",
-      "plugin-user-page",
-      page.pluginName,
-      page.id,
-      filter,
-      searchQuery,
-    ],
-    [filter, page.id, page.pluginName, searchQuery],
+    () => [...pluginQueryKey, page.id, filter, searchQuery],
+    [filter, page.id, pluginQueryKey, searchQuery],
   );
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
@@ -90,7 +92,7 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
       return true;
     },
     onSuccess: async (changed) => {
-      if (changed) await queryClient.resetQueries({ queryKey });
+      if (changed) await queryClient.resetQueries({ queryKey: pluginQueryKey });
     },
   });
 

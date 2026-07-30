@@ -2355,11 +2355,6 @@ ORDER BY created_at_ms ASC
         preference: 1,
         procedure: 0,
       });
-      expect(dashboard.visibility).toEqual({
-        personal: 3,
-        privateConversation: 1,
-        publicWorkspace: 1,
-      });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",

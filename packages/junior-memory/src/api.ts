@@ -17,7 +17,6 @@ import {
   InvalidMemoryCursorError,
   PersonalMemoryNotFoundError,
 } from "./personal";
-import { readMemoryVisibilityStats } from "./operational-report";
 
 export const memoryApiSchema = z
   .object({
@@ -50,13 +49,6 @@ export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
     generatedAt: z.iso.datetime(),
-    visibility: z
-      .object({
-        personal: z.number().int().min(0),
-        privateConversation: z.number().int().min(0),
-        publicWorkspace: z.number().int().min(0),
-      })
-      .strict(),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -145,19 +137,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           isDashboard &&
           (request.method === "GET" || request.method === "HEAD")
         ) {
-          const [stats, days, visibility] = await Promise.all([
+          const [stats, days] = await Promise.all([
             memories.stats(),
             memories.timeline({ days: 90 }),
-            readMemoryVisibilityStats({
-              db: options.db,
-              nowMs: Date.now(),
-            }),
           ]);
           const body = memoryDashboardResponseSchema.parse({
             days,
             generatedAt: new Date().toISOString(),
             stats,
-            visibility,
           });
           return request.method === "HEAD"
             ? new Response(null, {
