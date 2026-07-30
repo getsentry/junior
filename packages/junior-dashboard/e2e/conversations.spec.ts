@@ -495,3 +495,48 @@ test("shows archive failures after the row returns", async ({ page }) => {
     }),
   ).toBeVisible();
 });
+
+test("keeps undo available when another archive fails", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  let archiveRequests = 0;
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    archiveRequests += 1;
+    if (archiveRequests === 1) {
+      await route.fulfill({ json: { archived: true } });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      json: { error: "Archive failed" },
+      status: 500,
+    });
+  });
+  await page.goto(server.baseURL);
+
+  const firstConversation = page.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await firstConversation.hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+  const undo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(undo).toBeVisible();
+
+  const secondConversation = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  await secondConversation.hover();
+  await page
+    .getByRole("button", { name: "Archive Checkout latency triage" })
+    .click();
+
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Could not archive Checkout latency triage.",
+    }),
+  ).toBeVisible();
+  await expect(undo).toBeVisible();
+});

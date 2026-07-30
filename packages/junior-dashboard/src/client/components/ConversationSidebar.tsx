@@ -27,10 +27,9 @@ export function ConversationSidebar(props: {
   selectedId?: string;
   onQueryChange(value: string): void;
 }) {
-  const [notice, setNotice] = useState<{
-    conversation: Conversation;
-    kind: "archived" | "archive_error";
-  }>();
+  const [archivedConversation, setArchivedConversation] =
+    useState<Conversation>();
+  const [archiveError, setArchiveError] = useState<Conversation>();
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
@@ -79,18 +78,13 @@ export function ConversationSidebar(props: {
             renderItem={(conversation) => (
               <ConversationSidebarRow
                 conversation={conversation}
-                onArchiveError={(failedConversation) =>
-                  setNotice({
-                    conversation: failedConversation,
-                    kind: "archive_error",
-                  })
-                }
-                onArchived={(archivedConversation) =>
-                  setNotice({
-                    conversation: archivedConversation,
-                    kind: "archived",
-                  })
-                }
+                onArchiveError={setArchiveError}
+                onArchived={(conversation) => {
+                  setArchiveError((current) =>
+                    current?.id === conversation.id ? undefined : current,
+                  );
+                  setArchivedConversation(conversation);
+                }}
                 selected={conversation.id === props.selectedId}
               />
             )}
@@ -98,16 +92,21 @@ export function ConversationSidebar(props: {
           />
         )}
       </div>
-      {notice?.kind === "archived" ? (
-        <ArchivedConversationNotice
-          conversation={notice.conversation}
-          onRestored={() => setNotice(undefined)}
-        />
-      ) : notice?.kind === "archive_error" ? (
-        <ArchiveConversationErrorNotice
-          conversation={notice.conversation}
-          onDismiss={() => setNotice(undefined)}
-        />
+      {archivedConversation || archiveError ? (
+        <div className="absolute bottom-3 left-3 right-3 z-20 grid gap-2">
+          {archiveError ? (
+            <ArchiveConversationErrorNotice
+              conversation={archiveError}
+              onDismiss={() => setArchiveError(undefined)}
+            />
+          ) : null}
+          {archivedConversation ? (
+            <ArchivedConversationNotice
+              conversation={archivedConversation}
+              onRestored={() => setArchivedConversation(undefined)}
+            />
+          ) : null}
+        </div>
       ) : null}
     </aside>
   );
@@ -192,7 +191,7 @@ function ArchiveConversationErrorNotice(props: {
 }) {
   const title = conversationDisplayTitle(props.conversation);
   return (
-    <div className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-rose-300/25 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+    <div className="rounded-lg border border-rose-300/25 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="min-w-0 flex-1 font-mono text-[0.68rem] text-rose-200/80"
@@ -223,7 +222,7 @@ function ArchivedConversationNotice(props: {
   });
   const title = conversationDisplayTitle(props.conversation);
   return (
-    <div className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+    <div className="rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="min-w-0 flex-1 truncate font-mono text-[0.68rem] text-dashboard-text-muted"
