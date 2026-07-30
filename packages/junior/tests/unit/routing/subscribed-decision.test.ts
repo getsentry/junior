@@ -55,6 +55,7 @@ describe("subscribed reply decision", () => {
     expect(
       getSubscribedReplyPreflightDecision({
         botUserName: "junior",
+        botUserId: "U0JUNIOR",
         rawText: fixture.rawText,
         text: fixture.text,
         isExplicitMention: false,
@@ -73,8 +74,32 @@ describe("subscribed reply decision", () => {
     expect(
       getSubscribedReplyPreflightDecision({
         botUserName: "junior",
+        botUserId: "U0JUNIOR",
         rawText: text,
         text,
+        isExplicitMention: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "normalized bot user id mention",
+      rawText: "@U0JUNIOR continue",
+      text: "@U0JUNIOR continue",
+    },
+    {
+      name: "slack bot user id mention",
+      rawText: "<@U0JUNIOR> continue",
+      text: "continue",
+    },
+  ])("does not preflight-skip $name", (fixture) => {
+    expect(
+      getSubscribedReplyPreflightDecision({
+        botUserName: "junior",
+        botUserId: "U0JUNIOR",
+        rawText: fixture.rawText,
+        text: fixture.text,
         isExplicitMention: false,
       }),
     ).toBeUndefined();

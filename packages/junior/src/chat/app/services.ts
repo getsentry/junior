@@ -103,6 +103,7 @@ export function createJuniorRuntimeServices(
     subscribedReplyPolicy: createSubscribedReplyPolicy({
       completeObject:
         overrides.subscribedReplyPolicy?.completeObject ?? completeObject,
+      getBotUserId: overrides.subscribedReplyPolicy?.getBotUserId,
     }),
     visionContext,
   };

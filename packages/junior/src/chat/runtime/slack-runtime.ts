@@ -111,6 +111,7 @@ type RuntimeLogContext = Record<string, unknown> & {
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
+  getAssistantUserId?: () => string | undefined;
   cancelEventSubscriptions: (input: {
     conversationId: string;
   }) => Promise<void>;
@@ -949,6 +950,7 @@ export function createSlackTurnRuntime<
             ? undefined
             : getSubscribedReplyPreflightDecision({
                 botUserName: deps.assistantUserName,
+                botUserId: deps.getAssistantUserId?.(),
                 rawText: combinedText.rawText,
                 text: combinedText.userText,
                 isExplicitMention: turnIsExplicitMention,
