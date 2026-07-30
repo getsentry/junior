@@ -10,6 +10,7 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
+  ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import {
   archiveConversationResponseSchema,
@@ -33,6 +34,15 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "detail"] as const;
 }
 
+function archivedConversationQueryKey(conversationId: string) {
+  return ["dashboard", "archived-conversation", conversationId] as const;
+}
+
+type ArchivedConversationSnapshot = {
+  conversation: ConversationSummaryReport;
+  feedQueryHashes: string[];
+};
+
 /** Define the bounded, polling conversation-detail resource. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -50,7 +60,10 @@ export function conversationDetailQueryOptions(
 /** Archive or restore one conversation with an immediate reversible cache update. */
 export function useArchiveConversation(
   conversationId: string,
-  options?: { onSuccess?(archived: boolean): void },
+  options?: {
+    onError?(): void;
+    onSuccess?(archived: boolean): void;
+  },
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -63,6 +76,7 @@ export function useArchiveConversation(
     onMutate: async (args) => {
       const conversationQueries = { queryKey: ["dashboard", "conversations"] };
       const detailQueryKey = conversationDetailQueryKey(conversationId);
+      const archivedQueryKey = archivedConversationQueryKey(conversationId);
       await Promise.all([
         queryClient.cancelQueries(conversationQueries),
         queryClient.cancelQueries({ queryKey: detailQueryKey }),
@@ -71,27 +85,58 @@ export function useArchiveConversation(
         queryClient.getQueriesData<ConversationFeed>(conversationQueries);
       const previousDetail =
         queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
+      const previousArchivedSnapshot =
+        queryClient.getQueryData<ArchivedConversationSnapshot>(
+          archivedQueryKey,
+        );
       const archivedAt = args.archived ? new Date().toISOString() : undefined;
+      const archivedSnapshot = args.archived
+        ? (buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
+          previousArchivedSnapshot)
+        : previousArchivedSnapshot;
 
-      queryClient.setQueriesData<ConversationFeed>(
-        conversationQueries,
-        (feed) =>
-          feed
-            ? {
-                ...feed,
-                conversations: feed.conversations.map((conversation) =>
-                  conversation.conversationId === conversationId
-                    ? { ...conversation, archivedAt }
-                    : conversation,
-                ),
-              }
-            : feed,
-      );
+      previousFeeds.forEach(([queryKey, feed]) => {
+        if (!feed) return;
+        const conversationExists = feed.conversations.some(
+          (conversation) => conversation.conversationId === conversationId,
+        );
+        const shouldRestore =
+          !args.archived &&
+          !conversationExists &&
+          Boolean(
+            archivedSnapshot?.feedQueryHashes.includes(
+              JSON.stringify(queryKey),
+            ),
+          );
+        const conversations = shouldRestore
+          ? [
+              ...feed.conversations,
+              { ...archivedSnapshot!.conversation, archivedAt: undefined },
+            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
+          : feed.conversations.map((conversation) =>
+              conversation.conversationId === conversationId
+                ? { ...conversation, archivedAt }
+                : conversation,
+            );
+        queryClient.setQueryData<ConversationFeed>(queryKey, {
+          ...feed,
+          conversations,
+        });
+      });
       queryClient.setQueryData<ConversationDetailReport>(
         detailQueryKey,
         (detail) => (detail ? { ...detail, archivedAt } : detail),
       );
-      return { detailQueryKey, previousDetail, previousFeeds };
+      if (archivedSnapshot) {
+        queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
+      }
+      return {
+        archivedQueryKey,
+        detailQueryKey,
+        previousArchivedSnapshot,
+        previousDetail,
+        previousFeeds,
+      };
     },
     onError: (_error, _args, context) => {
       context?.previousFeeds.forEach(([queryKey, feed]) => {
@@ -102,9 +147,29 @@ export function useArchiveConversation(
           context.detailQueryKey,
           context.previousDetail,
         );
+        if (context.previousArchivedSnapshot) {
+          queryClient.setQueryData(
+            context.archivedQueryKey,
+            context.previousArchivedSnapshot,
+          );
+        } else {
+          queryClient.removeQueries({
+            exact: true,
+            queryKey: context.archivedQueryKey,
+          });
+        }
       }
+      options?.onError?.();
     },
-    onSuccess: (_result, args) => options?.onSuccess?.(args.archived),
+    onSuccess: (_result, args) => {
+      if (!args.archived) {
+        queryClient.removeQueries({
+          exact: true,
+          queryKey: archivedConversationQueryKey(conversationId),
+        });
+      }
+      options?.onSuccess?.(args.archived);
+    },
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -121,6 +186,23 @@ export function useArchiveConversation(
       ]);
     },
   });
+}
+
+function buildArchivedConversationSnapshot(
+  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
+  conversationId: string,
+): ArchivedConversationSnapshot | undefined {
+  let conversation: ConversationSummaryReport | undefined;
+  const feedQueryHashes: string[] = [];
+  for (const [queryKey, feed] of feeds) {
+    const feedConversation = feed?.conversations.find(
+      (item) => item.conversationId === conversationId,
+    );
+    if (!feedConversation) continue;
+    conversation ??= feedConversation;
+    feedQueryHashes.push(JSON.stringify(queryKey));
+  }
+  return conversation ? { conversation, feedQueryHashes } : undefined;
 }
 
 /** Fetch a bounded conversation snapshot and older pages on demand. */

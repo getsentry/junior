@@ -19,6 +19,7 @@ export function AnimatedList<T>(props: {
   ariaLabel?: string;
   className?: string;
   durationMs?: number;
+  empty?: ReactNode;
   getKey(item: T): string;
   items: T[];
   renderItem(item: T): ReactNode;
@@ -65,32 +66,34 @@ export function AnimatedList<T>(props: {
 
   return (
     <div
-      aria-label={props.ariaLabel}
+      aria-label={animatedItems.length > 0 ? props.ariaLabel : undefined}
       className={cn(props.className, exiting && "pointer-events-none")}
-      role={props.role}
+      role={animatedItems.length > 0 ? props.role : undefined}
     >
-      {animatedItems.map((animatedItem) => (
-        <div
-          aria-hidden={animatedItem.state === "exiting" ? true : undefined}
-          className={cn(
-            "grid min-w-0 origin-center transition-[grid-template-rows,opacity,transform] motion-reduce:transition-none",
-            animatedItem.state === "present"
-              ? "grid-rows-[1fr] translate-x-0 scale-100 opacity-100"
-              : "pointer-events-none grid-rows-[0fr] translate-x-2 scale-[0.98] opacity-0",
-          )}
-          data-presence={animatedItem.state}
-          inert={animatedItem.state === "exiting" ? true : undefined}
-          key={animatedItem.key}
-          style={{
-            transitionDuration: `${durationMs}ms`,
-            transitionTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-          }}
-        >
-          <div className="min-h-0 min-w-0 overflow-hidden">
-            {props.renderItem(animatedItem.item)}
-          </div>
-        </div>
-      ))}
+      {animatedItems.length > 0
+        ? animatedItems.map((animatedItem) => (
+            <div
+              aria-hidden={animatedItem.state === "exiting" ? true : undefined}
+              className={cn(
+                "grid min-w-0 origin-center transition-[grid-template-rows,opacity,transform] motion-reduce:transition-none",
+                animatedItem.state === "present"
+                  ? "grid-rows-[1fr] translate-x-0 scale-100 opacity-100"
+                  : "pointer-events-none grid-rows-[0fr] translate-x-2 scale-[0.98] opacity-0",
+              )}
+              data-presence={animatedItem.state}
+              inert={animatedItem.state === "exiting" ? true : undefined}
+              key={animatedItem.key}
+              style={{
+                transitionDuration: `${durationMs}ms`,
+                transitionTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+              }}
+            >
+              <div className="min-h-0 min-w-0 overflow-hidden">
+                {props.renderItem(animatedItem.item)}
+              </div>
+            </div>
+          ))
+        : props.empty}
     </div>
   );
 }
