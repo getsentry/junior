@@ -109,7 +109,7 @@ function catalog() {
 }
 
 describe("searchTools", () => {
-  it("discovers catalog tools from metadata and returns call details", async () => {
+  it("discovers catalog tools from metadata and returns their schemas", async () => {
     const searchTools = createSearchToolsTool(catalog());
 
     expect(searchTools.description).toContain(
@@ -139,26 +139,12 @@ describe("searchTools", () => {
       total_matches: 1,
       returned_tools: 1,
       execution_tool: "executeTool",
-      execution_example: {
-        tool_name: "<returned tool_name>",
-        arguments: {
-          "<argument>": "<value from input_schema>",
-        },
-      },
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
           description: "Lookup customer health for account review.",
           exposure: "deferred",
           source: "agent-demo",
-          signature: "agentDemo_lookupCustomer({ customerId: string })",
-          call: {
-            tool_name: "agentDemo_lookupCustomer",
-            arguments: {
-              customerId: "<customerId>",
-            },
-          },
-          input_schema_summary: "customerId (required)",
           input_schema: {
             properties: {
               customerId: {
@@ -194,14 +180,16 @@ describe("searchTools", () => {
         {
           tool_name: "bash",
           exposure: "direct",
-          signature: "bash({ command: string })",
-          call: {
-            tool_name: "bash",
-            arguments: {
-              command: "<command>",
+          input_schema: {
+            required: ["command"],
+            properties: {
+              command: {
+                description: "Command to execute.",
+                minLength: 1,
+                type: "string",
+              },
             },
           },
-          input_schema_summary: "command (required)",
         },
       ],
     });
@@ -349,7 +337,7 @@ describe("searchTools", () => {
     expect(result.tools[2]).not.toHaveProperty("source");
   });
 
-  it("omits optional fields from call examples while keeping them in signatures", async () => {
+  it("returns optional fields only through the input schema", async () => {
     const searchTools = createSearchToolsTool(catalog());
 
     const result = await searchTools.execute!(
@@ -357,19 +345,32 @@ describe("searchTools", () => {
       {},
     );
 
-    expect(result.tools[0]).toMatchObject({
+    expect(JSON.parse(JSON.stringify(result.tools[0]))).toEqual({
       tool_name: "agentDemo_listAccounts",
-      signature:
-        "agentDemo_listAccounts({ query?: string, limit?: number, cursor?: string })",
-      call: {
-        tool_name: "agentDemo_listAccounts",
-        arguments: {},
+      description: "List accounts with optional filters for account review.",
+      exposure: "deferred",
+      source: "agent-demo",
+      input_schema: {
+        additionalProperties: false,
+        properties: {
+          cursor: {
+            description: "Optional pagination cursor.",
+            type: "string",
+          },
+          limit: {
+            description: "Optional max accounts to return.",
+            type: "number",
+          },
+          query: {
+            description: "Optional free-text account filter.",
+            type: "string",
+          },
+        },
+        type: "object",
       },
-      input_schema_summary: "query, limit, cursor",
+      call_notes: [],
+      annotations: {},
     });
-    expect(result.tools[0]?.call.arguments).not.toHaveProperty("query");
-    expect(result.tools[0]?.call.arguments).not.toHaveProperty("limit");
-    expect(result.tools[0]?.call.arguments).not.toHaveProperty("cursor");
   });
 
   it("summarizes model-visible descriptions", () => {
