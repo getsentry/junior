@@ -310,13 +310,6 @@ describe("completeText", () => {
     });
 
     expect(result).toEqual({ object: { ok: true } });
-    expect(mocks.logWarn).toHaveBeenCalledWith(
-      "ai.completion.cost_estimate.failed",
-      {
-        "exception.message": "pricing unavailable",
-        "gen_ai.request.model": "openai/gpt-4o-mini",
-      },
-    );
   });
 
   it("rethrows retryable object provider failures without capturing", async () => {

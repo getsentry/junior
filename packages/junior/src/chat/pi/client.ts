@@ -15,6 +15,7 @@ import {
   embedMany,
   generateObject,
   NoObjectGeneratedError,
+  type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
 
@@ -321,6 +322,7 @@ function objectCompletionCost(
   }).total;
 }
 
+/** Estimate cost without changing the outcome of a successful completion. */
 function bestEffortObjectCompletionCost(
   modelId: string,
   usage: LanguageModelUsage,
@@ -356,8 +358,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const apiKey = getGatewayApiKey();
   const provider = createGatewayProvider(apiKey ? { apiKey } : {});
+  let result: GenerateObjectResult<unknown>;
   try {
-    const result = await withSpan(
+    result = await withSpan(
       `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
       "gen_ai.chat",
       logContextFromMetadata(params.modelId, params.metadata),
@@ -410,14 +413,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : {}),
       },
     );
-    const costUsd = bestEffortObjectCompletionCost(
-      params.modelId,
-      result.usage,
-    );
-    return {
-      object: result.object as z.infer<TSchema>,
-      ...(costUsd !== undefined ? { costUsd } : {}),
-    };
   } catch (error) {
     const providerError = createProviderError(error, {
       ...(NoObjectGeneratedError.isInstance(error)
@@ -427,6 +422,11 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     });
     throw providerError;
   }
+  const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
+  return {
+    object: result.object as z.infer<TSchema>,
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
 }
 
 /** Generate text embeddings through the host-owned AI Gateway provider. */
