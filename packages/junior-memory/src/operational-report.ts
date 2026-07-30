@@ -87,20 +87,62 @@ function formatPercent(value: number): string {
   }).format(value);
 }
 
-/** Build aggregate memory storage and indexing diagnostics for the System page. */
-export async function buildMemoryOperationalReport(args: {
-  db: MemoryDb;
-  nowMs: number;
-}): Promise<PluginOperationalReportContent> {
-  const active = and(
+function activeMemoryPredicate(nowMs: number) {
+  return and(
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
     or(
       isNull(juniorMemoryMemories.expiresAtMs),
-      gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+      gt(juniorMemoryMemories.expiresAtMs, nowMs),
     ),
   );
+}
+
+/** Aggregate active memory counts by their effective visibility boundary. */
+export async function readMemoryVisibilityStats(args: {
+  db: MemoryDb;
+  nowMs: number;
+}): Promise<{
+  personal: number;
+  privateConversation: number;
+  publicWorkspace: number;
+}> {
+  const active = activeMemoryPredicate(args.nowMs);
+  const [counts] = await args.db
+    .select({
+      conversation:
+        sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
+          Number,
+        ),
+      personal:
+        sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
+          Number,
+        ),
+      publicWorkspace: sql<number>`count(*) filter (
+          where ${active}
+            and ${juniorMemoryMemories.scope} = 'conversation'
+            and ${juniorMemoryMemories.sourcePlatform} = 'slack'
+            and length(${juniorMemoryMemories.scopeKey})
+              - length(replace(${juniorMemoryMemories.scopeKey}, ':', '')) = 1
+        )`.mapWith(Number),
+    })
+    .from(juniorMemoryMemories);
+  const conversation = counts?.conversation ?? 0;
+  const publicWorkspace = counts?.publicWorkspace ?? 0;
+  return {
+    personal: counts?.personal ?? 0,
+    privateConversation: Math.max(0, conversation - publicWorkspace),
+    publicWorkspace,
+  };
+}
+
+/** Build aggregate memory storage and indexing diagnostics for the System page. */
+export async function buildMemoryOperationalReport(args: {
+  db: MemoryDb;
+  nowMs: number;
+}): Promise<PluginOperationalReportContent> {
+  const active = activeMemoryPredicate(args.nowMs);
   const [[counts], memoryDays] = await Promise.all([
     args.db
       .select({

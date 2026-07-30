@@ -43,6 +43,10 @@ test("opens a registered plugin page from primary navigation", async ({
       .getByRole("region", { name: "Memory summary" })
       .getByText("Active", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("Public workspace")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Saved by you/ }),
+  ).toHaveAttribute("href", "/plugins/memory/memories/library?filter=explicit");
   const sevenDays = page.getByRole("button", { name: "7d" });
   const thirtyDays = page.getByRole("button", { name: "30d" });
   const ninetyDays = page.getByRole("button", { name: "90d" });

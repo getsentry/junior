@@ -16,6 +16,13 @@ export const memoryDashboardSchema = z
   .object({
     days: z.array(memoryDaySchema).length(90),
     generatedAt: z.iso.datetime(),
+    visibility: z
+      .object({
+        personal: z.number().int().min(0),
+        privateConversation: z.number().int().min(0),
+        publicWorkspace: z.number().int().min(0),
+      })
+      .strict(),
     stats: z
       .object({
         active: z.number().int().min(0),

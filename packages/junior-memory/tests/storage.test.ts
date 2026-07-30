@@ -2220,6 +2220,11 @@ ORDER BY created_at_ms ASC
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
       const hiddenContext = slackContext({ teamId: "T999", userId: "U999" });
+      const privateContext = slackContext({
+        channelId: "D777",
+        teamId: "T123",
+        userId: "U123",
+      });
       const firstStore = createMemoryStore(memoryDb(fixture), firstContext, {
         now: () => TEST_NOW_MS,
       });
@@ -2229,6 +2234,11 @@ ORDER BY created_at_ms ASC
       const hiddenStore = createMemoryStore(memoryDb(fixture), hiddenContext, {
         now: () => TEST_NOW_MS + 2,
       });
+      const privateStore = createMemoryStore(
+        memoryDb(fixture),
+        privateContext,
+        { now: () => TEST_NOW_MS + 3 },
+      );
       const first = await firstStore.createMemory({
         content: "Prefers concise release notes.",
         idempotencyKey: "tool:api:first",
@@ -2242,6 +2252,16 @@ ORDER BY created_at_ms ASC
       const hidden = await hiddenStore.createMemory({
         content: "Hidden viewer memory.",
         idempotencyKey: "api:hidden",
+        kind: "knowledge",
+      });
+      await firstStore.createConversationMemory({
+        content: "Public workspace memory.",
+        idempotencyKey: "session:api:public",
+        kind: "knowledge",
+      });
+      await privateStore.createConversationMemory({
+        content: "Private conversation memory.",
+        idempotencyKey: "session:api:private",
         kind: "knowledge",
       });
       const actors = [firstContext.actor!, secondContext.actor!];
@@ -2335,6 +2355,11 @@ ORDER BY created_at_ms ASC
         knowledge: 1,
         preference: 1,
         procedure: 0,
+      });
+      expect(dashboard.visibility).toEqual({
+        personal: 3,
+        privateConversation: 1,
+        publicWorkspace: 1,
       });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({

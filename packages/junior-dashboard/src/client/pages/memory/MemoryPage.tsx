@@ -1,15 +1,21 @@
 import type { UseMutationResult } from "@tanstack/react-query";
 import {
+  ArrowRight,
+  Bookmark,
   BrainCircuit,
   ChevronRight,
   CircleAlert,
   Database,
+  Globe2,
+  LockKeyhole,
   Search,
+  Sparkles,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, useLocation } from "react-router";
+import { Link, Navigate, NavLink, useLocation } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
@@ -71,12 +77,16 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           Memories
         </NavLink>
       </nav>
-      {overview ? <MemoryOverview /> : <MemoryLibrary page={props.page} />}
+      {overview ? (
+        <MemoryOverview libraryPath={libraryPath} />
+      ) : (
+        <MemoryLibrary page={props.page} />
+      )}
     </div>
   );
 }
 
-function MemoryOverview() {
+function MemoryOverview(props: { libraryPath: string }) {
   const dashboardQuery = useMemoryDashboardData();
   return (
     <>
@@ -88,7 +98,16 @@ function MemoryOverview() {
         </div>
       )}
       {dashboardQuery.data ? (
-        <MemoryTimeline days={dashboardQuery.data.days} />
+        <>
+          <section className="grid gap-4 md:grid-cols-2">
+            <MemoryVisibilityPanel data={dashboardQuery.data} />
+            <MemoryOriginPanel
+              data={dashboardQuery.data}
+              libraryPath={props.libraryPath}
+            />
+          </section>
+          <MemoryTimeline days={dashboardQuery.data.days} />
+        </>
       ) : dashboardQuery.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
@@ -344,6 +363,130 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
         </div>
       ))}
     </section>
+  );
+}
+
+function MemoryVisibilityPanel(props: { data: MemoryDashboardData }) {
+  const { visibility } = props.data;
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        Workspace storage
+      </div>
+      <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
+        Who can use these memories?
+      </h2>
+      <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+        Workspace-wide active memories grouped by their recall boundary.
+      </p>
+      <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+        <OverviewBreakdownRow
+          detail="Only the person this memory belongs to"
+          icon={UserRound}
+          label="Personal"
+          value={visibility.personal}
+        />
+        <OverviewBreakdownRow
+          detail="The original private thread or local conversation"
+          icon={LockKeyhole}
+          label="Private conversations"
+          value={visibility.privateConversation}
+        />
+        <OverviewBreakdownRow
+          detail="Public Slack channels across the workspace"
+          icon={Globe2}
+          label="Public workspace"
+          value={visibility.publicWorkspace}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function MemoryOriginPanel(props: {
+  data: MemoryDashboardData;
+  libraryPath: string;
+}) {
+  const { stats } = props.data;
+  const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        Personal memory
+      </div>
+      <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
+        How was it created?
+      </h2>
+      <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+        Your active memories grouped by how Junior received them.
+      </p>
+      <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+        <OverviewBreakdownRow
+          detail="Junior extracted durable context from conversations"
+          href={`${props.libraryPath}?filter=automatic`}
+          icon={Sparkles}
+          label="Learned automatically"
+          value={stats.automatic}
+        />
+        <OverviewBreakdownRow
+          detail="You explicitly asked Junior to remember something"
+          href={`${props.libraryPath}?filter=explicit`}
+          icon={Bookmark}
+          label="Saved by you"
+          value={stats.explicit}
+        />
+        <OverviewBreakdownRow
+          detail="Created before learning method tracking was available"
+          icon={BrainCircuit}
+          label="Other"
+          value={other}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function OverviewBreakdownRow(props: {
+  detail: string;
+  href?: string;
+  icon: typeof UserRound;
+  label: string;
+  value: number;
+}) {
+  const Icon = props.icon;
+  const content = (
+    <>
+      <div className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
+        <Icon aria-hidden="true" size={15} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-display text-base font-medium text-dashboard-text">
+          {props.label}
+        </div>
+        <div className="mt-0.5 font-mono text-[0.6rem] leading-relaxed text-dashboard-text-muted">
+          {props.detail}
+        </div>
+      </div>
+      <div className="font-display text-2xl font-light text-dashboard-text">
+        {props.value.toLocaleString("en-US")}
+      </div>
+      {props.href ? (
+        <ArrowRight
+          aria-hidden="true"
+          className="shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-100"
+          size={15}
+        />
+      ) : null}
+    </>
+  );
+  const className =
+    "group flex items-center gap-3 bg-[#09090b] px-3 py-3 no-underline transition-colors hover:bg-white/[0.025]";
+  return props.href ? (
+    <Link className={className} to={props.href}>
+      {content}
+    </Link>
+  ) : (
+    <div className={className}>{content}</div>
   );
 }
 

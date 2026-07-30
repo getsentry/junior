@@ -72,7 +72,9 @@ memory totals, embedding coverage, and history on **Overview**. The separate
 **Memories** view provides search and collections for preferences,
 automatically learned memories, and explicitly saved memories. Each record
 explains whether Junior learned it automatically or saved it because the user
-asked. Forgetting archives the memory so Junior no longer recalls it.
+asked. Overview also separates personal, private-conversation, and public
+workspace storage without exposing memory content. Forgetting archives the
+memory so Junior no longer recalls it.
 
 The plugin also exposes authenticated REST resources:
 
