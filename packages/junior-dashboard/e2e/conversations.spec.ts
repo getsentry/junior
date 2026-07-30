@@ -52,9 +52,9 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   expect(headerBounds).toEqual({ left: 160, width: 1280 });
   expect(await containerBounds()).toEqual(headerBounds);
 
-  await expect(page.getByRole("link", { name: "Conversations" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("link", { name: "Conversations" }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   expect(await containerBounds()).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
