@@ -50,7 +50,6 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const selectedRecord = records.find(
     (record) => record.id === selectedRecordId,
   );
-  const desktopRecord = selectedRecord ?? records[0];
 
   if (!query.data && !query.error) {
     return <LoadingView label="Loading memories" />;
@@ -145,7 +144,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
             </div>
           </Card>
         ) : (
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid items-start gap-4">
             <div className="grid gap-3">
               <Card padding="none">
                 <div className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_3.5rem] items-center gap-3 border-b border-white/[0.06] px-4 py-2.5 font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid">
@@ -160,9 +159,13 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
                     action={action}
                     first={index === 0}
                     key={record.id}
-                    onSelect={() => setSelectedRecordId(record.id)}
+                    onSelect={() =>
+                      setSelectedRecordId((current) =>
+                        current === record.id ? undefined : record.id,
+                      )
+                    }
                     record={record}
-                    selected={record.id === desktopRecord?.id}
+                    selected={record.id === selectedRecordId}
                   />
                 ))}
               </Card>
@@ -181,11 +184,6 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
                 </p>
               ) : null}
             </div>
-            {desktopRecord ? (
-              <div className="hidden lg:block">
-                <MemoryInspector record={desktopRecord} />
-              </div>
-            ) : null}
             <MemoryMobileInspector
               onClose={() => setSelectedRecordId(undefined)}
               record={selectedRecord}
@@ -350,95 +348,94 @@ function MemoryRow(props: {
   const learned = metadataValue(props.record, "Learned");
   const source = metadataValue(props.record, "Source");
   return (
-    <div
-      className={cn(
-        "group flex items-stretch transition-colors",
-        !props.first && "border-t border-white/[0.055]",
-        props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
-      )}
-    >
-      <button
-        aria-pressed={props.selected}
-        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left lg:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_1rem]"
-        onClick={props.onSelect}
-        type="button"
+    <>
+      <div
+        className={cn(
+          "group flex items-stretch transition-colors",
+          !props.first && "border-t border-white/[0.055]",
+          props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
+        )}
       >
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={cn(
-              "grid size-8 shrink-0 place-items-center rounded border",
-              props.selected
-                ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
-            )}
-          >
-            <BrainCircuit aria-hidden="true" size={15} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="m-0 font-display text-base font-medium leading-snug text-dashboard-text">
-              {props.record.title}
-            </h3>
-            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-dashboard-text-muted lg:hidden">
-              <span>{kind}</span>
-              <span>{learned}</span>
-              <span>{source}</span>
-            </div>
-          </div>
-        </div>
-        <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
-          {kind}
-        </span>
-        <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
-          {learned}
-        </span>
-        <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
-          {source}
-        </span>
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "shrink-0 transition-colors",
-            props.selected
-              ? "text-cyan-200"
-              : "text-dashboard-text-muted group-hover:text-dashboard-text",
-          )}
-          size={16}
-        />
-      </button>
-      {props.record.actions?.map((recordAction) => (
         <button
-          aria-label={`${recordAction.label}: ${props.record.title}`}
-          className={cn(
-            "grid w-12 shrink-0 cursor-pointer place-items-center border-0 border-l border-white/[0.04] bg-transparent transition-colors",
-            recordAction.tone === "danger"
-              ? "text-dashboard-text-muted hover:text-rose-300"
-              : dashboardInteractiveTextClass,
-          )}
-          disabled={
-            props.action.isPending &&
-            props.action.variables?.href === recordAction.href
-          }
-          key={`${recordAction.method}:${recordAction.href}`}
-          onClick={() => props.action.mutate(recordAction)}
-          title={recordAction.label}
+          aria-pressed={props.selected}
+          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left lg:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_1rem]"
+          onClick={props.onSelect}
           type="button"
         >
-          {recordAction.tone === "danger" ? (
-            <Trash2 aria-hidden="true" size={15} />
-          ) : (
-            recordAction.label
-          )}
+          <div className="flex min-w-0 items-start gap-3">
+            <div
+              className={cn(
+                "grid size-8 shrink-0 place-items-center rounded border",
+                props.selected
+                  ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+                  : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
+              )}
+            >
+              <BrainCircuit aria-hidden="true" size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="m-0 font-display text-base font-medium leading-snug text-dashboard-text">
+                {props.record.title}
+              </h3>
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-dashboard-text-muted lg:hidden">
+                <span>{kind}</span>
+                <span>{learned}</span>
+                <span>{source}</span>
+              </div>
+            </div>
+          </div>
+          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
+            {kind}
+          </span>
+          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
+            {learned}
+          </span>
+          <span className="hidden truncate font-mono text-[0.62rem] text-dashboard-text-muted lg:block">
+            {source}
+          </span>
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              "shrink-0 transition-transform",
+              props.selected
+                ? "rotate-90 text-cyan-200"
+                : "text-dashboard-text-muted group-hover:text-dashboard-text",
+            )}
+            size={16}
+          />
         </button>
-      ))}
-    </div>
-  );
-}
-
-function MemoryInspector(props: { record: PluginUserPageRecord }) {
-  return (
-    <Card className="sticky top-24 p-5 sm:p-6">
-      <MemoryDetails record={props.record} />
-    </Card>
+        {props.record.actions?.map((recordAction) => (
+          <button
+            aria-label={`${recordAction.label}: ${props.record.title}`}
+            className={cn(
+              "grid w-12 shrink-0 cursor-pointer place-items-center border-0 border-l border-white/[0.04] bg-transparent transition-colors",
+              recordAction.tone === "danger"
+                ? "text-dashboard-text-muted hover:text-rose-300"
+                : dashboardInteractiveTextClass,
+            )}
+            disabled={
+              props.action.isPending &&
+              props.action.variables?.href === recordAction.href
+            }
+            key={`${recordAction.method}:${recordAction.href}`}
+            onClick={() => props.action.mutate(recordAction)}
+            title={recordAction.label}
+            type="button"
+          >
+            {recordAction.tone === "danger" ? (
+              <Trash2 aria-hidden="true" size={15} />
+            ) : (
+              recordAction.label
+            )}
+          </button>
+        ))}
+      </div>
+      {props.selected ? (
+        <div className="hidden border-t border-cyan-300/10 bg-black/20 p-5 lg:block">
+          <MemoryDetails inline record={props.record} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -481,6 +478,7 @@ function MemoryMobileInspector(props: {
 }
 
 function MemoryDetails(props: {
+  inline?: boolean;
   onClose?: () => void;
   record: PluginUserPageRecord;
 }) {
@@ -522,62 +520,82 @@ function MemoryDetails(props: {
           </button>
         ) : null}
       </div>
-      <p className="mt-5 mb-0 font-display text-xl leading-relaxed text-dashboard-text">
-        {props.record.title}
-      </p>
-      {props.record.description ? (
-        <p className="mt-3 mb-0 text-sm leading-relaxed text-dashboard-text-muted">
-          {props.record.description}
-        </p>
-      ) : null}
-      <div className="mt-5 flex items-start gap-3 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
-        <BrainCircuit
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 text-cyan-200/70"
-          size={15}
-        />
+      <div
+        className={cn(
+          props.inline
+            ? "grid gap-6 pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.85fr)]"
+            : "",
+        )}
+      >
         <div>
-          <div className="font-mono text-[0.55rem] uppercase tracking-[0.12em] text-cyan-200/65">
-            How this was learned
-          </div>
-          <div className="mt-1 font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
-            {learned === "Automatic"
-              ? `Learned automatically from ${source}.`
-              : learned === "Explicit"
-                ? `Saved explicitly from ${source}.`
-                : `Recorded from ${source}.`}
+          <p className="mt-5 mb-0 font-display text-xl leading-relaxed text-dashboard-text first:mt-0">
+            {props.record.title}
+          </p>
+          {props.record.description ? (
+            <p className="mt-3 mb-0 text-sm leading-relaxed text-dashboard-text-muted">
+              {props.record.description}
+            </p>
+          ) : null}
+          <div className="mt-5 flex items-start gap-3 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
+            <BrainCircuit
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-cyan-200/70"
+              size={15}
+            />
+            <div>
+              <div className="font-mono text-[0.55rem] uppercase tracking-[0.12em] text-cyan-200/65">
+                How this was learned
+              </div>
+              <div className="mt-1 font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
+                {learned === "Automatic"
+                  ? `Learned automatically from ${source}.`
+                  : learned === "Explicit"
+                    ? `Saved explicitly from ${source}.`
+                    : `Recorded from ${source}.`}
+              </div>
+            </div>
           </div>
         </div>
+        <div>
+          {props.record.metadata?.length ? (
+            <dl
+              className={cn(
+                "grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] sm:grid-cols-2",
+                props.inline ? "mt-0" : "mt-6",
+              )}
+            >
+              {props.record.metadata.map((item) => (
+                <div
+                  className="min-w-0 bg-[#09090b] px-3 py-3"
+                  key={item.label}
+                >
+                  <dt className="font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+                    {item.label}
+                  </dt>
+                  <dd className="mt-1.5 ml-0 break-words font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          <button
+            className={cn(
+              "mt-4 inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 font-mono text-[0.62rem] uppercase tracking-[0.1em]",
+              dashboardInteractiveTextClass,
+            )}
+            onClick={() => void copyId()}
+            type="button"
+          >
+            {copied ? (
+              <Check aria-hidden="true" size={13} />
+            ) : (
+              <Copy aria-hidden="true" size={13} />
+            )}
+            {copied ? "Copied memory ID" : "Copy memory ID"}
+          </button>
+        </div>
       </div>
-      {props.record.metadata?.length ? (
-        <dl className="mt-6 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-          {props.record.metadata.map((item) => (
-            <div className="min-w-0 bg-[#09090b] px-3 py-3" key={item.label}>
-              <dt className="font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
-                {item.label}
-              </dt>
-              <dd className="mt-1.5 ml-0 break-words font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
-                {item.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      <button
-        className={cn(
-          "mt-4 inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 font-mono text-[0.62rem] uppercase tracking-[0.1em]",
-          dashboardInteractiveTextClass,
-        )}
-        onClick={() => void copyId()}
-        type="button"
-      >
-        {copied ? (
-          <Check aria-hidden="true" size={13} />
-        ) : (
-          <Copy aria-hidden="true" size={13} />
-        )}
-        {copied ? "Copied memory ID" : "Copy memory ID"}
-      </button>
     </>
   );
 }

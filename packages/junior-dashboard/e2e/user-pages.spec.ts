@@ -82,6 +82,25 @@ test("keeps other plugin pages on the generic renderer", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
+test("expands memory details inline on desktop", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+
+  const memory = page.getByRole("button", {
+    name: /^I prefer concise summaries/,
+  });
+  await memory.click();
+  await expect(page.getByText("How this was learned").first()).toBeVisible();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
+  await memory.click();
+  await expect(
+    page.getByText("How this was learned").first(),
+  ).not.toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
 test("opens memory details in a mobile sheet", async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   const browserErrors = collectBrowserErrors(page);
