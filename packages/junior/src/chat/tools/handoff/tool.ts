@@ -19,6 +19,12 @@ export function createHandoffTool(
     .map((profile) => `\`${profile}\``)
     .join(", ");
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description: `Switch to another execution profile and continue the same task. Profiles: ${profileNames}. Call this as the only tool.`,
     executionMode: "sequential",
     inputSchema: z

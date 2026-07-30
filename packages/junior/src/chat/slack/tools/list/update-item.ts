@@ -29,6 +29,12 @@ const updateListItemInputSchema = z.union([
 /** Create a tool that updates an item in the active Slack list. */
 export function createSlackListUpdateItemTool(state: ToolState) {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Update an item in the active Slack list tracked in artifact context (title/completion). Use when the user asks to mark progress or rename a tracked task. Do not use to add new tasks.",
     inputSchema: updateListItemInputSchema,

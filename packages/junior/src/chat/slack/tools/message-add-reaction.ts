@@ -14,6 +14,12 @@ export function createSlackMessageAddReactionTool(
   state: ToolState,
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Add an emoji reaction to the current inbound Slack message. Use when the user asks for a reaction on the current message without another target. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
     inputSchema: z.object({

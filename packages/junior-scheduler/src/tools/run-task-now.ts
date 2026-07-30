@@ -16,6 +16,12 @@ export function createSlackScheduleRunTaskNowTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Queue an existing active scheduled Junior task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled task now. Use only task IDs returned for this conversation.",
     executionMode: "sequential",

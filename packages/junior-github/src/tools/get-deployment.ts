@@ -157,6 +157,12 @@ export function createGitHubGetDeploymentTool(
   ctx: ToolRegistrationHookContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     description:
       "Get the latest GitHub deployment and status for an exact repository and full commit SHA, optionally limited to one environment. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
     inputSchema,

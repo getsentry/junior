@@ -95,7 +95,12 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
       "Inspect Junior's stored turns, tool calls, handoffs, and compaction events when debugging its behavior. Returns events from the current conversation tree or another retained public conversation in the same Slack workspace, newest first by default.",
     exposure: "deferred",
     source: CONVERSATION_EVENTS_TOOL_SOURCE,
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z
       .object({
         conversation_id: z

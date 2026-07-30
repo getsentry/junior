@@ -11,7 +11,12 @@ export function createReadFileTool() {
   return zodTool({
     description:
       "Read a bounded line range from a file in the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Prefer grep/findFiles/listDir for broad discovery.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       path: z
         .string()

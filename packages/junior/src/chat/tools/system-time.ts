@@ -13,7 +13,12 @@ export function createSystemTimeTool() {
   return zodTool({
     description:
       "Return current system time in UTC and local ISO formats. Use when the user asks for current time/date context. Do not use as a substitute for historical or timezone-conversion research.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({}),
     outputSchema: systemTimeOutputSchema,
     privateTraceResult: (result) => ({

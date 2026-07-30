@@ -71,7 +71,12 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
   return zodTool({
     description:
       "Search public Slack channel messages across the current workspace. Use when the user asks about company activity, announcements, public mentions, or context outside the active channel. Search only when requested or clearly needed, prefer focused keywords and time bounds, and cite returned permalinks. This never searches private channels or DMs.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       query: z
         .string()

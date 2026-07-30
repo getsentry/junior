@@ -68,6 +68,12 @@ export function createSendFilesTool(
   materializeFile: MaterializeFile,
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Send one or more sandbox files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: z.object({

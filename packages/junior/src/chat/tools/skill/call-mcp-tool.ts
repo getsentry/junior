@@ -56,6 +56,12 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
     inputSchema: z

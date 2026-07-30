@@ -84,7 +84,12 @@ export function createSlackThreadReadTool(
   return zodTool({
     description:
       "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and public channels Junior has seen in this workspace are readable.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       url: z
         .string()

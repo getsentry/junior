@@ -18,7 +18,12 @@ export function createSlackScheduleListTasksTool(
   return definePluginTool({
     description:
       "List scheduled Junior tasks for the active Slack conversation. Use when the user asks what is scheduled here, or when task IDs are needed before editing, deleting, or running schedules. Only manages tasks for the active Slack DM or channel.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({}),
     outputSchema: scheduleListToolResultSchema,
     execute: async () => {

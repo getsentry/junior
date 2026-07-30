@@ -106,6 +106,12 @@ function ttlMs(input: SubscribeInput): number {
 /** Create the tool that subscribes the current conversation to resource events. */
 function createSubscribeToResourceEventsTool(context: ToolRuntimeContext) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Subscribe the current conversation to high-signal events for a resource returned by a subscribable tool result. Matching events are queued as normal conversation messages; they do not interrupt active work.",
     inputSchema: subscribeInputSchema,
@@ -156,6 +162,12 @@ function createSubscribeToResourceEventsTool(context: ToolRuntimeContext) {
 /** Create the tool that lists active resource subscriptions for this conversation. */
 function createListResourceEventSubscriptionsTool(context: ToolRuntimeContext) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     description:
       "List active resource event subscriptions for the current conversation.",
     exposure: "deferred",
@@ -192,6 +204,12 @@ function createListResourceEventSubscriptionsTool(context: ToolRuntimeContext) {
 /** Create the tool that stops resource watches for this conversation. */
 function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Stop every resource watch for the current conversation. Infer the user's intent from context instead of requiring a special command, and call this tool before confirming that watching stopped.",
     exposure: "deferred",

@@ -13,6 +13,12 @@ import type { ToolState } from "@/chat/tools/types";
 /** Create a tool that appends items to the active Slack list. */
 export function createSlackListAddItemsTool(state: ToolState) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Add tasks to the active Slack list tracked in artifact context. Use when the user wants actionable items recorded in the current thread list. Do not use when no list exists and list creation was not requested.",
     inputSchema: z.object({

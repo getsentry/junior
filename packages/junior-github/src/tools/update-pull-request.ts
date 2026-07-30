@@ -114,6 +114,12 @@ export function createGitHubUpdatePullRequestTool(
   ctx: ToolRegistrationHookContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Update an existing GitHub pull request's title, body, base branch, or open/closed state. Use this instead of raw GitHub API calls when changing PR metadata.",
     inputSchema,

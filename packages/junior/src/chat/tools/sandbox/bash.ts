@@ -5,6 +5,12 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 /** Create the sandbox shell tool definition exposed to the agent. */
 export function createBashTool() {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Run a bash command inside the isolated sandbox workspace. Use this for repository inspection/execution tasks that need shell access. Do not use for network-sensitive or destructive actions unless explicitly required.",
     inputSchema: z.object({

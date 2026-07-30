@@ -364,6 +364,12 @@ function gitHubPullRequestStructuredResult(
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Create a GitHub pull request with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
     inputSchema: createPullRequestToolInputSchema,

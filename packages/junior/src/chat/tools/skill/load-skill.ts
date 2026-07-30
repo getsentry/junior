@@ -109,6 +109,12 @@ export function createLoadSkillTool(
   },
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the result includes mcp_provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
     inputSchema: z.object({

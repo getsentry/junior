@@ -8,7 +8,19 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { logWarnMock } = vi.hoisted(() => ({
+  logWarnMock: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    logWarn: logWarnMock,
+  };
+});
 import {
   createPluginHookRunner,
   getPluginApiRoutes,
@@ -35,6 +47,12 @@ function demoPluginTool(
 ) {
   return definePluginTool({
     approvalMode,
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     describeProposal: () => `${description} proposal`,
     description,
     inputSchema: z.object({}),
@@ -76,6 +94,12 @@ const SLACK_SOURCE = createSlackSource({
 });
 
 class PrototypeTool {
+  annotations = {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  };
   description = "Prototype tool";
   inputSchema = z.toJSONSchema(z.object({}));
   outputSchema = z.toJSONSchema(demoToolResultSchema);
@@ -144,6 +168,10 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
+  beforeEach(() => {
+    logWarnMock.mockReset();
+  });
+
   it("accepts Slack source visibility from the runtime boundary", () => {
     expect(
       createSlackSource({
@@ -512,6 +540,51 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("warns when a plugin tool omits behavioral annotations", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              demoTool: definePluginTool({
+                description: "Demo tool",
+                inputSchema: z.object({}),
+                outputSchema: demoToolResultSchema,
+                execute: () => ({ ok: true, status: "success" }) as const,
+              }),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      getPluginTools({
+        destination: SLACK_DESTINATION,
+        actor: TEST_ACTOR,
+        egress: TEST_EGRESS,
+        source: SLACK_SOURCE,
+        workspace: {} as any,
+      });
+
+      expect(logWarnMock).toHaveBeenCalledWith(
+        "plugin.tool_annotations.missing",
+        {
+          "app.plugin.name": "agent-demo",
+          "gen_ai.tool.name": "demoTool",
+          "app.tool.missing_annotations":
+            "destructiveHint,idempotentHint,openWorldHint,readOnlyHint",
+        },
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("preserves plugin tool instances while adding internal identity", () => {
     const prototypeTool = new PrototypeTool();
     const previous = setPlugins([
@@ -540,6 +613,7 @@ describe("agent plugin hooks", () => {
 
       expect(tools.agentDemo_prototypeTool).toBe(prototypeTool);
       expect(tools.prototypeTool).toBeUndefined();
+      expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",

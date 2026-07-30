@@ -227,8 +227,7 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
  * Tool-declared approval mode.
  *
  * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Omission leaves the tool outside
- * action review.
+ * `approve` permits execution without review. Omission behaves like `auto`.
  *
  * Core resolves the effective mode immediately before execution.
  */
@@ -252,11 +251,30 @@ export interface ToolAnnotations {
   title?: string;
 }
 
+export const REQUIRED_TOOL_ANNOTATION_KEYS = [
+  "destructiveHint",
+  "idempotentHint",
+  "openWorldHint",
+  "readOnlyHint",
+] as const;
+
+export type RequiredToolAnnotationKey =
+  (typeof REQUIRED_TOOL_ANNOTATION_KEYS)[number];
+
+/** Return behavioral annotation keys that a tool did not declare. */
+export function missingToolAnnotationKeys(
+  annotations: ToolAnnotations | undefined,
+): RequiredToolAnnotationKey[] {
+  return REQUIRED_TOOL_ANNOTATION_KEYS.filter(
+    (key) => typeof annotations?.[key] !== "boolean",
+  );
+}
+
 /**
  * Canonical approval metadata declared by core and plugin tools.
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; omission leaves the tool outside review. */
+  /** Optional declared approval mode; omission delegates to core auto policy. */
   approvalMode?: ToolApprovalMode;
   annotations?: ToolAnnotations;
   /**
@@ -399,6 +417,7 @@ function createZodTool<
   }
   return {
     ...tool,
+    approvalMode: tool.approvalMode ?? "auto",
     inputSchema: modelInputSchema,
     outputSchema: modelOutputSchema,
     prepareArguments(args) {

@@ -9,7 +9,12 @@ export function createSlackListGetItemsTool(state: ToolState) {
   return zodTool({
     description:
       "Read items from the active Slack list tracked in artifact context. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       limit: z.coerce
         .number()

@@ -130,7 +130,12 @@ export function createListDirTool() {
   return zodTool({
     description:
       "List a sandbox workspace directory. Returns sorted entries with '/' suffixes for directories and bounded truncation notices.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       path: z
         .string()

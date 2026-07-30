@@ -66,6 +66,12 @@ export function createGitHubGetPullRequestTool(
   ctx: ToolRegistrationHookContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     description:
       "Get a GitHub pull request. Use this when an existing PR may need resource-event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,

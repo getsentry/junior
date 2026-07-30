@@ -220,6 +220,12 @@ function searchProviderCatalog(
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     description:
       "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     inputSchema: z

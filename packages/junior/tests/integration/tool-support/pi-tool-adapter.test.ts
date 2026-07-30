@@ -55,6 +55,15 @@ function agentTool(tools: ReturnType<typeof createPiAgentTools>, name: string) {
 describe("Pi tool adapter integration", () => {
   it("discovers and executes plugin tools through catalog tool primitives", async () => {
     const onToolCall = vi.fn();
+    const actionReview = {
+      projectToolResult: <T>(_: string, result: T) => result,
+      review: vi.fn(async () => ({
+        decision: "allow" as const,
+        reason: "Read-only lookup requested by the user.",
+        riskLevel: "low" as const,
+        userAuthorization: "high" as const,
+      })),
+    };
     const previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -66,6 +75,12 @@ describe("Pi tool adapter integration", () => {
           tools() {
             return {
               lookupCustomer: zodTool({
+                annotations: {
+                  destructiveHint: false,
+                  idempotentHint: true,
+                  openWorldHint: true,
+                  readOnlyHint: true,
+                },
                 description: "Lookup customer health for account review.",
                 inputSchema: z.object({
                   customerId: z
@@ -114,6 +129,8 @@ describe("Pi tool adapter integration", () => {
         onToolCall,
         undefined,
         "private",
+        undefined,
+        actionReview,
       );
 
       expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
@@ -183,6 +200,13 @@ describe("Pi tool adapter integration", () => {
         {
           customerId: "C123",
         },
+      );
+      expect(actionReview.review).toHaveBeenCalledWith(
+        "tool-execute",
+        "agentDemo_lookupCustomer",
+        registry.agentDemo_lookupCustomer,
+        { customerId: "C123" },
+        undefined,
       );
     } finally {
       setPlugins(previousPlugins);

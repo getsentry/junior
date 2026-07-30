@@ -62,6 +62,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
+    "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
   "dependencies": {

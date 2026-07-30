@@ -49,7 +49,12 @@ export function createSlackConversationSearchTool(
       description:
         "Search retained public Junior conversation threads in the current Slack workspace.",
     },
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       query: z
         .string()

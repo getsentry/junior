@@ -15,6 +15,12 @@ export function createSlackScheduleDeleteTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Delete one scheduled Junior task from the active Slack conversation. Use only task IDs returned for this conversation. Do not delete schedules from threads, other channels, or another user's DM.",
     executionMode: "sequential",

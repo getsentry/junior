@@ -81,9 +81,10 @@ export function createWebSearchTool(
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
     annotations: {
-      readOnlyHint: true,
       destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: true,
+      readOnlyHint: true,
     },
     inputSchema: z.object({
       query: z.string().min(1).max(500).describe("Search query."),

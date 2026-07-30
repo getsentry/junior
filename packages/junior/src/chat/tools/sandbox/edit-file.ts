@@ -196,6 +196,12 @@ const editReplacementSchema = z.object({
 /** Create the sandbox edit tool definition exposed to the agent. */
 export function createEditFileTool() {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
     prepareArguments: prepareEditFileArguments,

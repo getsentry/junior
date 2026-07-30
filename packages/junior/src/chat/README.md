@@ -77,6 +77,9 @@ delegation without becoming the execution actor or a general task owner.
 - Retry continuations retain an exact transcript prefix. Usage from discarded
   assistant tails is carried forward separately so retained messages are
   counted once.
+- Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
+  and `idempotentHint`. External plugin and MCP tools with missing hints are
+  logged and enter action review conservatively.
 - Tool-bearing assistant text stays in agent history but is not destination
   output; explicit progress uses the runtime status surface.
 - Tool failures remain internal agent-loop data unless the final result exposes
@@ -99,12 +102,11 @@ delegation without becoming the execution actor or a general task owner.
   across asynchronous boundaries.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
-  Unclassified tools retain compatibility behavior. Every execution attempt
-  that enters review reaches Guardian; prior rejections are context rather than
-  binding decisions. Each Guardian decision is committed to the conversation
-  event log before the reviewed action can continue. `ask` and `deny` become
-  expected tool failures, and three consecutive rejections interrupt the
-  execution slice.
+  Omitted approval modes use auto policy. Every execution attempt that enters
+  review reaches Guardian; prior rejections are context rather than binding
+  decisions. Each Guardian decision is committed to the conversation event log
+  before the reviewed action can continue. `ask` and `deny` become expected tool
+  failures, and three consecutive rejections interrupt the execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded user, assistant, tool-call, and tool-result
   evidence selected with the Codex Guardian transcript rules. It cannot override

@@ -49,6 +49,12 @@ const slackCanvasEditOutputSchema = juniorToolResultSchema
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(state: ToolState) {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content; prefer this over slackCanvasWrite for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same canvas: use one edits[] call.",
     prepareArguments: prepareCanvasEditArguments,

@@ -92,6 +92,12 @@ export function createImageGenerateTool(
   deps: ImageGenerateToolDeps = {},
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Generate images from a prompt. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation requests.",
     inputSchema: z.object({

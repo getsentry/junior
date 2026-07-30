@@ -24,6 +24,12 @@ export function createSlackScheduleUpdateTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Edit, pause, resume, reschedule, or change credential use for an existing Junior scheduled task in the active Slack conversation.",
     executionMode: "sequential",

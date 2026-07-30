@@ -76,6 +76,12 @@ export function createVercelDeploymentSourceTool(
   ctx: ToolRegistrationHookContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     description:
       "Resolve a Vercel project name or ID and describe its deployment target and full Git commit SHA as a subscribable deployment source. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults. Use this after the final deployed commit is known and before waiting for a deployment outcome.",
     inputSchema,

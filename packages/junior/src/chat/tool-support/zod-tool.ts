@@ -233,6 +233,7 @@ export function zodTool<
   }
   return {
     ...toolDef,
+    approvalMode: toolDef.approvalMode ?? "auto",
     inputSchema: modelInputSchema,
     ...(modelOutputSchema ? { outputSchema: modelOutputSchema } : {}),
     prepareArguments(args) {

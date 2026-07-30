@@ -25,7 +25,12 @@ export function createSlackUserLookupTool() {
   return zodTool({
     description:
       "Look up Slack user profiles by user ID, email, or name search. Use when you need to identify a user, resolve cross-platform identity, or look up profile details like title or status. Returns profile fields including custom fields. For user ID lookup, pass a Slack user ID (e.g. U039RR91S). For search, pass a name query.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       user_id: slackUserIdParam(
         "Slack user ID to look up (e.g. U039RR91S). Mutually exclusive with email and query.",

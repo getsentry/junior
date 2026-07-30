@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const { endAttributes, resultMock, startAttributes } = vi.hoisted(() => ({
-  endAttributes: { value: {} as Record<string, unknown> },
-  resultMock: vi.fn(),
-  startAttributes: { value: {} as Record<string, unknown> },
-}));
+const { endAttributes, logWarnMock, resultMock, startAttributes } = vi.hoisted(
+  () => ({
+    endAttributes: { value: {} as Record<string, unknown> },
+    logWarnMock: vi.fn(),
+    resultMock: vi.fn(),
+    startAttributes: { value: {} as Record<string, unknown> },
+  }),
+);
 
 vi.mock("@/chat/logging", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/logging")>();
   return {
     ...actual,
+    logWarn: logWarnMock,
     setSpanAttributes: vi.fn((attributes: Record<string, unknown>) => {
       Object.assign(endAttributes.value, attributes);
     }),
@@ -74,9 +78,23 @@ describe("McpToolManager telemetry", () => {
     startAttributes.value = {};
     endAttributes.value = {};
     resultMock.mockReset();
+    logWarnMock.mockReset();
     resultMock.mockResolvedValue({
       content: [{ type: "text", text: "private result" }],
       isError: false,
+    });
+  });
+
+  it("warns when an MCP tool omits behavioral annotations", async () => {
+    const manager = new McpToolManager([buildPlugin()]);
+
+    await manager.activateProvider("demo");
+
+    expect(logWarnMock).toHaveBeenCalledWith("mcp.tool_annotations.missing", {
+      "app.plugin.name": "demo",
+      "gen_ai.tool.name": "inspect",
+      "app.tool.missing_annotations":
+        "destructiveHint,idempotentHint,openWorldHint,readOnlyHint",
     });
   });
 

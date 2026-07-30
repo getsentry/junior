@@ -166,6 +166,7 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
 
 Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
+`mcp.tool_annotations.missing`, `plugin.tool_annotations.missing`,
 `mcp.tool_manager.close.failed`, `sandbox.boot.requested`,
 `sandbox.network_policy_restore.failed`
 
@@ -179,7 +180,7 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.parsed_records`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
-`app.sandbox.search.limit_reached`
+`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
 
 ### Auth And Resume
 

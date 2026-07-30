@@ -1,4 +1,5 @@
 import {
+  missingToolAnnotationKeys,
   promptContextSchema,
   promptMessageSchema,
   resourceEventSchema,
@@ -586,6 +587,17 @@ export function getPluginTools(
         );
       }
       const definition = tool as unknown as AnyToolDefinition;
+      const missingAnnotationKeys = missingToolAnnotationKeys(
+        definition.annotations,
+      );
+      if (missingAnnotationKeys.length > 0) {
+        logWarn("plugin.tool_annotations.missing", {
+          "app.plugin.name": pluginName,
+          "gen_ai.tool.name": localName,
+          "app.tool.missing_annotations": missingAnnotationKeys.join(","),
+        });
+      }
+      definition.approvalMode ??= "auto";
       definition.identity = {
         id: `${pluginName}.${localName}`,
         name: localName,

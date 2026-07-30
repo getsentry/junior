@@ -8,6 +8,12 @@ export const EXECUTE_TOOL_NAME = "executeTool";
 /** Create the model-visible dispatcher schema for catalog tools. */
 export function createExecuteToolTool() {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Execute any catalog tool by exact tool_name from searchTools or a tool-result execution hint. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",

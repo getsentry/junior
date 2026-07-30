@@ -211,7 +211,12 @@ export function createSearchToolsTool(
   const knownSources = sourceSummaries(catalogTools);
   return zodTool({
     description: renderSearchToolsDescription(knownSources),
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z
       .object({
         query: z

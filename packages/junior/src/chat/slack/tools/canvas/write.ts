@@ -13,6 +13,12 @@ import type { ToolState } from "@/chat/tools/types";
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(state: ToolState) {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content.",
     executionMode: "sequential",

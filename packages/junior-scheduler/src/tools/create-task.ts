@@ -27,6 +27,12 @@ export function createSlackScheduleCreateTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Create a one-time or recurring Junior task in the active Slack conversation when the user asks Junior to do work later or repeatedly.",
     executionMode: "sequential",

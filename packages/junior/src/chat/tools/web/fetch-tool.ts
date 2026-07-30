@@ -48,9 +48,10 @@ export function createWebFetchTool(
     description:
       "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
     annotations: {
-      readOnlyHint: true,
       destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: true,
+      readOnlyHint: true,
     },
     inputSchema: z.object({
       url: z.string().min(1).describe("HTTP(S) URL to fetch."),

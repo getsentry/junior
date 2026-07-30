@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   definePluginTool,
+  missingToolAnnotationKeys,
   PluginToolInputError,
   pluginToolResultSchema,
   toolApprovalModeSchema,
@@ -21,6 +22,7 @@ describe("definePluginTool", () => {
       approvalMode: "review",
       annotations: {
         destructiveHint: false,
+        idempotentHint: true,
         openWorldHint: true,
         readOnlyHint: true,
       },
@@ -40,12 +42,22 @@ describe("definePluginTool", () => {
     expect(tool.approvalMode).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: true,
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
     expect(tool.describeProposal?.(input!)).toBe("Search for errors.");
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
+  });
+
+  it("reports missing behavioral annotations", () => {
+    expect(
+      missingToolAnnotationKeys({
+        destructiveHint: false,
+        readOnlyHint: true,
+      }),
+    ).toEqual(["idempotentHint", "openWorldHint"]);
   });
 
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {
@@ -67,6 +79,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
+    expect(tool.approvalMode).toBe("auto");
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

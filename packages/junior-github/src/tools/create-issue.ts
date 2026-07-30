@@ -293,6 +293,12 @@ async function annotateIssue(
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
     inputSchema: createIssueToolInputSchema,
