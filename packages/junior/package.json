@@ -56,6 +56,8 @@
     "prepack": "pnpm run build",
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
+    "sandbox:image:profile": "node --import tsx scripts/generate-sandbox-image-profile.ts",
+    "sandbox:image:test": "node --import tsx scripts/generate-sandbox-image-profile.ts --check && docker build --platform linux/amd64 --tag junior-sandbox-snapshot:ci sandbox",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
     "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsup.config.ts",
     "test": "vitest run --maxWorkers=4",
