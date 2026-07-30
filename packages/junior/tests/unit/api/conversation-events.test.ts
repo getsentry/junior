@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  defineConversationEvent,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
@@ -43,6 +48,74 @@ function assistantMessage(
 }
 
 describe("conversation report event projection", () => {
+  it("renders registered plugin events and skips them after removal", async () => {
+    const captured = defineConversationEvent({
+      name: "memories_captured",
+      version: 1,
+      schema: z.object({ count: z.number().int().positive() }).strict(),
+      renderEvent(value) {
+        return {
+          icon: "brain",
+          title: "Memories captured",
+          preview: `${value.count} memories`,
+        };
+      },
+    });
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory test plugin",
+        },
+        conversationEvents: [captured],
+      }),
+    ]);
+    const pluginEvent = event(1, {
+      type: "plugin_event",
+      namespace: "memory",
+      name: "memories_captured",
+      version: 1,
+      turnId: "turn-1",
+      content: { count: 2 },
+    });
+    try {
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [pluginEvent],
+        }),
+      ).toEqual([
+        {
+          seq: 1,
+          createdAt: new Date(1_000).toISOString(),
+          data: {
+            type: "plugin_event",
+            namespace: "memory",
+            name: "memories_captured",
+            version: 1,
+            turnId: "turn-1",
+            presentation: {
+              icon: "brain",
+              title: "Memories captured",
+              preview: "2 memories",
+            },
+          },
+        },
+      ]);
+      setPlugins([]);
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [pluginEvent],
+        }),
+      ).toEqual([]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("ignores unsupported stored events", () => {
     const unsupported = decodeStoredConversationEvent({
       schemaVersion: 3,

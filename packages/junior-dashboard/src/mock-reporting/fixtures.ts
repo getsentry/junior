@@ -372,6 +372,28 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         role: "assistant",
         text: "The canonical event rendering looks sound.",
       }),
+      reportEvent(13, iso(Date.parse(startedAt), 60_000), {
+        type: "plugin_event",
+        namespace: "memory",
+        name: "memories_captured",
+        version: 1,
+        turnId: "qa-turn",
+        presentation: {
+          icon: "brain",
+          title: "Memories captured",
+          preview: "2 memories",
+          details: [
+            {
+              title: "Use pnpm for repository commands.",
+              metadata: ["preference", "personal"],
+            },
+            {
+              title: "Dashboard transcript events should remain expandable.",
+              metadata: ["knowledge", "conversation"],
+            },
+          ],
+        },
+      }),
     ],
   });
 }

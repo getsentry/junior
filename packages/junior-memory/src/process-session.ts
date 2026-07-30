@@ -18,6 +18,7 @@ import {
   type ExtractedMemory,
 } from "./agent";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
+import { capturedMemory, memoriesCapturedEvent } from "./events";
 
 const MEMORY_TOOL_NAMES = new Set([
   "createMemory",
@@ -252,6 +253,7 @@ export async function processMemorySession(
     return;
   }
 
+  const captured = [];
   for (const memory of memories) {
     // The routing gate stays even though extraction is also actor-gated:
     // getTaskMemories caches extraction output for 7 days, so a retry can replay
@@ -262,9 +264,18 @@ export async function processMemorySession(
     }
     const input = passiveInput(run.runId, memory, sourceKey, target);
     if (target === "conversation") {
-      await store.createConversationMemory(input);
+      const result = await store.createConversationMemory(input);
+      if (result.created || result.idempotent) {
+        captured.push(capturedMemory(result.memory));
+      }
       continue;
     }
-    await store.createMemory(input);
+    const result = await store.createMemory(input);
+    if (result.created || result.idempotent) {
+      captured.push(capturedMemory(result.memory));
+    }
+  }
+  if (captured.length > 0) {
+    await context.events.emit(memoriesCapturedEvent({ memories: captured }));
   }
 }

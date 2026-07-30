@@ -5,8 +5,10 @@ exported TypeScript types and runtime validators are authoritative.
 
 ## Registration
 
-Use `defineJuniorPlugin({ manifest, hooks, tasks, cli, model })`. A plugin name
-is a lowercase identifier and is unique within the enabled app plugin set.
+Use
+`defineJuniorPlugin({ manifest, hooks, tasks, cli, model, conversationEvents })`.
+A plugin name is a lowercase identifier and is unique within the enabled app
+plugin set.
 
 Packages with JavaScript registration export one callable factory named
 `<domain>Plugin`, such as `githubPlugin(options?)`. Do not use a public
@@ -68,6 +70,11 @@ routing, response validation, rendering, confirmation, and query state.
   repeatedly.
 - Background tasks are registered by name, receive validated parameters, and
   execute through the host queue/callback lifecycle.
+- Conversation-bound background tasks may emit registered structured events
+  through `ctx.events`. Define each version with `defineConversationEvent()`;
+  the host supplies the plugin namespace, conversation, turn, ordering, and
+  timestamps. Event definitions return bounded transcript presentation data,
+  while Junior owns browser rendering.
 - `ctx.agent.dispatch` creates durable agent work with an explicit actor,
   destination, source, metadata, and idempotency identity.
 - Delegated credential subjects declare the narrow action that authorized them.
@@ -75,6 +82,15 @@ routing, response validation, rendering, confirmation, and query state.
   scheduler plugin and are bound to the exact task id.
 - Completed dispatch and task projections are durable plugin inputs, not an
   invitation to inspect unrestricted conversation state.
+
+## Conversation Events
+
+Register plugin-owned event definitions through `conversationEvents`. A
+definition owns one local name, version, content schema, and `renderEvent()`
+projection. The active plugin context supplies the namespace, so plugins cannot
+emit native events or impersonate another plugin. Stored events remain durable
+when a plugin is removed, but normal transcript projection skips definitions
+that are not currently registered.
 
 ## Database
 

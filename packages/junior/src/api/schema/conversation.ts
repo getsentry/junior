@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
-import { conversationAnnotationInputSchema } from "@sentry/junior-plugin-api";
+import {
+  conversationAnnotationInputSchema,
+  conversationEventPresentationSchema,
+} from "@sentry/junior-plugin-api";
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -258,6 +261,17 @@ const conversationReportTurnContextEventDataSchema = z
   })
   .strict();
 
+const conversationReportPluginEventDataSchema = z
+  .object({
+    type: z.literal("plugin_event"),
+    namespace: z.string().min(1),
+    name: z.string().min(1),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1),
+    presentation: conversationEventPresentationSchema,
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -311,6 +325,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportToolCallsEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
+  conversationReportPluginEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,

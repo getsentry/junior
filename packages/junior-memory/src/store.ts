@@ -248,6 +248,8 @@ export type CreateMemoryInput = z.output<typeof createMemoryInputSchema>;
 /** Result of a memory write after idempotency checks. */
 export interface CreateMemoryResult {
   created: boolean;
+  /** True when this call found the memory previously written for the same input identity. */
+  idempotent?: true;
   memory: MemoryRecord;
 }
 
@@ -1189,7 +1191,7 @@ export function createMemoryStore(
           memoryId: idempotent.id,
           nowMs,
         });
-        return { created: false, memory: idempotent };
+        return { created: false, idempotent: true, memory: idempotent };
       }
     }
 
@@ -1342,7 +1344,7 @@ export function createMemoryStore(
       memoryId: idempotent.id,
       nowMs,
     });
-    return { created: false, memory: idempotent };
+    return { created: false, idempotent: true, memory: idempotent };
   }
 
   async function retrieveVisibleMemories(

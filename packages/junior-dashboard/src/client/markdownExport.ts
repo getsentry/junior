@@ -152,6 +152,21 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "plugin_event") {
+      lines.push("", `### ${entry.part.presentation.title}`);
+      if (entry.part.presentation.preview) {
+        lines.push("", entry.part.presentation.preview);
+      }
+      for (const detail of entry.part.presentation.details ?? []) {
+        lines.push("", `- ${detail.title}`);
+        if (detail.description) lines.push(`  ${detail.description}`);
+        if (detail.metadata?.length) {
+          lines.push(`  ${detail.metadata.join(" · ")}`);
+        }
+      }
+      continue;
+    }
+
     appendTool(lines, conversationTranscript, entry.part, entry.timestamp);
   }
 }

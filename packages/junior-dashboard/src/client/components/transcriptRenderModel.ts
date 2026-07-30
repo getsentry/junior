@@ -1,6 +1,7 @@
 import type {
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
+  TranscriptViewPluginEventPart,
   TranscriptViewReasoningPart,
   TranscriptViewSubagentPart,
   TranscriptViewTextPart,
@@ -25,6 +26,13 @@ export type RenderedSubagentEntry = {
   key: string;
   kind: "subagent";
   part: TranscriptViewSubagentPart;
+  timestamp?: number;
+};
+
+export type RenderedPluginEventEntry = {
+  key: string;
+  kind: "plugin_event";
+  part: TranscriptViewPluginEventPart;
   timestamp?: number;
 };
 
@@ -54,6 +62,7 @@ export type RenderedTranscriptEntry =
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
+  | RenderedPluginEventEntry
   | RenderedReasoningEntry
   | RenderedSubagentEntry
   | RenderedToolEntry;
@@ -108,6 +117,13 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
+      } else if (part.type === "plugin_event") {
+        entries.push({
+          key: `${message.sourceSeq}:plugin-event:${part.namespace}:${part.name}`,
+          kind: "plugin_event",
+          part,
+          timestamp: message.timestamp,
+        });
       } else {
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
@@ -141,6 +157,19 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {
         return `subagent ${part.subagentKind}\nstatus ${part.status}`;
+      }
+      if (part.type === "plugin_event") {
+        return [
+          part.presentation.title,
+          part.presentation.preview,
+          ...(part.presentation.details ?? []).flatMap((detail) => [
+            detail.title,
+            detail.description,
+            ...(detail.metadata ?? []),
+          ]),
+        ]
+          .filter((line): line is string => line !== undefined)
+          .join("\n");
       }
       if (part.event.type !== "handoff") {
         return ["context compacted", part.event.summary]

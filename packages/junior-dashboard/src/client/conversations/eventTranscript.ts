@@ -238,6 +238,21 @@ export function conversationTranscriptMessages(
       continue;
     }
 
+    if (data.type === "plugin_event") {
+      messages.push(
+        eventMessage(event, "system", [
+          {
+            type: "plugin_event",
+            namespace: data.namespace,
+            name: data.name,
+            version: data.version,
+            presentation: data.presentation,
+          },
+        ]),
+      );
+      continue;
+    }
+
     if (data.type === "compaction" || data.type === "handoff") {
       messages.push(
         eventMessage(event, "system", [

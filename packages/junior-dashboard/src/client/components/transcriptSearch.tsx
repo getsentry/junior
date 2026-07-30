@@ -161,6 +161,19 @@ export function entryMatchesSearch(
     );
   }
 
+  if (entry.kind === "plugin_event") {
+    const presentation = entry.part.presentation;
+    return [
+      presentation.title,
+      presentation.preview,
+      ...(presentation.details ?? []).flatMap((detail) => [
+        detail.title,
+        detail.description,
+        ...(detail.metadata ?? []),
+      ]),
+    ].some((value) => textContains(value, normalizedQuery));
+  }
+
   if (entry.kind === "context") {
     const event = entry.part.event;
     return event.type === "handoff"

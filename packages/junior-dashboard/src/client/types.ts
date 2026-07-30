@@ -9,6 +9,7 @@ import type {
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
 export type TranscriptViewTextPart =
@@ -68,8 +69,17 @@ export type TranscriptViewContextEventPart = {
   type: "context_event";
 };
 
+export type TranscriptViewPluginEventPart = {
+  name: string;
+  namespace: string;
+  presentation: ConversationEventPresentation;
+  type: "plugin_event";
+  version: number;
+};
+
 export type TranscriptViewPart =
   | TranscriptViewContextEventPart
+  | TranscriptViewPluginEventPart
   | TranscriptViewReasoningPart
   | TranscriptViewSubagentPart
   | TranscriptViewTextPart

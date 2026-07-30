@@ -359,6 +359,17 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.status,
     ].join(":");
   }
+  if (part.type === "plugin_event") {
+    return [
+      part.type,
+      part.namespace,
+      part.name,
+      part.version,
+      part.presentation.title,
+      part.presentation.preview ?? "",
+      part.presentation.details?.length ?? 0,
+    ].join(":");
+  }
   return [part.type, part.event.type, part.event.createdAt].join(":");
 }
 

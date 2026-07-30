@@ -5,6 +5,7 @@
  * scheduling, queue delivery, retries, and the bounded run projection.
  */
 import { z } from "zod";
+import type { PluginConversationEvents } from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
 import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
@@ -81,6 +82,7 @@ export type PluginRunContext = z.output<typeof pluginRunContextSchema>;
 /** Runtime context passed to a plugin-owned background task. */
 export interface PluginTaskContext extends PluginContext {
   embedder: PluginEmbedder;
+  events: PluginConversationEvents;
   id: string;
   model: PluginModel;
   name: string;

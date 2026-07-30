@@ -1,4 +1,5 @@
 import type { PluginCliDefinition } from "./cli";
+import type { PluginConversationEventDefinition } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
@@ -13,6 +14,7 @@ export interface PluginModelConfig {
 
 export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
+  conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
   manifest: PluginManifest;
   model?: PluginModelConfig;
@@ -71,6 +73,34 @@ export function defineJuniorPlugin(
   }
   if (plugin.userPages !== undefined && !Array.isArray(plugin.userPages)) {
     throw new Error(`Junior plugin "${name}" userPages must be an array.`);
+  }
+  if (
+    plugin.conversationEvents !== undefined &&
+    !Array.isArray(plugin.conversationEvents)
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" conversationEvents must be an array.`,
+    );
+  }
+  const conversationEventIds = new Set<string>();
+  for (const event of plugin.conversationEvents ?? []) {
+    if (
+      !event ||
+      (typeof event !== "object" && typeof event !== "function") ||
+      typeof event.parse !== "function" ||
+      typeof event.renderEvent !== "function"
+    ) {
+      throw new Error(
+        `Junior plugin "${name}" conversation event definitions must be created with defineConversationEvent().`,
+      );
+    }
+    const id = `${event.eventName}@${event.version}`;
+    if (conversationEventIds.has(id)) {
+      throw new Error(
+        `Junior plugin "${name}" has duplicate conversation event "${id}".`,
+      );
+    }
+    conversationEventIds.add(id);
   }
   const userPageIds = new Set<string>();
   for (const page of plugin.userPages ?? []) {

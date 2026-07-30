@@ -268,6 +268,17 @@ const turnContextEventDataSchema = z
   })
   .strict();
 
+const pluginConversationEventDataSchema = z
+  .object({
+    type: z.literal("plugin_event"),
+    namespace: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    name: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1),
+    content: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -328,6 +339,7 @@ const appendableConversationEventDataSchema = z.union([
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
   turnContextEventDataSchema,
+  pluginConversationEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -363,6 +375,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "messages_summarized",
   "turn_started",
   "turn_context",
+  "plugin_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",

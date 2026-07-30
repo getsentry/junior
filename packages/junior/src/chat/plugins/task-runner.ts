@@ -19,6 +19,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -394,6 +395,12 @@ function taskPluginContext(
     db: getDb(),
     embedder: createPluginEmbedder(pluginName, {
       signal: options.signal,
+    }),
+    events: createPluginConversationEvents({
+      conversationId: sessionParams.conversationId,
+      operationId: pluginTaskId(message),
+      plugin,
+      turnId: sessionParams.sessionId,
     }),
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
