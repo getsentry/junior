@@ -36,7 +36,36 @@ export const memoryListResponseSchema = z
   })
   .strict();
 
+const memoryDashboardDaySchema = z
+  .object({
+    date: z.iso.date(),
+    knowledge: z.number().int().min(0),
+    preference: z.number().int().min(0),
+    procedure: z.number().int().min(0),
+  })
+  .strict();
+
+export const memoryDashboardResponseSchema = z
+  .object({
+    days: z.array(memoryDashboardDaySchema).length(90),
+    generatedAt: z.iso.datetime(),
+    stats: z
+      .object({
+        active: z.number().int().min(0),
+        createdThirtyDays: z.number().int().min(0),
+        embedded: z.number().int().min(0),
+        knowledge: z.number().int().min(0),
+        preference: z.number().int().min(0),
+        procedure: z.number().int().min(0),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type MemoryApi = z.output<typeof memoryApiSchema>;
+export type MemoryDashboardResponse = z.output<
+  typeof memoryDashboardResponseSchema
+>;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
 
 const memoryListQuerySchema = z
@@ -94,13 +123,35 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
       const isCollection = url.pathname === "/memories";
-      if (!isCollection && !memoryPath) {
+      const isDashboard = url.pathname === "/dashboard";
+      if (!isCollection && !isDashboard && !memoryPath) {
         return json({ error: "Not found." }, 404);
       }
 
       const actors = await options.actors(email);
       const memories = createViewerMemories(options.db, actors);
       try {
+        if (
+          isDashboard &&
+          (request.method === "GET" || request.method === "HEAD")
+        ) {
+          const [stats, days] = await Promise.all([
+            memories.stats(),
+            memories.timeline({ days: 90 }),
+          ]);
+          const body = memoryDashboardResponseSchema.parse({
+            days,
+            generatedAt: new Date().toISOString(),
+            stats,
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
         if (
           isCollection &&
           (request.method === "GET" || request.method === "HEAD")

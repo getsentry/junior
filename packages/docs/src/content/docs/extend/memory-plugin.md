@@ -76,6 +76,7 @@ The plugin also exposes authenticated REST resources:
 
 | Method   | Path                               | Purpose                                       |
 | -------- | ---------------------------------- | --------------------------------------------- |
+| `GET`    | `/api/plugins/memory/dashboard`    | Read viewer-scoped memory totals and timeline |
 | `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
 | `GET`    | `/api/plugins/memory/memories/:id` | Read one personal memory                      |
 | `DELETE` | `/api/plugins/memory/memories/:id` | Forget one personal memory                    |

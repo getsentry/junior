@@ -128,30 +128,6 @@ export async function mockDashboardApis(page: Page) {
       json: {
         type: "list",
         emptyText: "No personal memories yet.",
-        metrics: [
-          {
-            detail: "1 added in the last 30 days",
-            label: "Active memories",
-            tone: "good",
-            value: "1",
-          },
-          {
-            detail: "How Junior adapts to you",
-            label: "Preferences",
-            value: "1",
-          },
-          {
-            detail: "0 procedures",
-            label: "Knowledge",
-            value: "0",
-          },
-          {
-            detail: "1 of 1 searchable by meaning",
-            label: "Search ready",
-            tone: "good",
-            value: "100%",
-          },
-        ],
         searchPlaceholder: "Search memories",
         records: [
           {
@@ -188,6 +164,32 @@ export async function mockDashboardApis(page: Page) {
             metadata: [{ label: "Schedule", value: "Every Monday" }],
           },
         ],
+      },
+    });
+  });
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    const start = Date.parse("2026-05-02T00:00:00.000Z");
+    const days = Array.from({ length: 90 }, (_, index) => {
+      const date = new Date(start + index * 24 * 60 * 60 * 1_000);
+      return {
+        date: date.toISOString().slice(0, 10),
+        knowledge: index % 13 === 0 ? 2 : index % 6 === 0 ? 1 : 0,
+        preference: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
+        procedure: index % 17 === 0 ? 1 : 0,
+      };
+    });
+    await route.fulfill({
+      json: {
+        days,
+        generatedAt: "2026-07-30T12:00:00.000Z",
+        stats: {
+          active: 24,
+          createdThirtyDays: 14,
+          embedded: 23,
+          knowledge: 8,
+          preference: 11,
+          procedure: 5,
+        },
       },
     });
   });

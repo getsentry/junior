@@ -47,6 +47,11 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByText("Active memories", { exact: true }),
   ).toBeVisible();
+  const thirtyDays = page.getByRole("button", { name: "30d" });
+  const ninetyDays = page.getByRole("button", { name: "90d" });
+  await expect(thirtyDays).toHaveAttribute("aria-pressed", "true");
+  await ninetyDays.click();
+  await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
   const navLinks = await page.locator("header nav a").allTextContents();
   expect(navLinks.at(-1)?.trim()).toBe("System");
   expect(browserErrors).toEqual([]);

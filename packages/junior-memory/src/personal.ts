@@ -119,5 +119,8 @@ export function createViewerMemories(
     async stats() {
       return await collection.stats();
     },
+    async timeline(input: { days: number }) {
+      return await collection.timeline(input);
+    },
   };
 }

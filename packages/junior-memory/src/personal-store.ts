@@ -31,6 +31,12 @@ const personalMemoryPageInputSchema = z
     query: z.string().max(200).optional(),
   })
   .strict();
+const personalMemoryTimelineInputSchema = z
+  .object({
+    days: z.number().int().min(1).max(365),
+  })
+  .strict();
+const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export type PersonalMemoryCursor = z.output<typeof personalMemoryCursorSchema>;
 
@@ -48,6 +54,14 @@ export interface PersonalMemoryStats {
   active: number;
   createdThirtyDays: number;
   embedded: number;
+  knowledge: number;
+  preference: number;
+  procedure: number;
+}
+
+/** Viewer-scoped memory creation totals for one UTC calendar day. */
+export interface PersonalMemoryDay {
+  date: string;
   knowledge: number;
   preference: number;
   procedure: number;
@@ -71,6 +85,8 @@ export interface PersonalMemoryCollection {
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
   /** Summarize active memories across every linked personal scope. */
   stats(): Promise<PersonalMemoryStats>;
+  /** Read memory creation history across every linked personal scope. */
+  timeline(input: { days: number }): Promise<PersonalMemoryDay[]>;
 }
 
 function personalScopes(
@@ -84,6 +100,22 @@ function personalScopes(
       }),
     ).values(),
   ];
+}
+
+function personalScopePredicate(scopes: ResolvedMemoryScope[]) {
+  if (scopes.length === 0) return undefined;
+  return or(
+    ...scopes.map((scope) =>
+      and(
+        eq(juniorMemoryMemories.scope, scope.scope),
+        eq(juniorMemoryMemories.scopeKey, scope.scopeKey),
+      ),
+    ),
+  );
+}
+
+function utcDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 function searchTerms(query: string): string[] {
@@ -256,6 +288,57 @@ export function createPersonalMemoryCollection(
         preference: counts?.preference ?? 0,
         procedure: counts?.procedure ?? 0,
       };
+    },
+
+    async timeline(input) {
+      input = personalMemoryTimelineInputSchema.parse(input);
+      const todayMs = Date.parse(`${utcDate(getNowMs())}T00:00:00.000Z`);
+      const startMs = todayMs - (input.days - 1) * DAY_MS;
+      const ownership = personalScopePredicate(scopes);
+      if (!ownership) {
+        return Array.from({ length: input.days }, (_, index) => ({
+          date: utcDate(startMs + index * DAY_MS),
+          knowledge: 0,
+          preference: 0,
+          procedure: 0,
+        }));
+      }
+      const rows = await db
+        .select({
+          date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
+            "date",
+          ),
+          knowledge:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
+              Number,
+            ),
+          preference:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
+              Number,
+            ),
+          procedure:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
+              Number,
+            ),
+        })
+        .from(juniorMemoryMemories)
+        .where(
+          and(ownership, gt(juniorMemoryMemories.createdAtMs, startMs - 1)),
+        )
+        .groupBy(
+          sql`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
+        );
+      const byDate = new Map(rows.map((row) => [row.date, row]));
+      return Array.from({ length: input.days }, (_, index) => {
+        const date = utcDate(startMs + index * DAY_MS);
+        const row = byDate.get(date);
+        return {
+          date,
+          knowledge: row?.knowledge ?? 0,
+          preference: row?.preference ?? 0,
+          procedure: row?.procedure ?? 0,
+        };
+      });
     },
   };
 }

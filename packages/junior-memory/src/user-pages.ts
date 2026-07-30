@@ -31,54 +31,17 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
         ctx.db as MemoryDb,
         ctx.viewer.actors,
       );
-      const [page, stats] = await Promise.all([
-        memories.list({
-          cursor: input.cursor,
-          limit: input.limit,
-          ...(input.query ? { query: input.query } : {}),
-        }),
-        memories.stats(),
-      ]);
-      const embeddingCoverage =
-        stats.active === 0 ? 0 : stats.embedded / stats.active;
+      const page = await memories.list({
+        cursor: input.cursor,
+        limit: input.limit,
+        ...(input.query ? { query: input.query } : {}),
+      });
       return {
         type: "list",
         emptyText: input.query
           ? "No memories matched your search."
           : "No personal memories yet.",
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-        metrics: [
-          {
-            detail: `${stats.createdThirtyDays} added in the last 30 days`,
-            label: "Active memories",
-            tone: stats.active > 0 ? ("good" as const) : ("neutral" as const),
-            value: stats.active.toLocaleString("en-US"),
-          },
-          {
-            detail: "How Junior adapts to you",
-            label: "Preferences",
-            value: stats.preference.toLocaleString("en-US"),
-          },
-          {
-            detail: `${stats.procedure.toLocaleString("en-US")} procedures`,
-            label: "Knowledge",
-            value: stats.knowledge.toLocaleString("en-US"),
-          },
-          {
-            detail: `${stats.embedded.toLocaleString("en-US")} of ${stats.active.toLocaleString("en-US")} searchable by meaning`,
-            label: "Search ready",
-            tone:
-              stats.active === 0
-                ? ("neutral" as const)
-                : stats.embedded === stats.active
-                  ? ("good" as const)
-                  : ("warning" as const),
-            value: new Intl.NumberFormat("en-US", {
-              maximumFractionDigits: 0,
-              style: "percent",
-            }).format(embeddingCoverage),
-          },
-        ],
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
           actions: [

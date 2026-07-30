@@ -7,14 +7,10 @@ import {
   Copy,
   Database,
   Search,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type {
-  PluginUserPageContent,
-  PluginUserPageLink,
-} from "@sentry/junior-plugin-api";
+import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
@@ -29,6 +25,11 @@ import {
   dashboardContainerClass,
   dashboardInteractiveTextClass,
 } from "../../styles";
+import {
+  type MemoryDashboardData,
+  useMemoryDashboardData,
+} from "./memoryDashboard";
+import { MemoryTimeline } from "./MemoryTimeline";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -41,6 +42,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
     searchText,
     setSearchText,
   } = usePluginUserPageData(props.page);
+  const dashboardQuery = useMemoryDashboardData();
   const [selectedRecordId, setSelectedRecordId] = useState<string>();
   const selectedRecord =
     records.find((record) => record.id === selectedRecordId) ?? records[0];
@@ -68,16 +70,24 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
         title={props.page.label}
       />
 
-      {content?.metrics?.length ? (
+      {dashboardQuery.data ? (
         <section
           aria-label="Memory overview"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]"
         >
-          {content.metrics.map((metric, index) => (
-            <MemoryMetric key={metric.label} index={index} metric={metric} />
-          ))}
+          <MemoryTimeline days={dashboardQuery.data.days} />
+          <MemoryAtAGlance data={dashboardQuery.data} />
         </section>
-      ) : null}
+      ) : dashboardQuery.error ? (
+        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
+          <CircleAlert aria-hidden="true" size={18} />
+          Memory history is temporarily unavailable.
+        </Card>
+      ) : (
+        <Card className="min-h-[21rem] animate-pulse">
+          <span className="sr-only">Loading memory history</span>
+        </Card>
+      )}
 
       <section className="grid gap-4" aria-labelledby="memory-library-title">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -166,33 +176,75 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   );
 }
 
-function MemoryMetric(props: {
-  index: number;
-  metric: NonNullable<PluginUserPageContent["metrics"]>[number];
-}) {
-  const icons = [BrainCircuit, Sparkles, Database, Search];
-  const Icon = icons[props.index % icons.length] ?? Database;
-  const tone = {
-    good: "border-emerald-300/15 bg-emerald-300/[0.035] text-emerald-200",
-    neutral: "border-white/[0.07] bg-[#09090b]/85 text-dashboard-text",
-    warning: "border-amber-300/18 bg-amber-300/[0.04] text-amber-100",
-  }[props.metric.tone ?? "neutral"];
+function MemoryAtAGlance(props: { data: MemoryDashboardData }) {
+  const { stats } = props.data;
+  const coverage = stats.active === 0 ? 0 : stats.embedded / stats.active;
+  const mix = [
+    { color: "bg-cyan-300", label: "Preferences", value: stats.preference },
+    { color: "bg-amber-300", label: "Procedures", value: stats.procedure },
+    { color: "bg-violet-300", label: "Knowledge", value: stats.knowledge },
+  ];
   return (
-    <Card className={cn("relative p-4 sm:p-5", tone)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="font-mono text-[0.6rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-          {props.metric.label}
-        </div>
-        <Icon aria-hidden="true" className="opacity-55" size={15} />
+    <Card className="grid content-start p-5 sm:p-6">
+      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        At a glance
       </div>
-      <div className="mt-4 font-display text-3xl font-light leading-none tracking-[-0.04em] sm:text-[2.1rem]">
-        {props.metric.value}
-      </div>
-      {props.metric.detail ? (
-        <div className="mt-2 font-mono text-[0.65rem] leading-relaxed text-dashboard-text-muted">
-          {props.metric.detail}
+      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] lg:grid-cols-1">
+        <div className="bg-[#09090b] p-4">
+          <div className="font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text">
+            {stats.active.toLocaleString("en-US")}
+          </div>
+          <div className="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+            Active memories
+          </div>
+          <div className="mt-2 font-mono text-[0.62rem] text-emerald-200/70">
+            +{stats.createdThirtyDays.toLocaleString("en-US")} in 30 days
+          </div>
         </div>
-      ) : null}
+        <div className="bg-[#09090b] p-4">
+          <div className="font-display text-3xl font-light tracking-[-0.04em] text-emerald-200">
+            {new Intl.NumberFormat("en-US", {
+              maximumFractionDigits: 0,
+              style: "percent",
+            }).format(coverage)}
+          </div>
+          <div className="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+            Search ready
+          </div>
+          <div className="mt-2 font-mono text-[0.62rem] text-dashboard-text-muted">
+            {stats.embedded.toLocaleString("en-US")} embedded
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-white/[0.06] pt-4">
+        <h3 className="m-0 font-display text-base font-medium text-dashboard-text">
+          Memory mix
+        </h3>
+        <div className="mt-3 grid gap-3">
+          {mix.map((item) => (
+            <div key={item.label}>
+              <div className="flex items-center justify-between gap-3 font-mono text-[0.62rem]">
+                <span className="inline-flex items-center gap-2 text-dashboard-text-muted">
+                  <i className={cn("size-2 rounded-sm", item.color)} />
+                  {item.label}
+                </span>
+                <span className="text-dashboard-text">
+                  {item.value.toLocaleString("en-US")}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className={cn("h-full rounded-full opacity-80", item.color)}
+                  style={{
+                    width: `${stats.active === 0 ? 0 : Math.max(3, (item.value / stats.active) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }

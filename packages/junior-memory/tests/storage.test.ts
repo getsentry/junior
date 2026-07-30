@@ -26,6 +26,7 @@ import * as memorySqlSchema from "../src/db/schema";
 import {
   createMemoryApi,
   memoryApiSchema,
+  memoryDashboardResponseSchema,
   memoryListResponseSchema,
 } from "../src/api";
 import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
@@ -2086,30 +2087,6 @@ ORDER BY created_at_ms ASC
       expect(pluginUserPageContentSchema.parse(memoryContent)).toEqual({
         type: "list",
         emptyText: "No personal memories yet.",
-        metrics: [
-          {
-            detail: "0 added in the last 30 days",
-            label: "Active memories",
-            tone: "good",
-            value: "1",
-          },
-          {
-            detail: "How Junior adapts to you",
-            label: "Preferences",
-            value: "1",
-          },
-          {
-            detail: "0 procedures",
-            label: "Knowledge",
-            value: "0",
-          },
-          {
-            detail: "0 of 1 searchable by meaning",
-            label: "Search ready",
-            tone: "warning",
-            value: "0%",
-          },
-        ],
         searchPlaceholder: "Search memories",
         records: [
           {
@@ -2149,30 +2126,6 @@ ORDER BY created_at_ms ASC
       ).resolves.toEqual({
         type: "list",
         emptyText: "No personal memories yet.",
-        metrics: [
-          {
-            detail: "0 added in the last 30 days",
-            label: "Active memories",
-            tone: "neutral",
-            value: "0",
-          },
-          {
-            detail: "How Junior adapts to you",
-            label: "Preferences",
-            value: "0",
-          },
-          {
-            detail: "0 procedures",
-            label: "Knowledge",
-            value: "0",
-          },
-          {
-            detail: "0 of 0 searchable by meaning",
-            label: "Search ready",
-            tone: "neutral",
-            value: "0%",
-          },
-        ],
         searchPlaceholder: "Search memories",
         records: [],
       });
@@ -2334,6 +2287,28 @@ ORDER BY created_at_ms ASC
       expect(memoryApiSchema.parse(await detailResponse.json())).toMatchObject({
         content: "Prefers concise release notes.",
         id: first.memory.id,
+      });
+
+      const dashboardResponse = await api.fetch(
+        new Request("http://localhost/dashboard"),
+        requestContext,
+      );
+      expect(dashboardResponse.status).toBe(200);
+      const dashboard = memoryDashboardResponseSchema.parse(
+        await dashboardResponse.json(),
+      );
+      expect(dashboard.stats).toMatchObject({
+        active: 2,
+        knowledge: 1,
+        preference: 1,
+        procedure: 0,
+      });
+      expect(dashboard.days).toHaveLength(90);
+      expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
+        date: "2026-06-19",
+        knowledge: 1,
+        preference: 1,
+        procedure: 0,
       });
 
       const deleteResponse = await api.fetch(
