@@ -20,6 +20,7 @@ import type {
   SlackConversationLinkHookContext,
 } from "./operations";
 import type {
+  AfterMcpToolHookContext,
   BeforeToolExecuteHookContext,
   PluginToolDefinition,
   SandboxPrepareHookContext,
@@ -43,6 +44,13 @@ export interface PluginHooks {
     | UserPromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  /**
+   * Run after a successful hosted MCP tool call on the lazy model path.
+   *
+   * Prefer this for junior-owned side effects such as conversation annotations.
+   * Do not use it to invent a parallel tool contract for the provider tool.
+   */
+  afterMcpTool?(ctx: AfterMcpToolHookContext): Promise<void> | void;
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;

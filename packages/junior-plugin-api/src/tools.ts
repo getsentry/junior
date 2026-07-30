@@ -153,6 +153,31 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   };
 }
 
+/**
+ * Context for post-success MCP tool processing.
+ *
+ * Runs after a hosted MCP tool succeeds on the model-facing lazy path
+ * (`searchMcpTools` / `callMcpTool`). Use for junior-owned side effects such as
+ * conversation annotations without replacing the provider tool contract.
+ */
+export interface AfterMcpToolHookContext extends PluginContext {
+  /**
+   * Opaque Junior conversation/session identity for this turn.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   */
+  conversationId?: string;
+  annotations?: PluginAnnotations;
+  result: {
+    content: PluginMcpContent[];
+    structuredContent?: unknown;
+  };
+  tool: {
+    arguments: Record<string, unknown>;
+    /** Provider-local MCP tool name, for example `save_issue`. */
+    name: string;
+  };
+}
+
 export interface PluginToolExecuteOptions {
   /**
    * @deprecated Internal compatibility escape hatch for legacy tool bridges.

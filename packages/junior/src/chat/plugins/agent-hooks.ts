@@ -5,6 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type {
   PluginMcp,
+  PluginMcpContent,
   PluginReadState,
   PluginRoute,
   PluginRouteMethod,
@@ -69,7 +70,19 @@ export interface PluginApiRouteRegistration {
   pluginName: string;
 }
 
+export interface AfterMcpToolHookInput {
+  arguments: Record<string, unknown>;
+  conversationId?: string;
+  provider: string;
+  result: {
+    content: PluginMcpContent[];
+    structuredContent?: unknown;
+  };
+  toolName: string;
+}
+
 export interface PluginHookRunner {
+  afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
 }
@@ -1155,6 +1168,50 @@ export function createPluginHookRunner(
   const loaded = getPlugins();
 
   return {
+    async afterMcpTool(tool) {
+      for (const plugin of loaded) {
+        if (plugin.manifest.name !== tool.provider) {
+          continue;
+        }
+        const hook = plugin.hooks?.afterMcpTool;
+        if (!hook) {
+          continue;
+        }
+        const annotations = tool.conversationId
+          ? createPluginAnnotations({
+              conversationId: tool.conversationId,
+              db: getDb(),
+              plugin: plugin.manifest.name,
+            })
+          : undefined;
+        try {
+          await hook({
+            ...basePluginContext(plugin),
+            ...(tool.conversationId
+              ? { conversationId: tool.conversationId }
+              : {}),
+            ...(annotations ? { annotations } : {}),
+            result: {
+              content: tool.result.content,
+              ...(tool.result.structuredContent !== undefined
+                ? { structuredContent: tool.result.structuredContent }
+                : {}),
+            },
+            tool: {
+              arguments: tool.arguments,
+              name: tool.toolName,
+            },
+          });
+        } catch (error) {
+          logWarn("agent.plugin.after_mcp_tool.failed", {
+            "app.plugin.name": plugin.manifest.name,
+            "gen_ai.tool.name": tool.toolName,
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    },
     async prepareSandbox(sandbox) {
       const sandboxCapability = createSandboxCapability(sandbox);
       for (const plugin of loaded) {

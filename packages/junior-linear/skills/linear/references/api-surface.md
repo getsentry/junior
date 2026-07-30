@@ -21,8 +21,8 @@ The current public docs describe support for finding, creating, and updating obj
 | Intent               | Minimum tool pattern                                                                                                         |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Inspect an issue     | Resolve the issue by key, URL, or search query, then fetch current state before answering.                                   |
-| Create an issue      | Confirm the team first, then create the issue with grounded title/body content and only the optional fields you can justify. |
-| Update fields        | Fetch current issue state first, then mutate only the requested fields.                                                      |
+| Create an issue      | Confirm the team first, then create via the live hosted MCP issue tool (`save_issue`) with grounded title/body content and only fields justified by the schema. |
+| Update fields        | Fetch current issue state first, then mutate via the live hosted MCP issue tool with only the requested fields.                                                      |
 | Add a comment        | Resolve the exact issue first, then add a concise comment with durable links and next steps.                                 |
 | Move state or assign | Read the current issue and team workflow first when state, workflow, or assignee ambiguity could cause the wrong mutation.   |
 | Check for duplicates | Search for an existing matching issue before opening a new one when the request appears related to ongoing work.             |

@@ -40,7 +40,7 @@ export const plugins = defineJuniorPlugins([linearPlugin()]);
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 - The packaged plugin is optimized for interactive user-driven work in Slack rather than unattended background automation.
 
-Junior creates and updates issues through native `linear_createIssue` and `linear_updateIssue` tools backed by the hosted MCP connection. The create tool links created issues to the Junior conversation. Reads, comments, and other workflow operations continue to use Linear's hosted MCP tools.
+Junior uses Linear's hosted MCP tools for reads and writes. When an issue is created through that path, Junior links it to the current conversation.
 
 ## Optional channel defaults
 

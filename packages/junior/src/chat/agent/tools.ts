@@ -217,6 +217,12 @@ export async function wireAgentTools(
     {
       authProviderFactory: mcpAuth.authProviderFactory,
       onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      onToolSuccess: async (input) => {
+        await pluginHooks.afterMcpTool({
+          ...input,
+          conversationId: args.conversationId,
+        });
+      },
     },
   );
   const getPendingAuthPause = () =>

@@ -257,6 +257,17 @@ function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
   return "MCP tool call failed";
 }
 
+export interface McpToolSuccessHookInput {
+  arguments: Record<string, unknown>;
+  conversationId?: string;
+  provider: string;
+  result: {
+    content: Array<TextContent | ImageContent>;
+    structuredContent?: unknown;
+  };
+  toolName: string;
+}
+
 export interface McpToolManagerOptions {
   authProviderFactory?: (
     plugin: PluginDefinition,
@@ -269,6 +280,13 @@ export interface McpToolManagerOptions {
     provider: string,
     error: McpAuthorizationRequiredError,
   ) => Promise<boolean | void> | boolean | void;
+  /**
+   * Optional post-success processor for model-facing MCP tool calls.
+   * Failures are logged by the host caller and must not fail the tool result.
+   */
+  onToolSuccess?: (
+    input: McpToolSuccessHookInput,
+  ) => Promise<void> | void;
 }
 
 export interface ManagedMcpToolResult {
@@ -576,13 +594,36 @@ export class McpToolManager {
               const providerContent = boundMcpContent(
                 toAgentToolContent(result),
               );
-              return {
+              const successResult = {
                 content: toModelVisibleMcpContent(result),
                 providerContent,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
                   : {}),
               };
+              if (this.options.onToolSuccess) {
+                try {
+                  await this.options.onToolSuccess({
+                    arguments: resolvedArgs,
+                    provider: plugin.manifest.name,
+                    result: {
+                      content: providerContent,
+                      ...(result.structuredContent !== undefined
+                        ? { structuredContent: result.structuredContent }
+                        : {}),
+                    },
+                    toolName: tool.name,
+                  });
+                } catch (error) {
+                  logWarn("mcp.tool_success_hook.failed", {
+                    "app.plugin.name": plugin.manifest.name,
+                    "gen_ai.tool.name": managedToolName,
+                    "exception.message":
+                      error instanceof Error ? error.message : String(error),
+                  });
+                }
+              }
+              return successResult;
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&

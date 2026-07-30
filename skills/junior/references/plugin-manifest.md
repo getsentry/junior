@@ -108,7 +108,10 @@ mcp: {
 - Durable mutation wrappers must clear pending idempotency state for
   `authorization_pending` and `error` results, but retain it after a thrown
   transport failure whose provider outcome is uncertain. See
-  `packages/junior-linear/src/tools/create-issue.ts` for an example.
+  `packages/junior-github/src/tools/create-issue.ts` for an example.
+- Prefer `afterMcpTool` when the only junior-owned work is a post-success side
+  effect such as conversation annotations. Keep `wrappedTools` for cases that
+  need a different product verb, idempotency, or a non-provider contract.
 
 ## Parser traps
 

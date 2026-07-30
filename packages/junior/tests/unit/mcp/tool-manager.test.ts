@@ -540,6 +540,68 @@ describe("McpToolManager", () => {
     );
   });
 
+  it("invokes onToolSuccess after a successful model-facing MCP call", async () => {
+    const plugin = buildPlugin();
+    const onToolSuccess = vi.fn(async () => undefined);
+    listToolsMock.mockResolvedValue([
+      {
+        name: "save_issue",
+        description: "Create or update an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ]);
+    callToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "Created ENG-123" }],
+      structuredContent: { identifier: "ENG-123" },
+      isError: false,
+    });
+    const manager = new McpToolManager([plugin], { onToolSuccess });
+    await manager.activateProvider("demo");
+
+    await manager.getResolvedActiveTools()[0]!.execute({
+      title: "Created via MCP",
+    });
+
+    expect(onToolSuccess).toHaveBeenCalledWith({
+      arguments: { title: "Created via MCP" },
+      provider: "demo",
+      result: {
+        content: [{ type: "text", text: "Created ENG-123" }],
+        structuredContent: { identifier: "ENG-123" },
+      },
+      toolName: "save_issue",
+    });
+    await manager.close();
+  });
+
+  it("keeps the MCP tool result when onToolSuccess fails", async () => {
+    const plugin = buildPlugin();
+    const onToolSuccess = vi.fn(async () => {
+      throw new Error("side effect failed");
+    });
+    listToolsMock.mockResolvedValue([
+      {
+        name: "save_issue",
+        description: "Create or update an issue",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ]);
+    callToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "Created ENG-123" }],
+      isError: false,
+    });
+    const manager = new McpToolManager([plugin], { onToolSuccess });
+    await manager.activateProvider("demo");
+
+    await expect(
+      manager.getResolvedActiveTools()[0]!.execute({ title: "Created via MCP" }),
+    ).resolves.toMatchObject({
+      content: [{ type: "text", text: "Created ENG-123" }],
+    });
+    expect(onToolSuccess).toHaveBeenCalledOnce();
+    await manager.close();
+  });
+
   it("hides wrapped tools from discovery but keeps them callable", async () => {
     const plugin = buildPlugin("linear", {
       allowedTools: ["get_issue"],

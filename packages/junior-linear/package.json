@@ -29,8 +29,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sentry/junior-plugin-api": "workspace:*",
-    "zod": "catalog:"
+    "@sentry/junior-plugin-api": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

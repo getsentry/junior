@@ -3,16 +3,18 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { linearPlugin } from "../../../junior-linear/src/index.js";
-import { createLocalSource } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import {
+  createPluginHookRunner,
+  setPlugins,
+} from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
 import { z } from "zod";
 
-describe("Linear native issue tools", () => {
+describe("Linear MCP create annotations", () => {
   let manager: McpToolManager | undefined;
   let transport: WebStandardStreamableHTTPServerTransport | undefined;
 
@@ -23,7 +25,7 @@ describe("Linear native issue tools", () => {
     transport = undefined;
   });
 
-  it("creates and updates through hosted MCP while hiding the raw tool", async () => {
+  it("annotates created issues from live save_issue calls and skips updates", async () => {
     const saveCalls: Array<Record<string, unknown>> = [];
     const server = new McpServer({ name: "linear-test", version: "1.0.0" });
     server.registerTool(
@@ -81,6 +83,9 @@ describe("Linear native issue tools", () => {
     );
 
     const registration = linearPlugin();
+    const previousPlugins = setPlugins([registration]);
+    const conversationId = "local:test:linear-mcp-create-annotations";
+    const pluginHooks = createPluginHookRunner();
     const manifest = parseInlinePluginManifest(
       {
         ...registration.manifest,
@@ -88,74 +93,54 @@ describe("Linear native issue tools", () => {
       },
       "/plugins/linear",
     );
-    manager = new McpToolManager([
+    manager = new McpToolManager(
+      [
+        {
+          dir: "/plugins/linear",
+          skillsDir: "/plugins/linear/skills",
+          manifest,
+        },
+      ],
       {
-        dir: "/plugins/linear",
-        skillsDir: "/plugins/linear/skills",
-        manifest,
+        onToolSuccess: async (input) => {
+          await pluginHooks.afterMcpTool({
+            ...input,
+            conversationId,
+          });
+        },
       },
-    ]);
-    const previousPlugins = setPlugins([registration]);
-    const conversationId = "local:test:linear-native-create";
+    );
+
     try {
       await getConversationStore().recordActivity({
         conversationId,
         nowMs: Date.now(),
         source: "local",
-        title: "Linear native create",
+        title: "Linear MCP create annotations",
       });
-      const tools = getPluginTools({
-        conversationId,
-        destination: { platform: "local", conversationId },
-        egress: {
-          async fetch() {
-            return new Response("unused");
-          },
-        },
-        mcpToolManager: manager,
-        source: createLocalSource(conversationId),
-        workspace: {} as never,
-      });
-      const createIssue = tools.linear_createIssue;
-      const updateIssue = tools.linear_updateIssue;
-      if (!createIssue?.execute || !updateIssue?.execute) {
-        throw new Error("Linear native issue tools are unavailable");
-      }
 
       expect(await manager.activateProvider("linear")).toBe(true);
-      expect(manager.getActiveToolCatalog()).toMatchObject([
-        { provider: "linear", rawName: "get_issue" },
+      const catalog = manager.getActiveToolCatalog();
+      expect(catalog.map((tool) => tool.rawName).sort()).toEqual([
+        "get_issue",
+        "save_issue",
       ]);
-      const input = {
+
+      const saveIssue = manager
+        .getResolvedActiveTools({ provider: "linear" })
+        .find((tool) => tool.rawName === "save_issue");
+      if (!saveIssue) {
+        throw new Error("save_issue is unavailable after activation");
+      }
+
+      const createInput = {
         team: "Engineering",
-        title: "Native Linear issue",
+        title: "Linear MCP create issue",
         description: "Create through the hosted MCP provider.",
         priority: "high",
         project: "Junior",
       } as const;
-
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-create" }),
-      ).resolves.toMatchObject({
-        content: [
-          {
-            type: "text",
-            text: "Created [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
-          },
-        ],
-        details: {
-          ok: true,
-          status: "success",
-          target: "createIssue",
-          issue: {
-            identifier: "ENG-123",
-            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
-          },
-        },
-      });
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-create" }),
-      ).resolves.toMatchObject({
+      await expect(saveIssue.execute(createInput)).resolves.toMatchObject({
         content: [
           {
             type: "text",
@@ -163,31 +148,6 @@ describe("Linear native issue tools", () => {
           },
         ],
       });
-
-      const updateInput = {
-        id: "ENG-123",
-        state: "In Progress",
-      };
-      expect(() =>
-        updateIssue.prepareArguments?.({ id: "ENG-123", state: null }),
-      ).toThrow("Invalid tool arguments: state:");
-      await expect(
-        updateIssue.execute(updateInput, { toolCallId: "call-update" }),
-      ).resolves.toMatchObject({
-        content: [
-          {
-            type: "text",
-            text: "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
-          },
-        ],
-        details: {
-          ok: true,
-          status: "success",
-          target: "updateIssue",
-        },
-      });
-
-      expect(saveCalls).toEqual([input, input, updateInput]);
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toMatchObject([
@@ -200,180 +160,138 @@ describe("Linear native issue tools", () => {
           url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
         },
       ]);
+
+      await expect(
+        saveIssue.execute({
+          id: "ENG-123",
+          state: "In Progress",
+        }),
+      ).resolves.toMatchObject({
+        content: [
+          {
+            type: "text",
+            text: "Updated [ENG-123](https://linear.app/acme/issue/ENG-123/native-linear-issue)",
+          },
+        ],
+      });
+      await expect(
+        listConversationAnnotations(getDb(), conversationId),
+      ).resolves.toHaveLength(1);
+
+      expect(saveCalls).toEqual([
+        createInput,
+        { id: "ENG-123", state: "In Progress" },
+      ]);
     } finally {
       setPlugins(previousPlugins);
       await server.close();
     }
   });
 
-  it("retries the same create after authorization pauses during the provider call", async () => {
+  it("keeps the tool result when annotation processing fails", async () => {
+    const server = new McpServer({ name: "linear-test", version: "1.0.0" });
+    server.registerTool(
+      "save_issue",
+      {
+        description: "Create or update a Linear issue",
+        inputSchema: {
+          team: z.string().optional(),
+          title: z.string().optional(),
+        },
+      },
+      () => ({
+        content: [
+          {
+            type: "text",
+            text: "Created [ENG-999](https://linear.app/acme/issue/ENG-999/hook-failure)",
+          },
+        ],
+      }),
+    );
+    transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => "linear-test-session-hook-failure",
+    });
+    await server.connect(transport);
+    mswServer.use(
+      http.all("https://mcp.linear.app/mcp", async ({ request }) =>
+        transport!.handleRequest(request),
+      ),
+    );
+
     const registration = linearPlugin();
-    const previousPlugins = setPlugins([registration]);
-    const conversationId = "local:test:linear-native-auth-resume";
-    let callCount = 0;
-    const activeProviders = new Set(["linear"]);
+    const previousPlugins = setPlugins([
+      {
+        ...registration,
+        hooks: {
+          ...registration.hooks,
+          afterMcpTool: async () => {
+            throw new Error("annotation failed");
+          },
+        },
+      },
+    ]);
+    const conversationId = "local:test:linear-mcp-create-hook-failure";
+    const pluginHooks = createPluginHookRunner();
+    const manifest = parseInlinePluginManifest(
+      {
+        ...registration.manifest,
+        configKeys: registration.manifest.configKeys ?? [],
+      },
+      "/plugins/linear",
+    );
+    manager = new McpToolManager(
+      [
+        {
+          dir: "/plugins/linear",
+          skillsDir: "/plugins/linear/skills",
+          manifest,
+        },
+      ],
+      {
+        onToolSuccess: async (input) => {
+          await pluginHooks.afterMcpTool({
+            ...input,
+            conversationId,
+          });
+        },
+      },
+    );
+
     try {
       await getConversationStore().recordActivity({
         conversationId,
         nowMs: Date.now(),
         source: "local",
-        title: "Linear native auth resume",
+        title: "Linear MCP create hook failure",
       });
-      const tools = getPluginTools({
-        conversationId,
-        destination: { platform: "local", conversationId },
-        egress: {
-          async fetch() {
-            return new Response("unused");
-          },
-        },
-        mcpToolManager: {
-          async activateProvider() {
-            activeProviders.add("linear");
-            return true;
-          },
-          async callWrappedTool() {
-            callCount += 1;
-            if (callCount === 1) {
-              activeProviders.delete("linear");
-              return {
-                status: "authorization_pending" as const,
-              };
-            }
-            return {
-              status: "success" as const,
-              content: [{ type: "text" as const, text: "Created ENG-456" }],
-              structuredContent: {
-                issue: {
-                  identifier: "ENG-456",
-                  url: "https://linear.app/acme/issue/ENG-456/auth-resume",
-                },
-              },
-            };
-          },
-          getActiveProviders() {
-            return [...activeProviders];
-          },
-        } as never,
-        source: createLocalSource(conversationId),
-        workspace: {} as never,
-      });
-      const createIssue = tools.linear_createIssue;
-      if (!createIssue?.execute) {
-        throw new Error("Linear createIssue tool is unavailable");
+      expect(await manager.activateProvider("linear")).toBe(true);
+      const saveIssue = manager
+        .getResolvedActiveTools({ provider: "linear" })
+        .find((tool) => tool.rawName === "save_issue");
+      if (!saveIssue) {
+        throw new Error("save_issue is unavailable after activation");
       }
-      const input = { team: "Engineering", title: "Resume after auth" };
 
       await expect(
-        createIssue.execute(input, { toolCallId: "call-auth" }),
+        saveIssue.execute({
+          team: "Engineering",
+          title: "Hook failure should not break create",
+        }),
       ).resolves.toMatchObject({
-        content: [{ type: "text", text: "Authorization pending." }],
-        details: { issue: null },
+        content: [
+          {
+            type: "text",
+            text: "Created [ENG-999](https://linear.app/acme/issue/ENG-999/hook-failure)",
+          },
+        ],
       });
       await expect(
-        createIssue.execute(input, { toolCallId: "call-auth" }),
-      ).resolves.toMatchObject({
-        details: {
-          issue: {
-            identifier: "ENG-456",
-            url: "https://linear.app/acme/issue/ENG-456/auth-resume",
-          },
-        },
-      });
-      expect(callCount).toBe(2);
+        listConversationAnnotations(getDb(), conversationId),
+      ).resolves.toEqual([]);
     } finally {
       setPlugins(previousPlugins);
-    }
-  });
-
-  it("allows caller retries after provider and transport failures", async () => {
-    const registration = linearPlugin();
-    const previousPlugins = setPlugins([registration]);
-    const conversationId = "local:test:linear-native-create-failures";
-    const callCounts = new Map<string, number>();
-    const activeProviders = new Set(["linear"]);
-    try {
-      await getConversationStore().recordActivity({
-        conversationId,
-        nowMs: Date.now(),
-        source: "local",
-        title: "Linear native create failures",
-      });
-      const tools = getPluginTools({
-        conversationId,
-        destination: { platform: "local", conversationId },
-        egress: {
-          async fetch() {
-            return new Response("unused");
-          },
-        },
-        mcpToolManager: {
-          async activateProvider() {
-            activeProviders.add("linear");
-            return true;
-          },
-          async callWrappedTool(
-            _provider: string,
-            _name: string,
-            _arguments: Record<string, unknown>,
-            options?: { toolCallId?: string },
-          ) {
-            const toolCallId = options?.toolCallId ?? "";
-            const callCount = (callCounts.get(toolCallId) ?? 0) + 1;
-            callCounts.set(toolCallId, callCount);
-
-            if (toolCallId === "call-rejected" && callCount === 1) {
-              return {
-                status: "error" as const,
-                message: "Team is invalid",
-              };
-            }
-            if (toolCallId === "call-uncertain" && callCount === 1) {
-              throw new Error("MCP transport failed");
-            }
-            return {
-              status: "success" as const,
-              content: [{ type: "text" as const, text: "Created" }],
-            };
-          },
-          getActiveProviders() {
-            return [...activeProviders];
-          },
-        } as never,
-        source: createLocalSource(conversationId),
-        workspace: {} as never,
-      });
-      const createIssue = tools.linear_createIssue;
-      if (!createIssue?.execute) {
-        throw new Error("Linear createIssue tool is unavailable");
-      }
-      const input = { team: "Engineering", title: "Failure semantics" };
-
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-rejected" }),
-      ).rejects.toThrow("Team is invalid");
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-rejected" }),
-      ).resolves.toMatchObject({
-        content: [{ type: "text", text: "Created" }],
-        details: {
-          ok: true,
-          status: "success",
-        },
-      });
-      expect(callCounts.get("call-rejected")).toBe(2);
-
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-uncertain" }),
-      ).rejects.toThrow("MCP transport failed");
-      await expect(
-        createIssue.execute(input, { toolCallId: "call-uncertain" }),
-      ).resolves.toMatchObject({
-        content: [{ type: "text", text: "Created" }],
-      });
-      expect(callCounts.get("call-uncertain")).toBe(2);
-    } finally {
-      setPlugins(previousPlugins);
+      await server.close();
     }
   });
 });
