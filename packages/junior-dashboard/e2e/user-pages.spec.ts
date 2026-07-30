@@ -42,7 +42,7 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByRole("button", { name: /^I prefer concise summaries/ }),
   ).toBeVisible();
   await expect(
-    page.getByText("Preference", { exact: true }).first(),
+    page.getByText("Preference", { exact: true }).last(),
   ).toBeVisible();
   await expect(
     page.getByText("Active memories", { exact: true }),
@@ -79,6 +79,26 @@ test("keeps other plugin pages on the generic renderer", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
+test("opens memory details in a mobile sheet", async ({ page }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+
+  await page
+    .getByRole("button", { name: /^I prefer concise summaries/ })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("How this was learned")).toBeVisible();
+  await expect(
+    dialog.getByText("Learned automatically from Slack."),
+  ).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
