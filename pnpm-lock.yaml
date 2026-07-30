@@ -399,8 +399,8 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
       undici:
-        specifier: 7.28.0
-        version: 7.28.0
+        specifier: 7.29.0
+        version: 7.29.0
       vitest:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@25.9.1)(tsx@4.22.3)
@@ -7191,8 +7191,8 @@ packages:
     resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
     engines: {node: '>=18.17'}
 
-  undici@7.28.0:
-    resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
     engines: {node: '>=20.18.1'}
 
   unenv@2.0.0-rc.24:
@@ -11164,7 +11164,7 @@ snapshots:
       ms: 2.1.3
       picocolors: 1.1.1
       tar-stream: 3.1.7
-      undici: 7.28.0
+      undici: 7.29.0
       xdg-app-paths: 5.1.0
       zod: 3.24.4
     transitivePeerDependencies:
@@ -11181,7 +11181,7 @@ snapshots:
       ms: 2.1.3
       picocolors: 1.1.1
       tar-stream: 3.1.7
-      undici: 7.28.0
+      undici: 7.29.0
       xdg-app-paths: 5.1.0
       zod: 4.4.3
     transitivePeerDependencies:
@@ -15593,7 +15593,7 @@ snapshots:
 
   undici@6.28.0: {}
 
-  undici@7.28.0: {}
+  undici@7.29.0: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
