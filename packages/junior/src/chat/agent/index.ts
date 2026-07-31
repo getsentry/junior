@@ -75,7 +75,11 @@ import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { decideReply } from "@/chat/services/assistant-reply";
-import { isProviderRetryError } from "@/chat/services/provider-error";
+import {
+  findProviderError,
+  getProviderErrorAttributes,
+  isProviderRetryError,
+} from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
@@ -1508,7 +1512,12 @@ async function executeAgentRunInPrivacyContext(
       throw error;
     }
 
-    logException(error, "assistant.reply.generation.failed");
+    const providerError = findProviderError(error);
+    logException(
+      error,
+      "assistant.reply.generation.failed",
+      providerError ? getProviderErrorAttributes(providerError) : {},
+    );
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.

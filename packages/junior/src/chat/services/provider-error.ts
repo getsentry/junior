@@ -232,6 +232,20 @@ export function isProviderRetryError(error: unknown): error is ProviderError {
   return error instanceof ProviderError && error.retryable;
 }
 
+/** Find the provider failure preserved inside a domain error cause chain. */
+export function findProviderError(error: unknown): ProviderError | undefined {
+  const visited = new Set<unknown>();
+  let current = error;
+  while (current instanceof Error && !visited.has(current)) {
+    if (current instanceof ProviderError) {
+      return current;
+    }
+    visited.add(current);
+    current = current.cause;
+  }
+  return undefined;
+}
+
 /** Return stable, sanitized copy suitable for a terminal user response. */
 export function getProviderErrorUserMessage(error: ProviderError): string {
   switch (error.kind) {

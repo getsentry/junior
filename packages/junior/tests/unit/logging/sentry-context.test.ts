@@ -9,6 +9,14 @@ const sentry = vi.hoisted(() => {
   };
   return {
     captureException: vi.fn(() => "event-id"),
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      fatal: vi.fn(),
+      info: vi.fn(),
+      trace: vi.fn(),
+      warn: vi.fn(),
+    },
     scope,
     setTag: vi.fn(),
     setUser: vi.fn(),
@@ -19,6 +27,7 @@ const sentry = vi.hoisted(() => {
 vi.mock("@/chat/sentry", () => ({
   captureException: sentry.captureException,
   getActiveSpan: () => undefined,
+  logger: sentry.logger,
   setTag: sentry.setTag,
   setUser: sentry.setUser,
   spanToJSON: () => ({}),
@@ -194,5 +203,26 @@ describe("Sentry context", () => {
       }),
     );
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it("lets explicit exception attributes override inherited tags", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { logException, setTags, withLogContext } =
+      await import("@/chat/logging");
+
+    await withLogContext({}, async () => {
+      setTags({ modelId: "xai/grok-4.5" });
+      logException(new Error("boom"), "turn.failed", {
+        "gen_ai.request.model": "openai/gpt-5.6-luna",
+      });
+    });
+
+    const modelTagCalls = sentry.scope.setTag.mock.calls.filter(
+      ([key]) => key === "gen_ai.request.model",
+    );
+    expect(modelTagCalls.at(-1)).toEqual([
+      "gen_ai.request.model",
+      "openai/gpt-5.6-luna",
+    ]);
   });
 });

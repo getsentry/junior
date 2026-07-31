@@ -1,6 +1,7 @@
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
+  findProviderError,
   getProviderErrorAttributes,
   getProviderErrorUserMessage,
   ProviderError,
@@ -51,6 +52,7 @@ function getFailureCapture(reply: AgentRunResult): {
   eventName: string;
 } {
   if (reply.diagnostics.outcome === "provider_error") {
+    const providerError = findProviderError(reply.diagnostics.providerError);
     return {
       eventName: "agent.turn.provider_error",
       error:
@@ -59,10 +61,9 @@ function getFailureCapture(reply: AgentRunResult): {
           reply.diagnostics.errorMessage ??
             "Provider error without explicit message",
         ),
-      attributes:
-        reply.diagnostics.providerError instanceof ProviderError
-          ? getProviderErrorAttributes(reply.diagnostics.providerError)
-          : {},
+      attributes: providerError
+        ? getProviderErrorAttributes(providerError)
+        : {},
       body: "Agent turn failed with provider error",
     };
   }

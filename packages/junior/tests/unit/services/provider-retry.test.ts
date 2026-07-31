@@ -4,6 +4,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createProviderError,
+  findProviderError,
   getProviderErrorUserMessage,
   isProviderRetryError,
   ProviderError,
@@ -39,6 +40,19 @@ describe("provider retry helpers", () => {
     );
     expect(isProviderRetryError(createProviderError(""))).toBe(false);
     expect(isProviderRetryError(new Error(error.message))).toBe(false);
+  });
+
+  it("finds provider errors preserved by domain wrappers", () => {
+    const providerError = createProviderError("No object generated", {
+      kind: "invalid_response",
+      modelId: "openai/gpt-5.6-luna",
+    });
+    const wrapped = new Error("Action review unavailable", {
+      cause: providerError,
+    });
+
+    expect(findProviderError(wrapped)).toBe(providerError);
+    expect(findProviderError(new Error("unrelated"))).toBeUndefined();
   });
 
   it("retries transport errno failures from direct and nested causes", () => {
