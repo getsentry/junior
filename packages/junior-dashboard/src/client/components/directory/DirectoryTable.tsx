@@ -10,13 +10,13 @@ const directoryGridClass =
 /** Lay out directory search and sort controls above a result table. */
 export function DirectoryToolbar(props: {
   children: ReactNode;
-  className?: string;
+  columnsClassName: string;
 }) {
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,15rem)]",
-        props.className,
+        "grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3",
+        props.columnsClassName,
       )}
     >
       {props.children}

@@ -38,7 +38,7 @@ export function LocationDirectory(props: {
         description={`${props.locations.length} of ${props.totalLocations} public locations`}
         title="Public directory"
       />
-      <DirectoryToolbar className="md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
+      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
         <SearchInput
           label="Search locations"
           placeholder="Search channel name..."

@@ -86,7 +86,7 @@ export function PeopleDirectory(props: {
         description={`${props.people.length} of ${props.totalPeople} verified actors`}
         title="People directory"
       />
-      <DirectoryToolbar className="md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
+      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
         <SearchInput
           label="Search people"
           placeholder="Search name, email, Slack handle..."

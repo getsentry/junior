@@ -1147,6 +1147,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("#proj-alpha");
     expect(html).toContain("Private activity");
     expect(html).toContain("Public and private conversations per day");
+    expect(html).toContain("Conversations: ");
   });
 
   it("renders Location detail actors without recent conversations through stale data", () => {
