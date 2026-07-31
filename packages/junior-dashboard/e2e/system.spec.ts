@@ -26,10 +26,8 @@ test("shows system usage and plugin details", async ({ page }) => {
   await page.goto(`${server.baseURL}/system`);
 
   await expect(page.getByText("Usage over time")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Plugins", exact: true }),
-  ).toBeVisible();
   await expect(page.getByText("Model spend")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
 
   const headerBounds = await page
     .locator("main > header > div")
@@ -40,12 +38,21 @@ test("shows system usage and plugin details", async ({ page }) => {
   expect(headerBounds).toEqual({ left: 160, width: 1280 });
 
   const systemNavigation = page.getByLabel("System navigation");
+  const allPluginsLink = systemNavigation.getByRole("link", {
+    name: "All Plugins",
+    exact: true,
+  });
+  await expect(allPluginsLink).toBeVisible();
   await expect(
     systemNavigation.getByRole("link", { name: "GitHub", exact: true }),
   ).toHaveCount(0);
   await expect(
     systemNavigation.getByRole("link", { name: "Scheduler", exact: true }),
   ).toHaveCount(0);
+
+  await allPluginsLink.click();
+  await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
+  await expect(page.getByLabel("Reporting period")).toHaveCount(0);
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
   const githubPanel = pluginPanels.getByRole("link", {
@@ -145,8 +152,14 @@ test("navigates plugin information and activity on mobile", async ({
   ).toBeLessThanOrEqual(390);
   await expect(page.getByLabel("System view").locator("option")).toHaveText([
     "Overview",
+    "All Plugins",
     "Scheduler",
   ]);
+  await page.getByLabel("System view").selectOption("/system/plugins");
+  await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
+  await expect(
+    page.getByLabel("System view").locator("option:checked"),
+  ).toHaveText("All Plugins");
   await page
     .getByRole("region", { name: "Plugins" })
     .getByRole("link", { name: /GitHub/ })
