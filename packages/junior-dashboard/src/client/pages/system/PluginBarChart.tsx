@@ -23,9 +23,10 @@ export function PluginBarChart(props: {
   const categories = widget.timeRangeDays
     ? widget.categories.slice(-supportedRange(widget, props.range))
     : widget.categories;
+  const seriesFormat = commonSeriesFormat(widget);
   const width = 520;
   const height = 250;
-  const left = 42;
+  const left = seriesFormat === "usd" ? 56 : 42;
   const top = 16;
   const bottom = 36;
   const plotHeight = height - top - bottom;
@@ -106,7 +107,7 @@ export function PluginBarChart(props: {
                   x={left - 6}
                   y={y + 3}
                 >
-                  {formatChartValue(tickValue, commonSeriesFormat(widget))}
+                  {formatChartValue(tickValue, seriesFormat)}
                 </text>
               </g>
             );
