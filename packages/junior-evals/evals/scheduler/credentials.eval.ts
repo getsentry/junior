@@ -1,8 +1,8 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
-import { scheduledTaskCreateCalls } from "./helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
+import { scheduledTaskCreateCalls, seedScheduledTask } from "./helpers";
 
 describeEval("Scheduled Credentials", slackEvals, (it) => {
   it("when scheduled work may need user-bound authorization, use the creator default", async ({
@@ -76,26 +76,23 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       id: "thread-scheduler-credential-creator",
       thread_ts: "1700000000.875000",
     };
+    await seedScheduledTask({
+      createdBy: {
+        slackUserId: "UALICE",
+        userName: "alice",
+        fullName: "Alice Example",
+      },
+      credentialMode: "system",
+      id: "sched_alice_system_credentials",
+      taskText: "Post a Sentry digest in this channel.",
+      thread,
+    });
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every Monday at 9am Pacific post a Sentry digest here. Do not use my connected credentials.",
-          {
-            thread,
-            author: {
-              user_id: "UALICE",
-              user_name: "alice",
-              full_name: "Alice Example",
-            },
-          },
-        ),
-      ],
-      events: [
-        threadMessage(
           "@bot update that scheduled task to use my connected credentials instead.",
           {
             thread,
-            is_mention: true,
             author: {
               user_id: "UBOBBB",
               user_name: "bob",
@@ -115,10 +112,14 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    const createCall = createCalls[0]!;
-    expect(createCall.arguments?.credential_mode).toBe("system");
+    expect(scheduledTaskCreateCalls(result.session)).toEqual([]);
+    expect(
+      toolCalls(result.session).filter(
+        (call) =>
+          call.name === "scheduler_slackScheduleSetCredentialMode" &&
+          call.arguments?.credential_mode === "creator",
+      ),
+    ).toHaveLength(1);
     expect(
       toolCalls(result.session).filter(
         (call) =>
@@ -143,19 +144,23 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       user_name: "alice",
       full_name: "Alice Example",
     };
+    await seedScheduledTask({
+      createdBy: {
+        slackUserId: author.user_id,
+        userName: author.user_name,
+        fullName: author.full_name,
+      },
+      credentialMode: "system",
+      id: "sched_creator_reenable_credentials",
+      taskText: "Post a Sentry digest in this channel.",
+      thread,
+    });
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every Monday at 9am Pacific post a Sentry digest here. Do not use my connected credentials.",
-          { thread, author },
-        ),
-      ],
-      events: [
-        threadMessage(
           "@bot update that scheduled task to use my account if needed.",
           {
             thread,
-            is_mention: true,
             author,
           },
         ),
