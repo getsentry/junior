@@ -84,7 +84,7 @@ export function ConversationPage(props: {
               Conversation
             </div>
             <div className="min-w-0">
-              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:truncate md:text-2xl md:text-[1.75rem]">
+              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-2xl md:text-[1.75rem]">
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
@@ -319,11 +319,15 @@ function ConversationIdentity(props: {
   return (
     <>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 md:hidden">
-        {location ? <span className="truncate">{location}</span> : null}
+        {location ? (
+          <span className="min-w-0 max-w-full truncate">{location}</span>
+        ) : null}
         {location && ownerNode ? (
           <span className="text-dashboard-text-muted">·</span>
         ) : null}
-        {ownerNode ? <span className="truncate">{ownerNode}</span> : null}
+        {ownerNode ? (
+          <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
+        ) : null}
         {sentryLink ? (
           <>
             {(location || ownerNode) && (
