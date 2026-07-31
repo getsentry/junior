@@ -70,7 +70,7 @@ export interface ScheduledTask {
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
-  /** Selects system credentials or explicitly delegated creator credentials. */
+  /** Selects system credentials or task-bound creator credential delegation. */
   credentialMode: ScheduledTaskCredentialMode;
   destination: SlackDestination;
   executionActor?: ScheduledTaskExecutionActor;

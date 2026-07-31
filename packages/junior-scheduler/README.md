@@ -38,8 +38,9 @@ Junior's durable agent runtime.
 ## Authority
 
 - Creation requires the active Slack actor and destination.
-- Tasks use system credentials by default. Creator credentials require explicit
-  authorization from the verified task creator and work in DMs or channels.
+- Tasks make the creator's connected credentials available by default when
+  scheduled work needs user-bound authorization. The creator may require system
+  credentials instead, and creator credential use works in DMs or channels.
 - Only the creator may enable or re-enable creator credential mode. Any
   conversation manager may disable it, and another user's executable task edit
   clears it; schedule, status, and run-now changes preserve it.

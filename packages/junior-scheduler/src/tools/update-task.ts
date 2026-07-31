@@ -58,7 +58,7 @@ export function createSlackScheduleUpdateTaskTool(
           .enum(["system", "creator"])
           .nullable()
           .describe(
-            "Set creator only when the current actor is the task creator and explicitly authorizes future scheduled credential use. Set system to disable delegation.",
+            "Set creator when the task creator's connected credentials should be available for user-bound authorization. Only the task creator may enable it. Set system when the creator says not to use their connected credentials.",
           )
           .optional(),
       })

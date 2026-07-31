@@ -46,7 +46,7 @@ export function createSlackScheduleCreateTaskTool(
           .enum(["system", "creator"])
           .nullable()
           .describe(
-            "Use creator only when the current user explicitly authorizes future scheduled use of their connected credentials. Omit or use system otherwise.",
+            "Creator makes the task creator's connected credentials available when the scheduled work needs user-bound authorization. Omit to use creator. Use system only when the user says not to use their connected credentials.",
           )
           .optional(),
       })
@@ -101,7 +101,7 @@ export function createSlackScheduleCreateTaskTool(
         updatedAtMs: nowMs,
         createdBy: actor,
         conversationAccess,
-        credentialMode: input.credential_mode ?? "system",
+        credentialMode: input.credential_mode ?? "creator",
         destination,
         executionActor: SCHEDULED_TASK_SYSTEM_ACTOR,
         nextRunAtMs: compiled.nextRunAtMs,

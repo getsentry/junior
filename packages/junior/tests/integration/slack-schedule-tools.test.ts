@@ -213,7 +213,7 @@ describe("Slack schedule tools", () => {
           audience: "channel",
           visibility: "public",
         },
-        credential_mode: "system",
+        credential_mode: "creator",
         status: "active",
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         recurrence: {
@@ -516,7 +516,7 @@ describe("Slack schedule tools", () => {
           audience: "direct",
           visibility: "private",
         },
-        credentialMode: "system",
+        credentialMode: "creator",
         destination: { channelId: "D123" },
         nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
         status: "active",
@@ -968,7 +968,13 @@ describe("Slack schedule tools", () => {
 
   it("allows only the creator to enable creator credentials", async () => {
     const context = createContext();
-    const created = (await createTask(context)) as { task: { id: string } };
+    const created = await createTask(context, {
+      credential_mode: "system",
+    });
+    expect(created).toMatchObject({
+      task: { credential_mode: "system" },
+    });
+    const taskId = (created as { task: { id: string } }).task.id;
     const otherActor = createContext({
       actor: {
         platform: "slack",
@@ -979,7 +985,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
-        task_id: created.task.id,
+        task_id: taskId,
         credential_mode: "creator",
       }),
     ).rejects.toThrow(
@@ -988,7 +994,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateTaskTool(context), {
-        task_id: created.task.id,
+        task_id: taskId,
         credential_mode: "creator",
       }),
     ).resolves.toMatchObject({
@@ -1011,7 +1017,7 @@ describe("Slack schedule tools", () => {
     ).rejects.toThrow("No active Slack actor context is available.");
   });
 
-  it("defaults private group conversations to system credentials", async () => {
+  it("makes creator credentials available in private group conversations", async () => {
     const result = await createTask(createContext({ channelId: "G123" }));
 
     expect(result).toMatchObject({
@@ -1021,7 +1027,7 @@ describe("Slack schedule tools", () => {
           audience: "group",
           visibility: "private",
         },
-        credential_mode: "system",
+        credential_mode: "creator",
       },
     });
     const tasks = await schedulerStore().listTasksForTeam(TEST_TEAM_ID);
@@ -1034,7 +1040,7 @@ describe("Slack schedule tools", () => {
         destination: { channelId: "G123" },
       },
     ]);
-    expect(tasks[0]?.credentialMode).toBe("system");
+    expect(tasks[0]?.credentialMode).toBe("creator");
   });
 
   it("rejects non-canonical Slack sources before storing tasks", async () => {
@@ -1430,7 +1436,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         destination: { channelId: "DDM", teamId: TEAM_ID },
         conversationAccess: { audience: "direct", visibility: "private" },
       });
-      expect(stored?.credentialMode).toBe("system");
+      expect(stored?.credentialMode).toBe("creator");
     } finally {
       await fixture.close();
       vi.restoreAllMocks();

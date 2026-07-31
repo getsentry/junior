@@ -439,7 +439,7 @@ export function schedulerPlugin() {
         }
         return [
           {
-            text: "Scheduled tasks use system credentials by default. Use the task creator's connected credentials only when they explicitly authorize future scheduled use. Requests such as 'use my account if needed' are ambiguous, not authorization; ask before creating or enabling creator credentials for the task.",
+            text: "Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. Use system credentials only when the creator says not to use their connected credentials. Only the task creator may enable or re-enable creator credential use.",
           },
         ];
       },
