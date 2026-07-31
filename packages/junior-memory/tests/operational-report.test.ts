@@ -202,7 +202,7 @@ describe("memory operational report", () => {
       });
       const extractionDays = emptyExtractionDays();
       extractionDays[89] = {
-        costUsd: 0.125,
+        costUsd: 0.0042,
         date: "2026-07-28",
         events: 4,
       };
@@ -215,7 +215,7 @@ describe("memory operational report", () => {
 
       expect(report.metrics).toEqual([
         { label: "active memories", tone: "good", value: "2" },
-        { label: "extraction cost · 30d", value: "$0.13" },
+        { label: "extraction cost · 30d", value: "$0.0042" },
         { label: "created · 30d", value: "3" },
         { label: "personal", value: "1" },
         { label: "conversation", value: "1" },
@@ -232,7 +232,7 @@ describe("memory operational report", () => {
       expect(report.widgets?.[0]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
-        values: { costUsd: 0.125 },
+        values: { costUsd: 0.0042 },
       });
       expect(JSON.stringify(report)).not.toContain("checkout");
       expect(JSON.stringify(report)).not.toContain("report-user");

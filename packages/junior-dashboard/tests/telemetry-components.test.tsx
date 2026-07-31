@@ -1434,7 +1434,7 @@ describe("dashboard canonical-event components", () => {
                   {
                     id: "2026-07-31",
                     label: "2026-07-31",
-                    values: { costUsd: 1.25 },
+                    values: { costUsd: 0.0042 },
                   },
                 ],
                 id: "extraction-cost",
@@ -1453,8 +1453,8 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Cost: $1.25"');
-    expect(html).toContain(">$1.25</text>");
+    expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
+    expect(html).toContain(">$0.0042</text>");
   });
 
   it("renders daily chart ranges from the shared page selection", () => {

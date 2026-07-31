@@ -83,6 +83,7 @@ describe("dashboard conversation formatting", () => {
       }),
     ).toBe("80 tokens");
     expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
+    expect(formatCostTotal({ cost: { total: 0.0042 } })).toBe("$0.0042");
   });
 
   it("formats human-readable durations at increasing scales", () => {

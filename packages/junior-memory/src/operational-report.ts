@@ -91,9 +91,10 @@ function formatPercent(value: number): string {
 }
 
 function formatUsd(value: number): string {
+  const maximumFractionDigits = value > 0 && value < 0.01 ? 4 : 2;
   return new Intl.NumberFormat("en-US", {
     currency: "USD",
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
     minimumFractionDigits: 2,
     style: "currency",
   }).format(value);

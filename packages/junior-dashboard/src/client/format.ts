@@ -461,11 +461,13 @@ export function formatCostSummary(
   summary: CostUsageSummary | undefined,
 ): string {
   if (!summary) return "";
+  const maximumFractionDigits =
+    summary.total > 0 && summary.total < 0.01 ? 4 : 2;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
   }).format(summary.total);
 }
 
