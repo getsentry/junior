@@ -65,10 +65,39 @@ describe("conversation SQL local mode", () => {
       }
 
       const conversationId = "internal:native-history-migration";
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values(buildJuniorSqlConversation({ conversationId }));
+      // Insert with the pre-source_json column set so this fixture stays valid
+      // against the partial migration history applied above.
+      const conversation = buildJuniorSqlConversation({ conversationId });
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+           conversation_id,
+           source,
+           destination_json,
+           actor_json,
+           channel_name,
+           title,
+           created_at,
+           last_activity_at,
+           updated_at,
+           execution_status,
+           root_conversation_id
+         ) VALUES (
+           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
+         )`,
+        [
+          conversation.conversationId,
+          conversation.source ?? null,
+          JSON.stringify(conversation.destination ?? null),
+          JSON.stringify(conversation.actor ?? null),
+          conversation.channelName ?? null,
+          conversation.title ?? null,
+          conversation.createdAt,
+          conversation.lastActivityAt,
+          conversation.updatedAt,
+          conversation.executionStatus,
+          conversation.rootConversationId ?? conversation.conversationId,
+        ],
+      );
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
