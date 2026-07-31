@@ -13,6 +13,7 @@ import {
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
+  createSlackScheduleSetCredentialModeTool,
   createSlackScheduleUpdateTaskTool,
   type ScheduledTask,
   type SchedulerDb,
@@ -173,17 +174,24 @@ describe("Slack schedule tools", () => {
 
   it("exposes a required structured schedule without model-computed timestamps", async () => {
     const createTool = createSlackScheduleCreateTaskTool(createContext());
+    const credentialModeTool =
+      createSlackScheduleSetCredentialModeTool(createContext());
     const updateTool = createSlackScheduleUpdateTaskTool(createContext());
     const schema = createTool.inputSchema as {
       properties?: Record<string, unknown>;
       required?: string[];
     };
 
-    expect(createTool.approvalMode).toBe("approve");
-    expect(updateTool.approvalMode).toBe("approve");
+    expect(createTool.approvalMode).toBe("auto");
+    expect(updateTool.approvalMode).toBe("auto");
+    expect(credentialModeTool.approvalMode).toBe("approve");
     expect(schema.required).toContain("schedule");
     expect(schema.properties).not.toHaveProperty("next_run_at");
     expect(schema.properties).not.toHaveProperty("schedule_kind");
+    expect(
+      (updateTool.inputSchema as { properties?: Record<string, unknown> })
+        .properties,
+    ).not.toHaveProperty("credential_mode");
   });
 
   it("accepts a structured relative one-off schedule", async () => {
@@ -498,7 +506,6 @@ describe("Slack schedule tools", () => {
           kind: "one_off",
           timing: { type: "after", value: 1, unit: "minute" },
         },
-        credential_mode: null,
       },
     );
 
@@ -899,10 +906,8 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("stores explicit creator credential mode in channels", async () => {
-    const created = await createTask(createContext(), {
-      credential_mode: "creator",
-    });
+  it("stores creator credential mode by default in channels", async () => {
+    const created = await createTask(createContext());
 
     expect(created).toMatchObject({
       task: { credential_mode: "creator" },
@@ -920,9 +925,7 @@ describe("Slack schedule tools", () => {
 
   it("clears creator credentials when another user changes task text", async () => {
     const context = createContext();
-    const created = (await createTask(context, {
-      credential_mode: "creator",
-    })) as { task: { id: string } };
+    const created = (await createTask(context)) as { task: { id: string } };
     const otherActor = createContext({
       actor: {
         platform: "slack",
@@ -940,7 +943,6 @@ describe("Slack schedule tools", () => {
         weekdays: ["tuesday"],
         timezone: "America/Los_Angeles",
       },
-      credential_mode: null,
     });
     await expect(
       schedulerStore().getTask(created.task.id),
@@ -969,15 +971,17 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({ credentialMode: "system" });
   });
 
-  it("allows only the creator to enable creator credentials", async () => {
+  it("changes only credential availability and allows only the creator to enable it", async () => {
     const context = createContext();
-    const created = await createTask(context, {
-      credential_mode: "system",
-    });
+    const created = await createTask(context);
     expect(created).toMatchObject({
-      task: { credential_mode: "system" },
+      task: { credential_mode: "creator" },
     });
     const taskId = (created as { task: { id: string } }).task.id;
+    const original = await schedulerStore().getTask(taskId);
+    if (!original) {
+      throw new Error("Expected scheduled task to exist");
+    }
     const otherActor = createContext({
       actor: {
         platform: "slack",
@@ -987,7 +991,24 @@ describe("Slack schedule tools", () => {
     });
 
     await expect(
-      executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+      executeTool(createSlackScheduleSetCredentialModeTool(otherActor), {
+        task_id: taskId,
+        credential_mode: "system",
+      }),
+    ).resolves.toMatchObject({
+      task: { credential_mode: "system" },
+    });
+    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+      credentialMode: "system",
+      destination: original.destination,
+      nextRunAtMs: original.nextRunAtMs,
+      schedule: original.schedule,
+      status: original.status,
+      task: original.task,
+    });
+
+    await expect(
+      executeTool(createSlackScheduleSetCredentialModeTool(otherActor), {
         task_id: taskId,
         credential_mode: "creator",
       }),
@@ -996,7 +1017,7 @@ describe("Slack schedule tools", () => {
     );
 
     await expect(
-      executeTool(createSlackScheduleUpdateTaskTool(context), {
+      executeTool(createSlackScheduleSetCredentialModeTool(context), {
         task_id: taskId,
         credential_mode: "creator",
       }),
@@ -1015,7 +1036,6 @@ describe("Slack schedule tools", () => {
             userId: "U123",
           },
         }),
-        { credential_mode: "creator" },
       ),
     ).rejects.toThrow("No active Slack actor context is available.");
   });
@@ -1463,6 +1483,8 @@ describe("Slack schedule tool execution modes", () => {
 
     const createTool = createSlackScheduleCreateTaskTool(context);
     const listTool = createSlackScheduleListTasksTool(context);
+    const credentialModeTool =
+      createSlackScheduleSetCredentialModeTool(context);
     const updateTool = createSlackScheduleUpdateTaskTool(context);
     const deleteTool = createSlackScheduleDeleteTaskTool(context);
     const runNowTool = createSlackScheduleRunTaskNowTool(context);
@@ -1471,6 +1493,7 @@ describe("Slack schedule tool execution modes", () => {
     // scheduler_slackScheduleListTasks call cannot race ahead of a preceding
     // scheduler_slackScheduleCreateTask / update / delete write.
     expect(createTool.executionMode).toBe("sequential");
+    expect(credentialModeTool.executionMode).toBe("sequential");
     expect(updateTool.executionMode).toBe("sequential");
     expect(deleteTool.executionMode).toBe("sequential");
     expect(runNowTool.executionMode).toBe("sequential");

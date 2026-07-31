@@ -261,6 +261,7 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
 
 interface ScheduledTaskDueEvent extends EvalBaseEvent {
   type: "scheduled_task_due";
+  credential_mode?: "creator" | "system";
   now_ms?: number;
   recurrence?: "daily" | "weekly" | "monthly" | "yearly";
   schedule?: string;
@@ -2308,7 +2309,7 @@ async function processEvents(args: {
       id: taskId,
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
-      credentialMode: "system",
+      credentialMode: event.credential_mode ?? "system",
       destination: createEvalDestination(
         thread,
       ) as ScheduledTask["destination"],
@@ -2360,6 +2361,27 @@ async function processEvents(args: {
       const dispatch = await getDispatchRecord(run.dispatchId!);
       if (!dispatch) {
         throw new Error("Scheduled eval dispatch record was not found.");
+      }
+      if (event.credential_mode === "creator") {
+        const subject = dispatch.credentialSubject;
+        if (
+          !subject ||
+          subject.type !== "user" ||
+          subject.userId !== TEST_USER_ID ||
+          subject.allowedWhen !== "scheduled-task" ||
+          subject.taskId !== taskId ||
+          subject.binding.type !== "scheduled-task" ||
+          subject.binding.plugin !== "scheduler" ||
+          subject.binding.taskId !== taskId
+        ) {
+          throw new Error(
+            "Creator-bound scheduled eval dispatch did not use the task creator.",
+          );
+        }
+      } else if (dispatch.credentialSubject) {
+        throw new Error(
+          "System scheduled eval dispatch unexpectedly used a user credential subject.",
+        );
       }
     }
     await drainQueuedConversationWork();

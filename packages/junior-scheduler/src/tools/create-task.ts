@@ -27,7 +27,6 @@ export function createSlackScheduleCreateTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
-    approvalMode: "approve",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -44,10 +43,9 @@ export function createSlackScheduleCreateTaskTool(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
         credential_mode: z
-          .enum(["system", "creator"])
-          .nullable()
+          .literal("system")
           .describe(
-            "Creator makes the task creator's connected credentials available when the scheduled work needs user-bound authorization. Omit to use creator. Use system only when the user says not to use their connected credentials.",
+            "Use system only when the creator says not to make their connected credentials available. Omit otherwise; creator availability is the task default.",
           )
           .optional(),
       })

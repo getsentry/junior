@@ -5,7 +5,7 @@ import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 import { scheduledTaskCreateCalls } from "./helpers";
 
 describeEval("Scheduled Credentials", slackEvals, (it) => {
-  it("when scheduled work may need user-bound authorization, enable creator mode", async ({
+  it("when scheduled work may need user-bound authorization, use the creator default", async ({
     run,
   }) => {
     const result = await run({
@@ -30,7 +30,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(createCalls[0]!.arguments).toMatchObject({
       schedule: { kind: "recurring", frequency: "weekly" },
     });
-    expect(createCalls[0]!.arguments?.credential_mode).not.toBe("system");
+    expect(createCalls[0]!.arguments).not.toHaveProperty("credential_mode");
   });
 
   it("when the creator denies connected credential use, create in system mode", async ({
@@ -60,7 +60,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleUpdateTask" &&
+          call.name === "scheduler_slackScheduleSetCredentialMode" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -122,7 +122,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleUpdateTask" &&
+          call.name === "scheduler_slackScheduleSetCredentialMode" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -168,13 +168,13 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const updateCalls = toolCalls(result.session).filter(
+    const credentialModeCalls = toolCalls(result.session).filter(
       (call) =>
-        call.name === "scheduler_slackScheduleUpdateTask" &&
+        call.name === "scheduler_slackScheduleSetCredentialMode" &&
         call.status === "ok",
     );
-    expect(updateCalls).toHaveLength(1);
-    expect(updateCalls[0]?.arguments).toMatchObject({
+    expect(credentialModeCalls).toHaveLength(1);
+    expect(credentialModeCalls[0]?.arguments).toMatchObject({
       credential_mode: "creator",
     });
   });

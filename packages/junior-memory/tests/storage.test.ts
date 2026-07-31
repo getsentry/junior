@@ -3404,7 +3404,6 @@ WHERE id = '${superseded.memory.id}'
         searchMemories: createMemorySearchTool(context),
       };
 
-      expect(tools.createMemory.approvalMode).toBe("approve");
       await expect(
         tools.createMemory.execute(
           {

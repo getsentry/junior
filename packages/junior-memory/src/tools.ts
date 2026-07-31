@@ -420,7 +420,6 @@ function memoryToolResult<TData extends Record<string, unknown>>(
 /** Create a tool that submits an explicit memory candidate for storage. */
 export function createMemoryCreateTool(context: MemoryCreateToolContext) {
   return definePluginTool({
-    approvalMode: "approve",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

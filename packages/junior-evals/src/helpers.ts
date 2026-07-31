@@ -1091,6 +1091,7 @@ export function resourceEventNotification(
 export function scheduledTaskDue(
   taskText: string,
   opts?: {
+    credential_mode?: "creator" | "system";
     now_ms?: number;
     recurrence?: "daily" | "weekly" | "monthly" | "yearly";
     schedule?: string;
@@ -1109,6 +1110,7 @@ export function scheduledTaskDue(
       ...opts?.thread,
     },
     task_text: taskText,
+    ...(opts?.credential_mode ? { credential_mode: opts.credential_mode } : {}),
     ...(opts?.now_ms ? { now_ms: opts.now_ms } : {}),
     ...(opts?.recurrence ? { recurrence: opts.recurrence } : {}),
     ...(opts?.schedule ? { schedule: opts.schedule } : {}),

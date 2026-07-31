@@ -4,6 +4,7 @@ export {
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
+  createSlackScheduleSetCredentialModeTool,
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
 } from "./schedule-tools";
