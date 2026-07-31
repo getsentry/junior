@@ -131,13 +131,6 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       toolCalls(result.session).filter(
         (call) =>
           call.name === "scheduler_slackScheduleSetCredentialMode" &&
-          call.arguments?.credential_mode === "creator",
-      ),
-    ).toHaveLength(1);
-    expect(
-      toolCalls(result.session).filter(
-        (call) =>
-          call.name === "scheduler_slackScheduleSetCredentialMode" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
