@@ -98,6 +98,7 @@ class SqlConversationEventStore implements ConversationEventStore {
   async append(
     conversationId: string,
     events: NewConversationEvent[],
+    options: { activity?: "preserve" } = {},
   ): Promise<void> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
@@ -149,17 +150,20 @@ class SqlConversationEventStore implements ConversationEventStore {
         this.executor,
         conversationId,
         newestCreatedAtMs,
+        options,
       );
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: null })
-        .where(
-          and(
-            eq(juniorConversations.conversationId, conversationId),
-            isNotNull(juniorConversations.archivedAt),
-          ),
-        );
+      if (options.activity !== "preserve") {
+        await this.executor
+          .db()
+          .update(juniorConversations)
+          .set({ archivedAt: null })
+          .where(
+            and(
+              eq(juniorConversations.conversationId, conversationId),
+              isNotNull(juniorConversations.archivedAt),
+            ),
+          );
+      }
       const cursor = await this.readCursor(conversationId);
       const historyVersion = cursor.maxHistoryVersion ?? 0;
       let seq = cursor.nextSeq;

@@ -4,9 +4,11 @@ import {
   defineConversationEvent,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { juniorConversations } from "@/db/schema";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -89,7 +91,7 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
-  it("binds task events to the plugin and deduplicates task redelivery", async () => {
+  it("binds and deduplicates task events without refreshing conversation activity", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:structured-events-${runId}`;
     const sessionId = `structured-event-session:${runId}`;
@@ -102,7 +104,7 @@ describe("plugin conversation events", () => {
       },
     });
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { getConversationEventStore } = await import("@/chat/db");
+    const { getConversationEventStore, getDb } = await import("@/chat/db");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
     setPlugins([
       defineJuniorPlugin({
@@ -124,6 +126,29 @@ describe("plugin conversation events", () => {
       }),
     ]);
     await recordCompletedSession({ conversationId, sessionId });
+    const db = getDb();
+    await db
+      .update(juniorConversations)
+      .set({
+        archivedAt: new Date(3_000),
+        lastActivityAt: new Date(2_000),
+        transcriptPurgedAt: new Date(2_500),
+        updatedAt: new Date(2_000),
+      })
+      .where(eq(juniorConversations.conversationId, conversationId));
+    const readConversationState = async () => {
+      const [row] = await db
+        .select({
+          archivedAt: juniorConversations.archivedAt,
+          lastActivityAt: juniorConversations.lastActivityAt,
+          transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+          updatedAt: juniorConversations.updatedAt,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, conversationId));
+      return row;
+    };
+    const conversationState = await readConversationState();
     const message = {
       name: "processSession",
       params: { conversationId, sessionId },
@@ -133,6 +158,7 @@ describe("plugin conversation events", () => {
     await processPluginTask(message);
     await processPluginTask(message);
 
+    expect(await readConversationState()).toEqual(conversationState);
     const events =
       await getConversationEventStore().loadHistory(conversationId);
     expect(

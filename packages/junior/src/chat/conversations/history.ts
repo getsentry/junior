@@ -526,8 +526,12 @@ export interface ConversationEventPage {
 
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
-  /** Append events atomically, assigning `seq = max+1` under the lease. */
-  append(conversationId: string, events: NewConversationEvent[]): Promise<void>;
+  /** Append events atomically, optionally preserving conversation activity. */
+  append(
+    conversationId: string,
+    events: NewConversationEvent[],
+    options?: { activity?: "preserve" },
+  ): Promise<void>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,

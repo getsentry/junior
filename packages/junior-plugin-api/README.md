@@ -77,8 +77,9 @@ routing, response validation, rendering, confirmation, and query state.
 - Conversation-bound background tasks may emit registered structured events
   through `ctx.events`. Define each version with `defineConversationEvent()`;
   the host supplies the plugin namespace, conversation, turn, ordering, and
-  timestamps. Event definitions return bounded transcript presentation data,
-  while Junior owns browser rendering.
+  timestamps without treating background work as new conversation activity.
+  Event definitions return bounded transcript presentation data, while Junior
+  owns browser rendering.
 - `ctx.agent.dispatch` creates durable agent work with an explicit actor,
   destination, source, metadata, and idempotency identity.
 - Delegated credential subjects declare the narrow action that authorized them.

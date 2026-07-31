@@ -33,22 +33,26 @@ export function createPluginConversationEvents(args: {
         );
       }
       const content = definition.parse(value.data);
-      await getConversationEventStore().append(args.conversationId, [
-        {
-          createdAtMs: Date.now(),
-          idempotencyKey:
-            `plugin:${args.plugin.manifest.name}:operation:${args.operationId}:` +
-            `event:${definition.eventName}@${definition.version}`,
-          data: {
-            type: "structured_event",
-            namespace: args.plugin.manifest.name,
-            name: definition.eventName,
-            version: definition.version,
-            turnId: args.turnId,
-            content,
+      await getConversationEventStore().append(
+        args.conversationId,
+        [
+          {
+            createdAtMs: Date.now(),
+            idempotencyKey:
+              `plugin:${args.plugin.manifest.name}:operation:${args.operationId}:` +
+              `event:${definition.eventName}@${definition.version}`,
+            data: {
+              type: "structured_event",
+              namespace: args.plugin.manifest.name,
+              name: definition.eventName,
+              version: definition.version,
+              turnId: args.turnId,
+              content,
+            },
           },
-        },
-      ]);
+        ],
+        { activity: "preserve" },
+      );
     },
   };
 }
