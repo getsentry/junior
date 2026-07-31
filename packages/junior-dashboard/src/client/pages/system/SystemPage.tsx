@@ -78,7 +78,16 @@ export function SystemPage(props: { data: SystemData }) {
         />
         <div className="grid min-w-0 gap-4 sm:gap-6">
           {allPlugins ? (
-            <PluginPanels plugins={plugins} />
+            <>
+              {props.data.pluginReportsError ? (
+                <PluginReportError
+                  showingReports={plugins.some(
+                    (candidate) => candidate.reports.length,
+                  )}
+                />
+              ) : null}
+              <PluginPanels plugins={plugins} />
+            </>
           ) : plugin ? (
             <PluginSystemPage data={props.data} plugin={plugin} range={range} />
           ) : (
@@ -89,9 +98,6 @@ export function SystemPage(props: { data: SystemData }) {
                 loading={props.data.conversationStatsLoading}
                 stats={props.data.conversationStats}
               />
-              {props.data.pluginReportsError ? (
-                <PluginReportError showingReports={false} />
-              ) : null}
               {props.data.skills.length ? (
                 <SkillInventory skills={props.data.skills} />
               ) : null}

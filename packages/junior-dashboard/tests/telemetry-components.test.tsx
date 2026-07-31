@@ -1250,10 +1250,15 @@ describe("dashboard canonical-event components", () => {
         <SystemPage data={stale} />
       </MemoryRouter>,
     );
-    expect(overviewHtml).toContain(
-      "Plugin details and capabilities are still available.",
+    expect(overviewHtml).not.toContain("Plugin stats failed to load.");
+
+    const inventoryHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins"]}>
+        <SystemPage data={stale} />
+      </MemoryRouter>,
     );
-    expect(overviewHtml).not.toContain(
+    expect(inventoryHtml).toContain("Plugin stats failed to load.");
+    expect(inventoryHtml).toContain(
       "Showing the last operational reports Junior received.",
     );
   });
