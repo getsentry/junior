@@ -5,7 +5,6 @@ import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
-import { cn } from "../styles";
 import { Button } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
 import { TranscriptHeader } from "./TranscriptHeader";
@@ -55,10 +54,7 @@ export function Transcript(props: {
 
   return (
     <TranscriptSearchProvider query={search}>
-      <div
-        className={cn("grid min-w-0", props.live && "max-sm:pr-12")}
-        ref={bottomPinning.contentRef}
-      >
+      <div className="grid min-w-0" ref={bottomPinning.contentRef}>
         <TranscriptHeader
           actions={props.actions}
           redacted={redacted}
@@ -66,7 +62,7 @@ export function Transcript(props: {
           onChange={setView}
         />
         <SearchInput
-          className="mb-5 mt-3"
+          className="mb-3 mt-2 md:mb-5 md:mt-3"
           label="Search transcript"
           onChange={setSearch}
           placeholder="Search transcript…"
@@ -127,10 +123,10 @@ function JumpToLatestButton(props: {
     : "Jump to latest";
 
   return (
-    <div className="fixed bottom-4 right-4 z-20 md:bottom-6 md:right-8">
+    <div className="pointer-events-none fixed inset-x-0 bottom-3 z-20 flex justify-center px-3 md:inset-x-auto md:bottom-6 md:right-8 md:justify-end md:px-0">
       <Button
         aria-label={label}
-        className="relative rounded-lg border-cyan-300/30 bg-[#0b181a] shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:border-cyan-200/60"
+        className="pointer-events-auto relative rounded-lg border-cyan-300/30 bg-[#0b181a] shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:border-cyan-200/60"
         onClick={props.onClick}
         size="icon"
         title={label}

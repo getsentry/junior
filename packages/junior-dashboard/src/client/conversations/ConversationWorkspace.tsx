@@ -95,7 +95,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       >
         {selectedId ? (
           <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-4 py-3 md:hidden">
+            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
               <Link
                 className="inline-flex items-center gap-2 font-mono text-[0.7rem] text-dashboard-text-muted no-underline hover:text-dashboard-text"
                 to="/"

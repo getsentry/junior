@@ -157,11 +157,11 @@ function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]",
+    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] md:px-4 md:py-3",
     kind === "assistant" &&
-      "mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-dashboard-text",
+      "md:mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-dashboard-text",
     kind === "user" &&
-      "ml-6 border-white/[0.09] bg-white/[0.055] text-dashboard-text",
+      "md:ml-6 border-white/[0.09] bg-white/[0.055] text-dashboard-text",
     kind === "system" &&
       "border-amber-300/15 bg-amber-300/[0.045] text-dashboard-text",
     kind === "tool" &&
@@ -188,7 +188,7 @@ function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full break-all font-display text-[0.95rem] font-semibold leading-tight",
+    "inline-block max-w-full truncate font-display text-[0.95rem] font-semibold leading-tight",
     kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
@@ -217,7 +217,8 @@ function TranscriptMessageHeader(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const metaText = props.meta?.filter(isString).join(" · ");
+  const metaParts = props.meta?.filter(isString) ?? [];
+  const metaText = metaParts.join(" · ");
 
   return (
     <TranscriptHeadingRow
@@ -229,7 +230,7 @@ function TranscriptMessageHeader(props: {
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="text-[0.78rem] text-dashboard-text-muted">
+          <TranscriptHeadingMeta className="block min-w-0 break-words text-[0.72rem] leading-snug text-dashboard-text-muted md:text-[0.78rem] md:leading-none">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
@@ -790,7 +791,12 @@ function TranscriptMessageView(props: {
       <TranscriptMessageHeader
         meta={[
           props.message.route
-            ? `${props.message.route.modelProfile} · ${props.message.route.reasoningLevel} · ${props.message.route.modelId}`
+            ? [
+                props.message.route.modelProfile,
+                props.message.route.reasoningLevel,
+              ]
+                .filter(isString)
+                .join(" · ")
             : undefined,
           formatMessageTimestamp(props.message.timestamp),
         ]}

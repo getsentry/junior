@@ -60,6 +60,9 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const conversationDetail =
+    location.pathname.startsWith("/conversations/") &&
+    location.pathname !== "/conversations/";
 
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
@@ -71,7 +74,7 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative whitespace-nowrap px-1 py-2 font-mono text-[0.68rem] font-medium uppercase tracking-[0.12em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors",
+      "relative shrink-0 whitespace-nowrap px-1 py-2 font-mono text-[0.62rem] font-medium uppercase tracking-[0.08em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors sm:text-[0.68rem] sm:tracking-[0.12em]",
       isActive
         ? "text-dashboard-text after:bg-cyan-400"
         : cn(
@@ -90,11 +93,16 @@ export function DashboardShell() {
       )}
       style={dashboardBackground}
     >
-      <header className="sticky top-0 z-10 border-b border-white/[0.05] bg-[#050507]/95">
+      <header
+        className={cn(
+          "sticky top-0 z-10 border-b border-white/[0.05] bg-[#050507]/95",
+          conversationDetail && "max-md:hidden",
+        )}
+      >
         <div
           className={cn(
             dashboardContainerClass,
-            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-3 px-4 py-4",
+            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:gap-x-5 md:gap-y-3 md:py-4",
             loggedIn
               ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
               : "md:grid-cols-[auto_minmax(0,1fr)]",
@@ -108,7 +116,7 @@ export function DashboardShell() {
           >
             <JuniorLogo />
           </Link>
-          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-6 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible">
+          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:gap-4 md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:gap-6 md:overflow-visible [&::-webkit-scrollbar]:hidden">
             <Link
               aria-current={workspace ? "page" : undefined}
               className={navLinkClass({ isActive: workspace })}

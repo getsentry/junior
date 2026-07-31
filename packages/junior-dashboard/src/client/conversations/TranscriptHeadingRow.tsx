@@ -16,7 +16,7 @@ export function TranscriptHeadingRow(props: {
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center justify-between gap-3",
+        "flex min-w-0 items-start justify-between gap-2 md:items-center md:gap-3",
         props.className,
       )}
     >
@@ -29,7 +29,12 @@ export function TranscriptHeadingRow(props: {
         {props.left}
       </div>
       {hasRight ? (
-        <div className={cn("shrink-0 text-right", props.rightClassName)}>
+        <div
+          className={cn(
+            "min-w-0 max-w-[60%] shrink text-right md:max-w-none md:shrink-0",
+            props.rightClassName,
+          )}
+        >
           {props.right}
         </div>
       ) : null}
