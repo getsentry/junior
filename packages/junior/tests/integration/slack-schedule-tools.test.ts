@@ -182,8 +182,8 @@ describe("Slack schedule tools", () => {
       required?: string[];
     };
 
-    expect(createTool.approvalMode).toBe("auto");
-    expect(updateTool.approvalMode).toBe("auto");
+    expect(createTool.approvalMode).toBe("review");
+    expect(updateTool.approvalMode).toBe("review");
     expect(credentialModeTool.approvalMode).toBe("approve");
     expect(schema.required).toContain("schedule");
     expect(schema.properties).not.toHaveProperty("next_run_at");
@@ -408,6 +408,7 @@ describe("Slack schedule tools", () => {
           kind: "one_off",
           timing: { type: "after", value: 1, unit: "minute" },
         },
+        credential_mode: null,
       },
     );
 

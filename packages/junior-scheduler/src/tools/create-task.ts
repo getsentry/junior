@@ -27,6 +27,7 @@ export function createSlackScheduleCreateTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    approvalMode: "review",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -44,8 +45,9 @@ export function createSlackScheduleCreateTaskTool(
         ),
         credential_mode: z
           .literal("system")
+          .nullable()
           .describe(
-            "Use system only when the creator says not to make their connected credentials available. Omit otherwise; creator availability is the task default.",
+            "Use system only when the creator says not to make their connected credentials available. Omit or use null otherwise; creator availability is the task default.",
           )
           .optional(),
       })
