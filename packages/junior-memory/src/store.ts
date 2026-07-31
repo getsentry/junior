@@ -180,6 +180,7 @@ const embeddingVectorSchema = z
   .length(MEMORY_EMBEDDING_DIMENSIONS);
 const embeddingResultSchema = z
   .object({
+    costUsd: z.number().finite().nonnegative().optional(),
     dimensions: z.literal(MEMORY_EMBEDDING_DIMENSIONS),
     model: nonEmptyStringSchema,
     provider: nonEmptyStringSchema,
@@ -272,6 +273,7 @@ export interface ArchiveExpiredMemoriesResult {
 export interface MemoryEmbeddingProvider {
   /** Embed normalized memory text for derived vector retrieval. */
   embedTexts(input: { texts: string[] }): Promise<{
+    costUsd?: number;
     dimensions: number;
     model: string;
     provider: string;

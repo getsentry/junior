@@ -2,11 +2,13 @@ import {
   definePromptContext,
   type UserPromptContribution,
   type Actor,
+  type PluginConversationEvents,
   type PluginLogger,
   type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type { MemoryAgent } from "./agent";
+import type { MemoryAgent, MemoryRecallResult } from "./agent";
+import { memoriesRecalledEvent } from "./events";
 import {
   createMemoryStore,
   type MemoryDb,
@@ -25,6 +27,7 @@ export interface MemoryRecallContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
+  events?: PluginConversationEvents;
   log: PluginLogger;
   /** Maximum cosine distance for vector recall. Passed through to the memory store. */
   maxVectorDistance?: number;
@@ -101,6 +104,28 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
   ].join("\n");
 }
 
+function addUsd(
+  left: number | undefined,
+  right: number | undefined,
+): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return Math.round((left + right) * 1e12) / 1e12;
+}
+
+async function emitRecallOutcome(args: {
+  costUsd?: number;
+  events?: PluginConversationEvents;
+  memories: string[];
+}): Promise<void> {
+  await args.events?.emit(
+    memoriesRecalledEvent({
+      memories: args.memories,
+      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+    }),
+  );
+}
+
 const memoryRecallContext = definePromptContext({
   kind: "recall",
   version: 1,
@@ -122,8 +147,19 @@ export async function createMemoryPromptContributions(
     ...(context.actor ? { actor: context.actor } : {}),
     source: context.source,
   });
+  let embeddingCostUsd: number | undefined;
+  const sourceEmbedder = context.embedder;
+  const embedder = sourceEmbedder
+    ? {
+        async embedTexts(input: { texts: string[] }) {
+          const result = await sourceEmbedder.embedTexts(input);
+          embeddingCostUsd = addUsd(embeddingCostUsd, result.costUsd);
+          return result;
+        },
+      }
+    : undefined;
   const candidates = await createMemoryStore(context.db, runtimeContext, {
-    ...(context.embedder ? { embedder: context.embedder } : {}),
+    ...(embedder ? { embedder } : {}),
     ...(context.maxVectorDistance !== undefined
       ? { maxVectorDistance: context.maxVectorDistance }
       : {}),
@@ -132,11 +168,16 @@ export async function createMemoryPromptContributions(
     limit: RECALL_CANDIDATE_LIMIT,
   });
   if (candidates.length === 0) {
+    await emitRecallOutcome({
+      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : {}),
+      events: context.events,
+      memories: [],
+    });
     return undefined;
   }
-  let relevantIds: string[];
+  let recall: MemoryRecallResult;
   try {
-    relevantIds = await context.agent.selectRelevantMemories({
+    recall = await context.agent.selectRelevantMemories({
       candidates: candidates.map(({ content, id }) => ({ content, id })),
       userRequest: context.text,
     });
@@ -149,11 +190,17 @@ export async function createMemoryPromptContributions(
   const candidatesById = new Map(
     candidates.map((memory) => [memory.id, memory]),
   );
-  const relevant = relevantIds
+  const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
     .filter((memory): memory is MemoryRecord => memory !== undefined)
     .slice(0, DEFAULT_RECALL_LIMIT);
   const selected = selectPromptMemories(relevant);
+  const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
+  await emitRecallOutcome({
+    ...(costUsd !== undefined ? { costUsd } : {}),
+    events: context.events,
+    memories: selected.map(({ id }) => id),
+  });
   if (selected.length === 0) {
     return undefined;
   }

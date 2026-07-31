@@ -60,8 +60,34 @@ export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+// AI Gateway input rates in USD per million tokens. Keep estimates
+// model-specific so unlisted configured models remain explicitly unknown.
+const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
+  Record<string, number>
+> = {
+  "cohere/embed-v4.0": 0.12,
+  "google/gemini-embedding-001": 0.15,
+  "google/text-embedding-005": 0.025,
+  "mistral/mistral-embed": 0.1,
+  "openai/text-embedding-3-large": 0.13,
+  "openai/text-embedding-3-small": 0.02,
+  "openai/text-embedding-ada-002": 0.1,
+  "voyage/voyage-3.5": 0.06,
+  "voyage/voyage-3.5-lite": 0.02,
+};
 export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+
+function embeddingCostUsd(
+  modelId: string,
+  inputTokens: number,
+): number | undefined {
+  const costPerMillionTokens =
+    EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS[modelId];
+  return costPerMillionTokens === undefined
+    ? undefined
+    : (inputTokens * costPerMillionTokens) / 1_000_000;
+}
 
 /**
  * Resolve the documented AI Gateway env credentials for the paths that need
@@ -436,6 +462,7 @@ export async function embedTexts(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }): Promise<{
+  costUsd?: number;
   dimensions: number;
   model: string;
   provider: string;
@@ -476,11 +503,17 @@ export async function embedTexts(params: {
             },
           );
         }
+        const costUsd = embeddingCostUsd(params.modelId, result.usage.tokens);
         setSpanAttributes({
           "gen_ai.embeddings.dimension.count": dimensions,
-          ...extractGenAiUsageAttributes(result.usage),
+          ...extractGenAiUsageAttributes({
+            inputTokens: result.usage.tokens,
+            ...(costUsd !== undefined
+              ? { cost: { input: costUsd, total: costUsd } }
+              : {}),
+          }),
         });
-        return { dimensions, result };
+        return { costUsd, dimensions, result };
       },
       {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -491,6 +524,7 @@ export async function embedTexts(params: {
       },
     );
     return {
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

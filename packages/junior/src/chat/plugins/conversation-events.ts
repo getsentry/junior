@@ -31,7 +31,7 @@ function eventIdentityVersion(
   return version;
 }
 
-/** Create a conversation-bound writer for one plugin task operation. */
+/** Create a conversation-bound writer for one plugin operation. */
 export function createPluginConversationEvents(args: {
   conversationId: string;
   operationId: string;

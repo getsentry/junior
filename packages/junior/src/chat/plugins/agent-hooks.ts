@@ -23,6 +23,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -148,12 +149,23 @@ function invocationPluginContext(
     ToolRuntimeContext,
     "conversationId" | "destination" | "actor" | "source" | "userText"
   >,
+  turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
   const common = {
     ...base,
     conversationId: context.conversationId,
     embedder: createPluginEmbedder(plugin.manifest.name),
+    ...(context.conversationId && turnId
+      ? {
+          events: createPluginConversationEvents({
+            conversationId: context.conversationId,
+            operationId: `user-prompt:${turnId}`,
+            plugin,
+            turnId,
+          }),
+        }
+      : {}),
     model: createPluginModel(plugin.manifest.name, plugin.model),
     source: context.source,
     text: context.userText ?? "",
@@ -410,6 +422,7 @@ export async function getPluginUserPromptContributions(args: {
     ToolRuntimeContext,
     "conversationId" | "destination" | "actor" | "source" | "userText"
   >;
+  turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
@@ -422,7 +435,7 @@ export async function getPluginUserPromptContributions(args: {
     }
     try {
       const rawResult = await hook({
-        ...invocationPluginContext(plugin, args.context),
+        ...invocationPluginContext(plugin, args.context, args.turnId),
       });
       if (rawResult === undefined) {
         continue;

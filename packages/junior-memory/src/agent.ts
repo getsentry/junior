@@ -205,11 +205,17 @@ export type MemoryExtractionResult = {
   memories: ExtractedMemory[];
 };
 
+/** Memories admitted by automatic recall and the model cost of that decision. */
+export type MemoryRecallResult = {
+  costUsd?: number;
+  relevantIds: string[];
+};
+
 export interface MemoryAgent {
   /** Select candidate memories that directly help with the current request. */
   selectRelevantMemories(
     request: MemoryRecallInput,
-  ): Promise<string[]> | string[];
+  ): Promise<MemoryRecallResult> | MemoryRecallResult;
   /** Classify a new preference against related active preferences. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
@@ -546,9 +552,12 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
       });
       const decision = memoryRecallDecisionSchema.parse(result.object);
       const candidateIds = new Set(request.candidates.map(({ id }) => id));
-      return [...new Set(decision.relevantIds)].filter((id) =>
-        candidateIds.has(id),
-      );
+      return {
+        relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
+          candidateIds.has(id),
+        ),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      };
     },
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);

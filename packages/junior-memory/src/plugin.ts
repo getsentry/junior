@@ -14,7 +14,11 @@ import {
 import { processMemorySession } from "./process-session";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
-import { memoriesCapturedEvent, memoriesCapturedEventV1 } from "./events";
+import {
+  memoriesCapturedEvent,
+  memoriesCapturedEventV1,
+  memoriesRecalledEvent,
+} from "./events";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
@@ -101,7 +105,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ? { structuredModelId: modelId }
       : { structuredModel: "default" },
     packageName: "@sentry/junior-memory",
-    conversationEvents: [memoriesCapturedEventV1, memoriesCapturedEvent],
+    conversationEvents: [
+      memoriesCapturedEventV1,
+      memoriesCapturedEvent,
+      memoriesRecalledEvent,
+    ],
     cli: {
       commands: [createMemoryCliCommand()],
     },
@@ -162,6 +170,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           ...(ctx.actor ? { actor: ctx.actor } : {}),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
+          events: ctx.events,
           log: ctx.log,
           maxVectorDistance: recallMaxVectorDistance(options),
           source: ctx.source,

@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { memoriesCapturedEvent } from "../src/events";
+import { memoriesCapturedEvent, memoriesRecalledEvent } from "../src/events";
 
 describe("memory conversation events", () => {
   it("omits empty extraction results from transcript presentation", () => {
     expect(
       memoriesCapturedEvent.renderEvent({
+        costUsd: 0.0042,
+        memories: [],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps automatic recall outcomes out of transcript presentation", () => {
+    expect(
+      memoriesRecalledEvent.renderEvent({
         costUsd: 0.0042,
         memories: [],
       }),

@@ -54,6 +54,8 @@ export interface PluginModel {
 export interface PluginEmbedder {
   /** Embed plugin-owned text for derived retrieval without exposing provider credentials. */
   embedTexts(input: { texts: string[] }): Promise<{
+    /** Best-effort estimated provider cost for this embedding call. */
+    costUsd?: number;
     dimensions: number;
     model: string;
     provider: string;

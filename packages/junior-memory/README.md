@@ -68,6 +68,10 @@ exported types, tools, and tests are authoritative.
 - Automatic recall retrieves a broad candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.
+- Every completed automatic recall attempt emits an invisible, namespaced
+  `memory/memories_recalled` conversation event with the admitted memory IDs
+  and best-effort embedding and relevance-model cost, including retrievals that
+  find no candidates and decisions that admit no memories.
 - Automatic recall degrades to no prompt contribution when relevance selection
   fails. Review, extraction, and write failures still fail their owning
   hook/task without corrupting existing memory state.

@@ -44,10 +44,12 @@ reports, and other typed hook surfaces exported by this package.
   database, logging, and only the host capabilities required by that hook.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
+- User prompt hooks for durable turns may emit registered structured events
+  through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
 - Host-owned structured model and embedding calls do not expose provider
-  credentials to plugins. Structured calls return a best-effort provider cost
-  estimate when one is available.
+  credentials to plugins. Both return a best-effort provider cost estimate when
+  one is available.
 - Operational report and authenticated API hooks may aggregate `costUsd` from
   their own registered conversation events through `ctx.eventStats`. Core
   binds the plugin namespace and owns access to the conversation event log.
@@ -99,7 +101,7 @@ projection. A renderer may return `undefined` when an event should remain
 durable without producing a transcript row. The active plugin context supplies
 the namespace, so plugins cannot emit native events or impersonate another
 plugin. The `junior` plugin name is reserved for host-owned native events.
-Versions of the same event name share one task-operation idempotency identity,
+Versions of the same event name share one operation idempotency identity,
 so keep previous definitions registered when evolving an event. Stored events
 remain durable when a plugin is removed, but normal transcript projection skips
 definitions that are not currently registered.

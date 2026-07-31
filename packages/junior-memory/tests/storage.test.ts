@@ -12,6 +12,7 @@ import {
   pluginApiRouteRequestContextSchema,
   pluginUserPageContentSchema,
   PluginToolInputError,
+  type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
   type PluginRunTranscriptEntry,
@@ -208,7 +209,12 @@ function cosineEmbedding(cosine: number): number[] {
 
 function createTestEmbedder(
   vectors: Record<string, number[]> = {},
-  overrides: { dimensions?: number; model?: string; provider?: string } = {},
+  overrides: {
+    costUsd?: number;
+    dimensions?: number;
+    model?: string;
+    provider?: string;
+  } = {},
 ) {
   const calls: string[][] = [];
   return {
@@ -216,6 +222,9 @@ function createTestEmbedder(
     async embedTexts(input: { texts: string[] }) {
       calls.push(input.texts);
       return {
+        ...(overrides.costUsd !== undefined
+          ? { costUsd: overrides.costUsd }
+          : {}),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
         model: overrides.model ?? "test-embedding-model",
         provider: overrides.provider ?? "test-embedding-provider",
@@ -225,7 +234,10 @@ function createTestEmbedder(
   };
 }
 
-function recallModel(select: (candidates: string[]) => string[]): PluginModel {
+function recallModel(
+  select: (candidates: string[]) => string[],
+  costUsd?: number,
+): PluginModel {
   return {
     async completeObject(input) {
       const encoded =
@@ -242,6 +254,7 @@ function recallModel(select: (candidates: string[]) => string[]): PluginModel {
         id: string;
       }>;
       return {
+        ...(costUsd !== undefined ? { costUsd } : {}),
         object: {
           relevantIds: select(candidates.map(({ content }) => content)).map(
             (content) =>
@@ -523,6 +536,7 @@ describe("memory plugin storage", () => {
       async completeObject(input) {
         calls.push(input);
         return {
+          costUsd: 0.0042,
           object: {
             relevantIds: ["memory-2", "unknown", "memory-2", "memory-1"],
           },
@@ -542,7 +556,10 @@ describe("memory plugin storage", () => {
         ],
         userRequest: "How does CI work in getsentry/junior?",
       }),
-    ).resolves.toEqual(["memory-2", "memory-1"]);
+    ).resolves.toEqual({
+      costUsd: 0.0042,
+      relevantIds: ["memory-2", "memory-1"],
+    });
     expect(calls[0]?.system).toContain(
       "Reject memories that merely share a company",
     );
@@ -3759,14 +3776,20 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-other-user",
       });
 
+      const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
         db: memoryDb(fixture),
-        embedder: createTestEmbedder(),
+        embedder: createTestEmbedder({}, { costUsd: 0.0003 }),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallModel((candidates) => candidates, 0.0042),
         plugin: { name: "memory" },
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
@@ -3806,6 +3829,18 @@ WHERE id = '${superseded.memory.id}'
       expect(text).not.toContain(conversation.memory.id);
       expect(text).not.toContain("obsolete wording");
       expect(text).not.toContain("unrelated owner");
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: {
+            costUsd: 0.0045,
+            memories: [conversation.memory.id, personal.memory.id],
+          },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 1,
+          }),
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
@@ -3938,20 +3973,78 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-empty",
       });
 
+      const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
           db: memoryDb(fixture),
-          embedder: createTestEmbedder(),
+          embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
           log: noopLogger,
-          model: recallModel(() => []),
+          model: recallModel(() => [], 0.0017),
           plugin: { name: "memory" },
           state: memoryState,
-          text: "How does CI work in getsentry/junior?",
+          text: "How do autofix PR tests use the dashboard workflow?",
         }),
       ).resolves.toBeUndefined();
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: { costUsd: 0.0019, memories: [] },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 1,
+          }),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("records embedding cost when retrieval finds no recall candidates", async () => {
+    const fixture = await createMemoryFixture();
+    const emitted: PluginConversationEventValue[] = [];
+
+    try {
+      const context = slackContext();
+      const plugin = memoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          destination: slackDestination(context),
+          db: memoryDb(fixture),
+          embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
+          log: noopLogger,
+          model: {
+            async completeObject() {
+              throw new Error("Recall model should not run without candidates");
+            },
+          },
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: "Where do release notes live?",
+        }),
+      ).resolves.toBeUndefined();
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: { costUsd: 0.0002, memories: [] },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 1,
+          }),
+        }),
+      ]);
     } finally {
       await fixture.close();
     }

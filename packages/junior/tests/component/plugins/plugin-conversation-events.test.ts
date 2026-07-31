@@ -92,6 +92,76 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
+  it("binds user prompt events to the current turn and deduplicates retries", async () => {
+    const runId = randomUUID();
+    const conversationId = `local:test:prompt-event-${runId}`;
+    const sessionId = `prompt-event-session:${runId}`;
+    const recallEvent = defineConversationEvent({
+      name: "memories_recalled",
+      version: 1,
+      schema: z
+        .object({
+          costUsd: z.number(),
+          memories: z.array(z.string()),
+        })
+        .strict(),
+      renderEvent() {
+        return undefined;
+      },
+    });
+    const plugin = defineJuniorPlugin({
+      manifest: {
+        name: "prompt-event-demo",
+        displayName: "Prompt Event Demo",
+        description: "Prompt event demo",
+      },
+      conversationEvents: [recallEvent],
+      hooks: {
+        async userPrompt(ctx) {
+          if (!ctx.events) {
+            throw new Error("User prompt event writer is missing");
+          }
+          await ctx.events.emit(recallEvent({ costUsd: 0.0042, memories: [] }));
+          return undefined;
+        },
+      },
+    });
+    const { getPluginUserPromptContributions, setPlugins } =
+      await import("@/chat/plugins/agent-hooks");
+    const { getConversationEventStore } = await import("@/chat/db");
+    setPlugins([plugin]);
+    await recordCompletedSession({ conversationId, sessionId });
+    const request = {
+      context: {
+        conversationId,
+        destination: { platform: "local" as const, conversationId },
+        source: createLocalSource(conversationId),
+        userText: "Recall relevant memory.",
+      },
+      turnId: sessionId,
+    };
+
+    await getPluginUserPromptContributions(request);
+    await getPluginUserPromptContributions(request);
+
+    const events =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(
+      events.filter((event) => event.data.type === "structured_event"),
+    ).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "structured_event",
+          namespace: "prompt-event-demo",
+          name: "memories_recalled",
+          version: 1,
+          turnId: sessionId,
+          content: { costUsd: 0.0042, memories: [] },
+        },
+      }),
+    ]);
+  });
+
   it("aggregates event cost inside the owning plugin namespace", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:event-cost-${runId}`;

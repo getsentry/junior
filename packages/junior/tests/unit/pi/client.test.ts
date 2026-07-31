@@ -359,7 +359,7 @@ describe("completeText", () => {
         [0.1, 0.2, 0.3],
         [0.4, 0.5, 0.6],
       ],
-      usage: { inputTokens: 8 },
+      usage: { tokens: 8 },
     });
 
     const { embedTexts } = await import("@/chat/pi/client");
@@ -369,12 +369,34 @@ describe("completeText", () => {
     });
 
     expect(result.dimensions).toBe(3);
+    expect(result.costUsd).toBe(0.00000016);
     const startAttributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
       string,
       unknown
     >;
     expect(startAttributes["gen_ai.operation.name"]).toBe("embeddings");
     expect(startAttributes["gen_ai.output.type"]).toBeUndefined();
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.input_usd": 0.00000016,
+      "app.cost.total_usd": 0.00000016,
+      "gen_ai.embeddings.dimension.count": 3,
+      "gen_ai.usage.input_tokens": 8,
+    });
+  });
+
+  it("leaves embedding cost unknown for models without a verified rate", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2, 0.3]],
+      usage: { tokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    const result = await embedTexts({
+      modelId: "example/unpriced-embedding-model",
+      texts: ["one"],
+    });
+
+    expect(result).not.toHaveProperty("costUsd");
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "gen_ai.embeddings.dimension.count": 3,
       "gen_ai.usage.input_tokens": 8,
@@ -384,7 +406,7 @@ describe("completeText", () => {
   it("validates embedding output before the embedding span ends", async () => {
     mocks.embedMany.mockResolvedValue({
       embeddings: [[0.1], [0.2, 0.3]],
-      usage: { inputTokens: 8 },
+      usage: { tokens: 8 },
     });
 
     const { embedTexts } = await import("@/chat/pi/client");

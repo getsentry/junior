@@ -425,6 +425,7 @@ export async function assemblePrompt(args: {
   resumedFromSessionRecord: boolean;
   routing: AgentRunRouting;
   spanContext: LogContext;
+  turnId: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -485,6 +486,7 @@ export async function assemblePrompt(args: {
       ? []
       : await getPluginUserPromptContributions({
           context: args.toolRuntimeContext,
+          turnId: args.turnId,
         });
   const turnContextPrompt =
     needsBootstrapContextForPrompt || pluginUserPromptContributions.length > 0

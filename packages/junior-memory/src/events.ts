@@ -28,6 +28,13 @@ const capturedMemoriesSchema = z
   })
   .strict();
 
+const recalledMemoriesSchema = z
+  .object({
+    memories: z.array(z.string().min(1)).max(5),
+    costUsd: z.number().finite().nonnegative().optional(),
+  })
+  .strict();
+
 function renderCapturedMemories(
   event: z.output<typeof capturedMemoriesSchema>,
 ) {
@@ -65,6 +72,16 @@ export const memoriesCapturedEvent = defineConversationEvent({
   version: 2,
   schema: capturedMemoriesSchema,
   renderEvent: renderCapturedMemories,
+});
+
+/** Durable outcome emitted after one completed automatic recall attempt. */
+export const memoriesRecalledEvent = defineConversationEvent({
+  name: "memories_recalled",
+  version: 1,
+  schema: recalledMemoriesSchema,
+  renderEvent() {
+    return undefined;
+  },
 });
 
 /** Select the stable, safe memory fields retained in conversation history. */
