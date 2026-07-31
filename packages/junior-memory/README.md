@@ -55,6 +55,10 @@ exported types, tools, and tests are authoritative.
   learning.
 - Passive extraction creates only durable, reusable facts—not transient tasks,
   conversation summaries, secrets, or speculative interpretation.
+- Every completed passive extraction emits the namespaced
+  `memory/memories_captured` conversation event with its best-effort model cost.
+  Empty extraction outcomes remain durable for reporting but do not produce a
+  transcript row.
 - Candidate review resolves duplicates and supersession before activation.
 - Search combines independently ranked vector and PostgreSQL full-text matches
   with reciprocal rank fusion; provider-specific raw scores are never added

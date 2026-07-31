@@ -46,7 +46,8 @@ reports, and other typed hook surfaces exported by this package.
   core prompt.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
 - Host-owned structured model and embedding calls do not expose provider
-  credentials to plugins.
+  credentials to plugins. Structured calls return a best-effort provider cost
+  estimate when one is available.
 - Authenticated API route apps receive one verified viewer in their request
   context. The registration hook exposes actor resolution for plugins whose
   viewer-owned data spans platform identities.
@@ -90,11 +91,12 @@ routing, response validation, rendering, confirmation, and query state.
 
 Register plugin-owned event definitions through `conversationEvents`. A
 definition owns one local name, version, content schema, and `renderEvent()`
-projection. The active plugin context supplies the namespace, so plugins cannot
-emit native events or impersonate another plugin. The `junior` plugin name is
-reserved for host-owned native events. Stored events remain durable when a
-plugin is removed, but normal transcript projection skips definitions that are
-not currently registered.
+projection. A renderer may return `undefined` when an event should remain
+durable without producing a transcript row. The active plugin context supplies
+the namespace, so plugins cannot emit native events or impersonate another
+plugin. The `junior` plugin name is reserved for host-owned native events.
+Stored events remain durable when a plugin is removed, but normal transcript
+projection skips definitions that are not currently registered.
 
 ## Database
 

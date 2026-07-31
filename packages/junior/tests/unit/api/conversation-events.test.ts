@@ -116,6 +116,46 @@ describe("conversation report event projection", () => {
     }
   });
 
+  it("omits registered plugin events without a presentation", async () => {
+    const background = defineConversationEvent({
+      name: "background_completed",
+      version: 1,
+      schema: z.object({ count: z.number().int().nonnegative() }).strict(),
+      renderEvent(value) {
+        return value.count === 0 ? undefined : { title: "Background work" };
+      },
+    });
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "background",
+          displayName: "Background",
+          description: "Background event test plugin",
+        },
+        conversationEvents: [background],
+      }),
+    ]);
+    try {
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [
+            event(1, {
+              type: "structured_event",
+              namespace: "background",
+              name: "background_completed",
+              version: 1,
+              content: { count: 0 },
+            }),
+          ],
+        }),
+      ).toEqual([]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("ignores unsupported stored events", () => {
     const unsupported = decodeStoredConversationEvent({
       schemaVersion: 3,

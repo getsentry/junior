@@ -14,7 +14,7 @@ import {
 import { processMemorySession } from "./process-session";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
-import { memoriesCapturedEvent } from "./events";
+import { memoriesCapturedEvent, memoriesCapturedEventV1 } from "./events";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
@@ -101,7 +101,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ? { structuredModelId: modelId }
       : { structuredModel: "default" },
     packageName: "@sentry/junior-memory",
-    conversationEvents: [memoriesCapturedEvent],
+    conversationEvents: [memoriesCapturedEventV1, memoriesCapturedEvent],
     cli: {
       commands: [createMemoryCliCommand()],
     },

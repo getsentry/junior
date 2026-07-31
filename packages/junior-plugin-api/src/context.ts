@@ -44,7 +44,11 @@ export interface PluginModel {
     prompt: string;
     schema: TSchema;
     system?: string;
-  }): Promise<{ object: z.infer<TSchema> }>;
+  }): Promise<{
+    /** Best-effort estimated provider cost for this completion. */
+    costUsd?: number;
+    object: z.infer<TSchema>;
+  }>;
 }
 
 export interface PluginEmbedder {

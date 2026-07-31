@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const completeObject = vi.fn(async () => ({ object: { ok: true } }));
+const completeObject = vi.fn(async () => ({
+  costUsd: 0.0042,
+  object: { ok: true },
+}));
 const embedTexts = vi.fn(async () => ({
   dimensions: 1,
   model: "test-embedding-model",
@@ -32,7 +35,7 @@ describe("createPluginModel", () => {
   it("uses the fast model for structured plugin calls by default", async () => {
     const { createPluginModel } = await import("@/chat/plugins/model");
 
-    await createPluginModel("test-plugin").completeObject({
+    const result = await createPluginModel("test-plugin").completeObject({
       prompt: "classify",
       schema: {} as never,
     });
@@ -42,6 +45,7 @@ describe("createPluginModel", () => {
         modelId: "openai/gpt-5.4-mini",
       }),
     );
+    expect(result).toEqual({ costUsd: 0.0042, object: { ok: true } });
   });
 
   it("uses the host default model when requested", async () => {

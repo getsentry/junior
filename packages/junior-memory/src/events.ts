@@ -21,8 +21,34 @@ function eventPreview(content: string): string {
   return `${trimmed.slice(0, MAX_EVENT_PREVIEW_CHARS - 3).trimEnd()}...`;
 }
 
-/** Durable transcript event emitted after background memory capture. */
-export const memoriesCapturedEvent = defineConversationEvent({
+const capturedMemoriesSchema = z
+  .object({
+    memories: z.array(capturedMemorySchema).max(100),
+    costUsd: z.number().finite().nonnegative().optional(),
+  })
+  .strict();
+
+function renderCapturedMemories(
+  event: z.output<typeof capturedMemoriesSchema>,
+) {
+  const count = event.memories.length;
+  if (count === 0) return undefined;
+  return {
+    icon: "brain" as const,
+    title: count === 1 ? "Memory captured" : "Memories captured",
+    preview:
+      count === 1
+        ? eventPreview(event.memories[0]!.content)
+        : `${count} memories`,
+    details: event.memories.map((memory) => ({
+      title: memory.content,
+      metadata: [memory.kind, memory.scope],
+    })),
+  };
+}
+
+/** Previous stored memory-capture event shape retained for transcript rendering. */
+export const memoriesCapturedEventV1 = defineConversationEvent({
   name: "memories_captured",
   version: 1,
   schema: z
@@ -30,21 +56,15 @@ export const memoriesCapturedEvent = defineConversationEvent({
       memories: z.array(capturedMemorySchema).min(1).max(100),
     })
     .strict(),
-  renderEvent(event) {
-    const count = event.memories.length;
-    return {
-      icon: "brain",
-      title: count === 1 ? "Memory captured" : "Memories captured",
-      preview:
-        count === 1
-          ? eventPreview(event.memories[0]!.content)
-          : `${count} memories`,
-      details: event.memories.map((memory) => ({
-        title: memory.content,
-        metadata: [memory.kind, memory.scope],
-      })),
-    };
-  },
+  renderEvent: renderCapturedMemories,
+});
+
+/** Durable outcome emitted after every completed passive memory extraction. */
+export const memoriesCapturedEvent = defineConversationEvent({
+  name: "memories_captured",
+  version: 2,
+  schema: capturedMemoriesSchema,
+  renderEvent: renderCapturedMemories,
 });
 
 /** Select the stable, safe memory fields retained in conversation history. */

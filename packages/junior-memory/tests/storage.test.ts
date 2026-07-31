@@ -262,6 +262,7 @@ function extractionModel(
     kind: "preference" | "procedure" | "knowledge";
     evidenceMessageIndices?: number[];
   }>,
+  costUsd?: number,
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
   const model: PluginModel = {
@@ -274,6 +275,7 @@ function extractionModel(
         evidenceMessageIndices: memory.evidenceMessageIndices ?? [0],
       });
       return {
+        ...(costUsd !== undefined ? { costUsd } : {}),
         object: {
           memories: memories.map(toResponseMemory),
         },
@@ -612,14 +614,16 @@ describe("memory plugin storage", () => {
         actors: [localContext().actor],
         runtimeContext: localContext(),
       }),
-    ).resolves.toEqual([
-      {
-        content: "Prefers causes before mitigations in incident writeups.",
-        expiresAtMs: null,
-        kind: "preference",
-        evidenceMessageIndices: [0],
-      },
-    ]);
+    ).resolves.toEqual({
+      memories: [
+        {
+          content: "Prefers causes before mitigations in incident writeups.",
+          expiresAtMs: null,
+          kind: "preference",
+          evidenceMessageIndices: [0],
+        },
+      ],
+    });
   });
 
   it("accepts up to five passive extraction memories", async () => {
@@ -665,19 +669,19 @@ describe("memory plugin storage", () => {
     };
     const agent = createMemoryAgent(model);
 
-    await expect(
-      agent.extractSessionMemories({
-        transcript: [
-          {
-            type: "message",
-            role: "user",
-            text: "Store several durable facts.",
-          },
-        ],
-        actors: [localContext().actor],
-        runtimeContext: localContext(),
-      }),
-    ).resolves.toHaveLength(5);
+    const result = await agent.extractSessionMemories({
+      transcript: [
+        {
+          type: "message",
+          role: "user",
+          text: "Store several durable facts.",
+        },
+      ],
+      actors: [localContext().actor],
+      runtimeContext: localContext(),
+    });
+
+    expect(result.memories).toHaveLength(5);
   });
 
   it("rejects passive extraction responses with more than five memories", async () => {
@@ -759,16 +763,19 @@ describe("memory plugin storage", () => {
 
     try {
       const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
-      const { model } = extractionModel([
-        {
-          kind: "preference",
-          content: "Prefers QA notes that mention database row checks.",
-        },
-        {
-          content: "Deploy runbooks live in Notion.",
-          kind: "knowledge",
-        },
-      ]);
+      const { model } = extractionModel(
+        [
+          {
+            kind: "preference",
+            content: "Prefers QA notes that mention database row checks.",
+          },
+          {
+            content: "Deploy runbooks live in Notion.",
+            kind: "knowledge",
+          },
+        ],
+        0.0042,
+      );
       const embedder = createTestEmbedder();
 
       await processMemorySession(
@@ -825,6 +832,7 @@ describe("memory plugin storage", () => {
       expect(rows).toHaveLength(2);
       expect(emitted).toHaveLength(1);
       expect(emitted[0]?.data).toEqual({
+        costUsd: 0.0042,
         memories: expect.arrayContaining([
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
@@ -860,6 +868,33 @@ describe("memory plugin storage", () => {
       await fixture.close();
     }
   }, 15_000);
+
+  it("records empty extraction cost without capturing memories", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
+          model: extractionModel([], 0.0017).model,
+        }),
+      );
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]?.data).toEqual({ costUsd: 0.0017, memories: [] });
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("supersedes old preferences from passive completed-session extraction", async () => {
     const fixture = await createMemoryFixture();
@@ -1033,12 +1068,16 @@ describe("memory plugin storage", () => {
 
     try {
       const state = createMemoryState();
-      const { model } = extractionModel([
-        {
-          content: "Prefers retry-safe memory extraction.",
-          kind: "preference",
-        },
-      ]);
+      const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
+      const { model } = extractionModel(
+        [
+          {
+            content: "Prefers retry-safe memory extraction.",
+            kind: "preference",
+          },
+        ],
+        0.0023,
+      );
       const run = {
         async load() {
           return completedRun({
@@ -1052,6 +1091,11 @@ describe("memory plugin storage", () => {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
           model,
           run,
           state,
@@ -1060,6 +1104,11 @@ describe("memory plugin storage", () => {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
           model: {
             async completeObject() {
               throw new Error("model should not run on cached retry");
@@ -1079,6 +1128,9 @@ describe("memory plugin storage", () => {
           kind: "preference",
         }),
       ]);
+      expect(emitted).toHaveLength(2);
+      expect(emitted[1]?.data).toEqual(emitted[0]?.data);
+      expect(emitted[0]?.data).toMatchObject({ costUsd: 0.0023 });
     } finally {
       await fixture.close();
     }

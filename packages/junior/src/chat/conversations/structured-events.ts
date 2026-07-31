@@ -72,8 +72,10 @@ export const authenticationUnlinkedEvent = defineConversationEvent({
   },
 });
 
-const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] =
-  [authenticationLinkedEvent, authenticationUnlinkedEvent];
+const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
+  authenticationLinkedEvent,
+  authenticationUnlinkedEvent,
+];
 
 /** Resolve a registered Junior-native conversation event definition. */
 export function getJuniorNativeEventDefinition(args: {
@@ -96,7 +98,8 @@ export function renderJuniorNativeConversationEvent(args: {
   if (args.namespace !== JUNIOR_NATIVE_EVENT_NAMESPACE) return undefined;
   const definition = getJuniorNativeEventDefinition(args);
   if (!definition) return undefined;
-  return conversationEventPresentationSchema.parse(
-    definition.renderEvent(definition.parse(args.content)),
-  );
+  const presentation = definition.renderEvent(definition.parse(args.content));
+  return presentation === undefined
+    ? undefined
+    : conversationEventPresentationSchema.parse(presentation);
 }

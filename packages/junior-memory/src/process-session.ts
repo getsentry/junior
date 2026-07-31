@@ -17,6 +17,7 @@ import {
   createMemoryAgent,
   parseExtractedMemory,
   type ExtractedMemory,
+  type MemoryExtractionResult,
 } from "./agent";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
@@ -28,20 +29,30 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const extractedMemoryCacheSchema = z.array(
+const extractedMemorySchema = z
+  .object({
+    content: z.string().min(1),
+    expiresAtMs: z.number().finite().nullable(),
+    kind: z.enum(MEMORY_KINDS),
+    evidenceMessageIndices: z
+      .array(z.number().int().nonnegative())
+      .min(1)
+      .max(10),
+  })
+  .strict()
+  .transform(parseExtractedMemory);
+const extractedMemoryCacheSchema = z.union([
   z
     .object({
-      content: z.string().min(1),
-      expiresAtMs: z.number().finite().nullable(),
-      kind: z.enum(MEMORY_KINDS),
-      evidenceMessageIndices: z
-        .array(z.number().int().nonnegative())
-        .min(1)
-        .max(10),
+      costUsd: z.number().finite().nonnegative().optional(),
+      memories: z.array(extractedMemorySchema).max(5),
     })
-    .strict()
-    .transform(parseExtractedMemory),
-);
+    .strict(),
+  z
+    .array(extractedMemorySchema)
+    .max(5)
+    .transform((memories) => ({ memories })),
+]);
 
 /** Where a passively extracted memory may be stored, or dropped when unproven. */
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
@@ -178,10 +189,10 @@ function passiveInput(
   };
 }
 
-async function getTaskMemories(
+async function getTaskExtraction(
   context: PluginTaskContext,
-  extract: () => Promise<ExtractedMemory[]>,
-): Promise<ExtractedMemory[]> {
+  extract: () => Promise<MemoryExtractionResult>,
+): Promise<MemoryExtractionResult> {
   const cacheKey = `memory-extraction:${context.id}`;
   const cached = await context.state.get(cacheKey);
   if (cached !== undefined) {
@@ -191,11 +202,9 @@ async function getTaskMemories(
     }
     await context.state.delete(cacheKey);
   }
-  const memories = await extract();
-  if (memories.length > 0) {
-    await context.state.set(cacheKey, memories, MEMORY_TASK_STATE_TTL_MS);
-  }
-  return memories;
+  const extraction = await extract();
+  await context.state.set(cacheKey, extraction, MEMORY_TASK_STATE_TTL_MS);
+  return extraction;
 }
 
 /**
@@ -251,7 +260,7 @@ export async function processMemorySession(
     supersessionDecider: agent,
   });
   await store.archiveExpiredMemories();
-  const memories = await getTaskMemories(context, async () => {
+  const extraction = await getTaskExtraction(context, async () => {
     const existingMemories = await store.searchMemories({
       limit: 10,
       query: evidenceText,
@@ -265,14 +274,11 @@ export async function processMemorySession(
       runtimeContext,
     });
   });
-  if (memories.length === 0) {
-    return;
-  }
 
   const captured: ReturnType<typeof capturedMemory>[] = [];
-  for (const memory of memories) {
+  for (const memory of extraction.memories) {
     // The routing gate stays even though extraction is also actor-gated:
-    // getTaskMemories caches extraction output for 7 days, so a retry can replay
+    // getTaskExtraction caches extraction output for 7 days, so a retry can replay
     // preference proposals cached before this gate existed.
     const target = routeExtractedMemory(memory, transcript, run);
     if (target === "drop") {
@@ -287,7 +293,12 @@ export async function processMemorySession(
     const result = await store.createMemory(input);
     recordCapturedMemory(captured, result);
   }
-  if (captured.length > 0) {
-    await context.events.emit(memoriesCapturedEvent({ memories: captured }));
-  }
+  await context.events.emit(
+    memoriesCapturedEvent({
+      memories: captured,
+      ...(extraction.costUsd !== undefined
+        ? { costUsd: extraction.costUsd }
+        : {}),
+    }),
+  );
 }

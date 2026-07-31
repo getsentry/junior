@@ -48,12 +48,14 @@ export interface PluginConversationEventValue {
   readonly definition: PluginConversationEventDefinition;
 }
 
-/** Registered schema and transcript presentation for one plugin event version. */
+/** Registered schema and optional transcript presentation for one event version. */
 export interface PluginConversationEventDefinition {
   readonly eventName: string;
   readonly version: number;
   parse(data: unknown): Record<string, unknown>;
-  renderEvent(data: Record<string, unknown>): ConversationEventPresentation;
+  renderEvent(
+    data: Record<string, unknown>,
+  ): ConversationEventPresentation | undefined;
 }
 
 /** Typed factory returned while authoring one plugin conversation event. */
@@ -72,7 +74,7 @@ export function defineConversationEvent<
   schema: TSchema;
   renderEvent(
     event: z.output<TSchema>,
-  ): z.input<typeof conversationEventPresentationSchema>;
+  ): z.input<typeof conversationEventPresentationSchema> | undefined;
 }): DefinedConversationEvent<z.input<TSchema>> {
   const identity = z
     .object({
@@ -96,9 +98,10 @@ export function defineConversationEvent<
     },
     renderEvent(data: Record<string, unknown>) {
       const parsed = definition.schema.parse(data);
-      return conversationEventPresentationSchema.parse(
-        definition.renderEvent(parsed),
-      );
+      const presentation = definition.renderEvent(parsed);
+      return presentation === undefined
+        ? undefined
+        : conversationEventPresentationSchema.parse(presentation);
     },
   });
   return eventDefinition;
