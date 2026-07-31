@@ -164,6 +164,19 @@ test("renders an empty registered plugin page", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
+test("shows the memory overview error state", async ({ page }) => {
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
+  });
+
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+
+  await expect(
+    page.getByText("Memory history is temporarily unavailable."),
+  ).toBeVisible();
+  await expect(page.getByText("Loading memory summary")).not.toBeVisible();
+});
+
 test("searches, paginates, and forgets plugin page records", async ({
   page,
 }) => {
