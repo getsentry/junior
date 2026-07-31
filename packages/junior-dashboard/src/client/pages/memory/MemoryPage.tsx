@@ -473,7 +473,9 @@ function MemoryRow(props: {
     learned === "Automatic"
       ? "Learned by Junior"
       : learned === "Explicit"
-        ? "Saved by you"
+        ? isPublic
+          ? "Saved explicitly"
+          : "Saved by you"
         : "Recorded earlier";
   return (
     <>
@@ -654,7 +656,9 @@ function MemoryDetails(props: {
     learned === "Automatic"
       ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
-        ? `You asked Junior to remember this on ${shortDate(remembered)}.`
+        ? isPublic
+          ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
+          : `You asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
   const scopeCopy = isPublic
     ? `It is stored as workspace ${kind.toLowerCase()} for future channels.`
