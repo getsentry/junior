@@ -32,6 +32,14 @@ function pageFilter(filter: string | undefined): {
   return {};
 }
 
+function pageEmptyText(input: { filter?: string; query?: string }): string {
+  if (input.query) return "No memories matched your search.";
+  if (input.filter === "preferences") return "No preferences yet.";
+  if (input.filter === "automatic") return "No learned memories yet.";
+  if (input.filter === "explicit") return "No saved memories yet.";
+  return "No personal memories yet.";
+}
+
 /** Create the interactive personal Memories dashboard page. */
 export function createMemoryUserPage(): PluginUserPageDefinition {
   return {
@@ -52,9 +60,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
       });
       return {
         type: "list",
-        emptyText: input.query
-          ? "No memories matched your search."
-          : "No personal memories yet.",
+        emptyText: pageEmptyText(input),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({

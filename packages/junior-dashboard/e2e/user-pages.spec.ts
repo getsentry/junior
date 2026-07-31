@@ -108,6 +108,9 @@ test("expands memory details inline on desktop", async ({ page }) => {
     page.getByText("Why Junior remembers this").first(),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("");
 
   await memory.click();
   await expect(
@@ -126,6 +129,9 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("hidden");
   await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
   await expect(dialog.getByText("Only you")).toBeVisible();
   await expect(
@@ -134,6 +140,9 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
 
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("");
   expect(browserErrors).toEqual([]);
 });
 

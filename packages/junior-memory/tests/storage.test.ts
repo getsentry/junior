@@ -2142,7 +2142,10 @@ ORDER BY created_at_ms ASC
           },
           { filter: "explicit", limit: 20 },
         ),
-      ).resolves.toMatchObject({ records: [] });
+      ).resolves.toMatchObject({
+        emptyText: "No saved memories yet.",
+        records: [],
+      });
       await expect(
         memoryPage.read(
           {

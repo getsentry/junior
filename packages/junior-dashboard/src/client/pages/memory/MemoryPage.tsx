@@ -601,17 +601,30 @@ function MemoryMobileInspector(props: {
 }) {
   useEffect(() => {
     if (!props.record) return;
+    const mobileSheet = window.matchMedia("(max-width: 1023px)");
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") props.onClose();
+    let scrollLocked = false;
+    function updateScrollLock() {
+      if (mobileSheet.matches && !scrollLocked) {
+        document.body.style.overflow = "hidden";
+        scrollLocked = true;
+      } else if (!mobileSheet.matches && scrollLocked) {
+        document.body.style.overflow = previousOverflow;
+        scrollLocked = false;
+      }
     }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && mobileSheet.matches) props.onClose();
+    }
+    updateScrollLock();
+    mobileSheet.addEventListener("change", updateScrollLock);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      if (scrollLocked) document.body.style.overflow = previousOverflow;
+      mobileSheet.removeEventListener("change", updateScrollLock);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [props]);
+  }, [props.onClose, props.record]);
 
   if (!props.record) return null;
   return (
