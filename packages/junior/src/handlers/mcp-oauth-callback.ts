@@ -602,17 +602,23 @@ export async function GET(
     } catch {
       providerLabel = undefined;
     }
-    await recordAuthenticationLinked({
-      conversationId: authSession.conversationId,
-      provider,
-      actorId: authSession.userId,
-      authorizationId: mcpAuthorizationId({
+    try {
+      await recordAuthenticationLinked({
+        conversationId: authSession.conversationId,
         provider,
-        sessionId: authSession.sessionId,
-      }),
-      turnId: authSession.sessionId,
-      ...(providerLabel ? { providerLabel } : {}),
-    });
+        actorId: authSession.userId,
+        authorizationId: mcpAuthorizationId({
+          provider,
+          sessionId: authSession.sessionId,
+        }),
+        turnId: authSession.sessionId,
+        ...(providerLabel ? { providerLabel } : {}),
+      });
+    } catch (error) {
+      logException(error, "mcp.oauth_callback.authentication_event.failed", {
+        "app.credential.provider": provider,
+      });
+    }
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {

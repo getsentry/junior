@@ -685,22 +685,28 @@ export async function GET(
   });
 
   if (stored.resumeConversationId) {
-    await recordAuthenticationLinked({
-      conversationId: stored.resumeConversationId,
-      provider,
-      actorId: stored.userId,
-      providerLabel,
-      ...(account?.label ? { accountLabel: account.label } : {}),
-      ...(stored.resumeSessionId
-        ? {
-            authorizationId: pluginAuthorizationId({
-              provider,
-              sessionId: stored.resumeSessionId,
-            }),
-            turnId: stored.resumeSessionId,
-          }
-        : {}),
-    });
+    try {
+      await recordAuthenticationLinked({
+        conversationId: stored.resumeConversationId,
+        provider,
+        actorId: stored.userId,
+        providerLabel,
+        ...(account?.label ? { accountLabel: account.label } : {}),
+        ...(stored.resumeSessionId
+          ? {
+              authorizationId: pluginAuthorizationId({
+                provider,
+                sessionId: stored.resumeSessionId,
+              }),
+              turnId: stored.resumeSessionId,
+            }
+          : {}),
+      });
+    } catch (error) {
+      logException(error, "oauth.callback.authentication_event.failed", {
+        "app.credential.provider": provider,
+      });
+    }
   }
 
   if (stored.destination?.platform !== "local") {
