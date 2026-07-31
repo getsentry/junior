@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
+import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -71,6 +72,13 @@ type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
+  const sessionSource =
+    value.sessionSource === null
+      ? undefined
+      : parseSessionSource(value.sessionSource);
+  if (value.sessionSource !== null && !sessionSource) {
+    throw new Error("Conversation record session source is invalid");
+  }
   const actorFullName = row.userDisplayName?.trim()
     ? row.userDisplayName
     : row.identityDisplayName;
@@ -104,6 +112,7 @@ function conversationFromRow(row: ConversationRow): Conversation {
     ...(value.archivedAt ? { archivedAtMs: value.archivedAt.getTime() } : {}),
     ...(value.channelName ? { channelName: value.channelName } : {}),
     ...(value.source ? { source: value.source } : {}),
+    ...(sessionSource ? { sessionSource } : {}),
     ...(value.title ? { title: value.title } : {}),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }

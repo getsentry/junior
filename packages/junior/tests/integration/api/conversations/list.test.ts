@@ -38,6 +38,70 @@ describe("conversation list API", () => {
     }
   });
 
+  test("returns a Slack source link for a viewable conversation", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "slack:C123:source-link",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        nowMs: 1_000,
+        sessionSource: {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+        source: "slack",
+        visibility: "public",
+      });
+
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:C123:source-link",
+            sourceUrl: "https://slack.com/app_redirect?channel=C123&team=T123",
+          }),
+        ],
+      });
+
+      await store.recordActivity({
+        conversationId: "slack:D123:private-source-link",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        nowMs: 2_000,
+        sessionSource: {
+          platform: "slack",
+          type: "priv",
+          teamId: "T123",
+          channelId: "D123",
+          threadTs: "1700000000.000200",
+        },
+        source: "slack",
+        visibility: "private",
+      });
+      const privateSummary = (
+        await readConversationFeedFromSql()
+      ).conversations.find(
+        (conversation) =>
+          conversation.conversationId === "slack:D123:private-source-link",
+      );
+      expect(privateSummary).toBeDefined();
+      expect(privateSummary).not.toHaveProperty("sourceUrl");
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("uses canonical and fallback actor names with provider identity fields", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);

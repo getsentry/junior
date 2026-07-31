@@ -48,6 +48,10 @@ function sentryConversationUrl(conversationId: string): string {
   return `https://sentry.example.com/organizations/acme/explore/conversations/${encodeURIComponent(conversationId)}/`;
 }
 
+function slackSourceUrl(channelId: string, teamId: string): string {
+  return `https://slack.com/app_redirect?channel=${channelId}&team=${teamId}`;
+}
+
 function reportEvent(
   seq: number,
   createdAt: string,
@@ -119,6 +123,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
+    sourceUrl: slackSourceUrl("CQA123", "TQA123"),
     events: [
       reportEvent(0, startedAt, {
         type: "message",

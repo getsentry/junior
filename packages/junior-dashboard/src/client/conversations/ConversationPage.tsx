@@ -133,9 +133,7 @@ export function ConversationPage(props: {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error && !detail.data ? (
-          <Card
-            className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-dashboard-text-muted"
-          >
+          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-dashboard-text-muted">
             {detail.error.message}
           </Card>
         ) : (
@@ -293,6 +291,7 @@ function ConversationIdentity(props: {
         includeId: false,
       })
     : undefined;
+  const sourceUrl = props.detail?.sourceUrl ?? props.conversation?.sourceUrl;
   const ownerNode = owner ? (
     email ? (
       <Link
@@ -320,7 +319,9 @@ function ConversationIdentity(props: {
     <>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 md:hidden">
         {location ? (
-          <span className="min-w-0 max-w-full truncate">{location}</span>
+          <span className="min-w-0 max-w-full truncate">
+            <SourceLocation label={location} sourceUrl={sourceUrl} />
+          </span>
         ) : null}
         {location && ownerNode ? (
           <span className="text-dashboard-text-muted">·</span>
@@ -356,6 +357,21 @@ function ConversationIdentity(props: {
   );
 }
 
+function SourceLocation(props: { label: string; sourceUrl?: string }) {
+  return props.sourceUrl ? (
+    <a
+      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      href={props.sourceUrl}
+      rel="noreferrer"
+      target="_blank"
+    >
+      {props.label}
+    </a>
+  ) : (
+    props.label
+  );
+}
+
 function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -377,11 +393,12 @@ function ConversationStats(props: {
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
   });
+  const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
   const durationLabel = formatConversationDuration(props.conversation);
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
-          content: location,
+          content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
           key: "location",
         }
       : undefined,

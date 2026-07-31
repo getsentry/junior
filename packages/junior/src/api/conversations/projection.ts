@@ -3,6 +3,7 @@ import {
   resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
+import { buildSlackSourceUrl } from "@/chat/slack/source-link";
 import type { StoredSlackActor } from "@/chat/actor";
 import type {
   Conversation as StoredConversation,
@@ -30,6 +31,7 @@ type ConversationProjectionSource = Pick<
   | "execution"
   | "lastActivityAtMs"
   | "source"
+  | "sessionSource"
   | "title"
   | "updatedAtMs"
 >;
@@ -65,6 +67,19 @@ function surfaceFromSource(
     return source;
   }
   return surfaceFromConversationId(conversationId);
+}
+
+function sourceUrlFromConversation(
+  conversation: ConversationProjectionSource,
+  canViewPrivateContent: boolean,
+): string | undefined {
+  if (
+    !canViewPrivateContent ||
+    conversation.sessionSource?.platform !== "slack"
+  ) {
+    return undefined;
+  }
+  return buildSlackSourceUrl(conversation.sessionSource);
 }
 
 function actorIdentityReport(
@@ -183,6 +198,10 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
+  const sourceUrl = sourceUrlFromConversation(
+    conversation,
+    canViewPrivateContent,
+  );
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,
@@ -210,6 +229,7 @@ export function conversationSummaryFromStoredConversation(args: {
     surface,
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
     ...(conversation.archivedAtMs
       ? { archivedAt: new Date(conversation.archivedAtMs).toISOString() }
       : {}),

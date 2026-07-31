@@ -128,6 +128,7 @@ export type Conversation = {
   locationId?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
+  sourceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
