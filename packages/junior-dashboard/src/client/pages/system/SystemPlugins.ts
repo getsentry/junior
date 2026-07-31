@@ -9,6 +9,9 @@ export type SystemPlugin = Plugin & {
   skills: SkillReport[];
 };
 
+/** Canonical System route for the complete plugin inventory. */
+export const systemPluginsPath = "/system/plugins";
+
 /** Combine plugin inventory, skills, and operational reports for System UI. */
 export function buildSystemPlugins(input: {
   plugins: Plugin[];
@@ -49,7 +52,7 @@ export function buildSystemPlugins(input: {
 
 /** Build the canonical System route for a plugin name. */
 export function systemPluginPath(name: string): string {
-  return `/system/plugins/${encodeURIComponent(name)}`;
+  return `${systemPluginsPath}/${encodeURIComponent(name)}`;
 }
 
 /** Treat trailing slashes as equivalent on System routes. */

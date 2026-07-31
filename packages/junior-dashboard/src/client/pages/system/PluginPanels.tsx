@@ -5,7 +5,7 @@ import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { systemPluginPath, type SystemPlugin } from "./SystemPlugins";
 
-/** Render loaded plugins as useful System overview launch panels. */
+/** Render the loaded plugin inventory as launch panels. */
 export function PluginPanels(props: { plugins: SystemPlugin[] }) {
   return (
     <section aria-labelledby="system-plugins-heading" className="grid gap-3">

@@ -21,6 +21,7 @@ import {
   buildSystemPlugins,
   normalizeSystemPath,
   systemPluginPath,
+  systemPluginsPath,
   type SystemPlugin,
 } from "./SystemPlugins";
 
@@ -44,12 +45,14 @@ export function SystemPage(props: { data: SystemData }) {
   const plugin = plugins.find(
     (candidate) => systemPluginPath(candidate.name) === pathname,
   );
-  const pluginPath = pathname !== "/system";
+  const allPlugins = pathname === systemPluginsPath;
+  const pluginPath = pathname !== "/system" && !allPlugins;
   const rangeRelevant =
-    !plugin ||
-    plugin.reports.some((report) =>
+    pathname === "/system" ||
+    (plugin?.reports.some((report) =>
       report.widgets?.some((widget) => widget.timeRangeDays?.length),
-    );
+    ) ??
+      false);
 
   if (pluginPath && !plugin) {
     return <Navigate replace to="/system" />;
@@ -74,7 +77,9 @@ export function SystemPage(props: { data: SystemData }) {
           reportingPlugins={reportingPlugins}
         />
         <div className="grid min-w-0 gap-4 sm:gap-6">
-          {plugin ? (
+          {allPlugins ? (
+            <PluginPanels plugins={plugins} />
+          ) : plugin ? (
             <PluginSystemPage data={props.data} plugin={plugin} range={range} />
           ) : (
             <>
@@ -87,7 +92,6 @@ export function SystemPage(props: { data: SystemData }) {
               {props.data.pluginReportsError ? (
                 <PluginReportError showingReports={false} />
               ) : null}
-              <PluginPanels plugins={plugins} />
               {props.data.skills.length ? (
                 <SkillInventory skills={props.data.skills} />
               ) : null}

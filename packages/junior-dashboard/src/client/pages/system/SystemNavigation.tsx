@@ -5,6 +5,7 @@ import { cn, dashboardInteractiveTextClass } from "../../styles";
 import {
   normalizeSystemPath,
   systemPluginPath,
+  systemPluginsPath,
   type SystemPlugin,
 } from "./SystemPlugins";
 
@@ -44,6 +45,7 @@ export function SystemNavigation(props: {
             value={systemNavigationValue(location.pathname, props.plugins)}
           >
             <option value="/system">Overview</option>
+            <option value={systemPluginsPath}>All Plugins</option>
             {props.reportingPlugins.map((plugin) => (
               <option key={plugin.name} value={systemPluginPath(plugin.name)}>
                 {plugin.displayName}
@@ -71,11 +73,15 @@ export function SystemNavigation(props: {
             <Gauge aria-hidden="true" size={15} strokeWidth={1.8} />
             Overview
           </NavLink>
+          <div className="px-3 pt-4 pb-1.5 font-mono text-[0.56rem] font-medium uppercase tracking-[0.16em] text-dashboard-text-muted">
+            Plugins
+          </div>
+          <NavLink className={linkClass} end to={systemPluginsPath}>
+            <Boxes aria-hidden="true" size={15} strokeWidth={1.8} />
+            All Plugins
+          </NavLink>
           {props.reportingPlugins.length ? (
-            <>
-              <div className="px-3 pt-4 pb-1.5 font-mono text-[0.56rem] font-medium uppercase tracking-[0.16em] text-dashboard-text-muted">
-                Plugins
-              </div>
+            <div className="mt-3 grid min-w-0 gap-1">
               {props.reportingPlugins.map((plugin) => (
                 <NavLink
                   className={linkClass}
@@ -86,7 +92,7 @@ export function SystemNavigation(props: {
                   <span className="truncate">{plugin.displayName}</span>
                 </NavLink>
               ))}
-            </>
+            </div>
           ) : null}
         </nav>
       </aside>
@@ -99,7 +105,10 @@ function systemNavigationValue(
   plugins: SystemPlugin[],
 ): string {
   const plugin = findSystemPlugin(pathname, plugins);
-  return plugin ? systemPluginPath(plugin.name) : "/system";
+  if (plugin) return systemPluginPath(plugin.name);
+  return normalizeSystemPath(pathname) === systemPluginsPath
+    ? systemPluginsPath
+    : "/system";
 }
 
 function findSystemPlugin(
