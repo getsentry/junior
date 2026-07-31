@@ -293,6 +293,7 @@ function githubToolsContext(input?: {
     annotation: ConversationAnnotationInput,
   ) => Promise<void> | void;
   conversationId?: string;
+  conversationLink?: string;
   egressFetch?: (request: {
     operation: string;
     provider: string;
@@ -327,6 +328,9 @@ function githubToolsContext(input?: {
       conversationId,
     },
     embedder: {},
+    ...(input?.conversationLink
+      ? { slack: { conversationLink: { url: input.conversationLink } } }
+      : {}),
     egress: {
       async fetch(request: {
         operation: string;
@@ -712,11 +716,12 @@ describe("github plugin", () => {
     expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#660");
   });
 
-  it("adds a Sentry session link to issue footers when configured", async () => {
+  it("adds dashboard and Sentry session links to issue footers when configured", async () => {
     process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
     process.env.SENTRY_ORG_SLUG = "acme";
     const ctx = githubToolsContext({
       conversationId: "slack:C123:1712345.0001",
+      conversationLink: "https://junior.example.com/conversations/session",
     });
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
@@ -736,7 +741,7 @@ describe("github plugin", () => {
 
 --
 
-[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Junior Session](https://junior.example.com/conversations/session) [Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });

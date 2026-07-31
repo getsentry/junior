@@ -24,6 +24,21 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
+      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+    );
+  });
+
+  it("uses only the Junior dashboard when Sentry is disabled", () => {
+    delete process.env.SENTRY_DSN;
+    delete process.env.SENTRY_ORG_SLUG;
+
+    expect(
+      appendGitHubFooter(
+        "PR body",
+        conversationId,
+        "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
+      ),
+    ).toContain(
       "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001)",
     );
   });

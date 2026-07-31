@@ -215,6 +215,7 @@ function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
   actor: ToolRegistrationHookContext["actor"],
+  dashboardUrl?: string,
 ): Request {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
@@ -225,6 +226,7 @@ function createGitHubIssueRequest(
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(input.body ?? "", actor),
       conversationId,
+      dashboardUrl,
     ),
     ...(labels?.length ? { labels } : {}),
   };
@@ -337,6 +339,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
             conversationId,
             parsedInput,
             ctx.actor,
+            ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreateIssueState = {
             status: "pending",

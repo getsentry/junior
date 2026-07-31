@@ -59,15 +59,17 @@ export function githubConversationFooter(
 ): string | undefined {
   const id = nonEmptyString(conversationId, "conversationId");
   const normalizedDashboardUrl = dashboardUrl?.trim();
-  const sessionUrl = normalizedDashboardUrl || sentryConversationUrl(id);
-  if (!sessionUrl) {
+  const sentryUrl = sentryConversationUrl(id);
+  const sessionLinks = normalizedDashboardUrl
+    ? `[View Junior Session](${normalizedDashboardUrl})${sentryUrl ? ` [Sentry](${sentryUrl})` : ""}`
+    : sentryUrl
+      ? `[View Junior Session in Sentry](${sentryUrl})`
+      : undefined;
+  if (!sessionLinks) {
     return undefined;
   }
-  const label = normalizedDashboardUrl
-    ? "View Junior Session"
-    : "View Junior Session in Sentry";
   const conversationMarker = `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(id)} -->`;
-  return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n[${label}](${sessionUrl})\n\n${GITHUB_SESSION_FOOTER_END}`;
+  return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
 }
 
 /** Read opaque native conversation ids from Junior-owned GitHub footers. */
