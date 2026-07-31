@@ -92,6 +92,66 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
+  it("aggregates event cost inside the owning plugin namespace", async () => {
+    const runId = randomUUID();
+    const conversationId = `local:test:event-cost-${runId}`;
+    const sessionId = `event-cost-session:${runId}`;
+    const completedEvent = defineConversationEvent({
+      name: "session_processed",
+      version: 1,
+      schema: z.object({ costUsd: z.number() }).strict(),
+      renderEvent() {
+        return undefined;
+      },
+    });
+    let observedDays:
+      | Array<{ costUsd: number; date: string; events: number }>
+      | undefined;
+    const plugin = defineJuniorPlugin({
+      manifest: {
+        name: "event-cost-demo",
+        displayName: "Event Cost Demo",
+        description: "Event cost demo",
+      },
+      conversationEvents: [completedEvent],
+      hooks: {
+        async operationalReport(ctx) {
+          observedDays = await ctx.eventStats.costsByDay({
+            days: 7,
+            eventName: "session_processed",
+          });
+          return { title: "Event cost demo" };
+        },
+      },
+      tasks: {
+        processSession: {
+          async run(ctx) {
+            await ctx.events.emit(completedEvent({ costUsd: 0.0042 }));
+          },
+        },
+      },
+    });
+    const { getPluginOperationalReports, setPlugins } =
+      await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    setPlugins([plugin]);
+    await recordCompletedSession({ conversationId, sessionId });
+    await processPluginTask({
+      name: "processSession",
+      params: { conversationId, sessionId },
+      plugin: "event-cost-demo",
+    });
+
+    await getPluginOperationalReports(Date.now());
+
+    expect(observedDays).toHaveLength(7);
+    expect(observedDays?.at(-1)).toEqual({
+      costUsd: 0.0042,
+      date: new Date().toISOString().slice(0, 10),
+      events: 1,
+    });
+  });
+
   it("deduplicates task events across schema versions without refreshing activity", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:structured-events-${runId}`;

@@ -449,6 +449,11 @@ INSERT INTO junior_scheduler_tasks (
 
       const api = schedulerPlugin().hooks?.apiRoutes?.({
         db,
+        eventStats: {
+          async costsByDay() {
+            throw new Error("Scheduler API test does not read event stats");
+          },
+        },
         log: noopLogger,
         plugin: { name: "scheduler" },
         viewer: { actors: async () => context.viewer.actors },

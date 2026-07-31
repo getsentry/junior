@@ -115,8 +115,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     userPages: [createMemoryUserPage()],
     hooks: {
       async operationalReport(ctx) {
+        const extractionDays = await ctx.eventStats.costsByDay({
+          days: 90,
+          eventName: "memories_captured",
+        });
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
+          extractionDays,
           nowMs: ctx.nowMs,
         });
       },
@@ -124,6 +129,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         return createMemoryApi({
           actors: ctx.viewer.actors,
           db: ctx.db as MemoryDb,
+          eventStats: ctx.eventStats,
         });
       },
       tools(ctx) {

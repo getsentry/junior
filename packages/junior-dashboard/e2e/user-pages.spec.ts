@@ -46,12 +46,14 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^\$/ })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "What Junior remembers" }),
   ).toBeVisible();
-  const sevenDays = page.getByRole("button", { name: "7d" });
-  const thirtyDays = page.getByRole("button", { name: "30d" });
-  const ninetyDays = page.getByRole("button", { name: "90d" });
+  const activityRange = page.getByLabel("Memory timeline range");
+  const sevenDays = activityRange.getByRole("button", { name: "7d" });
+  const thirtyDays = activityRange.getByRole("button", { name: "30d" });
+  const ninetyDays = activityRange.getByRole("button", { name: "90d" });
   await expect(thirtyDays).toHaveAttribute("aria-pressed", "true");
   await sevenDays.click();
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");

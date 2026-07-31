@@ -5,6 +5,7 @@ import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
+import type { PluginConversationEventStats } from "./conversation-events";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -46,6 +47,7 @@ export interface PluginOperationalRecordSet {
 }
 
 export interface PluginOperationalChartSeries {
+  format?: "usd";
   key: string;
   label: string;
   tone?: PluginOperationalTone;
@@ -81,6 +83,7 @@ export interface PluginOperationalReport extends PluginOperationalReportContent 
 }
 
 export interface OperationalReportHookContext extends PluginContext {
+  eventStats: PluginConversationEventStats;
   nowMs: number;
   state: PluginReadState;
 }
@@ -120,6 +123,7 @@ export interface RouteRegistrationHookContext extends PluginContext {
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
+  eventStats: PluginConversationEventStats;
   viewer: {
     /** Resolve every runtime actor linked to one authenticated viewer email. */
     actors(email: string): Promise<Array<LocalActor | SlackActor>>;

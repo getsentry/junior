@@ -111,3 +111,17 @@ export function defineConversationEvent<
 export interface PluginConversationEvents {
   emit(event: PluginConversationEventValue): Promise<void>;
 }
+
+export interface PluginConversationEventCostDay {
+  costUsd: number;
+  date: string;
+  events: number;
+}
+
+/** Read aggregate costs for events owned by the current plugin namespace. */
+export interface PluginConversationEventStats {
+  costsByDay(input: {
+    days: 7 | 30 | 90;
+    eventName: string;
+  }): Promise<PluginConversationEventCostDay[]>;
+}

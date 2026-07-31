@@ -210,12 +210,18 @@ export async function mockDashboardApis(page: Page) {
       return {
         date: date.toISOString().slice(0, 10),
         personal: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
-        public: index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
+        public:
+          index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
       };
     });
     await route.fulfill({
       json: {
         days,
+        extractionDays: days.map((day, index) => ({
+          costUsd: index % 6 === 0 ? 0.08 : index % 4 === 0 ? 0.03 : 0,
+          date: day.date,
+          events: index % 3 === 0 ? 2 : 1,
+        })),
         generatedAt: "2026-07-30T12:00:00.000Z",
         stats: {
           active: 210,

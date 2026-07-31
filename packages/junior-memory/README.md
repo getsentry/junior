@@ -15,7 +15,9 @@ exported types, tools, and tests are authoritative.
   inspection.
 - The dashboard exposes a searchable, paginated **Memories** user page for
   personal memories owned by actors linked to the signed-in viewer. Its
-  **Forget** action archives the selected memory.
+  **Forget** action archives the selected memory. The overview charts global
+  passive-extraction cost from the durable `memory/memories_captured` events;
+  the System plugin report uses the same event-cost feed.
 - Authenticated REST clients can list and search personal memories through
   `GET /api/plugins/memory/memories`, read one through
   `GET /api/plugins/memory/memories/:id`, and archive one through

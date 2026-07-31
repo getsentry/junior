@@ -2336,6 +2336,18 @@ ORDER BY created_at_ms ASC
       const api = createMemoryApi({
         actors: async () => actors,
         db: memoryDb(fixture),
+        eventStats: {
+          async costsByDay({ days }) {
+            const start = Date.parse("2026-04-30T00:00:00.000Z");
+            return Array.from({ length: days }, (_, index) => ({
+              costUsd: index === days - 1 ? 0.0042 : 0,
+              date: new Date(start + index * 24 * 60 * 60 * 1_000)
+                .toISOString()
+                .slice(0, 10),
+              events: index === days - 1 ? 1 : 0,
+            }));
+          },
+        },
       });
       const requestContext = pluginApiRouteRequestContextSchema.parse({
         auth: {
@@ -2456,6 +2468,11 @@ ORDER BY created_at_ms ASC
         public: 1,
       });
       expect(dashboard.days).toHaveLength(90);
+      expect(dashboard.extractionDays.at(-1)).toEqual({
+        costUsd: 0.0042,
+        date: "2026-07-28",
+        events: 1,
+      });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
         personal: 2,

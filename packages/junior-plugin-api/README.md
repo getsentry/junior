@@ -48,6 +48,9 @@ reports, and other typed hook surfaces exported by this package.
 - Host-owned structured model and embedding calls do not expose provider
   credentials to plugins. Structured calls return a best-effort provider cost
   estimate when one is available.
+- Operational report and authenticated API hooks may aggregate `costUsd` from
+  their own registered conversation events through `ctx.eventStats`. Core
+  binds the plugin namespace and owns access to the conversation event log.
 - Authenticated API route apps receive one verified viewer in their request
   context. The registration hook exposes actor resolution for plugins whose
   viewer-owned data spans platform identities.

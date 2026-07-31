@@ -11,9 +11,18 @@ const memoryDaySchema = z
   })
   .strict();
 
+const memoryExtractionDaySchema = z
+  .object({
+    costUsd: z.number().finite().min(0),
+    date: z.iso.date(),
+    events: z.number().int().min(0),
+  })
+  .strict();
+
 export const memoryDashboardSchema = z
   .object({
     days: z.array(memoryDaySchema).length(90),
+    extractionDays: z.array(memoryExtractionDaySchema).length(90),
     generatedAt: z.iso.datetime(),
     stats: z
       .object({
@@ -34,6 +43,7 @@ export const memoryDashboardSchema = z
 
 export type MemoryDashboardData = z.output<typeof memoryDashboardSchema>;
 export type MemoryDay = MemoryDashboardData["days"][number];
+export type MemoryExtractionDay = MemoryDashboardData["extractionDays"][number];
 
 /** Load the viewer-scoped Memory dashboard summary. */
 export function useMemoryDashboardData() {

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
+  type PluginConversationEventStats,
   type PluginApiRouteRequestContext,
   type PluginRouteApp,
   type PluginUserPageActor,
@@ -47,9 +48,18 @@ const memoryDashboardDaySchema = z
   })
   .strict();
 
+const memoryExtractionDaySchema = z
+  .object({
+    costUsd: z.number().finite().nonnegative(),
+    date: z.iso.date(),
+    events: z.number().int().min(0),
+  })
+  .strict();
+
 export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
+    extractionDays: z.array(memoryExtractionDaySchema).length(90),
     generatedAt: z.iso.datetime(),
     stats: z
       .object({
@@ -85,6 +95,7 @@ const memoryListQuerySchema = z
 interface MemoryApiOptions {
   actors(email: string): Promise<PluginUserPageActor[]>;
   db: MemoryDb;
+  eventStats: PluginConversationEventStats;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -94,7 +105,9 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(memory: PersonalMemoryRecord): z.output<typeof memoryApiSchema> {
+function apiMemory(
+  memory: PersonalMemoryRecord,
+): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -142,12 +155,17 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           isDashboard &&
           (request.method === "GET" || request.method === "HEAD")
         ) {
-          const [stats, days] = await Promise.all([
+          const [stats, days, extractionDays] = await Promise.all([
             memories.stats(),
             memories.timeline({ days: 90 }),
+            options.eventStats.costsByDay({
+              days: 90,
+              eventName: "memories_captured",
+            }),
           ]);
           const body = memoryDashboardResponseSchema.parse({
             days,
+            extractionDays,
             generatedAt: new Date().toISOString(),
             stats,
           });

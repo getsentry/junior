@@ -23,6 +23,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -741,6 +742,7 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     }
     const app = hook({
       ...basePluginContext(plugin),
+      eventStats: createPluginConversationEventStats(plugin),
       viewer: {
         actors: readViewerActors,
       },
@@ -976,6 +978,9 @@ function sanitizeOperationalReport(args: {
           const sanitizedSeries: NonNullable<
             PluginOperationalReport["widgets"]
           >[number]["series"][number] = { key, label };
+          if (item.format === "usd") {
+            sanitizedSeries.format = "usd";
+          }
           const tone = operationalReportTone(item.tone);
           if (tone) {
             sanitizedSeries.tone = tone;
@@ -1104,6 +1109,7 @@ export async function getPluginOperationalReports(
       const state = createPluginState(pluginName);
       const report = await hook({
         ...basePluginContext(plugin),
+        eventStats: createPluginConversationEventStats(plugin, () => nowMs),
         nowMs,
         state: pluginReadState(state),
       });
