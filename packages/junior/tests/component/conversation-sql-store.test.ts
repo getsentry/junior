@@ -470,6 +470,69 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("persists session source set-once and ignores later turn anchors", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const destination = inboundMessage("session-source").destination;
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        source: "slack",
+        sessionSource: {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+          messageTs: "1700000000.000200",
+        },
+        nowMs: 1_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        sessionSource: {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+      });
+
+      // Later turns must not overwrite the session-stable locator.
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        sessionSource: {
+          platform: "slack",
+          type: "priv",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.999999",
+        },
+        nowMs: 2_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        sessionSource: {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists visibility from source signals and converges on newer signals", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

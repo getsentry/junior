@@ -274,6 +274,7 @@ async function recordConversationActivityMetadata(args: {
     nowMs: args.nowMs,
     actor: sessionLogActor(args.summary.actor),
     source,
+    ...(args.summary.source ? { sessionSource: args.summary.source } : {}),
     visibility: args.destinationVisibility,
   });
   await conversationStore.recordExecution({
@@ -291,6 +292,7 @@ async function recordConversationActivityMetadata(args: {
     },
     actor: sessionLogActor(args.summary.actor),
     source,
+    ...(args.summary.source ? { sessionSource: args.summary.source } : {}),
     updatedAtMs: args.nowMs,
     visibility: args.destinationVisibility,
   });

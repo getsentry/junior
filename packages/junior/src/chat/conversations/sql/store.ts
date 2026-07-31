@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
+import { normalizeSessionSource, parseSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
@@ -304,6 +305,17 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
   if (row.source !== undefined && row.source !== null && !source) {
     throw new Error("Conversation record source is invalid");
   }
+  const sessionSource =
+    row.sessionSource === undefined || row.sessionSource === null
+      ? undefined
+      : parseSource(row.sessionSource);
+  if (
+    row.sessionSource !== undefined &&
+    row.sessionSource !== null &&
+    !sessionSource
+  ) {
+    throw new Error("Conversation record session source is invalid");
+  }
   const execution: ConversationExecution = {
     status: executionStatusFromValue(row.executionStatus),
     lastCheckpointAtMs: msFromDate(row.lastCheckpointAt),
@@ -334,6 +346,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       : {}),
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(source ? { source } : {}),
+    ...(sessionSource ? { sessionSource } : {}),
     ...(row.title ? { title: row.title } : {}),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
@@ -347,6 +360,7 @@ function emptyConversation(args: {
   destination?: Destination;
   nowMs: number;
   source?: ConversationSource;
+  sessionSource?: Source;
 }): Conversation {
   return {
     schemaVersion: 1,
@@ -356,6 +370,7 @@ function emptyConversation(args: {
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : {}),
     ...(args.source ? { source: args.source } : {}),
+    ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
     execution: {
       status: "idle",
       updatedAtMs: args.nowMs,
@@ -497,11 +512,13 @@ export class SqlStore implements ConversationStore {
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
+    sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
+    const sessionSource = normalizeSessionSource(args.sessionSource);
     await this.withConversationMutation(args.conversationId, async () => {
       const existing = await this.get({
         conversationId: args.conversationId,
@@ -520,6 +537,7 @@ export class SqlStore implements ConversationStore {
           destination: args.destination,
           nowMs,
           source: args.source,
+          ...(sessionSource ? { sessionSource } : {}),
         });
       // Persist visibility only from the current event's live signal; the
       // previously stored confirmation must not be replayed as a new signal.
@@ -529,6 +547,7 @@ export class SqlStore implements ConversationStore {
           ...currentWithoutVisibility,
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
+          sessionSource: current.sessionSource ?? sessionSource,
           channelName: current.channelName ?? args.channelName,
           actor: mergeActor(current.actor, args.actor),
           title: current.title ?? args.title,
@@ -557,10 +576,12 @@ export class SqlStore implements ConversationStore {
     } | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
+    sessionSource?: Source;
     title?: string;
     updatedAtMs: number;
     visibility?: ConversationPrivacy;
   }): Promise<void> {
+    const sessionSource = normalizeSessionSource(args.sessionSource);
     await this.withConversationMutation(args.conversationId, async () => {
       const existingRow = await this.readConversationRow(args.conversationId);
       const existing = existingRow
@@ -577,6 +598,7 @@ export class SqlStore implements ConversationStore {
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
+      const nextSessionSource = existing?.sessionSource ?? sessionSource;
       await this.upsertConversation({
         conversation: {
           schemaVersion: 1,
@@ -588,6 +610,7 @@ export class SqlStore implements ConversationStore {
           ...(args.destination ? { destination: args.destination } : {}),
           ...(args.actor ? { actor: args.actor } : {}),
           ...(args.source ? { source: args.source } : {}),
+          ...(nextSessionSource ? { sessionSource: nextSessionSource } : {}),
           ...(args.title ? { title: args.title } : {}),
           ...(args.visibility ? { visibility: args.visibility } : {}),
           execution,
@@ -772,6 +795,7 @@ export class SqlStore implements ConversationStore {
         conversationId: conversation.conversationId,
         schemaVersion: 1,
         source: conversation.source ?? null,
+        sessionSource: conversation.sessionSource ?? null,
         originType: originTypeFromSource(conversation.source) ?? null,
         originId: null,
         originRunId: null,
@@ -808,6 +832,7 @@ export class SqlStore implements ConversationStore {
         target: juniorConversations.conversationId,
         set: {
           source: sql`coalesce(excluded.source, ${juniorConversations.source})`,
+          sessionSource: sql`coalesce(excluded.source_json, ${juniorConversations.sessionSource})`,
           originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
           originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
           originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,

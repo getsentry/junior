@@ -10,7 +10,7 @@ import {
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
@@ -24,6 +24,8 @@ export const juniorConversations = pgTable(
     conversationId: text("conversation_id").primaryKey(),
     schemaVersion: integer("schema_version").notNull().default(1),
     source: text("source").$type<ConversationSource>(),
+    /** Structured session Source locator; set-once on the conversation root. */
+    sessionSource: jsonb("source_json").$type<Source>(),
     originType: text("origin_type"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),
