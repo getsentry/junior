@@ -88,7 +88,15 @@ export function DashboardShell() {
       className={cn(
         "relative grid font-mono text-dashboard-text",
         workspace
-          ? "h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          ? cn(
+              "h-dvh min-h-0 overflow-hidden",
+              // Hidden header is removed from the grid, so mobile conversation
+              // detail must use a single full-height row or the workspace lands
+              // in `auto` and the transcript height chain breaks.
+              conversationDetail
+                ? "grid-rows-[minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]"
+                : "grid-rows-[auto_minmax(0,1fr)]",
+            )
           : "min-h-screen grid-rows-[auto_1fr]",
       )}
       style={dashboardBackground}
