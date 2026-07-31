@@ -1,8 +1,9 @@
 /**
- * Authenticated REST resources for personal memories.
+ * Authenticated REST resources for viewer-visible memories.
  *
  * HTTP identity is one verified viewer. Linked platform actors are resolved
- * behind the route boundary and used only to authorize personal scopes.
+ * behind the route boundary and used only to authorize personal and public
+ * workspace scopes.
  */
 import { z } from "zod";
 import {
@@ -11,11 +12,12 @@ import {
   type PluginRouteApp,
   type PluginUserPageActor,
 } from "@sentry/junior-plugin-api";
-import type { MemoryDb, MemoryRecord } from "./store";
+import type { MemoryDb } from "./store";
 import {
   createViewerMemories,
   InvalidMemoryCursorError,
   PersonalMemoryNotFoundError,
+  type PersonalMemoryRecord,
 } from "./personal";
 
 export const memoryApiSchema = z
@@ -26,6 +28,7 @@ export const memoryApiSchema = z
     id: z.string().min(1),
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
+    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -39,9 +42,8 @@ export const memoryListResponseSchema = z
 const memoryDashboardDaySchema = z
   .object({
     date: z.iso.date(),
-    knowledge: z.number().int().min(0),
-    preference: z.number().int().min(0),
-    procedure: z.number().int().min(0),
+    personal: z.number().int().min(0),
+    public: z.number().int().min(0),
   })
   .strict();
 
@@ -57,8 +59,10 @@ export const memoryDashboardResponseSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
+        personal: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
+        public: z.number().int().min(0),
       })
       .strict(),
   })
@@ -90,7 +94,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(memory: MemoryRecord): z.output<typeof memoryApiSchema> {
+function apiMemory(memory: PersonalMemoryRecord): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -100,6 +104,7 @@ function apiMemory(memory: MemoryRecord): z.output<typeof memoryApiSchema> {
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
+    visibility: memory.visibility,
   };
 }
 
@@ -113,7 +118,7 @@ function viewerEmail(
   return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
 }
 
-/** Create the authenticated personal-memory REST app. */
+/** Create the authenticated viewer-memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {

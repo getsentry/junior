@@ -7,12 +7,11 @@ import type { MemoryDay } from "./memoryDashboard";
 type MemoryRange = 7 | 30 | 90;
 
 const series = [
-  { color: "#67e8f9", key: "preference", label: "Preferences" },
-  { color: "#fbbf24", key: "procedure", label: "Procedures" },
-  { color: "#a78bfa", key: "knowledge", label: "Knowledge" },
+  { color: "#67e8f9", key: "personal", label: "Personal" },
+  { color: "#6ee7b7", key: "public", label: "Public" },
 ] as const;
 
-/** Render viewer memory creation as a selectable stacked timeline. */
+/** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: { days: MemoryDay[] }) {
   const [range, setRange] = useState<MemoryRange>(30);
   const days = props.days.slice(-range);
@@ -26,9 +25,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
   const plotWidth = width - left - right;
   const step = plotWidth / days.length;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
-  const totals = days.map(
-    (day) => day.preference + day.procedure + day.knowledge,
-  );
+  const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
 
@@ -40,10 +37,10 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
             Memory history
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-            Memory activity over time
+            Activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-            When Junior learned new personal context.
+            Stacked personal + public memories created each day.
           </p>
         </div>
         <div
@@ -70,7 +67,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
       </div>
 
       <div
-        aria-label="Memory type legend"
+        aria-label="Memory visibility legend"
         className="mt-4 flex flex-wrap gap-4"
       >
         {series.map((item) => (

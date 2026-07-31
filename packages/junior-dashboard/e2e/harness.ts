@@ -142,47 +142,31 @@ export async function mockDashboardApis(page: Page) {
           { label: "Type", value: "Preference" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Only you" },
+          { label: "Visibility", value: "Private" },
           { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
         ],
       },
       {
-        actions: [
-          {
-            confirmation: "Forget this memory?",
-            href: "/api/plugins/memory/memories/memory-2",
-            label: "Forget",
-            method: "DELETE",
-            tone: "danger",
-          },
-        ],
+        actions: [],
         id: "memory-2",
         title: "Release notes should include migration risks.",
         metadata: [
           { label: "Type", value: "Knowledge" },
           { label: "Learned", value: "Explicit" },
-          { label: "Source", value: "Local" },
-          { label: "Visibility", value: "Only you" },
+          { label: "Source", value: "Slack" },
+          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
         ],
       },
       {
-        actions: [
-          {
-            confirmation: "Forget this memory?",
-            href: "/api/plugins/memory/memories/memory-3",
-            label: "Forget",
-            method: "DELETE",
-            tone: "danger",
-          },
-        ],
+        actions: [],
         id: "memory-3",
         title: "Start incident reviews with the customer impact.",
         metadata: [
           { label: "Type", value: "Procedure" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Only you" },
+          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
         ],
       },
@@ -191,15 +175,14 @@ export async function mockDashboardApis(page: Page) {
       const metadata = Object.fromEntries(
         record.metadata.map((item) => [item.label, item.value]),
       );
-      if (filter === "preferences") return metadata.Type === "Preference";
-      if (filter === "automatic") return metadata.Learned === "Automatic";
-      if (filter === "explicit") return metadata.Learned === "Explicit";
+      if (filter === "private") return metadata.Visibility === "Private";
+      if (filter === "public") return metadata.Visibility === "Public";
       return true;
     });
     await route.fulfill({
       json: {
         type: "list",
-        emptyText: "No personal memories yet.",
+        emptyText: "No memories yet.",
         searchPlaceholder: "Search memories",
         records,
       },
@@ -226,9 +209,8 @@ export async function mockDashboardApis(page: Page) {
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);
       return {
         date: date.toISOString().slice(0, 10),
-        knowledge: index % 13 === 0 ? 2 : index % 6 === 0 ? 1 : 0,
-        preference: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
-        procedure: index % 17 === 0 ? 1 : 0,
+        personal: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
+        public: index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
       };
     });
     await route.fulfill({
@@ -236,14 +218,16 @@ export async function mockDashboardApis(page: Page) {
         days,
         generatedAt: "2026-07-30T12:00:00.000Z",
         stats: {
-          active: 24,
-          automatic: 17,
-          createdThirtyDays: 14,
-          embedded: 23,
-          explicit: 6,
-          knowledge: 8,
-          preference: 11,
-          procedure: 5,
+          active: 210,
+          automatic: 189,
+          createdThirtyDays: 41,
+          embedded: 201,
+          explicit: 20,
+          knowledge: 154,
+          personal: 24,
+          preference: 12,
+          procedure: 44,
+          public: 186,
         },
       },
     });

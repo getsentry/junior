@@ -1,11 +1,11 @@
 import type { UseMutationResult } from "@tanstack/react-query";
 import {
-  ArrowRight,
   Bookmark,
   BrainCircuit,
   ChevronRight,
   CircleAlert,
   Database,
+  Globe2,
   LockKeyhole,
   Search,
   Sparkles,
@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, Navigate, NavLink, useLocation } from "react-router";
+import { Navigate, NavLink, useLocation } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
@@ -76,16 +76,12 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           Memories
         </NavLink>
       </nav>
-      {overview ? (
-        <MemoryOverview libraryPath={libraryPath} />
-      ) : (
-        <MemoryLibrary page={props.page} />
-      )}
+      {overview ? <MemoryOverview /> : <MemoryLibrary page={props.page} />}
     </div>
   );
 }
 
-function MemoryOverview(props: { libraryPath: string }) {
+function MemoryOverview() {
   const dashboardQuery = useMemoryDashboardData();
   if (dashboardQuery.error) {
     return (
@@ -98,26 +94,23 @@ function MemoryOverview(props: { libraryPath: string }) {
   if (!dashboardQuery.data) {
     return (
       <>
-        <div className="h-24 animate-pulse border-y border-white/[0.06]">
-          <span className="sr-only">Loading memory summary</span>
-        </div>
         <Card className="min-h-64 animate-pulse">
           <span className="sr-only">Loading memory history</span>
         </Card>
+        <div className="h-24 animate-pulse border-y border-white/[0.06]">
+          <span className="sr-only">Loading memory summary</span>
+        </div>
       </>
     );
   }
   return (
     <>
+      <MemoryTimeline days={dashboardQuery.data.days} />
       <MemorySummary data={dashboardQuery.data} />
       <section className="grid gap-4 md:grid-cols-2">
         <MemoryKindPanel data={dashboardQuery.data} />
-        <MemoryOriginPanel
-          data={dashboardQuery.data}
-          libraryPath={props.libraryPath}
-        />
+        <MemoryOriginPanel data={dashboardQuery.data} />
       </section>
-      <MemoryTimeline days={dashboardQuery.data.days} />
     </>
   );
 }
@@ -197,7 +190,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
               size={26}
             />
             <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
-              {content?.emptyText ?? "No personal memories yet."}
+              {content?.emptyText ?? "No memories yet."}
             </p>
           </div>
         </Card>
@@ -254,25 +247,20 @@ function MemoryCollections(props: {
   const collections = [
     { count: props.stats?.active, filter: "", label: "All" },
     {
-      count: props.stats?.preference,
-      filter: "preferences",
-      label: "Preferences",
+      count: props.stats?.personal,
+      filter: "private",
+      label: "Private",
     },
     {
-      count: props.stats?.automatic,
-      filter: "automatic",
-      label: "Learned",
-    },
-    {
-      count: props.stats?.explicit,
-      filter: "explicit",
-      label: "Saved",
+      count: props.stats?.public,
+      filter: "public",
+      label: "Public",
     },
   ];
   return (
     <div
       aria-label="Memory collections"
-      className="grid min-w-0 grid-cols-2 gap-1 border-b border-white/[0.06] sm:flex sm:overflow-x-auto"
+      className="grid min-w-0 grid-cols-3 gap-1 border-b border-white/[0.06] sm:flex sm:overflow-x-auto"
       role="tablist"
     >
       {collections.map((collection) => {
@@ -313,31 +301,27 @@ function MemoryCollections(props: {
 
 function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
-  const coverage = stats.active === 0 ? 0 : stats.embedded / stats.active;
   const items = [
     {
-      detail: "active and available to you",
-      label: "Your memories",
+      detail: "personal + public",
+      label: "Total active",
       value: stats.active.toLocaleString("en-US"),
     },
     {
+      detail: "private to you",
+      label: "Personal",
+      value: stats.personal.toLocaleString("en-US"),
+    },
+    {
+      detail: "workspace shareable",
+      label: "Public",
+      tone: "text-cyan-100",
+      value: stats.public.toLocaleString("en-US"),
+    },
+    {
       detail: "in the last 30 days",
-      label: "Added recently",
+      label: "Added · 30d",
       value: `+${stats.createdThirtyDays.toLocaleString("en-US")}`,
-    },
-    {
-      detail: "indexed for semantic search",
-      label: "Ready to recall",
-      tone: "text-emerald-200",
-      value: new Intl.NumberFormat("en-US", {
-        maximumFractionDigits: 0,
-        style: "percent",
-      }).format(coverage),
-    },
-    {
-      detail: "about how you work",
-      label: "Preferences",
-      value: stats.preference.toLocaleString("en-US"),
     },
   ];
   return (
@@ -372,29 +356,29 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   return (
     <Card className="p-5 sm:p-6">
       <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Memory types
+        By type
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-        What does Junior remember?
+        What Junior remembers
       </h2>
       <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-        Your active memories grouped by how Junior uses them.
+        Across personal and public scopes.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="How you like to work"
+          detail="Almost entirely personal"
           icon={UserRound}
           label="Preferences"
           value={stats.preference}
         />
         <OverviewBreakdownRow
-          detail="How you prefer tasks to be done"
+          detail="How work should get done"
           icon={Database}
           label="Procedures"
           value={stats.procedure}
         />
         <OverviewBreakdownRow
-          detail="Facts and context that may help later"
+          detail="Facts and durable context"
           icon={BrainCircuit}
           label="Knowledge"
           value={stats.knowledge}
@@ -404,40 +388,35 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   );
 }
 
-function MemoryOriginPanel(props: {
-  data: MemoryDashboardData;
-  libraryPath: string;
-}) {
+function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
   return (
     <Card className="p-5 sm:p-6">
       <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Your memories
+        By origin
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
-        How did they get here?
+        How they got here
       </h2>
       <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-        Your active memories grouped by how they were added.
+        Same totals, split by how they were written.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Picked up automatically from a conversation"
-          href={`${props.libraryPath}?filter=automatic`}
+          detail="Passive extraction after runs"
           icon={Sparkles}
           label="Learned by Junior"
           value={stats.automatic}
         />
         <OverviewBreakdownRow
-          detail="Added because you asked Junior to remember it"
-          href={`${props.libraryPath}?filter=explicit`}
+          detail="Someone asked to remember it"
           icon={Bookmark}
-          label="Saved by you"
+          label="Saved explicitly"
           value={stats.explicit}
         />
         <OverviewBreakdownRow
-          detail="Added before learning method tracking existed"
+          detail="Before origin tracking"
           icon={BrainCircuit}
           label="Older records"
           value={other}
@@ -449,14 +428,13 @@ function MemoryOriginPanel(props: {
 
 function OverviewBreakdownRow(props: {
   detail: string;
-  href?: string;
   icon: typeof UserRound;
   label: string;
   value: number;
 }) {
   const Icon = props.icon;
-  const content = (
-    <>
+  return (
+    <div className="flex items-center gap-3 bg-[#09090b] px-3 py-3">
       <div className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
         <Icon aria-hidden="true" size={15} />
       </div>
@@ -471,23 +449,7 @@ function OverviewBreakdownRow(props: {
       <div className="font-display text-2xl font-light text-dashboard-text">
         {props.value.toLocaleString("en-US")}
       </div>
-      {props.href ? (
-        <ArrowRight
-          aria-hidden="true"
-          className="shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-100"
-          size={15}
-        />
-      ) : null}
-    </>
-  );
-  const className =
-    "group flex items-center gap-3 bg-[#09090b] px-3 py-3 no-underline transition-colors hover:bg-white/[0.025]";
-  return props.href ? (
-    <Link className={className} to={props.href}>
-      {content}
-    </Link>
-  ) : (
-    <div className={className}>{content}</div>
+    </div>
   );
 }
 
@@ -506,6 +468,7 @@ function MemoryRow(props: {
   const learned = metadataValue(props.record, "Learned");
   const remembered = metadataValue(props.record, "Remembered");
   const visibility = metadataValue(props.record, "Visibility");
+  const isPublic = visibility === "Public";
   const provenance =
     learned === "Automatic"
       ? "Learned by Junior"
@@ -551,15 +514,35 @@ function MemoryRow(props: {
                   ·
                 </span>
                 <span>{shortDate(remembered)}</span>
-                <span className="inline-flex items-center gap-1 text-dashboard-text sm:hidden">
-                  <LockKeyhole aria-hidden="true" size={10} />
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 sm:hidden",
+                    isPublic ? "text-emerald-200" : "text-dashboard-text",
+                  )}
+                >
+                  {isPublic ? (
+                    <Globe2 aria-hidden="true" size={10} />
+                  ) : (
+                    <LockKeyhole aria-hidden="true" size={10} />
+                  )}
                   {visibility}
                 </span>
               </div>
             </div>
           </div>
-          <span className="hidden items-center gap-1.5 rounded border border-white/[0.08] bg-white/[0.025] px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-dashboard-text-muted sm:inline-flex">
-            <LockKeyhole aria-hidden="true" size={11} />
+          <span
+            className={cn(
+              "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:inline-flex",
+              isPublic
+                ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
+                : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
+            )}
+          >
+            {isPublic ? (
+              <Globe2 aria-hidden="true" size={11} />
+            ) : (
+              <LockKeyhole aria-hidden="true" size={11} />
+            )}
             {visibility}
           </span>
           <span
@@ -665,12 +648,17 @@ function MemoryDetails(props: {
   const learned = metadataValue(props.record, "Learned");
   const remembered = metadataValue(props.record, "Remembered");
   const source = metadataValue(props.record, "Source");
+  const visibility = metadataValue(props.record, "Visibility");
+  const isPublic = visibility === "Public";
   const story =
     learned === "Automatic"
       ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
         ? `You asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
+  const scopeCopy = isPublic
+    ? `It is stored as workspace ${kind.toLowerCase()} for future channels.`
+    : `It is stored as a ${kind.toLowerCase()} for future conversations.`;
   const hiddenMetadata = props.inline
     ? ["Type", "Learned", "Source", "Memory ID"]
     : ["Learned", "Source", "Memory ID"];
@@ -754,8 +742,7 @@ function MemoryDetails(props: {
                     : "font-mono text-[0.66rem]",
                 )}
               >
-                {story} It is stored as a {kind.toLowerCase()} for future
-                conversations.
+                {story} {scopeCopy}
               </div>
             </div>
           </div>
@@ -796,6 +783,11 @@ function MemoryDetails(props: {
               <Trash2 aria-hidden="true" size={13} />
               Forget this memory
             </button>
+          ) : isPublic ? (
+            <div className="mt-4 inline-flex items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+              <Globe2 aria-hidden="true" size={13} />
+              View only · public memories can&apos;t be deleted
+            </div>
           ) : null}
         </div>
       </div>

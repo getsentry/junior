@@ -1,8 +1,8 @@
 /**
- * SQL operations over personal memories owned by one authenticated viewer.
+ * SQL operations over memories visible to one authenticated viewer.
  *
  * A viewer may resolve to several runtime actors. This store combines their
- * personal scopes without treating one actor as the canonical identity.
+ * personal scopes with authorized public workspace conversation scopes.
  */
 import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import {
 import { MEMORY_KINDS, type MemoryRuntimeContext } from "./types";
 
 const nonEmptyStringSchema = z.string().min(1);
+const memoryVisibilitySchema = z.enum(["private", "public"]);
 const personalMemoryCursorSchema = z
   .object({
     createdAtMs: z.number().finite(),
@@ -31,6 +32,7 @@ const personalMemoryPageInputSchema = z
     limit: z.number().int().min(1).max(50),
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
+    visibility: memoryVisibilitySchema.optional(),
   })
   .strict();
 const personalMemoryTimelineInputSchema = z
@@ -46,15 +48,18 @@ export type PersonalMemoryPageInput = z.output<
   typeof personalMemoryPageInputSchema
 >;
 
+export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
+
 export interface PersonalMemoryPage {
   memories: PersonalMemoryRecord[];
   nextCursor?: PersonalMemoryCursor;
 }
 
-/** Safe provenance attached to one viewer-owned personal memory. */
+/** Safe provenance attached to one viewer-visible memory. */
 export type PersonalMemoryRecord = MemoryRecord & {
   origin: "automatic" | "explicit" | "other";
   sourcePlatform: "local" | "slack";
+  visibility: MemoryVisibility;
 };
 
 /** Viewer-scoped active memory totals used by the dashboard. */
@@ -65,16 +70,17 @@ export interface PersonalMemoryStats {
   embedded: number;
   explicit: number;
   knowledge: number;
+  personal: number;
   preference: number;
   procedure: number;
+  public: number;
 }
 
 /** Viewer-scoped memory creation totals for one UTC calendar day. */
 export interface PersonalMemoryDay {
   date: string;
-  knowledge: number;
-  preference: number;
-  procedure: number;
+  personal: number;
+  public: number;
 }
 
 /** Expected failure when a viewer does not own the requested memory. */
@@ -85,17 +91,17 @@ export class PersonalMemoryNotFoundError extends Error {
   }
 }
 
-/** Viewer-scoped personal memory operations shared by dashboard and REST. */
+/** Viewer-scoped memory operations shared by dashboard and REST. */
 export interface PersonalMemoryCollection {
   /** Archive one exact personal memory owned by a linked actor. */
   archive(id: string): Promise<MemoryRecord>;
-  /** Read one exact personal memory owned by a linked actor. */
-  get(id: string): Promise<MemoryRecord>;
-  /** List one stable page across every linked personal scope. */
+  /** Read one exact memory visible to a linked actor. */
+  get(id: string): Promise<PersonalMemoryRecord>;
+  /** List one stable page across every authorized viewer scope. */
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
-  /** Summarize active memories across every linked personal scope. */
+  /** Summarize active memories across every authorized viewer scope. */
   stats(): Promise<PersonalMemoryStats>;
-  /** Read memory creation history across every linked personal scope. */
+  /** Read memory creation history across every authorized viewer scope. */
   timeline(input: { days: number }): Promise<PersonalMemoryDay[]>;
 }
 
@@ -112,7 +118,30 @@ function personalScopes(
   ];
 }
 
-function personalScopePredicate(scopes: ResolvedMemoryScope[]) {
+/** Public workspace conversation scopes authorized by the viewer's Slack teams. */
+function publicWorkspaceScopes(
+  runtimeContexts: MemoryRuntimeContext[],
+): ResolvedMemoryScope[] {
+  return [
+    ...new Map(
+      runtimeContexts.flatMap((context) => {
+        if (context.source.platform !== "slack" || !context.actor) {
+          return [];
+        }
+        if (context.actor.platform !== "slack") {
+          return [];
+        }
+        const scope: ResolvedMemoryScope = {
+          scope: "conversation",
+          scopeKey: `slack:${context.actor.teamId}`,
+        };
+        return [[`${scope.scope}:${scope.scopeKey}`, scope] as const];
+      }),
+    ).values(),
+  ];
+}
+
+function scopePredicate(scopes: ResolvedMemoryScope[]) {
   if (scopes.length === 0) return undefined;
   return or(
     ...scopes.map((scope) =>
@@ -148,30 +177,67 @@ function memoryOrigin(
   return "other";
 }
 
+function memoryVisibility(
+  scope: MemoryRecord["scope"],
+): PersonalMemoryRecord["visibility"] {
+  return scope === "personal" ? "private" : "public";
+}
+
 function personalMemoryRecord(
   row: typeof juniorMemoryMemories.$inferSelect,
 ): PersonalMemoryRecord {
+  const memory = parseMemoryRow(row);
   return {
-    ...parseMemoryRow(row),
+    ...memory,
     origin: memoryOrigin(row.idempotencyKey),
     sourcePlatform: row.sourcePlatform,
+    visibility: memoryVisibility(memory.scope),
   };
 }
 
-/** Build storage operations for every personal scope linked to one viewer. */
+function emptyStats(): PersonalMemoryStats {
+  return {
+    active: 0,
+    automatic: 0,
+    createdThirtyDays: 0,
+    embedded: 0,
+    explicit: 0,
+    knowledge: 0,
+    personal: 0,
+    preference: 0,
+    procedure: 0,
+    public: 0,
+  };
+}
+
+/** Build storage operations for every memory scope linked to one viewer. */
 export function createPersonalMemoryCollection(
   db: MemoryDb,
   runtimeContexts: MemoryRuntimeContext[],
   options: { now?: () => number } = {},
 ): PersonalMemoryCollection {
-  const scopes = personalScopes(runtimeContexts);
+  const privateScopes = personalScopes(runtimeContexts);
+  const publicScopes = publicWorkspaceScopes(runtimeContexts);
+  const allScopes = [...privateScopes, ...publicScopes];
   const getNowMs = () => options.now?.() ?? Date.now();
+
+  function scopesForVisibility(
+    visibility: MemoryVisibility | undefined,
+  ): ResolvedMemoryScope[] {
+    if (visibility === "private") return privateScopes;
+    if (visibility === "public") return publicScopes;
+    return allScopes;
+  }
 
   return {
     async archive(id) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
-      const predicate = activeVisiblePredicate({ nowMs, scopes });
+      // Forget is personal-only; public workspace memories stay shared.
+      const predicate = activeVisiblePredicate({
+        nowMs,
+        scopes: privateScopes,
+      });
       if (!predicate) {
         throw new PersonalMemoryNotFoundError();
       }
@@ -195,7 +261,7 @@ export function createPersonalMemoryCollection(
     async get(id) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
-      const predicate = activeVisiblePredicate({ nowMs, scopes });
+      const predicate = activeVisiblePredicate({ nowMs, scopes: allScopes });
       if (!predicate) {
         throw new PersonalMemoryNotFoundError();
       }
@@ -207,12 +273,13 @@ export function createPersonalMemoryCollection(
       if (!rows[0]) {
         throw new PersonalMemoryNotFoundError();
       }
-      return parseMemoryRow(rows[0]);
+      return personalMemoryRecord(rows[0]);
     },
 
     async list(input) {
       input = personalMemoryPageInputSchema.parse(input);
       const nowMs = getNowMs();
+      const scopes = scopesForVisibility(input.visibility);
       await archiveExpiredMemoryBatch({ db, nowMs, scopes });
       const active = activeVisiblePredicate({ nowMs, scopes });
       if (!active) {
@@ -275,19 +342,10 @@ export function createPersonalMemoryCollection(
 
     async stats() {
       const nowMs = getNowMs();
-      await archiveExpiredMemoryBatch({ db, nowMs, scopes });
-      const active = activeVisiblePredicate({ nowMs, scopes });
+      await archiveExpiredMemoryBatch({ db, nowMs, scopes: allScopes });
+      const active = activeVisiblePredicate({ nowMs, scopes: allScopes });
       if (!active) {
-        return {
-          active: 0,
-          automatic: 0,
-          createdThirtyDays: 0,
-          embedded: 0,
-          explicit: 0,
-          knowledge: 0,
-          preference: 0,
-          procedure: 0,
-        };
+        return emptyStats();
       }
       const [counts] = await db
         .select({
@@ -312,12 +370,20 @@ export function createPersonalMemoryCollection(
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
               Number,
             ),
+          personal:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
+              Number,
+            ),
           preference:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
               Number,
             ),
           procedure:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
+              Number,
+            ),
+          public:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
               Number,
             ),
         })
@@ -334,8 +400,10 @@ export function createPersonalMemoryCollection(
         embedded: counts?.embedded ?? 0,
         explicit: counts?.explicit ?? 0,
         knowledge: counts?.knowledge ?? 0,
+        personal: counts?.personal ?? 0,
         preference: counts?.preference ?? 0,
         procedure: counts?.procedure ?? 0,
+        public: counts?.public ?? 0,
       };
     },
 
@@ -343,13 +411,12 @@ export function createPersonalMemoryCollection(
       input = personalMemoryTimelineInputSchema.parse(input);
       const todayMs = Date.parse(`${utcDate(getNowMs())}T00:00:00.000Z`);
       const startMs = todayMs - (input.days - 1) * DAY_MS;
-      const ownership = personalScopePredicate(scopes);
+      const ownership = scopePredicate(allScopes);
       if (!ownership) {
         return Array.from({ length: input.days }, (_, index) => ({
           date: utcDate(startMs + index * DAY_MS),
-          knowledge: 0,
-          preference: 0,
-          procedure: 0,
+          personal: 0,
+          public: 0,
         }));
       }
       const rows = await db
@@ -357,16 +424,12 @@ export function createPersonalMemoryCollection(
           date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
             "date",
           ),
-          knowledge:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
+          personal:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
               Number,
             ),
-          preference:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
-              Number,
-            ),
-          procedure:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
+          public:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
               Number,
             ),
         })
@@ -383,9 +446,8 @@ export function createPersonalMemoryCollection(
         const row = byDate.get(date);
         return {
           date,
-          knowledge: row?.knowledge ?? 0,
-          preference: row?.preference ?? 0,
-          procedure: row?.procedure ?? 0,
+          personal: row?.personal ?? 0,
+          public: row?.public ?? 0,
         };
       });
     },

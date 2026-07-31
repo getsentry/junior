@@ -41,14 +41,14 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page
       .getByRole("region", { name: "Memory summary" })
-      .getByText("Your memories", { exact: true }),
+      .getByText("Total active", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "What does Junior remember?" }),
+    page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Saved by you/ }),
-  ).toHaveAttribute("href", "/plugins/memory/memories/library?filter=explicit");
+    page.getByRole("heading", { name: "What Junior remembers" }),
+  ).toBeVisible();
   const sevenDays = page.getByRole("button", { name: "7d" });
   const thirtyDays = page.getByRole("button", { name: "30d" });
   const ninetyDays = page.getByRole("button", { name: "90d" });
@@ -67,11 +67,11 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByRole("button", { name: /^I prefer concise summaries/ }),
   ).toBeVisible();
-  await expect(page.getByText("Only you").last()).toBeVisible();
-  const preferences = page.getByRole("tab", { name: "Preferences 11" });
-  await preferences.click();
-  await expect(preferences).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(/filter=preferences/);
+  await expect(page.getByText("Private").last()).toBeVisible();
+  const privateTab = page.getByRole("tab", { name: "Private 24" });
+  await privateTab.click();
+  await expect(privateTab).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/filter=private/);
   const navLinks = await page.locator("header nav a").allTextContents();
   expect(navLinks.at(-1)?.trim()).toBe("System");
   expect(browserErrors).toEqual([]);
@@ -133,7 +133,7 @@ test("opens memory details in a mobile sheet", async ({ page }) => {
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("hidden");
   await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(dialog.getByText("Only you")).toBeVisible();
+  await expect(dialog.getByText("Private")).toBeVisible();
   await expect(
     dialog.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
@@ -151,7 +151,7 @@ test("renders an empty registered plugin page", async ({ page }) => {
     await route.fulfill({
       json: {
         type: "list",
-        emptyText: "No personal memories yet.",
+        emptyText: "No memories yet.",
         records: [],
       },
     });
@@ -160,7 +160,7 @@ test("renders an empty registered plugin page", async ({ page }) => {
 
   await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
-  await expect(page.getByText("No personal memories yet.")).toBeVisible();
+  await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
@@ -219,7 +219,7 @@ test("searches, paginates, and forgets plugin page records", async ({
         type: "list",
         emptyText: query
           ? "No memories matched your search."
-          : "No personal memories yet.",
+          : "No memories yet.",
         ...(!query && !cursor ? { nextCursor: "page-2" } : {}),
         records,
         searchPlaceholder: "Search memories",
@@ -242,9 +242,9 @@ test("searches, paginates, and forgets plugin page records", async ({
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
-  const preferences = page.getByRole("tab", { name: /^Preferences/ });
-  await preferences.click();
-  await expect(page).toHaveURL(/filter=preferences/);
+  const privateTab = page.getByRole("tab", { name: /^Private/ });
+  await privateTab.click();
+  await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
@@ -284,6 +284,6 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
-  await expect(page.getByText("No personal memories yet.")).toBeVisible();
+  await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });

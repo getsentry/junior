@@ -1,7 +1,10 @@
-/** Project viewer-owned memories into Junior's core-rendered user page. */
+/** Project viewer-visible memories into Junior's core-rendered user page. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
 import { createViewerMemories } from "./personal";
-import type { PersonalMemoryRecord } from "./personal-store";
+import type {
+  MemoryVisibility,
+  PersonalMemoryRecord,
+} from "./personal-store";
 import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
@@ -22,31 +25,33 @@ function originLabel(origin: PersonalMemoryRecord["origin"]): string {
   return "Other";
 }
 
+function visibilityLabel(visibility: MemoryVisibility): string {
+  return visibility === "public" ? "Public" : "Private";
+}
+
 function pageFilter(filter: string | undefined): {
-  kind?: "preference";
-  origin?: "automatic" | "explicit";
+  visibility?: MemoryVisibility;
 } {
-  if (filter === "preferences") return { kind: "preference" };
-  if (filter === "automatic") return { origin: "automatic" };
-  if (filter === "explicit") return { origin: "explicit" };
+  if (filter === "private") return { visibility: "private" };
+  if (filter === "public") return { visibility: "public" };
   return {};
 }
 
 function pageEmptyText(input: { filter?: string; query?: string }): string {
   if (input.query) return "No memories matched your search.";
-  if (input.filter === "preferences") return "No preferences yet.";
-  if (input.filter === "automatic") return "No learned memories yet.";
-  if (input.filter === "explicit") return "No saved memories yet.";
-  return "No personal memories yet.";
+  if (input.filter === "private") return "No private memories yet.";
+  if (input.filter === "public") return "No public memories yet.";
+  return "No memories yet.";
 }
 
-/** Create the interactive personal Memories dashboard page. */
+/** Create the interactive Memories dashboard page. */
 export function createMemoryUserPage(): PluginUserPageDefinition {
   return {
     id: "memories",
     label: "Memories",
     navigation: "primary",
-    description: "Personal facts and preferences Junior remembers about you.",
+    description:
+      "Personal and public memories Junior can use across conversations.",
     async read(ctx, input) {
       const memories = createViewerMemories(
         ctx.db as MemoryDb,
@@ -64,22 +69,28 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
-          actions: [
-            {
-              confirmation: "Forget this memory?",
-              href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
-              label: "Forget",
-              method: "DELETE" as const,
-              tone: "danger" as const,
-            },
-          ],
+          actions:
+            memory.visibility === "private"
+              ? [
+                  {
+                    confirmation: "Forget this memory?",
+                    href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+                    label: "Forget",
+                    method: "DELETE" as const,
+                    tone: "danger" as const,
+                  },
+                ]
+              : [],
           id: memory.id,
           title: memory.content,
           metadata: [
             { label: "Type", value: titleCase(memory.kind) },
             { label: "Learned", value: originLabel(memory.origin) },
             { label: "Source", value: titleCase(memory.sourcePlatform) },
-            { label: "Visibility", value: "Only you" },
+            {
+              label: "Visibility",
+              value: visibilityLabel(memory.visibility),
+            },
             { label: "Remembered", value: rememberedDate(memory.createdAtMs) },
             { label: "Observed", value: rememberedDate(memory.observedAtMs) },
             {

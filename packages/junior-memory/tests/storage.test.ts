@@ -2086,9 +2086,23 @@ ORDER BY created_at_ms ASC
       );
       expect(pluginUserPageContentSchema.parse(memoryContent)).toEqual({
         type: "list",
-        emptyText: "No personal memories yet.",
+        emptyText: "No memories yet.",
         searchPlaceholder: "Search memories",
         records: [
+          {
+            actions: [],
+            id: conversation.memory.id,
+            title: "Deploy runbooks live in Notion.",
+            metadata: [
+              { label: "Type", value: "Knowledge" },
+              { label: "Learned", value: "Other" },
+              { label: "Source", value: "Slack" },
+              { label: "Visibility", value: "Public" },
+              { label: "Remembered", value: "Jun 19, 2026, 12:00 PM" },
+              { label: "Observed", value: "Jun 19, 2026, 12:00 PM" },
+              { label: "Expires", value: "Never" },
+            ],
+          },
           {
             actions: [
               {
@@ -2105,7 +2119,7 @@ ORDER BY created_at_ms ASC
               { label: "Type", value: "Preference" },
               { label: "Learned", value: "Automatic" },
               { label: "Source", value: "Slack" },
-              { label: "Visibility", value: "Only you" },
+              { label: "Visibility", value: "Private" },
               { label: "Remembered", value: "Jun 19, 2026, 12:00 PM" },
               { label: "Observed", value: "Jun 19, 2026, 12:00 PM" },
               { label: "Expires", value: "Never" },
@@ -2124,7 +2138,7 @@ ORDER BY created_at_ms ASC
               email: "person@example.com",
             },
           },
-          { filter: "automatic", limit: 20 },
+          { filter: "private", limit: 20 },
         ),
       ).resolves.toMatchObject({
         records: [expect.objectContaining({ id: personal.memory.id })],
@@ -2140,11 +2154,10 @@ ORDER BY created_at_ms ASC
               email: "person@example.com",
             },
           },
-          { filter: "explicit", limit: 20 },
+          { filter: "public", limit: 20 },
         ),
       ).resolves.toMatchObject({
-        emptyText: "No saved memories yet.",
-        records: [],
+        records: [expect.objectContaining({ id: conversation.memory.id })],
       });
       await expect(
         memoryPage.read(
@@ -2158,7 +2171,7 @@ ORDER BY created_at_ms ASC
         ),
       ).resolves.toEqual({
         type: "list",
-        emptyText: "No personal memories yet.",
+        emptyText: "No memories yet.",
         searchPlaceholder: "Search memories",
         records: [],
       });
@@ -2257,7 +2270,7 @@ ORDER BY created_at_ms ASC
         idempotencyKey: "api:hidden",
         kind: "knowledge",
       });
-      await firstStore.createConversationMemory({
+      const publicMemory = await firstStore.createConversationMemory({
         content: "Public workspace memory.",
         idempotencyKey: "session:api:public",
         kind: "knowledge",
@@ -2283,7 +2296,7 @@ ORDER BY created_at_ms ASC
       });
 
       const firstPageResponse = await api.fetch(
-        new Request("http://localhost/memories?limit=1"),
+        new Request("http://localhost/memories?limit=2"),
         requestContext,
       );
       expect(firstPageResponse.status).toBe(200);
@@ -2294,13 +2307,19 @@ ORDER BY created_at_ms ASC
         expect.objectContaining({
           content: "Deploy runbooks live in Notion.",
           id: second.memory.id,
+          visibility: "private",
+        }),
+        expect.objectContaining({
+          id: expect.stringMatching(
+            new RegExp(`^(${first.memory.id}|${publicMemory.memory.id})$`),
+          ),
         }),
       ]);
       expect(firstPage.nextCursor).toEqual(expect.any(String));
 
       const secondPageResponse = await api.fetch(
         new Request(
-          `http://localhost/memories?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+          `http://localhost/memories?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
         ),
         requestContext,
       );
@@ -2310,8 +2329,9 @@ ORDER BY created_at_ms ASC
       ).toEqual({
         memories: [
           expect.objectContaining({
-            content: "Prefers concise release notes.",
-            id: first.memory.id,
+            id: expect.stringMatching(
+              new RegExp(`^(${first.memory.id}|${publicMemory.memory.id})$`),
+            ),
           }),
         ],
       });
@@ -2341,7 +2361,29 @@ ORDER BY created_at_ms ASC
       expect(memoryApiSchema.parse(await detailResponse.json())).toMatchObject({
         content: "Prefers concise release notes.",
         id: first.memory.id,
+        visibility: "private",
       });
+
+      const publicDetailResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`),
+        requestContext,
+      );
+      expect(publicDetailResponse.status).toBe(200);
+      expect(
+        memoryApiSchema.parse(await publicDetailResponse.json()),
+      ).toMatchObject({
+        content: "Public workspace memory.",
+        id: publicMemory.memory.id,
+        visibility: "public",
+      });
+
+      const publicDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publicDeleteResponse.status).toBe(404);
 
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
@@ -2352,19 +2394,20 @@ ORDER BY created_at_ms ASC
         await dashboardResponse.json(),
       );
       expect(dashboard.stats).toMatchObject({
-        active: 2,
-        automatic: 1,
+        active: 3,
+        automatic: 2,
         explicit: 1,
-        knowledge: 1,
+        knowledge: 2,
+        personal: 2,
         preference: 1,
         procedure: 0,
+        public: 1,
       });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        knowledge: 1,
-        preference: 1,
-        procedure: 0,
+        personal: 2,
+        public: 1,
       });
 
       const deleteResponse = await api.fetch(
