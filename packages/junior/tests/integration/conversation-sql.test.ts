@@ -7,7 +7,6 @@ import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
   juniorConversationEvents,
-  juniorConversations,
   juniorSqlSchema as schema,
 } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
