@@ -292,7 +292,6 @@ async function recordConversationActivityMetadata(args: {
     },
     actor: sessionLogActor(args.summary.actor),
     source,
-    ...(args.summary.source ? { sessionSource: args.summary.source } : {}),
     updatedAtMs: args.nowMs,
     visibility: args.destinationVisibility,
   });

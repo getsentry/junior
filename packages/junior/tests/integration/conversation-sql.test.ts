@@ -39,6 +39,102 @@ SELECT EXISTS (
 }
 
 describe("conversation SQL local mode", () => {
+  it("backfills session sources from matching conversation destinations", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const sourceMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes('ADD COLUMN "source_json" jsonb'),
+      ),
+    );
+    const sourceMigration = coreMigrations[sourceMigrationIndex];
+    if (!sourceMigration) {
+      throw new Error("Conversation session source migration not found");
+    }
+
+    try {
+      for (const migration of coreMigrations.slice(0, sourceMigrationIndex)) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
+      }
+      await fixture.sql.execute(`
+INSERT INTO junior_destinations (
+  id,
+  provider,
+  provider_tenant_id,
+  provider_destination_id,
+  kind,
+  visibility,
+  created_at,
+  updated_at
+) VALUES
+  ('slack-public', 'slack', 'T123', 'C123', 'channel', 'public', to_timestamp(1), to_timestamp(1)),
+  ('slack-unknown', 'slack', 'T123', 'C456', 'channel', 'unknown', to_timestamp(1), to_timestamp(1)),
+  ('slack-private', 'slack', 'T123', 'G123', 'group', 'unknown', to_timestamp(1), to_timestamp(1)),
+  ('local', 'local', '', 'local:test:session', 'local_conversation', 'private', to_timestamp(1), to_timestamp(1))
+`);
+      await fixture.sql.execute(`
+INSERT INTO junior_conversations (
+  conversation_id,
+  destination_id,
+  created_at,
+  last_activity_at,
+  updated_at,
+  execution_status
+) VALUES
+  ('slack:C123:1700000000.001', 'slack-public', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:C456:1700000000.002', 'slack-unknown', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:G123:1700000000.003', 'slack-private', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:C999:1700000000.004', 'slack-public', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('local:test:session', 'local', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle')
+`);
+
+      for (const statement of sourceMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+
+      const rows = await fixture.sql.query<{
+        conversationId: string;
+        sessionSource: unknown;
+      }>(`
+SELECT
+  conversation_id AS "conversationId",
+  source_json AS "sessionSource"
+FROM junior_conversations
+ORDER BY conversation_id
+`);
+      expect(
+        Object.fromEntries(
+          rows.map((row) => [row.conversationId, row.sessionSource]),
+        ),
+      ).toEqual({
+        "local:test:session": {
+          platform: "local",
+          type: "priv",
+          conversationId: "local:test:session",
+        },
+        "slack:C123:1700000000.001": {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.001",
+        },
+        "slack:C456:1700000000.002": null,
+        "slack:C999:1700000000.004": null,
+        "slack:G123:1700000000.003": {
+          platform: "slack",
+          type: "priv",
+          teamId: "T123",
+          channelId: "G123",
+          threadTs: "1700000000.003",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("migrates legacy agent history to native event types", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>

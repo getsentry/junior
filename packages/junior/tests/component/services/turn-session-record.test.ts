@@ -192,6 +192,7 @@ describe("persistAuthPauseSessionRecord", () => {
         piMessages: [userMessage("ship it")],
         sessionId: "turn-activity",
         sliceId: 1,
+        source: SLACK_SOURCE,
         state: "completed",
         surface: "slack",
       });
@@ -205,6 +206,7 @@ describe("persistAuthPauseSessionRecord", () => {
         conversationId: "slack:C123:turn-activity",
         destination: SLACK_DESTINATION,
         lastActivityAtMs: 10_000,
+        sessionSource: SLACK_SOURCE,
         source: "slack",
       });
     } finally {
