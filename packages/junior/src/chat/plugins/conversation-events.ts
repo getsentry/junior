@@ -17,6 +17,20 @@ function registeredDefinition(
   );
 }
 
+/** Keep operation idempotency stable when a registered event schema advances. */
+function eventIdentityVersion(
+  plugin: PluginRegistration,
+  definition: PluginConversationEventDefinition,
+): number {
+  let version = definition.version;
+  for (const candidate of plugin.conversationEvents ?? []) {
+    if (candidate.eventName === definition.eventName) {
+      version = Math.min(version, candidate.version);
+    }
+  }
+  return version;
+}
+
 /** Create a conversation-bound writer for one plugin task operation. */
 export function createPluginConversationEvents(args: {
   conversationId: string;
@@ -33,6 +47,7 @@ export function createPluginConversationEvents(args: {
         );
       }
       const content = definition.parse(value.data);
+      const identityVersion = eventIdentityVersion(args.plugin, definition);
       await getConversationEventStore().append(
         args.conversationId,
         [
@@ -40,7 +55,7 @@ export function createPluginConversationEvents(args: {
             createdAtMs: Date.now(),
             idempotencyKey:
               `plugin:${args.plugin.manifest.name}:operation:${args.operationId}:` +
-              `event:${definition.eventName}@${definition.version}`,
+              `event:${definition.eventName}@${identityVersion}`,
             data: {
               type: "structured_event",
               namespace: args.plugin.manifest.name,

@@ -3,6 +3,7 @@ import {
   createLocalSource,
   defineConversationEvent,
   defineJuniorPlugin,
+  type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -91,11 +92,11 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
-  it("binds and deduplicates task events without refreshing conversation activity", async () => {
+  it("deduplicates task events across schema versions without refreshing activity", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:structured-events-${runId}`;
     const sessionId = `structured-event-session:${runId}`;
-    const completedEvent = defineConversationEvent({
+    const completedEventV1 = defineConversationEvent({
       name: "session_processed",
       version: 1,
       schema: z.object({ summary: z.string() }).strict(),
@@ -103,28 +104,44 @@ describe("plugin conversation events", () => {
         return { title: "Session processed", preview: event.summary };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { getConversationEventStore, getDb } = await import("@/chat/db");
-    const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    setPlugins([
+    const completedEventV2 = defineConversationEvent({
+      name: "session_processed",
+      version: 2,
+      schema: z.object({ costUsd: z.number(), summary: z.string() }).strict(),
+      renderEvent(event) {
+        return { title: "Session processed", preview: event.summary };
+      },
+    });
+    let emittedVersion: 1 | 2 = 1;
+    const plugin = (conversationEvents: PluginConversationEventDefinition[]) =>
       defineJuniorPlugin({
         manifest: {
           name: "task-event-demo",
           displayName: "Task Event Demo",
           description: "Task event demo",
         },
-        conversationEvents: [completedEvent],
+        conversationEvents,
         tasks: {
           processSession: {
             async run(ctx) {
               await ctx.events.emit(
-                completedEvent({ summary: "Background task finished." }),
+                emittedVersion === 1
+                  ? completedEventV1({
+                      summary: "Background task finished.",
+                    })
+                  : completedEventV2({
+                      costUsd: 0.0042,
+                      summary: "Background task finished.",
+                    }),
               );
             },
           },
         },
-      }),
-    ]);
+      });
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { getConversationEventStore, getDb } = await import("@/chat/db");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    setPlugins([plugin([completedEventV1])]);
     await recordCompletedSession({ conversationId, sessionId });
     const db = getDb();
     await db
@@ -156,6 +173,8 @@ describe("plugin conversation events", () => {
     };
 
     await processPluginTask(message);
+    emittedVersion = 2;
+    setPlugins([plugin([completedEventV1, completedEventV2])]);
     await processPluginTask(message);
 
     expect(await readConversationState()).toEqual(conversationState);

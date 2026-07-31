@@ -96,8 +96,10 @@ projection. A renderer may return `undefined` when an event should remain
 durable without producing a transcript row. The active plugin context supplies
 the namespace, so plugins cannot emit native events or impersonate another
 plugin. The `junior` plugin name is reserved for host-owned native events.
-Stored events remain durable when a plugin is removed, but normal transcript
-projection skips definitions that are not currently registered.
+Versions of the same event name share one task-operation idempotency identity,
+so keep previous definitions registered when evolving an event. Stored events
+remain durable when a plugin is removed, but normal transcript projection skips
+definitions that are not currently registered.
 
 ## Database
 
