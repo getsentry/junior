@@ -27,6 +27,7 @@ export function createSlackScheduleCreateTaskTool(
   context: SchedulerToolContext,
 ) {
   return definePluginTool({
+    approvalMode: "approve",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

@@ -172,12 +172,15 @@ describe("Slack schedule tools", () => {
   });
 
   it("exposes a required structured schedule without model-computed timestamps", async () => {
-    const schema = createSlackScheduleCreateTaskTool(createContext())
-      .inputSchema as {
+    const createTool = createSlackScheduleCreateTaskTool(createContext());
+    const updateTool = createSlackScheduleUpdateTaskTool(createContext());
+    const schema = createTool.inputSchema as {
       properties?: Record<string, unknown>;
       required?: string[];
     };
 
+    expect(createTool.approvalMode).toBe("approve");
+    expect(updateTool.approvalMode).toBe("approve");
     expect(schema.required).toContain("schedule");
     expect(schema.properties).not.toHaveProperty("next_run_at");
     expect(schema.properties).not.toHaveProperty("schedule_kind");
