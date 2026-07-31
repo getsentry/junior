@@ -21,7 +21,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
   createMemoryApi,
@@ -2217,6 +2217,7 @@ ORDER BY created_at_ms ASC
 
   it("serves viewer-scoped personal memories through the REST resource", async () => {
     const fixture = await createMemoryFixture();
+    const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
     try {
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
@@ -2386,6 +2387,7 @@ ORDER BY created_at_ms ASC
         expect.objectContaining({ id: hidden.memory.id }),
       ]);
     } finally {
+      now.mockRestore();
       await fixture.close();
     }
   }, 15_000);
