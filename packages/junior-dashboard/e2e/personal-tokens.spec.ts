@@ -120,6 +120,60 @@ test("keeps a created token when a stale list refetch is in flight", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("keeps cached tokens and mutation errors after a refetch fails", async ({
+  page,
+}) => {
+  const backgroundRefetchFinished = promiseSignal();
+  let listRequests = 0;
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 500 });
+      return;
+    }
+
+    listRequests += 1;
+    if (listRequests === 2) {
+      await route.fulfill({ status: 500 });
+      backgroundRefetchFinished.resolve();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        tokens: [
+          {
+            createdAt: "2026-08-01T00:00:00.000Z",
+            expiresAt: "2026-10-30T00:00:00.000Z",
+            id: "00000000-0000-4000-8000-000000000001",
+            lastUsedAt: null,
+            name: "Local agent",
+            tokenSuffix: "abcd",
+          },
+        ],
+      },
+    });
+  });
+
+  await page.goto(server.baseURL);
+  await openPersonalTokens(page);
+  await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "System", exact: true }).click();
+  await page.clock.setFixedTime(new Date(Date.now() + 31_000));
+  await openPersonalTokens(page);
+  await backgroundRefetchFinished.promise;
+  await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Token name").fill("Review token");
+  await page.getByRole("button", { name: "Create token" }).click();
+  await expect(
+    page.getByText("Could not create the API token. Try again."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Could not load API tokens. Try again."),
+  ).toHaveCount(0);
+  expect(listRequests).toBe(2);
+});
+
 async function openPersonalTokens(page: Page) {
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "API tokens", exact: true }).click();

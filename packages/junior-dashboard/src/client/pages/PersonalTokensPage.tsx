@@ -70,7 +70,14 @@ export function PersonalTokensPage() {
       await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,
-        (current) => ({ tokens: [metadata, ...(current?.tokens ?? [])] }),
+        (current) => ({
+          tokens: [
+            metadata,
+            ...(current?.tokens ?? []).filter(
+              (token) => token.id !== metadata.id,
+            ),
+          ],
+        }),
       );
       if (created?.id === metadata.id) setCreatedToken(created);
     },
@@ -103,9 +110,11 @@ export function PersonalTokensPage() {
   const tokens = tokensQuery.data?.tokens ?? [];
   const loading = tokensQuery.isPending;
   const busy = createTokenMutation.isPending || revokeTokenMutation.isPending;
-  const displayedError = tokensQuery.error
-    ? "Could not load API tokens. Try again."
-    : error;
+  const displayedError =
+    error ??
+    (!tokensQuery.data && tokensQuery.error
+      ? "Could not load API tokens. Try again."
+      : undefined);
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
