@@ -39,6 +39,11 @@ function privateNarrowingFromConversationId(
   if (normalized.startsWith("slack:")) {
     return undefined;
   }
+  // Dispatch ids identify internal execution, not the provider or visibility
+  // of the destination where that execution is delivered.
+  if (normalized.startsWith("agent-dispatch:")) {
+    return undefined;
+  }
   // Non-Slack conversations (local CLI, internal runs) are private surfaces.
   return "private";
 }

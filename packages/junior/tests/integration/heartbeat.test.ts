@@ -688,12 +688,12 @@ describe("plugin heartbeat", () => {
       "Post a digest. Summarize the latest state.",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
+    expect(dispatchRecord?.destinationVisibility).toBe("public");
     expect(dispatchRecord?.source).toEqual(
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-
-        type: "priv",
+        type: "pub",
       }),
     );
     expect(dispatchRecord?.metadata).toMatchObject({

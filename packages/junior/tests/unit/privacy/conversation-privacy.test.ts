@@ -44,9 +44,24 @@ describe("conversation privacy classification", () => {
     expect(
       resolveConversationPrivacy({ conversationId: "local:workspace:run-1" }),
     ).toBe("private");
+  });
+
+  it("uses confirmed visibility for internally keyed dispatches", () => {
     expect(
       resolveConversationPrivacy({ conversationId: "agent-dispatch:run-2" }),
-    ).toBe("private");
+    ).toBeUndefined();
+    expect(
+      resolveConversationPrivacy({
+        conversationId: "agent-dispatch:run-2",
+        visibility: "public",
+      }),
+    ).toBe("public");
+    expect(
+      canExposeConversationPayload({
+        conversationId: "agent-dispatch:run-2",
+        visibility: "public",
+      }),
+    ).toBe(true);
   });
 });
 
