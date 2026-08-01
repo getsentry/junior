@@ -180,10 +180,7 @@ function formatAvailableSkillsForPrompt(
 
   if (autoSelectable.length > 0) {
     // Available skills: model may load these when they match the request.
-    const available = [
-      "<available-skills>",
-      "Scan before answering. Load the most specific matching skill; do not answer from memory when a skill fits. A request that names a skill, plugin, provider, or account matching a skill name is a skill match. If none fits, do not load a skill.",
-    ];
+    const available = ["<available-skills>"];
     for (const skill of autoSelectable) {
       available.push(...formatSkillEntry(skill));
     }
@@ -340,7 +337,7 @@ const TOOL_CALL_STYLE_RULES = [
 
 const SKILL_POLICY_RULES = [
   "- A `<skill>` block in the current user turn is already loaded. Follow its instructions directly and do not call `loadSkill` for that skill.",
-  "- Otherwise, only load skills listed in `<available-skills>`. Never guess or invent a skill name.",
+  "- Otherwise, scan `<available-skills>` before acting. Load the most specific skill whose description matches the request; do not answer from memory when one fits. Only call `loadSkill` with an exact listed `<name>`; if none fits, do not load a skill.",
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];
 
