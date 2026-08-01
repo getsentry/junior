@@ -939,6 +939,9 @@ describe("Slack schedule tools", () => {
       "credential_mode",
     );
     expect(
+      tool.prepareArguments?.({ ...input, credential_mode: null }),
+    ).not.toHaveProperty("credential_mode");
+    expect(
       tool.prepareArguments?.({ ...input, credential_mode: "system" }),
     ).toHaveProperty("credential_mode", "system");
     const created = await executeTool(tool, input);

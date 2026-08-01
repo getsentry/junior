@@ -58,7 +58,10 @@ export function createSlackScheduleCreateTaskTool(
         schedule: z.input<typeof scheduleIntentSchema>;
         credential_mode?: "creator" | "system" | null;
       };
-      if (input?.credential_mode !== "creator") {
+      if (
+        input?.credential_mode !== "creator" &&
+        input?.credential_mode !== null
+      ) {
         return input;
       }
       const prepared = { ...input };
