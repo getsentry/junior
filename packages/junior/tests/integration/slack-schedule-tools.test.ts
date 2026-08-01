@@ -932,8 +932,8 @@ describe("Slack schedule tools", () => {
         weekdays: ["monday" as const],
         timezone: "America/Los_Angeles",
       },
-      credential_mode: "creator",
-    } as const;
+      credential_mode: "creator" as const,
+    };
 
     expect(tool.prepareArguments?.(input)).not.toHaveProperty(
       "credential_mode",
