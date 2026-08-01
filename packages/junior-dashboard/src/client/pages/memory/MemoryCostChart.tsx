@@ -3,17 +3,40 @@ import { useState } from "react";
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 import { cn } from "../../styles";
-import type { MemoryExtractionDay } from "./memoryDashboard";
+import type { MemoryCostDay } from "./memoryDashboard";
 
 type MemoryRange = 7 | 30 | 90;
 
-/** Render passive memory extraction cost from durable plugin events. */
-export function MemoryExtractionCost(props: { days: MemoryExtractionDay[] }) {
+/** Render stacked memory extraction and recall cost from durable plugin events. */
+export function MemoryCostChart(props: {
+  extractionDays: MemoryCostDay[];
+  recallDays: MemoryCostDay[];
+}) {
   const [range, setRange] = useState<MemoryRange>(30);
-  const days = props.days.slice(-range);
-  const total = days.reduce((sum, day) => sum + day.costUsd, 0);
-  const runs = days.reduce((sum, day) => sum + day.events, 0);
-  const maximum = Math.max(0.01, ...days.map((day) => day.costUsd));
+  const recallByDate = new Map(props.recallDays.map((day) => [day.date, day]));
+  const days = props.extractionDays.slice(-range).map((extraction) => ({
+    date: extraction.date,
+    extraction,
+    recall: recallByDate.get(extraction.date) ?? {
+      costUsd: 0,
+      date: extraction.date,
+      events: 0,
+    },
+  }));
+  const extractionTotal = days.reduce(
+    (sum, day) => sum + day.extraction.costUsd,
+    0,
+  );
+  const recallTotal = days.reduce((sum, day) => sum + day.recall.costUsd, 0);
+  const total = extractionTotal + recallTotal;
+  const runs = days.reduce(
+    (sum, day) => sum + day.extraction.events + day.recall.events,
+    0,
+  );
+  const maximum = Math.max(
+    0.01,
+    ...days.map((day) => day.extraction.costUsd + day.recall.costUsd),
+  );
   const width = 720;
   const height = 200;
   const left = 48;
@@ -29,17 +52,34 @@ export function MemoryExtractionCost(props: { days: MemoryExtractionDay[] }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Extraction cost
+            Memory cost
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
             {formatCostSummary({ total })}
           </h2>
           <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-            System-wide estimate across {runs.toLocaleString()} passive runs.
+            System-wide estimate across {formatRunCount(runs)} spanning
+            extraction and recall.
           </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.6rem] text-dashboard-text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-[1px] bg-cyan-300"
+              />
+              Extraction {formatCostSummary({ total: extractionTotal })}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-[1px] bg-fuchsia-400"
+              />
+              Recall {formatCostSummary({ total: recallTotal })}
+            </span>
+          </div>
         </div>
         <div
-          aria-label="Memory extraction cost range"
+          aria-label="Memory cost range"
           className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
         >
           {([7, 30, 90] as const).map((days) => (
@@ -63,7 +103,7 @@ export function MemoryExtractionCost(props: { days: MemoryExtractionDay[] }) {
 
       <div className="relative mt-4 overflow-hidden">
         <svg
-          aria-label={`Memory extraction cost during the last ${range} days`}
+          aria-label={`Memory extraction and recall cost during the last ${range} days`}
           className="block h-auto min-h-40 w-full"
           role="img"
           viewBox={`0 0 ${width} ${height}`}
@@ -94,22 +134,39 @@ export function MemoryExtractionCost(props: { days: MemoryExtractionDay[] }) {
             );
           })}
           {days.map((day, index) => {
-            const height = (day.costUsd / maximum) * plotHeight;
+            const extractionHeight =
+              (day.extraction.costUsd / maximum) * plotHeight;
+            const recallHeight = (day.recall.costUsd / maximum) * plotHeight;
             const x = left + index * step + (step - barWidth) / 2;
+            const extractionLabel = `${formatDate(day.date)} extraction: ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}`;
+            const recallLabel = `${formatDate(day.date)} recall: ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`;
             return (
-              <rect
-                aria-label={`${formatDate(day.date)}: ${formatCostSummary({ total: day.costUsd })}, ${day.events} runs`}
-                fill="#67e8f9"
-                height={height}
-                key={day.date}
-                opacity={day.costUsd > 0 ? 0.82 : 0.1}
-                rx="1"
-                width={barWidth}
-                x={x}
-                y={top + plotHeight - height}
-              >
-                <title>{`${formatDate(day.date)}: ${formatCostSummary({ total: day.costUsd })}, ${day.events} runs`}</title>
-              </rect>
+              <g key={day.date}>
+                <rect
+                  aria-label={extractionLabel}
+                  fill="#67e8f9"
+                  height={extractionHeight}
+                  opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
+                  rx="1"
+                  width={barWidth}
+                  x={x}
+                  y={top + plotHeight - extractionHeight}
+                >
+                  <title>{extractionLabel}</title>
+                </rect>
+                <rect
+                  aria-label={recallLabel}
+                  fill="#e879f9"
+                  height={recallHeight}
+                  opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
+                  rx="1"
+                  width={barWidth}
+                  x={x}
+                  y={top + plotHeight - extractionHeight - recallHeight}
+                >
+                  <title>{recallLabel}</title>
+                </rect>
+              </g>
             );
           })}
           {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(
@@ -146,12 +203,16 @@ export function MemoryExtractionCost(props: { days: MemoryExtractionDay[] }) {
         </svg>
         {runs === 0 ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-[0.68rem] text-dashboard-text-muted">
-            No passive extractions ran in this period.
+            No memory extraction or recall ran in this period.
           </div>
         ) : null}
       </div>
     </Card>
   );
+}
+
+function formatRunCount(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "run" : "runs"}`;
 }
 
 function formatDate(date: string): string {

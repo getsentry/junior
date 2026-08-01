@@ -48,7 +48,7 @@ const memoryDashboardDaySchema = z
   })
   .strict();
 
-const memoryExtractionDaySchema = z
+const memoryCostDaySchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
     date: z.iso.date(),
@@ -59,8 +59,9 @@ const memoryExtractionDaySchema = z
 export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
-    extractionDays: z.array(memoryExtractionDaySchema).length(90),
+    extractionDays: z.array(memoryCostDaySchema).length(90),
     generatedAt: z.iso.datetime(),
+    recallDays: z.array(memoryCostDaySchema).length(90),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -155,18 +156,23 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           isDashboard &&
           (request.method === "GET" || request.method === "HEAD")
         ) {
-          const [stats, days, extractionDays] = await Promise.all([
+          const [stats, days, extractionDays, recallDays] = await Promise.all([
             memories.stats(),
             memories.timeline({ days: 90 }),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
             }),
+            options.eventStats.costsByDay({
+              days: 90,
+              eventName: "memories_recalled",
+            }),
           ]);
           const body = memoryDashboardResponseSchema.parse({
             days,
             extractionDays,
             generatedAt: new Date().toISOString(),
+            recallDays,
             stats,
           });
           return request.method === "HEAD"

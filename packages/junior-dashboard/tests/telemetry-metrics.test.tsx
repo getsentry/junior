@@ -7,8 +7,9 @@ vi.mock("../src/client/components/Metric", () => ({
     children: ReactNode;
     tooltip?: Array<{ label?: string; value: string }>;
     tooltipColumns?: Array<Array<{ label?: string; value: string }>>;
+    tooltipTopAligned?: boolean;
   }) => (
-    <span>
+    <span data-tooltip-top-aligned={props.tooltipTopAligned || undefined}>
       {props.children}
       {[...(props.tooltip ?? []), ...(props.tooltipColumns?.flat() ?? [])].map(
         (line) => (
@@ -89,5 +90,6 @@ describe("CostMetric", () => {
     expect(html).toContain("total: $0.0018");
     expect(html).toContain("Memory recall (2): $0.0004");
     expect(html).toContain("Guardian (1): $0.0014");
+    expect(html).toContain('data-tooltip-top-aligned="true"');
   });
 });

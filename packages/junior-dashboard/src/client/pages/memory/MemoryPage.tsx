@@ -35,7 +35,7 @@ import {
   useMemoryDashboardData,
 } from "./memoryDashboard";
 import { MemoryTimeline } from "./MemoryTimeline";
-import { MemoryExtractionCost } from "./MemoryExtractionCost";
+import { MemoryCostChart } from "./MemoryCostChart";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -108,7 +108,10 @@ function MemoryOverview() {
     <>
       <section className="grid gap-4 xl:grid-cols-2">
         <MemoryTimeline days={dashboardQuery.data.days} />
-        <MemoryExtractionCost days={dashboardQuery.data.extractionDays} />
+        <MemoryCostChart
+          extractionDays={dashboardQuery.data.extractionDays}
+          recallDays={dashboardQuery.data.recallDays}
+        />
       </section>
       <MemorySummary data={dashboardQuery.data} />
       <section className="grid gap-4 md:grid-cols-2">

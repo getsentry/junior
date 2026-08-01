@@ -33,6 +33,7 @@ function clamp(value: number, min: number, max: number): number {
 function tooltipPosition(
   trigger: HTMLElement,
   align: "left" | "right" | undefined,
+  topAligned: boolean,
   wide: boolean,
 ): TooltipPosition {
   const margin = 16;
@@ -45,7 +46,7 @@ function tooltipPosition(
     left: Math.round(
       clamp(preferredLeft, margin, viewportWidth - width - margin),
     ),
-    top: Math.round(rect.bottom + 8),
+    top: Math.round(topAligned ? rect.top : rect.bottom + 8),
     width,
   };
 }
@@ -100,6 +101,7 @@ export function MetricValue(props: {
   className?: string;
   tooltip?: MetricTooltipLine[];
   tooltipColumns?: MetricTooltipLine[][];
+  tooltipTopAligned?: boolean;
 }) {
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -118,6 +120,7 @@ export function MetricValue(props: {
       tooltipPosition(
         triggerRef.current,
         props.align,
+        Boolean(props.tooltipTopAligned),
         Boolean(tooltipColumns?.length),
       ),
     );

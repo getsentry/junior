@@ -2354,14 +2354,24 @@ ORDER BY created_at_ms ASC
         actors: async () => actors,
         db: memoryDb(fixture),
         eventStats: {
-          async costsByDay({ days }) {
+          async costsByDay({ days, eventName }) {
             const start = Date.parse("2026-04-30T00:00:00.000Z");
             return Array.from({ length: days }, (_, index) => ({
-              costUsd: index === days - 1 ? 0.0042 : 0,
+              costUsd:
+                index === days - 1
+                  ? eventName === "memories_recalled"
+                    ? 0.0011
+                    : 0.0042
+                  : 0,
               date: new Date(start + index * 24 * 60 * 60 * 1_000)
                 .toISOString()
                 .slice(0, 10),
-              events: index === days - 1 ? 1 : 0,
+              events:
+                index === days - 1
+                  ? eventName === "memories_recalled"
+                    ? 3
+                    : 1
+                  : 0,
             }));
           },
         },
@@ -2489,6 +2499,11 @@ ORDER BY created_at_ms ASC
         costUsd: 0.0042,
         date: "2026-07-28",
         events: 1,
+      });
+      expect(dashboard.recallDays.at(-1)).toEqual({
+        costUsd: 0.0011,
+        date: "2026-07-28",
+        events: 3,
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",

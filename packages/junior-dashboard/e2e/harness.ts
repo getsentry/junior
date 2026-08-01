@@ -223,6 +223,11 @@ export async function mockDashboardApis(page: Page) {
           events: index % 3 === 0 ? 2 : 1,
         })),
         generatedAt: "2026-07-30T12:00:00.000Z",
+        recallDays: days.map((day, index) => ({
+          costUsd: index % 5 === 0 ? 0.04 : index % 7 === 0 ? 0.015 : 0,
+          date: day.date,
+          events: index % 4 === 0 ? 3 : 1,
+        })),
         stats: {
           active: 210,
           automatic: 189,

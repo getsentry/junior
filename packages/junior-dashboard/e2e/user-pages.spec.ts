@@ -47,6 +47,13 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /^\$/ })).toBeVisible();
+  await expect(page.getByText(/^Extraction \$/)).toBeVisible();
+  await expect(page.getByText(/^Recall \$/)).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 30 days",
+    }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "What Junior remembers" }),
   ).toBeVisible();
@@ -59,6 +66,11 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
   await ninetyDays.click();
   await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
+  const costRange = page.getByLabel("Memory cost range");
+  await expect(costRange.getByRole("button", { name: "30d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page
     .getByRole("navigation", { name: "Memory navigation" })
     .getByRole("link", { name: "Memories" })
