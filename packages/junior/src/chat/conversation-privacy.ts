@@ -39,11 +39,6 @@ function privateNarrowingFromConversationId(
   if (normalized.startsWith("slack:")) {
     return undefined;
   }
-  // Dispatch ids identify internal execution, not the provider or visibility
-  // of the destination where that execution is delivered.
-  if (normalized.startsWith("agent-dispatch:")) {
-    return undefined;
-  }
   // Non-Slack conversations (local CLI, internal runs) are private surfaces.
   return "private";
 }
@@ -51,9 +46,9 @@ function privateNarrowingFromConversationId(
 /**
  * Resolve whether a conversation may expose raw payloads.
  *
- * Only a live source signal or persisted destination visibility can classify
- * a conversation public. Identifier prefixes may only narrow classification
- * toward private. Unknown stays undefined so callers fail closed to private.
+ * Live source or persisted destination visibility is authoritative. Only when
+ * that signal is absent may identifier prefixes narrow classification toward
+ * private. Unknown stays undefined so callers fail closed to private.
  */
 export function resolveConversationPrivacy(input: {
   channelId?: string;
@@ -61,13 +56,13 @@ export function resolveConversationPrivacy(input: {
   /** Live source or persisted visibility, when the caller has one. */
   visibility?: ConversationPrivacy;
 }): ConversationPrivacy | undefined {
-  const narrowed =
-    privateNarrowingFromChannelId(input.channelId) ??
-    privateNarrowingFromConversationId(input.conversationId);
-  if (narrowed === "private") {
-    return "private";
+  if (input.visibility) {
+    return input.visibility;
   }
-  return input.visibility;
+  return (
+    privateNarrowingFromChannelId(input.channelId) ??
+    privateNarrowingFromConversationId(input.conversationId)
+  );
 }
 
 /** Gate raw transcript/tool payload exposure to public conversations. */

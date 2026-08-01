@@ -32,12 +32,18 @@ describe("conversation privacy classification", () => {
     ).toBe("private");
   });
 
-  it("narrows toward private from D/G prefixes even against a public claim", () => {
+  it("uses identifier fallbacks only when visibility is absent", () => {
     expect(resolveConversationPrivacy({ channelId: "D123" })).toBe("private");
     expect(resolveConversationPrivacy({ channelId: "G123" })).toBe("private");
     expect(
       resolveConversationPrivacy({ channelId: "D123", visibility: "public" }),
-    ).toBe("private");
+    ).toBe("public");
+    expect(
+      resolveConversationPrivacy({
+        conversationId: "local:workspace:run-1",
+        visibility: "public",
+      }),
+    ).toBe("public");
   });
 
   it("classifies non-Slack conversations private", () => {
@@ -49,7 +55,7 @@ describe("conversation privacy classification", () => {
   it("uses confirmed visibility for internally keyed dispatches", () => {
     expect(
       resolveConversationPrivacy({ conversationId: "agent-dispatch:run-2" }),
-    ).toBeUndefined();
+    ).toBe("private");
     expect(
       resolveConversationPrivacy({
         conversationId: "agent-dispatch:run-2",
