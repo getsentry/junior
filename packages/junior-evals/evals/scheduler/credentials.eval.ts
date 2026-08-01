@@ -141,7 +141,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     ).toEqual([]);
   });
 
-  it("when the creator later permits connected credentials, enable creator mode", async ({
+  it("when the creator confirms connected credential use, enable creator mode", async ({
     run,
   }) => {
     const thread = {
@@ -169,18 +169,27 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot update that scheduled task to use my account if needed.",
+          "@bot prepare to update that scheduled task so it can use my account if needed, but ask me before applying the change.",
           {
             thread,
             author,
           },
         ),
       ],
+      events: [
+        threadMessage("Yes, apply that credential change now.", {
+          thread,
+          is_mention: true,
+          author,
+        }),
+      ],
       criteria: rubric({
         pass: [
-          "The assistant updates the task so Alice's connected credentials are available when needed.",
+          "After the requested confirmation, the assistant updates the task so Alice's connected credentials are available when needed.",
         ],
-        fail: ["Do not ask Alice for another credential confirmation."],
+        fail: [
+          "Do not ask Alice for another confirmation after she says to apply the credential change.",
+        ],
       }),
     });
 
