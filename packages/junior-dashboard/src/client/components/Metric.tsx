@@ -33,10 +33,12 @@ function clamp(value: number, min: number, max: number): number {
 function tooltipPosition(
   trigger: HTMLElement,
   align: "left" | "right" | undefined,
+  wide: boolean,
 ): TooltipPosition {
   const margin = 16;
   const viewportWidth = window.innerWidth;
-  const width = Math.min(320, Math.max(256, viewportWidth - margin * 2));
+  const maxWidth = wide ? 520 : 320;
+  const width = Math.min(maxWidth, Math.max(256, viewportWidth - margin * 2));
   const rect = trigger.getBoundingClientRect();
   const preferredLeft = align === "right" ? rect.right - width : rect.left;
   return {
@@ -48,24 +50,77 @@ function tooltipPosition(
   };
 }
 
+function TooltipLines(props: { lines: MetricTooltipLine[] }) {
+  return (
+    <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5">
+      {props.lines.map((line, index) => (
+        <span
+          className={
+            line.label
+              ? "contents"
+              : cn(
+                  "col-span-2 block min-w-0 break-words text-dashboard-text",
+                  line.valueStyle === "heading" &&
+                    "font-mono font-semibold text-dashboard-text",
+                  line.valueStyle === "heading" &&
+                    index > 0 &&
+                    "mt-1 border-t border-white/10 pt-2",
+                )
+          }
+          key={`${index}-${line.label ?? ""}-${line.value}`}
+        >
+          {line.label ? (
+            <span
+              className={cn(
+                "min-w-0 break-words font-medium text-dashboard-text-muted",
+                line.labelStyle === "code" &&
+                  "break-all font-mono text-[0.74rem] text-dashboard-text",
+              )}
+            >
+              {line.label}
+            </span>
+          ) : null}
+          {line.label ? (
+            <span className="whitespace-nowrap text-right text-dashboard-text">
+              {line.value}
+            </span>
+          ) : (
+            line.value
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Render compact metadata text with an optional styled hover/focus tooltip. */
 export function MetricValue(props: {
   align?: "left" | "right";
   children: ReactNode;
   className?: string;
   tooltip?: MetricTooltipLine[];
+  tooltipColumns?: MetricTooltipLine[][];
 }) {
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
   const tooltip = props.tooltip?.filter((line) => line.value.trim());
-  if (!tooltip?.length) {
+  const tooltipColumns = props.tooltipColumns
+    ?.map((column) => column.filter((line) => line.value.trim()))
+    .filter((column) => column.length);
+  if (!tooltip?.length && !tooltipColumns?.length) {
     return <span className={props.className}>{props.children}</span>;
   }
 
   const showTooltip = () => {
     if (!triggerRef.current) return;
-    setPosition(tooltipPosition(triggerRef.current, props.align));
+    setPosition(
+      tooltipPosition(
+        triggerRef.current,
+        props.align,
+        Boolean(tooltipColumns?.length),
+      ),
+    );
   };
   const hideTooltip = () => setPosition(null);
   const tooltipStyle: CSSProperties | undefined = position
@@ -97,44 +152,17 @@ export function MetricValue(props: {
           role="tooltip"
           style={tooltipStyle}
         >
-          <span className="grid max-h-72 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 overflow-y-auto">
-            {tooltip.map((line, index) => (
-              <span
-                className={
-                  line.label
-                    ? "contents"
-                    : cn(
-                        "col-span-2 block min-w-0 break-words text-dashboard-text",
-                        line.valueStyle === "heading" &&
-                          "font-mono font-semibold text-dashboard-text",
-                        line.valueStyle === "heading" &&
-                          index > 0 &&
-                          "mt-1 border-t border-white/10 pt-2",
-                      )
-                }
-                key={`${index}-${line.label ?? ""}-${line.value}`}
-              >
-                {line.label ? (
-                  <span
-                    className={cn(
-                      "min-w-0 break-words font-medium text-dashboard-text-muted",
-                      line.labelStyle === "code" &&
-                        "break-all font-mono text-[0.74rem] text-dashboard-text",
-                    )}
-                  >
-                    {line.label}
-                  </span>
-                ) : null}
-                {line.label ? (
-                  <span className="whitespace-nowrap text-right text-dashboard-text">
-                    {line.value}
-                  </span>
-                ) : (
-                  line.value
-                )}
-              </span>
-            ))}
-          </span>
+          {tooltipColumns?.length ? (
+            <span className="grid max-h-72 grid-cols-1 gap-4 overflow-y-auto sm:grid-cols-2 sm:gap-6">
+              {tooltipColumns.map((column, index) => (
+                <TooltipLines key={index} lines={column} />
+              ))}
+            </span>
+          ) : tooltip ? (
+            <span className="block max-h-72 overflow-y-auto">
+              <TooltipLines lines={tooltip} />
+            </span>
+          ) : null}
         </span>
       ) : null}
     </span>

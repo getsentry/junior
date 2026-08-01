@@ -116,6 +116,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   archivedAt?: string;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;

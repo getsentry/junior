@@ -1,11 +1,16 @@
-import type { ConversationModelUsage } from "@sentry/junior/api/schema";
+import type {
+  ConversationAuxiliaryCosts,
+  ConversationModelUsage,
+} from "@sentry/junior/api/schema";
 import {
+  formatCostBreakdown,
   formatCostSummary,
   formatCompactNumber,
   formatTime,
   formatTokenSummary,
   summarizeCost,
   summarizeUsage,
+  totalConversationCost,
   type CostUsageSummary,
   type MessageSummary,
   type TokenUsageSummary,
@@ -92,26 +97,29 @@ function tokenTooltip(
 
 function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
   const lines: Array<MetricTooltipLine | undefined> = [
-    { label: "total", value: formatCostSummary(summary) },
+    { label: "total", value: formatCostBreakdown(summary) },
     summary.input !== undefined
-      ? { label: "input", value: formatCostSummary({ total: summary.input }) }
+      ? {
+          label: "input",
+          value: formatCostBreakdown({ total: summary.input }),
+        }
       : undefined,
     summary.output !== undefined
       ? {
           label: "output",
-          value: formatCostSummary({ total: summary.output }),
+          value: formatCostBreakdown({ total: summary.output }),
         }
       : undefined,
     summary.cacheRead !== undefined
       ? {
           label: "cache read",
-          value: formatCostSummary({ total: summary.cacheRead }),
+          value: formatCostBreakdown({ total: summary.cacheRead }),
         }
       : undefined,
     summary.cacheWrite !== undefined
       ? {
           label: "cache write",
-          value: formatCostSummary({ total: summary.cacheWrite }),
+          value: formatCostBreakdown({ total: summary.cacheWrite }),
         }
       : undefined,
   ];
@@ -119,41 +127,110 @@ function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
 }
 
 function costTooltip(
-  summary: CostUsageSummary,
+  summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
-): MetricTooltipLine[] {
+  auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+): {
+  tooltip?: MetricTooltipLine[];
+  tooltipColumns?: MetricTooltipLine[][];
+} {
+  const total = totalConversationCost(summary, auxiliaryCosts);
+  if (!total) return {};
   const modelSummaries = (modelUsage ?? []).flatMap((item) => {
     const modelSummary = summarizeCost(item.usage);
     return modelSummary
       ? [{ modelId: item.modelId, summary: modelSummary }]
       : [];
   });
-  if (!modelSummaries.length) {
-    return costTooltipLines(summary);
+  if (!auxiliaryCosts) {
+    if (!summary) return {};
+    if (!modelSummaries.length) {
+      return { tooltip: costTooltipLines(summary) };
+    }
+    return {
+      tooltip: modelSummaries.flatMap((item) => [
+        { value: modelLabel(item.modelId), valueStyle: "heading" },
+        ...costTooltipLines(item.summary).map((line) => ({
+          ...line,
+          label: `• ${line.label}`,
+        })),
+      ]),
+    };
   }
 
-  return modelSummaries.flatMap((item) => [
-    { value: modelLabel(item.modelId), valueStyle: "heading" },
-    ...costTooltipLines(item.summary).map((line) => ({
-      ...line,
-      label: `• ${line.label}`,
-    })),
-  ]);
+  const conversationLines: MetricTooltipLine[] = [
+    { value: "Conversation", valueStyle: "heading" },
+    { label: "total", value: formatCostBreakdown(total) },
+  ];
+  if (summary) {
+    conversationLines.push({
+      label: "agent",
+      value: formatCostBreakdown(summary),
+    });
+    if (!modelSummaries.length) {
+      conversationLines.push(
+        ...costTooltipLines(summary)
+          .filter((line) => line.label !== "total")
+          .map((line) => ({ ...line, label: `• ${line.label}` })),
+      );
+    } else {
+      for (const item of modelSummaries) {
+        conversationLines.push(
+          { value: modelLabel(item.modelId), valueStyle: "heading" },
+          ...costTooltipLines(item.summary).map((line) => ({
+            ...line,
+            label: `• ${line.label}`,
+          })),
+        );
+      }
+    }
+  }
+  const auxiliaryLines: MetricTooltipLine[] = [
+    { value: "Auxiliary", valueStyle: "heading" },
+    {
+      label: "total",
+      value: formatCostBreakdown({ total: auxiliaryCosts.costUsd }),
+    },
+  ];
+  for (const operation of auxiliaryCosts.operations) {
+    auxiliaryLines.push({
+      label: `${auxiliaryOperationLabel(operation)} (${formatCompactNumber(operation.events)})`,
+      value: formatCostBreakdown({ total: operation.costUsd }),
+    });
+  }
+  return { tooltipColumns: [conversationLines, auxiliaryLines] };
+}
+
+function auxiliaryOperationLabel(
+  operation: ConversationAuxiliaryCosts["operations"][number],
+): string {
+  const knownLabels: Readonly<Record<string, string>> = {
+    "junior/guardian_action_reviewed": "Guardian",
+    "memory/memories_captured": "Memory extraction",
+    "memory/memories_recalled": "Memory recall",
+  };
+  const key = `${operation.namespace}/${operation.name}`;
+  return (
+    knownLabels[key] ??
+    `${operation.namespace} · ${operation.name.replaceAll("_", " ")}`
+  );
 }
 
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
+  auxiliaryCosts?: ConversationAuxiliaryCosts;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
 }) {
-  if (!props.summary) return null;
+  const total = totalConversationCost(props.summary, props.auxiliaryCosts);
+  if (!total) return null;
   return (
     <MetricValue
       align={props.align}
-      tooltip={costTooltip(props.summary, props.modelUsage)}
+      {...costTooltip(props.summary, props.modelUsage, props.auxiliaryCosts)}
     >
-      {formatCostSummary(props.summary)}
+      {formatCostSummary(total)}
     </MetricValue>
   );
 }

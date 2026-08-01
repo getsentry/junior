@@ -67,11 +67,30 @@ export const actorIdentitySchema = z
   })
   .strict();
 
+export const conversationAuxiliaryCostsSchema = z
+  .object({
+    costUsd: z.number().finite().nonnegative(),
+    operations: z
+      .array(
+        z
+          .object({
+            costUsd: z.number().finite().nonnegative(),
+            events: z.number().int().positive(),
+            name: z.string().min(1),
+            namespace: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
+    auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     conversationId: z.string(),
     isParticipant: z.boolean(),
     status: conversationReportStatusSchema,
@@ -597,6 +616,9 @@ export type ConversationReportStatus = z.infer<
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;
 export type ConversationUsage = z.infer<typeof conversationUsageSchema>;
+export type ConversationAuxiliaryCosts = z.infer<
+  typeof conversationAuxiliaryCostsSchema
+>;
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema

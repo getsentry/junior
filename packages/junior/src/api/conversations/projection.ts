@@ -186,6 +186,7 @@ export function conversationEventHistory(args: {
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   conversation: ConversationProjectionSource;
   durationMs: number;
   locationId?: string;
@@ -227,6 +228,7 @@ export function conversationSummaryFromStoredConversation(args: {
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation),
     surface,
+    ...(args.auxiliaryCosts ? { auxiliaryCosts: args.auxiliaryCosts } : {}),
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),

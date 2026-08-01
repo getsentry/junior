@@ -9,6 +9,7 @@ import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
+  juniorConversationEvents,
   juniorConversations,
   juniorIdentities,
   juniorUsers,
@@ -306,6 +307,32 @@ describe("conversation list API", () => {
           executionStatus: "idle",
           usage: { outputTokens: 5 },
         });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:root",
+            createdAt: new Date(3_000),
+            historyVersion: 1,
+            payload: {
+              content: { costUsd: 0.0002, memories: [] },
+              name: "memories_recalled",
+              namespace: "memory",
+              version: 1,
+            },
+            seq: 0,
+            type: "structured_event",
+          },
+          {
+            conversationId: "advisor:child",
+            createdAt: new Date(4_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0003 },
+            seq: 0,
+            type: "guardian_action_reviewed",
+          },
+        ]);
 
       const feed = await readConversationFeedFromSql();
 
@@ -315,6 +342,23 @@ describe("conversation list API", () => {
       expect(feed.conversations[0]?.cumulativeUsage).toEqual({
         inputTokens: 10,
         outputTokens: 5,
+      });
+      expect(feed.conversations[0]?.auxiliaryCosts).toEqual({
+        costUsd: 0.0005,
+        operations: [
+          {
+            costUsd: 0.0003,
+            events: 1,
+            name: "guardian_action_reviewed",
+            namespace: "junior",
+          },
+          {
+            costUsd: 0.0002,
+            events: 1,
+            name: "memories_recalled",
+            namespace: "memory",
+          },
+        ],
       });
     } finally {
       await fixture.close();

@@ -693,10 +693,11 @@ function transcriptMeta(
           key: "tokens",
         }
       : undefined,
-    costSummary
+    costSummary || conversation.auxiliaryCosts
       ? {
           content: (
             <CostMetric
+              auxiliaryCosts={conversation.auxiliaryCosts}
               modelUsage={conversation.modelUsage}
               summary={costSummary}
             />

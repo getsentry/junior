@@ -120,6 +120,29 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    auxiliaryCosts: {
+      costUsd: 0.0018,
+      operations: [
+        {
+          costUsd: 0.0012,
+          events: 3,
+          name: "guardian_action_reviewed",
+          namespace: "junior",
+        },
+        {
+          costUsd: 0.0002,
+          events: 2,
+          name: "memories_captured",
+          namespace: "memory",
+        },
+        {
+          costUsd: 0.0004,
+          events: 6,
+          name: "memories_recalled",
+          namespace: "memory",
+        },
+      ],
+    },
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),

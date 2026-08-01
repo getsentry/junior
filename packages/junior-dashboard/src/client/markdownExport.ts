@@ -1,6 +1,6 @@
 import {
   conversationDisplayTitle,
-  formatCostTotal,
+  formatConversationCostTotal,
   formatElapsedDuration,
   formatMs,
   formatUsageTotal,
@@ -47,7 +47,10 @@ export function buildConversationMarkdown(
     "Usage",
     [
       formatUsageTotal(detail.cumulativeUsage),
-      formatCostTotal(detail.cumulativeUsage),
+      formatConversationCostTotal(
+        detail.cumulativeUsage,
+        detail.auxiliaryCosts,
+      ),
     ]
       .filter(Boolean)
       .join(" · "),

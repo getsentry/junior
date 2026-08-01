@@ -432,10 +432,16 @@ function ConversationStats(props: {
           key: "tokens",
         }
       : undefined,
-    costSummary
+    costSummary ||
+    props.detail?.auxiliaryCosts ||
+    props.conversation.auxiliaryCosts
       ? {
           content: (
             <CostMetric
+              auxiliaryCosts={
+                props.detail?.auxiliaryCosts ??
+                props.conversation.auxiliaryCosts
+              }
               modelUsage={props.detail?.modelUsage}
               summary={costSummary}
             />

@@ -53,6 +53,8 @@ reports, and other typed hook surfaces exported by this package.
 - Operational report and authenticated API hooks may aggregate `costUsd` from
   their own registered conversation events through `ctx.eventStats`. Core
   binds the plugin namespace and owns access to the conversation event log.
+  Event `costUsd` is additive operation cost and must not duplicate cost
+  already recorded in the conversation's agent model usage.
 - Authenticated API route apps receive one verified viewer in their request
   context. The registration hook exposes actor resolution for plugins whose
   viewer-owned data spans platform identities.

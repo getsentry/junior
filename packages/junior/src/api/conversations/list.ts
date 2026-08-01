@@ -14,6 +14,7 @@ import { readConversationAccessFromSql } from "./access";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
+import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { defineApiRoute } from "../route";
 import { parseQuery } from "../http";
 import { conversationFeedQuerySchema } from "../schema/conversation";
@@ -192,20 +193,27 @@ export async function readConversationFeedFromSql(
     options.actorEmail,
   );
   const conversationIds = rows.map((row) => row.conversation.conversationId);
-  const [accessByConversation, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      db,
-      conversationIds,
-      options.verifiedViewerEmail,
-    ),
-    readRootConversationMetricsFromSql(db, conversationIds),
-  ]);
+  const [accessByConversation, auxiliaryCostsByRoot, metricsByRoot] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        db,
+        conversationIds,
+        options.verifiedViewerEmail,
+      ),
+      readConversationAuxiliaryCostsFromSql(db, conversationIds, {
+        includeDescendants: true,
+      }),
+      readRootConversationMetricsFromSql(db, conversationIds),
+    ]);
   return {
     conversations: rows.map((row) => {
       const metrics = metricsByRoot.get(row.conversation.conversationId);
       return conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         access: accessByConversation.get(row.conversation.conversationId),
+        auxiliaryCosts: auxiliaryCostsByRoot.get(
+          row.conversation.conversationId,
+        ),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         ...(row.destinationVisibility === "public" && row.destinationId
           ? { locationId: row.destinationId }

@@ -1,6 +1,7 @@
 import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
+  ConversationAuxiliaryCosts,
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
@@ -471,9 +472,44 @@ export function formatCostSummary(
   }).format(summary.total);
 }
 
+/** Format tooltip cost detail without hiding sub-cent contributions. */
+export function formatCostBreakdown(
+  summary: CostUsageSummary | undefined,
+): string {
+  if (!summary) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(summary.total);
+}
+
 /** Format persisted cumulative estimated model cost for a conversation. */
 export function formatCostTotal(usage: ConversationUsage | undefined): string {
   return formatCostSummary(summarizeCost(usage));
+}
+
+/** Combine agent model cost with additive auxiliary operation cost. */
+export function totalConversationCost(
+  summary: CostUsageSummary | undefined,
+  auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+): CostUsageSummary | undefined {
+  if (!summary && !auxiliaryCosts) return undefined;
+  return {
+    ...(summary ?? {}),
+    total: addCost(summary?.total ?? 0, auxiliaryCosts?.costUsd ?? 0),
+  };
+}
+
+/** Format the inclusive cost of agent and auxiliary conversation work. */
+export function formatConversationCostTotal(
+  usage: ConversationUsage | undefined,
+  auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+): string {
+  return formatCostSummary(
+    totalConversationCost(summarizeCost(usage), auxiliaryCosts),
+  );
 }
 
 /** Format the execution time accumulated across a conversation's runs. */
@@ -786,6 +822,7 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       archivedAt: summary.archivedAt,
+      auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,
       channelNameRedacted: summary.channelNameRedacted,
