@@ -6,14 +6,14 @@ describe("session source", () => {
     expect(
       parseSessionSource({
         platform: "slack",
-        type: "pub",
+        visibility: "public",
         teamId: "T123",
         channelId: "C123",
         threadTs: "1700000000.000100",
       }),
     ).toEqual({
       platform: "slack",
-      type: "pub",
+      visibility: "public",
       teamId: "T123",
       channelId: "C123",
       threadTs: "1700000000.000100",
@@ -24,7 +24,7 @@ describe("session source", () => {
     expect(
       normalizeSessionSource({
         platform: "slack",
-        type: "priv",
+        visibility: "private",
         teamId: "T123",
         channelId: "C123",
         threadTs: "1700000000.000100",
@@ -32,7 +32,7 @@ describe("session source", () => {
       }),
     ).toEqual({
       platform: "slack",
-      type: "priv",
+      visibility: "private",
       teamId: "T123",
       channelId: "C123",
       threadTs: "1700000000.000100",
@@ -43,7 +43,7 @@ describe("session source", () => {
     expect(
       normalizeSessionSource({
         platform: "slack",
-        type: "pub",
+        visibility: "public",
         teamId: "T123",
         channelId: "C123",
         messageTs: "1700000000.000200",
@@ -52,7 +52,7 @@ describe("session source", () => {
     expect(
       parseSessionSource({
         platform: "slack",
-        type: "pub",
+        visibility: "public",
         teamId: "T123",
         channelId: "C123",
         messageTs: "1700000000.000200",
@@ -64,12 +64,12 @@ describe("session source", () => {
     expect(
       normalizeSessionSource({
         platform: "local",
-        type: "priv",
+        visibility: "private",
         conversationId: "local:abc123:demo",
       }),
     ).toEqual({
       platform: "local",
-      type: "priv",
+      visibility: "private",
       conversationId: "local:abc123:demo",
     });
   });

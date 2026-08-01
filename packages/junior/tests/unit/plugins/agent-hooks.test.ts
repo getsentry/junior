@@ -90,7 +90,7 @@ const SLACK_DESTINATION = {
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
-  type: "priv",
+  visibility: "private",
 });
 
 class PrototypeTool {
@@ -117,7 +117,7 @@ function slackSource(channelId: string) {
     teamId: "T123",
     channelId,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 
@@ -177,10 +177,10 @@ describe("agent plugin hooks", () => {
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "pub",
+        visibility: "public",
         threadTs: "1718800000.000000",
-      }).type,
-    ).toBe("pub");
+      }).visibility,
+    ).toBe("public");
     // Without a signal, C-prefixed channels fail closed to private.
     expect(
       createSlackSource({
@@ -188,27 +188,27 @@ describe("agent plugin hooks", () => {
         channelId: "C123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "D123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "G123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
   });
 
   it("collects system prompt contributions from configured plugins", async () => {

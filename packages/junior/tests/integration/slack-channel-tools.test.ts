@@ -114,7 +114,7 @@ function createContext(
       channelId: sourceChannelId,
       messageTs,
 
-      type: "priv",
+      visibility: "private",
     }),
     destinationChannelId,
     messageTs,

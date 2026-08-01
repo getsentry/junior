@@ -13,7 +13,7 @@ const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
   threadTs: "1712345.0005",
-  type: "priv",
+  visibility: "private",
 });
 
 const ORIGINAL_ENV = vi.hoisted(() => {

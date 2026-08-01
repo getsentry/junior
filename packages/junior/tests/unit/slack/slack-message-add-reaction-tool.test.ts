@@ -36,7 +36,7 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
     channelId: TEST_CHANNEL_ID,
     messageTs: TEST_MESSAGE_TS,
 
-    type: "priv",
+    visibility: "private",
   }),
   destinationChannelId: TEST_CHANNEL_ID,
   messageTs: TEST_MESSAGE_TS,

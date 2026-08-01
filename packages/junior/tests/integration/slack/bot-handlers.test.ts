@@ -134,7 +134,7 @@ function createSlackSourceForTest(channelId: string) {
     channelId,
     threadTs: "1700000000.000",
 
-    type: "priv",
+    visibility: "private",
   });
 }
 

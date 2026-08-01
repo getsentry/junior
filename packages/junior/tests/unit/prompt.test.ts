@@ -46,7 +46,7 @@ describe("prompt builders", () => {
           teamId: "T123",
           channelId: "C123",
 
-          type: "priv",
+          visibility: "private",
         }),
         destination: {
           platform: "slack",

@@ -63,7 +63,7 @@ function createContext(overrides: ContextOverrides = {}): SlackToolContext {
         teamId,
         channelId: sourceChannelId,
 
-        type: "priv",
+        visibility: "private",
       }),
     destinationChannelId,
     sourceChannelId,

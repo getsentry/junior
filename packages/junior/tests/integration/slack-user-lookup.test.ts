@@ -347,7 +347,7 @@ describe("slackUserLookup", () => {
             teamId: "T0TEST",
             channelId: "C0TEST",
 
-            type: "priv",
+            visibility: "private",
           }),
           destination: {
             platform: "slack",

@@ -96,7 +96,7 @@ async function createDispatch(
           source ??
           createSlackSource({
             ...destination,
-            type: "priv",
+            visibility: "private",
           }),
       },
       plugin: "scheduler",

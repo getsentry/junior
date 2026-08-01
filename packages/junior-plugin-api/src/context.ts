@@ -19,7 +19,7 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
-export type SourceType = Source["type"];
+export type SourceVisibility = Source["visibility"];
 
 export type Destination = z.output<typeof destinationSchema>;
 
@@ -103,11 +103,11 @@ export function createSlackSource(input: {
   teamId: string;
   threadTs?: string;
   /** Runtime-normalized source visibility. */
-  type: SourceType;
+  visibility: SourceVisibility;
 }): SlackSource {
   return {
     platform: "slack",
-    type: input.type,
+    visibility: input.visibility,
     teamId: input.teamId,
     channelId: input.channelId,
     ...(input.messageTs ? { messageTs: input.messageTs } : {}),
@@ -119,14 +119,14 @@ export function createSlackSource(input: {
 export function createLocalSource(conversationId: string): LocalSource {
   return {
     platform: "local",
-    type: "priv",
+    visibility: "private",
     conversationId,
   };
 }
 
 /** Return whether a source is private to a person or restricted group. */
 export function isPrivateSource(source: Source): boolean {
-  return source.type === "priv";
+  return source.visibility === "private";
 }
 
 /** Return the stable source identity used for idempotency and attribution. */

@@ -49,7 +49,7 @@ function actionReview(
       },
       source: {
         platform: "local",
-        type: "priv",
+        visibility: "private",
         conversationId: "local:tool-review",
       },
       userIntent: () => userIntent,

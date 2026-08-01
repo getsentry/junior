@@ -29,7 +29,7 @@ function context(): SlackToolRuntimeContext {
       teamId: "T123",
       channelId: "C123",
       threadTs: "1700000000.100000",
-      type: "pub",
+      visibility: "public",
     }),
     egress: {
       async fetch() {

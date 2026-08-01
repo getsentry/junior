@@ -39,7 +39,7 @@ describe("legacy agent dispatch callback", () => {
         source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
-          type: "priv",
+          visibility: "private",
         }),
       },
       plugin: "scheduler",
@@ -91,7 +91,7 @@ describe("legacy agent dispatch callback", () => {
         source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
-          type: "priv",
+          visibility: "private",
         }),
       },
       plugin: "scheduler",

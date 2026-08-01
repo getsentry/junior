@@ -56,7 +56,7 @@ describe("conversation list API", () => {
         nowMs: 1_000,
         sessionSource: {
           platform: "slack",
-          type: "pub",
+          visibility: "public",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.000100",
@@ -84,7 +84,7 @@ describe("conversation list API", () => {
         nowMs: 2_000,
         sessionSource: {
           platform: "slack",
-          type: "priv",
+          visibility: "private",
           teamId: "T123",
           channelId: "D123",
           threadTs: "1700000000.000200",

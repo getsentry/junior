@@ -74,7 +74,7 @@ function runtimeContext() {
       messageTs: threadTs,
       teamId,
       threadTs,
-      type: "pub",
+      visibility: "public",
     }),
   };
 }

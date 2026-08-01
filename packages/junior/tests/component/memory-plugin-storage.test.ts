@@ -285,7 +285,7 @@ WHERE table_name = 'junior_memory_memories'
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
 
-        type: "priv",
+        visibility: "private",
       });
       const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
         conversationId,

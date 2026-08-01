@@ -107,9 +107,7 @@ vi.mock("@/chat/plugins/credential-hooks", () => ({
 }));
 
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@/chat/conversations/projection")
-  >()),
+  ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   recordAuthenticationLinked: vi.fn(async () => undefined),
 }));
 
@@ -728,7 +726,7 @@ describe("oauth callback handler", () => {
         channelId: "C123",
         threadTs: "123.789",
 
-        type: "priv",
+        visibility: "private",
       }),
       threadTs: "123.789",
       resumeConversationId: "slack:C123:123.789",

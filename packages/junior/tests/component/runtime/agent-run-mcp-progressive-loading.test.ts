@@ -690,7 +690,7 @@ function makeAgentRunRequest(
         channelId: destination.channelId,
         threadTs: args.threadTs,
 
-        type: "priv",
+        visibility: "private",
       }),
       actor: TEST_ACTOR,
       ...(overrides.routing ?? {}),

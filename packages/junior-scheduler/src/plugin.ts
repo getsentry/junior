@@ -81,7 +81,8 @@ function scheduledTaskDispatchSource(task: ScheduledTask): Source {
   return createSlackSource({
     teamId: task.destination.teamId,
     channelId: task.destination.channelId,
-    type: task.conversationAccess?.visibility === "public" ? "pub" : "priv",
+    visibility:
+      task.conversationAccess?.visibility === "public" ? "public" : "private",
   });
 }
 

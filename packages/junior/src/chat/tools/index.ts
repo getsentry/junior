@@ -165,7 +165,7 @@ export function createTools(
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
-    if (context.conversationId && slackContext.source.type === "pub") {
+    if (context.conversationId && slackContext.source.visibility === "public") {
       tools.searchConversationHistory = createSlackConversationSearchTool(
         {
           kind: "public_provider_tenant",

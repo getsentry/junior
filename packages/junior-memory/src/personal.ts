@@ -57,7 +57,7 @@ function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
       actor,
       source: {
         platform: "slack",
-        type: "priv",
+        visibility: "private",
         teamId: actor.teamId,
         channelId: "DDASHBOARD",
       },
@@ -67,7 +67,7 @@ function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
     actor,
     source: {
       platform: "local",
-      type: "priv",
+      visibility: "private",
       conversationId: "local:dashboard:memories",
     },
   };
@@ -75,7 +75,10 @@ function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
 
 function decodeCursor(
   value: string | undefined,
-  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query" | "visibility">,
+  input: Pick<
+    ViewerMemoryPageInput,
+    "kind" | "origin" | "query" | "visibility"
+  >,
 ) {
   if (!value) return undefined;
   try {
@@ -98,7 +101,10 @@ function decodeCursor(
 
 function encodeCursor(
   cursor: { createdAtMs: number; id: string },
-  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query" | "visibility">,
+  input: Pick<
+    ViewerMemoryPageInput,
+    "kind" | "origin" | "query" | "visibility"
+  >,
 ): string {
   return Buffer.from(
     JSON.stringify({

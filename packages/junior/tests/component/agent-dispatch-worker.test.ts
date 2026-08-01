@@ -37,7 +37,7 @@ async function createDispatch(idempotencyKey: string) {
         input: "Post the scheduled digest.",
         source: createSlackSource({
           ...destination,
-          type: "priv",
+          visibility: "private",
         }),
       },
       plugin: "scheduler",

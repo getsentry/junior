@@ -24,7 +24,7 @@ const validOptions = {
     teamId: "T123",
     channelId: "C123",
 
-    type: "priv",
+    visibility: "private",
   }),
 };
 

@@ -196,7 +196,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
         teamId: memoryTeamId,
         threadTs: "17000000.000003",
 
-        type: "priv",
+        visibility: "private",
       }),
     };
 

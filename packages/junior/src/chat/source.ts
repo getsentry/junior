@@ -20,7 +20,7 @@ export function normalizeSessionSource(
   if (value.platform === "local") {
     return {
       platform: "local",
-      type: "priv",
+      visibility: "private",
       conversationId: value.conversationId,
     };
   }
@@ -30,7 +30,7 @@ export function normalizeSessionSource(
   }
   return {
     platform: "slack",
-    type: value.type,
+    visibility: value.visibility,
     teamId: value.teamId,
     channelId: value.channelId,
     threadTs,

@@ -24,7 +24,7 @@ const proposal: ToolActionProposal = {
     },
     source: {
       platform: "local",
-      type: "priv",
+      visibility: "private",
       conversationId: "local:guardian-test",
     },
     userIntent: "Create a weekly report.",

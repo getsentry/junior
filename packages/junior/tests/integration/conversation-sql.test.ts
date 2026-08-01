@@ -50,6 +50,14 @@ describe("conversation SQL local mode", () => {
     if (!sourceMigration) {
       throw new Error("Conversation session source migration not found");
     }
+    const visibilityMigration = coreMigrations[sourceMigrationIndex + 1];
+    if (
+      !visibilityMigration?.sql.some((statement) =>
+        statement.includes("jsonb_build_object(\n  'visibility'"),
+      )
+    ) {
+      throw new Error("Conversation source visibility migration not found");
+    }
 
     try {
       for (const migration of coreMigrations.slice(0, sourceMigrationIndex)) {
@@ -92,6 +100,9 @@ INSERT INTO junior_conversations (
       for (const statement of sourceMigration.sql) {
         await fixture.sql.execute(statement);
       }
+      for (const statement of visibilityMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
 
       const rows = await fixture.sql.query<{
         conversationId: string;
@@ -110,12 +121,12 @@ ORDER BY conversation_id
       ).toEqual({
         "local:test:session": {
           platform: "local",
-          type: "priv",
+          visibility: "private",
           conversationId: "local:test:session",
         },
         "slack:C123:1700000000.001": {
           platform: "slack",
-          type: "pub",
+          visibility: "public",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.001",
@@ -124,7 +135,7 @@ ORDER BY conversation_id
         "slack:C999:1700000000.004": null,
         "slack:G123:1700000000.003": {
           platform: "slack",
-          type: "priv",
+          visibility: "private",
           teamId: "T123",
           channelId: "G123",
           threadTs: "1700000000.003",

@@ -324,7 +324,7 @@ function githubToolsContext(input?: {
     destination: { platform: "local" as const, conversationId },
     source: {
       platform: "local" as const,
-      type: "priv" as const,
+      visibility: "private" as const,
       conversationId,
     },
     embedder: {},

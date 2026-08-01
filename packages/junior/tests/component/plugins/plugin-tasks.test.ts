@@ -412,7 +412,7 @@ describe("plugin background tasks", () => {
     const source = createSlackSource({
       teamId,
       channelId,
-      type: "pub",
+      visibility: "public",
       messageTs: "1700000000.000100",
       threadTs: "1700000000.000000",
     });
@@ -524,7 +524,7 @@ describe("plugin background tasks", () => {
     const source = createSlackSource({
       teamId,
       channelId,
-      type: "pub",
+      visibility: "public",
       messageTs: "1700000000.950000",
       threadTs: "1700000000.000200",
     });
@@ -707,7 +707,7 @@ describe("plugin background tasks", () => {
     const source = createSlackSource({
       teamId,
       channelId,
-      type: "priv",
+      visibility: "private",
       messageTs: "1700000000.000100",
       threadTs: "1700000000.000000",
     });

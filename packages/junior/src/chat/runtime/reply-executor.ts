@@ -501,7 +501,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         messageTs,
         teamId,
         threadTs,
-        type: destinationVisibility === "public" ? "pub" : "priv",
+        visibility: destinationVisibility ?? "private",
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);

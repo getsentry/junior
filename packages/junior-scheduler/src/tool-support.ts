@@ -164,7 +164,7 @@ export function getConversationAccess(
   }
   return {
     audience: "channel",
-    visibility: source?.type === "pub" ? "public" : "private",
+    visibility: source?.visibility === "public" ? "public" : "private",
   };
 }
 

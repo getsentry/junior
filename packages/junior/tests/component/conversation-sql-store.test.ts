@@ -484,7 +484,7 @@ describe("conversation SQL store", () => {
         source: "slack",
         sessionSource: {
           platform: "slack",
-          type: "pub",
+          visibility: "public",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.000100",
@@ -497,7 +497,7 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({
         sessionSource: {
           platform: "slack",
-          type: "pub",
+          visibility: "public",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.000100",
@@ -510,7 +510,7 @@ describe("conversation SQL store", () => {
         destination,
         sessionSource: {
           platform: "slack",
-          type: "priv",
+          visibility: "private",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.999999",
@@ -522,7 +522,7 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({
         sessionSource: {
           platform: "slack",
-          type: "pub",
+          visibility: "public",
           teamId: "T123",
           channelId: "C123",
           threadTs: "1700000000.000100",

@@ -371,7 +371,7 @@ function slackContext(
       channelId,
       // The Slack boundary supplies normalized public visibility for these
       // C-prefixed test channels unless a test overrides the channel id.
-      type: channelId.startsWith("C") ? "pub" : "priv",
+      visibility: channelId.startsWith("C") ? "public" : "private",
       messageTs: threadTs,
       threadTs,
     }),
@@ -1602,7 +1602,7 @@ describe("memory plugin storage", () => {
                   teamId: runtime.source.teamId,
                   channelId: runtime.source.channelId,
 
-                  type: "priv",
+                  visibility: "private",
                 }),
               });
             },
@@ -3532,7 +3532,7 @@ WHERE id = '${superseded.memory.id}'
           },
           source: {
             platform: "slack",
-            type: "pub",
+            visibility: "public",
             teamId: "T123",
             channelId: "C123",
             messageTs: "1718800000.000000",

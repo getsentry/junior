@@ -44,7 +44,7 @@ const SLACK_DESTINATION = {
 } satisfies Destination;
 const SLACK_SOURCE = createSlackSource({
   ...SLACK_DESTINATION,
-  type: "priv",
+  visibility: "private",
 }) satisfies Source;
 
 function slackDmSource(channelId = "D123"): Source {
@@ -52,7 +52,7 @@ function slackDmSource(channelId = "D123"): Source {
     teamId: "T123",
     channelId,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 
@@ -693,7 +693,7 @@ describe("plugin heartbeat", () => {
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "pub",
+        visibility: "public",
       }),
     );
     expect(dispatchRecord?.metadata).toMatchObject({

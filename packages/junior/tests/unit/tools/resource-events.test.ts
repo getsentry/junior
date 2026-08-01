@@ -29,7 +29,7 @@ const context: ToolRuntimeContext = {
     teamId: "T123",
     channelId: "C123",
     threadTs: "1712345.0001",
-    type: "pub",
+    visibility: "public",
   }),
   egress: {
     async fetch() {

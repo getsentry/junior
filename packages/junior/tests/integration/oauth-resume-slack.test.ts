@@ -37,7 +37,7 @@ function testSlackSource(threadTs: string) {
     channelId: TEST_SLACK_DESTINATION.channelId,
     threadTs,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 

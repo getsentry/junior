@@ -616,7 +616,7 @@ const TEST_SOURCE = createSlackSource({
   teamId: TEST_DESTINATION.teamId,
   channelId: TEST_DESTINATION.channelId,
   threadTs: "1712345.0001",
-  type: "priv",
+  visibility: "private",
 });
 const TEST_USAGE = {
   input: 1,

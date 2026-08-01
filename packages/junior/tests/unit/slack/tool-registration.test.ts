@@ -24,11 +24,11 @@ const noopEgress = {
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
   channelId: string,
-  sourceType?: "priv" | "pub",
+  sourceVisibility?: "private" | "public",
 ): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
 function ctx(
   channelId?: string,
-  sourceType?: "priv" | "pub",
+  sourceVisibility?: "private" | "public",
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
@@ -53,7 +53,8 @@ function ctx(
     source: createSlackSource({
       teamId: "T123",
       channelId,
-      type: sourceType ?? (channelId.startsWith("C") ? "pub" : "priv"),
+      visibility:
+        sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
     }),
     egress: noopEgress,
     workspace: noopSandbox,
@@ -136,7 +137,7 @@ describe("Slack tool registration", () => {
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {
-    const tools = createTools([], {}, ctx("C12345", "priv"));
+    const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationHistory");
   });

@@ -7,17 +7,17 @@ describe("plugin source helpers", () => {
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "pub",
+        visibility: "public",
       }),
-    ).toMatchObject({ type: "pub" });
+    ).toMatchObject({ visibility: "public" });
     // Modern Slack private channels also use C-prefixed ids.
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "priv",
+        visibility: "private",
       }),
-    ).toMatchObject({ type: "priv" });
+    ).toMatchObject({ visibility: "private" });
   });
 
   it("constructs private Slack sources from caller-provided visibility", () => {
@@ -25,22 +25,22 @@ describe("plugin source helpers", () => {
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "priv",
+        visibility: "private",
       }),
-    ).toMatchObject({ type: "priv" });
+    ).toMatchObject({ visibility: "private" });
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "G123",
-        type: "priv",
+        visibility: "private",
       }),
-    ).toMatchObject({ type: "priv" });
+    ).toMatchObject({ visibility: "private" });
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "D123",
-        type: "priv",
+        visibility: "private",
       }),
-    ).toMatchObject({ type: "priv" });
+    ).toMatchObject({ visibility: "private" });
   });
 });

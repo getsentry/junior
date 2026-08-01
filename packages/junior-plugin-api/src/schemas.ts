@@ -23,7 +23,7 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
 export const platformSchema = z.enum(["slack", "local"]);
 
 /** Runtime source visibility visible to plugins. */
-export const sourceTypeSchema = z.enum(["pub", "priv"]);
+export const sourceVisibilitySchema = z.enum(["public", "private"]);
 
 /** Provider-neutral visibility of a routed destination. */
 export const destinationVisibilitySchema = z.enum(["public", "private"]);
@@ -56,7 +56,7 @@ export const destinationSchema = z.discriminatedUnion("platform", [
 /** Runtime-owned Slack coordinates for the inbound invocation. */
 export const slackSourceSchema = slackAddressSchema
   .extend({
-    type: sourceTypeSchema,
+    visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
   })
@@ -66,7 +66,7 @@ export const slackSourceSchema = slackAddressSchema
 export const localSourceSchema = z
   .object({
     platform: z.literal("local"),
-    type: z.literal("priv"),
+    visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
   })
   .strict();

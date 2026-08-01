@@ -11,7 +11,7 @@ import {
 
 const LOCAL_SOURCE = {
   platform: "local",
-  type: "priv",
+  visibility: "private",
   conversationId: "local:approval-test",
 } as const;
 const LOCAL_DESTINATION = {

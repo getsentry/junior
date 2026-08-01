@@ -81,7 +81,7 @@ function slackContext(channelId: string): SlackToolContext {
       teamId,
       channelId: parsedChannelId,
 
-      type: "priv",
+      visibility: "private",
     }),
     destinationChannelId: parsedChannelId,
     sourceChannelId: parsedChannelId,

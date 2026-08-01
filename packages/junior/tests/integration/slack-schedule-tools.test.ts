@@ -73,7 +73,7 @@ function createContext(
       teamId,
       channelId,
 
-      type: channelId.startsWith("C") ? "pub" : "priv",
+      visibility: channelId.startsWith("C") ? "public" : "private",
     }),
     actor: {
       platform: "slack",
@@ -425,7 +425,7 @@ describe("Slack schedule tools", () => {
           channelId: "C123",
           threadTs: "1700000000.000",
 
-          type: "priv",
+          visibility: "private",
         }),
       }),
     );
@@ -1105,7 +1105,7 @@ describe("Slack schedule tools", () => {
               teamId: TEST_TEAM_ID,
               channelId: "D123",
 
-              type: "priv",
+              visibility: "private",
             }),
             teamId: TEST_TEAM_ID,
             channelId: "slack:D123:1700000000.000",
@@ -1438,7 +1438,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
           teamId: TEAM_ID,
           channelId: "DDM",
 
-          type: "priv",
+          visibility: "private",
         }),
         destination: {
           platform: "slack",
