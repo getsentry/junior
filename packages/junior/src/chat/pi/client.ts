@@ -149,22 +149,8 @@ export async function completeText(params: {
     : toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
       ? "oidc"
       : "api_key";
-  // Identifier metadata can only narrow toward private; the turn-scoped
-  // privacy context carries the source-confirmed classification.
-  const privacy =
-    resolveConversationPrivacy({
-      channelId:
-        typeof params.metadata?.channelId === "string"
-          ? params.metadata.channelId
-          : undefined,
-      conversationId:
-        typeof params.metadata?.conversationId === "string"
-          ? params.metadata.conversationId
-          : typeof params.metadata?.threadId === "string"
-            ? params.metadata.threadId
-            : undefined,
-    }) ?? getCurrentConversationPrivacy();
-  const effectivePrivacy = privacy ?? "private";
+  const effectivePrivacy =
+    getCurrentConversationPrivacy() ?? resolveConversationPrivacy({});
   const messageAttributeMode =
     params.messageAttributeMode ??
     (effectivePrivacy === "public" ? "content" : "metadata");

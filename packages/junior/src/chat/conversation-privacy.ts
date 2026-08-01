@@ -7,68 +7,32 @@ import type {
   ThinkingContent,
   ToolCall,
 } from "@earendil-works/pi-ai";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import { logWarn } from "@/chat/logging";
 
 export type ConversationPrivacy = "public" | "private";
 type TraceAttributeValue = string | number | boolean | string[];
 const SAFE_METADATA_KEY_LIMIT = 20;
 const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
 
-function privateNarrowingFromChannelId(
-  channelId: string | undefined,
-): ConversationPrivacy | undefined {
-  const normalized = channelId?.trim();
-  if (!normalized) return undefined;
-  // Channel-id prefixes may only narrow toward private. `C`-prefixed ids do
-  // not prove a conversation public: modern Slack private channels also use
-  // `C` prefixes, so they stay unknown without a confirmed signal.
-  return normalized.startsWith("D") || normalized.startsWith("G")
-    ? "private"
-    : undefined;
-}
-
-function privateNarrowingFromConversationId(
-  conversationId: string | undefined,
-): ConversationPrivacy | undefined {
-  const normalized = conversationId?.trim();
-  if (!normalized) return undefined;
-  const slackThread = parseSlackThreadId(normalized);
-  if (slackThread) {
-    return privateNarrowingFromChannelId(slackThread.channelId);
-  }
-  if (normalized.startsWith("slack:")) {
-    return undefined;
-  }
-  // Non-Slack conversations (local CLI, internal runs) are private surfaces.
-  return "private";
-}
-
 /**
  * Resolve whether a conversation may expose raw payloads.
  *
- * Live source or persisted destination visibility is authoritative. Only when
- * that signal is absent may identifier prefixes narrow classification toward
- * private. Unknown stays undefined so callers fail closed to private.
+ * Live source or persisted destination visibility is authoritative. Missing
+ * visibility is observable and fails closed without inferring from identifiers.
  */
 export function resolveConversationPrivacy(input: {
-  channelId?: string;
-  conversationId?: string;
   /** Live source or persisted visibility, when the caller has one. */
   visibility?: ConversationPrivacy;
-}): ConversationPrivacy | undefined {
+}): ConversationPrivacy {
   if (input.visibility) {
     return input.visibility;
   }
-  return (
-    privateNarrowingFromChannelId(input.channelId) ??
-    privateNarrowingFromConversationId(input.conversationId)
-  );
+  logWarn("conversation.visibility.defaulted");
+  return "private";
 }
 
 /** Gate raw transcript/tool payload exposure to public conversations. */
 export function canExposeConversationPayload(input: {
-  channelId?: string;
-  conversationId?: string;
   /** Live source or persisted visibility, when the caller has one. */
   visibility?: ConversationPrivacy;
 }): boolean {

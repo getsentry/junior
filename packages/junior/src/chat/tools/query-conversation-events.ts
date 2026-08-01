@@ -335,13 +335,9 @@ function assertCanQueryConversationEvents(args: {
     return;
   }
 
-  const publicPayloadAllowed = canExposeConversationPayload({
-    conversationId: targetRootConversationId ?? targetConversationId,
-    ...(targetVisibility ? { visibility: targetVisibility } : {}),
-    ...(targetDestination?.platform === "slack"
-      ? { channelId: targetDestination.channelId }
-      : {}),
-  });
+  const publicPayloadAllowed = canExposeConversationPayload(
+    targetVisibility ? { visibility: targetVisibility } : {},
+  );
   if (!publicPayloadAllowed) {
     throw new ToolInputError(
       `Conversation events are not accessible: ${targetConversationId}`,

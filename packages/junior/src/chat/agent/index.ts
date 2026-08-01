@@ -199,15 +199,7 @@ export async function executeAgentRun(
   if (!request.routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const channelId =
-    request.routing.destination.platform === "slack"
-      ? request.routing.destination.channelId
-      : undefined;
   const conversationPrivacy = resolveConversationPrivacy({
-    channelId,
-    conversationId: request.conversationId,
-    // Destination visibility is provider-neutral. Slack event context remains
-    // a compatibility fallback for callers that have not projected it yet.
     visibility:
       request.routing.destinationVisibility ??
       request.routing.slackConversation?.visibility,
