@@ -17,15 +17,7 @@ const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 export function PersonalTokensPage() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const pendingCreatedToken = useRef<{ id: string; token: string } | undefined>(
-    undefined,
-  );
   const [name, setName] = useState("Local agent");
-  const [createdToken, setCreatedToken] = useState<{
-    id: string;
-    token: string;
-  }>();
-  const [error, setError] = useState<string>();
   const cancelTokenListRefetch = () =>
     queryClient.cancelQueries({
       exact: true,
@@ -42,35 +34,14 @@ export function PersonalTokensPage() {
     retry: false,
   });
   const createTokenMutation = useMutation({
-    mutationFn: async (tokenName: string) => {
-      const created = await post(
-        createdPersonalTokenSchema,
-        "/api/personal-tokens",
-        {
-          name: tokenName,
-        },
-      );
+    gcTime: 0,
+    mutationFn: (tokenName: string) =>
+      post(createdPersonalTokenSchema, "/api/personal-tokens", {
+        name: tokenName,
+      }),
+    onMutate: () => cancelTokenListRefetch(),
+    onSuccess: async (created) => {
       const { token, ...metadata } = created;
-      // Mutation results remain cached after completion. Keep the one-time
-      // credential in component memory and return only safe list metadata.
-      pendingCreatedToken.current = { id: metadata.id, token };
-      return metadata;
-    },
-    onError: () => {
-      pendingCreatedToken.current = undefined;
-      setError("Could not create the API token. Try again.");
-    },
-    onSettled: () => {
-      createTokenStarted.current = false;
-    },
-    onMutate: async () => {
-      pendingCreatedToken.current = undefined;
-      setError(undefined);
-      await cancelTokenListRefetch();
-    },
-    onSuccess: async (metadata) => {
-      const created = pendingCreatedToken.current;
-      pendingCreatedToken.current = undefined;
       await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,
@@ -83,7 +54,9 @@ export function PersonalTokensPage() {
           ],
         }),
       );
-      if (created?.id === metadata.id) setCreatedToken(created);
+    },
+    onSettled: () => {
+      createTokenStarted.current = false;
     },
   });
   const revokeTokenMutation = useMutation({
@@ -91,11 +64,7 @@ export function PersonalTokensPage() {
       deleteDashboardResource(
         `/api/personal-tokens/${encodeURIComponent(token.id)}`,
       ),
-    onError: () => setError("Could not revoke the API token. Try again."),
-    onMutate: async () => {
-      setError(undefined);
-      await cancelTokenListRefetch();
-    },
+    onMutate: () => cancelTokenListRefetch(),
     onSuccess: async (_result, token) => {
       await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
@@ -106,17 +75,22 @@ export function PersonalTokensPage() {
           ),
         }),
       );
-      setCreatedToken((current) =>
-        current?.id === token.id ? undefined : current,
-      );
+      if (createTokenMutation.data?.id === token.id) {
+        createTokenMutation.reset();
+      }
     },
   });
+  const createdToken = createTokenMutation.data;
   const tokens = tokensQuery.data?.tokens ?? [];
   const loading = tokensQuery.isPending;
   const busy = createTokenMutation.isPending || revokeTokenMutation.isPending;
   const displayedError =
-    error ??
-    (!tokensQuery.data && tokensQuery.error
+    (createTokenMutation.isError
+      ? "Could not create the API token. Try again."
+      : revokeTokenMutation.isError
+        ? "Could not revoke the API token. Try again."
+        : undefined) ??
+    (!tokensQuery.data && tokensQuery.isError
       ? "Could not load API tokens. Try again."
       : undefined);
 
@@ -141,7 +115,7 @@ export function PersonalTokensPage() {
               <Button
                 className="mt-3"
                 onClick={() => {
-                  setCreatedToken(undefined);
+                  createTokenMutation.reset();
                   setName("Local agent");
                 }}
               >
@@ -161,6 +135,7 @@ export function PersonalTokensPage() {
                 disabled={loading || busy || !name.trim()}
                 onClick={() => {
                   if (createTokenStarted.current) return;
+                  revokeTokenMutation.reset();
                   createTokenStarted.current = true;
                   createTokenMutation.mutate(name);
                 }}
@@ -203,7 +178,12 @@ export function PersonalTokensPage() {
                     aria-label={`Revoke ${token.name}`}
                     className="cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted hover:text-rose-300"
                     disabled={busy}
-                    onClick={() => revokeTokenMutation.mutate(token)}
+                    onClick={() => {
+                      if (createTokenMutation.isError) {
+                        createTokenMutation.reset();
+                      }
+                      revokeTokenMutation.mutate(token);
+                    }}
                     type="button"
                   >
                     <Trash2 size={16} />
