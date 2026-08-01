@@ -34,7 +34,9 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(createCalls[0]!.arguments).toMatchObject({
       schedule: { kind: "recurring", frequency: "weekly" },
     });
-    expect(createCalls[0]!.arguments).not.toHaveProperty("credential_mode");
+    expect([undefined, "creator"]).toContain(
+      createCalls[0]!.arguments?.credential_mode,
+    );
   });
 
   it("when registration is confirmed with creator credentials denied, create in system mode", async ({

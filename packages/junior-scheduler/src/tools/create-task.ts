@@ -44,10 +44,10 @@ export function createSlackScheduleCreateTaskTool(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
         credential_mode: z
-          .literal("system")
+          .enum(["creator", "system"])
           .nullable()
           .describe(
-            "Use system only when the creator says not to make their connected credentials available. Omit or use null otherwise; creator availability is the task default.",
+            "Use creator to make the task creator's connected credentials available, or system when the creator says not to use them. Omit or use null for the creator default.",
           )
           .optional(),
       })

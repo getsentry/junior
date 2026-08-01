@@ -920,6 +920,16 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
+  it("accepts explicit creator credential mode when creating a task", async () => {
+    const created = await createTask(createContext(), {
+      credential_mode: "creator",
+    });
+
+    expect(created).toMatchObject({
+      task: { credential_mode: "creator" },
+    });
+  });
+
   it("clears creator credentials when another user changes task text", async () => {
     const context = createContext();
     const created = (await createTask(context)) as { task: { id: string } };
