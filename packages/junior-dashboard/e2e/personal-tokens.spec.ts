@@ -55,10 +55,83 @@ test("reuses the personal token list across dashboard routes", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("keeps a created token when a stale list refetch is in flight", async ({
+  page,
+}) => {
+  const browserErrors = collectBrowserErrors(page);
+  const staleListStarted = promiseSignal();
+  const releaseStaleList = promiseSignal();
+  let listRequests = 0;
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        json: {
+          createdAt: "2026-08-01T00:01:00.000Z",
+          expiresAt: "2026-10-30T00:01:00.000Z",
+          id: "00000000-0000-4000-8000-000000000002",
+          lastUsedAt: null,
+          name: "Review token",
+          token: "jr_pat_one-time-secret",
+          tokenSuffix: "wxyz",
+        },
+      });
+      return;
+    }
+
+    listRequests += 1;
+    if (listRequests === 2) {
+      staleListStarted.resolve();
+      await releaseStaleList.promise;
+    }
+    await route
+      .fulfill({
+        json: {
+          tokens: [
+            {
+              createdAt: "2026-08-01T00:00:00.000Z",
+              expiresAt: "2026-10-30T00:00:00.000Z",
+              id: "00000000-0000-4000-8000-000000000001",
+              lastUsedAt: null,
+              name: "Local agent",
+              tokenSuffix: "abcd",
+            },
+          ],
+        },
+      })
+      .catch(() => undefined);
+  });
+
+  await page.goto(server.baseURL);
+  await openPersonalTokens(page);
+  await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "System", exact: true }).click();
+  await page.clock.setFixedTime(new Date(Date.now() + 31_000));
+  await openPersonalTokens(page);
+  await staleListStarted.promise;
+
+  await page.getByLabel("Token name").fill("Review token");
+  await page.getByRole("button", { name: "Create token" }).click();
+  await expect(page.getByText("jr_pat_one-time-secret")).toBeVisible();
+  releaseStaleList.resolve();
+
+  await expect(page.getByText("Review token", { exact: true })).toBeVisible();
+  expect(listRequests).toBe(2);
+  expect(browserErrors).toEqual([]);
+});
+
 async function openPersonalTokens(page: Page) {
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "API tokens", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Personal API Tokens" }),
   ).toBeVisible();
+}
+
+function promiseSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }

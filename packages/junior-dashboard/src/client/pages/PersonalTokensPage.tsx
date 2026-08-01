@@ -25,6 +25,11 @@ export function PersonalTokensPage() {
     token: string;
   }>();
   const [error, setError] = useState<string>();
+  const cancelTokenListRefetch = () =>
+    queryClient.cancelQueries({
+      exact: true,
+      queryKey: personalTokensQueryKey,
+    });
   const tokensQuery = useQuery({
     queryKey: personalTokensQueryKey,
     queryFn: ({ signal }) =>
@@ -54,13 +59,15 @@ export function PersonalTokensPage() {
       pendingCreatedToken.current = undefined;
       setError("Could not create the API token. Try again.");
     },
-    onMutate: () => {
+    onMutate: async () => {
       pendingCreatedToken.current = undefined;
       setError(undefined);
+      await cancelTokenListRefetch();
     },
-    onSuccess: (metadata) => {
+    onSuccess: async (metadata) => {
       const created = pendingCreatedToken.current;
       pendingCreatedToken.current = undefined;
+      await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,
         (current) => ({ tokens: [metadata, ...(current?.tokens ?? [])] }),
@@ -74,8 +81,12 @@ export function PersonalTokensPage() {
         `/api/personal-tokens/${encodeURIComponent(token.id)}`,
       ),
     onError: () => setError("Could not revoke the API token. Try again."),
-    onMutate: () => setError(undefined),
-    onSuccess: (_result, token) => {
+    onMutate: async () => {
+      setError(undefined);
+      await cancelTokenListRefetch();
+    },
+    onSuccess: async (_result, token) => {
+      await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,
         (current) => ({
