@@ -120,6 +120,48 @@ test("keeps a created token when a stale list refetch is in flight", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("starts only one token create for rapid clicks", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  const releaseCreate = promiseSignal();
+  let createRequests = 0;
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      createRequests += 1;
+      await releaseCreate.promise;
+      await route.fulfill({
+        json: {
+          createdAt: "2026-08-01T00:01:00.000Z",
+          expiresAt: "2026-10-30T00:01:00.000Z",
+          id: "00000000-0000-4000-8000-000000000002",
+          lastUsedAt: null,
+          name: "Review token",
+          token: "jr_pat_one-time-secret",
+          tokenSuffix: "wxyz",
+        },
+      });
+      return;
+    }
+
+    await route.fulfill({ json: { tokens: [] } });
+  });
+
+  await page.goto(server.baseURL);
+  await openPersonalTokens(page);
+  await page.getByLabel("Token name").fill("Review token");
+  await page
+    .getByRole("button", { name: "Create token" })
+    .evaluate((button) => {
+      button.click();
+      button.click();
+    });
+  await expect.poll(() => createRequests).toBe(1);
+  releaseCreate.resolve();
+
+  await expect(page.getByText("jr_pat_one-time-secret")).toBeVisible();
+  expect(createRequests).toBe(1);
+  expect(browserErrors).toEqual([]);
+});
+
 test("keeps cached tokens and mutation errors after a refetch fails", async ({
   page,
 }) => {

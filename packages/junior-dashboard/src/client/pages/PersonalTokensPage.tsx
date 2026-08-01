@@ -16,6 +16,7 @@ const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 /** Create and revoke personal API tokens for local clients. */
 export function PersonalTokensPage() {
   const queryClient = useQueryClient();
+  const createTokenStarted = useRef(false);
   const pendingCreatedToken = useRef<{ id: string; token: string } | undefined>(
     undefined,
   );
@@ -58,6 +59,9 @@ export function PersonalTokensPage() {
     onError: () => {
       pendingCreatedToken.current = undefined;
       setError("Could not create the API token. Try again.");
+    },
+    onSettled: () => {
+      createTokenStarted.current = false;
     },
     onMutate: async () => {
       pendingCreatedToken.current = undefined;
@@ -155,7 +159,11 @@ export function PersonalTokensPage() {
               />
               <Button
                 disabled={loading || busy || !name.trim()}
-                onClick={() => createTokenMutation.mutate(name)}
+                onClick={() => {
+                  if (createTokenStarted.current) return;
+                  createTokenStarted.current = true;
+                  createTokenMutation.mutate(name);
+                }}
               >
                 Create token
               </Button>
