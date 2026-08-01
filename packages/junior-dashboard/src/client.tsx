@@ -69,7 +69,15 @@ if (!root) {
   throw new Error("Junior dashboard root element was not found");
 }
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Route changes should reuse recent dashboard reads. Resources that need
+      // faster updates own their polling or are invalidated by their mutation.
+      staleTime: 30_000,
+    },
+  },
+});
 
 createRoot(root).render(
   <DashboardErrorBoundary>

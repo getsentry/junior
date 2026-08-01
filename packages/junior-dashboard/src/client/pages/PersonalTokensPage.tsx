@@ -1,5 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -10,60 +11,90 @@ import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { Button } from "../components/Button";
 
+const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
+
 /** Create and revoke personal API tokens for local clients. */
 export function PersonalTokensPage() {
-  const [tokens, setTokens] = useState<PersonalTokenMetadata[]>([]);
+  const queryClient = useQueryClient();
+  const pendingCreatedToken = useRef<{ id: string; token: string } | undefined>(
+    undefined,
+  );
   const [name, setName] = useState("Local agent");
   const [createdToken, setCreatedToken] = useState<{
     id: string;
     token: string;
   }>();
   const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void fetchDashboardJson(personalTokenListSchema, "/api/personal-tokens")
-      .then((result) => setTokens(result.tokens))
-      .catch(() => setError("Could not load API tokens. Try again."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function createToken() {
-    setBusy(true);
-    setError(undefined);
-    try {
-      const token = await post(
+  const tokensQuery = useQuery({
+    queryKey: personalTokensQueryKey,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        personalTokenListSchema,
+        "/api/personal-tokens",
+        signal,
+      ),
+    retry: false,
+  });
+  const createTokenMutation = useMutation({
+    mutationFn: async (tokenName: string) => {
+      const created = await post(
         createdPersonalTokenSchema,
         "/api/personal-tokens",
-        { name },
+        {
+          name: tokenName,
+        },
       );
-      setTokens((current) => [token, ...current]);
-      setCreatedToken({ id: token.id, token: token.token });
-    } catch {
+      const { token, ...metadata } = created;
+      // Mutation results remain cached after completion. Keep the one-time
+      // credential in component memory and return only safe list metadata.
+      pendingCreatedToken.current = { id: metadata.id, token };
+      return metadata;
+    },
+    onError: () => {
+      pendingCreatedToken.current = undefined;
       setError("Could not create the API token. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function revokeToken(token: PersonalTokenMetadata) {
-    setBusy(true);
-    setError(undefined);
-    try {
-      await deleteDashboardResource(
-        `/api/personal-tokens/${encodeURIComponent(token.id)}`,
+    },
+    onMutate: () => {
+      pendingCreatedToken.current = undefined;
+      setError(undefined);
+    },
+    onSuccess: (metadata) => {
+      const created = pendingCreatedToken.current;
+      pendingCreatedToken.current = undefined;
+      queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
+        personalTokensQueryKey,
+        (current) => ({ tokens: [metadata, ...(current?.tokens ?? [])] }),
       );
-      setTokens((current) => current.filter((item) => item.id !== token.id));
+      if (created?.id === metadata.id) setCreatedToken(created);
+    },
+  });
+  const revokeTokenMutation = useMutation({
+    mutationFn: (token: PersonalTokenMetadata) =>
+      deleteDashboardResource(
+        `/api/personal-tokens/${encodeURIComponent(token.id)}`,
+      ),
+    onError: () => setError("Could not revoke the API token. Try again."),
+    onMutate: () => setError(undefined),
+    onSuccess: (_result, token) => {
+      queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
+        personalTokensQueryKey,
+        (current) => ({
+          tokens: (current?.tokens ?? []).filter(
+            (item) => item.id !== token.id,
+          ),
+        }),
+      );
       setCreatedToken((current) =>
         current?.id === token.id ? undefined : current,
       );
-    } catch {
-      setError("Could not revoke the API token. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+  });
+  const tokens = tokensQuery.data?.tokens ?? [];
+  const loading = tokensQuery.isPending;
+  const busy = createTokenMutation.isPending || revokeTokenMutation.isPending;
+  const displayedError = tokensQuery.error
+    ? "Could not load API tokens. Try again."
+    : error;
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
@@ -104,14 +135,16 @@ export function PersonalTokensPage() {
               />
               <Button
                 disabled={loading || busy || !name.trim()}
-                onClick={() => void createToken()}
+                onClick={() => createTokenMutation.mutate(name)}
               >
                 Create token
               </Button>
             </div>
           )}
 
-          {error ? <p className="mb-0 text-sm text-rose-300">{error}</p> : null}
+          {displayedError ? (
+            <p className="mb-0 text-sm text-rose-300">{displayedError}</p>
+          ) : null}
 
           <div className="mt-5 space-y-2">
             {loading ? (
@@ -142,7 +175,7 @@ export function PersonalTokensPage() {
                     aria-label={`Revoke ${token.name}`}
                     className="cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted hover:text-rose-300"
                     disabled={busy}
-                    onClick={() => void revokeToken(token)}
+                    onClick={() => revokeTokenMutation.mutate(token)}
                     type="button"
                   >
                     <Trash2 size={16} />

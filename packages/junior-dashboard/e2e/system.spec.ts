@@ -23,9 +23,14 @@ test.beforeEach(async ({ page }) => {
 test("shows system usage and plugin details", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
+  let identityRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/me") identityRequests += 1;
+  });
   await page.goto(`${server.baseURL}/system`);
 
   await expect(page.getByText("Usage over time")).toBeVisible();
+  expect(identityRequests).toBe(1);
   await expect(page.getByText("Model spend")).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
 

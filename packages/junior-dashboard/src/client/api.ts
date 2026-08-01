@@ -22,14 +22,16 @@ import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
+const dashboardMetadataStaleTimeMs = 5 * 60_000;
+
 /** Fetch dashboard shell data shared across browser routes. */
 export function useDashboardCoreData() {
   return useQuery({
     queryKey: ["dashboard", "core"],
-    queryFn: async (): Promise<DashboardCoreData> => {
+    queryFn: async ({ signal }): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
-        fetchDashboardJson(dashboardIdentitySchema, "/api/me"),
-        fetchDashboardJson(dashboardConfigSchema, "/api/config"),
+        fetchDashboardJson(dashboardIdentitySchema, "/api/me", signal),
+        fetchDashboardJson(dashboardConfigSchema, "/api/config", signal),
       ]);
       return {
         config,
@@ -37,6 +39,7 @@ export function useDashboardCoreData() {
       };
     },
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
@@ -44,8 +47,10 @@ export function useDashboardCoreData() {
 export function usePluginsData() {
   return useQuery({
     queryKey: ["dashboard", "plugins"],
-    queryFn: () => fetchDashboardJson(pluginsSchema, "/api/plugins"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(pluginsSchema, "/api/plugins", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
@@ -53,9 +58,10 @@ export function usePluginsData() {
 export function usePluginUserPagesData() {
   return useQuery({
     queryKey: ["dashboard", "plugin-user-pages"],
-    queryFn: () =>
-      fetchDashboardJson(pluginUserPageLinksSchema, "/api/user-pages"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(pluginUserPageLinksSchema, "/api/user-pages", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
@@ -66,11 +72,13 @@ export function useConversationsData(actorEmail?: string) {
   const search = query.toString();
   return useQuery({
     queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations${search ? `?${search}` : ""}`,
+        signal,
       ),
+    refetchOnWindowFocus: "always",
     retry: false,
   });
 }
@@ -79,8 +87,8 @@ export function useConversationsData(actorEmail?: string) {
 export function useActorDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "people"],
-    queryFn: () =>
-      fetchDashboardJson(actorDirectoryReportSchema, "/api/people"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
     retry: false,
   });
 }
@@ -90,10 +98,11 @@ export function useActorProfileData(email: string | undefined) {
   return useQuery({
     enabled: Boolean(email),
     queryKey: ["dashboard", "people", email],
-    queryFn: async (): Promise<ActorProfileReport> =>
+    queryFn: async ({ signal }): Promise<ActorProfileReport> =>
       fetchDashboardJson(
         actorProfileReportSchema,
         `/api/people/${encodeURIComponent(email!)}`,
+        signal,
       ),
     retry: false,
   });
@@ -103,8 +112,12 @@ export function useActorProfileData(email: string | undefined) {
 export function useLocationDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "locations"],
-    queryFn: () =>
-      fetchDashboardJson(locationDirectoryReportSchema, "/api/locations"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        locationDirectoryReportSchema,
+        "/api/locations",
+        signal,
+      ),
     retry: false,
   });
 }
@@ -114,48 +127,51 @@ export function useLocationDetailData(locationId: string | undefined) {
   return useQuery({
     enabled: Boolean(locationId),
     queryKey: ["dashboard", "locations", locationId],
-    queryFn: async (): Promise<LocationDetailReport> =>
+    queryFn: async ({ signal }): Promise<LocationDetailReport> =>
       fetchDashboardJson(
         locationDetailReportSchema,
         `/api/locations/${encodeURIComponent(locationId!)}`,
+        signal,
       ),
     retry: false,
   });
 }
 
-/** Fetch aggregate system metrics, plugin inventory, and operational reports. */
-export function useSystemData() {
-  const coreQuery = useDashboardCoreData();
+/** Fetch system metrics, plugin inventory, and operational reports. */
+export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
   const conversationStatsQuery = useQuery({
     queryKey: ["dashboard", "conversation-stats"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationStatsReportSchema,
         "/api/conversations/stats",
+        signal,
       ),
     retry: false,
   });
   const skillsQuery = useQuery({
     queryKey: ["dashboard", "skills"],
-    queryFn: () => fetchDashboardJson(skillReportsSchema, "/api/skills"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
   const pluginReportsQuery = useQuery({
     queryKey: ["dashboard", "plugin-reports"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchDashboardJson(
         pluginOperationalReportFeedSchema,
         "/api/plugin-reports",
+        signal,
       ),
     retry: false,
   });
-  const dataReady = coreQuery.data && pluginsQuery.data && skillsQuery.data;
+  const dataReady = pluginsQuery.data && skillsQuery.data;
   return {
-    ...coreQuery,
     data: dataReady
       ? ({
-          ...coreQuery.data,
+          ...coreData,
           conversationStatsError: Boolean(conversationStatsQuery.error),
           ...(conversationStatsQuery.data
             ? { conversationStats: conversationStatsQuery.data }
@@ -170,8 +186,7 @@ export function useSystemData() {
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,
-    error: coreQuery.error ?? pluginsQuery.error ?? skillsQuery.error,
-    isPending:
-      coreQuery.isPending || pluginsQuery.isPending || skillsQuery.isPending,
+    error: pluginsQuery.error ?? skillsQuery.error,
+    isPending: pluginsQuery.isPending || skillsQuery.isPending,
   };
 }

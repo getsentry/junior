@@ -34,6 +34,7 @@ import {
   dashboardContainerClass,
   dashboardInteractiveTextClass,
 } from "./styles";
+import type { DashboardCoreData } from "./types";
 
 const dashboardBackground = {
   backgroundColor: "#050507",
@@ -237,7 +238,15 @@ export function DashboardShell() {
         />
         <Route
           element={
-            loading ? <LoadingView label="Loading system" /> : <SystemRoute />
+            loading ? (
+              <LoadingView label="Loading system" />
+            ) : data ? (
+              <SystemRoute coreData={data} />
+            ) : (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            )
           }
           path="/system/*"
         />
@@ -292,8 +301,8 @@ export function DashboardShell() {
   );
 }
 
-function SystemRoute() {
-  const query = useSystemData();
+function SystemRoute(props: { coreData: DashboardCoreData }) {
+  const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading system" />;
   }
