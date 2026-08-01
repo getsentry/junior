@@ -1,7 +1,22 @@
-import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
+
+const auxiliaryRootConversation = alias(
+  juniorConversations,
+  "auxiliary_root_conversation",
+);
 
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
@@ -26,7 +41,7 @@ export async function readConversationAuxiliaryCostsFromSql(
   const selectedIds = [...conversationIds];
   const conversationId = options.includeDescendants
     ? sql<string>`coalesce(
-        ${juniorConversations.rootConversationId},
+        ${auxiliaryRootConversation.conversationId},
         ${juniorConversations.conversationId}
       )`
     : sql<string>`${juniorConversations.conversationId}`;
@@ -43,7 +58,10 @@ export async function readConversationAuxiliaryCostsFromSql(
   const cost = eventCost();
   const selectedConversation = options.includeDescendants
     ? or(
-        inArray(juniorConversations.rootConversationId, selectedIds),
+        and(
+          inArray(juniorConversations.rootConversationId, selectedIds),
+          isNotNull(auxiliaryRootConversation.conversationId),
+        ),
         inArray(juniorConversations.conversationId, selectedIds),
       )
     : inArray(juniorConversations.conversationId, selectedIds);
@@ -63,6 +81,20 @@ export async function readConversationAuxiliaryCostsFromSql(
       eq(
         juniorConversations.conversationId,
         juniorConversationEvents.conversationId,
+      ),
+    )
+    .leftJoin(
+      auxiliaryRootConversation,
+      and(
+        eq(
+          auxiliaryRootConversation.conversationId,
+          juniorConversations.rootConversationId,
+        ),
+        isNull(auxiliaryRootConversation.parentConversationId),
+        eq(
+          auxiliaryRootConversation.rootConversationId,
+          auxiliaryRootConversation.conversationId,
+        ),
       ),
     )
     .where(

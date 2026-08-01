@@ -399,6 +399,32 @@ describe("conversation list API", () => {
           durationMs: 500,
           usage: { outputTokens: 50 },
         });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:invalid-root",
+            createdAt: new Date(3_000),
+            historyVersion: 1,
+            payload: {
+              content: { costUsd: 0.0002, memories: [] },
+              name: "memories_recalled",
+              namespace: "memory",
+              version: 1,
+            },
+            seq: 0,
+            type: "structured_event",
+          },
+          {
+            conversationId: "advisor:invalid-root-child",
+            createdAt: new Date(4_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0003 },
+            seq: 0,
+            type: "guardian_action_reviewed",
+          },
+        ]);
 
       const feed = await readConversationFeedFromSql();
 
@@ -407,6 +433,17 @@ describe("conversation list API", () => {
           conversationId: "slack:C1:invalid-root",
           cumulativeDurationMs: 100,
           cumulativeUsage: { inputTokens: 10 },
+          auxiliaryCosts: {
+            costUsd: 0.0002,
+            operations: [
+              {
+                costUsd: 0.0002,
+                events: 1,
+                name: "memories_recalled",
+                namespace: "memory",
+              },
+            ],
+          },
         }),
       );
     } finally {
