@@ -3,7 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   pluginUserPageContentSchema,
@@ -14,11 +14,15 @@ import {
 import { deleteDashboardResource, fetchDashboardJson } from "../../http";
 
 export type PluginUserPageRecord = PluginUserPageContent["records"][number];
+export type PluginUserPageRecordAction = NonNullable<
+  PluginUserPageRecord["actions"]
+>[number];
 
 /** Load one plugin page with shared search, pagination, and action behavior. */
 export function usePluginUserPageData(page: PluginUserPageLink) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const actionStarted = useRef(false);
   const filter = searchParams.get("filter")?.trim() ?? "";
   const searchQuery = searchParams.get("q")?.trim() ?? "";
   const [searchText, setSearchText] = useState(searchQuery);
@@ -41,17 +45,16 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     return () => window.clearTimeout(timeout);
   }, [searchQuery, searchText, setSearchParams]);
 
-  const pluginQueryKey = useMemo(
-    () => ["dashboard", "plugin-user-page", page.pluginName] as const,
-    [page.pluginName],
-  );
-  const queryKey = useMemo(
-    () => [...pluginQueryKey, page.id, filter, searchQuery],
-    [filter, page.id, pluginQueryKey, searchQuery],
-  );
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
-    queryKey,
+    queryKey: [
+      "dashboard",
+      "plugin-user-page",
+      page.pluginName,
+      page.id,
+      filter,
+      searchQuery,
+    ],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       if (filter) params.set("filter", filter);
@@ -79,22 +82,30 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     [query.data?.pages],
   );
   const action = useMutation({
-    mutationFn: async (
-      recordAction: NonNullable<PluginUserPageRecord["actions"]>[number],
-    ) => {
-      if (
-        recordAction.confirmation &&
-        !window.confirm(recordAction.confirmation)
-      ) {
-        return false;
-      }
-      await deleteDashboardResource(recordAction.href);
-      return true;
+    mutationFn: (recordAction: PluginUserPageRecordAction) =>
+      deleteDashboardResource(recordAction.href),
+    onMutate: () => ({ pluginName: page.pluginName }),
+    onSuccess: async (_result, _recordAction, context) => {
+      await queryClient.resetQueries({
+        queryKey: ["dashboard", "plugin-user-page", context.pluginName],
+      });
     },
-    onSuccess: async (changed) => {
-      if (changed) await queryClient.resetQueries({ queryKey: pluginQueryKey });
+    onSettled: () => {
+      actionStarted.current = false;
     },
   });
+
+  function runAction(recordAction: PluginUserPageRecordAction) {
+    if (actionStarted.current) return;
+    if (
+      recordAction.confirmation &&
+      !window.confirm(recordAction.confirmation)
+    ) {
+      return;
+    }
+    actionStarted.current = true;
+    action.mutate(recordAction);
+  }
 
   function setFilter(value: string) {
     const next = new URLSearchParams(searchParams);
@@ -109,6 +120,7 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     filter,
     query,
     records,
+    runAction,
     searchQuery,
     searchText,
     setFilter,

@@ -1,10 +1,6 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  codeToHtml,
-  type BundledLanguage,
-  type DecorationItem,
-} from "shiki/bundle/web";
+import { codeToHtml, type BundledLanguage } from "shiki/bundle/web";
 
 import { cn } from "./styles";
 import {
@@ -19,31 +15,26 @@ export type ShikiHtml = string & { readonly [shikiHtmlBrand]: true };
 
 /**
  * Render highlighted code while keeping Shiki output responsive in transcripts.
- * Automatically merges externally-provided decorations (e.g. link spans) with
- * any active transcript search highlights from context.
+ * Automatically applies active transcript search highlights from context.
  */
 export function HighlightedCode(props: {
   code: string;
-  /** Extra Shiki decorations to apply in addition to search highlights. */
-  decorations?: DecorationItem[];
   language: BundledLanguage;
 }) {
   const search = useTranscriptSearch();
-  const searchDecorations = search.active
-    ? buildSearchDecorations(props.code, search.normalizedQuery)
-    : [];
-  const allDecorations = [...(props.decorations ?? []), ...searchDecorations];
-
+  const normalizedQuery = search.active ? search.normalizedQuery : undefined;
   const highlighted = useQuery({
-    queryKey: search.active
-      ? ["highlight", props.language, props.code, search.normalizedQuery]
-      : ["highlight", props.language, props.code],
-    queryFn: async (): Promise<ShikiHtml> =>
-      (await codeToHtml(props.code, {
-        decorations: allDecorations.length ? allDecorations : undefined,
+    queryKey: ["highlight", props.language, props.code, normalizedQuery],
+    queryFn: async (): Promise<ShikiHtml> => {
+      const decorations = normalizedQuery
+        ? buildSearchDecorations(props.code, normalizedQuery)
+        : [];
+      return (await codeToHtml(props.code, {
+        decorations: decorations.length ? decorations : undefined,
         lang: props.language,
         theme: "github-dark",
-      })) as ShikiHtml,
+      })) as ShikiHtml;
+    },
     staleTime: Infinity,
   });
 

@@ -497,7 +497,7 @@ export function totalConversationCost(
 ): CostUsageSummary | undefined {
   if (!summary && !auxiliaryCosts) return undefined;
   return {
-    ...(summary ?? {}),
+    ...summary,
     total: addCost(summary?.total ?? 0, auxiliaryCosts?.costUsd ?? 0),
   };
 }

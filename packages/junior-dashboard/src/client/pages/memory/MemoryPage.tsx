@@ -23,6 +23,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
   type PluginUserPageRecord,
+  type PluginUserPageRecordAction,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import {
@@ -36,6 +37,12 @@ import {
 } from "./memoryDashboard";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryExtractionCost } from "./MemoryExtractionCost";
+
+type MemoryActionMutation = UseMutationResult<
+  void,
+  Error,
+  PluginUserPageRecordAction
+>;
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -126,6 +133,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
     filter,
     query,
     records,
+    runAction,
     searchQuery,
     searchText,
     setFilter,
@@ -207,6 +215,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
                   action={action}
                   first={index === 0}
                   key={record.id}
+                  onAction={runAction}
                   onSelect={() =>
                     setSelectedRecordId((current) =>
                       current === record.id ? undefined : record.id,
@@ -235,6 +244,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
           <MemoryMobileInspector
             action={action}
             onClose={() => setSelectedRecordId(undefined)}
+            onAction={runAction}
             record={selectedRecord}
           />
         </div>
@@ -458,12 +468,9 @@ function OverviewBreakdownRow(props: {
 }
 
 function MemoryRow(props: {
-  action: UseMutationResult<
-    boolean,
-    Error,
-    NonNullable<PluginUserPageRecord["actions"]>[number]
-  >;
+  action: MemoryActionMutation;
   first: boolean;
+  onAction(action: PluginUserPageRecordAction): void;
   onSelect(): void;
   record: PluginUserPageRecord;
   selected: boolean;
@@ -573,7 +580,12 @@ function MemoryRow(props: {
       </div>
       {props.selected ? (
         <div className="hidden border-t border-cyan-300/10 bg-black/20 p-5 lg:block">
-          <MemoryDetails action={props.action} inline record={props.record} />
+          <MemoryDetails
+            action={props.action}
+            inline
+            onAction={props.onAction}
+            record={props.record}
+          />
         </div>
       ) : null}
     </>
@@ -581,12 +593,9 @@ function MemoryRow(props: {
 }
 
 function MemoryMobileInspector(props: {
-  action: UseMutationResult<
-    boolean,
-    Error,
-    NonNullable<PluginUserPageRecord["actions"]>[number]
-  >;
+  action: MemoryActionMutation;
   onClose(): void;
+  onAction(action: PluginUserPageRecordAction): void;
   record: PluginUserPageRecord | undefined;
 }) {
   useEffect(() => {
@@ -633,6 +642,7 @@ function MemoryMobileInspector(props: {
         <MemoryDetails
           action={props.action}
           onClose={props.onClose}
+          onAction={props.onAction}
           record={props.record}
         />
       </div>
@@ -641,13 +651,10 @@ function MemoryMobileInspector(props: {
 }
 
 function MemoryDetails(props: {
-  action: UseMutationResult<
-    boolean,
-    Error,
-    NonNullable<PluginUserPageRecord["actions"]>[number]
-  >;
+  action: MemoryActionMutation;
   inline?: boolean;
   onClose?: () => void;
+  onAction(action: PluginUserPageRecordAction): void;
   record: PluginUserPageRecord;
 }) {
   const kind = metadataValue(props.record, "Type");
@@ -781,11 +788,8 @@ function MemoryDetails(props: {
           {forgetAction ? (
             <button
               className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
-              disabled={
-                props.action.isPending &&
-                props.action.variables?.href === forgetAction.href
-              }
-              onClick={() => props.action.mutate(forgetAction)}
+              disabled={props.action.isPending}
+              onClick={() => props.onAction(forgetAction)}
               type="button"
             >
               <Trash2 aria-hidden="true" size={13} />

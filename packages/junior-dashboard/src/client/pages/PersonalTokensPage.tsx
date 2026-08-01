@@ -41,7 +41,7 @@ export function PersonalTokensPage() {
       }),
     onMutate: () => cancelTokenListRefetch(),
     onSuccess: async (created) => {
-      const { token, ...metadata } = created;
+      const { token: _token, ...metadata } = created;
       await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,

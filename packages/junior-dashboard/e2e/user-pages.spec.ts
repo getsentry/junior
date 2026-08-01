@@ -183,6 +183,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   page,
 }) => {
   let forgotMemory = false;
+  let forgetRequests = 0;
   let dashboardRequestCount = 0;
   await page.route("**/api/plugins/memory/dashboard", async (route) => {
     dashboardRequestCount += 1;
@@ -231,6 +232,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.route(
     "**/api/plugins/memory/memories/memory-search",
     async (route) => {
+      forgetRequests += 1;
       expect(route.request().method()).toBe("DELETE");
       forgotMemory = true;
       await route.fulfill({ status: 204 });
@@ -278,10 +280,16 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page
     .getByRole("button", { name: /^Deploy runbooks live in Notion/ })
     .click();
-  await page.getByRole("button", { name: "Forget this memory" }).click();
+  await page
+    .getByRole("button", { name: "Forget this memory" })
+    .evaluate((button) => {
+      button.click();
+      button.click();
+    });
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
+  expect(forgetRequests).toBe(1);
   await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 
   await searchbox.fill("");

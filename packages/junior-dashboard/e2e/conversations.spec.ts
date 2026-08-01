@@ -21,6 +21,29 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
+test("reuses the fresh conversation feed after window focus", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("**/api/conversations?*", async (route) => {
+    requests += 1;
+    await route.fallback();
+  });
+
+  await page.goto(server.baseURL);
+  await expect(
+    page.getByRole("heading", { name: "Conversations" }),
+  ).toBeVisible();
+  expect(requests).toBe(1);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(100);
+
+  expect(requests).toBe(1);
+});
+
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
@@ -362,6 +385,7 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
 test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
+  const initialTime = Date.now();
   await page.setViewportSize({ height: 900, width: 1600 });
   let archived = false;
   await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
@@ -414,6 +438,7 @@ test("archives and restores a conversation from the sidebar", async ({
       response.request().method() === "GET" &&
       /\/api\/conversations(?:\?.*)?$/.test(response.url()),
   );
+  await page.clock.setFixedTime(new Date(initialTime + 31_000));
   await page.evaluate(() => {
     window.dispatchEvent(new Event("focus"));
     window.dispatchEvent(new Event("visibilitychange"));
@@ -447,6 +472,7 @@ test("archives and restores a conversation from the sidebar", async ({
       response.request().method() === "GET" &&
       /\/api\/conversations(?:\?.*)?$/.test(response.url()),
   );
+  await page.clock.setFixedTime(new Date(initialTime + 62_000));
   await page.evaluate(() => {
     window.dispatchEvent(new Event("focus"));
     window.dispatchEvent(new Event("visibilitychange"));

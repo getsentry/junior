@@ -40,8 +40,15 @@ export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
 
 /** Render a plugin-owned page with the bounded generic list UI. */
 export function PluginUserPage(props: { page: PluginUserPageLink }) {
-  const { action, content, query, records, searchText, setSearchText } =
-    usePluginUserPageData(props.page);
+  const {
+    action,
+    content,
+    query,
+    records,
+    runAction,
+    searchText,
+    setSearchText,
+  } = usePluginUserPageData(props.page);
 
   if (!query.data && !query.error) {
     return <LoadingView label={`Loading ${props.page.label}`} />;
@@ -127,12 +134,9 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                           ? "hover:text-rose-300"
                           : "hover:text-dashboard-text"
                       }`}
-                      disabled={
-                        action.isPending &&
-                        action.variables?.href === recordAction.href
-                      }
+                      disabled={action.isPending}
                       key={`${recordAction.method}:${recordAction.href}`}
-                      onClick={() => action.mutate(recordAction)}
+                      onClick={() => runAction(recordAction)}
                       title={recordAction.label}
                       type="button"
                     >

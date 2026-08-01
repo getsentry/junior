@@ -67,18 +67,18 @@ export function usePluginUserPagesData() {
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(actorEmail?: string) {
-  const query = new URLSearchParams();
-  if (actorEmail) query.set("actorEmail", actorEmail);
-  const search = query.toString();
   return useQuery({
     queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams();
+      if (actorEmail) query.set("actorEmail", actorEmail);
+      const search = query.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations${search ? `?${search}` : ""}`,
         signal,
-      ),
-    refetchOnWindowFocus: "always",
+      );
+    },
     retry: false,
   });
 }

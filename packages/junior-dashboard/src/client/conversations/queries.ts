@@ -329,13 +329,14 @@ export function useConversationData(conversationId: string | undefined) {
   }, [history.fetchNextPage, historyNeedsReconciliation]);
 
   return {
-    ...detail,
     data,
+    error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),
     hasPreviousPage: history.data
       ? history.hasNextPage
       : Boolean(detail.data?.previousCursor),
+    isPending: detail.isPending,
     isLoadingPreviousPage,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {
