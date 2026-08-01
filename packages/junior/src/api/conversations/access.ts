@@ -81,11 +81,9 @@ export async function readConversationAccessFromSql(
       const canViewPrivateContent =
         isParticipant ||
         (validRootConversationId !== undefined &&
-          canExposeConversationPayload(
-            visibility === "public" || visibility === "private"
-              ? { visibility }
-              : {},
-          ));
+          canExposeConversationPayload({
+            visibility: visibility ?? undefined,
+          }));
       return [
         row.conversationId,
         {

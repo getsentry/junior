@@ -22,19 +22,18 @@ const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
  */
 export function resolveConversationPrivacy(input: {
   /** Live source or persisted visibility, when the caller has one. */
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | "direct" | "unknown";
 }): ConversationPrivacy {
-  if (input.visibility) {
-    return input.visibility;
+  if (input.visibility === undefined) {
+    logWarn("conversation.visibility.defaulted");
   }
-  logWarn("conversation.visibility.defaulted");
-  return "private";
+  return input.visibility === "public" ? "public" : "private";
 }
 
 /** Gate raw transcript/tool payload exposure to public conversations. */
 export function canExposeConversationPayload(input: {
   /** Live source or persisted visibility, when the caller has one. */
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | "direct" | "unknown";
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
 }

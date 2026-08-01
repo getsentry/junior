@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
   readConversationFeedFromSql,
   readConversationRecordFromSql,
@@ -8,9 +9,11 @@ import {
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import {
   juniorConversationEvents,
   juniorConversations,
+  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -102,6 +105,59 @@ describe("conversation list API", () => {
       await fixture.close();
     }
   });
+
+  test.each(["direct", "unknown"] as const)(
+    "treats persisted %s visibility as private without a missing-metadata warning",
+    async (visibility) => {
+      const fixture = createConfiguredJuniorSqlFixture();
+      const store = createSqlStore(fixture.sql);
+      const conversationId = `slack:C123:${visibility}-visibility`;
+      const channelId = `C-${visibility}`;
+      try {
+        await migrateSchema(fixture.sql);
+        await store.recordActivity({
+          conversationId,
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId,
+          },
+          nowMs: 1_000,
+          source: "slack",
+          visibility: "private",
+        });
+        const db = fixture.sql.db();
+        await db
+          .update(juniorDestinations)
+          .set({ visibility })
+          .where(eq(juniorDestinations.providerDestinationId, channelId));
+        const records: EmittedLogRecord[] = [];
+        const unregister = registerLogRecordSink((record) =>
+          records.push(record),
+        );
+
+        try {
+          const access = await readConversationAccessFromSql(db, [
+            conversationId,
+          ]);
+          expect(access.get(conversationId)).toMatchObject({
+            canViewPrivateContent: false,
+            visibility,
+          });
+        } finally {
+          unregister();
+        }
+
+        expect(records).not.toContainEqual(
+          expect.objectContaining({
+            eventName: "conversation.visibility.defaulted",
+          }),
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   test("uses canonical and fallback actor names with provider identity fields", async () => {
     const fixture = createConfiguredJuniorSqlFixture();

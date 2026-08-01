@@ -15,6 +15,14 @@ describe("conversation privacy classification", () => {
     },
   );
 
+  it.each(["direct", "unknown"] as const)(
+    "treats confirmed %s visibility as private",
+    (visibility) => {
+      expect(resolveConversationPrivacy({ visibility })).toBe("private");
+      expect(canExposeConversationPayload({ visibility })).toBe(false);
+    },
+  );
+
   it("defaults missing visibility to private", () => {
     expect(resolveConversationPrivacy({})).toBe("private");
     expect(canExposeConversationPayload({})).toBe(false);
