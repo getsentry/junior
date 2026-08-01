@@ -59,7 +59,7 @@ export function createSlackScheduleUpdateTaskTool(
           .enum(["system", "creator"])
           .nullable()
           .describe(
-            "Set creator to make the task creator's connected credentials available, or system to disable them. Only the task creator may enable creator mode. Omit or use null to leave unchanged.",
+            "Set creator to make the task's original creator credentials available, or system to disable them. Creator always means the task's created_by actor, never the current requester. Only that original creator may enable creator mode. Omit or use null to leave unchanged.",
           )
           .optional(),
       })

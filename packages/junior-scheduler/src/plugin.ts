@@ -439,7 +439,7 @@ export function schedulerPlugin() {
         }
         return [
           {
-            text: "Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, only the task creator may enable or re-enable creator credential use.",
+            text: "Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original created_by actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
           },
         ];
       },
