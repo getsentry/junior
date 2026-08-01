@@ -2,7 +2,11 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
-import { scheduledTaskCreateCalls, seedScheduledTask } from "./helpers";
+import {
+  scheduledTaskCreateCalls,
+  scheduledTaskUpdateCalls,
+  seedScheduledTask,
+} from "./helpers";
 
 describeEval("Scheduled Credentials", slackEvals, (it) => {
   it("when scheduled work may need user-bound authorization, use the creator default", async ({
@@ -74,7 +78,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleSetCredentialMode" &&
+          call.name === "scheduler_slackScheduleUpdateTask" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -130,7 +134,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleSetCredentialMode" &&
+          call.name === "scheduler_slackScheduleUpdateTask" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -180,10 +184,8 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const credentialModeCalls = toolCalls(result.session).filter(
-      (call) =>
-        call.name === "scheduler_slackScheduleSetCredentialMode" &&
-        call.status === "ok",
+    const credentialModeCalls = scheduledTaskUpdateCalls(result.session).filter(
+      (call) => call.arguments?.credential_mode !== undefined,
     );
     expect(credentialModeCalls).toHaveLength(1);
     expect(credentialModeCalls[0]?.arguments).toMatchObject({

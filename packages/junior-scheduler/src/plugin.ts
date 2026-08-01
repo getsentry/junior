@@ -31,7 +31,6 @@ import {
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
-  createSlackScheduleSetCredentialModeTool,
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
 } from "./schedule-tools";
@@ -440,7 +439,7 @@ export function schedulerPlugin() {
         }
         return [
           {
-            text: "Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode unless the creator explicitly requires system credentials. Use the credential-mode tool for later changes; only the task creator may enable or re-enable creator credential use.",
+            text: "Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode unless the creator explicitly requires system credentials. For later changes, only the task creator may enable or re-enable creator credential use.",
           },
         ];
       },
@@ -455,8 +454,6 @@ export function schedulerPlugin() {
         return {
           slackScheduleCreateTask: createSlackScheduleCreateTaskTool(context),
           slackScheduleListTasks: createSlackScheduleListTasksTool(context),
-          slackScheduleSetCredentialMode:
-            createSlackScheduleSetCredentialModeTool(context),
           slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(context),
           slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(context),
           slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(context),

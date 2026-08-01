@@ -41,10 +41,10 @@ Junior's durable agent runtime.
 - Tasks make the creator's connected credentials available by default when
   scheduled work needs user-bound authorization. The creator may require system
   credentials instead, and creator credential use works in DMs or channels.
-- A narrow credential-mode operation changes only credential availability.
-  Only the creator may enable or re-enable creator mode. Any conversation
-  manager may disable it, and another user's executable task edit clears it;
-  schedule, status, and run-now changes preserve it.
+- Task updates may change credential availability. Only the creator may enable
+  or re-enable creator mode. Any conversation manager may disable it, and
+  another user's executable task edit clears it; schedule, status, and run-now
+  changes preserve it.
 - Scheduled execution remains a system actor. At dispatch, creator mode derives
   a user credential subject bound to the exact scheduler task; interactive OAuth
   remains disabled.
@@ -56,8 +56,8 @@ Junior's durable agent runtime.
 
 ## Operations
 
-The plugin exposes create, update, credential-mode, delete, list, and run-now
-tools plus bounded operational reporting. The dashboard exposes a searchable
+The plugin exposes create, update, delete, list, and run-now tools plus bounded
+operational reporting. The dashboard exposes a searchable
 **Scheduled tasks** user page containing non-deleted tasks created by the
 signed-in viewer's linked Slack actors. A viewer may delete those tasks from the
 page.
