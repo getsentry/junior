@@ -921,9 +921,27 @@ describe("Slack schedule tools", () => {
   });
 
   it("accepts explicit creator credential mode when creating a task", async () => {
-    const created = await createTask(createContext(), {
+    const context = createContext();
+    const tool = createSlackScheduleCreateTaskTool(context);
+    const input = {
+      task: "Weekly issue digest: Summarize open scheduler issues.",
+      schedule: {
+        kind: "recurring" as const,
+        frequency: "weekly" as const,
+        time: "09:00",
+        weekdays: ["monday" as const],
+        timezone: "America/Los_Angeles",
+      },
       credential_mode: "creator",
-    });
+    } as const;
+
+    expect(tool.prepareArguments?.(input)).not.toHaveProperty(
+      "credential_mode",
+    );
+    expect(
+      tool.prepareArguments?.({ ...input, credential_mode: "system" }),
+    ).toHaveProperty("credential_mode", "system");
+    const created = await executeTool(tool, input);
 
     expect(created).toMatchObject({
       task: { credential_mode: "creator" },

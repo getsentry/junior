@@ -52,6 +52,19 @@ export function createSlackScheduleCreateTaskTool(
           .optional(),
       })
       .strict(),
+    prepareArguments(args) {
+      const input = args as {
+        task: string;
+        schedule: z.input<typeof scheduleIntentSchema>;
+        credential_mode?: "creator" | "system" | null;
+      };
+      if (input?.credential_mode !== "creator") {
+        return input;
+      }
+      const prepared = { ...input };
+      delete prepared.credential_mode;
+      return prepared;
+    },
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input, options) => {
       const destination = requireActiveConversation(context);
