@@ -21,10 +21,11 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The recurring task is created without asking for separate confirmation to use credentials needed for the requested work.",
+          "The reply may accurately say Junior's scheduled task can use the creator's connected Sentry access; credential access alone does not mean the task executes as the user.",
         ],
         fail: [
           "Do not require the user to separately authorize routine connected credential use.",
-          "Do not claim the scheduled run executes as the user rather than as Junior's scheduler.",
+          "Do not explicitly claim the scheduled run's actor is the user rather than Junior's scheduler.",
         ],
       }),
     });
