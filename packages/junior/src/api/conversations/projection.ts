@@ -1,6 +1,7 @@
 import {
   formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
+  type SlackConversationVisibility,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackSourceUrl } from "@/chat/slack/source-link";
@@ -115,12 +116,14 @@ function titleFromConversation(args: {
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
   surface: ConversationSurface;
+  visibility?: SlackConversationVisibility;
 }): string {
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName = args.conversation.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: args.conversation.conversationId,
     channelName: effectiveChannelName,
+    ...(args.visibility ? { visibility: args.visibility } : {}),
   });
   const privateLabel = args.canViewPrivateContent
     ? undefined
@@ -139,6 +142,7 @@ function titleFromConversation(args: {
 function channelNameFromConversation(
   conversation: ConversationProjectionSource,
   canViewPrivateContent: boolean,
+  visibility?: SlackConversationVisibility,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
   const slackThread = parseSlackThreadId(conversation.conversationId);
@@ -148,6 +152,7 @@ function channelNameFromConversation(
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: conversation.conversationId,
     channelName: effectiveChannelName,
+    ...(visibility ? { visibility } : {}),
   });
   if (!canViewPrivateContent) {
     return privateConversationLabel(slackConversation);
@@ -194,6 +199,11 @@ export function conversationSummaryFromStoredConversation(args: {
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
   const canViewPrivateContent = args.access?.canViewPrivateContent ?? false;
+  const accessVisibility = args.access?.visibility;
+  const visibility =
+    accessVisibility === "public" || accessVisibility === "private"
+      ? accessVisibility
+      : undefined;
   const surface = surfaceFromSource(
     conversation.source,
     conversation.conversationId,
@@ -207,6 +217,7 @@ export function conversationSummaryFromStoredConversation(args: {
   const channelName = channelNameFromConversation(
     conversation,
     canViewPrivateContent,
+    visibility,
   );
   const channelNameRedacted = channelNameRedactedFromConversation(
     conversation,
@@ -219,6 +230,7 @@ export function conversationSummaryFromStoredConversation(args: {
       canViewPrivateContent,
       conversation,
       surface,
+      visibility,
     }),
     isParticipant: args.access?.isParticipant ?? false,
     lastProgressAt: new Date(

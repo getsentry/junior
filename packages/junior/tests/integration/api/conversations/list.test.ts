@@ -75,7 +75,7 @@ describe("conversation list API", () => {
       });
 
       await store.recordActivity({
-        conversationId: "slack:D123:private-source-link",
+        conversationId: "slack:D123:1700000000.000200",
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -96,10 +96,14 @@ describe("conversation list API", () => {
         await readConversationFeedFromSql()
       ).conversations.find(
         (conversation) =>
-          conversation.conversationId === "slack:D123:private-source-link",
+          conversation.conversationId === "slack:D123:1700000000.000200",
       );
       expect(privateSummary).toBeDefined();
       expect(privateSummary).not.toHaveProperty("sourceUrl");
+      expect(privateSummary).toMatchObject({
+        channelName: "Direct Message",
+        displayTitle: "Direct Message",
+      });
     } finally {
       await fixture.close();
     }

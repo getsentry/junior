@@ -19,11 +19,7 @@ export type SlackConversationVisibility = "public" | "private";
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
-  /**
-   * Visibility proven by a source signal (`channel_type`) or narrowed toward
-   * private by a `D`/`G` id prefix. Undefined for `C`-prefixed conversations
-   * without a signal, which may be public or private.
-   */
+  /** Visibility proven by source or persisted metadata. */
   visibility?: SlackConversationVisibility;
 }
 
@@ -138,12 +134,24 @@ export function resolveSlackConversationContext(input: {
 export function resolveSlackConversationContextFromThreadId(input: {
   threadId?: string;
   channelName?: string;
+  visibility?: SlackConversationVisibility;
 }): SlackConversationContext | undefined {
   const slackThread = parseSlackThreadId(input.threadId);
-  return resolveSlackConversationContext({
+  const context = resolveSlackConversationContext({
     channelId: slackThread?.channelId,
     channelName: input.channelName,
   });
+  if (!context || !input.visibility) {
+    return context;
+  }
+  return {
+    ...context,
+    type:
+      input.visibility === "private" && context.type === "public_channel"
+        ? "private_channel"
+        : context.type,
+    visibility: input.visibility,
+  };
 }
 
 /** Render a human label for a privacy-preserving Slack conversation type. */
