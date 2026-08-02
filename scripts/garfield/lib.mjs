@@ -9,25 +9,25 @@ export const NATIVE_LANES = [
     id: "behavior-spec",
     title: "Behavior/spec",
     always: true,
-    card: "references/review-lanes.md#behavior-spec",
+    card: "skills/garfield/references/review-lanes.md#behavior-spec",
   },
   {
     id: "repository-instructions",
     title: "Repository instructions",
     always: true,
-    card: "references/review-lanes.md#repository-instructions",
+    card: "skills/garfield/references/review-lanes.md#repository-instructions",
   },
   {
     id: "validation-sufficiency",
     title: "Validation sufficiency",
     always: true,
-    card: "references/review-lanes.md#validation-sufficiency",
+    card: "skills/garfield/references/review-lanes.md#validation-sufficiency",
   },
   {
     id: "specs-docs",
     title: "Specs/docs",
     always: false,
-    card: "references/review-lanes.md#specsdocs",
+    card: "skills/garfield/references/review-lanes.md#specsdocs",
     match: (ctx) =>
       matchesAny(ctx.changedFiles, [
         /(^|\/)(README|AGENTS|CONTRIBUTING|TERMINOLOGY|TELEMETRY)\.md$/i,
@@ -42,7 +42,7 @@ export const NATIVE_LANES = [
     id: "dead-code",
     title: "Dead code",
     always: false,
-    card: "references/review-lanes.md#dead-code",
+    card: "skills/garfield/references/review-lanes.md#dead-code",
     match: (ctx) =>
       ctx.statusLetters.some((letter) => /[DTRC]/.test(letter)) ||
       ctx.touchesCode,
@@ -51,14 +51,14 @@ export const NATIVE_LANES = [
     id: "delayering",
     title: "Delayering",
     always: false,
-    card: "references/review-lanes.md#delayering",
+    card: "skills/garfield/references/review-lanes.md#delayering",
     match: (ctx) => ctx.touchesCode,
   },
   {
     id: "type-boundaries",
     title: "Type boundaries",
     always: false,
-    card: "references/review-lanes.md#type-boundaries",
+    card: "skills/garfield/references/review-lanes.md#type-boundaries",
     match: (ctx) =>
       matchesAny(ctx.changedFiles, [/\.tsx?$/, /\.jsx?$/, /\.mjs$/, /\.cjs$/]),
   },
@@ -66,7 +66,7 @@ export const NATIVE_LANES = [
     id: "generated-dependencies",
     title: "Generated/dependencies",
     always: false,
-    card: "references/review-lanes.md#generateddependencies",
+    card: "skills/garfield/references/review-lanes.md#generateddependencies",
     match: (ctx) =>
       matchesAny(ctx.changedFiles, [
         /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json)$/,
@@ -82,21 +82,21 @@ export const NATIVE_LANES = [
     id: "code-comments",
     title: "Code comments",
     always: false,
-    card: "references/code-comments.md",
+    card: "skills/garfield/references/code-comments.md",
     match: (ctx) => ctx.touchesCode,
   },
   {
     id: "implementation-minimalism",
     title: "Implementation minimalism",
     always: false,
-    card: "references/implementation-minimalism.md",
+    card: "skills/garfield/references/implementation-minimalism.md",
     match: (ctx) => ctx.touchesCode,
   },
   {
     id: "interface-design",
     title: "Interface design",
     always: false,
-    card: "references/interface-design.md",
+    card: "skills/garfield/references/interface-design.md",
     match: (ctx) =>
       matchesAny(ctx.changedFiles, [
         /\.[cm]?[jt]sx?$/,
@@ -108,7 +108,7 @@ export const NATIVE_LANES = [
     id: "test-quality",
     title: "Test quality",
     always: false,
-    card: "references/test-quality.md",
+    card: "skills/garfield/references/test-quality.md",
     match: (ctx) =>
       matchesAny(ctx.changedFiles, [
         /\.test\.[cm]?[jt]sx?$/,
@@ -365,8 +365,16 @@ export function buildSliceContext(changedFiles) {
   };
 }
 
-/** Classify native lanes plus one lane per source policy. */
-export function classifyLanes(changedFiles, policies) {
+/**
+ * Classify native lanes plus optional source policies.
+ *
+ * Profiles:
+ * - core (default): always-on lanes + matched natives. Policies are skipped and
+ *   covered by repository-instructions, keeping the agent loop cheap.
+ * - full: also opens one lane per source-app policy.
+ */
+export function classifyLanes(changedFiles, policies, options = {}) {
+  const profile = options.profile === "full" ? "full" : "core";
   const ctx = buildSliceContext(changedFiles);
   const lanes = [];
 
@@ -399,20 +407,129 @@ export function classifyLanes(changedFiles, policies) {
   for (const policyPath of policies) {
     const id = `policy:${policyPath}`;
     const title = path.basename(policyPath, ".md");
-    // Source-app policies are always considered; cheap/narrow reviewers still
-    // only receive the one policy file.
+    if (profile === "full") {
+      lanes.push({
+        id,
+        title: `Policy: ${title}`,
+        kind: "policy",
+        status: "applicable",
+        reason: "full profile reviews each source-app policy",
+        card: policyPath,
+        modelHint: "cheap",
+      });
+      continue;
+    }
     lanes.push({
       id,
       title: `Policy: ${title}`,
       kind: "policy",
-      status: "applicable",
-      reason: "source-app policy is always reviewed against the slice",
+      status: "skipped",
+      reason:
+        "core profile defers policies to repository-instructions; use --profile full",
       card: policyPath,
       modelHint: "cheap",
     });
   }
 
   return lanes;
+}
+
+/** Stable filesystem name for a lane id. */
+export function laneFileStem(laneId) {
+  return laneId.replace(/\.md$/i, "").replace(/[^a-zA-Z0-9._-]+/g, "__");
+}
+
+/** Write the agent brief that Junior should execute next. */
+export function writeAgentBrief({ bundle, plan, runDir }) {
+  const applicable = plan.lanes.filter((lane) => lane.status === "applicable");
+  const lines = [
+    "# Garfield agent brief",
+    "",
+    "You own this loop end-to-end. Do not ask the user to fill findings files.",
+    "Do not stop after prepare. Complete review → fix → validate → report.",
+    "",
+    `runDir: ${runDir}`,
+    `runId: ${bundle.runId}`,
+    `goal: ${bundle.goal}`,
+    `base: ${bundle.baseRef}`,
+    `head: ${bundle.headSha}`,
+    `changed files: ${bundle.changedFiles.length}`,
+    `applicable lanes: ${applicable.length}`,
+    "",
+    "## Non-goals",
+    ...(bundle.nonGoals.length
+      ? bundle.nonGoals.map((item) => `- ${item}`)
+      : ["- (none)"]),
+    "",
+    "## Changed files",
+    ...(bundle.changedFiles.length
+      ? bundle.changedFiles.map((file) => `- ${file.status} ${file.path}`)
+      : ["- (none)"]),
+    "",
+    "## Lane queue (max 3 in flight conceptually; work serially if alone)",
+  ];
+
+  for (const [index, lane] of applicable.entries()) {
+    const stem = laneFileStem(lane.id);
+    lines.push(
+      `${index + 1}. **${lane.title}** (${lane.modelHint})`,
+      `   - prompt: prompts/${stem}.md`,
+      `   - write findings to: findings/${stem}.txt`,
+      `   - card: ${lane.card}`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## Required procedure",
+    "1. For each applicable lane, read only that lane prompt + relevant changed files.",
+    "2. Write `none` or Garfield finding lines into the matching findings file.",
+    "3. Run: `node scripts/garfield/merge-findings.mjs --run-dir <runDir>`",
+    "4. Fix current-diff blocker/high findings with the smallest intent-preserving edits.",
+    "5. Re-run affected lanes only when a fix changes their scope; update findings files.",
+    "6. Run: `node scripts/garfield/validate.mjs --run-dir <runDir>`",
+    "7. Fix required validation failures, then validate again.",
+    "8. Run: `node scripts/garfield/report.mjs --run-dir <runDir>`",
+    "9. Reply with the report status, residual deferred concerns, and validation results.",
+    "",
+    "## Finding format",
+    "```",
+    "[severity][evidence:<label[,label]> <locator>;cause:introduced|worsened|stale|missing-required] path:line - concern. impact: <impact>. fix: <smallest change>.",
+    "```",
+    "If no findings: exactly `none`.",
+    "",
+    "## Stop conditions",
+    "- success: no blocker/high left, required validation passes, report is `garfield: pass`",
+    "- blocked: same concern twice, needs clarification, or fix would expand intent",
+    "",
+  );
+
+  const briefPath = path.join(runDir, "agent-brief.md");
+  fs.writeFileSync(briefPath, lines.join("\n"), "utf8");
+
+  const todoPath = path.join(runDir, "agent-todo.json");
+  writeJson(todoPath, {
+    runId: bundle.runId,
+    runDir,
+    goal: bundle.goal,
+    mode: "agent",
+    applicableLanes: applicable.map((lane) => ({
+      id: lane.id,
+      title: lane.title,
+      modelHint: lane.modelHint,
+      card: lane.card,
+      promptPath: path.join(runDir, "prompts", `${laneFileStem(lane.id)}.md`),
+      findingPath: path.join(runDir, "findings", `${laneFileStem(lane.id)}.txt`),
+    })),
+    commands: {
+      merge: `node scripts/garfield/merge-findings.mjs --run-dir ${runDir}`,
+      validate: `node scripts/garfield/validate.mjs --run-dir ${runDir}`,
+      report: `node scripts/garfield/report.mjs --run-dir ${runDir}`,
+      finalize: `node scripts/garfield/run.mjs --finalize --run-dir ${runDir}`,
+    },
+  });
+
+  return { briefPath, todoPath, applicable };
 }
 
 function modelHintForLane(id) {

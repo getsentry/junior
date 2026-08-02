@@ -38,11 +38,9 @@ for (const lane of plan.lanes) {
   const findingPath = path.join(findingsDir, `${safeName}.txt`);
   fs.writeFileSync(promptPath, renderLanePrompt({ bundle, lane, runDir }), "utf8");
   if (!fs.existsSync(findingPath)) {
-    fs.writeFileSync(
-      findingPath,
-      "# Replace this file with reviewer output (`none` or finding lines).\n",
-      "utf8",
-    );
+    // Empty stub: agent/manual reviewer must write `none` or finding lines.
+    // merge-findings treats empty/placeholder as pending.
+    fs.writeFileSync(findingPath, "", "utf8");
   }
   written.push({
     laneId: lane.id,

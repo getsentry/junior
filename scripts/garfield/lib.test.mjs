@@ -7,6 +7,7 @@ import {
   parseFindings,
   packagesForFiles,
   buildValidationCommands,
+  laneFileStem,
 } from "./lib.mjs";
 
 test("parseArgs keeps repeated flags", () => {
@@ -25,7 +26,7 @@ test("parseArgs keeps repeated flags", () => {
   ]);
 });
 
-test("classifyLanes always includes core lanes and policies", () => {
+test("classifyLanes core profile skips source-app policies", () => {
   const lanes = classifyLanes(
     [{ path: "packages/junior/src/chat/foo.ts", status: "M" }],
     ["policies/testing.md", "policies/security.md"],
@@ -36,7 +37,20 @@ test("classifyLanes always includes core lanes and policies", () => {
   assert.equal(byId["validation-sufficiency"].status, "applicable");
   assert.equal(byId["type-boundaries"].status, "applicable");
   assert.equal(byId["generated-dependencies"].status, "skipped");
+  assert.equal(byId["policy:policies/testing.md"].status, "skipped");
+  assert.equal(byId["policy:policies/security.md"].status, "skipped");
+  assert.equal(byId["policy:policies/security.md"].modelHint, "cheap");
+});
+
+test("classifyLanes full profile opens each source-app policy", () => {
+  const lanes = classifyLanes(
+    [{ path: "packages/junior/src/chat/foo.ts", status: "M" }],
+    ["policies/testing.md", "policies/security.md"],
+    { profile: "full" },
+  );
+  const byId = Object.fromEntries(lanes.map((lane) => [lane.id, lane]));
   assert.equal(byId["policy:policies/testing.md"].status, "applicable");
+  assert.equal(byId["policy:policies/security.md"].status, "applicable");
   assert.equal(byId["policy:policies/security.md"].modelHint, "cheap");
 });
 
@@ -98,4 +112,12 @@ test("buildValidationCommands prefers package filters", () => {
     ),
   );
   assert.ok(commands.some((item) => item.id === "skills-check"));
+});
+
+test("laneFileStem stabilizes policy ids", () => {
+  assert.equal(laneFileStem("behavior-spec"), "behavior-spec");
+  assert.equal(
+    laneFileStem("policy:policies/testing.md"),
+    "policy__policies__testing",
+  );
 });

@@ -9,7 +9,7 @@ import {
 
 function usage(exitCode = 1) {
   console.error(
-    "Usage: node scripts/garfield/classify-lanes.mjs --run-dir <path>",
+    "Usage: node scripts/garfield/classify-lanes.mjs --run-dir <path> [--profile core|full]",
   );
   process.exit(exitCode);
 }
@@ -19,8 +19,9 @@ if (args.help || args.h) usage(0);
 if (typeof args["run-dir"] !== "string") usage(1);
 
 const runDir = path.resolve(args["run-dir"]);
+const profile = args.profile === "full" ? "full" : "core";
 const bundle = readJson(path.join(runDir, "bundle.json"));
-const lanes = classifyLanes(bundle.changedFiles, bundle.policies);
+const lanes = classifyLanes(bundle.changedFiles, bundle.policies, { profile });
 const applicable = lanes.filter((lane) => lane.status === "applicable");
 const skipped = lanes.filter((lane) => lane.status === "skipped");
 
@@ -28,6 +29,7 @@ const plan = {
   version: 1,
   runId: bundle.runId,
   contentHash: bundle.contentHash,
+  profile,
   lanes,
   applicableLaneIds: applicable.map((lane) => lane.id),
   skippedLaneIds: skipped.map((lane) => lane.id),
@@ -40,6 +42,7 @@ console.log(
     {
       ok: true,
       runId: bundle.runId,
+      profile,
       applicable: applicable.length,
       skipped: skipped.length,
       applicableLaneIds: plan.applicableLaneIds,
