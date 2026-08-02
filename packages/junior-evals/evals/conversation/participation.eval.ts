@@ -175,7 +175,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
+          "What changed in the last deploy? The API gateway added regional routing, the billing worker now batches invoice retries, and the auth service rotates session tokens.",
           {
             thread: genuineFollowUpThread,
           },
