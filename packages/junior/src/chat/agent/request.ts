@@ -87,9 +87,7 @@ export interface AgentRunRouting {
    */
   slackActionToken?: SlackActionToken;
   destination: Destination;
-  /** Fail-closed privacy policy applied to this run. */
-  conversationPrivacy: ConversationPrivacy;
-  /** Confirmed destination metadata; omit when the authority is unavailable. */
+  /** Confirmed conversation visibility; omit when the authority is unavailable. */
   destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: {

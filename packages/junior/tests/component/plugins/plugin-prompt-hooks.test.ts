@@ -178,7 +178,6 @@ describe("plugin prompt hook composition", () => {
       turnId: "turn-plugin-prompt-hooks",
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -225,7 +224,6 @@ describe("plugin prompt hook composition", () => {
       turnId,
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -302,7 +300,6 @@ describe("plugin prompt hook composition", () => {
       turnId,
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private" as const,
         destinationVisibility: "private" as const,
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -346,7 +343,6 @@ describe("plugin prompt hook composition", () => {
       turnId: "turn-plugin-prompt-follow-up-1",
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -370,7 +366,6 @@ describe("plugin prompt hook composition", () => {
         ] as never,
       },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -389,7 +384,6 @@ describe("plugin prompt hook composition", () => {
       turnId: "turn-plugin-prompt-steering",
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -430,7 +424,6 @@ describe("plugin prompt hook composition", () => {
       turnId: "turn-plugin-prompt-resume-before-prompt",
       input: { messageText: "resume me" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -467,7 +460,6 @@ describe("plugin prompt hook composition", () => {
       turnId: "turn-plugin-prompt-resume-after-prompt",
       input: { messageText: "resume me" },
       routing: {
-        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,

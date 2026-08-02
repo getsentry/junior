@@ -130,7 +130,6 @@ import {
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
-import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 import { resolveConfirmedDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {
@@ -491,9 +490,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         options.execution?.destinationVisibility ??
         conversationVisibilityFromSlackChannelType(slackChannelType),
     });
-    const conversationPrivacy = resolveConversationPrivacy({
-      visibility: destinationVisibility,
-    });
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
@@ -505,7 +501,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         messageTs,
         teamId,
         threadTs,
-        type: conversationPrivacy === "public" ? "pub" : "priv",
+        type: destinationVisibility === "public" ? "pub" : "priv",
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
@@ -1363,7 +1359,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              conversationPrivacy,
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

@@ -73,7 +73,6 @@ describe("oauth resume slack integration", () => {
         "Your eval-auth MCP access is now connected. Continuing the original request...",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -162,7 +161,6 @@ describe("oauth resume slack integration", () => {
       initialStatus: { text: "Continuing request" },
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U456" },
@@ -201,7 +199,6 @@ describe("oauth resume slack integration", () => {
       initialText: "Connected. Continuing...",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -249,7 +246,6 @@ describe("oauth resume slack integration", () => {
       turnId,
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -302,7 +298,6 @@ describe("oauth resume slack integration", () => {
         turnId,
         replyContext: {
           routing: {
-            conversationPrivacy: "private",
             destinationVisibility: "private",
             credentialContext: {
               actor: { type: "user", userId: "U123" },
@@ -366,7 +361,6 @@ describe("oauth resume slack integration", () => {
       initialText: "",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -416,7 +410,6 @@ describe("oauth resume slack integration", () => {
       initialText: "Connected. Continuing...",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -473,7 +466,6 @@ describe("oauth resume slack integration", () => {
       initialText: "Connected. Continuing...",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
@@ -517,7 +509,6 @@ describe("oauth resume slack integration", () => {
       initialText: "Connected. Continuing...",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U123" },

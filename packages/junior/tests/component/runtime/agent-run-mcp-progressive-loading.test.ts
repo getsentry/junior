@@ -694,7 +694,6 @@ function makeAgentRunRequest(
       }),
       actor: TEST_ACTOR,
       ...(overrides.routing ?? {}),
-      conversationPrivacy: overrides.routing?.conversationPrivacy ?? "private",
     },
     ...(overrides.policy ? { policy: overrides.policy } : {}),
     ...(overrides.state ? { state: overrides.state } : {}),
@@ -1076,7 +1075,6 @@ describe("executeAgentRun progressive MCP loading", () => {
             ] as unknown as PiMessage[],
           },
           routing: {
-            conversationPrivacy: "private",
             destinationVisibility: "private",
             actor: { platform: "system", name: "scheduler" },
             credentialContext: {

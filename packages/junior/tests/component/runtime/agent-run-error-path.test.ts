@@ -36,7 +36,6 @@ describe("executeAgentRun error path", () => {
       turnId: "turn-sandbox-failure",
       input: { messageText: "hello" },
       routing: {
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         destinationVisibility: "private",
         source: LOCAL_SOURCE,
@@ -76,7 +75,6 @@ describe("executeAgentRun error path", () => {
         runId: "run-context-failure",
         input: { messageText: "hello" },
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           actor: {
             platform: "local",
@@ -113,7 +111,6 @@ describe("executeAgentRun error path", () => {
       input: { messageText: "hello" },
       policy: { reasoningLevel: "high" },
       routing: {
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         destinationVisibility: "private",
         source: LOCAL_SOURCE,
@@ -133,7 +130,6 @@ describe("executeAgentRun error path", () => {
         turnId: "turn-input-failure",
         input: { messageText: "hello" },
         routing: {
-          conversationPrivacy: "private",
           destination: LOCAL_DESTINATION,
           destinationVisibility: "private",
           source: LOCAL_SOURCE,
@@ -165,7 +161,6 @@ describe("executeAgentRun error path", () => {
         turnId: "turn-actor-mismatch",
         input: { messageText: "hello" },
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           destination: LOCAL_DESTINATION,
           source: LOCAL_SOURCE,
@@ -188,7 +183,6 @@ describe("executeAgentRun error path", () => {
         turnId: "turn-conversation-mismatch",
         input: { messageText: "hello" },
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           destination: LOCAL_DESTINATION,
           source: LOCAL_SOURCE,

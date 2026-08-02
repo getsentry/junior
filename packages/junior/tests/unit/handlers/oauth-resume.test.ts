@@ -138,7 +138,6 @@ describe("resumeSlackTurn", () => {
       initialText: "connected",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
@@ -188,7 +187,6 @@ describe("resumeSlackTurn", () => {
         threadTs: "1700000000.0005",
         replyContext: {
           routing: {
-            conversationPrivacy: "private",
             destinationVisibility: "private",
             credentialContext: {
               actor: { type: "user", userId: "U-test" },
@@ -259,7 +257,6 @@ describe("resumeSlackTurn", () => {
       threadTs: "1700000000.0006",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
@@ -319,7 +316,6 @@ describe("resumeSlackTurn", () => {
       threadTs: "1700000000.0002",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
@@ -354,7 +350,6 @@ describe("resumeSlackTurn", () => {
       threadTs: "1700000000.0003",
       replyContext: {
         routing: {
-          conversationPrivacy: "private",
           destinationVisibility: "private",
           credentialContext: {
             actor: { type: "user", userId: "U-test" },

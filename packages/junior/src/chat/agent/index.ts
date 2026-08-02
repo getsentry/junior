@@ -102,6 +102,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
+  resolveConversationPrivacy,
   runWithConversationPrivacy,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
@@ -198,7 +199,9 @@ export async function executeAgentRun(
   if (!request.routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const conversationPrivacy = request.routing.conversationPrivacy;
+  const conversationPrivacy = resolveConversationPrivacy({
+    visibility: request.routing.destinationVisibility,
+  });
   const credentialActor = request.routing.credentialContext?.actor;
   const actor = actorFromRouting(request.routing);
   const userActor = actor && "userId" in actor ? actor : undefined;
