@@ -278,7 +278,7 @@ interface GitHubWebhookEvent extends EvalBaseEvent {
     events: string[];
     intent: string;
     label: string;
-    resource_ref: string;
+    identifier: string;
     resource_type: string;
   };
   type: "github_webhook";
@@ -2398,8 +2398,8 @@ async function processEvents(args: {
         expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
         intent: event.subscription.intent,
         label: event.subscription.label,
-        provider: "github",
-        resourceRef: event.subscription.resource_ref,
+        namespace: "github",
+        identifier: event.subscription.identifier,
         resourceType: event.subscription.resource_type,
       },
       { nowMs, state: env.stateAdapter },
@@ -2410,11 +2410,14 @@ async function processEvents(args: {
       eventName: event.event_name,
     });
     for (const normalizedEvent of normalizedEvents) {
-      await ingestResourceEvent(normalizedEvent, {
-        nowMs,
-        queue: conversationWorkQueue,
-        state: env.stateAdapter,
-      });
+      await ingestResourceEvent(
+        { ...normalizedEvent, namespace: "github" },
+        {
+          nowMs,
+          queue: conversationWorkQueue,
+          state: env.stateAdapter,
+        },
+      );
     }
     await drainQueuedConversationWork();
   };

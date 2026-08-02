@@ -69,7 +69,7 @@ describe("updatePullRequest", () => {
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });

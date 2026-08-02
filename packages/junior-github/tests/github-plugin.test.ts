@@ -496,6 +496,17 @@ describe("github plugin", () => {
     expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
   });
 
+  it("suggests new issue events for repository watches", () => {
+    const repository = githubPlugin().resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "repository",
+    );
+
+    expect(repository).toMatchObject({
+      supportedEvents: expect.arrayContaining(["issue.opened"]),
+      suggestedEvents: expect.arrayContaining(["issue.opened"]),
+    });
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({
@@ -630,6 +641,7 @@ describe("github plugin", () => {
   });
 
   it("creates issues with deterministic requester attribution", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -658,9 +670,22 @@ describe("github plugin", () => {
       target: "createIssue",
       data: {
         number: 660,
+        subscribable: {
+          namespace: "github",
+          identifier: "getsentry/junior#660",
+          type: "issue",
+        },
         url: "https://github.com/getsentry/junior/issues/660",
       },
       number: 660,
+      subscribable: {
+        supportedEvents: [
+          "issue.comment.created",
+          "issue.opened",
+          "issue.closed",
+          "issue.reopened",
+        ],
+      },
       url: "https://github.com/getsentry/junior/issues/660",
     });
 
@@ -1085,27 +1110,27 @@ Conversation: \`local:test:old-conversation\`
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
-        provider: "github",
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        namespace: "github",
+        identifier: "getsentry/junior#691",
         suggestedEvents: [
-          "checks.failed",
-          "comment.created",
-          "review.changes_requested",
-          "review.commented",
-          "review_comment.created",
-          "state.merged",
-          "state.closed_unmerged",
+          "pull_request.checks.failed",
+          "pull_request.comment.created",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         supportedEvents: [
-          "checks.failed",
-          "checks.recovered",
-          "comment.created",
-          "review.approved",
-          "review.changes_requested",
-          "review.commented",
-          "review_comment.created",
-          "state.merged",
-          "state.closed_unmerged",
+          "pull_request.checks.failed",
+          "pull_request.checks.recovered",
+          "pull_request.comment.created",
+          "pull_request.review.approved",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         type: "pull_request",
       },
@@ -1279,7 +1304,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -1294,7 +1319,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -1330,7 +1355,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });

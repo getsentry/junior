@@ -375,10 +375,10 @@ describe("Slack conversation work execution", () => {
       message: createSlackResourceEventInboundMessage({
         event: {
           eventKey: "check-suite-1",
-          eventType: "checks.failed",
+          eventType: "pull_request.checks.failed",
           occurredAtMs: 1_700_000_000_000,
-          provider: "github",
-          resourceRef: "github:pull_request:getsentry/junior#691",
+          namespace: "github",
+          identifier: "getsentry/junior#691",
         },
         subscription: {
           conversationId: CONVERSATION_ID,
@@ -1004,8 +1004,8 @@ describe("Slack conversation work execution", () => {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
               occurredAtMs: 2_000,
-              provider: "github",
-              resourceRef: "github:pull_request:getsentry/junior#1010",
+              namespace: "github",
+              identifier: "getsentry/junior#1010",
             },
             subscription: {
               conversationId: CONVERSATION_ID,

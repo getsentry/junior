@@ -35,7 +35,7 @@ import {
 } from "@/chat/plugins/validation";
 import type {
   PluginRegistration,
-  ResourceEventPublisher,
+  ResourceEvent,
   PluginRouteMethod,
 } from "@sentry/junior-plugin-api";
 import {
@@ -590,7 +590,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
-  const resourceEvents: ResourceEventPublisher = {
+  const resourceEvents: { publish(event: ResourceEvent): Promise<void> } = {
     async publish(event) {
       const conversationWork = getConversationWorkOptions();
       await ingestResourceEvent(event, {

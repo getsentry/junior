@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { ResourceEvent } from "@sentry/junior-plugin-api";
+import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
@@ -48,7 +48,7 @@ function signedRequest(body: unknown, secret = SECRET): Request {
 }
 
 function routeFixture() {
-  const events: ResourceEvent[] = [];
+  const events: ResourceEventInput[] = [];
   return {
     events,
     route: createVercelWebhookRoute({
@@ -75,8 +75,7 @@ describe("Vercel webhook resource events", () => {
         eventKey: `vercel:evt_delivery_123:${eventType}`,
         eventType,
         occurredAtMs: 1_784_043_000_000,
-        provider: "vercel",
-        resourceRef: `vercel:deployment-source:prj_junior:production:${COMMIT_SHA}`,
+        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA}`,
         terminal: true,
         trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
       },
@@ -91,7 +90,7 @@ describe("Vercel webhook resource events", () => {
 
     expect(normalizeVercelResourceEvents({ body })).toEqual([
       expect.objectContaining({
-        resourceRef: `vercel:deployment-source:prj_junior:preview:${COMMIT_SHA}`,
+        identifier: `deployment-source:prj_junior:preview:${COMMIT_SHA}`,
       }),
     ]);
   });
@@ -140,7 +139,6 @@ describe("Vercel webhook resource events", () => {
     expect(fixture.events).toEqual([
       expect.objectContaining({
         eventType: "deployment.succeeded",
-        provider: "vercel",
       }),
     ]);
   });
