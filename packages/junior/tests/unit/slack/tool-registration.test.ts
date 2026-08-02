@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
   createSlackSource,
+  defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
@@ -20,6 +21,20 @@ const noopEgress = {
     return new Response("ok");
   },
 };
+
+function resourceEventPlugin(enabled = true) {
+  return defineJuniorPlugin({
+    manifest: {
+      name: "resource-events-test",
+      displayName: "Resource events test",
+      description: "Publishes test resource events",
+    },
+    resourceEvents: {
+      resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
+      isEnabled: () => enabled,
+    },
+  });
+}
 
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
@@ -187,6 +202,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
+    setPlugins([schedulerPlugin(), resourceEventPlugin()]);
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
       [],
@@ -207,11 +223,23 @@ describe("Slack tool registration", () => {
     );
 
     expect(incomplete).not.toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(incomplete).toHaveProperty("searchResourceEventTypes");
+    expect(incomplete).toHaveProperty("watchResourceEvents");
     expect(complete).toHaveProperty("scheduler_slackScheduleCreateTask");
     expect(complete).toHaveProperty("scheduler_slackScheduleListTasks");
     expect(complete).toHaveProperty("scheduler_slackScheduleUpdateTask");
     expect(complete).toHaveProperty("scheduler_slackScheduleDeleteTask");
     expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(complete).toHaveProperty("searchResourceEventTypes");
+    expect(complete).toHaveProperty("watchResourceEvents");
+  });
+
+  it("does not expose resource event tools without an active plugin", () => {
+    setPlugins([schedulerPlugin(), resourceEventPlugin(false)]);
+    const tools = createTools([], {}, ctx("C12345"));
+
+    expect(tools).not.toHaveProperty("searchResourceEventTypes");
+    expect(tools).not.toHaveProperty("watchResourceEvents");
   });
 
   it("does not register schedule tools without a actor", () => {

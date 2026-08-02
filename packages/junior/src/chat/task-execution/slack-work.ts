@@ -399,8 +399,8 @@ const slackConversationMessageMetadataSchema = z.union([
         .object({
           eventKey: z.string(),
           eventType: z.string(),
-          provider: z.string(),
-          resourceRef: z.string(),
+          namespace: z.string(),
+          identifier: z.string(),
           subscriptionId: z.string(),
         })
         .strict(),
@@ -435,8 +435,8 @@ interface SlackResourceEventInboundInput {
     eventKey: string;
     eventType: string;
     occurredAtMs: number;
-    provider: string;
-    resourceRef: string;
+    namespace: string;
+    identifier: string;
   };
   subscription: {
     conversationId: string;
@@ -594,8 +594,8 @@ export function createSlackResourceEventInboundMessage(
         resourceEvent: {
           eventKey: input.event.eventKey,
           eventType: input.event.eventType,
-          provider: input.event.provider,
-          resourceRef: input.event.resourceRef,
+          namespace: input.event.namespace,
+          identifier: input.event.identifier,
           subscriptionId: input.subscription.id,
         },
       } satisfies SlackConversationMessageMetadata,

@@ -1,0 +1,79 @@
+import { z } from "zod";
+import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
+import {
+  requireResourceWatchConversation,
+  RESOURCE_WATCH_TOOL_SOURCE,
+} from "@/chat/resource-events/tool-support";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { zodTool } from "@/chat/tool-support/zod-tool";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+const listedResourceWatchSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    identifier: z.string().min(1),
+    namespace: z.string().min(1),
+    resourceType: z.string().min(1),
+    events: z.array(z.string().min(1)).min(1),
+    intent: z.string().min(1),
+    expiresAtMs: z.number().finite(),
+  })
+  .strict();
+
+const resultDataSchema = z
+  .object({ subscriptions: z.array(listedResourceWatchSchema) })
+  .strict();
+
+const outputSchema = juniorToolResultSchema
+  .extend({
+    ok: z.literal(true),
+    status: z.literal("success"),
+    data: resultDataSchema,
+    subscriptions: z.array(listedResourceWatchSchema),
+  })
+  .strict();
+
+/** Create the tool that lists active resource watches for this conversation. */
+export function createListResourceEventSubscriptionsTool(
+  context: ToolRuntimeContext,
+) {
+  return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
+    description:
+      "List active resource event subscriptions for the current conversation.",
+    exposure: "deferred",
+    source: RESOURCE_WATCH_TOOL_SOURCE,
+    inputSchema: z.object({}).strict(),
+    outputSchema,
+    async execute() {
+      const conversationId = requireResourceWatchConversation(context);
+      const subscriptions = await listResourceEventSubscriptions({
+        conversationId,
+      });
+      const details = {
+        subscriptions: subscriptions.map((subscription) => ({
+          id: subscription.id,
+          label: subscription.label,
+          identifier: subscription.identifier,
+          namespace: subscription.namespace,
+          resourceType: subscription.resourceType,
+          events: subscription.events,
+          intent: subscription.intent,
+          expiresAtMs: subscription.expiresAtMs,
+        })),
+      };
+      return {
+        ok: true as const,
+        status: "success" as const,
+        data: details,
+        ...details,
+      };
+    },
+  });
+}

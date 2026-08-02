@@ -1,6 +1,6 @@
 ---
 name: eval-resource-events
-description: Use for `/eval-resource-events` requests that create a watchable resource and monitor requested outcomes.
+description: Use for `$eval-resource-events` requests that create a watchable resource and monitor requested outcomes.
 ---
 
 # Eval Resource Events

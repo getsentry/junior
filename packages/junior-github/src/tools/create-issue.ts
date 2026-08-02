@@ -2,6 +2,8 @@ import {
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
+  subscribableResourceSchema,
+  type SubscribableResource,
   type PluginToolExecuteOptions,
   type PluginToolResult,
   type ToolRegistrationHookContext,
@@ -11,6 +13,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { gitHubIssueSubscribable } from "../resource-events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
@@ -95,15 +98,20 @@ interface GitHubIssueResult {
   url: string;
 }
 
-interface GitHubIssueToolResult extends PluginToolResult, GitHubIssueResult {
+interface GitHubIssueData extends GitHubIssueResult {
+  subscribable?: SubscribableResource;
+}
+
+interface GitHubIssueToolResult extends PluginToolResult, GitHubIssueData {
   ok: true;
   status: "success";
   target: "createIssue";
-  data: GitHubIssueResult;
+  data: GitHubIssueData;
 }
 
 const gitHubIssueDataSchema = z.object({
   number: z.number(),
+  subscribable: subscribableResourceSchema.optional(),
   url: z.string(),
 });
 
@@ -113,18 +121,26 @@ const gitHubIssueOutputSchema = pluginToolResultSchema.extend({
   target: z.literal("createIssue"),
   data: gitHubIssueDataSchema,
   number: z.number(),
+  subscribable: subscribableResourceSchema.optional(),
   url: z.string(),
 });
 
 function gitHubIssueToolResult(
+  input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
 ): GitHubIssueToolResult {
+  const repo = parseRepo(input.repo);
+  const subscribable = gitHubIssueSubscribable({
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+  });
+  const data = { ...result, ...(subscribable ? { subscribable } : {}) };
   return {
     ok: true,
     status: "success",
     target: "createIssue",
-    data: result,
-    ...result,
+    data,
+    ...data,
   };
 }
 
@@ -328,7 +344,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               url: state.url,
             };
             await annotateIssue(ctx, completedInput, completedResult);
-            return gitHubIssueToolResult(completedResult);
+            return gitHubIssueToolResult(completedInput, completedResult);
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -367,7 +383,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               );
             }
             await annotateIssue(ctx, parsedInput, result);
-            return gitHubIssueToolResult(result);
+            return gitHubIssueToolResult(parsedInput, result);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||

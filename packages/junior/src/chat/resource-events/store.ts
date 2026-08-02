@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
-import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
+import {
+  destinationSchema,
+  resourceEventTypeSchema,
+  type Destination,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription";
+// This is a hard cutover from the provider/resourceRef record shape. Old
+// subscriptions are short-lived and expire under the previous prefix.
+const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription:v2";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_WAIT_MS = 10_000;
@@ -21,13 +27,13 @@ const subscriptionSchema = z
     conversationId: z.string().min(1),
     createdAtMs: z.number().finite(),
     destination: destinationSchema,
-    events: z.array(z.string().min(1)).min(1),
+    events: z.array(resourceEventTypeSchema).min(1),
     expiresAtMs: z.number().finite(),
     id: z.string().min(1),
     intent: z.string().min(1),
     label: z.string().min(1),
-    provider: z.string().min(1),
-    resourceRef: z.string().min(1),
+    namespace: z.string().min(1),
+    identifier: z.string().min(1),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
@@ -43,8 +49,8 @@ export interface CreateResourceEventSubscriptionInput {
   expiresAtMs: number;
   intent: string;
   label: string;
-  provider: string;
-  resourceRef: string;
+  namespace: string;
+  identifier: string;
   resourceType: string;
 }
 
@@ -60,8 +66,8 @@ function subscriptionLockKey(id: string): string {
   return `${RESOURCE_EVENT_PREFIX}:lock:${id}`;
 }
 
-function resourceIndexKey(provider: string, resourceRef: string): string {
-  return `${RESOURCE_EVENT_PREFIX}:resource:${digest(`${provider}\0${resourceRef}`)}`;
+function resourceIndexKey(namespace: string, identifier: string): string {
+  return `${RESOURCE_EVENT_PREFIX}:resource:${digest(`${namespace}\0${identifier}`)}`;
 }
 
 function conversationIndexKey(conversationId: string): string {
@@ -175,12 +181,12 @@ async function readSubscriptionIdIndex(
 function buildSubscriptionId(input: {
   conversationId: string;
   events: string[];
-  provider: string;
-  resourceRef: string;
+  namespace: string;
+  identifier: string;
 }): string {
   const eventKey = [...new Set(input.events)].sort().join("\0");
   return `resub_${digest(
-    `${input.provider}\0${input.resourceRef}\0${input.conversationId}\0${eventKey}`,
+    `${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}`,
   )}`;
 }
 
@@ -269,13 +275,13 @@ function matchesEvent(
   input: {
     eventType: string;
     nowMs: number;
-    provider: string;
-    resourceRef: string;
+    namespace: string;
+    identifier: string;
   },
 ): boolean {
   return (
-    subscription.provider === input.provider &&
-    subscription.resourceRef === input.resourceRef &&
+    subscription.namespace === input.namespace &&
+    subscription.identifier === input.identifier &&
     subscription.events.includes(input.eventType) &&
     activeAt(subscription, input.nowMs)
   );
@@ -301,8 +307,8 @@ export async function createResourceEventSubscription(
   const id = buildSubscriptionId({
     conversationId: input.conversationId,
     events,
-    provider: input.provider,
-    resourceRef: input.resourceRef,
+    namespace: input.namespace,
+    identifier: input.identifier,
   });
   const record: ResourceEventSubscription = {
     conversationId: input.conversationId,
@@ -313,8 +319,8 @@ export async function createResourceEventSubscription(
     id,
     intent: input.intent,
     label: input.label,
-    provider: input.provider,
-    resourceRef: input.resourceRef,
+    namespace: input.namespace,
+    identifier: input.identifier,
     resourceType: input.resourceType,
     status: "active",
     updatedAtMs: nowMs,
@@ -327,7 +333,7 @@ export async function createResourceEventSubscription(
   );
   await addToIndex(
     state,
-    resourceIndexKey(input.provider, input.resourceRef),
+    resourceIndexKey(input.namespace, input.identifier),
     id,
     nowMs,
   );
@@ -397,7 +403,7 @@ export async function cancelResourceEventSubscription(input: {
     );
     await removeFromIndex(
       state,
-      resourceIndexKey(current.provider, current.resourceRef),
+      resourceIndexKey(current.namespace, current.identifier),
       input.id,
       nowMs,
     );
@@ -428,12 +434,12 @@ export async function cancelSubscriptions(input: {
   }
 }
 
-/** Find active subscriptions interested in a normalized provider event. */
+/** Find active subscriptions interested in a normalized resource event. */
 export async function findMatchingResourceEventSubscriptions(input: {
   eventType: string;
   nowMs?: number;
-  provider: string;
-  resourceRef: string;
+  namespace: string;
+  identifier: string;
   state?: StateAdapter;
 }): Promise<ResourceEventSubscription[]> {
   const state = input.state ?? getStateAdapter();
@@ -441,7 +447,7 @@ export async function findMatchingResourceEventSubscriptions(input: {
   const nowMs = input.nowMs ?? Date.now();
   const ids = await readSubscriptionIdIndex(
     state,
-    resourceIndexKey(input.provider, input.resourceRef),
+    resourceIndexKey(input.namespace, input.identifier),
   );
   const records = await Promise.all(
     ids.map(async (id) =>
@@ -454,8 +460,8 @@ export async function findMatchingResourceEventSubscriptions(input: {
       matchesEvent(record, {
         eventType: input.eventType,
         nowMs,
-        provider: input.provider,
-        resourceRef: input.resourceRef,
+        namespace: input.namespace,
+        identifier: input.identifier,
       }),
   );
 }
@@ -465,8 +471,8 @@ export async function deliverResourceEventSubscription(input: {
   deliver: (subscription: ResourceEventSubscription) => Promise<boolean>;
   eventType: string;
   nowMs?: number;
-  provider: string;
-  resourceRef: string;
+  namespace: string;
+  identifier: string;
   state?: StateAdapter;
   subscription: ResourceEventSubscription;
   terminal?: boolean;
@@ -487,8 +493,8 @@ export async function deliverResourceEventSubscription(input: {
         !matchesEvent(current, {
           eventType: input.eventType,
           nowMs,
-          provider: input.provider,
-          resourceRef: input.resourceRef,
+          namespace: input.namespace,
+          identifier: input.identifier,
         })
       ) {
         return false;
@@ -517,7 +523,7 @@ export async function deliverResourceEventSubscription(input: {
         );
         await removeFromIndex(
           state,
-          resourceIndexKey(current.provider, current.resourceRef),
+          resourceIndexKey(current.namespace, current.identifier),
           current.id,
           nowMs,
         );

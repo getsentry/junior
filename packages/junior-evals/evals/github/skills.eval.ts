@@ -26,11 +26,11 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         resourceEventNotification({
-          eventType: "checks.failed",
+          eventType: "pull_request.checks.failed",
           intent:
             "Fix failing checks on this pull request and push the update.",
           label: "Fixture PR #42",
-          resourceRef: "github:pull:local/headless-fixture#42",
+          identifier: "local/headless-fixture#42",
           trustedSummary:
             'The build expects skills/github-headless-pr-fixture/project/src/status.ts to export buildStatus = "fixed". Apply the fix, commit it, push the pull request branch, and verify the result.',
         }),

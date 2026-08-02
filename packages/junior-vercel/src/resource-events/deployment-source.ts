@@ -13,12 +13,12 @@ export function vercelDeploymentSourceResource(input: {
   commitSha: string;
   projectId: string;
   target: VercelDeploymentTarget;
-}): Pick<SubscribableResource, "label" | "provider" | "resourceRef"> {
+}): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const commitSha = input.commitSha.toLowerCase();
   return {
     label: `Vercel ${input.target} deployment for ${input.projectId} at ${commitSha.slice(0, 12)}`,
-    provider: "vercel",
-    resourceRef: `vercel:deployment-source:${input.projectId}:${input.target}:${commitSha}`,
+    namespace: "vercel",
+    identifier: `deployment-source:${input.projectId}:${input.target}:${commitSha}`,
   };
 }
 
