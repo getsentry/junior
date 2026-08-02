@@ -223,6 +223,7 @@ describe("Slack tool registration", () => {
     );
 
     expect(incomplete).not.toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(incomplete).not.toHaveProperty("createEventTask");
     expect(incomplete).toHaveProperty("searchResourceEventTypes");
     expect(incomplete).toHaveProperty("watchResourceEvents");
     expect(complete).toHaveProperty("scheduler_slackScheduleCreateTask");
@@ -230,16 +231,34 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("scheduler_slackScheduleUpdateTask");
     expect(complete).toHaveProperty("scheduler_slackScheduleDeleteTask");
     expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(complete).toHaveProperty("createEventTask");
     expect(complete).toHaveProperty("searchResourceEventTypes");
     expect(complete).toHaveProperty("watchResourceEvents");
+    expect(complete).toHaveProperty("listEventTasks");
+    expect(complete).toHaveProperty("updateEventTask");
+    expect(complete).toHaveProperty("deleteEventTask");
   });
 
-  it("does not expose resource event tools without an active plugin", () => {
+  it("does not advertise scheduler as a resource event namespace", () => {
     setPlugins([schedulerPlugin(), resourceEventPlugin(false)]);
-    const tools = createTools([], {}, ctx("C12345"));
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+      },
+    );
 
+    expect(tools).not.toHaveProperty("createEventTask");
     expect(tools).not.toHaveProperty("searchResourceEventTypes");
     expect(tools).not.toHaveProperty("watchResourceEvents");
+    expect(tools).toHaveProperty("listEventTasks");
+    expect(tools).toHaveProperty("deleteEventTask");
   });
 
   it("does not register schedule tools without a actor", () => {
@@ -256,6 +275,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("scheduler_slackScheduleUpdateTask");
     expect(tools).not.toHaveProperty("scheduler_slackScheduleDeleteTask");
     expect(tools).not.toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(tools).not.toHaveProperty("createEventTask");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {

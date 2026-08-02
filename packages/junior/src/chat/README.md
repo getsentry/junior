@@ -32,8 +32,9 @@ mailbox-backed provider.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
-- `agent-dispatch/`: plugin dispatch authority, mailbox adaptation, and
-  plugin-facing outcome projection.
+- `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
+  adaptation, and plugin-facing outcome projection.
+- `event-tasks/`: durable instructions matched to normalized resource events.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `state/` and `conversations/`: persistence by concern.

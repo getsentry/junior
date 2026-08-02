@@ -104,7 +104,7 @@ const dispatchRecordSchema = z
       return;
     }
     if (
-      subject.binding.type !== "scheduled-task" ||
+      subject.binding.type !== subject.allowedWhen ||
       subject.binding.plugin !== record.plugin ||
       subject.binding.taskId !== subject.taskId
     ) {

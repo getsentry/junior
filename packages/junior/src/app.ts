@@ -74,6 +74,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 
 export { defineJuniorPlugins } from "./plugins";
@@ -593,10 +594,16 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const resourceEvents: { publish(event: ResourceEvent): Promise<void> } = {
     async publish(event) {
       const conversationWork = getConversationWorkOptions();
-      await ingestResourceEvent(event, {
-        queue: conversationWork.queue ?? getVercelConversationWorkQueue(),
-        state: conversationWork.state,
-      });
+      const queue = conversationWork.queue ?? getVercelConversationWorkQueue();
+      await Promise.all([
+        ingestResourceEvent(event, {
+          queue,
+          state: conversationWork.state,
+        }),
+        ingestEventTasks(event, {
+          queue,
+        }),
+      ]);
     },
   };
   let sandboxEgressTracePropagationDomains: string[] = [];

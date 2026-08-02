@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-dispatch/validation";
 import { parseDispatchRecord } from "@/chat/agent-dispatch/store";
 import {
+  bindEventTaskCredentialSubject,
   bindScheduledTaskCredentialSubject,
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
@@ -79,6 +80,23 @@ function createBoundScheduledTaskCredentialSubject(taskId = "sched_1") {
   });
   if (!subject) {
     throw new Error("Expected scheduled task credential subject to be bound");
+  }
+  return subject;
+}
+
+function createBoundEventTaskCredentialSubject(taskId = "evt_1") {
+  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  const subject = bindEventTaskCredentialSubject({
+    plugin: "junior",
+    subject: {
+      type: "user",
+      userId: "U123",
+      allowedWhen: "event-task",
+      taskId,
+    },
+  });
+  if (!subject) {
+    throw new Error("Expected event task credential subject to be bound");
   }
   return subject;
 }
@@ -496,6 +514,30 @@ describe("agent dispatch validation", () => {
         {
           ...validOptions,
           credentialSubject: createBoundScheduledTaskCredentialSubject(),
+        },
+        "other-plugin",
+      ),
+    ).rejects.toThrow(
+      "Dispatch credentialSubject is not valid for this action",
+    );
+  });
+
+  it("verifies event task credential bindings locally", async () => {
+    await expect(
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          credentialSubject: createBoundEventTaskCredentialSubject(),
+        },
+        "junior",
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          credentialSubject: createBoundEventTaskCredentialSubject(),
         },
         "other-plugin",
       ),

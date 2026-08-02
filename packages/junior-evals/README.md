@@ -42,6 +42,7 @@ Not in scope:
 - Agent behavior: `evals/agent/`
   - skills, providers, research, files, OAuth, subscriptions, and skill routing
 - Feature behavior:
+  - `evals/event-tasks/`
   - `evals/memory/`
   - `evals/scheduler/`
   - `evals/github/`

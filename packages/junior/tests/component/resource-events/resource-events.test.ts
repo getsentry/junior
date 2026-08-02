@@ -3,7 +3,11 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { closeDb, getDb } from "@/chat/db";
+import { createEventTask } from "@/chat/event-tasks/store";
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -14,6 +18,7 @@ import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
   cancelResourceEventSubscription,
@@ -82,6 +87,7 @@ describe("resource event subscriptions", () => {
   });
 
   afterEach(async () => {
+    await closeDb();
     await disconnectStateAdapter();
   });
 
@@ -151,6 +157,8 @@ describe("resource event subscriptions", () => {
     const previousDashboardOptions =
       setDashboardConversationLinkOptions(undefined);
     setDashboardConversationLinkOptions(previousDashboardOptions);
+    let eventTaskId: string | undefined;
+
     try {
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
       const state = createMemoryState();
@@ -162,6 +170,24 @@ describe("resource event subscriptions", () => {
         intent: "Watch the PR Junior opened for reviewer comments.",
         nowMs,
         state,
+      });
+      eventTaskId = `evt_webhook_bridge_${nowMs}`;
+      await createEventTask(getDb(), {
+        id: eventTaskId,
+        conversationAccess: { audience: "channel", visibility: "public" },
+        createdAtMs: nowMs,
+        createdBy: { slackUserId: "U123" },
+        credentialMode: "system",
+        destination: SLACK_DESTINATION,
+        status: "active",
+        task: { text: "Summarize the reviewer comment." },
+        trigger: {
+          events: ["pull_request.comment.created"],
+          label: "GitHub PR getsentry/junior#691",
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          resourceType: "pull_request",
+        },
       });
       const body = JSON.stringify({
         action: "created",
@@ -202,12 +228,39 @@ describe("resource event subscriptions", () => {
       );
 
       expect(response.status).toBe(202);
-      expect(queue.sentRecords()).toEqual([
-        {
-          conversationId: CONVERSATION_ID,
-          idempotencyKey: `resource-event:${subscription.id}:github:delivery-bridge:pull_request.comment.created`,
+      expect(queue.sentRecords()).toEqual(
+        expect.arrayContaining([
+          {
+            conversationId: expect.stringMatching(/^agent-dispatch:/),
+            idempotencyKey: expect.stringMatching(/^agent-dispatch:/),
+          },
+          {
+            conversationId: CONVERSATION_ID,
+            idempotencyKey: `resource-event:${subscription.id}:github:delivery-bridge:pull_request.comment.created`,
+          },
+        ]),
+      );
+      const dispatchRecord = queue
+        .sentRecords()
+        .find(({ conversationId }) =>
+          conversationId.startsWith("agent-dispatch:"),
+        );
+      expect(dispatchRecord).toBeDefined();
+      const dispatch = dispatchRecord
+        ? await getDispatchRecord(
+            dispatchRecord.conversationId.replace(/^agent-dispatch:/, ""),
+          )
+        : undefined;
+      expect(dispatch).toMatchObject({
+        input: expect.stringContaining("Summarize the reviewer comment."),
+        metadata: {
+          eventType: "pull_request.comment.created",
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          taskId: eventTaskId,
         },
-      ]);
+        plugin: "junior",
+      });
       const work = await getConversationWorkState({
         conversationId: CONVERSATION_ID,
         state,
@@ -216,6 +269,11 @@ describe("resource event subscriptions", () => {
         "please add regression coverage",
       );
     } finally {
+      if (eventTaskId) {
+        await getDb()
+          .delete(juniorEventTasks)
+          .where(eq(juniorEventTasks.id, eventTaskId));
+      }
       setPlugins(previousPlugins);
       pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
       setConfigDefaults(previousConfigDefaults);

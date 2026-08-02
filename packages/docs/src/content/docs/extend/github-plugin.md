@@ -129,17 +129,20 @@ Git smart-HTTP push classification is repository-scoped, not branch-scoped. It d
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
 
-## Watch pull request and issue events
+## React to pull request and issue events
 
 When `GITHUB_WEBHOOK_SECRET` is configured, GitHub tools can return subscribable
-pull request and issue resources. Junior can temporarily watch those resources
-and send matching updates back to the current Slack thread.
+pull request and issue resources. Junior can use those resources in two ways. A
+temporary resource watch sends matching updates back to the current Slack
+thread. A durable event task runs a stored instruction whenever its selected
+events occur and remains active for the Slack channel until someone deletes it.
 
-Subscribed events run headlessly as Junior's `resource-event` system actor.
-They can use repository-scoped installation credentials to commit and push a
-follow-up fix to the watched pull request without borrowing the subscriber's
-OAuth identity. Actions that represent human judgment, such as submitting a
-review, still require explicit delegated user authorization.
+Both forms run headlessly as Junior, not as the webhook sender. Resource watches
+use the plugin's scoped installation credentials. Event tasks make their
+creator's connected credentials available by default when the stored work needs
+user-bound access, but the execution actor remains Junior. Actions that
+represent human judgment, such as submitting a review, still require explicit
+delegated user authorization.
 
 Supported GitHub webhook deliveries become these Junior resource events:
 
@@ -153,11 +156,15 @@ Supported GitHub webhook deliveries become these Junior resource events:
 | `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
 | `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |
 
-`pull_request.merged` and `pull_request.closed_unmerged` complete a
-temporary pull request watch after Junior accepts the event. Other events keep
-the watch active until it expires or is cancelled.
+`pull_request.merged` and `pull_request.closed_unmerged` complete a temporary
+pull request watch after Junior accepts the event. Other watch events remain
+active until the watch expires or is cancelled. Event tasks do not complete
+after a terminal event; they remain active until deleted.
 
-Webhook events are delivered as normal queued conversation messages. They do not interrupt active work, bypass Slack routing, or act as user-authored commands. Junior uses the subscription intent to decide whether to reply, take a follow-up action, or stay silent.
+Issue events can target one issue with `owner/repo#number` or every issue in a
+repository with `owner/repo`. Webhook events use normal queued delivery. They do
+not interrupt active work, bypass Slack routing, or act as user-authored
+commands.
 
 ## Watch deployment events
 
@@ -251,6 +258,7 @@ expected follow-up in the original conversation.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET`.
 - Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request and issue outcome projections.
+- Event tasks are Slack-destination scoped. The creator's connected credentials are available by default when needed, but the task still executes as Junior. Another channel member can manage the task from that destination but cannot enable the creator's credentials.
 - Resource-watch turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
 - The write boundary is the App installation scope, the single-repository token scope, and Junior's endpoint allowlist. `appPermissions` declarations do not narrow write tokens.
 
@@ -263,7 +271,7 @@ expected follow-up in the original conversation.
 - Deployment metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing. Set it, redeploy, and run `github_getDeployment` again.
 - GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
 - GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported deployment, pull request, or issue event. Use one of the configured event types above.
-- GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource watch for that identifier and event type. A successful webhook alone does not create a watch.
+- GitHub delivery succeeds but no Slack follow-up appears: confirm the destination has an active resource watch or event task for the same identifier and event type. A successful webhook alone does not create either one.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.
 - Private OAuth prompt for a human-identity operation such as a pull request review: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.

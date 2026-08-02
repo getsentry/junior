@@ -27,9 +27,19 @@ const scheduledTaskCredentialSubjectBindingSchema = z
   })
   .strict();
 
+const eventTaskCredentialSubjectBindingSchema = z
+  .object({
+    type: z.literal("event-task"),
+    plugin: z.string().min(1),
+    taskId: exactNonBlankStringSchema,
+    signature: z.string().min(1),
+  })
+  .strict();
+
 const credentialSubjectBindingSchema = z.discriminatedUnion("type", [
   slackDirectCredentialSubjectBindingSchema,
   scheduledTaskCredentialSubjectBindingSchema,
+  eventTaskCredentialSubjectBindingSchema,
 ]);
 
 const credentialUserActorSchema = z
@@ -66,6 +76,19 @@ export const credentialSubjectSchema = z.discriminatedUnion("allowedWhen", [
     .strict()
     .refine((subject) => subject.binding.taskId === subject.taskId, {
       message: "Scheduled task credential subject requires task binding",
+      path: ["binding"],
+    }),
+  z
+    .object({
+      type: z.literal("user"),
+      userId: exactActorIdSchema,
+      allowedWhen: z.literal("event-task"),
+      taskId: exactNonBlankStringSchema,
+      binding: eventTaskCredentialSubjectBindingSchema,
+    })
+    .strict()
+    .refine((subject) => subject.binding.taskId === subject.taskId, {
+      message: "Event task credential subject requires task binding",
       path: ["binding"],
     }),
 ]);

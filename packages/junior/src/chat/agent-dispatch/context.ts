@@ -1,8 +1,11 @@
 import type {
   HeartbeatHookContext,
   PluginRegistration,
+  DispatchOptions,
+  DispatchResult,
 } from "@sentry/junior-plugin-api";
 import {
+  bindEventTaskCredentialSubject,
   bindScheduledTaskCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
@@ -24,6 +27,10 @@ import {
 
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
 
+type EventTaskDispatchResult =
+  | DispatchResult
+  | (DispatchResult & { deliveryError: unknown });
+
 function bindDispatchCredentialSubject(
   options: SlackDispatchOptions,
   plugin: string,
@@ -42,11 +49,16 @@ function bindDispatchCredentialSubject(
           plugin,
           subject: credentialSubject,
         })
-      : bindSlackDirectCredentialSubject({
-          channelId: options.destination.channelId,
-          teamId: options.destination.teamId,
-          subject: credentialSubject,
-        });
+      : credentialSubject.allowedWhen === "event-task"
+        ? bindEventTaskCredentialSubject({
+            plugin,
+            subject: credentialSubject,
+          })
+        : bindSlackDirectCredentialSubject({
+            channelId: options.destination.channelId,
+            teamId: options.destination.teamId,
+            subject: credentialSubject,
+          });
   if (!boundSubject) {
     throw new Error("Dispatch credentialSubject is not valid for this action");
   }
@@ -110,5 +122,40 @@ export function createHeartbeatContext(args: {
         });
       },
     },
+  };
+}
+
+/** Create one core-owned dispatch and preserve queue failure after persistence. */
+export async function dispatchEventTask(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+  options: DispatchOptions;
+}): Promise<EventTaskDispatchResult> {
+  const plugin = "junior";
+  validateDispatchOptions(args.options);
+  const options = bindDispatchCredentialSubject(args.options, plugin);
+  await verifyDispatchCredentialSubjectAccess(options, plugin);
+  const result = await createOrGetDispatch({
+    plugin,
+    options,
+    nowMs: args.nowMs,
+  });
+  if (!isTerminalDispatchStatus(result.record.status)) {
+    try {
+      await enqueueAgentDispatch(result.record, {
+        queue: args.conversationWorkQueue,
+        nowMs: args.nowMs,
+      });
+    } catch (deliveryError) {
+      return {
+        deliveryError,
+        id: result.record.id,
+        status: result.status,
+      };
+    }
+  }
+  return {
+    id: result.record.id,
+    status: result.status,
   };
 }

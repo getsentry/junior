@@ -149,7 +149,7 @@ export function createWatchResourceEventsTool(
       readOnlyHint: false,
     },
     description:
-      "Watch one plugin resource in the current Slack thread for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create a scheduled polling task. Prefer a subscribable tool result when available.",
+      "Watch one plugin resource in the current Slack thread for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {

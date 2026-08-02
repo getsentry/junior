@@ -16,6 +16,7 @@ import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
 import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
+import { createEventTaskTools } from "@/chat/tools/event-tasks";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
@@ -137,6 +138,7 @@ export function createTools(
       canSendFilesToActiveConversation,
     }),
     ...createResourceEventTools(context, resourceEventCatalog),
+    ...createEventTaskTools(context, resourceEventCatalog),
   };
   if (context.conversationId) {
     tools.queryConversationEvents = createQueryConversationEventsTool(context);

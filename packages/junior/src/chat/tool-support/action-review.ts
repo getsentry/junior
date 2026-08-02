@@ -57,7 +57,10 @@ export interface ToolActionProposal {
         | { type: "user"; userId: string }
         | { platform: "system"; name: string };
       subject?: {
-        allowedWhen: "private-direct-conversation" | "scheduled-task";
+        allowedWhen:
+          | "private-direct-conversation"
+          | "scheduled-task"
+          | "event-task";
         taskId?: string;
         type: "user";
         userId: string;
@@ -252,7 +255,8 @@ function actionCredential(
     "subject" in credentialContext && credentialContext.subject
       ? {
           allowedWhen: credentialContext.subject.allowedWhen,
-          ...(credentialContext.subject.allowedWhen === "scheduled-task"
+          ...(credentialContext.subject.allowedWhen !==
+          "private-direct-conversation"
             ? { taskId: credentialContext.subject.taskId }
             : {}),
           type: credentialContext.subject.type,

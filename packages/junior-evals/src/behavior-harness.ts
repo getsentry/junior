@@ -89,6 +89,9 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import { ingestEventTasks } from "@/chat/event-tasks/ingest";
+import { createEventTask } from "@/chat/event-tasks/store";
+import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
@@ -270,6 +273,19 @@ interface ScheduledTaskDueEvent extends EvalBaseEvent {
   timezone?: string;
 }
 
+interface EventTaskMatchedEvent extends EvalBaseEvent {
+  type: "event_task_matched";
+  event_key: string;
+  event_type: string;
+  label: string;
+  namespace: string;
+  identifier: string;
+  resource_type: string;
+  task_text: string;
+  trusted_summary: string;
+  untrusted_text?: string;
+}
+
 interface GitHubWebhookEvent extends EvalBaseEvent {
   body: unknown;
   delivery_id: string;
@@ -290,6 +306,7 @@ export type EvalEvent =
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent
+  | EventTaskMatchedEvent
   | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
@@ -2422,11 +2439,62 @@ async function processEvents(args: {
     await drainQueuedConversationWork();
   };
 
+  const runEventTaskMatched = async (
+    event: EventTaskMatchedEvent,
+  ): Promise<void> => {
+    const { thread } = getThreadRecord(event.thread);
+    const nowMs = Date.now();
+    const taskId = `eval_event_task_${thread.channelId}_${nowMs}`;
+    const task: EventTask = {
+      id: taskId,
+      conversationAccess: { audience: "channel", visibility: "public" },
+      createdAtMs: nowMs - 60_000,
+      createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
+      credentialMode: "system",
+      destination: createEvalDestination(thread) as EventTask["destination"],
+      status: "active",
+      task: { text: event.task_text },
+      trigger: {
+        events: [event.event_type],
+        label: event.label,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        resourceType: event.resource_type,
+      },
+    };
+    await createEventTask(getDb(), task);
+    const result = await ingestEventTasks(
+      {
+        eventKey: event.event_key,
+        eventType: event.event_type,
+        occurredAtMs: nowMs,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        trustedSummary: event.trusted_summary,
+        ...(event.untrusted_text
+          ? { untrustedText: event.untrusted_text }
+          : {}),
+      },
+      {
+        nowMs,
+        queue: conversationWorkQueue,
+      },
+    );
+    if (result.dispatched !== 1) {
+      throw new Error(
+        `Event task eval expected one dispatch, got ${result.dispatched}`,
+      );
+    }
+    await drainQueuedConversationWork();
+  };
+
   const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
+    } else if (event.type === "event_task_matched") {
+      await runEventTaskMatched(event);
     } else if (event.type === "github_webhook") {
       await runGitHubWebhook(event);
     } else {

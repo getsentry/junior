@@ -13,6 +13,8 @@ Canonical words used across Junior's code and documentation.
   by namespace, identifier, event type, and an idempotency key.
 - **Resource subscription**: a temporary conversation association that delivers
   matching resource events back into that conversation.
+- **Event task**: a durable instruction that dispatches when a matching
+  resource event occurs.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.

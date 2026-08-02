@@ -1,0 +1,24 @@
+import { sql } from "drizzle-orm";
+import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import type { EventTask } from "@/chat/event-tasks/types";
+
+export const juniorEventTasks = pgTable(
+  "junior_event_tasks",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull(),
+    namespace: text("namespace").notNull(),
+    identifier: text("identifier").notNull(),
+    status: text("status").notNull(),
+    createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    task: jsonb("task_json").$type<EventTask>().notNull(),
+  },
+  (table) => [
+    index("junior_event_tasks_team_idx")
+      .on(table.teamId, table.createdAtMs, table.id)
+      .where(sql`${table.status} <> 'deleted'`),
+    index("junior_event_tasks_match_idx")
+      .on(table.namespace, table.identifier, table.createdAtMs, table.id)
+      .where(sql`${table.status} = 'active'`),
+  ],
+);
