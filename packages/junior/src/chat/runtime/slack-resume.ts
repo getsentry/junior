@@ -5,6 +5,7 @@
  * Status notices are best effort. Completed assistant replies and auth-pause
  * notices use `sendSlackReply` so footer attachment stays consistent.
  */
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -95,12 +96,14 @@ async function postSlackMessageBestEffort(
   threadTs: string | undefined,
   text: string,
   conversationId?: string,
+  replyAttribution?: ReplyAttribution,
 ): Promise<void> {
   try {
     if (conversationId) {
       await sendSlackReply({
         channelId,
         conversationId,
+        replyAttribution,
         text,
         threadTs,
       });
@@ -562,6 +565,8 @@ async function resumeSlackTurnInContext(
         messageTs = await sendSlackReply({
           channelId: runArgs.channelId,
           conversationId: runArgs.conversationId,
+          replyAttribution:
+            runArgs.replyContext?.routing.dispatch?.replyAttribution,
           text,
           threadTs: runArgs.threadTs,
         });
@@ -867,6 +872,7 @@ async function resumeSlackTurnInContext(
             deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
+          runArgs.replyContext?.routing.dispatch?.replyAttribution,
         );
       }
       return true;

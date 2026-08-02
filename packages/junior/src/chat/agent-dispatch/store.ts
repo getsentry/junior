@@ -4,6 +4,7 @@ import {
   destinationSchema,
   destinationVisibilitySchema,
   isSlackDestination,
+  replyAttributionSchema,
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -59,6 +60,7 @@ const dispatchRecordSchema = z
     input: z.string().min(1),
     metadata: z.record(z.string(), z.string()).optional(),
     plugin: nonEmptyExactStringSchema,
+    replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
     status: dispatchStatusSchema,
@@ -368,6 +370,9 @@ export async function createOrGetDispatch(args: {
       input: args.options.input,
       ...(metadata ? { metadata } : {}),
       plugin: args.plugin,
+      ...(args.options.replyAttribution
+        ? { replyAttribution: args.options.replyAttribution }
+        : {}),
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,

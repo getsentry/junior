@@ -2,12 +2,15 @@ import { z } from "zod";
 import {
   destinationVisibilitySchema,
   dispatchOptionsSchema,
+  replyAttributionSchema,
 } from "./schemas";
 
 export type DestinationVisibility = z.output<
   typeof destinationVisibilitySchema
 >;
 export type DispatchOptions = z.output<typeof dispatchOptionsSchema>;
+/** Compact destination-visible context explaining what produced a reply. */
+export type ReplyAttribution = z.output<typeof replyAttributionSchema>;
 
 export interface DispatchResult {
   id: string;

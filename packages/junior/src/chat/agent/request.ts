@@ -9,6 +9,7 @@
  */
 import type {
   Destination,
+  ReplyAttribution,
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
@@ -95,6 +96,7 @@ export interface AgentRunRouting {
     id: string;
     metadata?: Record<string, string>;
     plugin?: string;
+    replyAttribution?: ReplyAttribution;
   };
   toolChannelId?: string;
 }

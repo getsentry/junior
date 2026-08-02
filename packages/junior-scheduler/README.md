@@ -28,6 +28,8 @@ Junior's durable agent runtime.
 - Claiming and completion transitions are atomic and safe to retry.
 - Each run dispatches with explicit source, destination, creator attribution,
   execution actor, metadata, and idempotency identity.
+- Scheduled dispatch replies carry compact destination-visible attribution;
+  core owns platform footer rendering.
 - A deleted, paused, or rescheduled task is skipped when its claimed run no
   longer matches current task state.
 - Dispatch completion, failure, or blocking updates both the run and the task's

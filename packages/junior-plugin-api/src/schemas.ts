@@ -187,6 +187,19 @@ const dispatchMetadataSchema = z
     }
   });
 
+/** Compact destination-visible context explaining what produced a reply. */
+export const replyAttributionSchema = z
+  .object({
+    label: exactNonBlankStringSchema
+      .pipe(z.string().max(48))
+      .refine((value) => !/[\r\n]/.test(value)),
+    detail: exactNonBlankStringSchema
+      .pipe(z.string().max(128))
+      .refine((value) => !/[\r\n]/.test(value))
+      .optional(),
+  })
+  .strict();
+
 /** Plugin dispatch request accepted by Junior core. */
 export const dispatchOptionsSchema = z
   .object({
@@ -196,6 +209,7 @@ export const dispatchOptionsSchema = z
     destinationVisibility: destinationVisibilitySchema,
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
+    replyAttribution: replyAttributionSchema.optional(),
     source: sourceSchema,
   })
   .strict();

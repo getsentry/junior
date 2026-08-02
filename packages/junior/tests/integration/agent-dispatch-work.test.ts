@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
   createSlackSource,
+  type ReplyAttribution,
   type Source,
 } from "@sentry/junior-plugin-api";
 import {
@@ -82,6 +83,7 @@ async function createDispatch(
   idempotencyKey: string,
   credentialSubject?: CredentialSubject,
   source?: Source,
+  replyAttribution?: ReplyAttribution,
 ) {
   return (
     await createOrGetDispatch({
@@ -92,6 +94,7 @@ async function createDispatch(
         ...(credentialSubject ? { credentialSubject } : {}),
         idempotencyKey,
         input: "Post the scheduled digest.",
+        ...(replyAttribution ? { replyAttribution } : {}),
         source:
           source ??
           createSlackSource({
@@ -140,7 +143,12 @@ describe("agent dispatch conversation work", () => {
   });
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
-    const dispatch = await createDispatch("shared-runtime");
+    const dispatch = await createDispatch(
+      "shared-runtime",
+      undefined,
+      undefined,
+      { label: "Scheduled task", detail: "Weekly" },
+    );
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -158,6 +166,10 @@ describe("agent dispatch conversation work", () => {
           dispatch: {
             id: dispatch.id,
             plugin: "scheduler",
+            replyAttribution: {
+              label: "Scheduled task",
+              detail: "Weekly",
+            },
           },
           surface: "api",
         },
@@ -210,14 +222,11 @@ describe("agent dispatch conversation work", () => {
     expect(run).toHaveBeenCalledOnce();
     expect(slackWorker).not.toHaveBeenCalled();
     expect(queue.hasQueuedMessages()).toBe(false);
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: destination.channelId,
-          text: "Scheduled digest",
-        }),
-      }),
-    ]);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: destination.channelId,
+      text: "Scheduled digest\n\nScheduled task · Weekly",
+    });
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: expect.any(String),
       status: "completed",
@@ -712,6 +721,7 @@ describe("agent dispatch conversation work", () => {
         },
       },
       createLocalSource("local:cli:dispatch-origin"),
+      { label: "Scheduled task", detail: "Weekly" },
     );
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -756,7 +766,11 @@ describe("agent dispatch conversation work", () => {
             actor: dispatch.actor,
             subject: dispatch.credentialSubject,
           },
-          dispatch: { id: dispatch.id, plugin: dispatch.plugin },
+          dispatch: {
+            id: dispatch.id,
+            plugin: dispatch.plugin,
+            replyAttribution: dispatch.replyAttribution,
+          },
           source: createLocalSource("local:cli:dispatch-origin"),
           surface: "api",
         });
@@ -867,6 +881,10 @@ describe("agent dispatch conversation work", () => {
 
     expect(slackWorker).not.toHaveBeenCalled();
     expect(agentRunner.run).toHaveBeenCalledTimes(2);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      text: "Resumed scheduled digest\n\nScheduled task · Weekly",
+    });
     await expect(
       listAgentTurnSessionSummariesForConversation(
         `agent-dispatch:${dispatch.id}`,

@@ -617,6 +617,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sendSlackReply({
                 channelId,
                 conversationId,
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 threadTs,
               });
@@ -1073,6 +1074,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackTs = await sendSlackReply({
                 channelId,
                 conversationId,
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 ...(threadTs ? { threadTs } : {}),
               });

@@ -89,6 +89,9 @@ routing, response validation, rendering, confirmation, and query state.
   owns browser rendering.
 - `ctx.agent.dispatch` creates durable agent work with an explicit actor,
   destination, source, metadata, and idempotency identity.
+- Dispatches may include compact `replyAttribution` for destination-visible
+  context about what produced the reply. Core owns platform rendering; opaque
+  dispatch metadata remains internal.
 - Delegated credential subjects declare the narrow action that authorized them.
   Core owns runtime bindings; scheduler task subjects are accepted only from the
   scheduler plugin and are bound to the exact task id.

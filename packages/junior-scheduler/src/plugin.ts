@@ -6,6 +6,7 @@ import {
   type PluginOperationalReportContent,
   type PluginReadState,
   type PluginState,
+  type ReplyAttribution,
   type SlackDestination,
   type Source,
   type ToolRegistrationHookContext,
@@ -39,6 +40,13 @@ import { createSchedulerUserPage } from "./user-pages";
 
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 const DASHBOARD_TABLE_LIMIT = 5;
+
+const SCHEDULE_FREQUENCY_COPY = {
+  daily: { label: "Daily", unit: "day" },
+  weekly: { label: "Weekly", unit: "week" },
+  monthly: { label: "Monthly", unit: "month" },
+  yearly: { label: "Yearly", unit: "year" },
+} as const;
 
 function singleLineMetadataValue(value: string): string {
   return value
@@ -74,6 +82,30 @@ function buildScheduledTaskDispatchMetadata(args: {
           recurrenceStartDate: task.schedule.recurrence.startDate,
         }
       : {}),
+  };
+}
+
+/** Describe scheduled execution compactly for the reply footer. */
+function buildScheduledTaskReplyAttribution(
+  task: ScheduledTask,
+): ReplyAttribution {
+  if (task.schedule.kind === "one_off") {
+    return { label: "Scheduled task", detail: "One-time" };
+  }
+  const recurrence = task.schedule.recurrence;
+  if (!recurrence) {
+    return { label: "Scheduled task", detail: "Recurring" };
+  }
+  const frequency = SCHEDULE_FREQUENCY_COPY[recurrence.frequency];
+  if (recurrence.interval === 1) {
+    return {
+      label: "Scheduled task",
+      detail: frequency.label,
+    };
+  }
+  return {
+    label: "Scheduled task",
+    detail: `Every ${recurrence.interval} ${frequency.unit}s`,
   };
 }
 
@@ -558,6 +590,7 @@ export function schedulerPlugin() {
                   : "private",
               input: task.task.text,
               metadata: dispatchMetadata,
+              replyAttribution: buildScheduledTaskReplyAttribution(task),
               source: scheduledTaskDispatchSource(task),
             });
           } catch (error) {
