@@ -37,7 +37,7 @@ export function createDeleteEventTaskTool(
           "Event task was not found in this Slack channel or DM.",
         );
       }
-      return eventTaskSuccess(deleted, catalog, "deleted");
+      return eventTaskSuccess(deleted, catalog);
     },
   });
 }

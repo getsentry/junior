@@ -71,7 +71,7 @@ export async function deleteEventTask(
   return rows[0] ? parseTask(rows[0].task) : undefined;
 }
 
-/** List active event tasks in one Slack workspace. */
+/** List event tasks in one Slack workspace. */
 export async function listEventTasksForTeam(
   db: JuniorDatabase,
   teamId: string,
@@ -84,7 +84,7 @@ export async function listEventTasksForTeam(
   return rows.map((row) => parseTask(row.task));
 }
 
-/** Find every active task matching one normalized resource event. */
+/** Find every task matching one normalized resource event. */
 export async function findMatchingEventTasks(
   db: JuniorDatabase,
   event: ResourceEvent,

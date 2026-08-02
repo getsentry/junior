@@ -23,7 +23,6 @@ export const MAX_LISTED_EVENT_TASKS = 50;
 const compactEventTaskResultSchema = z
   .object({
     id: z.string().min(1),
-    status: z.enum(["active", "deleted"]),
     task: z.string().min(1),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
@@ -148,7 +147,7 @@ export function eventTaskMatchesDestination(
   );
 }
 
-/** Load one active task only when it belongs to this Slack channel or DM. */
+/** Load one task only when it belongs to this Slack channel or DM. */
 export async function writableEventTask(
   context: ToolRuntimeContext,
   id: string,
@@ -222,11 +221,9 @@ function triggerAvailable(
 export function compactEventTask(
   task: EventTask,
   catalog: ResourceEventCatalog,
-  status: "active" | "deleted" = "active",
 ) {
   return compactEventTaskResultSchema.parse({
     id: task.id,
-    status,
     task: task.task.text,
     namespace: task.trigger.namespace,
     identifier: task.trigger.identifier,
@@ -243,9 +240,8 @@ export function compactEventTask(
 export function eventTaskSuccess(
   task: EventTask,
   catalog: ResourceEventCatalog,
-  status: "active" | "deleted" = "active",
 ) {
-  const details = { task: compactEventTask(task, catalog, status) };
+  const details = { task: compactEventTask(task, catalog) };
   return {
     ok: true as const,
     status: "success" as const,

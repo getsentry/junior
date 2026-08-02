@@ -257,7 +257,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
         pass: [
           "The assistant first identifies the issue event task created for this channel even though the request comes from another thread.",
           "The assistant updates that task to react only to issue reopenings and confirms the new behavior.",
-          "The assistant then deletes the same event task and confirms it is no longer active.",
+          "The assistant then deletes the same event task and confirms it no longer exists.",
         ],
         fail: [
           "Do not create a replacement event task.",
@@ -272,7 +272,6 @@ describeEval("Event Task Management", slackEvals, (it) => {
           tasks: [
             expect.objectContaining({
               id: "evt_issue_state_summary",
-              status: "active",
               triggerAvailable: true,
             }),
           ],
@@ -346,7 +345,6 @@ describeEval("Event Task Management", slackEvals, (it) => {
           tasks: [
             expect.objectContaining({
               id: "evt_unavailable_issue_summary",
-              status: "active",
               triggerAvailable: false,
             }),
           ],

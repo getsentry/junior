@@ -422,12 +422,11 @@ describe("event tasks", () => {
       createListEventTasksTool(context(), {}),
       {},
     )) as {
-      tasks: Array<{ id: string; status: string; triggerAvailable: boolean }>;
+      tasks: Array<{ id: string; triggerAvailable: boolean }>;
     };
     expect(listed.tasks).toEqual([
       expect.objectContaining({
         id: created.task.id,
-        status: "active",
         triggerAvailable: false,
       }),
     ]);
