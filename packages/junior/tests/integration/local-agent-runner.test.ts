@@ -248,6 +248,7 @@ describe("local agent runner", () => {
             platform: "local",
             conversationId,
           },
+          destinationVisibility: "private",
           surface: "internal",
         }),
       }),

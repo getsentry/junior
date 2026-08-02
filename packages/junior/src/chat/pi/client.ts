@@ -43,7 +43,6 @@ import {
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import {
   getCurrentConversationPrivacy,
-  resolveConversationPrivacy,
   toCanonicalInputMessage,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
@@ -149,8 +148,7 @@ export async function completeText(params: {
     : toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
       ? "oidc"
       : "api_key";
-  const effectivePrivacy =
-    getCurrentConversationPrivacy() ?? resolveConversationPrivacy({});
+  const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
     (effectivePrivacy === "public" ? "content" : "metadata");
