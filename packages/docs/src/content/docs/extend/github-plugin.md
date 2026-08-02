@@ -46,16 +46,16 @@ You can optionally declare `appPermissions` when registering the plugin. Junior 
 
 Set these values in the host environment:
 
-| Variable                   | Required | Purpose                                                             |
-| -------------------------- | -------- | ------------------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                     |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                 |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                             |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                     |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                              |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.  |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment and PR watches and reporting. |
+| Variable                   | Required | Purpose                                                                |
+| -------------------------- | -------- | ---------------------------------------------------------------------- |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                   |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                        |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                    |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                                |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                        |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                                 |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.     |
+| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment, pull request, and issue events. |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
 `GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
@@ -129,9 +129,11 @@ Git smart-HTTP push classification is repository-scoped, not branch-scoped. It d
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
 
-## Watch pull request events
+## Watch pull request and issue events
 
-When `GITHUB_WEBHOOK_SECRET` is configured, `github_createPullRequest` and `github_getPullRequest` return a subscribable pull request resource. Junior can then subscribe the current Slack conversation to high-signal PR events for either a newly created or existing PR when watching it serves the user's request.
+When `GITHUB_WEBHOOK_SECRET` is configured, GitHub tools can return subscribable
+pull request and issue resources. Junior can temporarily watch those resources
+and send matching updates back to the current Slack thread.
 
 Subscribed events run headlessly as Junior's `resource-event` system actor.
 They can use repository-scoped installation credentials to commit and push a
@@ -141,15 +143,19 @@ review, still require explicit delegated user authorization.
 
 Supported GitHub webhook deliveries become these Junior resource events:
 
-| GitHub delivery                       | Junior event types                                                |
-| ------------------------------------- | ----------------------------------------------------------------- |
-| `check_suite` completed               | `checks.failed`, `checks.recovered`                               |
-| `issue_comment` created on a PR       | `comment.created`                                                 |
-| `pull_request_review` submitted       | `review.approved`, `review.changes_requested`, `review.commented` |
-| `pull_request_review_comment` created | `review_comment.created`                                          |
-| `pull_request` closed                 | `state.merged`, `state.closed_unmerged`                           |
+| GitHub delivery                       | Junior event types                                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `check_suite` completed               | `pull_request.checks.failed`, `pull_request.checks.recovered`                                            |
+| `issue_comment` created on a PR       | `pull_request.comment.created`                                                                           |
+| `pull_request_review` submitted       | `pull_request.review.approved`, `pull_request.review.changes_requested`, `pull_request.review.commented` |
+| `pull_request_review_comment` created | `pull_request.review_comment.created`                                                                    |
+| `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
+| `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
+| `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |
 
-`state.merged` and `state.closed_unmerged` complete the subscription after Junior accepts the event. Other supported events keep the watch active until the subscription expires, is cancelled, or reaches its configured TTL.
+`pull_request.merged` and `pull_request.closed_unmerged` complete a
+temporary pull request watch after Junior accepts the event. Other events keep
+the watch active until it expires or is cancelled.
 
 Webhook events are delivered as normal queued conversation messages. They do not interrupt active work, bypass Slack routing, or act as user-authored commands. Junior uses the subscription intent to decide whether to reply, take a follow-up action, or stay silent.
 
@@ -245,7 +251,7 @@ expected follow-up in the original conversation.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET`.
 - Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request and issue outcome projections.
-- Resource-event turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
+- Resource-watch turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
 - The write boundary is the App installation scope, the single-repository token scope, and Junior's endpoint allowlist. `appPermissions` declarations do not narrow write tokens.
 
 ## Failure modes
@@ -256,8 +262,8 @@ expected follow-up in the original conversation.
 - `github_getDeployment` returns `403`: grant the GitHub App `Deployments: read`, approve the updated permission on its installation, and retry.
 - Deployment metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing. Set it, redeploy, and run `github_getDeployment` again.
 - GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
-- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported deployment or PR watch event. Use one of the configured event types above.
-- GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource event subscription for that PR and event type. A successful webhook alone does not create a subscription.
+- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported deployment, pull request, or issue event. Use one of the configured event types above.
+- GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource watch for that identifier and event type. A successful webhook alone does not create a watch.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.
 - Private OAuth prompt for a human-identity operation such as a pull request review: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.

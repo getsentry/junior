@@ -5,6 +5,9 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   pluginToolResultSchema,
+  RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
+  RESOURCE_EVENT_TEXT_MAX_LENGTH,
+  type ResourceEvent,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -870,6 +873,10 @@ describe("agent plugin hooks", () => {
   it("collects route handlers from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
+        resourceEvents: {
+          resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+          normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+        },
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -885,9 +892,13 @@ describe("agent plugin hooks", () => {
                     eventKey: "demo:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
-                    provider: "agent-demo",
-                    resourceRef: "demo:resource:1",
-                    trustedSummary: "Demo created",
+                    identifier: "Resource:1",
+                    trustedSummary: "s".repeat(
+                      RESOURCE_EVENT_SUMMARY_MAX_LENGTH + 1,
+                    ),
+                    untrustedText: "u".repeat(
+                      RESOURCE_EVENT_TEXT_MAX_LENGTH + 1,
+                    ),
                   });
                   return new Response("demo");
                 },
@@ -898,7 +909,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const publish = vi.fn(async () => {});
+      const publish = vi.fn(async (_event: ResourceEvent) => {});
       const routes = getPluginRoutes({ resourceEvents: { publish } });
 
       expect(routes).toHaveLength(1);
@@ -909,14 +920,25 @@ describe("agent plugin hooks", () => {
       );
       await expect(response.text()).resolves.toBe("demo");
       expect(publish).toHaveBeenCalledWith(
-        expect.objectContaining({ eventKey: "demo:event" }),
+        expect.objectContaining({
+          eventKey: "demo:event",
+          identifier: "resource:1",
+          namespace: "agent-demo",
+        }),
+      );
+      const published = publish.mock.calls[0]?.[0];
+      expect(published?.trustedSummary).toHaveLength(
+        RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
+      );
+      expect(published?.untrustedText).toHaveLength(
+        RESOURCE_EVENT_TEXT_MAX_LENGTH,
       );
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("rejects resource events claimed for another plugin", async () => {
+  it("rejects plugin-supplied resource event namespaces", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -934,10 +956,10 @@ describe("agent plugin hooks", () => {
                     eventKey: "other:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
-                    provider: "other",
-                    resourceRef: "other:resource:1",
+                    identifier: "resource:1",
+                    namespace: "other",
                     trustedSummary: "Demo created",
-                  });
+                  } as any);
                   return new Response("demo");
                 },
               },
@@ -952,14 +974,79 @@ describe("agent plugin hooks", () => {
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
-      ).rejects.toThrow(
-        'Plugin "agent-demo" cannot publish resource events for provider "other"',
-      );
+      ).rejects.toThrow(/Unrecognized key.*namespace/s);
       expect(publish).not.toHaveBeenCalled();
     } finally {
       setPlugins(previous);
     }
   });
+
+  it.each([
+    {
+      label: "without a registration",
+      resourceEvents: undefined,
+      error: "without an active registration",
+    },
+    {
+      label: "while its registration is disabled",
+      resourceEvents: {
+        resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        isEnabled: () => false,
+      },
+      error: "without an active registration",
+    },
+    {
+      label: "when the event type is undeclared",
+      resourceEvents: {
+        resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+      },
+      error: 'did not register resource event "demo.deleted"',
+    },
+  ])(
+    "rejects resource event publication $label",
+    async ({ resourceEvents, error }) => {
+      const previous = setPlugins([
+        defineJuniorPlugin({
+          ...(resourceEvents ? { resourceEvents } : {}),
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: {
+            routes(ctx) {
+              return [
+                {
+                  path: "/demo",
+                  async handler() {
+                    await ctx.resourceEvents.publish({
+                      eventKey: "demo:event",
+                      eventType: "demo.deleted",
+                      occurredAtMs: 1,
+                      identifier: "resource:1",
+                      trustedSummary: "Demo deleted",
+                    });
+                    return new Response("demo");
+                  },
+                },
+              ];
+            },
+          },
+        }),
+      ]);
+      try {
+        const publish = vi.fn(async () => {});
+        const [route] = getPluginRoutes({ resourceEvents: { publish } });
+
+        await expect(
+          route!.handler(new Request("http://localhost/demo")),
+        ).rejects.toThrow(error);
+        expect(publish).not.toHaveBeenCalled();
+      } finally {
+        setPlugins(previous);
+      }
+    },
+  );
 
   it("rejects invalid route methods from configured plugins", () => {
     const previous = setPlugins([

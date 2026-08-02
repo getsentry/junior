@@ -1,8 +1,10 @@
 import {
   missingToolAnnotationKeys,
+  normalizeResourceEventIdentifier,
   promptContextSchema,
   promptMessageSchema,
-  resourceEventSchema,
+  pluginResourceEventsSchema,
+  resourceEventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
   PluginMcp,
@@ -14,7 +16,7 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
-  ResourceEventPublisher,
+  ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -323,6 +325,12 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     }
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
+    }
+    if (
+      plugin.resourceEvents !== undefined &&
+      !pluginResourceEventsSchema.safeParse(plugin.resourceEvents).success
+    ) {
+      throw new Error(`Plugin "${name}" resourceEvents is invalid`);
     }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
       if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
@@ -657,9 +665,30 @@ function routeMethods(
   return methods;
 }
 
+function requirePublishedResourceEvent(
+  plugin: PluginRegistration,
+  eventType: string,
+): void {
+  const registration = plugin.resourceEvents;
+  if (!registration || registration.isEnabled?.() === false) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" cannot publish resource events without an active registration`,
+    );
+  }
+  if (
+    !registration.resourceTypes.some((resourceType) =>
+      resourceType.supportedEvents.includes(eventType),
+    )
+  ) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" did not register resource event "${eventType}"`,
+    );
+  }
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  resourceEvents: ResourceEventPublisher;
+  resourceEvents: { publish(event: ResourceEvent): Promise<void> };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -683,13 +712,16 @@ export function getPluginRoutes(options: {
       },
       resourceEvents: {
         async publish(event) {
-          const parsed = resourceEventSchema.parse(event);
-          if (parsed.provider !== pluginName) {
-            throw new Error(
-              `Plugin "${pluginName}" cannot publish resource events for provider "${parsed.provider}"`,
-            );
-          }
-          await options.resourceEvents.publish(parsed);
+          const parsed = resourceEventInputSchema.parse(event);
+          requirePublishedResourceEvent(plugin, parsed.eventType);
+          await options.resourceEvents.publish({
+            ...parsed,
+            identifier: normalizeResourceEventIdentifier(
+              plugin.resourceEvents,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          });
         },
       },
     });

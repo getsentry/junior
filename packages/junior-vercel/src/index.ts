@@ -10,6 +10,7 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { createVercelDeploymentSourceTool } from "./tools/deployment-source.js";
+import { VERCEL_DEPLOYMENT_EVENTS } from "./resource-events/deployment-source.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
@@ -17,6 +18,16 @@ import { vercelWebhookSecret } from "./webhooks/secret.js";
 export function vercelPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vercel",
+    resourceEvents: {
+      resourceTypes: [
+        {
+          type: "deployment_source",
+          supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
+          suggestedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
+        },
+      ],
+      isEnabled: () => Boolean(vercelWebhookSecret()),
+    },
     manifest: {
       apiHeaders: {
         Authorization: "Bearer ${JUNIOR_VERCEL_TOKEN}",

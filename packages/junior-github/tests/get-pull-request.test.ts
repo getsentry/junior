@@ -45,7 +45,7 @@ describe("getPullRequest", () => {
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
         type: "pull_request",
       },
     });

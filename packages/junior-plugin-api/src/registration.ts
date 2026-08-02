@@ -4,6 +4,10 @@ import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
 import type { PluginUserPageDefinition } from "./user-pages";
+import {
+  pluginResourceEventsSchema,
+  type PluginResourceEvents,
+} from "./resource-events";
 
 export interface PluginModelConfig {
   /** Host model family used when no explicit structured model id is configured. */
@@ -19,6 +23,7 @@ export type PluginRegistrationInput = {
   manifest: PluginManifest;
   model?: PluginModelConfig;
   packageName?: string;
+  resourceEvents?: PluginResourceEvents;
   tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];
 };
@@ -86,6 +91,14 @@ export function defineJuniorPlugin(
     throw new Error(
       `Junior plugin "${name}" conversationEvents must be an array.`,
     );
+  }
+  if (plugin.resourceEvents !== undefined) {
+    const parsed = pluginResourceEventsSchema.safeParse(plugin.resourceEvents);
+    if (!parsed.success) {
+      throw new Error(`Junior plugin "${name}" resourceEvents is invalid.`, {
+        cause: parsed.error,
+      });
+    }
   }
   const conversationEventIds = new Set<string>();
   for (const event of plugin.conversationEvents ?? []) {

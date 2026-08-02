@@ -990,8 +990,8 @@ interface ResourceEventNotificationOptions {
   eventType: string;
   intent: string;
   label: string;
-  provider?: string;
-  resourceRef: string;
+  namespace?: string;
+  identifier: string;
   subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
@@ -1006,7 +1006,7 @@ interface GitHubWebhookOptions {
     events: string[];
     intent: string;
     label: string;
-    resourceRef: string;
+    identifier: string;
     resourceType: string;
   };
   thread?: ThreadOverrides;
@@ -1030,7 +1030,7 @@ export function githubWebhook(opts: GitHubWebhookOptions) {
       events: opts.subscription.events,
       intent: opts.subscription.intent,
       label: opts.subscription.label,
-      resource_ref: opts.subscription.resourceRef,
+      identifier: opts.subscription.identifier,
       resource_type: opts.subscription.resourceType,
     },
   };
@@ -1077,8 +1077,8 @@ export function resourceEventNotification(
       },
       raw: {
         event_type: "resource_event",
-        provider: opts.provider ?? "github",
-        resource_ref: opts.resourceRef,
+        namespace: opts.namespace ?? "github",
+        identifier: opts.identifier,
         subscription_id: subscriptionId,
         type: "message",
         user: "UJRNEVENT",

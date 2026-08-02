@@ -29,6 +29,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The reply confirms the exact deployment target will be monitored through event-based updates.",
+          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not claim a polling task or recurring schedule was created.",
@@ -41,6 +42,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "github_getDeployment",
+          status: "ok",
           arguments: {
             commitSha,
             environment: "Production",
@@ -48,15 +50,16 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           },
         }),
         expect.objectContaining({
-          name: "subscribeToResourceEvents",
+          name: "watchResourceEvents",
+          status: "ok",
           arguments: expect.objectContaining({
             events: expect.arrayContaining([
               "deployment.succeeded",
               "deployment.failed",
               "deployment.error",
             ]),
-            provider: "github",
-            resourceRef: `github:deployment-source:getsentry/junior-prod:production:${commitSha}`,
+            namespace: "github",
+            identifier: `deployment-source:getsentry/junior-prod:production:${commitSha}`,
             resourceType: "deployment_source",
           }),
         }),
@@ -72,16 +75,19 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
+        github_resource_events: true,
         plugin_dirs: ["fixtures/resource-event-plugins"],
+        plugin_packages: ["@sentry/junior-github"],
       },
       initialEvents: [
         mention(
-          "/eval-resource-events Use the provider to create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
+          "$eval-resource-events Use the provider to create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
         ),
       ],
       criteria: rubric({
         pass: [
           "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
+          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not ask the user to monitor GitHub manually.",
@@ -94,6 +100,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "callMcpTool",
+          status: "ok",
           arguments: expect.objectContaining({
             tool_name:
               "mcp__eval-resource-events__create-watchable-pull-request",
@@ -103,18 +110,19 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           }),
         }),
         expect.objectContaining({
-          name: "subscribeToResourceEvents",
+          name: "watchResourceEvents",
+          status: "ok",
           arguments: expect.objectContaining({
-            provider: "github",
-            resourceRef: "github:pull_request:getsentry/junior#208",
+            namespace: "github",
+            identifier: "getsentry/junior#208",
             resourceType: "pull_request",
             events: expect.arrayContaining([
-              "checks.failed",
-              "review.changes_requested",
-              "review.commented",
-              "review_comment.created",
-              "state.merged",
-              "state.closed_unmerged",
+              "pull_request.checks.failed",
+              "pull_request.review.changes_requested",
+              "pull_request.review.commented",
+              "pull_request.review_comment.created",
+              "pull_request.merged",
+              "pull_request.closed_unmerged",
             ]),
           }),
           result: expect.objectContaining({
@@ -122,7 +130,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
               execution_tool: "executeTool",
               execution_example: {
                 tool_name: "stopWatchingResources",
-                arguments: {},
+                arguments: { id: expect.stringMatching(/^resub_/) },
               },
             },
           }),
@@ -134,7 +142,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     );
   });
 
-  it("when a follow-up stops monitoring, cancel the conversation's subscriptions before confirming", async ({
+  it("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
     run,
   }) => {
     const thread = {
@@ -144,11 +152,13 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     };
     const result = await run({
       overrides: {
+        github_resource_events: true,
         plugin_dirs: ["fixtures/resource-event-plugins"],
+        plugin_packages: ["@sentry/junior-github"],
       },
       initialEvents: [
         mention(
-          "/eval-resource-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
+          "$eval-resource-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
           { thread },
         ),
       ],
@@ -165,16 +175,40 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       }),
     });
 
-    expect(toolCalls(result.session)).toEqual(
+    const calls = toolCalls(result.session);
+    expect(calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "subscribeToResourceEvents",
+          name: "watchResourceEvents",
+          status: "ok",
         }),
         expect.objectContaining({
           name: "stopWatchingResources",
+          status: "ok",
         }),
       ]),
     );
+    const watch = calls.find((call) => call.name === "watchResourceEvents");
+    const stop = calls.find((call) => call.name === "stopWatchingResources");
+    if (!watch || watch.status !== "ok") {
+      throw new Error("Expected a successful resource watch tool call");
+    }
+    if (
+      !watch.result ||
+      typeof watch.result !== "object" ||
+      Array.isArray(watch.result) ||
+      typeof watch.result.id !== "string"
+    ) {
+      throw new Error("Resource watch result did not contain an id");
+    }
+    expect(stop).toMatchObject({
+      arguments: { id: watch.result.id },
+      result: {
+        stoppedIds: [watch.result.id],
+        watching_status: "stopped",
+      },
+      status: "ok",
+    });
   });
 
   it("when a subscribed PR check fails, summarize the failure and suggest next steps", async ({
@@ -184,11 +218,11 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       initialEvents: [
         resourceEventNotification({
           eventKey: "github-delivery-checks-failed",
-          eventType: "checks.failed",
+          eventType: "pull_request.checks.failed",
           intent:
             "Watch the pull request Junior opened for CI failures before review.",
           label: "GitHub PR getsentry/junior#691",
-          resourceRef: "github:pull_request:getsentry/junior#691",
+          identifier: "getsentry/junior#691",
           trustedSummary:
             'GitHub PR getsentry/junior#691 checks failed on workflow "test" for commit abcdef123456.',
         }),
@@ -222,11 +256,11 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         githubWebhook({
           eventName: "check_suite",
           subscription: {
-            events: ["checks.recovered"],
+            events: ["pull_request.checks.recovered"],
             intent:
               "Let the original Slack thread know when Junior's pull request lands.",
             label: "GitHub PR getsentry/junior#702",
-            resourceRef: "github:pull_request:getsentry/junior#702",
+            identifier: "getsentry/junior#702",
             resourceType: "pull_request",
           },
           body: {
@@ -251,11 +285,11 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       initialEvents: [
         resourceEventNotification({
           eventKey: "github-delivery-pr-merged",
-          eventType: "state.merged",
+          eventType: "pull_request.merged",
           intent:
             "Let the original Slack thread know when Junior's pull request lands.",
           label: "GitHub PR getsentry/junior#702",
-          resourceRef: "github:pull_request:getsentry/junior#702",
+          identifier: "getsentry/junior#702",
           trustedSummary: "GitHub PR getsentry/junior#702 was merged.",
         }),
       ],

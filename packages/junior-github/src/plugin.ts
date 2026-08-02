@@ -18,6 +18,18 @@ import {
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import {
+  GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
+} from "./resource-events/deployment.js";
+import {
+  GITHUB_ISSUE_EVENTS,
+  GITHUB_ISSUE_SUGGESTED_EVENTS,
+} from "./resource-events/issue.js";
+import {
+  GITHUB_PULL_REQUEST_EVENTS,
+  GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+} from "./resource-events/pull-request.js";
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
@@ -611,6 +623,32 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    resourceEvents: {
+      resourceTypes: [
+        {
+          type: "deployment_source",
+          supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
+          suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
+        },
+        {
+          type: "issue",
+          supportedEvents: [...GITHUB_ISSUE_EVENTS],
+          suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
+        },
+        {
+          type: "pull_request",
+          supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
+          suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+        },
+        {
+          type: "repository",
+          supportedEvents: [...GITHUB_ISSUE_EVENTS],
+          suggestedEvents: ["issue.opened", ...GITHUB_ISSUE_SUGGESTED_EVENTS],
+        },
+      ],
+      isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
+      normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+    },
     manifest: {
       name: "github",
       displayName: "GitHub",

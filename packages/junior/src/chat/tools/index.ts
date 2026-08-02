@@ -15,6 +15,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
+import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
@@ -40,7 +41,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPlugins, getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -102,6 +103,15 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackSourceCapabilities?.canSendFiles,
   );
+  const resourceEventCatalog = Object.fromEntries(
+    getPlugins().flatMap((plugin) => {
+      const registration = plugin.resourceEvents;
+      if (!registration || registration.isEnabled?.() === false) {
+        return [];
+      }
+      return [[plugin.manifest.name, registration]];
+    }),
+  ) satisfies ResourceEventCatalog;
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false
       ? {}
@@ -126,7 +136,7 @@ export function createTools(
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
     }),
-    ...createResourceEventTools(context),
+    ...createResourceEventTools(context, resourceEventCatalog),
   };
   if (context.conversationId) {
     tools.queryConversationEvents = createQueryConversationEventsTool(context);

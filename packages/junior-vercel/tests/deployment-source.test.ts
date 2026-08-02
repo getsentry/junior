@@ -42,8 +42,8 @@ describe("Vercel deployment source", () => {
       deploymentTarget: "production",
       projectId: "prj_junior",
       subscribable: {
-        provider: "vercel",
-        resourceRef: `vercel:deployment-source:prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
+        namespace: "vercel",
+        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
         suggestedEvents: [
           "deployment.succeeded",
           "deployment.error",
