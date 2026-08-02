@@ -680,6 +680,7 @@ function makeAgentRunRequest(
       ...(overrides.input ?? {}),
     },
     routing: {
+      destinationVisibility: "private",
       credentialContext: {
         actor: { type: "user" as const, userId: "U123" },
       },
@@ -1074,6 +1075,7 @@ describe("executeAgentRun progressive MCP loading", () => {
             ] as unknown as PiMessage[],
           },
           routing: {
+            destinationVisibility: "private",
             actor: { platform: "system", name: "scheduler" },
             credentialContext: {
               actor: { platform: "system", name: "scheduler" },

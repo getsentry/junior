@@ -183,9 +183,6 @@ describe("completeText", () => {
     expect(endAttributes["gen_ai.output.message_count"]).toBe(1);
     expect(endAttributes["gen_ai.output.content_chars"]).toBe(14);
     expect(endAttributes["gen_ai.output.messages"]).toBeUndefined();
-    expect(mocks.logWarn).not.toHaveBeenCalledWith(
-      "conversation.visibility.defaulted",
-    );
   });
 
   it("scrubs C-prefixed channel traces unless the turn confirmed the channel public", async () => {

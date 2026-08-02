@@ -9,7 +9,6 @@ import {
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -107,7 +106,7 @@ describe("conversation list API", () => {
   });
 
   test.each(["direct", "unknown"] as const)(
-    "treats persisted %s visibility as private without a missing-metadata warning",
+    "treats persisted %s visibility as private",
     async (visibility) => {
       const fixture = createConfiguredJuniorSqlFixture();
       const store = createSqlStore(fixture.sql);
@@ -131,28 +130,13 @@ describe("conversation list API", () => {
           .update(juniorDestinations)
           .set({ visibility })
           .where(eq(juniorDestinations.providerDestinationId, channelId));
-        const records: EmittedLogRecord[] = [];
-        const unregister = registerLogRecordSink((record) =>
-          records.push(record),
-        );
-
-        try {
-          const access = await readConversationAccessFromSql(db, [
-            conversationId,
-          ]);
-          expect(access.get(conversationId)).toMatchObject({
-            canViewPrivateContent: false,
-            visibility,
-          });
-        } finally {
-          unregister();
-        }
-
-        expect(records).not.toContainEqual(
-          expect.objectContaining({
-            eventName: "conversation.visibility.defaulted",
-          }),
-        );
+        const access = await readConversationAccessFromSql(db, [
+          conversationId,
+        ]);
+        expect(access.get(conversationId)).toMatchObject({
+          canViewPrivateContent: false,
+          visibility,
+        });
       } finally {
         await fixture.close();
       }

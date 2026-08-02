@@ -154,6 +154,7 @@ async function persistRunningSessionForFakeReply(
     modelId: "fake-local-agent",
     conversationId,
     destination: context.destination,
+    destinationVisibility: "private",
     actor:
       context.actor && "platform" in context.actor ? context.actor : undefined,
     source: context.source,

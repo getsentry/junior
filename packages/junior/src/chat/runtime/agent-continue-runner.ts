@@ -78,6 +78,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
+import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -443,6 +444,9 @@ async function continueSlackAgentRunInContext(
           });
           return false;
         }
+        const destinationVisibility = resolveConversationPrivacy({
+          visibility: activeSessionRecord.destinationVisibility,
+        });
 
         const turnMessages =
           activeSessionRecord.turnStartMessageIndex === undefined
@@ -460,8 +464,7 @@ async function continueSlackAgentRunInContext(
           await recordAgentTurnSessionSummary({
             conversationId: payload.conversationId,
             destination: payload.destination,
-            destinationVisibility:
-              options.routingContext?.destinationVisibility,
+            destinationVisibility,
             dispatchId,
             dispatchOutcome,
             sessionId: payload.sessionId,
@@ -499,6 +502,7 @@ async function continueSlackAgentRunInContext(
                 ? { actor: options.routingContext?.actor ?? actor }
                 : {}),
               destination: payload.destination,
+              destinationVisibility,
               source: activeSessionRecord.source,
               toolChannelId:
                 artifacts.assistantContextChannelId ?? destination.channelId,

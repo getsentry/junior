@@ -178,6 +178,7 @@ async function createAwaitingMcpTurnRecord(args: {
     sliceId: 2,
     state: "awaiting_resume",
     destination: SLACK_DESTINATION,
+    destinationVisibility: "public",
     ...(args.includeSource === false
       ? {}
       : { source: args.source ?? slackSource(args.threadTs) }),
@@ -542,6 +543,7 @@ describe("mcp oauth callback integration", () => {
             userName: "stored-user",
           }),
           destination: SLACK_DESTINATION,
+          destinationVisibility: "public",
           source: storedSource,
           toolChannelId: "C999",
         }),

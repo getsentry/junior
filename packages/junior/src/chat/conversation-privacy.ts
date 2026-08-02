@@ -17,11 +17,11 @@ const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
 /**
  * Resolve whether a conversation may expose raw payloads.
  *
- * Live source or persisted destination visibility is authoritative. Missing
- * visibility is observable and fails closed without inferring from identifiers.
+ * Explicit destination visibility is authoritative. Missing visibility is
+ * observable and fails closed without inferring from identifiers.
  */
 export function resolveConversationPrivacy(input: {
-  /** Live source or persisted visibility, when the caller has one. */
+  /** Live or persisted destination visibility, when the caller has one. */
   visibility?: ConversationPrivacy | "direct" | "unknown";
 }): ConversationPrivacy {
   if (input.visibility === undefined) {
@@ -32,7 +32,7 @@ export function resolveConversationPrivacy(input: {
 
 /** Gate raw transcript/tool payload exposure to public conversations. */
 export function canExposeConversationPayload(input: {
-  /** Live source or persisted visibility, when the caller has one. */
+  /** Live or persisted destination visibility, when the caller has one. */
   visibility?: ConversationPrivacy | "direct" | "unknown";
 }): boolean {
   return resolveConversationPrivacy(input) === "public";

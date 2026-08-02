@@ -130,6 +130,7 @@ import {
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
@@ -479,11 +480,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       channelName,
       channelType: slackChannelType,
     });
-    // Source-confirmed visibility for destination persistence; undefined when
-    // the event carries no channel_type so existing visibility is not changed.
-    const destinationVisibility =
-      options.execution?.destinationVisibility ??
-      conversationVisibilityFromSlackChannelType(slackChannelType);
+    const destinationVisibility = resolveConversationPrivacy({
+      visibility:
+        options.execution?.destinationVisibility ??
+        conversationVisibilityFromSlackChannelType(slackChannelType),
+    });
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);

@@ -65,6 +65,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
+import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -371,6 +372,9 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
+      const destinationVisibility = resolveConversationPrivacy({
+        visibility: lockedSessionRecord.destinationVisibility,
+      });
 
       await recordAuthorizationCompleted({
         conversationId: authSession.conversationId,
@@ -403,6 +407,7 @@ async function resumeAuthorizedMcpTurn(args: {
             },
             actor,
             destination,
+            destinationVisibility,
             source: lockedSessionRecord.source,
             toolChannelId:
               authSession.toolChannelId ??

@@ -198,6 +198,7 @@ describe("oauth callback integration", () => {
             conversationId,
             currentSliceId: 1,
             destination: request.routing.destination,
+            destinationVisibility: request.routing.destinationVisibility,
             errorMessage: "eval-oauth authorization required",
             messages: [],
             modelId: "fake-local-oauth",
@@ -322,6 +323,7 @@ describe("oauth callback integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      destinationVisibility: "public",
       source: storedSource,
       piMessages: [
         {
@@ -483,6 +485,7 @@ describe("oauth callback integration", () => {
             userName: "stored-user",
           }),
           destination: SLACK_DESTINATION,
+          destinationVisibility: "public",
           source: storedSource,
           toolChannelId: "C999",
         }),

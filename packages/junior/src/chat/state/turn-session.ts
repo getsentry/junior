@@ -77,6 +77,8 @@ export interface AgentTurnSessionRecord {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  /** Visibility of the destination where this turn is delivered. */
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
@@ -173,6 +175,7 @@ const agentTurnSessionSummarySchema = z
     cumulativeDurationMs: nonNegativeNumberSchema,
     cumulativeUsage: agentTurnUsageSchema.optional(),
     destination: destinationSchema.optional(),
+    destinationVisibility: z.enum(["public", "private"]).optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
     resultMessageId: z.string().min(1).optional(),
@@ -256,8 +259,6 @@ async function appendAgentTurnSessionSummary(
 /** Store run summary metadata in the configured conversation store. */
 async function recordConversationActivityMetadata(args: {
   conversationStore?: ConversationStore;
-  /** Source-confirmed destination visibility from the current event's signal. */
-  destinationVisibility?: ConversationPrivacy;
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
@@ -275,7 +276,7 @@ async function recordConversationActivityMetadata(args: {
     actor: sessionLogActor(args.summary.actor),
     source,
     ...(args.summary.source ? { sessionSource: args.summary.source } : {}),
-    visibility: args.destinationVisibility,
+    visibility: args.summary.destinationVisibility,
   });
   await conversationStore.recordExecution({
     channelName: args.summary.channelName,
@@ -293,7 +294,7 @@ async function recordConversationActivityMetadata(args: {
     actor: sessionLogActor(args.summary.actor),
     source,
     updatedAtMs: args.nowMs,
-    visibility: args.destinationVisibility,
+    visibility: args.summary.destinationVisibility,
   });
 }
 
@@ -323,6 +324,9 @@ function materializeAgentTurnSessionRecord(
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
+    ...(stored.destinationVisibility
+      ? { destinationVisibility: stored.destinationVisibility }
+      : {}),
     ...(stored.dispatchId ? { dispatchId: stored.dispatchId } : {}),
     ...(stored.dispatchOutcome
       ? { dispatchOutcome: stored.dispatchOutcome }
@@ -482,6 +486,7 @@ function buildStoredRecord(args: {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
@@ -531,6 +536,9 @@ function buildStoredRecord(args: {
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.destination ? { destination: args.destination } : {}),
+    ...(args.destinationVisibility
+      ? { destinationVisibility: args.destinationVisibility }
+      : {}),
     ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     ...(args.dispatchOutcome ? { dispatchOutcome: args.dispatchOutcome } : {}),
     ...(args.resultMessageId ? { resultMessageId: args.resultMessageId } : {}),
@@ -554,8 +562,6 @@ function buildStoredRecord(args: {
 
 async function setStoredRecord(args: {
   conversationStore?: ConversationStore;
-  /** Source-confirmed destination visibility from the current event's signal. */
-  destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
@@ -567,7 +573,6 @@ async function setStoredRecord(args: {
 
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
-    destinationVisibility: args.destinationVisibility,
     nowMs: Date.now(),
     summary: args.record,
   });
@@ -646,6 +651,9 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.destination
         ? { destination: args.existing.destination }
         : {}),
+      ...(args.existing.destinationVisibility
+        ? { destinationVisibility: args.existing.destinationVisibility }
+        : {}),
       ...(args.existing.dispatchId
         ? { dispatchId: args.existing.dispatchId }
         : {}),
@@ -690,7 +698,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
-  /** Source-confirmed destination visibility from the current event's signal. */
+  /** Visibility of the destination where this turn is delivered. */
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
@@ -786,7 +794,6 @@ export async function upsertAgentTurnSessionRecord(args: {
 
   return await setStoredRecord({
     conversationStore: args.conversationStore,
-    destinationVisibility: args.destinationVisibility,
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
@@ -819,6 +826,13 @@ export async function upsertAgentTurnSessionRecord(args: {
         : {}),
       ...((args.destination ?? existingRecord?.destination)
         ? { destination: args.destination ?? existingRecord?.destination }
+        : {}),
+      ...((args.destinationVisibility ?? existingRecord?.destinationVisibility)
+        ? {
+            destinationVisibility:
+              args.destinationVisibility ??
+              existingRecord?.destinationVisibility,
+          }
         : {}),
       ...((args.dispatchId ?? existingRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? existingRecord?.dispatchId }
@@ -881,11 +895,7 @@ export async function recordAgentTurnSessionSummary(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
-  /**
-   * Source-confirmed destination visibility from the current event's signal
-   * (Slack `channel_type`). Leave unset when no live signal exists so an
-   * existing destination visibility is not overwritten.
-   */
+  /** Visibility of the destination where this turn is delivered. */
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
@@ -947,6 +957,12 @@ export async function recordAgentTurnSessionSummary(args: {
     ...((args.destination ?? existing?.destination)
       ? { destination: args.destination ?? existing?.destination }
       : {}),
+    ...((args.destinationVisibility ?? existing?.destinationVisibility)
+      ? {
+          destinationVisibility:
+            args.destinationVisibility ?? existing?.destinationVisibility,
+        }
+      : {}),
     ...((args.dispatchId ?? existingDispatchId)
       ? { dispatchId: args.dispatchId ?? existingDispatchId }
       : {}),
@@ -983,7 +999,6 @@ export async function recordAgentTurnSessionSummary(args: {
   };
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
-    destinationVisibility: args.destinationVisibility,
     nowMs,
     summary,
   });

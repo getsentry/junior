@@ -67,7 +67,6 @@ describe("Slack conversation prompt context", () => {
     ).toEqual({
       type: "private_channel_or_group_dm",
       name: "#maybe-private",
-      visibility: "private",
     });
   });
 

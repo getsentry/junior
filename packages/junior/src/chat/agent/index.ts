@@ -102,7 +102,6 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  resolveConversationPrivacy,
   runWithConversationPrivacy,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
@@ -199,11 +198,7 @@ export async function executeAgentRun(
   if (!request.routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const conversationPrivacy = resolveConversationPrivacy({
-    visibility:
-      request.routing.destinationVisibility ??
-      request.routing.slackConversation?.visibility,
-  });
+  const conversationPrivacy = request.routing.destinationVisibility;
   const credentialActor = request.routing.credentialContext?.actor;
   const actor = actorFromRouting(request.routing);
   const userActor = actor && "userId" in actor ? actor : undefined;
@@ -235,7 +230,7 @@ export async function executeAgentRun(
     assistantUserName: botConfig.userName,
   };
   return withLogContext(runLogContext, () =>
-    runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
+    runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         request,
         conversationPrivacy,
@@ -411,6 +406,7 @@ async function executeAgentRunInPrivacyContext(
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       destination: routing.destination,
+      destinationVisibility: routing.destinationVisibility,
       ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
       durability,
       getLoadedSkillNames: () => loadedSkillNamesForResume,

@@ -86,26 +86,14 @@ function toSlackEventChannelType(
 /**
  * Map Slack's Events API channel_type to a source-confirmed visibility.
  *
- * This is the only mapping allowed to classify a Slack conversation public;
- * channel-id prefixes may only narrow classification toward private.
+ * Slack's event metadata is the only visibility authority; channel IDs never
+ * classify visibility.
  */
 export function conversationVisibilityFromSlackChannelType(
   channelType: SlackEventChannelType | undefined,
 ): SlackConversationVisibility | undefined {
   if (!channelType) return undefined;
   return channelType === "channel" ? "public" : "private";
-}
-
-// Narrows toward private only; never asserts public.
-function visibilityFromChannelIdPrefix(
-  channelId: string | undefined,
-): SlackConversationVisibility | undefined {
-  const normalized = normalizeSlackConversationId(channelId);
-  if (!normalized) return undefined;
-  if (normalized.startsWith("D") || normalized.startsWith("G")) {
-    return "private";
-  }
-  return undefined;
 }
 
 /** Resolve Slack's raw event channel type from a Chat SDK message-like object. */
@@ -135,9 +123,9 @@ export function resolveSlackConversationContext(input: {
   if (!type) return undefined;
 
   const name = normalizeConversationName(type, input.channelName);
-  const visibility =
-    conversationVisibilityFromSlackChannelType(input.channelType) ??
-    visibilityFromChannelIdPrefix(input.channelId);
+  const visibility = conversationVisibilityFromSlackChannelType(
+    input.channelType,
+  );
 
   return {
     type,

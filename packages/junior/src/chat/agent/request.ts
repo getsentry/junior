@@ -88,7 +88,7 @@ export interface AgentRunRouting {
   slackActionToken?: SlackActionToken;
   destination: Destination;
   /** Confirmed visibility of the destination where this run is delivered. */
-  destinationVisibility?: ConversationPrivacy;
+  destinationVisibility: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: {
     actor?: SystemActor;

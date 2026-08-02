@@ -102,6 +102,7 @@ export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   destination?: Destination;
+  destinationVisibility: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   sessionId: string;
@@ -136,6 +137,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -205,8 +207,8 @@ export async function persistCompletedSessionRecord(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
-  /** Source-confirmed destination visibility from the current event's signal. */
-  destinationVisibility?: ConversationPrivacy;
+  /** Visibility of the destination where this turn is delivered. */
+  destinationVisibility: ConversationPrivacy;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
   source?: Source;
@@ -274,9 +276,7 @@ export async function persistCompletedSessionRecord(args: {
     ...((args.source ?? latestSessionRecord?.source)
       ? { source: args.source ?? latestSessionRecord?.source }
       : {}),
-    ...(args.destinationVisibility
-      ? { destinationVisibility: args.destinationVisibility }
-      : {}),
+    destinationVisibility: args.destinationVisibility,
     sessionId: args.sessionId,
     sliceId,
     state: "completed",
@@ -317,7 +317,7 @@ export async function completeDeliveredTurn(args: {
   channelName?: string;
   conversationId: string;
   destination: Destination;
-  destinationVisibility?: ConversationPrivacy;
+  destinationVisibility: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
@@ -371,6 +371,7 @@ export async function persistAuthPauseSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
@@ -409,6 +410,14 @@ export async function persistAuthPauseSessionRecord(args: {
       ),
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.destinationVisibility ??
+      latestSessionRecord?.destinationVisibility)
+        ? {
+            destinationVisibility:
+              args.destinationVisibility ??
+              latestSessionRecord?.destinationVisibility,
+          }
         : {}),
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
@@ -465,6 +474,7 @@ interface ContinuationRecordInput {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];

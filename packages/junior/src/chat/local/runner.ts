@@ -537,6 +537,7 @@ async function runLocalAgentTurnInContext(
         usage: reply.diagnostics.usage,
         reasoningLevel: reply.diagnostics.reasoningLevel,
         destination,
+        destinationVisibility: "private",
         source,
         actor: localActor,
         surface: "internal",
