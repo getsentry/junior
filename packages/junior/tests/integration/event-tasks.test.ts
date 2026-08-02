@@ -194,6 +194,7 @@ describe("event tasks", () => {
       ]),
     );
     for (const dispatch of dispatches) {
+      expect(dispatch?.input).toContain("- identifier: getsentry/junior#1174");
       expect(dispatch?.input).not.toContain("GitHub PR getsentry/junior#1174");
     }
   });

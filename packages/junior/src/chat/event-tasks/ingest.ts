@@ -49,6 +49,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     "",
     "Trusted event metadata:",
     `- namespace: ${oneLine(event.namespace)}`,
+    `- identifier: ${oneLine(event.identifier)}`,
     `- event: ${oneLine(event.eventType)}`,
     `- summary: ${event.trustedSummary.slice(0, RESOURCE_EVENT_SUMMARY_MAX_LENGTH)}`,
   ];
