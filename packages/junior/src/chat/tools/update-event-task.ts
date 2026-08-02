@@ -51,12 +51,17 @@ export function createUpdateEventTaskTool(
     prepareArguments(args) {
       const input = args as {
         taskId: string;
-        task?: string;
-        trigger?: z.input<ReturnType<typeof eventTaskTriggerSchema>>;
+        task?: string | null;
+        trigger?: z.input<ReturnType<typeof eventTaskTriggerSchema>> | null;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, ...prepared } = input;
-      return credentialMode ? { ...prepared, credentialMode } : prepared;
+      const { credentialMode, task, trigger, ...prepared } = input;
+      return {
+        ...prepared,
+        ...(task != null ? { task } : {}),
+        ...(trigger != null ? { trigger } : {}),
+        ...(credentialMode != null ? { credentialMode } : {}),
+      };
     },
     outputSchema: eventTaskToolResultSchema,
     async execute(input) {

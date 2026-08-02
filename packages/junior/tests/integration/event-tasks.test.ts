@@ -480,6 +480,8 @@ describe("event tasks", () => {
 
     await execute(createUpdateEventTaskTool(context(), EVENT_CATALOG), {
       taskId: created.task.id,
+      task: null,
+      trigger: null,
       credentialMode: "creator",
     });
     await execute(createUpdateEventTaskTool(context("U999"), EVENT_CATALOG), {
