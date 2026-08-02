@@ -600,15 +600,15 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("defaults unsigned Slack destinations to private", async () => {
+  it("fails closed for unsigned Slack destinations without confirming visibility", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
 
-      // A write without a live source signal fails closed to private even
-      // though the channel id is C-prefixed.
+      // A write without a live source signal remains unknown even though the
+      // channel id is C-prefixed. Conversation reads still fail closed.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -624,7 +624,7 @@ describe("conversation SQL store", () => {
           providerTenantId: "T123",
           providerDestinationId: "C123",
         }),
-      ).resolves.toBe("private");
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }

@@ -65,7 +65,7 @@ export interface Conversation {
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
-  /** Read persisted visibility for one destination. Missing rows fail closed. */
+  /** Read confirmed public/private visibility for one destination. */
   getDestinationVisibility(args: {
     provider: string;
     providerDestinationId: string;

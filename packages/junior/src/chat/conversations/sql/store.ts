@@ -194,7 +194,7 @@ function destinationUpsertFromDestination(args: {
       providerTenantId: destination.teamId,
       providerDestinationId: channelId,
       refreshVisibility: args.visibility !== undefined,
-      visibility: args.visibility ?? "private",
+      visibility: args.visibility ?? "unknown",
       ...(args.channelName ? { displayName: args.channelName } : {}),
       metadata: { platform: "slack" },
     };
@@ -719,7 +719,10 @@ export class SqlStore implements ConversationStore {
     if (!row) {
       return undefined;
     }
-    return row.visibility === "public" ? "public" : "private";
+    if (row.visibility === "public" || row.visibility === "private") {
+      return row.visibility;
+    }
+    return undefined;
   }
 
   /** Serialize all durable mutations for one conversation inside a SQL transaction. */
@@ -900,9 +903,9 @@ export class SqlStore implements ConversationStore {
         set: {
           kind: sql`excluded.kind`,
           displayName: sql`coalesce(excluded.display_name, ${juniorDestinations.displayName})`,
-          // Signal-less writes insert as private but must not clobber an
-          // existing public/private value. Live source signals refresh this
-          // field so converted channels converge on the next message.
+          // Signal-less writes remain unknown and must not clobber an existing
+          // public/private value. Live source signals refresh this field so
+          // converted channels converge on the next message.
           visibility: visibilityUpdate,
           metadata: sql`coalesce(excluded.metadata_json, ${juniorDestinations.metadata})`,
           updatedAt: sql`excluded.updated_at`,
