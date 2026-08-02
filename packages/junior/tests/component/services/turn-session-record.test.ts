@@ -161,15 +161,23 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("records Slack turn activity in SQL conversation metadata", async () => {
+  it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getConversationStore } = await import("@/chat/db");
     const { appendInboundMessage } =
       await import("@/chat/task-execution/store");
+    const conversationStore = getConversationStore();
 
     try {
+      await conversationStore.recordActivity({
+        conversationId: "slack:C123:turn-activity",
+        destination: SLACK_DESTINATION,
+        nowMs: 8_000,
+        source: "slack",
+        visibility: "public",
+      });
       await appendInboundMessage({
         message: {
           conversationId: "slack:C123:turn-activity",
@@ -200,7 +208,7 @@ describe("persistAuthPauseSessionRecord", () => {
       });
 
       await expect(
-        getConversationStore().get({
+        conversationStore.get({
           conversationId: "slack:C123:turn-activity",
         }),
       ).resolves.toMatchObject({
@@ -210,6 +218,7 @@ describe("persistAuthPauseSessionRecord", () => {
         lastActivityAtMs: 10_000,
         sessionSource: SLACK_SOURCE,
         source: "slack",
+        visibility: "public",
       });
     } finally {
       vi.useRealTimers();

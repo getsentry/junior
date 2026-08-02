@@ -102,7 +102,7 @@ export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   destination?: Destination;
-  destinationVisibility: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   sessionId: string;
@@ -127,6 +127,8 @@ export async function persistRunningSessionRecord(args: {
       args.conversationId,
       args.sessionId,
     );
+    const destinationVisibility =
+      args.destinationVisibility ?? latestSessionRecord?.destinationVisibility;
     await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -137,7 +139,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
-      destinationVisibility: args.destinationVisibility,
+      ...(destinationVisibility ? { destinationVisibility } : {}),
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -208,7 +210,7 @@ export async function persistCompletedSessionRecord(args: {
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
   /** Visibility of the destination where this turn is delivered. */
-  destinationVisibility: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
   source?: Source;
@@ -241,6 +243,8 @@ export async function persistCompletedSessionRecord(args: {
   const modelId = args.modelId;
   const reasoningLevel =
     args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
+  const destinationVisibility =
+    args.destinationVisibility ?? latestSessionRecord?.destinationVisibility;
   const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
     ...((args.channelName ?? latestSessionRecord?.channelName)
       ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -276,7 +280,7 @@ export async function persistCompletedSessionRecord(args: {
     ...((args.source ?? latestSessionRecord?.source)
       ? { source: args.source ?? latestSessionRecord?.source }
       : {}),
-    destinationVisibility: args.destinationVisibility,
+    ...(destinationVisibility ? { destinationVisibility } : {}),
     sessionId: args.sessionId,
     sliceId,
     state: "completed",
@@ -317,7 +321,7 @@ export async function completeDeliveredTurn(args: {
   channelName?: string;
   conversationId: string;
   destination: Destination;
-  destinationVisibility: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;

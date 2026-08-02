@@ -342,6 +342,7 @@ async function runLocalAgentTurnInContext(
             actor: { type: "user", userId: "local-cli" },
           },
           destination,
+          conversationPrivacy: "private",
           destinationVisibility: "private",
           source,
           actor: localActor,

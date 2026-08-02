@@ -166,6 +166,7 @@ describe("run actor composition", () => {
       turnId: "turn-run-actors",
       input: { messageText: "hello" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -216,6 +217,7 @@ describe("run actor composition", () => {
       turnId: sessionId,
       input: { messageText: "hello" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
@@ -233,6 +235,7 @@ describe("run actor composition", () => {
       turnId: "turn-run-actors-unresolved",
       input: { messageText: "hello" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,

@@ -49,7 +49,7 @@ type LoadedSessionRecordState = Awaited<
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
-  destinationVisibility: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
@@ -94,7 +94,9 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     conversationId: args.conversationId,
     destination: args.destination,
-    destinationVisibility: args.destinationVisibility,
+    ...(args.destinationVisibility
+      ? { destinationVisibility: args.destinationVisibility }
+      : {}),
     ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     source: args.runSource,
     sessionId: args.turnId,

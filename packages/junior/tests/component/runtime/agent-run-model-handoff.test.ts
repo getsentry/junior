@@ -7,6 +7,7 @@ import type { AgentRunRequest } from "@/chat/agent/request";
 
 function localRouting(conversationId: string): AgentRunRequest["routing"] {
   return {
+    conversationPrivacy: "private",
     destinationVisibility: "private",
     destination: { platform: "local", conversationId },
     source: createLocalSource(conversationId),

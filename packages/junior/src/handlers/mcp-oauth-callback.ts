@@ -66,6 +66,7 @@ import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
+import { resolveConfirmedDestinationVisibility } from "@/chat/conversations/destination-visibility";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -372,8 +373,14 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      const destinationVisibility = resolveConversationPrivacy({
-        visibility: lockedSessionRecord.destinationVisibility,
+      const destinationVisibility = await resolveConfirmedDestinationVisibility(
+        {
+          destination,
+          visibility: lockedSessionRecord.destinationVisibility,
+        },
+      );
+      const conversationPrivacy = resolveConversationPrivacy({
+        visibility: destinationVisibility,
       });
 
       await recordAuthorizationCompleted({
@@ -407,7 +414,8 @@ async function resumeAuthorizedMcpTurn(args: {
             },
             actor,
             destination,
-            destinationVisibility,
+            conversationPrivacy,
+            ...(destinationVisibility ? { destinationVisibility } : {}),
             source: lockedSessionRecord.source,
             toolChannelId:
               authSession.toolChannelId ??

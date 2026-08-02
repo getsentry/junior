@@ -131,6 +131,7 @@ import {
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
+import { resolveConfirmedDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
@@ -474,24 +475,28 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       !options.execution && channelId
         ? await resolveChannelName(thread)
         : undefined;
+    const destination = requireSlackDestination(
+      options.destination,
+      "Slack reply execution",
+    );
     const slackChannelType = resolveSlackChannelTypeFromMessage(message);
     const slackConversation = resolveSlackConversationContext({
       channelId,
       channelName,
       channelType: slackChannelType,
     });
-    const destinationVisibility = resolveConversationPrivacy({
+    const destinationVisibility = await resolveConfirmedDestinationVisibility({
+      destination,
       visibility:
         options.execution?.destinationVisibility ??
         conversationVisibilityFromSlackChannelType(slackChannelType),
     });
+    const conversationPrivacy = resolveConversationPrivacy({
+      visibility: destinationVisibility,
+    });
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
-    const destination = requireSlackDestination(
-      options.destination,
-      "Slack reply execution",
-    );
     const teamId = destination.teamId;
     const source =
       options.execution?.source ??
@@ -500,7 +505,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         messageTs,
         teamId,
         threadTs,
-        type: destinationVisibility === "public" ? "pub" : "priv",
+        type: conversationPrivacy === "public" ? "pub" : "priv",
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
@@ -1358,7 +1363,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              destinationVisibility,
+              conversationPrivacy,
+              ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,
               toolChannelId,

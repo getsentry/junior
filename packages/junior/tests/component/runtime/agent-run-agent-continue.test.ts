@@ -326,6 +326,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-1",
       input: { messageText: "help me" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -384,6 +385,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-timeout-cap",
       input: { messageText: "help me" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -419,6 +421,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-short-deadline",
       input: { messageText: "help me" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -451,6 +454,7 @@ describe("agent continuation composition", () => {
         omittedImageAttachmentCount: 1,
       },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -490,6 +494,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-hung",
       input: { messageText: "help me" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -532,6 +537,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-retry",
       input: { messageText: "help me" },
       routing: {
+        conversationPrivacy: "private",
         destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
