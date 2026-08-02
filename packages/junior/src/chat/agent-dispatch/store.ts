@@ -341,7 +341,7 @@ export async function getDispatchRecord(
   return parseDispatchRecord(await state.get(getDispatchStorageKey(id)));
 }
 
-/** Create a plugin dispatch idempotently from the plugin's idempotency key. */
+/** Create a dispatch idempotently within its owner namespace. */
 export async function createOrGetDispatch(args: {
   nowMs: number;
   options: BoundDispatchOptions;

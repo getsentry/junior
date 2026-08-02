@@ -207,7 +207,12 @@ export function verifyScheduledTaskCredentialSubject(input: {
 /** Bind a delegated user subject to one event task dispatch. */
 export function bindEventTaskCredentialSubject(input: {
   plugin: string;
-  subject: PluginCredentialSubject;
+  subject: {
+    allowedWhen: "event-task";
+    taskId: string;
+    type: "user";
+    userId: string;
+  };
 }): CredentialSubject | undefined {
   const secret = getCredentialSubjectSecret();
   const plugin = input.plugin.trim();

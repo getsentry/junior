@@ -29,12 +29,11 @@ Use only for GitHub issues. For pull requests, branches, pushes, or PR creation 
 - Keep `--repo owner/repo` explicit on `gh` commands so the command itself targets the intended repository, not a stale default.
 - When the user explicitly asks for durable work in response to GitHub issue
   activity, use an event task instead of polling:
-  - Use namespace `github`. One issue uses identifier `owner/repo#number` with
-    resource type `issue` and `issue.comment.created`, `issue.opened`,
-    `issue.closed`, or `issue.reopened`.
-  - Repo-wide issue activity uses identifier `owner/repo`, resource type
-    `repository`, and `issue.opened`, `issue.closed`, `issue.reopened`, or
-    `issue.comment.created`.
+  - Use namespace `github`. One issue uses identifier `owner/repo#number` and
+    resource type `issue`; repo-wide issue activity uses identifier
+    `owner/repo` and resource type `repository`.
+  - Use the event names currently exposed by the resource-event catalog; search
+    it when the requested event is unclear.
   - Put every requested issue state in the same task's `events` array. Create
     separate tasks only when the work to perform is different.
   - Use the exact issue resource unless the user asks to react to issues across

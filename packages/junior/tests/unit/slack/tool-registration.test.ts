@@ -239,7 +239,7 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("deleteEventTask");
   });
 
-  it("does not advertise scheduler as a resource event namespace", () => {
+  it("keeps event task management but not creation without an active event plugin", () => {
     setPlugins([schedulerPlugin(), resourceEventPlugin(false)]);
     const tools = createTools(
       [],
@@ -258,6 +258,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("searchResourceEventTypes");
     expect(tools).not.toHaveProperty("watchResourceEvents");
     expect(tools).toHaveProperty("listEventTasks");
+    expect(tools).toHaveProperty("updateEventTask");
     expect(tools).toHaveProperty("deleteEventTask");
   });
 

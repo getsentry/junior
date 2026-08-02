@@ -29,7 +29,7 @@ interface DispatchReplyToThread {
   ): Promise<void>;
 }
 
-/** Build the Slack provider adapter for plugin-dispatched conversation turns. */
+/** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
   getChannelConfiguration: (
     channelId: string,

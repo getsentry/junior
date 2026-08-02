@@ -503,7 +503,7 @@ describe("event tasks", () => {
     );
   });
 
-  it("keeps deletion terminal across retries and later updates", async () => {
+  it("deletes an event task", async () => {
     const created = await createTask(
       "Summarize the requested changes.",
       "event-task-replayed-create",
@@ -513,15 +513,12 @@ describe("event tasks", () => {
       taskId: created.task.id,
     });
     await expect(
-      createTask(
-        "Summarize the requested changes.",
-        "event-task-replayed-create",
-      ),
-    ).rejects.toThrow("Event task was already deleted.");
+      getEventTask(fixture.sql.db(), created.task.id),
+    ).resolves.toBeUndefined();
     await expect(
       execute(createUpdateEventTaskTool(context("U999"), EVENT_CATALOG), {
         taskId: created.task.id,
-        task: "Try to revive the deleted task.",
+        task: "Try to update the deleted task.",
       }),
     ).rejects.toThrow("Event task was not found in this Slack channel or DM.");
     const listed = (await execute(

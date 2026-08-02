@@ -1,5 +1,5 @@
 import { type ResourceEvent } from "@sentry/junior-plugin-api";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { eventTaskSchema, type EventTask } from "./types";
@@ -34,7 +34,6 @@ export async function createEventTask(
       teamId: parsed.destination.teamId,
       namespace: parsed.trigger.namespace,
       identifier: parsed.trigger.identifier,
-      status: parsed.status,
       createdAtMs: parsed.createdAtMs,
       task: parsed,
     })
@@ -42,8 +41,8 @@ export async function createEventTask(
   return (await getEventTask(db, parsed.id)) ?? parsed;
 }
 
-/** Replace or delete an event task only while it remains active. */
-export async function saveActiveEventTask(
+/** Replace an existing event task. */
+export async function saveEventTask(
   db: JuniorDatabase,
   task: EventTask,
 ): Promise<EventTask | undefined> {
@@ -53,15 +52,21 @@ export async function saveActiveEventTask(
     .set({
       namespace: parsed.trigger.namespace,
       identifier: parsed.trigger.identifier,
-      status: parsed.status,
       task: parsed,
     })
-    .where(
-      and(
-        eq(juniorEventTasks.id, parsed.id),
-        eq(juniorEventTasks.status, "active"),
-      ),
-    )
+    .where(eq(juniorEventTasks.id, parsed.id))
+    .returning({ task: juniorEventTasks.task });
+  return rows[0] ? parseTask(rows[0].task) : undefined;
+}
+
+/** Delete one existing event task. */
+export async function deleteEventTask(
+  db: JuniorDatabase,
+  id: string,
+): Promise<EventTask | undefined> {
+  const rows = await db
+    .delete(juniorEventTasks)
+    .where(eq(juniorEventTasks.id, id))
     .returning({ task: juniorEventTasks.task });
   return rows[0] ? parseTask(rows[0].task) : undefined;
 }
@@ -74,12 +79,7 @@ export async function listEventTasksForTeam(
   const rows = await db
     .select({ task: juniorEventTasks.task })
     .from(juniorEventTasks)
-    .where(
-      and(
-        eq(juniorEventTasks.teamId, teamId),
-        ne(juniorEventTasks.status, "deleted"),
-      ),
-    )
+    .where(eq(juniorEventTasks.teamId, teamId))
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
   return rows.map((row) => parseTask(row.task));
 }
@@ -94,7 +94,6 @@ export async function findMatchingEventTasks(
     .from(juniorEventTasks)
     .where(
       and(
-        eq(juniorEventTasks.status, "active"),
         eq(juniorEventTasks.namespace, event.namespace),
         eq(juniorEventTasks.identifier, event.identifier),
       ),

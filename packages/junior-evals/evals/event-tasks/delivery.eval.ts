@@ -1,4 +1,4 @@
-import { describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { eventTaskMatched, rubric, slackEvals } from "../../src/helpers";
 
@@ -15,6 +15,11 @@ describeEval("Event Task Delivery", slackEvals, (it) => {
             label: "GitHub PR getsentry/junior#208",
             identifier: "getsentry/junior#208",
             resourceType: "pull_request",
+            thread: {
+              channel_id: "CEVENTDELIVERY",
+              id: "thread-event-task-delivery",
+              thread_ts: "1700000000.923000",
+            },
             trustedSummary:
               "A reviewer requested changes on GitHub PR getsentry/junior#208.",
             untrustedText:
@@ -38,5 +43,14 @@ describeEval("Event Task Delivery", slackEvals, (it) => {
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
       "deleteEventTask",
     );
+    const channelPosts = assistantMessages(result.session).filter(
+      (message) => message.metadata?.event_type === "channel_post",
+    );
+    expect(channelPosts).toHaveLength(1);
+    expect(channelPosts[0]?.metadata).toMatchObject({
+      channel: "CEVENTDELIVERY",
+      event_type: "channel_post",
+    });
+    expect(channelPosts[0]?.metadata).not.toHaveProperty("thread_ts");
   });
 });

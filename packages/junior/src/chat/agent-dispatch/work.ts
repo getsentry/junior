@@ -115,7 +115,7 @@ export interface AgentDispatchConversationWorkerOptions {
   ) => Promise<DispatchTurnResult>;
 }
 
-/** Build the stable mailbox work item for one plugin dispatch. */
+/** Build the stable mailbox work item for one agent dispatch. */
 export function buildAgentDispatchInboundMessage(
   dispatch: DispatchRecord,
   nowMs = Date.now(),

@@ -1,8 +1,6 @@
 import type {
   HeartbeatHookContext,
   PluginRegistration,
-  DispatchOptions,
-  DispatchResult,
 } from "@sentry/junior-plugin-api";
 import {
   bindEventTaskCredentialSubject,
@@ -27,10 +25,6 @@ import {
 
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
 
-type EventTaskDispatchResult =
-  | DispatchResult
-  | (DispatchResult & { deliveryError: unknown });
-
 function bindDispatchCredentialSubject(
   options: SlackDispatchOptions,
   plugin: string,
@@ -49,16 +43,11 @@ function bindDispatchCredentialSubject(
           plugin,
           subject: credentialSubject,
         })
-      : credentialSubject.allowedWhen === "event-task"
-        ? bindEventTaskCredentialSubject({
-            plugin,
-            subject: credentialSubject,
-          })
-        : bindSlackDirectCredentialSubject({
-            channelId: options.destination.channelId,
-            teamId: options.destination.teamId,
-            subject: credentialSubject,
-          });
+      : bindSlackDirectCredentialSubject({
+          channelId: options.destination.channelId,
+          teamId: options.destination.teamId,
+          subject: credentialSubject,
+        });
   if (!boundSubject) {
     throw new Error("Dispatch credentialSubject is not valid for this action");
   }
@@ -66,6 +55,30 @@ function bindDispatchCredentialSubject(
   return {
     ...baseOptions,
     credentialSubject: boundSubject,
+  };
+}
+
+async function dispatch(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+  options: BoundDispatchOptions;
+  plugin: string;
+}) {
+  await verifyDispatchCredentialSubjectAccess(args.options, args.plugin);
+  const result = await createOrGetDispatch({
+    plugin: args.plugin,
+    options: args.options,
+    nowMs: args.nowMs,
+  });
+  if (!isTerminalDispatchStatus(result.record.status)) {
+    await enqueueAgentDispatch(result.record, {
+      queue: args.conversationWorkQueue,
+      nowMs: args.nowMs,
+    });
+  }
+  return {
+    id: result.record.id,
+    status: result.status,
   };
 }
 
@@ -94,26 +107,14 @@ export function createHeartbeatContext(args: {
         if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
           throw new Error("Plugin heartbeat exceeded the dispatch limit");
         }
-        await verifyDispatchCredentialSubjectAccess(
-          dispatchOptions,
-          pluginName,
-        );
-        const result = await createOrGetDispatch({
-          plugin: pluginName,
-          options: dispatchOptions,
+        const result = await dispatch({
+          conversationWorkQueue: args.conversationWorkQueue,
           nowMs: args.nowMs,
+          options: dispatchOptions,
+          plugin: pluginName,
         });
         dispatchCount += 1;
-        if (!isTerminalDispatchStatus(result.record.status)) {
-          await enqueueAgentDispatch(result.record, {
-            queue: args.conversationWorkQueue,
-            nowMs: args.nowMs,
-          });
-        }
-        return {
-          id: result.record.id,
-          status: result.status,
-        };
+        return result;
       },
       async get(id) {
         return await getPluginDispatchProjection({
@@ -125,37 +126,39 @@ export function createHeartbeatContext(args: {
   };
 }
 
-/** Create one core-owned dispatch and preserve queue failure after persistence. */
+/** Create and enqueue one core-owned event task dispatch. */
 export async function dispatchEventTask(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
-  options: DispatchOptions;
-}): Promise<EventTaskDispatchResult> {
-  const plugin = "junior";
-  validateDispatchOptions(args.options);
-  const options = bindDispatchCredentialSubject(args.options, plugin);
-  await verifyDispatchCredentialSubjectAccess(options, plugin);
-  const result = await createOrGetDispatch({
-    plugin,
-    options,
-    nowMs: args.nowMs,
-  });
-  if (!isTerminalDispatchStatus(result.record.status)) {
-    try {
-      await enqueueAgentDispatch(result.record, {
-        queue: args.conversationWorkQueue,
-        nowMs: args.nowMs,
-      });
-    } catch (deliveryError) {
-      return {
-        deliveryError,
-        id: result.record.id,
-        status: result.status,
-      };
-    }
-  }
-  return {
-    id: result.record.id,
-    status: result.status,
+  options: Omit<SlackDispatchOptions, "credentialSubject"> & {
+    credentialSubject?: {
+      allowedWhen: "event-task";
+      taskId: string;
+      type: "user";
+      userId: string;
+    };
   };
+}) {
+  const plugin = "junior";
+  const { credentialSubject, ...unboundOptions } = args.options;
+  validateDispatchOptions({ ...unboundOptions });
+  const boundSubject = credentialSubject
+    ? bindEventTaskCredentialSubject({
+        plugin,
+        subject: credentialSubject,
+      })
+    : undefined;
+  if (credentialSubject && !boundSubject) {
+    throw new Error("Dispatch credentialSubject is not valid for this action");
+  }
+  const options: BoundDispatchOptions = {
+    ...unboundOptions,
+    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+  };
+  return await dispatch({
+    conversationWorkQueue: args.conversationWorkQueue,
+    nowMs: args.nowMs,
+    options,
+    plugin,
+  });
 }

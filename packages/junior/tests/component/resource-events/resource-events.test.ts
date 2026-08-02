@@ -3,11 +3,10 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { closeDb, getDb } from "@/chat/db";
-import { createEventTask } from "@/chat/event-tasks/store";
+import { createEventTask, deleteEventTask } from "@/chat/event-tasks/store";
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -18,7 +17,6 @@ import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
   cancelResourceEventSubscription,
@@ -174,12 +172,11 @@ describe("resource event subscriptions", () => {
       eventTaskId = `evt_webhook_bridge_${nowMs}`;
       await createEventTask(getDb(), {
         id: eventTaskId,
-        conversationAccess: { audience: "channel", visibility: "public" },
         createdAtMs: nowMs,
         createdBy: { slackUserId: "U123" },
         credentialMode: "system",
         destination: SLACK_DESTINATION,
-        status: "active",
+        destinationVisibility: "public",
         task: { text: "Summarize the reviewer comment." },
         trigger: {
           events: ["pull_request.comment.created"],
@@ -253,12 +250,6 @@ describe("resource event subscriptions", () => {
         : undefined;
       expect(dispatch).toMatchObject({
         input: expect.stringContaining("Summarize the reviewer comment."),
-        metadata: {
-          eventType: "pull_request.comment.created",
-          namespace: "github",
-          identifier: "getsentry/junior#691",
-          taskId: eventTaskId,
-        },
         plugin: "junior",
       });
       const work = await getConversationWorkState({
@@ -270,9 +261,7 @@ describe("resource event subscriptions", () => {
       );
     } finally {
       if (eventTaskId) {
-        await getDb()
-          .delete(juniorEventTasks)
-          .where(eq(juniorEventTasks.id, eventTaskId));
+        await deleteEventTask(getDb(), eventTaskId);
       }
       setPlugins(previousPlugins);
       pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);

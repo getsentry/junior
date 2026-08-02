@@ -2447,12 +2447,11 @@ async function processEvents(args: {
     const taskId = `eval_event_task_${thread.channelId}_${nowMs}`;
     const task: EventTask = {
       id: taskId,
-      conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       credentialMode: "system",
       destination: createEvalDestination(thread) as EventTask["destination"],
-      status: "active",
+      destinationVisibility: "public",
       task: { text: event.task_text },
       trigger: {
         events: [event.event_type],

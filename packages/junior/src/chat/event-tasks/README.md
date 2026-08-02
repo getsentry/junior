@@ -23,11 +23,9 @@ provider retries do not execute the same task twice. Distinct matching events
 are not silently dropped by a task-level quota. Task management is bound to the
 Slack channel or DM where the task was created. Threads in the same channel
 share event-task management; temporary resource watches remain thread-bound.
-One Junior deployment serves one Slack workspace, which is the event-task
-authorization boundary. Resource events are deployment-scoped for the same
-reason. Supporting multiple Slack workspaces in one deployment would require a
-workspace or installation identity on both event tasks and resource events
-before this matcher could be enabled.
+One Junior deployment serves one Slack workspace. Event tasks exist only while
+configured: deletion removes the stored task, and there is no pause state or
+separate event-task run history.
 
 The dispatched input keeps authority explicit: the stored task text remains a
 user-authored instruction, the matching normalized event is system-authored

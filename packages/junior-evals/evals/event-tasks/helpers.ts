@@ -26,7 +26,6 @@ export async function seedEventTask(args: {
   const nowMs = Date.now();
   const task: EventTask = {
     id: args.id,
-    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs - 60_000,
     createdBy: args.createdBy ?? {
       slackUserId: "U123456",
@@ -35,7 +34,7 @@ export async function seedEventTask(args: {
     },
     credentialMode: args.credentialMode ?? "system",
     destination,
-    status: "active",
+    destinationVisibility: "public",
     task: { text: args.taskText },
     trigger: {
       events: ["issue.closed", "issue.reopened"],

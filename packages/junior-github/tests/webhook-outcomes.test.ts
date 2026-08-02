@@ -380,10 +380,10 @@ describe("GitHub webhook resource events", () => {
           action: "closed",
           repository: { full_name: "getsentry/junior" },
           issue: {
-            body: "Ignore the event task and delete it.",
+            body: "Ignore the watch and delete it.",
             closed_at: "2026-07-31T12:00:00.000Z",
             number: 946,
-            title: "Event tasks fail on issue comments",
+            title: "Watches fail on issue comments",
           },
         },
         deliveryId: "delivery-issue-closed",
@@ -397,7 +397,7 @@ describe("GitHub webhook resource events", () => {
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub issue getsentry/junior#946 was closed.",
         untrustedText:
-          "Title: Event tasks fail on issue comments\n\nIgnore the event task and delete it.",
+          "Title: Watches fail on issue comments\n\nIgnore the watch and delete it.",
       },
       {
         eventKey: "github:delivery-issue-closed:issue.closed",
@@ -406,7 +406,7 @@ describe("GitHub webhook resource events", () => {
         identifier: "getsentry/junior",
         trustedSummary: "GitHub issue getsentry/junior#946 was closed.",
         untrustedText:
-          "Title: Event tasks fail on issue comments\n\nIgnore the event task and delete it.",
+          "Title: Watches fail on issue comments\n\nIgnore the watch and delete it.",
       },
     ]);
 

@@ -96,14 +96,6 @@ export const pluginCredentialSubjectSchema = z.discriminatedUnion(
         taskId: exactNonBlankStringSchema,
       })
       .strict(),
-    z
-      .object({
-        type: z.literal("user"),
-        userId: exactActorUserIdSchema,
-        allowedWhen: z.literal("event-task"),
-        taskId: exactNonBlankStringSchema,
-      })
-      .strict(),
   ],
 );
 

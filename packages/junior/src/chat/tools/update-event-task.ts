@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { getDb } from "@/chat/db";
-import { saveActiveEventTask } from "@/chat/event-tasks/store";
+import { saveEventTask } from "@/chat/event-tasks/store";
 import {
   changesEventTaskTrigger,
-  cleanEventTaskEvents,
   eventTaskSuccess,
   eventTaskToolResultSchema,
   eventTaskTriggerSchema,
@@ -89,7 +88,7 @@ export function createUpdateEventTaskTool(
             ),
             resourceType: input.trigger.resourceType,
             label: input.trigger.label,
-            events: cleanEventTaskEvents(input.trigger.events),
+            events: [...new Set(input.trigger.events)],
           }
         : current.trigger;
       const changesExecution =
@@ -104,9 +103,11 @@ export function createUpdateEventTaskTool(
         task: input.task ? { text: input.task } : current.task,
         trigger: nextTrigger,
       };
-      const saved = await saveActiveEventTask(getDb(), next);
+      const saved = await saveEventTask(getDb(), next);
       if (!saved) {
-        throw new ToolInputError("Event task is no longer active.");
+        throw new ToolInputError(
+          "Event task was not found in this Slack channel or DM.",
+        );
       }
       return eventTaskSuccess(saved, catalog);
     },

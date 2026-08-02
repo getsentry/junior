@@ -945,12 +945,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_at_ms": {
           "name": "created_at_ms",
           "type": "bigint",
@@ -988,7 +982,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_event_tasks\".\"status\" <> 'deleted'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1022,7 +1015,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_event_tasks\".\"status\" = 'active'",
           "concurrently": false,
           "method": "btree",
           "with": {}

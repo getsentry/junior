@@ -3,8 +3,6 @@ import { getDb } from "@/chat/db";
 import { createEventTask, getEventTask } from "@/chat/event-tasks/store";
 import {
   buildEventTaskId,
-  cleanEventTaskEvents,
-  eventTaskConversationAccess,
   eventTaskMatchesDestination,
   eventTaskPrincipal,
   eventTaskSuccess,
@@ -82,22 +80,15 @@ export function createEventTaskTool(
         ) {
           throw new ToolInputError("Event task operation identity is invalid.");
         }
-        if (existing.status === "deleted") {
-          throw new ToolInputError("Event task was already deleted.");
-        }
         return eventTaskSuccess(existing, catalog);
       }
       const task: EventTask = {
         id,
-        conversationAccess: eventTaskConversationAccess(
-          destination.channelId,
-          source.visibility,
-        ),
+        destinationVisibility: source.visibility,
         createdAtMs: Date.now(),
         createdBy: eventTaskPrincipal(actor),
         credentialMode: input.credentialMode ?? "creator",
         destination,
-        status: "active",
         task: { text: input.task },
         trigger: {
           namespace: input.trigger.namespace,
@@ -108,7 +99,7 @@ export function createEventTaskTool(
           ),
           resourceType: input.trigger.resourceType,
           label: input.trigger.label,
-          events: cleanEventTaskEvents(input.trigger.events),
+          events: [...new Set(input.trigger.events)],
         },
       };
       return eventTaskSuccess(await createEventTask(db, task), catalog);

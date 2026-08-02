@@ -102,31 +102,15 @@ export async function ingestEventTasks(
           idempotencyKey,
           ...(credentialSubject ? { credentialSubject } : {}),
           destination: task.destination,
-          destinationVisibility:
-            task.conversationAccess.visibility === "public"
-              ? "public"
-              : "private",
+          destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event),
-          metadata: {
-            eventKey: oneLine(event.eventKey),
-            eventType: oneLine(event.eventType),
-            namespace: oneLine(event.namespace),
-            identifier: oneLine(event.identifier),
-            taskId: task.id,
-          },
           source: createSlackSource({
             teamId: task.destination.teamId,
             channelId: task.destination.channelId,
-            visibility:
-              task.conversationAccess.visibility === "public"
-                ? "public"
-                : "private",
+            visibility: task.destinationVisibility,
           }),
         },
       });
-      if ("deliveryError" in dispatch) {
-        throw dispatch.deliveryError;
-      }
       if (dispatch.status === "created") {
         dispatched += 1;
       }
