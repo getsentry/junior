@@ -543,7 +543,6 @@ describe("mcp oauth callback integration", () => {
             userName: "stored-user",
           }),
           destination: SLACK_DESTINATION,
-          destinationVisibility: "public",
           source: storedSource,
           toolChannelId: "C999",
         }),

@@ -67,7 +67,6 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
-import { resolveConfirmedDestinationVisibility } from "@/chat/conversations/destination-visibility";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -389,12 +388,6 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
-      const destinationVisibility = await resolveConfirmedDestinationVisibility(
-        {
-          destination,
-          visibility: lockedSessionRecord.destinationVisibility,
-        },
-      );
 
       await recordAuthorizationCompleted({
         conversationId: stored.resumeConversationId!,
@@ -432,7 +425,6 @@ async function resumeOAuthSessionRecordTurn(
             },
             actor,
             destination,
-            ...(destinationVisibility ? { destinationVisibility } : {}),
             source: lockedSessionRecord.source,
             toolChannelId:
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,

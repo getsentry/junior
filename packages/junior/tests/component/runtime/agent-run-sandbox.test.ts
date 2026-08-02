@@ -400,7 +400,6 @@ async function generateLocalReply(
       ...(context.input ?? {}),
     },
     routing: {
-      destinationVisibility: "private",
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     },

@@ -174,7 +174,7 @@ function destinationUpsertFromDestination(args: {
   channelName?: string;
   conversationId?: string;
   destination: Destination | undefined;
-  /** Source-confirmed visibility from the current event's signal only. */
+  /** Confirmed destination visibility; omit when unavailable. */
   visibility?: ConversationPrivacy;
 }): DestinationUpsert | undefined {
   const { destination } = args;

@@ -1075,7 +1075,6 @@ describe("executeAgentRun progressive MCP loading", () => {
             ] as unknown as PiMessage[],
           },
           routing: {
-            destinationVisibility: "private",
             actor: { platform: "system", name: "scheduler" },
             credentialContext: {
               actor: { platform: "system", name: "scheduler" },

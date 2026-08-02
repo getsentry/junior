@@ -127,8 +127,6 @@ export async function persistRunningSessionRecord(args: {
       args.conversationId,
       args.sessionId,
     );
-    const destinationVisibility =
-      args.destinationVisibility ?? latestSessionRecord?.destinationVisibility;
     await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -139,7 +137,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
-      ...(destinationVisibility ? { destinationVisibility } : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -209,7 +207,7 @@ export async function persistCompletedSessionRecord(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
-  /** Visibility of the destination where this turn is delivered. */
+  /** Confirmed visibility; omit when unavailable to preserve canonical metadata. */
   destinationVisibility?: ConversationPrivacy;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
@@ -243,8 +241,6 @@ export async function persistCompletedSessionRecord(args: {
   const modelId = args.modelId;
   const reasoningLevel =
     args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
-  const destinationVisibility =
-    args.destinationVisibility ?? latestSessionRecord?.destinationVisibility;
   const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
     ...((args.channelName ?? latestSessionRecord?.channelName)
       ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -280,7 +276,9 @@ export async function persistCompletedSessionRecord(args: {
     ...((args.source ?? latestSessionRecord?.source)
       ? { source: args.source ?? latestSessionRecord?.source }
       : {}),
-    ...(destinationVisibility ? { destinationVisibility } : {}),
+    ...(args.destinationVisibility
+      ? { destinationVisibility: args.destinationVisibility }
+      : {}),
     sessionId: args.sessionId,
     sliceId,
     state: "completed",
@@ -415,14 +413,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
-      ...((args.destinationVisibility ??
-      latestSessionRecord?.destinationVisibility)
-        ? {
-            destinationVisibility:
-              args.destinationVisibility ??
-              latestSessionRecord?.destinationVisibility,
-          }
-        : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -533,6 +524,7 @@ export async function persistContinuationSessionRecord(
               destination: args.destination ?? latestSessionRecord?.destination,
             }
           : {}),
+        destinationVisibility: args.destinationVisibility,
         ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
           ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
           : {}),
@@ -579,6 +571,7 @@ export async function persistContinuationSessionRecord(
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),

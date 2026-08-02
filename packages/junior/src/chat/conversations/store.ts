@@ -82,7 +82,7 @@ export interface ConversationStore {
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
     title?: string;
-    /** Source-confirmed visibility from the current event's signal only. */
+    /** Confirmed destination visibility; omit when unavailable. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
@@ -104,7 +104,7 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
-    /** Source-confirmed visibility from the current event's signal only. */
+    /** Confirmed destination visibility; omit when unavailable. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   listByActivity(args?: {

@@ -35,11 +35,7 @@ describe("executeAgentRun error path", () => {
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-sandbox-failure",
       input: { messageText: "hello" },
-      routing: {
-        destination: LOCAL_DESTINATION,
-        destinationVisibility: "private",
-        source: LOCAL_SOURCE,
-      },
+      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
       state: {
         sandboxRef: {
           id: "sb-123",
@@ -75,7 +71,6 @@ describe("executeAgentRun error path", () => {
         runId: "run-context-failure",
         input: { messageText: "hello" },
         routing: {
-          destinationVisibility: "private",
           actor: {
             platform: "local",
             userId: "local-user",
@@ -110,11 +105,7 @@ describe("executeAgentRun error path", () => {
       turnId: "turn-reasoning-failure",
       input: { messageText: "hello" },
       policy: { reasoningLevel: "high" },
-      routing: {
-        destination: LOCAL_DESTINATION,
-        destinationVisibility: "private",
-        source: LOCAL_SOURCE,
-      },
+      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
     });
     const reply = outcome.status === "completed" ? outcome.result : undefined;
 
@@ -129,11 +120,7 @@ describe("executeAgentRun error path", () => {
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-input-failure",
         input: { messageText: "hello" },
-        routing: {
-          destination: LOCAL_DESTINATION,
-          destinationVisibility: "private",
-          source: LOCAL_SOURCE,
-        },
+        routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
         durability: {
           onInputCommitted: async () => {
             throw new Error("input should not commit before startup succeeds");
@@ -161,7 +148,6 @@ describe("executeAgentRun error path", () => {
         turnId: "turn-actor-mismatch",
         input: { messageText: "hello" },
         routing: {
-          destinationVisibility: "private",
           destination: LOCAL_DESTINATION,
           source: LOCAL_SOURCE,
           actor: {
@@ -183,7 +169,6 @@ describe("executeAgentRun error path", () => {
         turnId: "turn-conversation-mismatch",
         input: { messageText: "hello" },
         routing: {
-          destinationVisibility: "private",
           destination: LOCAL_DESTINATION,
           source: LOCAL_SOURCE,
         },

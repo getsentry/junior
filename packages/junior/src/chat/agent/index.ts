@@ -108,6 +108,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
+import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import {
   RetryableDeliveryError,
   assertRunRoutingConsistency,
@@ -199,9 +200,19 @@ export async function executeAgentRun(
   if (!request.routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const conversationPrivacy = resolveConversationPrivacy({
+  const destinationVisibility = await resolveDestinationVisibility({
+    destination: request.routing.destination,
     visibility: request.routing.destinationVisibility,
   });
+  const conversationPrivacy = resolveConversationPrivacy({
+    visibility: destinationVisibility,
+  });
+  const resolvedRequest = destinationVisibility
+    ? {
+        ...request,
+        routing: { ...request.routing, destinationVisibility },
+      }
+    : request;
   const credentialActor = request.routing.credentialContext?.actor;
   const actor = actorFromRouting(request.routing);
   const userActor = actor && "userId" in actor ? actor : undefined;
@@ -235,7 +246,7 @@ export async function executeAgentRun(
   return withLogContext(runLogContext, () =>
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
-        request,
+        resolvedRequest,
         conversationPrivacy,
         runLogContext,
         streamFn,

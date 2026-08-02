@@ -271,7 +271,6 @@ describe("tool timeout continuation composition", () => {
       turnId,
       input: { messageText: "Run the targeted test and create the PR." },
       routing: {
-        destinationVisibility: "private" as const,
         destination: { platform: "local" as const, conversationId },
         source: createLocalSource(conversationId),
       },

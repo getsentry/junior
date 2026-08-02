@@ -128,7 +128,6 @@ describe("persistAuthPauseSessionRecord", () => {
       sliceId: 1,
       state: "awaiting_resume",
       source: SLACK_SOURCE,
-      destinationVisibility: "public",
       piMessages: priorMessages,
       resumeReason: "auth",
       errorMessage: "initial auth pause",
@@ -156,7 +155,6 @@ describe("persistAuthPauseSessionRecord", () => {
       resumeReason: "auth",
       errorMessage: "plugin auth pause",
       source: SLACK_SOURCE,
-      destinationVisibility: "public",
       piMessages: [priorMessages[0]],
     });
   });
@@ -166,6 +164,8 @@ describe("persistAuthPauseSessionRecord", () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getConversationStore } = await import("@/chat/db");
+    const { resolveDestinationVisibility } =
+      await import("@/chat/conversations/destination-visibility");
     const { appendInboundMessage } =
       await import("@/chat/task-execution/store");
     const conversationStore = getConversationStore();
@@ -220,6 +220,9 @@ describe("persistAuthPauseSessionRecord", () => {
         source: "slack",
         visibility: "public",
       });
+      await expect(
+        resolveDestinationVisibility({ destination: SLACK_DESTINATION }),
+      ).resolves.toBe("public");
     } finally {
       vi.useRealTimers();
     }
@@ -599,7 +602,6 @@ describe("persistAuthPauseSessionRecord", () => {
     } as PiMessage;
 
     await persistRunningSessionRecord({
-      destinationVisibility: "private",
       modelId: "test/model",
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
@@ -610,7 +612,6 @@ describe("persistAuthPauseSessionRecord", () => {
     // A second human steers the same run; their message commits as an
     // instruction attributed to bob, while Alice remains the bound run actor.
     await persistRunningSessionRecord({
-      destinationVisibility: "private",
       modelId: "test/model",
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
@@ -926,7 +927,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistCompletedSessionRecord({
-        destinationVisibility: "private",
         modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
@@ -967,7 +967,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/services/turn-session-record");
 
     await persistCompletedSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -993,7 +992,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await persistCompletedSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "conversation-completed",
       sessionId: "turn-completed",
@@ -1041,7 +1039,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await persistCompletedSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "agent-dispatch:dispatch_atomic",
       sessionId: "dispatch:dispatch_atomic",
@@ -1099,7 +1096,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        destinationVisibility: "private",
         modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
@@ -1110,7 +1106,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        destinationVisibility: "private",
         modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
@@ -1130,7 +1125,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        destinationVisibility: "private",
         modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
@@ -1162,7 +1156,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        destinationVisibility: "private",
         modelId: "test-model",
         conversationId: "conversation-storage-failure",
         sessionId: "turn-storage-failure",
@@ -1192,7 +1185,6 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await persistRunningSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",

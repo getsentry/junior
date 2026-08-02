@@ -130,7 +130,7 @@ import {
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
-import { resolveConfirmedDestinationVisibility } from "@/chat/conversations/destination-visibility";
+import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
@@ -484,7 +484,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       channelName,
       channelType: slackChannelType,
     });
-    const destinationVisibility = await resolveConfirmedDestinationVisibility({
+    const destinationVisibility = await resolveDestinationVisibility({
       destination,
       visibility:
         options.execution?.destinationVisibility ??

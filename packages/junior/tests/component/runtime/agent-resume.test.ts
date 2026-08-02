@@ -29,7 +29,6 @@ describe("agent resume", () => {
     const destination = { platform: "local" as const, conversationId };
     const resume = createResumeState({
       destination,
-      destinationVisibility: "private",
       durability: {},
       getLoadedSkillNames: () => [],
       getModelId: () => "test/model",

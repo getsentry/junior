@@ -792,7 +792,6 @@ describe("agent run continuation", () => {
     ]);
 
     await persistCompletedSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -938,7 +937,6 @@ describe("agent run continuation", () => {
     // Simulate the destination boundary committing completion after
     // acceptance; generation itself does not commit provider delivery.
     await persistCompletedSessionRecord({
-      destinationVisibility: "private",
       modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn-steering",
