@@ -6,12 +6,10 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { getEventTask } from "@/chat/event-tasks/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
-  createDeleteEventTaskTool,
-  createEventTaskTool,
-  createListEventTasksTool,
-  createUpdateEventTaskTool,
-} from "@/chat/tools/event-tasks";
+import { createEventTaskTool } from "@/chat/tools/create-event-task";
+import { createDeleteEventTaskTool } from "@/chat/tools/delete-event-task";
+import { createListEventTasksTool } from "@/chat/tools/list-event-tasks";
+import { createUpdateEventTaskTool } from "@/chat/tools/update-event-task";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorEventTasks } from "@/db/schema/event-tasks";
 import {

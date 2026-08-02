@@ -1,0 +1,299 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { getDb } from "@/chat/db";
+import { getEventTask } from "@/chat/event-tasks/store";
+import {
+  eventTaskPrincipalSchema,
+  type EventTask,
+  type EventTaskConversationAccess,
+  type EventTaskPrincipal,
+} from "@/chat/event-tasks/types";
+import {
+  eventNamespaceSchema,
+  pluginSupportsEvent,
+  registeredEventTypeSchema,
+  registeredResourceTypeSchema,
+  type ResourceEventCatalog,
+} from "@/chat/resource-events/catalog";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+export const MAX_LISTED_EVENT_TASKS = 50;
+
+const compactEventTaskResultSchema = z
+  .object({
+    id: z.string().min(1),
+    status: z.enum(["active", "deleted"]),
+    task: z.string().min(1),
+    namespace: z.string().min(1),
+    identifier: z.string().min(1),
+    resourceType: z.string().min(1),
+    label: z.string().min(1),
+    events: z.array(z.string().min(1)).min(1),
+    credentialMode: z.enum(["system", "creator"]),
+    createdBy: eventTaskPrincipalSchema,
+    triggerAvailable: z.boolean(),
+  })
+  .strict();
+
+const eventTaskResultDataSchema = z
+  .object({ task: compactEventTaskResultSchema })
+  .strict();
+
+export const eventTaskToolResultSchema = juniorToolResultSchema
+  .extend({
+    ok: z.literal(true),
+    status: z.literal("success"),
+    data: eventTaskResultDataSchema,
+    task: compactEventTaskResultSchema,
+  })
+  .strict();
+
+const eventTaskListResultDataSchema = z
+  .object({
+    tasks: z.array(compactEventTaskResultSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const eventTaskListToolResultSchema = juniorToolResultSchema
+  .extend({
+    ok: z.literal(true),
+    status: z.literal("success"),
+    data: eventTaskListResultDataSchema,
+    tasks: z.array(compactEventTaskResultSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+/** Build the validated resource-event trigger accepted by event-task tools. */
+export function eventTaskTriggerSchema(catalog: ResourceEventCatalog) {
+  return z
+    .object({
+      namespace: eventNamespaceSchema(catalog),
+      identifier: z.string().trim().min(1),
+      resourceType: registeredResourceTypeSchema(catalog),
+      label: z.string().trim().min(1).max(500),
+      events: z.array(registeredEventTypeSchema(catalog)).min(1),
+    })
+    .strict()
+    .superRefine((trigger, context) => {
+      trigger.events.forEach((eventType, index) => {
+        if (
+          !pluginSupportsEvent(
+            catalog,
+            trigger.namespace,
+            trigger.resourceType,
+            eventType,
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `Resource type "${trigger.namespace}:${trigger.resourceType}" does not support event "${eventType}".`,
+            path: ["events", index],
+          });
+        }
+      });
+    });
+}
+
+/** Reject an event-task trigger that is no longer supported by the catalog. */
+export function requireSupportedEventTaskTrigger(
+  catalog: ResourceEventCatalog,
+  trigger: { events: string[]; namespace: string; resourceType: string },
+): void {
+  for (const eventType of trigger.events) {
+    if (
+      !pluginSupportsEvent(
+        catalog,
+        trigger.namespace,
+        trigger.resourceType,
+        eventType,
+      )
+    ) {
+      throw new ToolInputError(
+        `Resource type "${trigger.namespace}:${trigger.resourceType}" does not support event "${eventType}".`,
+      );
+    }
+  }
+}
+
+/** Require the active Slack authority used for event-task management. */
+export function requireEventTaskSlackContext(context: ToolRuntimeContext) {
+  if (
+    context.source.platform !== "slack" ||
+    context.destination.platform !== "slack" ||
+    context.actor?.platform !== "slack" ||
+    context.actor.teamId !== context.destination.teamId
+  ) {
+    throw new ToolInputError(
+      "Event tasks require an active Slack channel or DM and actor.",
+    );
+  }
+  return {
+    actor: context.actor,
+    destination: context.destination,
+    source: context.source,
+  };
+}
+
+/** Project a Slack actor into the durable event-task creator identity. */
+export function eventTaskPrincipal(
+  actor: Extract<
+    NonNullable<ToolRuntimeContext["actor"]>,
+    { platform: "slack" }
+  >,
+): EventTaskPrincipal {
+  return {
+    slackUserId: actor.userId,
+    ...(actor.fullName ? { fullName: actor.fullName } : {}),
+    ...(actor.userName ? { userName: actor.userName } : {}),
+  };
+}
+
+/** Capture the durable access classification of the active Slack destination. */
+export function eventTaskConversationAccess(
+  channelId: string,
+  sourceVisibility: "private" | "public",
+): EventTaskConversationAccess {
+  if (channelId.startsWith("D")) {
+    return { audience: "direct", visibility: "private" };
+  }
+  if (channelId.startsWith("G")) {
+    return { audience: "group", visibility: "private" };
+  }
+  return {
+    audience: "channel",
+    visibility: sourceVisibility,
+  };
+}
+
+/** Return whether an event task belongs to the active Slack destination. */
+export function eventTaskMatchesDestination(
+  task: EventTask,
+  destination: { channelId: string; teamId: string },
+): boolean {
+  return (
+    task.destination.teamId === destination.teamId &&
+    task.destination.channelId === destination.channelId
+  );
+}
+
+/** Load one active task only when it belongs to this Slack channel or DM. */
+export async function writableEventTask(
+  context: ToolRuntimeContext,
+  id: string,
+): Promise<EventTask> {
+  const { destination } = requireEventTaskSlackContext(context);
+  const task = await getEventTask(getDb(), id);
+  if (
+    !task ||
+    task.status === "deleted" ||
+    !eventTaskMatchesDestination(task, destination)
+  ) {
+    throw new ToolInputError(
+      "Event task was not found in this Slack channel or DM.",
+    );
+  }
+  return task;
+}
+
+/** Build a retry-stable task id scoped to actor, destination, and tool call. */
+export function buildEventTaskId(args: {
+  channelId: string;
+  teamId: string;
+  toolCallId: string | undefined;
+  userId: string;
+}): string {
+  const toolCallId = args.toolCallId?.trim();
+  if (!toolCallId) {
+    throw new Error("Event task creation requires a tool-call identity.");
+  }
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        actor: args.userId,
+        channel: args.channelId,
+        operation: toolCallId,
+        team: args.teamId,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 32);
+  return `evt_${digest}`;
+}
+
+/** Normalize and deduplicate the event names stored on an event task. */
+export function cleanEventTaskEvents(events: string[]): string[] {
+  const clean = [
+    ...new Set(events.map((event) => event.trim()).filter(Boolean)),
+  ];
+  if (clean.length === 0) {
+    throw new ToolInputError("At least one event is required.");
+  }
+  return clean;
+}
+
+/** Return whether an edit changes the task's executable event source. */
+export function changesEventTaskTrigger(
+  current: EventTask["trigger"],
+  next: EventTask["trigger"],
+): boolean {
+  const currentEvents = [...current.events].sort();
+  const nextEvents = [...next.events].sort();
+  return (
+    current.namespace !== next.namespace ||
+    current.identifier !== next.identifier ||
+    currentEvents.length !== nextEvents.length ||
+    currentEvents.some((event, index) => event !== nextEvents[index])
+  );
+}
+
+function triggerAvailable(
+  task: EventTask,
+  catalog: ResourceEventCatalog,
+): boolean {
+  return task.trigger.events.every((eventType) =>
+    pluginSupportsEvent(
+      catalog,
+      task.trigger.namespace,
+      task.trigger.resourceType,
+      eventType,
+    ),
+  );
+}
+
+/** Project an event task into the bounded tool-result shape. */
+export function compactEventTask(
+  task: EventTask,
+  catalog: ResourceEventCatalog,
+) {
+  return compactEventTaskResultSchema.parse({
+    id: task.id,
+    status: task.status,
+    task: task.task.text,
+    namespace: task.trigger.namespace,
+    identifier: task.trigger.identifier,
+    resourceType: task.trigger.resourceType,
+    label: task.trigger.label,
+    events: task.trigger.events,
+    credentialMode: task.credentialMode,
+    createdBy: task.createdBy,
+    triggerAvailable: triggerAvailable(task, catalog),
+  });
+}
+
+/** Return the standard successful event-task tool result. */
+export function eventTaskSuccess(
+  task: EventTask,
+  catalog: ResourceEventCatalog,
+) {
+  const details = { task: compactEventTask(task, catalog) };
+  return {
+    ok: true as const,
+    status: "success" as const,
+    data: details,
+    ...details,
+  };
+}
