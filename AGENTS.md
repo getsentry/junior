@@ -61,5 +61,16 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Testing and evals      | `policies/testing.md`, `policies/evals.md`, `packages/junior/tests/README.md`, `packages/junior-evals/README.md` |
 | Local agent validation | `packages/docs/src/content/docs/contribute/local-agent-validation.md`                                            |
 | Temporary plans        | `openspec/changes/<slug>/`                                                                                       |
+| Garfield/Swamp dev loop | `swamp/README.md`, `scripts/garfield/`, workflow `garfield-slice`                                                |
 
 Feature architecture and non-obvious invariants belong in the owning package or module `README.md`. Code, schemas, exported types, and tests are authoritative. Plans cannot override policy; update the policy for an exception.
+
+## Garfield Dev Loop (optional)
+
+For multi-lane implementation review on a Junior worktree, use the local Swamp MVP:
+
+- Docs: `swamp/README.md`
+- Run: `swamp workflow run garfield-slice --input goal='...'`
+- Or scripts only: `node scripts/garfield/build-bundle.mjs --goal '...'`
+
+This is development tooling, not product runtime.

@@ -20,3 +20,7 @@ packages/junior-evals/.vitest-evals/recordings/**/*.json
 packages/junior-evals/vitest-results*.json
 packages/junior-evals/eval-results/
 .env*
+
+# Swamp local runtime (Garfield MVP and other dev automation)
+.swamp/
+.swamp-sources.yaml
