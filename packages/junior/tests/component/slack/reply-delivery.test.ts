@@ -59,6 +59,40 @@ describe("sendSlackReply", () => {
     ]);
   });
 
+  it("escapes attribution in mrkdwn fallback text", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      replyAttribution: {
+        label: "Scheduled <@U123>",
+        detail: "Weekly & <https://example.com>",
+      },
+      text: "hello",
+      threadTs: "1700000000.000100",
+    });
+
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
+    ).toMatchObject({
+      text: "hello\n\nScheduled &lt;@U123&gt; · Weekly &amp; &lt;https://example.com&gt;",
+      blocks: [
+        {
+          type: "markdown",
+          text: "hello",
+        },
+        {
+          type: "context",
+          elements: expect.arrayContaining([
+            {
+              type: "plain_text",
+              text: "Scheduled <@U123> · Weekly & <https://example.com>",
+            },
+          ]),
+        },
+      ],
+    });
+  });
+
   it("does not post empty text", async () => {
     await expect(
       sendSlackReply({

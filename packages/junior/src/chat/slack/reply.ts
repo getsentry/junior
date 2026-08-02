@@ -9,6 +9,7 @@ import {
   buildSlackReplyFooter,
   formatReplyAttribution,
 } from "@/chat/slack/footer";
+import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { splitSlackReplyText } from "@/chat/slack/output";
 
@@ -40,7 +41,7 @@ export async function sendSlackReply(args: {
     );
     const fallbackText =
       isFinalChunk && args.replyAttribution
-        ? `${text}\n\n${formatReplyAttribution(args.replyAttribution)}`
+        ? `${text}\n\n${escapeSlackMrkdwnText(formatReplyAttribution(args.replyAttribution))}`
         : text;
     const response = await postSlackMessage({
       channelId: args.channelId,
