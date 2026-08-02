@@ -228,7 +228,7 @@ export function CostMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltipTopAligned
+      tooltipPlacement="above"
       {...costTooltip(props.summary, props.modelUsage, props.auxiliaryCosts)}
     >
       {formatCostSummary(total)}

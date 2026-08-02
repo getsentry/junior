@@ -83,6 +83,72 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
+test("positions a long cost tooltip clear of its metric", async ({ page }) => {
+  const conversationId = "slack:CQA123:1770003600.000200";
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch();
+      const detail = (await response.json()) as ConversationDetailReport;
+      await route.fulfill({
+        response,
+        json: {
+          ...detail,
+          modelUsage: [
+            {
+              modelId: "openai/gpt-5.6-sol",
+              usage: {
+                cost: {
+                  cacheRead: 0.004,
+                  cacheWrite: 0.005,
+                  input: 0.01,
+                  output: 0.021,
+                  total: 0.04,
+                },
+              },
+            },
+            {
+              modelId: "xai/grok-4.5",
+              usage: { cost: { input: 0.0004, output: 0.0006, total: 0.001 } },
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+
+  const cost = page.getByText("$0.04", { exact: true }).first();
+  await cost.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+
+  const costBounds = await cost.boundingBox();
+  const tooltipBounds = await tooltip.boundingBox();
+  expect(costBounds).not.toBeNull();
+  expect(tooltipBounds).not.toBeNull();
+  const tooltipIsAbove =
+    tooltipBounds!.y + tooltipBounds!.height < costBounds!.y;
+  const tooltipIsBelow = tooltipBounds!.y > costBounds!.y + costBounds!.height;
+  expect(tooltipIsAbove || tooltipIsBelow).toBe(true);
+
+  const columns = tooltip.locator(":scope > span > span");
+  await expect(columns).toHaveCount(2);
+  const auxiliary = columns.nth(1);
+  const headingBounds = await auxiliary
+    .getByText("Auxiliary", { exact: true })
+    .boundingBox();
+  const totalBounds = await auxiliary
+    .getByText("total", { exact: true })
+    .boundingBox();
+  expect(headingBounds).not.toBeNull();
+  expect(totalBounds).not.toBeNull();
+  expect(totalBounds!.y - headingBounds!.y).toBeLessThan(40);
+});
+
 test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {

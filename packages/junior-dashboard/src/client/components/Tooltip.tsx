@@ -12,10 +12,15 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { cn } from "../styles";
+
 type TooltipProps = {
+  align?: "center" | "left" | "right";
   children: ReactElement;
+  className?: string;
   content: ReactNode;
   label?: ReactNode;
+  placement?: "above" | "below";
 };
 
 type Position = {
@@ -27,7 +32,14 @@ const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 10;
 
 /** Show dashboard details beside an element while keeping the surface on-screen. */
-export function Tooltip({ children, content, label }: TooltipProps) {
+export function Tooltip({
+  align = "center",
+  children,
+  className,
+  content,
+  label,
+  placement = "above",
+}: TooltipProps) {
   const anchorRef = useRef<Element | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const tooltipId = useId();
@@ -41,28 +53,41 @@ export function Tooltip({ children, content, label }: TooltipProps) {
 
     const anchorRect = anchor.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
-    const centeredLeft =
-      anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+    const preferredLeft =
+      align === "left"
+        ? anchorRect.left
+        : align === "right"
+          ? anchorRect.right - tooltipRect.width
+          : anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
     const left = Math.max(
       VIEWPORT_GAP,
       Math.min(
         window.innerWidth - tooltipRect.width - VIEWPORT_GAP,
-        centeredLeft,
+        preferredLeft,
       ),
     );
     const above = anchorRect.top - tooltipRect.height - ANCHOR_GAP;
-    const top =
-      above >= VIEWPORT_GAP
-        ? above
-        : Math.max(
-            VIEWPORT_GAP,
-            Math.min(
-              window.innerHeight - tooltipRect.height - VIEWPORT_GAP,
-              anchorRect.bottom + ANCHOR_GAP,
-            ),
-          );
+    const below = anchorRect.bottom + ANCHOR_GAP;
+    const fitsAbove = above >= VIEWPORT_GAP;
+    const fitsBelow =
+      below + tooltipRect.height <= window.innerHeight - VIEWPORT_GAP;
+    const preferredTop =
+      placement === "above"
+        ? fitsAbove || !fitsBelow
+          ? above
+          : below
+        : fitsBelow || !fitsAbove
+          ? below
+          : above;
+    const top = Math.max(
+      VIEWPORT_GAP,
+      Math.min(
+        window.innerHeight - tooltipRect.height - VIEWPORT_GAP,
+        preferredTop,
+      ),
+    );
     setPosition({ left, top });
-  }, []);
+  }, [align, placement]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -121,7 +146,11 @@ export function Tooltip({ children, content, label }: TooltipProps) {
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-50 min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70"
+              className={cn(
+                "pointer-events-none fixed z-50",
+                className ??
+                  "min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+              )}
               id={tooltipId}
               ref={tooltipRef}
               role="tooltip"
