@@ -60,6 +60,7 @@ async function useSchedulerSqlPlugin() {
 function createContext(
   overrides: Partial<SchedulerToolContext> & {
     channelId?: string;
+    linkedUser?: boolean;
     teamId?: string;
   } = {},
 ): SchedulerToolContext {
@@ -67,6 +68,7 @@ function createContext(
   const teamId = overrides.teamId ?? TEST_TEAM_ID;
   const contextOverrides = { ...overrides };
   delete contextOverrides.channelId;
+  delete contextOverrides.linkedUser;
   delete contextOverrides.teamId;
   const actor = overrides.actor ?? {
     platform: "slack" as const,
@@ -75,16 +77,20 @@ function createContext(
     userName: "dcramer",
     fullName: "David Cramer",
   };
-  const identity =
-    overrides.identity ??
-    (actor
-      ? {
-          id: `identity:${actor.teamId}:${actor.userId}`,
-          provider: "slack",
-          providerSubjectId: actor.userId,
-          providerTenantId: actor.teamId,
-        }
-      : undefined);
+  const identity = {
+    id: `identity:${actor.teamId}:${actor.userId}`,
+    provider: "slack",
+    providerSubjectId: actor.userId,
+    providerTenantId: actor.teamId,
+  };
+  const user =
+    overrides.linkedUser === false
+      ? undefined
+      : {
+          email: `${actor.userId.toLowerCase()}@example.com`,
+          id: `user:${actor.userId}`,
+          identities: [identity],
+        };
   const context: SchedulerToolContext = {
     source: createSlackSource({
       teamId,
@@ -93,19 +99,12 @@ function createContext(
       visibility: channelId.startsWith("C") ? "public" : "private",
     }),
     actor,
-    ...(identity ? { identity } : {}),
     now: () => Date.parse("2026-05-24T12:00:00.000Z"),
     userText: "schedule this weekly",
     store: schedulerStore(),
-    ...(identity
-      ? {
-          user: {
-            email: `${actor!.userId.toLowerCase()}@example.com`,
-            id: `user:${actor!.userId}`,
-            identities: [identity],
-          },
-        }
-      : {}),
+    users: {
+      resolveActor: async () => ({ identity, ...(user ? { user } : {}) }),
+    },
     ...contextOverrides,
   };
   return context;
@@ -289,7 +288,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("stores identity ownership before the creator is linked to a user", async () => {
-    const context = createContext({ user: undefined });
+    const context = createContext({ linkedUser: false });
     const created = await createTask(context);
 
     const stored = await schedulerStore().getTask(created.task.id);
@@ -1471,6 +1470,18 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
     const { fixture, store } = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
+      const identity = {
+        id: `identity:${TEAM_ID}:U123`,
+        provider: "slack",
+        providerSubjectId: "U123",
+        providerTenantId: TEAM_ID,
+      };
+      const user = {
+        email: "alice@example.com",
+        id: "user:alice",
+        identities: [identity],
+      };
+      const resolveActorIdentity = vi.fn(async () => ({ identity, user }));
       const tools = getPluginTools({
         source: createSlackSource({
           teamId: TEAM_ID,
@@ -1490,33 +1501,17 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
           userName: "alice",
           fullName: "Alice",
         },
-        identity: {
-          id: `identity:${TEAM_ID}:U123`,
-          provider: "slack",
-          providerSubjectId: "U123",
-          providerTenantId: TEAM_ID,
-        },
         egress: {
           async fetch() {
             return new Response("ok");
           },
         },
+        resolveActorIdentity,
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-        user: {
-          email: "alice@example.com",
-          id: "user:alice",
-          identities: [
-            {
-              id: `identity:${TEAM_ID}:U123`,
-              provider: "slack",
-              providerSubjectId: "U123",
-              providerTenantId: TEAM_ID,
-            },
-          ],
-        },
       });
 
       expect(tools).toHaveProperty("scheduler_slackScheduleCreateTask");
+      expect(resolveActorIdentity).not.toHaveBeenCalled();
 
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
@@ -1535,6 +1530,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
       });
 
       expect(result).toMatchObject({ ok: true });
+      expect(resolveActorIdentity).toHaveBeenCalledOnce();
       const taskId = result.task.id;
 
       // Task destination must be the raw DM channel, NOT the assistant context.

@@ -152,9 +152,8 @@ function createSchedulerToolContext(
   return {
     source: ctx.source.platform === "slack" ? ctx.source : undefined,
     actor: ctx.actor?.platform === "slack" ? ctx.actor : undefined,
-    identity: ctx.identity,
     store: schedulerStore(ctx),
-    user: ctx.user,
+    users: ctx.users,
     userText: ctx.userText,
   };
 }

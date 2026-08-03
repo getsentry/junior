@@ -531,12 +531,14 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   embedder: PluginEmbedder;
   egress: PluginEgress;
-  identity?: Identity;
   mcp?: PluginMcp;
   model: PluginModel;
   resourceEvents: PluginResourceEventToolContext;
   state: PluginState;
-  user?: User;
+  users: {
+    /** Resolve the current actor's stored identity and linked user. */
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
   userText?: string;
 }
 

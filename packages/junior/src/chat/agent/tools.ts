@@ -158,9 +158,6 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.routing.source;
-  const actorIdentity = args.currentActor
-    ? await readActorIdentity(args.currentActor)
-    : undefined;
   const credentialUserId = args.routing.credentialContext
     ? credentialUserSubjectId(args.routing.credentialContext)
     : undefined;
@@ -290,8 +287,12 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
-    ...(actorIdentity?.identity ? { identity: actorIdentity.identity } : {}),
-    ...(actorIdentity?.user ? { user: actorIdentity.user } : {}),
+    ...(args.currentActor
+      ? {
+          resolveActorIdentity: async () =>
+            await readActorIdentity(args.currentActor!),
+        }
+      : {}),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
   const toolDestination = toolInvocationDestination(args.routing);

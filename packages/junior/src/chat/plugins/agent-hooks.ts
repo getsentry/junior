@@ -556,6 +556,8 @@ export function getPluginTools(
       canSubscribe:
         context.source.platform === "slack" && canRouteResourceEvents(),
     };
+    const resolveActor =
+      context.resolveActorIdentity ?? (async () => undefined);
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -574,12 +576,11 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
-        ...(context.identity ? { identity: context.identity } : {}),
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
         state: createPluginState(pluginName),
-        ...(context.user ? { user: context.user } : {}),
+        users: { resolveActor },
       };
     } else {
       if (context.destination.platform !== "local") {
@@ -597,12 +598,11 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
-        ...(context.identity ? { identity: context.identity } : {}),
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
         state: createPluginState(pluginName),
-        ...(context.user ? { user: context.user } : {}),
+        users: { resolveActor },
       };
     }
     const pluginTools = hook(pluginContext);

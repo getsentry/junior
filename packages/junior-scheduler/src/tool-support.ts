@@ -21,11 +21,12 @@ import type {
 
 export interface SchedulerToolContext {
   actor?: SlackActor;
-  identity?: Identity;
   now?: () => number;
   source?: SlackSource;
   store: SchedulerStore;
-  user?: User;
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
   userText?: string;
 }
 

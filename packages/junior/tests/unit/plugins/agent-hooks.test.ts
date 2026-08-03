@@ -501,7 +501,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects turn-scoped tools from configured plugins", () => {
+  it("collects turn-scoped tools from configured plugins", async () => {
     const identity = {
       id: "identity-1",
       provider: "slack",
@@ -513,6 +513,9 @@ describe("agent plugin hooks", () => {
       id: "user-1",
       identities: [identity],
     };
+    let resolveActor:
+      | ToolRegistrationHookContext["users"]["resolveActor"]
+      | undefined;
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -524,8 +527,7 @@ describe("agent plugin hooks", () => {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
             expect(ctx.resourceEvents.canSubscribe).toBe(true);
-            expect(ctx.identity).toEqual(identity);
-            expect(ctx.user).toEqual(user);
+            resolveActor = ctx.users.resolveActor;
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -538,12 +540,12 @@ describe("agent plugin hooks", () => {
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
-        identity,
+        resolveActorIdentity: async () => ({ identity, user }),
         source: SLACK_SOURCE,
-        user,
         workspace: {} as any,
       });
 
+      await expect(resolveActor?.()).resolves.toEqual({ identity, user });
       expect(tools).toHaveProperty("agentDemo_demoTool");
       expect(tools.demoTool).toBeUndefined();
       expect(tools.agentDemo_demoTool?.identity).toEqual({

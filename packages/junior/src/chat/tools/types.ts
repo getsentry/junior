@@ -90,7 +90,9 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor;
-  identity?: Identity;
+  resolveActorIdentity?: () => Promise<
+    { identity: Identity; user?: User } | undefined
+  >;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */
@@ -103,7 +105,6 @@ interface BaseToolRuntimeContext {
   workspace: SandboxWorkspace;
   /** Report whether the model currently executing the turn accepts images. */
   supportsImageInput?: () => boolean;
-  user?: User;
 }
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {

@@ -93,7 +93,8 @@ export function createSlackScheduleCreateTaskTool(
         );
       }
 
-      const identity = context.identity;
+      const creator = await context.users.resolveActor();
+      const identity = creator?.identity;
       if (
         !identity ||
         identity.provider !== "slack" ||
@@ -128,7 +129,7 @@ export function createSlackScheduleCreateTaskTool(
         updatedAtMs: nowMs,
         createdBy: actor,
         creatorIdentityId: identity.id,
-        ...(context.user ? { creatorUserId: context.user.id } : {}),
+        ...(creator.user ? { creatorUserId: creator.user.id } : {}),
         conversationAccess,
         credentialMode: input.credential_mode ?? "creator",
         destination,
