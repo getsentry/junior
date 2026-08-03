@@ -1287,6 +1287,7 @@ async function listTasksCreatedByFromSql(
     const owners = [
       and(eq(juniorSchedulerTasks.creatorUserId, input.userId), identityOwner),
       and(isNull(juniorSchedulerTasks.creatorUserId), identityOwner),
+      and(ne(juniorSchedulerTasks.creatorUserId, input.userId), identityOwner),
     ].filter((owner) => owner !== undefined);
     const pages = await Promise.all(
       owners.map((owner) =>

@@ -492,6 +492,12 @@ ORDER BY tablename
       });
       await store.saveTask(visibleOld);
       await store.saveTask(visibleNew);
+      const visibleStaleProjection = createTask({
+        createdAtMs: TEST_RUN_AT_MS + 50,
+        creatorUserId: "user-other",
+        id: "sched_visible_stale_projection",
+      });
+      await store.saveTask(visibleStaleProjection);
       await fixture.sql.execute(
         `
 INSERT INTO junior_scheduler_tasks (
@@ -581,6 +587,17 @@ INSERT INTO junior_scheduler_tasks (
       );
       expect(second.records).toEqual([
         expect.objectContaining({ id: visibleOld.id }),
+      ]);
+      expect(second.nextCursor).toEqual(expect.any(String));
+
+      const third = pluginUserPageContentSchema.parse(
+        await page!.read(context, {
+          cursor: second.nextCursor,
+          limit: 1,
+        }),
+      );
+      expect(third.records).toEqual([
+        expect.objectContaining({ id: visibleStaleProjection.id }),
       ]);
 
       const search = pluginUserPageContentSchema.parse(
