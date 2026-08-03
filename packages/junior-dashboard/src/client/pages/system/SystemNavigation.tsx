@@ -1,4 +1,4 @@
-import { Boxes, ChevronDown, Gauge } from "lucide-react";
+import { Boxes, ChevronDown, Gauge, MapPinned, Users } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
 import { cn, dashboardInteractiveTextClass } from "../../styles";
@@ -9,15 +9,17 @@ import {
   type SystemPlugin,
 } from "./SystemPlugins";
 
-/** Render route-backed navigation for the System overview and loaded plugins. */
+/** Render route-backed navigation for System activity and capabilities. */
 export function SystemNavigation(props: {
-  plugins: SystemPlugin[];
-  reportingPlugins: SystemPlugin[];
+  plugins?: SystemPlugin[];
+  reportingPlugins?: SystemPlugin[];
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const currentPlugin = findSystemPlugin(location.pathname, props.plugins);
-  const currentPluginHasReporting = props.reportingPlugins.some(
+  const plugins = props.plugins ?? [];
+  const reportingPlugins = props.reportingPlugins ?? [];
+  const currentPlugin = findSystemPlugin(location.pathname, plugins);
+  const currentPluginHasReporting = reportingPlugins.some(
     (plugin) => plugin.name === currentPlugin?.name,
   );
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -42,20 +44,26 @@ export function SystemNavigation(props: {
             aria-label="System view"
             className="w-full appearance-none rounded-md border border-white/[0.09] bg-[#0a0a0d] py-2.5 pr-10 pl-3 font-display text-sm font-medium text-dashboard-text outline-none focus:border-cyan-300/30"
             onChange={(event) => navigate(event.target.value)}
-            value={systemNavigationValue(location.pathname, props.plugins)}
+            value={systemNavigationValue(location.pathname, plugins)}
           >
             <option value="/system">Overview</option>
-            <option value={systemPluginsPath}>All Plugins</option>
-            {props.reportingPlugins.map((plugin) => (
-              <option key={plugin.name} value={systemPluginPath(plugin.name)}>
-                {plugin.displayName}
-              </option>
-            ))}
-            {currentPlugin && !currentPluginHasReporting ? (
-              <option disabled value={systemPluginPath(currentPlugin.name)}>
-                {currentPlugin.displayName}
-              </option>
-            ) : null}
+            <optgroup label="Activity">
+              <option value="/system/people">People</option>
+              <option value="/system/locations">Locations</option>
+            </optgroup>
+            <optgroup label="Capabilities">
+              <option value={systemPluginsPath}>All Plugins</option>
+              {reportingPlugins.map((plugin) => (
+                <option key={plugin.name} value={systemPluginPath(plugin.name)}>
+                  {plugin.displayName}
+                </option>
+              ))}
+              {currentPlugin && !currentPluginHasReporting ? (
+                <option disabled value={systemPluginPath(currentPlugin.name)}>
+                  {currentPlugin.displayName}
+                </option>
+              ) : null}
+            </optgroup>
           </select>
           <ChevronDown
             aria-hidden="true"
@@ -73,16 +81,23 @@ export function SystemNavigation(props: {
             <Gauge aria-hidden="true" size={15} strokeWidth={1.8} />
             Overview
           </NavLink>
-          <div className="px-3 pt-4 pb-1.5 font-mono text-[0.56rem] font-medium uppercase tracking-[0.16em] text-dashboard-text-muted">
-            Plugins
-          </div>
+          <NavigationGroup label="Activity" />
+          <NavLink className={linkClass} to="/system/people">
+            <Users aria-hidden="true" size={15} strokeWidth={1.8} />
+            People
+          </NavLink>
+          <NavLink className={linkClass} to="/system/locations">
+            <MapPinned aria-hidden="true" size={15} strokeWidth={1.8} />
+            Locations
+          </NavLink>
+          <NavigationGroup label="Capabilities" />
           <NavLink className={linkClass} end to={systemPluginsPath}>
             <Boxes aria-hidden="true" size={15} strokeWidth={1.8} />
             All Plugins
           </NavLink>
-          {props.reportingPlugins.length ? (
+          {reportingPlugins.length ? (
             <div className="mt-3 grid min-w-0 gap-1">
-              {props.reportingPlugins.map((plugin) => (
+              {reportingPlugins.map((plugin) => (
                 <NavLink
                   className={linkClass}
                   key={plugin.name}
@@ -100,15 +115,27 @@ export function SystemNavigation(props: {
   );
 }
 
+function NavigationGroup(props: { label: string }) {
+  return (
+    <div className="px-3 pt-4 pb-1.5 font-mono text-[0.56rem] font-medium uppercase tracking-[0.16em] text-dashboard-text-muted">
+      {props.label}
+    </div>
+  );
+}
+
 function systemNavigationValue(
   pathname: string,
   plugins: SystemPlugin[],
 ): string {
-  const plugin = findSystemPlugin(pathname, plugins);
+  const normalizedPath = normalizeSystemPath(pathname);
+  if (normalizedPath.startsWith("/system/people")) return "/system/people";
+  if (normalizedPath.startsWith("/system/locations")) {
+    return "/system/locations";
+  }
+  const plugin = findSystemPlugin(normalizedPath, plugins);
   if (plugin) return systemPluginPath(plugin.name);
-  return normalizeSystemPath(pathname) === systemPluginsPath
-    ? systemPluginsPath
-    : "/system";
+  if (normalizedPath.startsWith(systemPluginsPath)) return systemPluginsPath;
+  return "/system";
 }
 
 function findSystemPlugin(

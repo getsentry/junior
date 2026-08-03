@@ -49,23 +49,6 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
   );
 }
 
-/** Render the plugin identity header shared by plugin System pages. */
-export function PluginHeader(props: { plugin: SystemPlugin }) {
-  return (
-    <header className="border-b border-white/[0.06] pb-4 sm:pb-5">
-      <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-        Plugin
-      </div>
-      <h2 className="mt-1 mb-0 font-display text-2xl font-medium tracking-[-0.02em] text-dashboard-text sm:text-3xl">
-        {props.plugin.displayName}
-      </h2>
-      <p className="mt-2 mb-0 max-w-2xl font-mono text-[0.7rem] leading-relaxed text-dashboard-text-muted">
-        {props.plugin.description}
-      </p>
-    </header>
-  );
-}
-
 function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   const Icon = props.icon;
   return (

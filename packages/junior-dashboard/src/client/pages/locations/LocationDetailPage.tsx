@@ -8,13 +8,13 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
 import { StatCard } from "../../components/metrics/StatCard";
 import {
   formatCompactNumber,
   formatRelativeTime,
   peoplePath,
 } from "../../format";
+import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationActivityChart } from "./LocationActivityChart";
 
 /** Render operational activity for one persisted public location. */
@@ -33,7 +33,7 @@ export function LocationDetailPageContent(props: {
     return <LoadingView label="Loading location" />;
   }
   return (
-    <PageLayout>
+    <SystemPageLayout>
       {props.error ? (
         <Card padding="sm">
           <EmptyTelemetry>
@@ -44,7 +44,7 @@ export function LocationDetailPageContent(props: {
         </Card>
       ) : null}
       {props.data ? <LocationDetail detail={props.data} /> : null}
-    </PageLayout>
+    </SystemPageLayout>
   );
 }
 
@@ -54,7 +54,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
     <>
       <PageHeader
         description={`${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`}
-        eyebrow="Locations / public channel"
+        eyebrow="System / locations"
         title={detail.label}
       />
 

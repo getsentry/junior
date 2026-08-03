@@ -23,10 +23,16 @@ test.beforeEach(async ({ page }) => {
 test("explores location activity", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/locations`);
+  await page.goto(`${server.baseURL}/locations?q=proj`);
+
+  await expect(page).toHaveURL(`${server.baseURL}/system/locations?q=proj`);
+  await expect(
+    page.getByRole("searchbox", { name: "Search locations" }),
+  ).toHaveValue("proj");
+  await page.getByRole("searchbox", { name: "Search locations" }).fill("");
 
   await expect(
-    page.locator("main > div").getByText("Locations", { exact: true }),
+    page.getByRole("heading", { name: "Locations", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Public and private conversations per day" }),
@@ -43,6 +49,11 @@ test("explores location activity", async ({ page }) => {
   await expect(
     page.getByRole("combobox", { name: "Sort locations" }),
   ).toHaveValue("conversations");
+  await expect(
+    page
+      .getByLabel("System navigation")
+      .getByRole("link", { name: "Locations" }),
+  ).toHaveAttribute("aria-current", "page");
 
   const headerBounds = await page
     .locator("main > header > div")

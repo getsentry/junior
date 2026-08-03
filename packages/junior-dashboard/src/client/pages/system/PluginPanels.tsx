@@ -2,19 +2,12 @@ import { ArrowRight, Boxes, Sparkles } from "lucide-react";
 import { Link } from "react-router";
 
 import { Card } from "../../components/layout/Card";
-import { SectionIntro } from "../../components/layout/SectionIntro";
 import { systemPluginPath, type SystemPlugin } from "./SystemPlugins";
 
 /** Render the loaded plugin inventory as launch panels. */
 export function PluginPanels(props: { plugins: SystemPlugin[] }) {
   return (
-    <section aria-labelledby="system-plugins-heading" className="grid gap-3">
-      <SectionIntro
-        className="px-1"
-        eyebrow="Loaded plugins"
-        id="system-plugins-heading"
-        title="Plugins"
-      />
+    <section aria-label="Plugins" className="grid gap-3">
       {props.plugins.length ? (
         <div className="grid gap-3">
           {props.plugins.map((plugin) => (

@@ -12,10 +12,10 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { SystemPageLayout } from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
   filterPeople,
@@ -61,7 +61,7 @@ export function PeoplePageContent(props: {
   const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
 
   return (
-    <PageLayout>
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -69,7 +69,7 @@ export function PeoplePageContent(props: {
             ? "People failed to load."
             : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
         }
-        eyebrow="Who's been around"
+        eyebrow="System / activity"
         title="People"
       />
       {props.error ? (
@@ -124,6 +124,6 @@ export function PeoplePageContent(props: {
           </EmptyTelemetry>
         </Card>
       )}
-    </PageLayout>
+    </SystemPageLayout>
   );
 }

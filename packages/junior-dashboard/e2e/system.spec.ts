@@ -49,14 +49,18 @@ test("shows system usage and plugin details", async ({ page }) => {
   });
   await expect(allPluginsLink).toBeVisible();
   await expect(
-    systemNavigation.getByRole("link", { name: "GitHub", exact: true }),
-  ).toHaveCount(0);
+    systemNavigation.getByRole("link", { name: "People", exact: true }),
+  ).toBeVisible();
   await expect(
-    systemNavigation.getByRole("link", { name: "Scheduler", exact: true }),
-  ).toHaveCount(0);
-
+    systemNavigation.getByRole("link", { name: "Locations", exact: true }),
+  ).toBeVisible();
   await allPluginsLink.click();
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
+  await expect(
+    page
+      .locator("main > div header")
+      .getByRole("heading", { name: "Plugins", exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel("Reporting period")).toHaveCount(0);
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
@@ -86,7 +90,7 @@ test("shows system usage and plugin details", async ({ page }) => {
   await expect(page.getByText("github.organization")).toBeVisible();
   expect(
     await page
-      .getByRole("heading", { level: 2, name: "System", exact: true })
+      .getByRole("heading", { level: 2, name: "GitHub", exact: true })
       .evaluate((element) => element.getBoundingClientRect().top),
   ).toBeLessThan(180);
 
@@ -157,6 +161,8 @@ test("navigates plugin information and activity on mobile", async ({
   ).toBeLessThanOrEqual(390);
   await expect(page.getByLabel("System view").locator("option")).toHaveText([
     "Overview",
+    "People",
+    "Locations",
     "All Plugins",
     "Scheduler",
   ]);
@@ -167,25 +173,13 @@ test("navigates plugin information and activity on mobile", async ({
   ).toHaveText("All Plugins");
   await page
     .getByRole("region", { name: "Plugins" })
-    .getByRole("link", { name: /GitHub/ })
+    .getByRole("link", { name: /Scheduler/ })
     .click();
-  await expect(page.getByLabel("System view")).toHaveValue(
-    "/system/plugins/github",
-  );
-  await expect(
-    page.getByLabel("System view").locator("option:checked"),
-  ).toHaveText("GitHub");
-  await expect(
-    page
-      .getByLabel("System view")
-      .locator('option[value="/system/plugins/github"]'),
-  ).toHaveAttribute("disabled", "");
-  await page.getByLabel("System view").selectOption("/system");
-  await page
-    .getByLabel("System view")
-    .selectOption("/system/plugins/scheduler");
 
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins/scheduler`);
+  await expect(page.getByLabel("System view")).toHaveValue(
+    "/system/plugins/scheduler",
+  );
   await page.reload();
   await expect(
     page.getByRole("heading", { level: 2, name: "Scheduler", exact: true }),

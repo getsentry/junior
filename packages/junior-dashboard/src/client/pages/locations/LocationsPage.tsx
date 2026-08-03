@@ -16,10 +16,10 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
 import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
@@ -69,7 +69,7 @@ export function LocationsPageContent(props: {
   }
 
   return (
-    <PageLayout>
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -77,7 +77,7 @@ export function LocationsPageContent(props: {
             ? "Locations failed to load."
             : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
         }
-        eyebrow={`Where ${agentNamePossessive()} working`}
+        eyebrow="System / activity"
         title="Locations"
       />
       {props.error ? (
@@ -134,7 +134,7 @@ export function LocationsPageContent(props: {
           ) : null}
         </>
       ) : null}
-    </PageLayout>
+    </SystemPageLayout>
   );
 }
 

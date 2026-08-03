@@ -23,7 +23,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
+import { SystemPageLayout } from "../system/SystemPageLayout";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -39,7 +39,7 @@ export function PersonProfilePage() {
     return <LoadingView label="Loading profile" />;
   }
   return (
-    <div className={cn(dashboardContainerClass, "px-4 py-4 sm:px-8 sm:py-8")}>
+    <SystemPageLayout>
       {query.data ? (
         <Profile profile={query.data} />
       ) : (
@@ -47,7 +47,7 @@ export function PersonProfilePage() {
           <EmptyTelemetry>Profile failed to load.</EmptyTelemetry>
         </Card>
       )}
-    </div>
+    </SystemPageLayout>
   );
 }
 
@@ -72,7 +72,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
               : ""}
           </>
         }
-        eyebrow="People / profile"
+        eyebrow="System / people"
         title={displayName}
       />
 

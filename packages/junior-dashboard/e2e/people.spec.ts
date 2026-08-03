@@ -23,10 +23,10 @@ test.beforeEach(async ({ page }) => {
 test("explores people activity", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/people`);
+  await page.goto(`${server.baseURL}/system/people`);
 
   await expect(
-    page.locator("main > div").getByText("People", { exact: true }),
+    page.getByRole("heading", { name: "People", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Active people per day" }),
@@ -38,6 +38,9 @@ test("explores people activity", async ({ page }) => {
   await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
     "conversations",
   );
+  await expect(
+    page.getByLabel("System navigation").getByRole("link", { name: "People" }),
+  ).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "7d" }).click();
   await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
     "aria-pressed",

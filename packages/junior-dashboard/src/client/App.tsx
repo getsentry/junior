@@ -139,12 +139,6 @@ export function DashboardShell() {
             >
               Conversations
             </Link>
-            <NavLink className={navLinkClass} to="/locations">
-              Locations
-            </NavLink>
-            <NavLink className={navLinkClass} to="/people">
-              People
-            </NavLink>
             {primaryUserPages.map((page) => (
               <NavLink
                 className={navLinkClass}
@@ -172,6 +166,14 @@ export function DashboardShell() {
 
       <Routes>
         <Route
+          element={<LegacySystemRedirect section="locations" />}
+          path="/locations"
+        />
+        <Route
+          element={<LegacySystemRedirect section="locations" />}
+          path="/locations/:locationId"
+        />
+        <Route
           element={
             loading ? (
               <LoadingView label="Loading locations" />
@@ -179,7 +181,7 @@ export function DashboardShell() {
               <LocationsPage />
             )
           }
-          path="/locations"
+          path="/system/locations"
         />
         <Route
           element={
@@ -189,7 +191,7 @@ export function DashboardShell() {
               <LocationDetailPage />
             )
           }
-          path="/locations/:locationId"
+          path="/system/locations/:locationId"
         />
         <Route
           element={
@@ -237,6 +239,30 @@ export function DashboardShell() {
           path="/dev/*"
         />
         <Route
+          element={<LegacySystemRedirect section="people" />}
+          path="/people"
+        />
+        <Route
+          element={<LegacySystemRedirect section="people" />}
+          path="/people/:email"
+        />
+        <Route
+          element={
+            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+          }
+          path="/system/people"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading profile" />
+            ) : (
+              <PersonProfilePage />
+            )
+          }
+          path="/system/people/:email"
+        />
+        <Route
           element={
             loading ? (
               <LoadingView label="Loading system" />
@@ -249,22 +275,6 @@ export function DashboardShell() {
             )
           }
           path="/system/*"
-        />
-        <Route
-          element={
-            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
-          }
-          path="/people"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading profile" />
-            ) : (
-              <PersonProfilePage />
-            )
-          }
-          path="/people/:email"
         />
         <Route
           element={
@@ -298,6 +308,18 @@ export function DashboardShell() {
         style={dashboardNoise}
       />
     </main>
+  );
+}
+
+function LegacySystemRedirect(props: { section: "locations" | "people" }) {
+  const location = useLocation();
+  const legacyPrefix = `/${props.section}`;
+  const suffix = location.pathname.slice(legacyPrefix.length);
+  return (
+    <Navigate
+      replace
+      to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
+    />
   );
 }
 

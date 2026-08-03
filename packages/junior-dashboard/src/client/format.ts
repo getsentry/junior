@@ -657,12 +657,12 @@ export function conversationPath(conversationId: string): string {
 
 /** Build the canonical actor profile route for a trusted email address. */
 export function peoplePath(email: string): string {
-  return `/people/${encodeURIComponent(email)}`;
+  return `/system/people/${encodeURIComponent(email)}`;
 }
 
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
-  return `/locations/${encodeURIComponent(locationId)}`;
+  return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {
