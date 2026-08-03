@@ -14,8 +14,8 @@ import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  juniorToolResultSchema,
-  makeStructuredToolResult,
+  juniorToolOutputSchema,
+  makeStructuredToolOutput,
 } from "@/chat/tool-support/structured-result";
 
 const DEFAULT_LIST_LIMIT = 500;
@@ -30,10 +30,10 @@ interface ListDirResultData {
 
 interface ListDirSuccessResult {
   content: [{ type: "text"; text: string }];
-  details: Extract<TextSearchResultDetails, { ok: true }> & {
-    data: ListDirResultData;
-    entry_limit_reached?: number;
-  };
+  details: TextSearchResultDetails &
+    ListDirResultData & {
+      entry_limit_reached?: number;
+    };
 }
 
 type ListDirResult = ListDirSuccessResult | TextSearchToolResult;
@@ -105,22 +105,17 @@ export async function listDir(params: {
     notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
   }
 
-  return makeStructuredToolResult({
-    ok: true,
-    status: "success",
+  return makeStructuredToolOutput({
     target: params.path ?? ".",
     path: params.path ?? ".",
     truncated: entryLimitReached || bounded.truncated,
-    data: {
-      entries:
-        bounded.content === "(empty directory)"
-          ? []
-          : bounded.content.split("\n"),
-      entry_count: output.length,
-      path: params.path ?? ".",
-      total_entries: entries.length,
-      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    },
+    entries:
+      bounded.content === "(empty directory)"
+        ? []
+        : bounded.content.split("\n"),
+    entry_count: output.length,
+    total_entries: entries.length,
+    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
     ...(entryLimitReached ? { entry_limit_reached: limit } : {}),
   });
 }
@@ -151,7 +146,7 @@ export function createListDirTool() {
         .describe("Maximum entries to return. Defaults to 500.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async () => {
       throw new Error(
         "listDir can only run when sandbox execution is enabled.",

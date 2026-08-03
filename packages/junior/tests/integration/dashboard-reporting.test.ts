@@ -143,9 +143,7 @@ async function appendVisibleHistory(
           toolName: "search",
           content: [{ type: "text", text: "model-visible result" }],
           details: {
-            ok: true,
-            status: "success",
-            data: { matches: 2 },
+            matches: 2,
           },
           isError: false,
           timestamp: 13,

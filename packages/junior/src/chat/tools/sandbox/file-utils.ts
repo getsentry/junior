@@ -6,7 +6,6 @@ import type {
   SandboxFileSystem,
 } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 
 export type { SandboxFileSystem };
 export type SandboxCommandRunner = (
@@ -32,28 +31,11 @@ export const RIPGREP_EXCLUDED_GLOBS = [
 export const DEFAULT_SEARCH_COMMAND_TIMEOUT_MS = 30_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 
-export type TextSearchResultDetails =
-  | {
-      ok: true;
-      status?: "success";
-      target?: string;
-      path: string;
-      truncated: boolean;
-      data?: unknown;
-    }
-  | {
-      ok: false;
-      status?: "error";
-      target?: string;
-      error: {
-        kind: "not_found";
-        message: string;
-      };
-      path: string;
-      missing_path?: string;
-      truncated: false;
-      data?: unknown;
-    };
+export type TextSearchResultDetails = {
+  target?: string;
+  path: string;
+  truncated: boolean;
+};
 
 export interface TextSearchToolResult {
   content: [{ type: "text"; text: string }];
@@ -105,29 +87,14 @@ export function isMissingPathError(error: unknown): boolean {
   );
 }
 
-/** Build the shared model-visible result for expected missing search/list paths. */
+/** Reject an expected missing search/list path through the tool-error channel. */
 export function missingPathSearchResult(params: {
   path: string;
   displayPath?: string;
   missingPath?: string;
-}): TextSearchToolResult {
+}): never {
   const textPath = params.displayPath ?? params.missingPath ?? params.path;
-  return makeStructuredToolResult({
-    ok: false,
-    status: "error",
-    target: params.path,
-    error: {
-      kind: "not_found" as const,
-      message: `Path not found: ${textPath}`,
-    },
-    path: params.path,
-    ...(params.missingPath ? { missing_path: params.missingPath } : {}),
-    truncated: false,
-    data: {
-      path: params.path,
-      ...(params.missingPath ? { missing_path: params.missingPath } : {}),
-    },
-  });
+  throw new ToolInputError(`Path not found: ${textPath}`);
 }
 
 function escapeRegExp(value: string): string {

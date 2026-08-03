@@ -9,7 +9,7 @@ import {
   slackChannelIdParam,
 } from "@/chat/slack/id-param";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -21,6 +21,7 @@ import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
@@ -119,7 +120,7 @@ export function createSlackThreadReadTool(
         .describe("Maximum number of Slack API pages to traverse.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ url, channel_id, ts, limit, max_pages }) => {
       let channelId: SlackChannelId;
       let messageTs: SlackMessageTs;
@@ -128,7 +129,7 @@ export function createSlackThreadReadTool(
       if (url) {
         const parsed = parseSlackMessageReference(url);
         if (!parsed.ok) {
-          return { ok: false, status: "error" as const, error: parsed.error };
+          throw new ToolInputError(parsed.error);
         }
         channelId = parsed.reference.channelId;
         messageTs = parsed.reference.messageTs;
@@ -136,32 +137,21 @@ export function createSlackThreadReadTool(
       } else if (channel_id && ts) {
         const parsedTs = parseRequiredSlackTimestampParam("ts", ts);
         if (!parsedTs.ok) {
-          return {
-            ok: false,
-            status: "error" as const,
-            error: parsedTs.error,
-          };
+          throw new ToolInputError(parsedTs.error);
         }
         const parsedChannelId = parseRequiredSlackChannelIdParam(
           "channel_id",
           channel_id,
         );
         if (!parsedChannelId.ok) {
-          return {
-            ok: false,
-            status: "error" as const,
-            error: parsedChannelId.error,
-          };
+          throw new ToolInputError(parsedChannelId.error);
         }
         channelId = parsedChannelId.value;
         messageTs = parsedTs.value;
       } else {
-        return {
-          ok: false,
-          status: "error" as const,
-          error:
-            "Provide either a Slack message `url` or both `channel_id` and `ts`.",
-        };
+        throw new ToolInputError(
+          "Provide either a Slack message `url` or both `channel_id` and `ts`.",
+        );
       }
 
       // Cross-conversation reads require persisted public visibility in the
@@ -176,13 +166,7 @@ export function createSlackThreadReadTool(
         teamId: context.teamId,
       });
       if (!access.allowed) {
-        return {
-          ok: false,
-          status: "error" as const,
-          channel_id: channelId,
-          target_message_ts: messageTs,
-          error: access.error,
-        };
+        throw new ToolInputError(access.error);
       }
 
       const lookupTs = threadTs ?? messageTs;
@@ -197,27 +181,16 @@ export function createSlackThreadReadTool(
         });
       } catch (error) {
         if (error instanceof SlackActionError) {
-          return {
-            ok: false,
-            status: "error" as const,
-            channel_id: channelId,
-            target_message_ts: messageTs,
-            error:
-              "Could not read this Slack thread. The bot may not be in the channel or may lack history scopes.",
-            slack_error: error.apiError,
-          };
+          throw new ToolInputError(
+            "Could not read this Slack thread. The bot may not be in the channel or may lack history scopes.",
+            { cause: error },
+          );
         }
         throw error;
       }
 
       if (replies.length === 0) {
-        return {
-          ok: false,
-          status: "error" as const,
-          channel_id: channelId,
-          target_message_ts: messageTs,
-          error: "No messages found for this thread.",
-        };
+        throw new ToolInputError("No messages found for this thread.");
       }
 
       const root = replies[0];
@@ -231,8 +204,6 @@ export function createSlackThreadReadTool(
       );
 
       return {
-        ok: true,
-        status: "success" as const,
         channel_id: channelId,
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,

@@ -4,7 +4,7 @@ import {
   requireResourceWatchConversation,
   RESOURCE_WATCH_TOOL_SOURCE,
 } from "@/chat/resource-events/tool-support";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -25,12 +25,9 @@ const resultDataSchema = z
   .object({ subscriptions: z.array(listedResourceWatchSchema) })
   .strict();
 
-const outputSchema = juniorToolResultSchema
+const outputSchema = juniorToolOutputSchema
   .extend({
-    ok: z.literal(true),
-    status: z.literal("success"),
-    data: resultDataSchema,
-    subscriptions: z.array(listedResourceWatchSchema),
+    ...resultDataSchema.shape,
   })
   .strict();
 
@@ -69,9 +66,6 @@ export function createListResourceEventSubscriptionsTool(
         })),
       };
       return {
-        ok: true as const,
-        status: "success" as const,
-        data: details,
         ...details,
       };
     },

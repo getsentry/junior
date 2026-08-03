@@ -1,14 +1,14 @@
-import { logWarn } from "@/chat/logging";
 import { writeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
 import {
   resolveCanvasTarget,
   storedCanvasUrl,
 } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(state: ToolState) {
@@ -29,11 +29,11 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
       content: z.string().describe("UTF-8 markdown content to write."),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ canvas, content }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return { ...target, status: "error" as const };
+        throw new ToolInputError(target.error);
       }
 
       const operationKey = createOperationKey("slackCanvasWrite", {
@@ -41,8 +41,6 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         content,
       });
       const cached = state.getOperationResult<{
-        ok: true;
-        status: "success";
         canvas_id: string;
         normalized_heading_count: number;
       }>(operationKey);
@@ -53,38 +51,21 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         };
       }
 
-      try {
-        const written = await writeCanvasMarkdown({
-          canvasId: target.canvasId,
-          markdown: content,
-        });
-        await state.patchArtifactState({
-          lastCanvasId: target.canvasId,
-          lastCanvasUrl: storedCanvasUrl(state, target.canvasId),
-        });
-        const response = {
-          ok: true,
-          status: "success" as const,
-          canvas_id: target.canvasId,
-          normalized_heading_count: written.normalizedHeadingCount,
-          summary: `Wrote canvas ${target.canvasId}`,
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "canvas write failed";
-        logWarn("slack.canvas.write.failed", {
-          "gen_ai.tool.name": "slackCanvasWrite",
-          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-        });
-        return {
-          ok: false,
-          status: "error" as const,
-          canvas_id: target.canvasId,
-          error: message,
-        };
-      }
+      const written = await writeCanvasMarkdown({
+        canvasId: target.canvasId,
+        markdown: content,
+      });
+      await state.patchArtifactState({
+        lastCanvasId: target.canvasId,
+        lastCanvasUrl: storedCanvasUrl(state, target.canvasId),
+      });
+      const response = {
+        canvas_id: target.canvasId,
+        normalized_heading_count: written.normalizedHeadingCount,
+        summary: `Wrote canvas ${target.canvasId}`,
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     },
   });
 }

@@ -132,7 +132,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C0AHB7N2JCR",
       target_message_ts: "1700000000.123456",
       thread_ts: "1700000000.123456",
@@ -176,7 +175,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       target_message_ts: "1700000000.999999",
       thread_ts: "1700000000.000000",
@@ -213,7 +211,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C0MANUAL",
       count: 1,
     });
@@ -242,7 +239,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "G0PRIVATE",
       count: 1,
     });
@@ -277,7 +273,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "G0PRIVATE",
       count: 1,
     });
@@ -286,31 +281,22 @@ describe("slackThreadRead", () => {
 
   it("blocks reading a private group channel from a DM conversation without assistant context", async () => {
     const tool = createTool({ sourceChannelId: "D0DM" });
-    const result = await executeTool(tool, {
-      channel_id: "G0PRIVATE",
-      ts: "1700000000.100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "G0PRIVATE",
-    });
-    expect(result.error).toContain("current conversation");
+    await expect(
+      executeTool(tool, {
+        channel_id: "G0PRIVATE",
+        ts: "1700000000.100000",
+      }),
+    ).rejects.toThrow("current conversation");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a private channel that is not the current channel", async () => {
     const tool = createTool({ sourceChannelId: "C0CURRENT" });
-    const result = await executeTool(tool, {
-      url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "G0OTHER",
-      target_message_ts: "1700000000.100000",
-    });
-    expect(result.error).toContain("current conversation");
+    await expect(
+      executeTool(tool, {
+        url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
+      }),
+    ).rejects.toThrow("current conversation");
 
     // Should NOT call any Slack API — blocked locally
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -319,30 +305,22 @@ describe("slackThreadRead", () => {
 
   it("blocks reading a DM channel that is not the current channel", async () => {
     const tool = createTool();
-    const result = await executeTool(tool, {
-      channel_id: "D0SOMEONE",
-      ts: "1700000000.100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "D0SOMEONE",
-    });
-    expect(result.error).toContain("current conversation");
+    await expect(
+      executeTool(tool, {
+        channel_id: "D0SOMEONE",
+        ts: "1700000000.100000",
+      }),
+    ).rejects.toThrow("current conversation");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a C-prefixed channel without persisted public visibility", async () => {
     const tool = createTool({ sourceChannelId: "C0CURRENT" });
-    const result = await executeTool(tool, {
-      url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "C0UNCONFIRMED",
-    });
-    expect(result.error).toContain("public channels Junior has seen");
+    await expect(
+      executeTool(tool, {
+        url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
+      }),
+    ).rejects.toThrow("public channels Junior has seen");
     // Blocked locally, no Slack API traffic.
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
@@ -353,54 +331,34 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createTool({}, ["C0FLAKY"]);
-    const result = await executeTool(tool, {
-      channel_id: "C0FLAKY",
-      ts: "1700000000.100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "C0FLAKY",
-      slack_error: "not_in_channel",
-    });
-    expect(result.error).toContain("Could not read this Slack thread");
+    await expect(
+      executeTool(tool, {
+        channel_id: "C0FLAKY",
+        ts: "1700000000.100000",
+      }),
+    ).rejects.toThrow("Could not read this Slack thread");
   });
 
   it("returns an error for invalid URL input", async () => {
     const tool = createTool();
-    const result = await executeTool(tool, {
-      url: "not a valid url",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error: "Input is not a valid URL",
-    });
+    await expect(executeTool(tool, { url: "not a valid url" })).rejects.toThrow(
+      "Input is not a valid URL",
+    );
   });
 
   it("returns an error when neither url nor channel_id+ts are provided", async () => {
     const tool = createTool();
-    const result = await executeTool(tool, {});
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Provide either"),
-    });
+    await expect(executeTool(tool, {})).rejects.toThrow("Provide either");
   });
 
   it("rejects invalid explicit ts format", async () => {
     const tool = createTool();
-    const result = await executeTool(tool, {
-      channel_id: "C123",
-      ts: "not-a-timestamp",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      error:
-        "Invalid `ts` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
-    });
+    await expect(
+      executeTool(tool, {
+        channel_id: "C123",
+        ts: "not-a-timestamp",
+      }),
+    ).rejects.toThrow("Invalid `ts` Slack timestamp");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
@@ -446,7 +404,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       count: 3,
       fetched_count: 3,
       truncated: false,
@@ -491,7 +448,6 @@ describe("slackThreadRead", () => {
       ts: "1700000000.100000",
     });
 
-    expect(result.ok).toBe(true);
     const file = result.messages[0].files[0];
     expect(file).toEqual({
       id: "F123",

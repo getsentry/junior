@@ -13,7 +13,7 @@ import {
   registeredResourceTypeSchema,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -32,33 +32,16 @@ const compactEventTaskResultSchema = z
   })
   .strict();
 
-const eventTaskResultDataSchema = z
-  .object({ task: compactEventTaskResultSchema })
-  .strict();
-
 /** Validate one successful event-task mutation result. */
-export const eventTaskToolResultSchema = juniorToolResultSchema
+export const eventTaskToolResultSchema = juniorToolOutputSchema
   .extend({
-    ok: z.literal(true),
-    status: z.literal("success"),
-    data: eventTaskResultDataSchema,
     task: compactEventTaskResultSchema,
   })
   .strict();
 
-const eventTaskListResultDataSchema = z
-  .object({
-    tasks: z.array(compactEventTaskResultSchema),
-    truncated: z.boolean(),
-  })
-  .strict();
-
 /** Validate one successful event-task list result. */
-export const eventTaskListToolResultSchema = juniorToolResultSchema
+export const eventTaskListToolResultSchema = juniorToolOutputSchema
   .extend({
-    ok: z.literal(true),
-    status: z.literal("success"),
-    data: eventTaskListResultDataSchema,
     tasks: z.array(compactEventTaskResultSchema),
     truncated: z.boolean(),
   })
@@ -194,11 +177,7 @@ export function eventTaskSuccess(
   task: EventTask,
   catalog: ResourceEventCatalog,
 ) {
-  const details = { task: compactEventTask(task, catalog) };
   return {
-    ok: true as const,
-    status: "success" as const,
-    data: details,
-    ...details,
+    task: compactEventTask(task, catalog),
   };
 }

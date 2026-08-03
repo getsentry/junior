@@ -633,7 +633,7 @@ describe("Pi tool adapter", () => {
     expect(onFatal).toHaveBeenCalledOnce();
   });
 
-  it("reports structured tool error results to observers", async () => {
+  it("reports thrown tool errors to observers", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolResult = vi.fn();
     const [demoTool] = createPiAgentTools(
@@ -641,14 +641,9 @@ describe("Pi tool adapter", () => {
         demo: {
           description: "demo",
           inputSchema: {} as any,
-          execute: async () => ({
-            ok: false,
-            status: "error",
-            error: {
-              kind: "not_found",
-              message: "Thing not found.",
-            },
-          }),
+          execute: async () => {
+            throw new Error("Thing not found.");
+          },
         },
       },
       sandbox,
@@ -662,15 +657,14 @@ describe("Pi tool adapter", () => {
       onToolResult,
     );
 
-    await demoTool!.execute("tool-demo", { id: "missing" });
+    await expect(
+      demoTool!.execute("tool-demo", { id: "missing" }),
+    ).rejects.toThrow("Thing not found.");
 
     expect(onToolResult).toHaveBeenCalledWith({
       ok: false,
       params: { id: "missing" },
-      result: expect.objectContaining({
-        ok: false,
-        status: "error",
-      }),
+      error: "Thing not found.",
       toolCallId: "tool-demo",
       toolName: "demo",
     });

@@ -159,8 +159,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               {
                 type: "text",
                 text: JSON.stringify({
-                  ok: true,
-                  status: "success",
                   target: command,
                   stdout: "targeted Cloudflare test passed",
                   exit_code: 0,
@@ -168,8 +166,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               },
             ],
             details: {
-              ok: true,
-              status: "success",
               target: command,
               stdout: "targeted Cloudflare test passed",
               exit_code: 0,
@@ -189,20 +185,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
           signal?.addEventListener("abort", abort, { once: true });
         });
         const details = {
-          ok: false,
-          status: "error",
           target: "run-the-targeted-cloudflare-test",
-          data: {
-            aborted: true,
-            exit_code: 130,
-            stderr: "Command aborted because the agent turn was cancelled.",
-          },
-          error: {
-            kind: "outcome_unknown",
-            message:
-              "Command was interrupted before its outcome was confirmed.",
-            retryable: false,
-          },
           aborted: true,
           exit_code: 130,
           stderr: "Command aborted because the agent turn was cancelled.",
@@ -302,7 +285,7 @@ describe("tool timeout continuation composition", () => {
       isError: true,
     });
     expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
-      "outcome_unknown",
+      '"cause":"turn_deadline"',
     );
     expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
       '"cause":"turn_deadline"',

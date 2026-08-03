@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   PluginToolInputError,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   sourceSchema,
   type Identity,
   type SlackDestination,
@@ -55,34 +55,13 @@ const compactTaskResultSchema = z
   })
   .strict();
 
-const scheduleTaskResultDataSchema = z
-  .object({
-    ok: z.literal(true),
-    task: compactTaskResultSchema,
-  })
-  .strict();
-
-export const scheduleTaskToolResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+export const scheduleTaskToolResultSchema = pluginToolOutputSchema.extend({
   target: z.string(),
-  data: scheduleTaskResultDataSchema,
   task: compactTaskResultSchema,
 });
 
-const scheduleListResultDataSchema = z
-  .object({
-    ok: z.literal(true),
-    tasks: z.array(compactTaskResultSchema),
-    truncated: z.boolean(),
-  })
-  .strict();
-
-export const scheduleListToolResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+export const scheduleListToolResultSchema = pluginToolOutputSchema.extend({
   target: z.string(),
-  data: scheduleListResultDataSchema,
   tasks: z.array(compactTaskResultSchema),
   truncated: z.boolean(),
 });
@@ -251,15 +230,8 @@ export function scheduleTaskToolResult(
   target: string,
   task: CompactTaskResult,
 ) {
-  const data = {
-    ok: true,
-    task,
-  } as const;
   return {
-    ok: true,
-    status: "success",
     target,
-    data,
     task,
   } as const;
 }
@@ -270,16 +242,8 @@ export function scheduleListToolResult(args: {
   tasks: CompactTaskResult[];
   truncated: boolean;
 }) {
-  const data = {
-    ok: true,
-    tasks: args.tasks,
-    truncated: args.truncated,
-  } as const;
   return {
-    ok: true,
-    status: "success",
     target: args.target,
-    data,
     tasks: args.tasks,
     truncated: args.truncated,
   } as const;

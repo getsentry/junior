@@ -149,11 +149,9 @@ describe("tool idempotency", () => {
     expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
     expect(first).toMatchObject({
-      ok: true,
       canvas_id: "canvas-1",
     });
     expect(second).toMatchObject({
-      ok: true,
       canvas_id: "canvas-1",
       deduplicated: true,
     });
@@ -188,7 +186,6 @@ describe("tool idempotency", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       canvas_id: "canvas-dm-1",
     });
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
@@ -240,7 +237,6 @@ describe("tool idempotency", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       canvas_id: "canvas-shared-1",
     });
     expect(
@@ -305,12 +301,10 @@ describe("tool idempotency", () => {
       list_id: "list-1",
     });
     expect(first).toMatchObject({
-      ok: true,
       list_id: "list-1",
       created_count: 2,
     });
     expect(second).toMatchObject({
-      ok: true,
       list_id: "list-1",
       deduplicated: true,
     });
@@ -344,7 +338,6 @@ describe("tool idempotency", () => {
         assignee_user_id: "U123",
       }),
     ).resolves.toMatchObject({
-      ok: true,
       list_id: "list-1",
       created_count: 1,
     });

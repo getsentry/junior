@@ -5,7 +5,7 @@ import {
   PluginToolInputError,
   type PluginToolDefinition,
   type PluginToolExecuteOptions,
-  type PluginToolResult,
+  type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
@@ -110,7 +110,7 @@ function createContext(
   return context;
 }
 
-async function executeTool<TInput, TOutput extends PluginToolResult>(
+async function executeTool<TInput, TOutput extends PluginToolOutput>(
   tool: PluginToolDefinition<TInput, TOutput>,
   input: TInput,
   options: PluginToolExecuteOptions = {},
@@ -234,7 +234,6 @@ describe("Slack schedule tools", () => {
   it("creates and lists tasks only for the active Slack conversation", async () => {
     const created = await createTask();
     expect(created).toMatchObject({
-      ok: true,
       task: {
         conversation_access: {
           audience: "channel",
@@ -256,13 +255,13 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
     });
+    expect(created).not.toHaveProperty("data");
 
     const listed = await executeTool(
       createSlackScheduleListTasksTool(createContext()),
       {},
     );
     expect(listed).toMatchObject({
-      ok: true,
       tasks: [
         {
           task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
@@ -270,13 +269,13 @@ describe("Slack schedule tools", () => {
         },
       ],
     });
+    expect(listed).not.toHaveProperty("data");
 
     const sameChannelOtherThread = await executeTool(
       createSlackScheduleListTasksTool(createContext()),
       {},
     );
     expect(sameChannelOtherThread).toMatchObject({
-      ok: true,
       tasks: [
         {
           task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
@@ -312,7 +311,6 @@ describe("Slack schedule tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       task: {
         schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         status: "active",
@@ -542,7 +540,6 @@ describe("Slack schedule tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       task: {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
@@ -669,7 +666,6 @@ describe("Slack schedule tools", () => {
       },
     );
     expect(updated).toMatchObject({
-      ok: true,
       task: {
         id: taskId,
         next_run_at: "2026-05-26T17:00:00.000Z",
@@ -695,7 +691,6 @@ describe("Slack schedule tools", () => {
       },
     );
     expect(deleted).toMatchObject({
-      ok: true,
       task: {
         id: taskId,
         status: "deleted",
@@ -706,7 +701,7 @@ describe("Slack schedule tools", () => {
       createSlackScheduleListTasksTool(context),
       {},
     );
-    expect(listed).toMatchObject({ ok: true, tasks: [] });
+    expect(listed).toMatchObject({ tasks: [] });
   });
 
   it("treats a null update schedule as omitted", async () => {
@@ -791,7 +786,6 @@ describe("Slack schedule tools", () => {
     );
 
     expect(updated).toMatchObject({
-      ok: true,
       task: {
         id: created.task.id,
         next_run_at: "2026-06-01T16:00:00.000Z",
@@ -851,7 +845,6 @@ describe("Slack schedule tools", () => {
       {},
     );
     expect(listed).toMatchObject({
-      ok: true,
       tasks: [{ id: taskId }],
     });
 
@@ -860,7 +853,6 @@ describe("Slack schedule tools", () => {
       { task_id: taskId },
     );
     expect(deleted).toMatchObject({
-      ok: true,
       task: { id: taskId, status: "deleted" },
     });
   });
@@ -911,14 +903,12 @@ describe("Slack schedule tools", () => {
     );
 
     expect(updated).toMatchObject({
-      ok: true,
       task: {
         id: created.task.id,
         task: "Team-owned digest: Summarize open scheduler issues.",
       },
     });
     expect(deleted).toMatchObject({
-      ok: true,
       task: {
         id: created.task.id,
         status: "deleted",
@@ -1107,7 +1097,6 @@ describe("Slack schedule tools", () => {
     const result = await createTask(createContext({ channelId: "G123" }));
 
     expect(result).toMatchObject({
-      ok: true,
       task: {
         conversation_access: {
           audience: "group",
@@ -1168,7 +1157,6 @@ describe("Slack schedule tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       task: {
         conversation_access: {
           audience: "direct",
@@ -1197,7 +1185,6 @@ describe("Slack schedule tools", () => {
     });
 
     expect(created).toMatchObject({
-      ok: true,
       task: {
         next_run_at: "2026-05-26T16:00:00.000Z",
         recurrence: null,
@@ -1219,7 +1206,6 @@ describe("Slack schedule tools", () => {
     });
 
     expect(created).toMatchObject({
-      ok: true,
       task: {
         next_run_at: "2026-05-26T13:00:00.000Z",
         recurrence: null,
@@ -1270,7 +1256,6 @@ describe("Slack schedule tools", () => {
     );
 
     expect(updated).toMatchObject({
-      ok: true,
       task: {
         task: "Renamed issue digest: Summarize open scheduler issues.",
       },
@@ -1310,7 +1295,6 @@ describe("Slack schedule tools", () => {
     );
 
     expect(updated).toMatchObject({
-      ok: true,
       task: {
         id: created.task.id,
         status: "active",
@@ -1348,7 +1332,6 @@ describe("Slack schedule tools", () => {
     const afterMs = Date.now();
 
     expect(result).toMatchObject({
-      ok: true,
       task: {
         id: created.task.id,
         status: "active",
@@ -1513,7 +1496,6 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
 
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
-        ok: true;
         task: { id: string };
       }>(tools.scheduler_slackScheduleCreateTask, {
         task: "Wiring test: post a weekly digest.",
@@ -1527,7 +1509,6 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         },
       });
 
-      expect(result).toMatchObject({ ok: true });
       expect(resolveActorIdentity).toHaveBeenCalledOnce();
       const taskId = result.task.id;
 

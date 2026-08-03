@@ -37,15 +37,9 @@ export function createListEventTasksTool(
       const tasks = matching
         .slice(0, MAX_LISTED_EVENT_TASKS)
         .map((task) => compactEventTask(task, catalog));
-      const details = {
+      return {
         tasks,
         truncated: matching.length > tasks.length,
-      };
-      return {
-        ok: true as const,
-        status: "success" as const,
-        data: details,
-        ...details,
       };
     },
   });

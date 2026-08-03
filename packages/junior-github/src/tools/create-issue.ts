@@ -5,9 +5,9 @@ import {
   subscribableResourceSchema,
   type SubscribableResource,
   type PluginToolExecuteOptions,
-  type PluginToolResult,
+  type PluginToolOutput,
   type ToolRegistrationHookContext,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -102,11 +102,8 @@ interface GitHubIssueData extends GitHubIssueResult {
   subscribable?: SubscribableResource;
 }
 
-interface GitHubIssueToolResult extends PluginToolResult, GitHubIssueData {
-  ok: true;
-  status: "success";
+interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
   target: "createIssue";
-  data: GitHubIssueData;
 }
 
 const gitHubIssueDataSchema = z.object({
@@ -115,14 +112,9 @@ const gitHubIssueDataSchema = z.object({
   url: z.string(),
 });
 
-const gitHubIssueOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const gitHubIssueOutputSchema = pluginToolOutputSchema.extend({
   target: z.literal("createIssue"),
-  data: gitHubIssueDataSchema,
-  number: z.number(),
-  subscribable: subscribableResourceSchema.optional(),
-  url: z.string(),
+  ...gitHubIssueDataSchema.shape,
 });
 
 function gitHubIssueToolResult(
@@ -139,10 +131,7 @@ function gitHubIssueToolResult(
     : undefined;
   const data = { ...result, ...(subscribable ? { subscribable } : {}) };
   return {
-    ok: true,
-    status: "success",
     target: "createIssue",
-    data,
     ...data,
   };
 }

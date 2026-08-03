@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
@@ -13,14 +13,8 @@ import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 
-const customerResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
-  data: z.object({
-    customer_id: z.string(),
-    status: z.string(),
-  }),
   status_text: z.string(),
 });
 
@@ -101,13 +95,7 @@ describe("Pi tool adapter integration", () => {
                 },
                 execute: async ({ customerId }) =>
                   ({
-                    ok: true,
-                    status: "success",
                     customer_id: customerId,
-                    data: {
-                      customer_id: customerId,
-                      status: "healthy",
-                    },
                     status_text: "healthy",
                   }) as const,
               }),
@@ -185,13 +173,7 @@ describe("Pi tool adapter integration", () => {
       );
 
       expect(executeResult.details).toMatchObject({
-        ok: true,
-        data: {
-          customer_id: "C123",
-          status: "healthy",
-        },
         customer_id: "C123",
-        status: "success",
         status_text: "healthy",
       });
       expect(onToolCall).toHaveBeenCalledWith(
@@ -218,19 +200,19 @@ describe("Pi tool adapter integration", () => {
       directDemo: tool({
         description: "Direct demo",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "directDemo" }),
       }),
       hiddenDemo: tool({
         description: "Hidden demo",
         exposure: "hidden",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "hiddenDemo" }),
       }),
       catalogOnlyDemo: tool({
         description: "Catalog-only demo",
         exposure: "deferred",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "catalogOnlyDemo" }),
       }),
     };
     const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
@@ -244,13 +226,13 @@ describe("Pi tool adapter integration", () => {
         tool_name: "directDemo",
         arguments: {},
       }),
-    ).resolves.toMatchObject({ details: { ok: true } });
+    ).resolves.toMatchObject({ details: { tool: "directDemo" } });
     await expect(
       executeTool.execute("tool-catalog-only", {
         tool_name: "catalogOnlyDemo",
         arguments: {},
       }),
-    ).resolves.toMatchObject({ details: { ok: true } });
+    ).resolves.toMatchObject({ details: { tool: "catalogOnlyDemo" } });
     await expect(
       executeTool.execute("tool-hidden", {
         tool_name: "hiddenDemo",

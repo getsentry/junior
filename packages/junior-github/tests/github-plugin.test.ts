@@ -655,31 +655,22 @@ describe("github plugin", () => {
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed issue",
-          body: "Issue body",
-          labels: ["bug", "high-priority"],
-        },
-        { toolCallId: "call-create-issue" },
-      ),
-    ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
-      target: "createIssue",
-      data: {
-        number: 660,
-        subscribable: {
-          namespace: "github",
-          identifier: "getsentry/junior#660",
-          type: "issue",
-        },
-        url: "https://github.com/getsentry/junior/issues/660",
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug", "high-priority"],
       },
+      { toolCallId: "call-create-issue" },
+    );
+    expect(result).toMatchObject({
+      target: "createIssue",
       number: 660,
       subscribable: {
+        namespace: "github",
+        identifier: "getsentry/junior#660",
+        type: "issue",
         supportedEvents: [
           "issue.comment.created",
           "issue.opened",
@@ -689,6 +680,7 @@ describe("github plugin", () => {
       },
       url: "https://github.com/getsentry/junior/issues/660",
     });
+    expect(result).not.toHaveProperty("data");
 
     expect(ctx.egressRequests()).toHaveLength(1);
     const request = ctx.egressRequests()[0];
@@ -815,8 +807,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -831,8 +821,6 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-idempotent-create" },
       ),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -932,8 +920,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -978,8 +964,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-auth-required" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -1228,8 +1212,6 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-create-pull-request-without-webhooks" },
       ),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createPullRequest",
       number: 691,
       url: "https://github.com/getsentry/junior/pull/691",

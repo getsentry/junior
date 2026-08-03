@@ -4,9 +4,9 @@ import {
   PluginToolInputError,
   type SubscribableResource,
   type PluginToolExecuteOptions,
-  type PluginToolResult,
+  type PluginToolOutput,
   type ToolRegistrationHookContext,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -112,11 +112,8 @@ interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestStructuredResult
-  extends PluginToolResult, GitHubPullRequestToolResult {
-  ok: true;
-  status: "success";
+  extends PluginToolOutput, GitHubPullRequestToolResult {
   target: "createPullRequest";
-  data: GitHubPullRequestToolResult;
 }
 
 const gitHubPullRequestDataSchema = z.object({
@@ -125,14 +122,9 @@ const gitHubPullRequestDataSchema = z.object({
   subscribable: subscribableResourceSchema.optional(),
 });
 
-const gitHubPullRequestOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
   target: z.literal("createPullRequest"),
-  data: gitHubPullRequestDataSchema,
-  number: z.number(),
-  url: z.string(),
-  subscribable: subscribableResourceSchema.optional(),
+  ...gitHubPullRequestDataSchema.shape,
 });
 
 function parseCreatePullRequestInput(
@@ -357,10 +349,7 @@ function gitHubPullRequestStructuredResult(
 ): GitHubPullRequestStructuredResult {
   const data = gitHubPullRequestToolResult(input, result, canSubscribe);
   return {
-    ok: true,
-    status: "success",
     target: "createPullRequest",
-    data,
     ...data,
   };
 }

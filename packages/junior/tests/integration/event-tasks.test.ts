@@ -495,6 +495,7 @@ describe("event tasks", () => {
       undefined,
       context("U123", "C123", "public", "1700000000.100000"),
     );
+    expect(created).not.toHaveProperty("data");
 
     const listed = (await execute(
       createListEventTasksTool(
@@ -509,6 +510,7 @@ describe("event tasks", () => {
         triggerAvailable: boolean;
       }>;
     };
+    expect(listed).not.toHaveProperty("data");
     expect(listed.tasks.map((task) => task.id)).toEqual([created.task.id]);
     expect(listed.tasks[0]).toMatchObject({
       createdBy: { slackUserId: "U123" },

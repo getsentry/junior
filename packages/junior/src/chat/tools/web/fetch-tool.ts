@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
   FETCH_TIMEOUT_MS,
@@ -31,13 +31,6 @@ function filenameForUrl(url: URL, mediaType: string): string {
   return `fetched-file.${extensionForMediaType(mediaType)}`;
 }
 
-function extractHttpStatusFromMessage(message: string): number | null {
-  const match = message.match(/fetch failed:\s*(\d{3})/i);
-  if (!match) return null;
-  const parsed = Number.parseInt(match[1], 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 /** Create the fetch tool with delivery guidance scoped to active file-send capability. */
 export function createWebFetchTool(
   hooks: ToolHooks,
@@ -63,74 +56,58 @@ export function createWebFetchTool(
         .describe("Optional maximum number of extracted characters to return.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ url, max_chars }) => {
       if (override?.execute) {
         return override.execute({ url, max_chars });
       }
 
-      try {
-        const safeUrl = await assertPublicUrl(url);
-        const response = await withTimeout(
-          fetchTextWithRedirects(safeUrl, MAX_REDIRECTS),
-          FETCH_TIMEOUT_MS,
-          "fetch",
-        );
-        const contentType = (
-          response.headers.get("content-type") ?? ""
-        ).toLowerCase();
+      const safeUrl = await assertPublicUrl(url);
+      const response = await withTimeout(
+        fetchTextWithRedirects(safeUrl, MAX_REDIRECTS),
+        FETCH_TIMEOUT_MS,
+        "fetch",
+      );
+      const contentType = (
+        response.headers.get("content-type") ?? ""
+      ).toLowerCase();
 
-        if (response.ok && contentType.startsWith("image/")) {
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.byteLength > MAX_FETCH_BYTES) {
-            throw new Error("image response body too large");
-          }
-
-          const filename = filenameForUrl(
-            safeUrl,
-            contentType.split(";")[0] ?? "image/png",
-          );
-          const files = [
-            {
-              data: bytes,
-              filename,
-              mimeType: contentType.split(";")[0] ?? "application/octet-stream",
-            },
-          ];
-          const artifactRefs = hooks.writeGeneratedArtifacts
-            ? await hooks.writeGeneratedArtifacts(files)
-            : [];
-
-          return {
-            ok: true,
-            status: "success" as const,
-            url: safeUrl.toString(),
-            media_type: contentType,
-            bytes: bytes.byteLength,
-            images: artifactRefs,
-            delivery:
-              artifactRefs.length > 0
-                ? options.canSendFilesToActiveConversation
-                  ? "Fetched images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
-                  : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."
-                : "Fetched image bytes are available only in this tool result; this runtime has no file-send tool for the active conversation.",
-          };
+      if (response.ok && contentType.startsWith("image/")) {
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.byteLength > MAX_FETCH_BYTES) {
+          throw new Error("image response body too large");
         }
 
-        return await extractWebFetchResponse(safeUrl, response, max_chars);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "fetch failed";
-        const status = extractHttpStatusFromMessage(message);
-        const isClientError = status !== null && status >= 400 && status < 500;
+        const filename = filenameForUrl(
+          safeUrl,
+          contentType.split(";")[0] ?? "image/png",
+        );
+        const files = [
+          {
+            data: bytes,
+            filename,
+            mimeType: contentType.split(";")[0] ?? "application/octet-stream",
+          },
+        ];
+        const artifactRefs = hooks.writeGeneratedArtifacts
+          ? await hooks.writeGeneratedArtifacts(files)
+          : [];
+
         return {
-          ok: false,
-          status: "error" as const,
-          url,
-          error: message,
-          http_status: status,
-          retryable: !isClientError,
+          url: safeUrl.toString(),
+          media_type: contentType,
+          bytes: bytes.byteLength,
+          images: artifactRefs,
+          delivery:
+            artifactRefs.length > 0
+              ? options.canSendFilesToActiveConversation
+                ? "Fetched images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
+                : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."
+              : "Fetched image bytes are available only in this tool result; this runtime has no file-send tool for the active conversation.",
         };
       }
+
+      return await extractWebFetchResponse(safeUrl, response, max_chars);
     },
   });
 }

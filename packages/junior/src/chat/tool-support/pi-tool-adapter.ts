@@ -100,16 +100,6 @@ export function createPiAgentTools(
       });
     }
   };
-  const toolResultOk = (details: unknown): boolean => {
-    if (
-      details &&
-      typeof details === "object" &&
-      typeof (details as { ok?: unknown }).ok === "boolean"
-    ) {
-      return (details as { ok: boolean }).ok;
-    }
-    return true;
-  };
   const reportedToolResult = (
     result: unknown,
     isSandbox: boolean,
@@ -269,8 +259,11 @@ export function createPiAgentTools(
         ),
       });
     }
+    // Only completed executions reach this projection. Thrown tool failures use
+    // Pi's error channel, so success is runtime metadata rather than a field in
+    // the canonical tool output.
     await notifyToolResult({
-      ok: toolResultOk(normalized.details),
+      ok: true,
       params: toolInput,
       result: resultAttributeValue,
       toolCallId,

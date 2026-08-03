@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { withTimeout } from "@/chat/tools/web/network";
-import { logException } from "@/chat/logging";
 import type { WebSearchToolDeps } from "@/chat/tools/types";
 
 const SEARCH_TIMEOUT_MS = 60_000;
@@ -60,19 +59,6 @@ function parseSearchResults(
   return parsedResults;
 }
 
-function formatSearchFailure(error: unknown): string {
-  const message = error instanceof Error ? error.message.trim() : "";
-  return message ? `web search failed: ${message}` : "web search failed";
-}
-
-function isAuthFailure(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("missing ai gateway credentials") ||
-    normalized.includes("authentication failed")
-  );
-}
-
 export function createWebSearchTool(
   modelId: string,
   override?: WebSearchToolDeps,
@@ -96,7 +82,7 @@ export function createWebSearchTool(
         .describe("Max results to return.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ query, max_results }) => {
       if (override?.execute) {
         return override.execute({ query, max_results });
@@ -107,61 +93,34 @@ export function createWebSearchTool(
       // inheriting the main turn model.
       const controller = new AbortController();
 
-      try {
-        // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
-        // itself; no explicit auth needed here.
-        const provider = createGatewayProvider();
-        const response = await withTimeout(
-          generateText({
-            model: provider.chat(modelId),
-            prompt: query,
-            tools: {
-              [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-                mode: "agentic",
-                maxResults,
-              }),
-            },
-            toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
-            abortSignal: controller.signal,
-          }),
-          SEARCH_TIMEOUT_MS,
-          "webSearch",
-          { onTimeout: () => controller.abort() },
-        );
+      // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
+      // itself; no explicit auth needed here.
+      const provider = createGatewayProvider();
+      const response = await withTimeout(
+        generateText({
+          model: provider.chat(modelId),
+          prompt: query,
+          tools: {
+            [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+              mode: "agentic",
+              maxResults,
+            }),
+          },
+          toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
+          abortSignal: controller.signal,
+        }),
+        SEARCH_TIMEOUT_MS,
+        "webSearch",
+        { onTimeout: () => controller.abort() },
+      );
 
-        const results = parseSearchResults(response.toolResults, maxResults);
-        return {
-          ok: true,
-          status: "success" as const,
-          model: modelId,
-          query,
-          result_count: results.length,
-          results,
-        };
-      } catch (error) {
-        const message = formatSearchFailure(error);
-        const timeout = /timed out/i.test(message);
-        const retryable = !isAuthFailure(message);
-        // Every ok:false path surfaces to Sentry. The tool swallows the
-        // exception for the model, so without an explicit capture the
-        // failure is otherwise invisible to us.
-        logException(error, "web.search.failed", {
-          "gen_ai.tool.name": "webSearch",
-          "app.web_search.timeout": timeout,
-          "app.web_search.retryable": retryable,
-          "app.web_search.query": query,
-        });
-        return {
-          ok: false,
-          status: "error" as const,
-          query,
-          result_count: 0,
-          results: [],
-          error: message,
-          timeout,
-          retryable,
-        };
-      }
+      const results = parseSearchResults(response.toolResults, maxResults);
+      return {
+        model: modelId,
+        query,
+        result_count: results.length,
+        results,
+      };
     },
   });
 }

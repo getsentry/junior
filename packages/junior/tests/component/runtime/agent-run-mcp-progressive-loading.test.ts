@@ -1543,7 +1543,6 @@ describe("executeAgentRun progressive MCP loading", () => {
         toolName: "loadSkill",
         isError: false,
         details: {
-          ok: true,
           skill_name: DEMO_SKILL.name,
           mcp_provider: "demo",
         },

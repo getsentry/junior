@@ -4,10 +4,10 @@ import {
   definePluginTool,
   getSourceKey,
   PluginToolInputError,
-  type PluginToolResult,
+  type PluginToolOutput,
   type Source,
   type Actor,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -297,12 +297,9 @@ const memoryToolProjectionSchema = Type.Object(
 type MemoryToolProjection = Static<typeof memoryToolProjectionSchema>;
 
 type MemoryStructuredToolResult<TData extends Record<string, unknown>> =
-  PluginToolResult &
+  PluginToolOutput &
     TData & {
-      ok: true;
-      status: "success";
       target: string;
-      data: TData;
     };
 
 const memoryProjectionOutputSchema = z.object({
@@ -313,41 +310,19 @@ const memoryProjectionOutputSchema = z.object({
   expiresAtMs: z.number().optional(),
 });
 
-const memoryCreateDataOutputSchema = z.object({
+const memoryCreateOutputSchema = pluginToolOutputSchema.extend({
+  target: z.string(),
   created: z.boolean(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memorySingleDataOutputSchema = z.object({
+const memorySingleOutputSchema = pluginToolOutputSchema.extend({
+  target: z.string(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memoryManyDataOutputSchema = z.object({
-  memories: z.array(memoryProjectionOutputSchema),
-});
-
-const memoryCreateOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const memoryManyOutputSchema = pluginToolOutputSchema.extend({
   target: z.string(),
-  data: memoryCreateDataOutputSchema,
-  created: z.boolean(),
-  memory: memoryProjectionOutputSchema,
-});
-
-const memorySingleOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.string(),
-  data: memorySingleDataOutputSchema,
-  memory: memoryProjectionOutputSchema,
-});
-
-const memoryManyOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.string(),
-  data: memoryManyDataOutputSchema,
   memories: z.array(memoryProjectionOutputSchema),
 });
 
@@ -409,10 +384,7 @@ function memoryToolResult<TData extends Record<string, unknown>>(
   data: TData,
 ): MemoryStructuredToolResult<TData> {
   return {
-    ok: true,
-    status: "success",
     target,
-    data,
     ...data,
   };
 }

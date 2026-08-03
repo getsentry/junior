@@ -522,12 +522,10 @@ describe("conversation report event projection", () => {
           toolName: "search",
           content: [{ type: "text", text: "model-visible error summary" }],
           details: {
-            ok: false,
-            status: "error",
-            error: { kind: "not_found", message: "No matches" },
+            query: "first",
             providerSecret: "must stay host-only",
           },
-          isError: false,
+          isError: true,
           timestamp: 2_000,
         }),
         event(3, {
@@ -538,7 +536,7 @@ describe("conversation report event projection", () => {
             { type: "text", text: "native result" },
             { type: "image", mimeType: "image/png", data: "AAAA" },
           ],
-          details: { ok: true, status: "success" },
+          details: { url: "https://example.com" },
           isError: false,
           timestamp: 3_000,
         }),

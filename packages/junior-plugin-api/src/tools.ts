@@ -12,7 +12,7 @@ import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
 import type { PluginState } from "./state";
-import { z, type ZodType, type ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;
@@ -83,8 +83,8 @@ export const pluginToolContentSchema = z.discriminatedUnion("type", [
 /** Model-visible content returned by a plugin tool. */
 export type PluginToolContent = z.output<typeof pluginToolContentSchema>;
 
-/** Standard tool result envelope with separate model content and runtime details. */
-export interface PluginToolResultEnvelope<TDetails = PluginToolResult> {
+/** Pi-native projection with model-facing content and canonical runtime details. */
+export interface PluginToolOutputEnvelope<TDetails = unknown> {
   content: PluginToolContent[];
   details: TDetails;
 }
@@ -196,27 +196,16 @@ export const pluginToolContinuationSchema = z
   })
   .strict();
 
-export const pluginToolErrorSchema = z
+/** Shared optional fields for canonical plugin tool outputs. */
+export const pluginToolOutputSchema = z
   .object({
-    kind: z.string().min(1),
-    message: z.string().min(1),
-    retryable: z.boolean().optional(),
-  })
-  .strict();
-
-export const pluginToolResultSchema = z
-  .object({
-    ok: z.boolean(),
-    status: z.enum(["success", "error"]),
     target: z.string().min(1).optional(),
-    data: z.unknown().optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
-    error: z.union([pluginToolErrorSchema, z.string()]).optional(),
   })
   .passthrough();
 
-export type PluginToolResult = z.output<typeof pluginToolResultSchema>;
+export type PluginToolOutput = z.output<typeof pluginToolOutputSchema>;
 
 export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
   bivarianceHack(
@@ -322,10 +311,10 @@ export interface PluginToolDefinition<
 
 type ZodPluginToolDefinition<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 > = Omit<
   PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -340,13 +329,13 @@ type ZodPluginToolDefinition<
 };
 
 type ParsedPluginToolExecuteResult<TOutputSchema extends ZodTypeAny, TResult> =
-  TResult extends PluginToolResultEnvelope<unknown>
-    ? PluginToolResultEnvelope<z.output<TOutputSchema>>
+  TResult extends PluginToolOutputEnvelope<unknown>
+    ? PluginToolOutputEnvelope<z.output<TOutputSchema>>
     : z.output<TOutputSchema>;
 
-function isPluginToolResultEnvelope(
+function isPluginToolOutputEnvelope(
   value: unknown,
-): value is PluginToolResultEnvelope<unknown> {
+): value is PluginToolOutputEnvelope<unknown> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -382,10 +371,10 @@ function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
 
 function createZodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
@@ -436,15 +425,13 @@ function createZodTool<
               input as z.output<TInputSchema>,
               options,
             );
-            if (isPluginToolResultEnvelope(result)) {
+            if (isPluginToolOutputEnvelope(result)) {
               return {
                 content: z.array(pluginToolContentSchema).parse(result.content),
-                details: outputSchema.parse(
-                  pluginToolResultSchema.parse(result.details),
-                ),
+                details: outputSchema.parse(result.details),
               };
             }
-            return outputSchema.parse(pluginToolResultSchema.parse(result));
+            return outputSchema.parse(result);
           },
         }
       : {}),
@@ -458,10 +445,10 @@ function createZodTool<
 /** Define a plugin tool with Zod input parsing and validated structured results. */
 export function zodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
@@ -479,10 +466,10 @@ export function zodTool<
 /** Define a plugin tool with Zod input parsing and the structured result contract. */
 export function definePluginTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,

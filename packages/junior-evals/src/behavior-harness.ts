@@ -95,7 +95,7 @@ import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import { DEFAULT_MAX_CHARS, MAX_FETCH_CHARS } from "@/chat/tools/web/constants";
 import { truncateWebFetchContent } from "@/chat/tools/web/fetch-content";
@@ -521,8 +521,8 @@ function createReplayWebFetchDeps(
           }),
         },
       });
-      const parsed = juniorToolResultSchema.parse(result);
-      if (parsed.ok !== true || typeof parsed.content !== "string") {
+      const parsed = juniorToolOutputSchema.parse(result);
+      if (typeof parsed.content !== "string") {
         return parsed;
       }
       const limited = truncateWebFetchContent(
@@ -581,7 +581,7 @@ function createReplayWebSearchDeps(
           }),
         },
       });
-      return juniorToolResultSchema.parse(result);
+      return juniorToolOutputSchema.parse(result);
     },
   };
 }
@@ -1846,17 +1846,9 @@ function buildRuntimeServices(
             const nowMs = Date.now();
             const toolCallId = "eval-timeout-resume-tool-call";
             const unknownOutcome = {
-              ok: false,
-              status: "error",
               target: timeoutResume.tool_name,
-              data: {
-                aborted: true,
-              },
-              error: {
-                kind: "outcome_unknown",
-                message: "Command outcome was not confirmed.",
-                retryable: false,
-              },
+              aborted: true,
+              message: "Command outcome was not confirmed.",
             };
             const deadlineResult = annotateTurnDeadlineToolResult({
               content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],

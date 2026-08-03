@@ -5,7 +5,7 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   EgressAuthRequired,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   type PluginHooks,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
@@ -35,14 +35,7 @@ const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_UPLOAD_HOST = "uploads.github.com";
 
-const managedEgressReadResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  data: z.object({
-    body: z.string(),
-    ok: z.boolean(),
-    status: z.number(),
-  }),
+const managedEgressReadResultSchema = pluginToolOutputSchema.extend({
   body: z.string(),
   upstream_ok: z.boolean(),
   upstream_status: z.number(),
@@ -717,9 +710,6 @@ describe("sandbox egress proxy integration", () => {
                 body: await response.text(),
               };
               return {
-                ok: true,
-                status: "success",
-                data,
                 body: data.body,
                 upstream_ok: data.ok,
                 upstream_status: data.status,
@@ -786,8 +776,6 @@ describe("sandbox egress proxy integration", () => {
 
     expect(result).toMatchObject({
       details: {
-        ok: true,
-        status: "success",
         body: "provider ok",
         upstream_status: 200,
       },

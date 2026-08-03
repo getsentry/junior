@@ -1,4 +1,4 @@
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 export {
@@ -35,7 +35,7 @@ export function createReadFileTool() {
         .describe("Maximum number of lines to read. Defaults to 1000.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async () => {
       throw new Error(
         "readFile can only run when sandbox execution is enabled.",

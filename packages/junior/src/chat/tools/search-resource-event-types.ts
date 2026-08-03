@@ -3,7 +3,7 @@ import {
   eventNamespaceSchema,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const DEFAULT_SEARCH_RESULTS = 10;
@@ -18,7 +18,7 @@ const searchedResourceTypeSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolResultSchema
+const outputSchema = juniorToolOutputSchema
   .extend({
     query: z.string().nullable(),
     namespace: z.string().nullable(),
@@ -118,9 +118,6 @@ export function createSearchResourceEventTypesTool(
         resourceTypes,
       };
       return {
-        ok: true,
-        status: "success" as const,
-        data: details,
         ...details,
       };
     },

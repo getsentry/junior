@@ -1,8 +1,9 @@
 import { listItems } from "@/chat/slack/tools/list/api";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolState } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Create a tool that reads items from the active Slack list. */
 export function createSlackListGetItemsTool(state: ToolState) {
@@ -24,23 +25,17 @@ export function createSlackListGetItemsTool(state: ToolState) {
         .describe("Maximum number of list items to return.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ limit }) => {
       const targetListId = state.getCurrentListId();
       const resolvedLimit = limit ?? 100;
       if (!targetListId) {
-        return {
-          ok: false,
-          status: "error" as const,
-          error: "No active list found in artifact context",
-        };
+        throw new ToolInputError("No active list found in artifact context");
       }
 
       const items = await listItems(targetListId, resolvedLimit);
 
       return {
-        ok: true,
-        status: "success" as const,
         list_id: targetListId,
         items: items.map((item) => ({ id: item.id, fields: item.fields })),
       };

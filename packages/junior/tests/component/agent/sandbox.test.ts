@@ -117,16 +117,18 @@ describe("createAgentSandbox", () => {
     });
 
     expect(executeSandboxToolMock).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ details: { ok: true, exit_code: 0 } });
+    expect(result).toMatchObject({ details: { exit_code: 0 } });
   });
 
   it("forwards ordinary tools and generated artifacts", async () => {
-    executeSandboxToolMock.mockResolvedValue({ ok: true });
+    executeSandboxToolMock.mockResolvedValue({ cwd: "/workspace" });
     writeGeneratedArtifactsMock.mockResolvedValue([{ path: "/tmp/file.txt" }]);
     const sandbox = createAgentSandbox(options());
     const call = { toolName: "bash", input: { command: "pwd" } };
 
-    await expect(sandbox.tools.execute(call)).resolves.toEqual({ ok: true });
+    await expect(sandbox.tools.execute(call)).resolves.toEqual({
+      cwd: "/workspace",
+    });
     await expect(sandbox.writeGeneratedArtifacts([])).resolves.toEqual([
       { path: "/tmp/file.txt" },
     ]);

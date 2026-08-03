@@ -1,7 +1,7 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { z } from "zod";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 export const SEARCH_TOOLS_NAME = "searchTools";
@@ -29,7 +29,7 @@ const searchToolsToolSchema = z
   })
   .strict();
 
-const searchToolsOutputSchema = juniorToolResultSchema
+const searchToolsOutputSchema = juniorToolOutputSchema
   .extend({
     query: z.string().nullable(),
     source: z.string().nullable(),
@@ -282,7 +282,7 @@ export function createSearchToolsTool(
       const renderedTools = matches.map((name) =>
         toolMetadata(name, catalogTools[name]!, includePerToolSource),
       );
-      const data = {
+      return {
         query: query ?? null,
         source: requestedSource,
         sources,
@@ -292,12 +292,6 @@ export function createSearchToolsTool(
         returned_tools: renderedTools.length,
         execution_tool: "executeTool" as const,
         tools: renderedTools,
-      };
-      return {
-        ok: true,
-        status: "success" as const,
-        data,
-        ...data,
       };
     },
   });

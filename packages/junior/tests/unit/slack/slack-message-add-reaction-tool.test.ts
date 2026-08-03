@@ -86,7 +86,6 @@ describe("addReaction tool", () => {
     const result = await tool.execute({ emoji: ":Thumbs_Up:" }, {} as any);
     expect(result).toEqual(
       expect.objectContaining({
-        ok: true,
         emoji: "thumbs_up",
       }),
     );
@@ -114,7 +113,6 @@ describe("addReaction tool", () => {
     );
     expect(result).toEqual(
       expect.objectContaining({
-        ok: true,
         emoji: "thumbsup::skin-tone-6",
       }),
     );

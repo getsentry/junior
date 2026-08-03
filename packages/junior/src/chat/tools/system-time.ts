@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
-const systemTimeOutputSchema = juniorToolResultSchema.extend({
+const systemTimeOutputSchema = juniorToolOutputSchema.extend({
   unix_ms: z.number(),
   iso_utc: z.string(),
   iso_local: z.string(),
@@ -22,8 +22,6 @@ export function createSystemTimeTool() {
     inputSchema: z.object({}),
     outputSchema: systemTimeOutputSchema,
     privateTraceResult: (result) => ({
-      ok: result.ok,
-      status: result.status,
       unix_ms: result.unix_ms,
       iso_utc: result.iso_utc,
       iso_local: result.iso_local,
@@ -40,9 +38,6 @@ export function createSystemTimeTool() {
         timezone_offset_minutes: now.getTimezoneOffset(),
       };
       return {
-        ok: true,
-        status: "success" as const,
-        data: details,
         ...details,
       };
     },

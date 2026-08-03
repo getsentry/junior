@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
@@ -33,7 +33,7 @@ export function createExecuteToolTool() {
           .optional(),
       })
       .strict(),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async () => {
       throw new ToolInputError(
         "executeTool can only run through the agent tool dispatcher.",

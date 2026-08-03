@@ -4,7 +4,7 @@ import {
   definePromptContext,
   definePluginTool,
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
   RESOURCE_EVENT_TEXT_MAX_LENGTH,
   type ResourceEvent,
@@ -43,9 +43,8 @@ import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 
-const demoToolResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const demoToolResultSchema = pluginToolOutputSchema.extend({
+  message: z.string(),
 });
 
 function demoPluginTool(
@@ -64,11 +63,7 @@ function demoPluginTool(
     description,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
-    execute: () =>
-      ({
-        ok: true,
-        status: "success",
-      }) as const,
+    execute: () => ({ message: "done" }),
   });
 }
 
@@ -112,10 +107,7 @@ class PrototypeTool {
   outputSchema = z.toJSONSchema(demoToolResultSchema);
 
   execute() {
-    return {
-      ok: true,
-      status: "success",
-    } as const;
+    return { message: "done" };
   }
 }
 
@@ -581,7 +573,7 @@ describe("agent plugin hooks", () => {
                 description: "Demo tool",
                 inputSchema: z.object({}),
                 outputSchema: demoToolResultSchema,
-                execute: () => ({ ok: true, status: "success" }) as const,
+                execute: () => ({ message: "done" }),
               }),
             };
           },
@@ -655,8 +647,7 @@ describe("agent plugin hooks", () => {
         {},
       ) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
-        ok: true,
-        status: "success",
+        message: "done",
       });
     } finally {
       setPlugins(previous);

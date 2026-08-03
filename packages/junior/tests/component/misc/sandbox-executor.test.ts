@@ -1166,7 +1166,6 @@ describe("createTestSandbox", () => {
     const response = await responsePromise;
 
     expect(response.result.details).toMatchObject({
-      ok: false,
       exit_code: 124,
       timed_out: true,
       stderr: "Command timed out after 300000ms",
@@ -1202,7 +1201,6 @@ describe("createTestSandbox", () => {
     const response = await responsePromise;
 
     expect(response.result.details).toMatchObject({
-      ok: false,
       exit_code: 130,
       timed_out: false,
       stderr: "Command aborted because the agent turn was cancelled.",
@@ -1251,13 +1249,8 @@ describe("createTestSandbox", () => {
 
     expect(remoteMutationApplied).toBe(true);
     expect(response.result.details).toMatchObject({
-      ok: false,
       exit_code: 130,
       aborted: true,
-      error: {
-        kind: "outcome_unknown",
-        retryable: false,
-      },
     });
   });
 
@@ -1843,9 +1836,7 @@ describe("createTestSandbox", () => {
     });
 
     expect(recovered.result.details).toMatchObject({
-      ok: true,
-      status: "success",
-      data: { match_count: 0 },
+      match_count: 0,
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(1);
     expect(sandboxGetMock).toHaveBeenCalledWith({
@@ -2239,7 +2230,6 @@ describe("createTestSandbox", () => {
     });
 
     expect(recovered.result.details).toMatchObject({
-      ok: true,
       stdout: "second\n",
       exit_code: 0,
     });
@@ -2281,17 +2271,13 @@ describe("createTestSandbox", () => {
     });
 
     expect(response.result.details).toMatchObject({
-      ok: true,
-      status: "success",
       target: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       truncated: false,
-      data: {
-        content: "Reference note",
-        end_line: 1,
-        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
-        start_line: 1,
-        total_lines: 1,
-      },
+      content: "Reference note",
+      end_line: 1,
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      start_line: 1,
+      total_lines: 1,
     });
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -2322,17 +2308,13 @@ describe("createTestSandbox", () => {
     });
 
     expect(response.result.details).toMatchObject({
-      ok: true,
-      status: "success",
       target: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
       truncated: false,
-      data: {
-        content: "from sandbox",
-        end_line: 1,
-        path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
-        start_line: 1,
-        total_lines: 1,
-      },
+      content: "from sandbox",
+      end_line: 1,
+      path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      start_line: 1,
+      total_lines: 1,
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -2347,26 +2329,12 @@ describe("createTestSandbox", () => {
     const executor = createTestSandbox();
     executor.configureSkills([]);
 
-    const response = await executor.execute<StructuredSandboxResult>({
-      toolName: "readFile",
-      input: {
-        path: "missing.ts",
-      },
-    });
-
-    expect(response.result.details).toMatchObject({
-      ok: false,
-      status: "error",
-      target: "missing.ts",
-      error: {
-        kind: "not_found",
-        message: "File not found: missing.ts",
-      },
-      data: {
-        content: "",
-        path: "missing.ts",
-      },
-    });
+    await expect(
+      executor.execute<StructuredSandboxResult>({
+        toolName: "readFile",
+        input: { path: "missing.ts" },
+      }),
+    ).rejects.toThrow("File not found: missing.ts");
   });
 
   it("returns a structured failure when editFile targets a missing path", async () => {
@@ -2389,19 +2357,7 @@ describe("createTestSandbox", () => {
           edits: [{ oldText: "a", newText: "b" }],
         },
       }),
-    ).resolves.toMatchObject({
-      result: {
-        details: {
-          ok: false,
-          status: "error",
-          target: "missing.ts",
-          error: {
-            kind: "not_found",
-            message: "File not found: missing.ts",
-          },
-        },
-      },
-    });
+    ).rejects.toThrow("File not found: missing.ts");
   });
 
   it("keeps non-lifecycle sandbox API failures as readFile errors", async () => {
@@ -2460,17 +2416,13 @@ describe("createTestSandbox", () => {
     });
 
     expect(response.result.details).toMatchObject({
-      ok: true,
-      status: "success",
       target: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       truncated: false,
-      data: {
-        content: "Sandbox note",
-        end_line: 1,
-        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
-        start_line: 1,
-        total_lines: 1,
-      },
+      content: "Sandbox note",
+      end_line: 1,
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      start_line: 1,
+      total_lines: 1,
     });
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_existing",

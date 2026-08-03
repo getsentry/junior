@@ -1,13 +1,13 @@
-import { logWarn } from "@/chat/logging";
 import { readCanvas } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { sliceFileContent } from "@/chat/tool-support/text-range-result";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const slackCanvasReadOutputSchema = juniorToolResultSchema
+const slackCanvasReadOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
@@ -61,50 +61,33 @@ export function createSlackCanvasReadTool() {
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return { ...target, status: "error" as const };
+        throw new ToolInputError(target.error);
       }
 
-      try {
-        const result = await readCanvas(target.canvasId);
-        const range = sliceFileContent({
-          content: normalizeToLf(result.content),
-          continuationArgumentName: "canvas",
-          limit,
-          offset,
-          path: result.canvasId,
-        });
-        const rangeData = range.details.data;
+      const result = await readCanvas(target.canvasId);
+      const range = sliceFileContent({
+        content: normalizeToLf(result.content),
+        continuationArgumentName: "canvas",
+        limit,
+        offset,
+        path: result.canvasId,
+      });
+      const rangeData = range.details;
 
-        return {
-          ok: true,
-          status: "success" as const,
-          canvas_id: result.canvasId,
-          title: result.title,
-          permalink: result.permalink,
-          mimetype: result.mimetype,
-          filetype: result.filetype,
-          original_byte_length: result.byteLength,
-          content: rangeData.content,
-          start_line: rangeData.start_line,
-          end_line: rangeData.end_line,
-          total_lines: rangeData.total_lines,
-          truncated: range.details.truncated,
-          continuation: range.details.continuation,
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "canvas read failed";
-        logWarn("slack.canvas.read.failed", {
-          "gen_ai.tool.name": "slackCanvasRead",
-          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-        });
-        return {
-          ok: false,
-          status: "error" as const,
-          canvas_id: target.canvasId,
-          error: message,
-        };
-      }
+      return {
+        canvas_id: result.canvasId,
+        title: result.title,
+        permalink: result.permalink,
+        mimetype: result.mimetype,
+        filetype: result.filetype,
+        original_byte_length: result.byteLength,
+        content: rangeData.content,
+        start_line: rangeData.start_line,
+        end_line: rangeData.end_line,
+        total_lines: rangeData.total_lines,
+        truncated: range.details.truncated,
+        continuation: range.details.continuation,
+      };
     },
   });
 }

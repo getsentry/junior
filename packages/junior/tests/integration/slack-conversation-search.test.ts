@@ -75,8 +75,6 @@ describe("searchConversationHistory", () => {
         messageTs: "1700000000.100000",
       });
       expect(result).toEqual({
-        ok: true,
-        status: "success",
         query: "launch checklist",
         count: 1,
         threads: [

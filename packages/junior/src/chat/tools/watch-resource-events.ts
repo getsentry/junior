@@ -12,7 +12,7 @@ import {
   requireResourceWatchConversation,
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/resource-events/tool-support";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -107,17 +107,9 @@ const resultDataSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolResultSchema
+const outputSchema = juniorToolOutputSchema
   .extend({
-    ok: z.literal(true),
-    status: z.literal("success"),
-    data: resultDataSchema,
-    id: resultDataSchema.shape.id,
-    subscription_status: resultDataSchema.shape.subscription_status,
-    identifier: resultDataSchema.shape.identifier,
-    events: resultDataSchema.shape.events,
-    expiresAtMs: resultDataSchema.shape.expiresAtMs,
-    stop_watching: stopWatchingActionSchema,
+    ...resultDataSchema.shape,
   })
   .strict();
 
@@ -202,9 +194,6 @@ export function createWatchResourceEventsTool(
         },
       };
       return {
-        ok: true as const,
-        status: "success" as const,
-        data: details,
         ...details,
       };
     },

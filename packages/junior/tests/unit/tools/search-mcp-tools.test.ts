@@ -65,8 +65,6 @@ describe("searchMcpTools", () => {
       { query: "issue title", max_results: 1 },
       {},
     )) as {
-      ok: boolean;
-      status: "success" | "error";
       query: string | null;
       provider: string | null;
       total_active_tools: number;
@@ -86,10 +84,9 @@ describe("searchMcpTools", () => {
     };
 
     expect(result).toMatchObject({ execution_tool: "callMcpTool" });
+    expect(result).not.toHaveProperty("data");
     const privateTraceResult = searchMcpTools.privateTraceResult?.(result);
     expect(privateTraceResult).toEqual({
-      ok: result.ok,
-      status: result.status,
       total_active_tools: result.total_active_tools,
       returned_tools: result.returned_tools,
       execution_tool: result.execution_tool,

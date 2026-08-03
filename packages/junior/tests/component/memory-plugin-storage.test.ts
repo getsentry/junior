@@ -325,7 +325,6 @@ WHERE table_name = 'junior_memory_memories'
       await expect(
         tools.memory_listMemories.execute!({}, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "This thread tracks host-wired memory context.",
@@ -338,7 +337,6 @@ WHERE table_name = 'junior_memory_memories'
       await expect(
         tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "I prefer host-wired personal recall.",

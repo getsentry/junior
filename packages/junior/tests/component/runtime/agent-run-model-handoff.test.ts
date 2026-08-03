@@ -468,16 +468,12 @@ describe("model handoff composition", () => {
         ok: true,
         result: {
           model_profile: "coding",
-          ok: true,
-          status: "success",
         },
       },
       {
         ok: true,
         result: {
           model_profile: "handoff",
-          ok: true,
-          status: "success",
         },
       },
     ]);

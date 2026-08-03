@@ -203,12 +203,12 @@ Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 ```ts title="index.ts"
 import {
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-const pingResultSchema = pluginToolResultSchema.extend({
+const pingOutputSchema = pluginToolOutputSchema.extend({
   latency_ms: z.number(),
 });
 
@@ -229,17 +229,13 @@ export function myProviderPlugin() {
             },
             description: "Check my-provider connectivity.",
             inputSchema: z.object({}),
-            outputSchema: pingResultSchema,
+            outputSchema: pingOutputSchema,
             privateTraceResult: (result) => ({
-              ok: result.ok,
-              status: result.status,
               latency_ms: result.latency_ms,
             }),
             execute: async () => {
               ctx.log.info("Running my-provider ping");
               return {
-                ok: true,
-                status: "success",
                 latency_ms: 12,
               };
             },
@@ -250,6 +246,11 @@ export function myProviderPlugin() {
   });
 }
 ```
+
+The output schema describes the tool's successful value directly. Do not wrap
+it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
+model-repairable failures; Junior projects successful values and thrown errors
+onto the agent runtime's separate result channels.
 
 Use `approvalMode: "auto"` when Junior should review an action according to its
 annotations and source. Use `review` when every invocation requires review, or

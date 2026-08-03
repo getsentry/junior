@@ -3539,7 +3539,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-personal" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Prefers terse status updates.",
@@ -3593,7 +3592,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-conversation" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Incident notes live in Linear.",
@@ -3619,7 +3617,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.listMemories.execute({ limit: 10 }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Incident notes live in Linear.",
@@ -3632,7 +3629,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.searchMemories.execute({ query: "incident notes" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Incident notes live in Linear.",
@@ -3653,7 +3649,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memory: {
           id: personal!.id,
           content: "Prefers terse status updates.",
@@ -3661,7 +3656,7 @@ WHERE id = '${superseded.memory.id}'
       });
       await expect(
         tools.searchMemories.execute({ query: "terse status" }, {}),
-      ).resolves.toMatchObject({ ok: true, memories: [] });
+      ).resolves.toMatchObject({ memories: [] });
 
       await expect(
         createMemoryCreateTool({
@@ -3699,7 +3694,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-valid-expiration" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Prefers valid expiration to be stored.",
@@ -3760,14 +3754,12 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-personal" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: { content: "Prefers duplicate-safe retries." },
       });
       await expect(
         tools.searchMemories.execute({ query: "duplicate-safe retries" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Prefers duplicate-safe retries.",
