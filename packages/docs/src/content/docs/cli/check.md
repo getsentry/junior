@@ -12,7 +12,7 @@ related:
   - /cli/upgrade/
 ---
 
-`junior check` validates local app content, installed plugin package content, and Junior deployment config before build or deploy. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.
+`junior check` validates local app content, installed plugin package content, and Junior deployment config before build or deploy. It only checks plugin and skill content under `app/` and installed packages, and it only runs app-file checks when the target already looks like a Junior app.
 
 ## Usage
 
@@ -61,14 +61,13 @@ When the target already contains Junior app markers such as `app/SOUL.md`, `app/
 - `app/SOUL.md` for assistant personality. Missing emits a warning.
 - `app/WORLD.md` for operational context. Missing emits a warning.
 - `app/DESCRIPTION.md` for the user-facing app description. Missing emits a warning.
-- `app/ABOUT.md` must not exist. This is a clean break; use `WORLD.md` and `DESCRIPTION.md` instead.
 - Other `app/*.md` files are allowed and stay available at runtime as optional sandbox reference documents.
 
 If a skill file has frontmatter but no instructions after it, the command emits a warning instead of failing.
 
-For Nitro/Vercel apps, the command checks deployment wiring when it sees Junior markers such as `@sentry/junior`, `juniorNitro()`, or app content files. It fails when `nitro.config.ts` omits `juniorNitro()`, because that module emits Junior's heartbeat cron and Vercel Queue triggers into the Nitro build output. It also fails when root `vercel.json` still targets `functions["api/internal/agent/continue.ts"]`; Nitro does not deploy that source file as a Vercel function.
+For Nitro/Vercel apps, the command checks deployment wiring when it sees Junior markers such as `@sentry/junior`, `juniorNitro()`, or app content files. It fails when `nitro.config.ts` omits `juniorNitro()`, because that module emits Junior's heartbeat cron and Vercel Queue triggers into the Nitro build output. It also fails when root `vercel.json` targets `functions["api/internal/agent/continue.ts"]`; Nitro does not deploy that source file as a Vercel function.
 
-Root `vercel.json` heartbeat crons emit a warning. `juniorNitro()` now emits `/api/internal/heartbeat` into `.vercel/output/config.json`, so keeping the root cron can drift from the deployed Nitro config.
+Root `vercel.json` heartbeat crons emit a warning. Heartbeat routing comes from `juniorNitro()` via `/api/internal/heartbeat` in `.vercel/output/config.json`, so a root cron can drift from the deployed Nitro config.
 
 ## Example output
 
@@ -92,25 +91,15 @@ Checking /repo
 ✓ plugin demo
 ✖ app skills
   └─ ✖ skill repo-local
-✖ error: /repo/app/skills/repo-local/SKILL.md: Frontmatter field "uses-config" is no longer supported; plugin config keys come from plugin.yaml.
+✖ error: /repo/app/skills/repo-local/SKILL.md: name "helper" must match directory "repo-local"
 junior command failed: Validation failed (1 error, 1 plugin manifest, 1 skill directory checked).
-```
-
-Deprecated app-file layout:
-
-```text
-Checking /repo
-✖ app files
-✖ error: /repo/app/ABOUT.md: ABOUT.md is no longer supported. Rename to WORLD.md (operational context) and DESCRIPTION.md (user-facing description).
-junior command failed: Validation failed (1 error, 0 plugin manifests, 0 skill directories checked).
 ```
 
 ## Verification
 
 1. Run `pnpm exec junior check` from the app root, or pass the app path explicitly.
 2. Confirm the command prints `Validation passed` or only expected `warning:` lines.
-3. If you are migrating older app docs, replace `app/ABOUT.md` with `app/WORLD.md` and `app/DESCRIPTION.md`.
-4. Fix any reported errors before build or deploy.
+3. Fix any reported errors before build or deploy.
 
 ## Next step
 

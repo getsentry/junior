@@ -71,7 +71,7 @@ Do not manually edit versions in `package.json`. Do not use local `../junior` li
 
 ### 7. Sync local config
 
-If a new standalone `@sentry/junior-*` plugin package was added, list it in `juniorNitro({ plugins.packages })`. Exclude the base/runtime utility packages: `@sentry/junior`, `@sentry/junior-plugin-api`, `@sentry/junior-testing`.
+If a new standalone `@sentry/junior-*` plugin package was added, add it to the app `plugins.ts` set passed to `defineJuniorPlugins(...)` and keep `juniorNitro({ plugins: "./plugins" })` pointed at that module. Exclude the base/runtime utility packages: `@sentry/junior`, `@sentry/junior-plugin-api`, `@sentry/junior-testing`.
 
 ```bash
 node scripts/check-plugin-packages.mjs

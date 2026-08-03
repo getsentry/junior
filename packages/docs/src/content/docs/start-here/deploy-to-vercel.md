@@ -121,7 +121,7 @@ Set `VERCEL_SANDBOX_KEEPALIVE_MS=900000` in the Vercel project's **Production** 
 
 Without this variable, keepalive is disabled. Long agent runs that cross model or queue-continuation gaps can then outlive their sandbox session, and Junior may have to create a new sandbox without the previous workspace files.
 
-Configure this through Vercel Project Settings or `vercel env`, not the legacy top-level `env` property in `vercel.json`:
+Configure this through Vercel Project Settings or `vercel env`, not a top-level `env` property in `vercel.json`:
 
 ```bash
 pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS production

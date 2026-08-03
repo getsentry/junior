@@ -111,9 +111,7 @@ export const plugins = defineJuniorPlugins(["@acme/junior-my-provider"]);
 ```
 
 Point `juniorNitro({ plugins: "./plugins" })` at that module and let
-`createApp()` read the enabled set from Nitro's virtual module. Do not use the
-removed `pluginPackages` or `plugins.packages` options; `junior check` rejects
-both.
+`createApp()` read the enabled set from Nitro's virtual module.
 
 ## Add runtime hooks
 

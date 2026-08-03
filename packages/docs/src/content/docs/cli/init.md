@@ -41,7 +41,7 @@ The scaffold includes:
 - `.env.example`
 - `.gitignore`
 
-`SOUL.md` sets Junior's default voice, `WORLD.md` holds operational context, and `DESCRIPTION.md` powers the user-facing app description. Add other `app/*.md` files only when you want optional reference material available to the agent at runtime. `ABOUT.md` is not part of the scaffold and is not supported.
+`SOUL.md` sets Junior's default voice, `WORLD.md` holds operational context, and `DESCRIPTION.md` powers the user-facing app description. Add other `app/*.md` files only when you want optional reference material available to the agent at runtime.
 
 The generated `plugins.ts` enables `@sentry/junior-maintenance` and `memoryPlugin()` by default. Maintenance provides the `self-update` skill for keeping Junior packages current, and memory provides long-term recall once you configure Postgres with pgvector. `plugins.ts` is also the place to add other packaged plugins later.
 
