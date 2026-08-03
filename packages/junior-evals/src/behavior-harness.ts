@@ -2307,6 +2307,7 @@ async function processEvents(args: {
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
     const task: ScheduledTask = {
       id: taskId,
+      conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       credentialMode: event.credential_mode ?? "system",

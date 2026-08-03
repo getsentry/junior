@@ -15,6 +15,7 @@ import {
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
 import { defineJuniorPlugins } from "@/plugins";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -51,6 +52,7 @@ async function migrateSchedulerSchema(
 function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
   return {
     id: "sched_sql_1",
+    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: TEST_RUN_AT_MS,
     createdBy: { slackUserId: "U123" },
     credentialMode: "system",
@@ -79,6 +81,7 @@ describe("scheduler SQL plugin storage", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
+      await migrateSchema(fixture.sql);
       await migrateSchedulerSchema(fixture);
       const [migrationTable] = await fixture.sql.query<{ tablename: string }>(`
 SELECT tablename
@@ -110,8 +113,40 @@ CREATE TABLE junior_schema_migrations (
           LEGACY_SCHEDULER_MIGRATION_CHECKSUM,
         ],
       );
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_destinations (
+  id,
+  provider,
+  provider_tenant_id,
+  provider_destination_id,
+  kind,
+  visibility,
+  created_at,
+  updated_at
+) VALUES ($1, 'slack', $2, $3, 'channel', 'public', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+`,
+        ["destination_scheduler_public", "T123", "C123"],
+      );
       const currentTask = createTask({ id: "sched_legacy_credential_subject" });
-      const { credentialMode: _credentialMode, ...legacyTask } = currentTask;
+      const {
+        conversationAccess: _conversationAccess,
+        credentialMode: _credentialMode,
+        ...legacyTask
+      } = currentTask;
+      const unmatchedCurrentTask = createTask({
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C404",
+        },
+        id: "sched_legacy_unknown_destination",
+      });
+      const {
+        conversationAccess: _unmatchedConversationAccess,
+        credentialMode: _unmatchedCredentialMode,
+        ...unmatchedLegacyTask
+      } = unmatchedCurrentTask;
       await fixture.sql.execute(
         `
 INSERT INTO junior_scheduler_tasks (
@@ -139,6 +174,26 @@ INSERT INTO junior_scheduler_tasks (
           }),
         ],
       );
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_scheduler_tasks (
+  id,
+  team_id,
+  status,
+  next_run_at_ms,
+  created_at_ms,
+  record
+) VALUES ($1, $2, $3, $4, $5, $6)
+`,
+        [
+          unmatchedLegacyTask.id,
+          unmatchedLegacyTask.destination.teamId,
+          unmatchedLegacyTask.status,
+          unmatchedLegacyTask.nextRunAtMs,
+          unmatchedLegacyTask.createdAtMs,
+          JSON.stringify(unmatchedLegacyTask),
+        ],
+      );
 
       await expect(
         migratePluginSchemas(fixture.sql, [
@@ -147,7 +202,7 @@ INSERT INTO junior_scheduler_tasks (
             pluginName: "scheduler",
           },
         ]),
-      ).resolves.toEqual({ existing: 1, migrated: 2, scanned: 3 });
+      ).resolves.toEqual({ existing: 1, migrated: 3, scanned: 4 });
       const migrations = readMigrationFiles({
         migrationsFolder: schedulerMigrationsDir(),
       });
@@ -180,9 +235,24 @@ WHERE id = $1
       );
       expect(migratedTask?.creatorSlackUserId).toBe("U123");
       expect(migratedTask?.record).toMatchObject({
+        conversationAccess: {
+          audience: "channel",
+          visibility: "public",
+        },
         credentialMode: "system",
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
+      const [unmatchedMigratedTask] = await fixture.sql.query<{
+        record: unknown;
+      }>(`SELECT record FROM junior_scheduler_tasks WHERE id = $1`, [
+        unmatchedLegacyTask.id,
+      ]);
+      expect(unmatchedMigratedTask?.record).toMatchObject({
+        conversationAccess: {
+          audience: "channel",
+          visibility: "private",
+        },
+      });
       await expect(
         migratePluginSchemas(fixture.sql, [
           {
@@ -190,7 +260,7 @@ WHERE id = $1
             pluginName: "scheduler",
           },
         ]),
-      ).resolves.toEqual({ existing: 3, migrated: 0, scanned: 3 });
+      ).resolves.toEqual({ existing: 4, migrated: 0, scanned: 4 });
       await expect(
         fixture.sql.query<{
           createdAt: string;
@@ -676,8 +746,8 @@ INSERT INTO junior_scheduler_tasks (
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 3,
-        scanned: 3,
+        migrated: 4,
+        scanned: 4,
       });
 
       const db = fixture.sql.db() as unknown as SchedulerDb;
@@ -706,8 +776,8 @@ INSERT INTO junior_scheduler_tasks (
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 3,
-        scanned: 3,
+        migrated: 4,
+        scanned: 4,
       });
     } finally {
       await fixture.close();

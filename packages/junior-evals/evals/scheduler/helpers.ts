@@ -34,6 +34,7 @@ export async function seedScheduledTask(args: {
   const nowMs = Date.now();
   const task: ScheduledTask = {
     id: args.id,
+    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs - 60_000,
     createdBy: args.createdBy,
     credentialMode: args.credentialMode ?? "system",

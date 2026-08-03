@@ -113,8 +113,7 @@ function scheduledTaskDispatchSource(task: ScheduledTask): Source {
   return createSlackSource({
     teamId: task.destination.teamId,
     channelId: task.destination.channelId,
-    visibility:
-      task.conversationAccess?.visibility === "public" ? "public" : "private",
+    visibility: task.conversationAccess.visibility,
   });
 }
 
@@ -584,10 +583,7 @@ export function schedulerPlugin() {
               idempotencyKey: run.id,
               ...(credentialSubject ? { credentialSubject } : {}),
               destination: task.destination,
-              destinationVisibility:
-                task.conversationAccess?.visibility === "public"
-                  ? "public"
-                  : "private",
+              destinationVisibility: task.conversationAccess.visibility,
               input: task.task.text,
               metadata: dispatchMetadata,
               replyAttribution: buildScheduledTaskReplyAttribution(task),

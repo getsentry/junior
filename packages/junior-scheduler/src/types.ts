@@ -30,7 +30,7 @@ export const SCHEDULED_TASK_SYSTEM_ACTOR = Object.freeze({
 
 export interface ScheduledTaskConversationAccess {
   audience: "direct" | "group" | "channel";
-  visibility: "private" | "public" | "unknown";
+  visibility: "private" | "public";
 }
 
 export type ScheduledCalendarFrequency =
@@ -69,7 +69,7 @@ export interface ScheduledTask {
   id: string;
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
-  conversationAccess?: ScheduledTaskConversationAccess;
+  conversationAccess: ScheduledTaskConversationAccess;
   /** Selects system credentials or task-bound creator credential delegation. */
   credentialMode: ScheduledTaskCredentialMode;
   destination: SlackDestination;

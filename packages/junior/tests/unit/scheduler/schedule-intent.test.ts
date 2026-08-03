@@ -11,6 +11,7 @@ function scheduledTask(
 ): ScheduledTask {
   return {
     id: "sched_test",
+    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs,
     createdBy: { slackUserId: "U123" },
     credentialMode: "system",
@@ -165,6 +166,7 @@ describe("schedule intent compiler", () => {
     });
     const task: ScheduledTask = {
       id: "sched_dst",
+      conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: Date.parse("2026-03-07T08:00:00.000Z"),
       createdBy: { slackUserId: "U123" },
       credentialMode: "system",

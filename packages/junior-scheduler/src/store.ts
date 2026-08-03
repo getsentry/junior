@@ -84,10 +84,9 @@ const taskRecordFields = {
   conversationAccess: z
     .object({
       audience: z.enum(["direct", "group", "channel"]),
-      visibility: z.enum(["private", "public", "unknown"]),
+      visibility: z.enum(["private", "public"]),
     })
-    .strict()
-    .optional(),
+    .strict(),
   createdAtMs: z.number(),
   createdBy: taskPrincipalSchema,
   destination: slackDestinationSchema,

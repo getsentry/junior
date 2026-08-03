@@ -38,7 +38,12 @@ const compactTaskResultSchema = z
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
-    conversation_access: z.unknown().nullable(),
+    conversation_access: z
+      .object({
+        audience: z.enum(["direct", "group", "channel"]),
+        visibility: z.enum(["private", "public"]),
+      })
+      .strict(),
     credential_mode: z.enum(["system", "creator"]),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
@@ -225,7 +230,7 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
     next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
-    conversation_access: task.conversationAccess ?? null,
+    conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
