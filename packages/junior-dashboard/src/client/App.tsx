@@ -9,6 +9,7 @@ import {
 
 import {
   useDashboardCoreData,
+  usePersonalSpendData,
   usePluginUserPagesData,
   useSystemData,
 } from "./api";
@@ -60,6 +61,7 @@ export function DashboardShell() {
   }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  const personalSpendQuery = usePersonalSpendData(loggedIn);
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -163,6 +165,7 @@ export function DashboardShell() {
               <ProfileMenu
                 identity={data!.me}
                 onSignOut={signOut}
+                spend={personalSpendQuery.data}
                 userPages={userPages}
               />
             </div>

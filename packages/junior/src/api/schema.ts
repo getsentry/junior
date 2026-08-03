@@ -44,6 +44,7 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
 export {
@@ -67,6 +68,7 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   PeopleActivityDayReport,
+  PersonalSpendReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";

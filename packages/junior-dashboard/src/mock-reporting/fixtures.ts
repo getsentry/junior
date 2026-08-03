@@ -19,6 +19,7 @@ import type {
   LocationDirectoryReport,
   LocationSummaryReport,
   PeopleActivityDayReport,
+  PersonalSpendReport,
 } from "@sentry/junior/api/schema";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -1284,6 +1285,28 @@ export function readMockPeopleProfile(
     totals,
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
     windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
+  };
+}
+
+/** Build mock rolling spend from the same personal activity used by People. */
+export function readMockPersonalSpend(
+  email: string,
+): PersonalSpendReport | undefined {
+  const profile = readMockPeopleProfile(email);
+  if (!profile) return undefined;
+  const spend = (days: number) =>
+    Math.round(
+      profile.activityDays
+        .slice(-days)
+        .reduce((sum, day) => sum + (day.costUsd ?? 0), 0) * 1e12,
+    ) / 1e12;
+  return {
+    generatedAt: profile.generatedAt,
+    sevenDaysUsd: spend(7),
+    source: "conversation_index",
+    thirtyDaysUsd: spend(30),
+    windowEnd: profile.generatedAt,
+    windowStart: profile.activityDays.at(-30)!.date + "T00:00:00.000Z",
   };
 }
 

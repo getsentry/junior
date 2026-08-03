@@ -376,8 +376,10 @@ test("groups the signed-in profile and session actions in the header", async ({
     name: "Open profile menu for Dashboard User",
   });
   await expect(trigger).toBeVisible();
+  await expect(trigger).toContainText("7d$0.07");
+  await expect(trigger).toContainText("30d$0.07");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.click();
+  await trigger.hover();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("morgan@sentry.io")).toBeVisible();
@@ -385,11 +387,15 @@ test("groups the signed-in profile and session actions in the header", async ({
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/morgan%40sentry.io");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+  await popover.getByRole("link", { name: "My profile" }).hover();
+  await page.waitForTimeout(200);
+  await expect(popover).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
+  await page.mouse.move(0, 0);
   await trigger.click();
   const signOutRequest = page.waitForRequest(
     (request) =>

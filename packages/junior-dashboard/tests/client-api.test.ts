@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
+import { personalSpendRefreshDelay } from "../src/client/api";
 import {
   conversationDetailQueryOptions,
   readConversationData,
@@ -112,6 +113,18 @@ describe("dashboard client API", () => {
     } as unknown as Parameters<typeof interval>[0];
 
     expect(interval(query)).toBe(2_000);
+  });
+
+  it("refreshes spend from the age of the server-cached report", () => {
+    const nowMs = Date.parse("2026-08-03T12:00:00.000Z");
+
+    expect(personalSpendRefreshDelay(undefined, nowMs)).toBe(5 * 60_000);
+    expect(personalSpendRefreshDelay("2026-08-03T11:55:30.000Z", nowMs)).toBe(
+      30_000,
+    );
+    expect(personalSpendRefreshDelay("2026-08-03T11:54:00.000Z", nowMs)).toBe(
+      1_000,
+    );
   });
 
   it("does not redirect for non-auth product API failures", async () => {

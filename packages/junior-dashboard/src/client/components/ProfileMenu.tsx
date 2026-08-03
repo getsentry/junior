@@ -1,9 +1,15 @@
 import { Boxes, ChevronDown, KeyRound, LogOut, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Link } from "react-router";
+import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { peoplePath } from "../format";
+import { formatCostSummary, peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn } from "../styles";
 import type { Identity } from "../types";
@@ -11,8 +17,12 @@ import type { Identity } from "../types";
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
+  spend?: PersonalSpendReport;
   userPages: PluginUserPageLink[];
 };
+
+const HOVER_OPEN_DELAY_MS = 80;
+const HOVER_CLOSE_DELAY_MS = 140;
 
 function initials(name: string | null | undefined, email: string): string {
   const words = name?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -30,13 +40,50 @@ function initials(name: string | null | undefined, email: string): string {
 export function ProfileMenu({
   identity,
   onSignOut,
+  spend,
   userPages,
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
+  const sevenDaySpend = spend
+    ? formatCostSummary({ total: spend.sevenDaysUsd })
+    : "—";
+  const thirtyDaySpend = spend
+    ? formatCostSummary({ total: spend.thirtyDaysUsd })
+    : "—";
+
+  function clearHoverTimers() {
+    if (openTimerRef.current) clearTimeout(openTimerRef.current);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    openTimerRef.current = undefined;
+    closeTimerRef.current = undefined;
+  }
+
+  function openOnHover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse") return;
+    clearHoverTimers();
+    openTimerRef.current = setTimeout(() => setOpen(true), HOVER_OPEN_DELAY_MS);
+  }
+
+  function closeOnHover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse") return;
+    clearHoverTimers();
+    closeTimerRef.current = setTimeout(
+      () => setOpen(false),
+      HOVER_CLOSE_DELAY_MS,
+    );
+  }
+
+  useEffect(() => clearHoverTimers, []);
 
   useEffect(() => {
     if (!open) return;
@@ -63,32 +110,64 @@ export function ProfileMenu({
   }, [open]);
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div
+      className="relative"
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setOpen(false);
+        }
+      }}
+      onPointerEnter={openOnHover}
+      onPointerLeave={closeOnHover}
+      ref={rootRef}
+    >
       <button
         aria-controls="profile-popover"
         aria-expanded={open}
-        aria-label={`Open profile menu for ${name}`}
+        aria-haspopup="true"
+        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-1.5 text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
-          open &&
-            "border-white/30 bg-dashboard-surface-hover text-dashboard-text",
+          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-white/[0.06] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
+          open && "bg-white/[0.08] text-dashboard-text",
         )}
-        onClick={() => setOpen((value) => !value)}
+        onClick={(event) => {
+          clearHoverTimers();
+          setOpen(event.detail === 0 ? (value) => !value : true);
+        }}
         ref={triggerRef}
         type="button"
       >
+        <span className="hidden items-center gap-2 sm:flex">
+          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+            <span className="text-[0.58rem] font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
+              7d
+            </span>
+            <span className="text-[0.72rem] font-semibold text-dashboard-text">
+              {sevenDaySpend}
+            </span>
+          </span>
+          <span aria-hidden="true" className="h-3 w-px bg-white/10" />
+          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+            <span className="text-[0.58rem] font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
+              30d
+            </span>
+            <span className="text-[0.72rem] font-semibold text-dashboard-text">
+              {thirtyDaySpend}
+            </span>
+          </span>
+        </span>
         <span
           aria-hidden="true"
-          className="grid size-6 place-items-center rounded-full bg-[#beaaff] text-[0.68rem] font-bold tracking-wide text-black"
+          className="grid size-7 place-items-center rounded-full bg-[#beaaff] text-[0.68rem] font-bold tracking-wide text-black shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
-        <span className="max-w-32 truncate text-[0.8rem] font-semibold max-sm:hidden">
-          {identity.user.name?.trim() || "My profile"}
-        </span>
         <ChevronDown
           aria-hidden="true"
-          className={cn("transition-transform", open && "rotate-180")}
+          className={cn(
+            "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
+            open && "rotate-180 text-dashboard-text",
+          )}
           size={14}
           strokeWidth={2}
         />
@@ -96,7 +175,7 @@ export function ProfileMenu({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-lg border border-white/15 bg-dashboard-surface-raised p-1.5 shadow-2xl shadow-black/60"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
           id="profile-popover"
         >
           <div className="border-b border-white/10 px-2.5 py-2.5">
@@ -110,7 +189,7 @@ export function ProfileMenu({
             ) : null}
           </div>
           <Link
-            className="mt-1 flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to={peoplePath(email)}
           >
@@ -118,7 +197,7 @@ export function ProfileMenu({
             My profile
           </Link>
           <Link
-            className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to="/settings/api-tokens"
           >
@@ -129,7 +208,7 @@ export function ProfileMenu({
             .filter((page) => page.navigation === "profile")
             .map((page) => (
               <Link
-                className="flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
                 key={`${page.pluginName}:${page.id}`}
                 onClick={() => setOpen(false)}
                 to={pluginUserPagePath(page.pluginName, page.id)}
@@ -139,7 +218,7 @@ export function ProfileMenu({
               </Link>
             ))}
           <button
-            className="flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
               void onSignOut();

@@ -81,6 +81,17 @@ export const actorProfileReportSchema = z
   })
   .strict();
 
+export const personalSpendReportSchema = z
+  .object({
+    generatedAt: z.string(),
+    sevenDaysUsd: z.number().finite().nonnegative(),
+    source: z.literal("conversation_index"),
+    thirtyDaysUsd: z.number().finite().nonnegative(),
+    windowEnd: z.string(),
+    windowStart: z.string(),
+  })
+  .strict();
+
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema
@@ -98,4 +109,5 @@ export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;
 export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;
+export type PersonalSpendReport = z.infer<typeof personalSpendReportSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
