@@ -766,7 +766,7 @@ describe("github plugin", () => {
 
 --
 
-[View Junior Session](https://junior.example.com/conversations/session) [Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Junior Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });

@@ -61,7 +61,7 @@ export function githubConversationFooter(
   const normalizedDashboardUrl = dashboardUrl?.trim();
   const sentryUrl = sentryConversationUrl(id);
   const sessionLinks = normalizedDashboardUrl
-    ? `[View Junior Session](${normalizedDashboardUrl})${sentryUrl ? ` [Sentry](${sentryUrl})` : ""}`
+    ? `[View Junior Session](${normalizedDashboardUrl})${sentryUrl ? ` [[Sentry]](${sentryUrl})` : ""}`
     : sentryUrl
       ? `[View Junior Session in Sentry](${sentryUrl})`
       : undefined;

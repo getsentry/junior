@@ -24,7 +24,7 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
-      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
     );
   });
 
