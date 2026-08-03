@@ -138,6 +138,11 @@ thread. A durable event task runs a stored instruction whenever its selected
 events occur and remains configured for the Slack channel until someone deletes
 it.
 
+Resource watches and event tasks require a single-workspace Slack deployment
+configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource
+events in multi-workspace Slack mode because a provider webhook does not carry a
+verified Slack workspace binding.
+
 Both forms run headlessly as Junior, not as the webhook sender. Resource watches
 use the plugin's scoped installation credentials. Event tasks make their
 creator's connected credentials available by default when the stored work needs
@@ -273,6 +278,7 @@ expected follow-up in the original conversation.
 - GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
 - GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but belongs to another GitHub App installation, or it does not map to a supported deployment, pull request, or issue event. Confirm `GITHUB_INSTALLATION_ID` and use one of the configured event types above.
 - GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has a resource watch, or the Slack destination has an event task, for the same identifier and event type. A successful webhook alone does not create either one.
+- Resource watches or event tasks are unavailable in Slack OAuth mode: resource-event delivery currently requires a single-workspace `SLACK_BOT_TOKEN` deployment. Use that deployment mode or wait until the provider installation can be bound to a Slack workspace.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.
 - Private OAuth prompt for a human-identity operation such as a pull request review: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.

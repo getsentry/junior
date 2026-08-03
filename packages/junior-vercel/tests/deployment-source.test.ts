@@ -4,12 +4,16 @@ import { createVercelDeploymentSourceTool } from "../src/tools/deployment-source
 
 const COMMIT_SHA = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
 
-function toolFixture(response: Response = Response.json({ id: "prj_junior" })) {
+function toolFixture(
+  response: Response = Response.json({ id: "prj_junior" }),
+  canSubscribe = true,
+) {
   const fetch = vi.fn().mockResolvedValue(response);
   return {
     fetch,
     tool: createVercelDeploymentSourceTool({
       egress: { fetch },
+      resourceEvents: { canSubscribe },
     } as never),
   };
 }
@@ -89,6 +93,19 @@ describe("Vercel deployment source", () => {
     const result = await tool.execute?.(
       { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
       { toolCallId: "deployment-source-without-webhooks" },
+    );
+
+    expect(result).not.toHaveProperty("subscribable");
+    expect(result).not.toHaveProperty("data.subscribable");
+  });
+
+  it("omits the subscribable hint when the host cannot create subscriptions", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture(undefined, false);
+
+    const result = await tool.execute?.(
+      { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
+      { toolCallId: "deployment-source-without-subscriptions" },
     );
 
     expect(result).not.toHaveProperty("subscribable");

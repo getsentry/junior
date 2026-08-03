@@ -69,12 +69,13 @@ export async function ingestEventTasks(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
+    teamId: string;
   },
 ): Promise<{ dispatched: number }> {
   const event = resourceEventSchema.parse(input);
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
-  const tasks = await findMatchingEventTasks(db, event);
+  const tasks = await findMatchingEventTasks(db, event, options.teamId);
   let dispatched = 0;
   const errors: unknown[] = [];
   // TODO(core): Add an observable circuit breaker for sustained unique-event

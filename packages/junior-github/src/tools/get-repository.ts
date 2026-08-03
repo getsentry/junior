@@ -102,9 +102,11 @@ export function createGitHubGetRepositoryTool(
           private: z.boolean(),
         })
         .parse(parsed);
-      const subscribable = gitHubRepositorySubscribable({
-        repo: providerResult.full_name,
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? gitHubRepositorySubscribable({
+            repo: providerResult.full_name,
+          })
+        : undefined;
       const data: Repository = {
         defaultBranch: providerResult.default_branch,
         description: providerResult.description,

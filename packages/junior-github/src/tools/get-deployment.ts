@@ -248,11 +248,13 @@ export function createGitHubGetDeploymentTool(
         };
       }
 
-      const subscribable = gitHubDeploymentSourceSubscribable({
-        commitSha,
-        environment: input.environment,
-        repo: repo.ref,
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? gitHubDeploymentSourceSubscribable({
+            commitSha,
+            environment: input.environment,
+            repo: repo.ref,
+          })
+        : undefined;
       const data: DeploymentSource = {
         commitSha,
         deployment,

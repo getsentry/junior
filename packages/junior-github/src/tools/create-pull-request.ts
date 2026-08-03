@@ -323,12 +323,15 @@ async function createGitHubPullRequest(
 function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
+  canSubscribe: boolean,
 ): GitHubPullRequestToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = gitHubPullRequestSubscribable({
-    number: result.number,
-    repo: `${repo.owner}/${repo.name}`,
-  });
+  const subscribable = canSubscribe
+    ? gitHubPullRequestSubscribable({
+        number: result.number,
+        repo: `${repo.owner}/${repo.name}`,
+      })
+    : undefined;
   return { ...result, ...(subscribable ? { subscribable } : {}) };
 }
 
@@ -350,8 +353,9 @@ async function annotatePullRequest(
 function gitHubPullRequestStructuredResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
+  canSubscribe: boolean,
 ): GitHubPullRequestStructuredResult {
-  const data = gitHubPullRequestToolResult(input, result);
+  const data = gitHubPullRequestToolResult(input, result, canSubscribe);
   return {
     ok: true,
     status: "success",
@@ -400,6 +404,7 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
             return gitHubPullRequestStructuredResult(
               completedInput,
               completedResult,
+              ctx.resourceEvents.canSubscribe,
             );
           }
           if (state?.status === "pending") {
@@ -439,7 +444,11 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               );
             }
             await annotatePullRequest(ctx, parsedInput, result);
-            return gitHubPullRequestStructuredResult(parsedInput, result);
+            return gitHubPullRequestStructuredResult(
+              parsedInput,
+              result,
+              ctx.resourceEvents.canSubscribe,
+            );
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||

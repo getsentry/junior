@@ -106,7 +106,7 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue },
+        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
       ),
     ).resolves.toEqual({ enqueued: 1 });
 
@@ -145,9 +145,55 @@ describe("resource event delivery", () => {
     });
   });
 
+  it("matches subscriptions only within the event's Slack workspace", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const matching = await createGithubPrSubscription({
+      events: ["pull_request.checks.failed"],
+    });
+    await createResourceEventSubscription(
+      {
+        conversationId: "slack:C999:1712345.0002",
+        destination: {
+          platform: "slack",
+          teamId: "TOTHER",
+          channelId: "C999",
+        },
+        events: ["pull_request.checks.failed"],
+        expiresAtMs: 2_000_000,
+        intent: "Watch the same PR from another workspace.",
+        label: "GitHub PR getsentry/junior#691",
+        namespace: "github",
+        identifier: "getsentry/junior#691",
+        resourceType: "pull_request",
+      },
+      { nowMs: 1_000 },
+    );
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-workspace:check-suite-1",
+          eventType: "pull_request.checks.failed",
+          occurredAtMs: 1_500,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "CI failed on workflow test.",
+        },
+        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `resource-event:${matching.id}:delivery-workspace:check-suite-1`,
+      },
+    ]);
+  });
+
   it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
     const previousInstallationId = process.env.GITHUB_INSTALLATION_ID;
     const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
+    const previousSlackBotToken = process.env.SLACK_BOT_TOKEN;
     const previousPlugins = getPlugins();
     const previousConfigDefaults = getConfigDefaults();
     const previousPluginCatalogConfig =
@@ -161,6 +207,7 @@ describe("resource event delivery", () => {
     try {
       process.env.GITHUB_INSTALLATION_ID = "456";
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+      process.env.SLACK_BOT_TOKEN = "xoxb-resource-event-test";
       const state = createMemoryState();
       const queue = createConversationWorkQueueTestAdapter();
       const nowMs = Date.now();
@@ -281,6 +328,11 @@ describe("resource event delivery", () => {
       } else {
         process.env.GITHUB_INSTALLATION_ID = previousInstallationId;
       }
+      if (previousSlackBotToken === undefined) {
+        delete process.env.SLACK_BOT_TOKEN;
+      } else {
+        process.env.SLACK_BOT_TOKEN = previousSlackBotToken;
+      }
     }
   });
 
@@ -301,7 +353,7 @@ describe("resource event delivery", () => {
         terminal: true,
         trustedSummary: "The pull request was merged.",
       },
-      { nowMs: 1_500, queue },
+      { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
     );
 
     await expect(
@@ -345,7 +397,11 @@ describe("resource event delivery", () => {
             identifier: "getsentry/junior#691",
             trustedSummary: `The issue was ${eventType.split(".")[1]}.`,
           },
-          { nowMs: 1_500 + index, queue },
+          {
+            nowMs: 1_500 + index,
+            queue,
+            teamId: SLACK_DESTINATION.teamId,
+          },
         ),
       ).resolves.toEqual({ enqueued: 1 });
     }
@@ -379,10 +435,18 @@ describe("resource event delivery", () => {
     };
 
     await expect(
-      ingestResourceEvent(event, { nowMs: 1_500, queue }),
+      ingestResourceEvent(event, {
+        nowMs: 1_500,
+        queue,
+        teamId: SLACK_DESTINATION.teamId,
+      }),
     ).resolves.toEqual({ enqueued: 1 });
     await expect(
-      ingestResourceEvent(event, { nowMs: 1_600, queue }),
+      ingestResourceEvent(event, {
+        nowMs: 1_600,
+        queue,
+        teamId: SLACK_DESTINATION.teamId,
+      }),
     ).resolves.toEqual({ enqueued: 0 });
 
     expect(queue.sentRecords()).toEqual([
@@ -419,7 +483,7 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue },
+        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);
@@ -454,6 +518,7 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
+      teamId: SLACK_DESTINATION.teamId,
     });
     expect(matches).toEqual([expect.objectContaining({ id: subscription.id })]);
 
@@ -471,6 +536,7 @@ describe("resource event delivery", () => {
         nowMs: 1_700,
         namespace: "github",
         identifier: "getsentry/junior#691",
+        teamId: SLACK_DESTINATION.teamId,
         subscription: matches[0]!,
       }),
     ).resolves.toBe(false);
@@ -551,7 +617,12 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue, state },
+        {
+          nowMs: 1_500,
+          queue,
+          state,
+          teamId: SLACK_DESTINATION.teamId,
+        },
       ),
     ).resolves.toEqual({ enqueued: 2 });
     expect(contendedAttempts).toBe(2);
@@ -580,6 +651,7 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
+      teamId: SLACK_DESTINATION.teamId,
       state,
       subscription,
       deliver: async () =>
@@ -592,7 +664,7 @@ describe("resource event delivery", () => {
 
     await expect(
       state.acquireLock(
-        `junior:resource_event_subscription:v2:lock:${subscription.id}`,
+        `junior:resource_event_subscription:v3:lock:${subscription.id}`,
         10_000,
       ),
     ).resolves.toBeNull();
@@ -633,6 +705,7 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
+      teamId: SLACK_DESTINATION.teamId,
       state,
       subscription,
       deliver: async () => {
@@ -661,6 +734,7 @@ describe("resource event delivery", () => {
         nowMs: 1_500,
         namespace: "github",
         identifier: "getsentry/junior#691",
+        teamId: SLACK_DESTINATION.teamId,
         subscription,
         terminal: true,
         deliver: async () => {
@@ -706,7 +780,7 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue },
+        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);

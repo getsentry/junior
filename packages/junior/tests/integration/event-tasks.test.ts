@@ -39,6 +39,13 @@ const EVENT_CATALOG = {
           "pull_request.review.commented",
         ],
       },
+      {
+        type: "review_target",
+        supportedEvents: [
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+        ],
+      },
     ],
     normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
   },
@@ -54,17 +61,18 @@ function context(
     ? "public"
     : "private",
   threadTs?: string,
+  workspaceTeamId = teamId,
 ): ToolRuntimeContext {
   const destination = {
     platform: "slack" as const,
-    teamId,
+    teamId: workspaceTeamId,
     channelId,
   };
   return {
     ...(threadTs ? { conversationId: `slack:${channelId}:${threadTs}` } : {}),
     actor: {
       platform: "slack",
-      teamId,
+      teamId: workspaceTeamId,
       userId,
     },
     destination,
@@ -168,6 +176,7 @@ describe("event tasks", () => {
     const options = {
       nowMs: Date.now(),
       queue,
+      teamId,
     };
 
     const concurrent = await Promise.all([
@@ -260,7 +269,7 @@ describe("event tasks", () => {
           identifier: "getsentry/junior#1174",
           trustedSummary: "A reviewer requested changes.",
         },
-        { queue },
+        { queue, teamId },
       );
 
       const [{ conversationId }] = queue.sentRecords();
@@ -377,7 +386,7 @@ describe("event tasks", () => {
           eventKey: "github:delivery-changes",
           eventType: "pull_request.review.changes_requested",
         },
-        { queue },
+        { queue, teamId },
       ),
     ).resolves.toEqual({ dispatched: 1 });
     await expect(
@@ -387,7 +396,7 @@ describe("event tasks", () => {
           eventKey: "github:delivery-commented",
           eventType: "pull_request.review.commented",
         },
-        { queue },
+        { queue, teamId },
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
@@ -421,7 +430,7 @@ describe("event tasks", () => {
           identifier: "getsentry/junior#1174",
           trustedSummary: "A reviewer requested changes.",
         },
-        { queue },
+        { queue, teamId },
       ),
     ).resolves.toEqual({ dispatched: 1 });
   });
@@ -441,12 +450,42 @@ describe("event tasks", () => {
       await expect(
         ingestEventTasks(
           { ...event, eventKey: `github:delivery-${index}` },
-          { nowMs, queue },
+          { nowMs, queue, teamId },
         ),
       ).resolves.toEqual({ dispatched: 1 });
     }
 
     expect(queue.sentRecords()).toHaveLength(26);
+  });
+
+  it("matches tasks only within the event's Slack workspace", async () => {
+    await createTask("Handle this workspace's review feedback.");
+    await createTask(
+      "Handle another workspace's review feedback.",
+      "other-workspace",
+      undefined,
+      context("U999", "C999", "public", undefined, "TOTHER"),
+    );
+
+    await expect(
+      ingestEventTasks(
+        {
+          eventKey: "github:workspace-match",
+          eventType: "pull_request.review.changes_requested",
+          occurredAtMs: Date.now(),
+          namespace: "github",
+          identifier: "getsentry/junior#1174",
+          trustedSummary: "A reviewer requested changes.",
+        },
+        { queue, teamId },
+      ),
+    ).resolves.toEqual({ dispatched: 1 });
+
+    const [{ conversationId }] = queue.sentRecords();
+    const dispatch = await getDispatchRecord(
+      conversationId!.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch?.destination).toMatchObject({ teamId });
   });
 
   it("shares task management within one Slack channel or DM", async () => {
@@ -524,7 +563,7 @@ describe("event tasks", () => {
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#1174",
-        resourceType: "pull_request",
+        resourceType: "review_target",
         label: "Updated GitHub PR label",
         events: ["pull_request.review.changes_requested"],
       },
@@ -532,7 +571,10 @@ describe("event tasks", () => {
     expect(await getEventTask(fixture.sql.db(), created.task.id)).toMatchObject(
       {
         credentialMode: "creator",
-        trigger: { label: "Updated GitHub PR label" },
+        trigger: {
+          label: "Updated GitHub PR label",
+          resourceType: "review_target",
+        },
       },
     );
 

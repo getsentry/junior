@@ -2436,6 +2436,7 @@ async function processEvents(args: {
           nowMs,
           queue: conversationWorkQueue,
           state: env.stateAdapter,
+          teamId: EVAL_SLACK_TEAM_ID,
         },
       );
     }
@@ -2480,6 +2481,7 @@ async function processEvents(args: {
       {
         nowMs,
         queue: conversationWorkQueue,
+        teamId: task.destination.teamId,
       },
     );
     if (result.dispatched !== 1) {

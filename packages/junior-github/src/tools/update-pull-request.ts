@@ -181,10 +181,12 @@ export function createGitHubUpdatePullRequestTool(
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = gitHubPullRequestSubscribable({
-        number: providerResult.number,
-        repo: repo.ref,
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? gitHubPullRequestSubscribable({
+            number: providerResult.number,
+            repo: repo.ref,
+          })
+        : undefined;
       const data: PullRequest = {
         base: providerResult.base.ref,
         body: providerResult.body,

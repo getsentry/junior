@@ -15,7 +15,7 @@ import {
   setSlackReactionConfig,
 } from "@/chat/config";
 import { getDb } from "@/chat/db";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -74,6 +74,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 
@@ -591,17 +592,28 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
+  const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
   const resourceEvents: { publish(event: ResourceEvent): Promise<void> } = {
     async publish(event) {
+      const teamId = await resolveResourceEventTeamId();
+      if (!teamId) {
+        logWarn("resource_event.delivery.unavailable", {
+          "app.resource_event.namespace": event.namespace,
+          "app.resource_event.reason": "multi_workspace",
+        });
+        return;
+      }
       const conversationWork = getConversationWorkOptions();
       const queue = conversationWork.queue ?? getVercelConversationWorkQueue();
       await Promise.all([
         ingestResourceEvent(event, {
           queue,
           state: conversationWork.state,
+          teamId,
         }),
         ingestEventTasks(event, {
           queue,
+          teamId,
         }),
       ]);
     },

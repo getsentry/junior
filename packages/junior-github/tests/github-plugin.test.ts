@@ -351,6 +351,7 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
+    resourceEvents: { canSubscribe: true },
     state: {
       async delete(key: string) {
         state.delete(key);

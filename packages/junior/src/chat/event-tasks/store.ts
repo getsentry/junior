@@ -88,12 +88,14 @@ export async function listEventTasksForTeam(
 export async function findMatchingEventTasks(
   db: JuniorDatabase,
   event: ResourceEvent,
+  teamId: string,
 ): Promise<EventTask[]> {
   const rows = await db
     .select({ task: juniorEventTasks.task })
     .from(juniorEventTasks)
     .where(
       and(
+        eq(juniorEventTasks.teamId, teamId),
         eq(juniorEventTasks.namespace, event.namespace),
         eq(juniorEventTasks.identifier, event.identifier),
       ),

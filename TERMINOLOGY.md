@@ -9,8 +9,9 @@ Canonical words used across Junior's code and documentation.
 - **Source**: where an inbound event came from, such as Slack, local CLI,
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
-- **Resource event**: one normalized change published by a plugin, identified
-  by namespace, identifier, event type, and an idempotency key.
+- **Resource event**: one normalized change published by a plugin, delivered
+  within a verified workspace and identified by namespace, identifier, event
+  type, and an idempotency key.
 - **Resource subscription**: a temporary conversation association that delivers
   matching resource events back into that conversation.
 - **Event task**: a durable instruction that dispatches when a matching

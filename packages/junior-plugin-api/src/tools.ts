@@ -513,6 +513,11 @@ export interface SlackToolRegistrationHookContext {
   >;
 }
 
+export interface PluginResourceEventToolContext {
+  /** Whether this invocation can create a working resource-event subscription. */
+  canSubscribe: boolean;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -526,6 +531,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   egress: PluginEgress;
   mcp?: PluginMcp;
   model: PluginModel;
+  resourceEvents: PluginResourceEventToolContext;
   state: PluginState;
   userText?: string;
 }

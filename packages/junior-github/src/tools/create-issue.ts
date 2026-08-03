@@ -128,12 +128,15 @@ const gitHubIssueOutputSchema = pluginToolResultSchema.extend({
 function gitHubIssueToolResult(
   input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
+  canSubscribe: boolean,
 ): GitHubIssueToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = gitHubIssueSubscribable({
-    number: result.number,
-    repo: `${repo.owner}/${repo.name}`,
-  });
+  const subscribable = canSubscribe
+    ? gitHubIssueSubscribable({
+        number: result.number,
+        repo: `${repo.owner}/${repo.name}`,
+      })
+    : undefined;
   const data = { ...result, ...(subscribable ? { subscribable } : {}) };
   return {
     ok: true,
@@ -344,7 +347,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               url: state.url,
             };
             await annotateIssue(ctx, completedInput, completedResult);
-            return gitHubIssueToolResult(completedInput, completedResult);
+            return gitHubIssueToolResult(
+              completedInput,
+              completedResult,
+              ctx.resourceEvents.canSubscribe,
+            );
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -383,7 +390,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               );
             }
             await annotateIssue(ctx, parsedInput, result);
-            return gitHubIssueToolResult(parsedInput, result);
+            return gitHubIssueToolResult(
+              parsedInput,
+              result,
+              ctx.resourceEvents.canSubscribe,
+            );
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||

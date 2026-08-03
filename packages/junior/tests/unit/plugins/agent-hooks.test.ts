@@ -507,6 +507,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
+            expect(ctx.resourceEvents.canSubscribe).toBe(true);
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -598,7 +599,8 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools(ctx) {
+            expect(ctx.resourceEvents.canSubscribe).toBe(false);
             return {
               prototypeTool,
             };

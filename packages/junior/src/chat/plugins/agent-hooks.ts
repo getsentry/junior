@@ -35,6 +35,7 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { readViewerActors } from "@/chat/plugins/viewer-actors";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -551,6 +552,10 @@ export function getPluginTools(
         })
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
+    const resourceEvents = {
+      canSubscribe:
+        context.source.platform === "slack" && canRouteResourceEvents(),
+    };
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -571,6 +576,7 @@ export function getPluginTools(
         egress: context.egress,
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
+        resourceEvents,
         state: createPluginState(pluginName),
       };
     } else {
@@ -591,6 +597,7 @@ export function getPluginTools(
         egress: context.egress,
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
+        resourceEvents,
         state: createPluginState(pluginName),
       };
     }

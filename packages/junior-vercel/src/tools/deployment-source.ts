@@ -100,12 +100,14 @@ export function createVercelDeploymentSourceTool(
       }
       const projectId = z.object({ id: projectIdSchema }).parse(parsed).id;
       const commitSha = input.commitSha.toLowerCase();
-      const subscribable = vercelDeploymentSourceSubscribable({
-        commitSha,
-        projectId,
-        target: input.target,
-        webhookSecret: vercelWebhookSecret(),
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? vercelDeploymentSourceSubscribable({
+            commitSha,
+            projectId,
+            target: input.target,
+            webhookSecret: vercelWebhookSecret(),
+          })
+        : undefined;
       const data: DeploymentSource = {
         commitSha,
         deploymentTarget: input.target,

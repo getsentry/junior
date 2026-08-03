@@ -16,6 +16,7 @@ import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
 import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createEventTaskTools } from "@/chat/tools/event-tasks";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
@@ -105,13 +106,15 @@ export function createTools(
     slackContext && slackSourceCapabilities?.canSendFiles,
   );
   const resourceEventCatalog = Object.fromEntries(
-    getPlugins().flatMap((plugin) => {
-      const registration = plugin.resourceEvents;
-      if (!registration || registration.isEnabled?.() === false) {
-        return [];
-      }
-      return [[plugin.manifest.name, registration]];
-    }),
+    canRouteResourceEvents()
+      ? getPlugins().flatMap((plugin) => {
+          const registration = plugin.resourceEvents;
+          if (!registration || registration.isEnabled?.() === false) {
+            return [];
+          }
+          return [[plugin.manifest.name, registration]];
+        })
+      : [],
   ) satisfies ResourceEventCatalog;
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false

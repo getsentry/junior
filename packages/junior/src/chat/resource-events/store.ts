@@ -9,9 +9,9 @@ import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-// This is a hard cutover from the provider/resourceRef record shape. Old
+// This is a hard cutover to workspace-scoped resource indexes. Old
 // subscriptions are short-lived and expire under the previous prefix.
-const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription:v2";
+const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription:v3";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_WAIT_MS = 10_000;
@@ -66,8 +66,19 @@ function subscriptionLockKey(id: string): string {
   return `${RESOURCE_EVENT_PREFIX}:lock:${id}`;
 }
 
-function resourceIndexKey(namespace: string, identifier: string): string {
-  return `${RESOURCE_EVENT_PREFIX}:resource:${digest(`${namespace}\0${identifier}`)}`;
+function resourceIndexKey(
+  teamId: string,
+  namespace: string,
+  identifier: string,
+): string {
+  return `${RESOURCE_EVENT_PREFIX}:resource:${digest(`${teamId}\0${namespace}\0${identifier}`)}`;
+}
+
+function subscriptionTeamId(destination: Destination): string {
+  if (destination.platform !== "slack") {
+    throw new Error("Resource event subscriptions require a Slack destination");
+  }
+  return destination.teamId;
 }
 
 function conversationIndexKey(conversationId: string): string {
@@ -183,10 +194,11 @@ function buildSubscriptionId(input: {
   events: string[];
   namespace: string;
   identifier: string;
+  teamId: string;
 }): string {
   const eventKey = [...new Set(input.events)].sort().join("\0");
   return `resub_${digest(
-    `${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}`,
+    `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}`,
   )}`;
 }
 
@@ -277,11 +289,13 @@ function matchesEvent(
     nowMs: number;
     namespace: string;
     identifier: string;
+    teamId: string;
   },
 ): boolean {
   return (
     subscription.namespace === input.namespace &&
     subscription.identifier === input.identifier &&
+    subscriptionTeamId(subscription.destination) === input.teamId &&
     subscription.events.includes(input.eventType) &&
     activeAt(subscription, input.nowMs)
   );
@@ -309,6 +323,7 @@ export async function createResourceEventSubscription(
     events,
     namespace: input.namespace,
     identifier: input.identifier,
+    teamId: subscriptionTeamId(input.destination),
   });
   const record: ResourceEventSubscription = {
     conversationId: input.conversationId,
@@ -333,7 +348,11 @@ export async function createResourceEventSubscription(
   );
   await addToIndex(
     state,
-    resourceIndexKey(input.namespace, input.identifier),
+    resourceIndexKey(
+      subscriptionTeamId(parsed.destination),
+      input.namespace,
+      input.identifier,
+    ),
     id,
     nowMs,
   );
@@ -403,7 +422,11 @@ export async function cancelResourceEventSubscription(input: {
     );
     await removeFromIndex(
       state,
-      resourceIndexKey(current.namespace, current.identifier),
+      resourceIndexKey(
+        subscriptionTeamId(current.destination),
+        current.namespace,
+        current.identifier,
+      ),
       input.id,
       nowMs,
     );
@@ -441,13 +464,14 @@ export async function findMatchingResourceEventSubscriptions(input: {
   namespace: string;
   identifier: string;
   state?: StateAdapter;
+  teamId: string;
 }): Promise<ResourceEventSubscription[]> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
   const nowMs = input.nowMs ?? Date.now();
   const ids = await readSubscriptionIdIndex(
     state,
-    resourceIndexKey(input.namespace, input.identifier),
+    resourceIndexKey(input.teamId, input.namespace, input.identifier),
   );
   const records = await Promise.all(
     ids.map(async (id) =>
@@ -462,6 +486,7 @@ export async function findMatchingResourceEventSubscriptions(input: {
         nowMs,
         namespace: input.namespace,
         identifier: input.identifier,
+        teamId: input.teamId,
       }),
   );
 }
@@ -475,6 +500,7 @@ export async function deliverResourceEventSubscription(input: {
   identifier: string;
   state?: StateAdapter;
   subscription: ResourceEventSubscription;
+  teamId: string;
   terminal?: boolean;
   waitDeadlineMs?: number;
 }): Promise<boolean> {
@@ -495,6 +521,7 @@ export async function deliverResourceEventSubscription(input: {
           nowMs,
           namespace: input.namespace,
           identifier: input.identifier,
+          teamId: input.teamId,
         })
       ) {
         return false;
@@ -523,7 +550,11 @@ export async function deliverResourceEventSubscription(input: {
         );
         await removeFromIndex(
           state,
-          resourceIndexKey(current.namespace, current.identifier),
+          resourceIndexKey(
+            subscriptionTeamId(current.destination),
+            current.namespace,
+            current.identifier,
+          ),
           current.id,
           nowMs,
         );
