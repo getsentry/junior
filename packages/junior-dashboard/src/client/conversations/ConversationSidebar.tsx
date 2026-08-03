@@ -12,6 +12,7 @@ import {
 } from "../format";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
+import { ActiveIndicator } from "../components/ActiveIndicator";
 import { AnimatedList } from "./AnimatedList";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
@@ -140,16 +141,18 @@ function ConversationSidebarRow(props: {
         to={conversationPath(props.conversation.id)}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              status === "active" &&
-                "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.55)]",
-              status === "failed" && "bg-rose-300",
-              status === "idle" && "bg-white/25",
-            )}
-          />
+          {status === "active" ? (
+            <ActiveIndicator className="size-1.5" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                status === "failed" && "bg-rose-300",
+                status === "idle" && "bg-white/25",
+              )}
+            />
+          )}
           <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-dashboard-text">
             {title}
           </div>

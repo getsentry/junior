@@ -67,6 +67,7 @@ import {
   HighlightText,
   useTranscriptSearch,
 } from "./transcriptSearch";
+import { ActiveIndicator } from "../components/ActiveIndicator";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -101,7 +102,7 @@ export function ConversationTranscriptView(props: {
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 py-3">
       <div className="flex flex-col items-center pt-1.5" aria-hidden="true">
-        <span className={turnMarkerClass(status)} />
+        <TurnMarker status={status} />
         <span className="mt-2 w-px flex-1 bg-cyan-300/15" />
       </div>
       <div className="min-w-0">
@@ -135,14 +136,21 @@ function TypingIndicator() {
   );
 }
 
-function turnMarkerClass(
-  status: ReturnType<typeof visualStatusForSummary>,
-): string {
-  return cn(
-    "size-2.5 shrink-0 rounded-full border",
-    status === "active" && "border-emerald-300 bg-emerald-300",
-    status === "failed" && "border-rose-300 bg-rose-300",
-    status === "idle" && "border-cyan-300/60 bg-cyan-300/40",
+function TurnMarker(props: {
+  status: ReturnType<typeof visualStatusForSummary>;
+}) {
+  if (props.status === "active") {
+    return <ActiveIndicator className="size-2.5 border border-emerald-300" />;
+  }
+
+  return (
+    <span
+      className={cn(
+        "size-2.5 shrink-0 rounded-full border",
+        props.status === "failed" && "border-rose-300 bg-rose-300",
+        props.status === "idle" && "border-cyan-300/60 bg-cyan-300/40",
+      )}
+    />
   );
 }
 
