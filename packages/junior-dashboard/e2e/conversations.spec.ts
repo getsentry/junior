@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationEventPage,
+} from "@sentry/junior/api/schema";
 import {
   collectBrowserErrors,
   type DashboardE2eServer,
@@ -267,6 +270,58 @@ test("loads earlier transcript events without dropping the current page", async 
   const detailPath = `/api/conversations/${encodeURIComponent(conversationId)}`;
   let detailReads = 0;
   let historyReads = 0;
+  const earlierEvents: ConversationEventPage["events"] = [
+    {
+      seq: 0,
+      createdAt: "2026-06-12T00:00:00.000Z",
+      data: {
+        type: "message",
+        messageId: "release-earlier-user",
+        role: "user",
+        text: "Prepare the release and include the complete earlier context.",
+      },
+    },
+    {
+      seq: 1,
+      createdAt: "2026-06-12T00:00:01.000Z",
+      data: {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "release-bash-earlier",
+            name: "bash",
+            status: "running",
+          },
+        ],
+      },
+    },
+  ];
+  const liveReasoningEvent: ConversationDetailReport["events"][number] = {
+    seq: 17,
+    createdAt: "2026-06-12T00:00:17.000Z",
+    data: {
+      type: "tool_calls",
+      calls: [
+        {
+          toolCallId: "release-live-check",
+          name: "bash",
+          status: "running",
+        },
+      ],
+      assistant: {
+        parts: [
+          {
+            type: "reasoning",
+            text: "Wait for the live release check to finish.",
+          },
+          {
+            type: "tool_call",
+            toolCallId: "release-live-check",
+          },
+        ],
+      },
+    },
+  };
   await page.route(`**${detailPath}`, async (route) => {
     const response = await route.fetch();
     const detail = (await response.json()) as ConversationDetailReport;
@@ -275,19 +330,36 @@ test("loads earlier transcript events without dropping the current page", async 
       response,
       json:
         detailReads === 1
-          ? { ...detail, status: "active" }
+          ? {
+              ...detail,
+              events: [...detail.events.slice(1), liveReasoningEvent],
+              status: "active",
+            }
           : {
               ...detail,
               events: [
                 ...detail.events.slice(1),
+                liveReasoningEvent,
                 {
-                  seq: 17,
-                  createdAt: "2026-06-12T00:00:17.000Z",
+                  seq: 18,
+                  createdAt: "2026-06-12T00:00:18.000Z",
                   data: {
-                    type: "message",
-                    messageId: "release-live-update",
-                    role: "assistant",
-                    text: "The release verification is still running.",
+                    type: "tool_calls",
+                    calls: [
+                      {
+                        toolCallId: "release-live-status",
+                        name: "bash",
+                        status: "running",
+                      },
+                    ],
+                    assistant: {
+                      parts: [
+                        {
+                          type: "tool_call",
+                          toolCallId: "release-live-status",
+                        },
+                      ],
+                    },
                   },
                 },
               ],
@@ -301,7 +373,16 @@ test("loads earlier transcript events without dropping the current page", async 
     if (historyReads === 1) {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
     }
-    await route.continue();
+    const response = await route.fetch();
+    const page = (await response.json()) as ConversationEventPage;
+    await route.fulfill({
+      response,
+      json: {
+        ...page,
+        events: earlierEvents,
+        previousCursor: undefined,
+      },
+    });
   });
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
@@ -318,9 +399,14 @@ test("loads earlier transcript events without dropping the current page", async 
   await expect(currentEvent).toBeVisible();
   await expect(currentEvent.locator("br")).toHaveCount(2);
 
-  const toolRun = page.locator("details").filter({ hasText: /12 tool calls/ });
+  const toolRun = page.locator("details").filter({ hasText: /tool calls/ });
   await toolRun.locator("summary").click();
   await expect(toolRun).toHaveAttribute("open", "");
+  const liveReasoning = page
+    .locator("details")
+    .filter({ hasText: "Wait for the live release check to finish." });
+  await liveReasoning.locator("summary").click();
+  await expect(liveReasoning).toHaveAttribute("open", "");
 
   const transcript = page.locator('[aria-label="Conversation transcript"]');
   const loadEarlier = page.getByRole("button", {
@@ -345,6 +431,7 @@ test("loads earlier transcript events without dropping the current page", async 
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
   await expect(toolRun).toHaveAttribute("open", "");
+  await expect(liveReasoning).toHaveAttribute("open", "");
 
   const after = await transcript.evaluate((element) => ({
     scrollHeight: element.scrollHeight,

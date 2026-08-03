@@ -1,4 +1,9 @@
-import { Fragment, type ClipboardEventHandler, type ReactNode } from "react";
+import {
+  Fragment,
+  useRef,
+  type ClipboardEventHandler,
+  type ReactNode,
+} from "react";
 import {
   Bot,
   CircleAlert,
@@ -377,6 +382,8 @@ function TranscriptEntryList(props: {
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 }) {
   const search = useTranscriptSearch();
+  const toolRunKeys = useRef(new Map<string, string>());
+  const claimedToolRunKeys = new Set<string>();
   const rows: ReactNode[] = [];
 
   for (let index = 0; index < props.entries.length; ) {
@@ -399,11 +406,17 @@ function TranscriptEntryList(props: {
           )
         : runEntries;
       if (visibleEntries.length > 0) {
+        const toolRunKey = stableToolRunKey({
+          claimedKeys: claimedToolRunKeys,
+          entries: runEntries,
+          keyPrefix: props.keyPrefix,
+          knownKeys: toolRunKeys.current,
+        });
         rows.push(
           <TranscriptToolRun
             autoCollapse={index < props.entries.length}
             entries={visibleEntries}
-            key={`${props.keyPrefix}:tool-run:${runEntries.at(-1)!.key}`}
+            key={toolRunKey}
             renderReasoning={props.renderReasoning}
             renderTool={props.renderTool}
           />,
@@ -437,6 +450,27 @@ function TranscriptEntryList(props: {
   }
 
   return <>{rows}</>;
+}
+
+/** Keep one tool run mounted while new or historical events extend either edge. */
+function stableToolRunKey(args: {
+  claimedKeys: Set<string>;
+  entries: Array<RenderedReasoningEntry | RenderedToolEntry>;
+  keyPrefix: string;
+  knownKeys: Map<string, string>;
+}): string {
+  const entryKeys = args.entries.map(
+    (entry) => `${args.keyPrefix}:${entry.key}`,
+  );
+  const knownKey = entryKeys
+    .map((entryKey) => args.knownKeys.get(entryKey))
+    .find((key) => key !== undefined && !args.claimedKeys.has(key));
+  const runKey =
+    knownKey ?? `${args.keyPrefix}:tool-run:${args.entries[0]!.key}`;
+
+  args.claimedKeys.add(runKey);
+  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, runKey));
+  return runKey;
 }
 
 function TranscriptFailureView(props: {
