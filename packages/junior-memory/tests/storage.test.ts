@@ -2386,6 +2386,7 @@ ORDER BY created_at_ms ASC
             }));
           },
         },
+        users: { resolve: async () => viewer },
       });
       const requestContext = pluginApiRouteRequestContextSchema.parse({
         auth: {
@@ -2395,7 +2396,6 @@ ORDER BY created_at_ms ASC
           },
         },
         pluginName: "memory",
-        viewer,
       });
 
       const firstPageResponse = await api.fetch(

@@ -598,6 +598,7 @@ INSERT INTO junior_scheduler_tasks (
         },
         log: noopLogger,
         plugin: { name: "scheduler" },
+        users: { resolve: async () => context.viewer },
       });
       expect(api).toBeDefined();
       const requestContext = pluginApiRouteRequestContextSchema.parse({
@@ -608,7 +609,6 @@ INSERT INTO junior_scheduler_tasks (
           },
         },
         pluginName: "scheduler",
-        viewer: context.viewer,
       });
       const deleteResponse = await api!.fetch(
         new Request(`http://localhost/tasks/${visibleOld.id}`, {

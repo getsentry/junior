@@ -1,6 +1,7 @@
 import {
   pluginApiRouteRequestContextSchema,
   type PluginRouteApp,
+  type User,
 } from "@sentry/junior-plugin-api";
 import {
   createViewerScheduledTasks,
@@ -10,6 +11,9 @@ import { createSchedulerSqlStore, type SchedulerDb } from "./store";
 
 interface SchedulerApiOptions {
   db: SchedulerDb;
+  users: {
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 function json(body: unknown, status: number): Response {
@@ -19,16 +23,26 @@ function json(body: unknown, status: number): Response {
   });
 }
 
+function viewerEmail(context: unknown): string | undefined {
+  const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
+  if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
+    return undefined;
+  }
+  return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
+}
+
 /** Create authenticated API routes for personal scheduled-task actions. */
 export function createSchedulerApi(
   options: SchedulerApiOptions,
 ): PluginRouteApp {
   return {
     async fetch(request, context) {
-      const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
-      if (!parsed.success || !parsed.data.viewer) {
+      const email = viewerEmail(context);
+      if (!email) {
         return json({ error: "Authentication required." }, 401);
       }
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
 
       const taskPath = /^\/tasks\/([^/]+)$/.exec(new URL(request.url).pathname);
       if (!taskPath) {
@@ -41,7 +55,7 @@ export function createSchedulerApi(
       try {
         await createViewerScheduledTasks(
           createSchedulerSqlStore(options.db),
-          parsed.data.viewer,
+          user,
         ).delete(decodeURIComponent(taskPath[1]!));
         return new Response(null, {
           headers: { "cache-control": "no-store" },

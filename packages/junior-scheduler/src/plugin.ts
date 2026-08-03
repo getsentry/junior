@@ -463,6 +463,7 @@ export function schedulerPlugin() {
       apiRoutes(ctx) {
         return createSchedulerApi({
           db: ctx.db as SchedulerDb,
+          users: ctx.users,
         });
       },
       systemPrompt(ctx) {

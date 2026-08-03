@@ -1,7 +1,6 @@
 import {
   missingToolAnnotationKeys,
   normalizeResourceEventIdentifier,
-  pluginApiRouteRequestContextSchema,
   promptContextSchema,
   promptMessageSchema,
   pluginResourceEventsSchema,
@@ -800,6 +799,7 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     const app = hook({
       ...basePluginContext(plugin),
       eventStats: createPluginConversationEventStats(plugin),
+      users: { resolve: resolveViewerUser },
     });
     if (app === undefined) {
       continue;
@@ -809,26 +809,7 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
-    routes.push({
-      app: {
-        async fetch(request, context) {
-          const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
-          if (!parsed.success) {
-            return await app.fetch(request, context);
-          }
-          const email = parsed.data.auth.user.email?.trim();
-          const viewer =
-            parsed.data.auth.user.emailVerified === true && email
-              ? await resolveViewerUser(email)
-              : undefined;
-          return await app.fetch(request, {
-            ...parsed.data,
-            ...(viewer ? { viewer } : {}),
-          });
-        },
-      },
-      pluginName,
-    });
+    routes.push({ app, pluginName });
   }
 
   return routes;

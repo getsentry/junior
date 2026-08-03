@@ -57,8 +57,9 @@ reports, and other typed hook surfaces exported by this package.
   already recorded in the conversation's agent model usage.
 - Tool hooks receive canonical `user` and `identity` data when the active actor
   is stored and linked.
-- Authenticated API route apps receive the canonical viewer `User` in their
-  request context.
+- Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
+  canonical user resolution. Routes that do not need personal ownership do not
+  query identity storage.
 - User page readers receive the canonical viewer `User` with linked identities.
   Plugins return bounded data and do not mount their own page routes or browser
   code.

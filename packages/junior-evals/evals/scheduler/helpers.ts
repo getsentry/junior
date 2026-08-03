@@ -37,6 +37,7 @@ export async function seedScheduledTask(args: {
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs - 60_000,
     createdBy: args.createdBy,
+    creatorIdentityId: `eval:slack:TEVAL:${args.createdBy.slackUserId}`,
     credentialMode: args.credentialMode ?? "system",
     destination,
     nextRunAtMs: nowMs + 7 * 24 * 60 * 60 * 1000,

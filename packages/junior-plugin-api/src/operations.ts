@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { PluginContext } from "./context";
+import type { PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
-import { nonBlankStringSchema, userSchema } from "./schemas";
+import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
@@ -124,6 +124,10 @@ export interface RouteRegistrationHookContext extends PluginContext {
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
   eventStats: PluginConversationEventStats;
+  users: {
+    /** Resolve or create the canonical user for one verified email. */
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 /** Per-request context Junior passes to authenticated plugin product API routes. */
@@ -141,7 +145,6 @@ export const pluginApiRouteRequestContextSchema = z
       })
       .strict(),
     pluginName: nonBlankStringSchema,
-    viewer: userSchema.optional(),
   })
   .strict();
 

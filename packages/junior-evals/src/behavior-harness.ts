@@ -2329,6 +2329,7 @@ async function processEvents(args: {
       conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
+      creatorIdentityId: `eval:slack:${TEST_USER_ID}`,
       credentialMode: event.credential_mode ?? "system",
       destination: createEvalDestination(
         thread,

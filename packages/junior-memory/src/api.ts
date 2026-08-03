@@ -9,6 +9,7 @@ import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventStats,
   type PluginRouteApp,
+  type User,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
@@ -93,6 +94,9 @@ const memoryListQuerySchema = z
 interface MemoryApiOptions {
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
+  users: {
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -118,14 +122,24 @@ function apiMemory(
   };
 }
 
+function viewerEmail(context: unknown): string | undefined {
+  const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
+  if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
+    return undefined;
+  }
+  return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
+}
+
 /** Create the authenticated viewer-memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {
-      const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
-      if (!parsed.success || !parsed.data.viewer) {
+      const email = viewerEmail(context);
+      if (!email) {
         return json({ error: "Authentication required." }, 401);
       }
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
@@ -135,7 +149,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Not found." }, 404);
       }
 
-      const memories = createViewerMemories(options.db, parsed.data.viewer);
+      const memories = createViewerMemories(options.db, user);
       try {
         if (
           isDashboard &&

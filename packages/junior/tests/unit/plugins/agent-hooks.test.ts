@@ -1178,7 +1178,7 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects API route apps from configured plugins", async () => {
-    let hasViewerResolver = false;
+    let resolveUser: ((email: string) => Promise<unknown>) | undefined;
     let receivedContext: unknown;
     const viewer = {
       email: "person@example.com",
@@ -1195,7 +1195,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           apiRoutes(ctx) {
-            hasViewerResolver = "viewer" in ctx;
+            resolveUser = ctx.users.resolve;
             return {
               fetch: (_request, context) => {
                 receivedContext = context;
@@ -1211,7 +1211,10 @@ describe("agent plugin hooks", () => {
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
-      expect(hasViewerResolver).toBe(false);
+      await expect(resolveUser?.("person@example.com")).resolves.toEqual(
+        viewer,
+      );
+      expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
       const response = await routes[0]!.app.fetch(
         new Request("http://localhost/demo"),
         {
@@ -1225,8 +1228,7 @@ describe("agent plugin hooks", () => {
         },
       );
       await expect(response.text()).resolves.toBe("api demo");
-      expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
-      expect(receivedContext).toMatchObject({ viewer });
+      expect(receivedContext).not.toHaveProperty("viewer");
     } finally {
       setPlugins(previous);
     }
