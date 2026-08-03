@@ -1,9 +1,11 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { getChatConfig } from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
+import type { ConversationAdmissionBudgets } from "@/chat/services/budgets";
+import { reportBudgetExceeded } from "@/chat/services/budget-reporting";
 import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
@@ -60,6 +62,7 @@ export interface ConversationWorkerResult {
 export interface ConversationWorkProcessResult {
   status:
     | "active"
+    | "capacity_deferred"
     | "completed"
     | "failed"
     | "lost_lease"
@@ -69,6 +72,7 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
+  conversationBudgets?: ConversationAdmissionBudgets;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
   nowMs?: () => number;
@@ -110,6 +114,33 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   return work.execution.status === "awaiting_resume"
     ? []
     : selectContiguousActorBatch(messages);
+}
+
+function activeUserKeyForMessage(
+  message: InboundMessage | undefined,
+): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+  const userId = message.input.authorId?.trim();
+  if (
+    !userId ||
+    (message.source !== "api" &&
+      message.source !== "local" &&
+      message.source !== "slack")
+  ) {
+    return undefined;
+  }
+  return message.destination.platform === "slack"
+    ? `slack:${message.destination.teamId}:${userId}`
+    : `${message.source}:${userId}`;
+}
+
+function activeUserKeyForWork(work: ConversationWorkState): string | undefined {
+  return (
+    work.execution.activeUserKey ??
+    activeUserKeyForMessage(selectAttemptMessages(work)[0])
+  );
 }
 
 function nudgeIdempotencyKey(
@@ -291,10 +322,14 @@ async function processConversationWorkInContext(
     );
   }
   const destination = initial.destination;
+  const activeUserKey = activeUserKeyForWork(initial);
+  const conversationBudgets = options.conversationBudgets ?? botConfig.budgets;
 
   const lease = await startConversationWork({
+    activeUserKey,
     conversationId,
     conversationStore: options.conversationStore,
+    budgets: conversationBudgets,
     nowMs: now(options),
     state: options.state,
   });
@@ -324,6 +359,25 @@ async function processConversationWorkInContext(
     });
     return { status: "active" };
   }
+  if (lease.status === "limited") {
+    const nudgeNowMs = now(options);
+    await ensureConversationWake({
+      conversationId,
+      conversationStore: options.conversationStore,
+      delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
+      idempotencyKey: nudgeIdempotencyKey(
+        `budget_${lease.budget.name}`,
+        conversationId,
+        nudgeNowMs,
+      ),
+      nowMs: nudgeNowMs,
+      queue: options.queue,
+      replaceExistingWake: true,
+      state: options.state,
+    });
+    await reportBudgetExceeded(lease.budget);
+    return { status: "capacity_deferred" };
+  }
 
   const startedAtMs = now(options);
   const softYieldDeadlineMs =
@@ -344,6 +398,17 @@ async function processConversationWorkInContext(
     options,
   });
   logInfo("conversation.work.lease.acquired", {
+    "app.conversation.active_count": lease.activeConversationCount,
+    "app.conversation.active_limit":
+      conversationBudgets.active_conversations_global,
+    ...(lease.activeUserConversationCount !== undefined
+      ? {
+          "app.conversation.active_user_count":
+            lease.activeUserConversationCount,
+          "app.conversation.active_user_limit":
+            conversationBudgets.active_conversations_user,
+        }
+      : {}),
     "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
     "app.worker.soft_yield_deadline_ms": softYieldDeadlineMs,
   });

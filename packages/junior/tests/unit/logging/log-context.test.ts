@@ -2,12 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   getBoundLogAttributes,
   getBoundLogContext,
+  logContextToAttributes,
   runWithLogAttributes,
   runWithLogContext,
   updateLogAttributes,
 } from "@/chat/log-context";
 
 describe("log context", () => {
+  it("maps the canonical Junior turn id into telemetry attributes", () => {
+    expect(
+      logContextToAttributes({
+        conversationId: "conversation-1",
+        turnId: "turn-1",
+      }),
+    ).toEqual({
+      "app.ai.turn.id": "turn-1",
+      "gen_ai.conversation.id": "conversation-1",
+    });
+  });
+
   it("restores nested async scopes", async () => {
     expect(getBoundLogAttributes()).toEqual({});
 

@@ -14,6 +14,7 @@ export interface LogContext {
   userName?: string;
   userEmail?: string;
   runId?: string;
+  turnId?: string;
   actorType?: string;
   actorId?: string;
   assistantUserName?: string;
@@ -60,6 +61,7 @@ export function logContextToAttributes(context: LogContext): LogAttributes {
     "enduser.id": context.userId,
     "enduser.pseudo.id": context.userName,
     "app.run.id": context.runId,
+    "app.ai.turn.id": context.turnId,
     "app.actor.type": context.actorType,
     "app.actor.id": context.actorId,
     "gen_ai.agent.name": context.assistantUserName,

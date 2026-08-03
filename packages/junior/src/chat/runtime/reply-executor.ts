@@ -79,6 +79,10 @@ import {
 } from "@/chat/services/conversation-memory";
 import type { ContextCompactor } from "@/chat/services/context-compaction";
 import {
+  getBudgetAttributes,
+  isBudgetExceededError,
+} from "@/chat/services/budgets";
+import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
   isVisionEnabled,
@@ -955,6 +959,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         }
         setTags({
           conversationId,
+          turnId,
         });
         if (shouldEmitDevAgentTrace()) {
           logInfo("agent.turn.started", {
@@ -1559,6 +1564,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 source,
                 sessionId: turnId,
                 sliceId: 1,
+                stepCount: reply.diagnostics.stepCount,
                 dispatchOutcome:
                   reply.diagnostics.outcome === "success"
                     ? "completed"
@@ -1583,6 +1589,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 cumulativeUsage: reply.diagnostics.usage,
                 sessionId: turnId,
                 sliceId: 1,
+                stepCount: reply.diagnostics.stepCount,
                 startedAtMs: message.metadata.dateSent.getTime(),
                 state: "completed",
                 actor: executionActor,
@@ -1733,11 +1740,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           const failureCode =
             classifiedFailure?.failureCode ?? boundaryFailureCode;
+          const budgetExceeded = isBudgetExceededError(failureCause);
           const failureEventId =
             classifiedFailure?.eventId ??
-            logException(failureCause, "slack.turn.execution.failed", {
-              "app.ai.failure_code": failureCode,
-            });
+            logException(
+              failureCause,
+              budgetExceeded
+                ? "system.budget.exceeded"
+                : "slack.turn.execution.failed",
+              {
+                "app.ai.failure_code": failureCode,
+                ...(budgetExceeded
+                  ? getBudgetAttributes(failureCause.budget)
+                  : {}),
+              },
+            );
           const createdCanvasUrl = getCurrentTurnCanvasUrl({
             before: preparedState.artifacts,
             after: latestArtifacts,

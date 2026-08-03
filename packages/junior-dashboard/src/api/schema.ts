@@ -21,6 +21,21 @@ export const dashboardConfigSchema = z
     basePath: z.string(),
     componentGallery: z.boolean(),
     sentryConversationLinks: z.boolean(),
+    systemBudgets: z
+      .array(
+        z
+          .object({
+            description: z.string().min(1),
+            label: z.string().min(1),
+            limit: z.number().positive(),
+            name: z.string().min(1),
+            outcome: z.enum(["queue", "stop"]),
+            stage: z.enum(["conversation_admission", "turn"]),
+            unit: z.enum(["count", "milliseconds", "usd"]),
+          })
+          .strict(),
+      )
+      .optional(),
     timeZone: z.string(),
   })
   .strict();

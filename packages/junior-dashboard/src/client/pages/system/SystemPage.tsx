@@ -16,6 +16,7 @@ import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
 import { SystemPageLayout } from "./SystemPageLayout";
+import { SystemBudgets } from "./SystemBudgets";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
@@ -94,6 +95,9 @@ function OverviewSystemPage(props: {
         eyebrow={`${agentNamePossessive()} engine room`}
         title="System"
       />
+      {props.data.config.systemBudgets ? (
+        <SystemBudgets budgets={props.data.config.systemBudgets} />
+      ) : null}
       <SystemActivity
         error={props.data.conversationStatsError}
         range={props.range}

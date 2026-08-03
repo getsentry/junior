@@ -39,7 +39,12 @@ import {
   RetryableDeliveryError,
   type AgentRunDurability,
 } from "@/chat/agent/request";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  BudgetExceededError,
+  checkBudgets,
+  type TurnBudgets,
+} from "@/chat/services/budgets";
+import { reportBudgetExceeded } from "@/chat/services/budget-reporting";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
@@ -63,6 +68,7 @@ interface ResumeStateArgs {
   sessionRecordState: LoadedSessionRecordState;
   startedAtMs: number;
   surface: AgentTurnSurface;
+  turnBudgets?: TurnBudgets;
 }
 
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
@@ -88,7 +94,11 @@ export function createResumeState(args: ResumeStateArgs) {
   let turnStartMessageIndex: number | undefined;
 
   const currentSliceId = args.sessionRecordState.currentSliceId;
+  const turnBudgets = args.turnBudgets ?? botConfig.budgets;
   const currentDurationMs = () => Date.now() - args.startedAtMs;
+  const priorDurationMs =
+    args.sessionRecordState.existingSessionRecord?.cumulativeDurationMs ?? 0;
+  let stepCount = args.sessionRecordState.existingSessionRecord?.stepCount ?? 0;
 
   const sessionRecordBase = () => ({
     channelName: args.channelName,
@@ -100,6 +110,7 @@ export function createResumeState(args: ResumeStateArgs) {
     ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     source: args.runSource,
     sessionId: args.turnId,
+    stepCount,
     loadedSkillNames: args.getLoadedSkillNames(),
     modelId: args.getModelId(),
     ...(args.getReasoningLevel()
@@ -118,6 +129,22 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     get timedOut(): boolean {
       return timedOut;
+    },
+    get stepCount(): number {
+      return stepCount;
+    },
+    async startStep(): Promise<void> {
+      const cumulativeRuntimeMs = priorDurationMs + currentDurationMs();
+      const exceeded = await checkBudgets(turnBudgets, {
+        runtimeMs: cumulativeRuntimeMs,
+        stage: "turn",
+        steps: stepCount,
+      });
+      if (exceeded) {
+        await reportBudgetExceeded(exceeded);
+        throw new BudgetExceededError(exceeded);
+      }
+      stepCount += 1;
     },
     setTurnStartMessageIndex(index: number | undefined): void {
       turnStartMessageIndex = index;
@@ -313,7 +340,15 @@ export function createResumeState(args: ResumeStateArgs) {
             ...(usage ? { usage } : {}),
           };
         }
-        throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
+        const exceeded = await checkBudgets(botConfig.budgets, {
+          runtimeMs: sessionRecord.cumulativeDurationMs,
+          stage: "turn",
+          steps: sessionRecord.stepCount,
+        });
+        if (!exceeded) {
+          throw new Error("Turn suspension failed without an exceeded budget");
+        }
+        throw new BudgetExceededError(exceeded);
       }
 
       return undefined;
