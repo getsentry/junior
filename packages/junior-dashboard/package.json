@@ -34,6 +34,7 @@
     "test:coverage": "vitest run -c vitest.config.ts --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
   "dependencies": {
+    "@radix-ui/react-hover-card": "^1.1.23",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",

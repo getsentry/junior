@@ -61,6 +61,55 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+
+  const costMetric = page
+    .getByRole("main")
+    .getByText("$0.03", { exact: true })
+    .first();
+  await costMetric.hover();
+  const costTooltip = page.getByRole("tooltip");
+  await expect(costTooltip).toBeVisible();
+  const tooltipBounds = await costTooltip.boundingBox();
+  expect(tooltipBounds).not.toBeNull();
+  if (!tooltipBounds) throw new Error("Expected cost tooltip bounds");
+  expect(tooltipBounds.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.x + tooltipBounds.width).toBeLessThanOrEqual(1600);
+  expect(tooltipBounds.y + tooltipBounds.height).toBeLessThanOrEqual(900);
+
+  const costValue = costTooltip.getByText("$0.0332", { exact: true });
+  const valueBounds = await costValue.boundingBox();
+  expect(valueBounds).not.toBeNull();
+  if (!valueBounds) throw new Error("Expected cost value bounds");
+  await page.mouse.move(
+    valueBounds.x + 2,
+    valueBounds.y + valueBounds.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    tooltipBounds.x + tooltipBounds.width + 40,
+    valueBounds.y + valueBounds.height / 2,
+    { steps: 8 },
+  );
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  expect(
+    await page.evaluate(() => window.getSelection()?.toString()),
+  ).toContain("$0.0332");
+  await page.keyboard.press("Escape");
+  await expect(costTooltip).toBeHidden();
+
+  await costMetric.focus();
+  await expect(costTooltip).toBeVisible();
+  const tooltipId = await costTooltip.getAttribute("id");
+  expect(tooltipId).toBeTruthy();
+  await expect(costMetric).toHaveAttribute("aria-describedby", tooltipId!);
+  await page.keyboard.press("Escape");
+  await expect(costTooltip).toBeHidden();
+
   const containerBounds = () =>
     page.locator("main > div").evaluate((element) => {
       const bounds = element.getBoundingClientRect();
@@ -172,6 +221,43 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
+});
+
+test("opens metric tooltips on touch", async ({ browser }) => {
+  const context = await browser.newContext({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { height: 844, width: 390 },
+  });
+  const page = await context.newPage();
+  await mockDashboardApis(page);
+
+  try {
+    await page.goto(
+      `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Checkout latency triage" }),
+    ).toBeVisible();
+
+    const costMetric = page
+      .locator('span[tabindex="0"]')
+      .filter({ hasText: "$0.03", visible: true });
+    await expect(costMetric).toHaveCount(1);
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeHidden();
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+    await page.getByRole("heading", { name: "Checkout latency triage" }).tap();
+    await expect(page.getByRole("tooltip")).toBeHidden();
+  } finally {
+    await context.close();
+  }
 });
 
 test("loads earlier transcript events without dropping the current page", async ({
