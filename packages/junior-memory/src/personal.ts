@@ -5,19 +5,15 @@
  * identities to the existing personal and public workspace scopes.
  */
 import { z } from "zod";
-import {
-  localActorSchema,
-  slackActorSchema,
-  type Identity,
-  type User,
-} from "@sentry/junior-plugin-api";
+import type { User } from "@sentry/junior-plugin-api";
 import {
   createPersonalMemoryCollection,
   type MemoryVisibility,
   type PersonalMemoryRecord,
 } from "./personal-store";
+import { deriveViewerMemoryScopes } from "./scope";
 import type { MemoryDb, MemoryRecord } from "./store";
-import type { MemoryKind, MemoryRuntimeContext } from "./types";
+import type { MemoryKind } from "./types";
 
 const cursorSchema = z
   .object({
@@ -54,44 +50,6 @@ export class InvalidMemoryCursorError extends Error {
 
 export { PersonalMemoryNotFoundError } from "./personal-store";
 export type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
-
-function runtimeContext(identity: Identity): MemoryRuntimeContext | undefined {
-  if (identity.provider === "slack" && identity.providerTenantId) {
-    const actor = slackActorSchema.safeParse({
-      platform: "slack",
-      teamId: identity.providerTenantId,
-      userId: identity.providerSubjectId,
-      ...(identity.displayName ? { fullName: identity.displayName } : {}),
-      ...(identity.handle ? { userName: identity.handle } : {}),
-    });
-    if (!actor.success) return undefined;
-    return {
-      actor: actor.data,
-      source: {
-        platform: "slack",
-        visibility: "private",
-        teamId: actor.data.teamId,
-        channelId: "DDASHBOARD",
-      },
-    };
-  }
-  if (identity.provider !== "local") return undefined;
-  const actor = localActorSchema.safeParse({
-    platform: "local",
-    userId: identity.providerSubjectId,
-    ...(identity.displayName ? { fullName: identity.displayName } : {}),
-    ...(identity.handle ? { userName: identity.handle } : {}),
-  });
-  if (!actor.success) return undefined;
-  return {
-    actor: actor.data,
-    source: {
-      platform: "local",
-      visibility: "private",
-      conversationId: "local:dashboard:memories",
-    },
-  };
-}
 
 function decodeCursor(
   value: string | undefined,
@@ -143,9 +101,7 @@ function encodeCursor(
 export function createViewerMemories(db: MemoryDb, user: User) {
   const collection = createPersonalMemoryCollection(
     db,
-    user.identities
-      .map(runtimeContext)
-      .filter((context): context is MemoryRuntimeContext => Boolean(context)),
+    deriveViewerMemoryScopes(user.identities),
   );
   return {
     async archive(id: string): Promise<MemoryRecord> {
