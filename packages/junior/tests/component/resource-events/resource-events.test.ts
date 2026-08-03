@@ -146,6 +146,7 @@ describe("resource event delivery", () => {
   });
 
   it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
+    const previousInstallationId = process.env.GITHUB_INSTALLATION_ID;
     const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
     const previousPlugins = getPlugins();
     const previousConfigDefaults = getConfigDefaults();
@@ -158,6 +159,7 @@ describe("resource event delivery", () => {
     let eventTaskId: string | undefined;
 
     try {
+      process.env.GITHUB_INSTALLATION_ID = "456";
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
       const state = createMemoryState();
       const queue = createConversationWorkQueueTestAdapter();
@@ -188,6 +190,7 @@ describe("resource event delivery", () => {
       });
       const body = JSON.stringify({
         action: "created",
+        installation: { id: 456 },
         repository: { full_name: "getsentry/junior" },
         issue: {
           number: 691,
@@ -272,6 +275,11 @@ describe("resource event delivery", () => {
         delete process.env.GITHUB_WEBHOOK_SECRET;
       } else {
         process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
+      }
+      if (previousInstallationId === undefined) {
+        delete process.env.GITHUB_INSTALLATION_ID;
+      } else {
+        process.env.GITHUB_INSTALLATION_ID = previousInstallationId;
       }
     }
   });

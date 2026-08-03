@@ -49,6 +49,33 @@ function parseJson(body: string): unknown {
   }
 }
 
+/** Parse one exact positive GitHub App installation ID. */
+function parseInstallationId(value: unknown): number | undefined {
+  const parsed =
+    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+  return typeof parsed === "number" &&
+    Number.isSafeInteger(parsed) &&
+    parsed > 0
+    ? parsed
+    : undefined;
+}
+
+/** Read the GitHub App installation that owns one verified webhook payload. */
+function webhookInstallationId(body: unknown): number | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return undefined;
+  }
+  const installation = (body as { installation?: unknown }).installation;
+  if (
+    !installation ||
+    typeof installation !== "object" ||
+    Array.isArray(installation)
+  ) {
+    return undefined;
+  }
+  return parseInstallationId((installation as { id?: unknown }).id);
+}
+
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   botEmail(): string | undefined;
@@ -57,6 +84,7 @@ export function createGitHubWebhookRoute(args: {
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   db: GitHubDb;
+  installationId(): string | undefined;
   log?: Pick<PluginLogger, "error">;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -77,6 +105,15 @@ export function createGitHubWebhookRoute(args: {
       }
 
       const body = parseJson(rawBody);
+      const installationId = parseInstallationId(args.installationId());
+      if (!installationId) {
+        return new Response("GitHub webhook installation is not configured", {
+          status: 503,
+        });
+      }
+      if (webhookInstallationId(body) !== installationId) {
+        return new Response("Ignored", { status: 202 });
+      }
       const botEmail = args.botEmail();
       const pullRequestOutcome =
         eventName === "pull_request"

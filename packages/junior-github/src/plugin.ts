@@ -646,7 +646,8 @@ export function githubPlugin(
           suggestedEvents: ["issue.opened", ...GITHUB_ISSUE_SUGGESTED_EVENTS],
         },
       ],
-      isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
+      isEnabled: () =>
+        Boolean(readEnv("GITHUB_WEBHOOK_SECRET") && readEnv(installationIdEnv)),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
     manifest: {
@@ -729,6 +730,7 @@ export function githubPlugin(
               });
             },
             db: ctx.db as GitHubDb,
+            installationId: () => readEnv(installationIdEnv),
             log: ctx.log,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),

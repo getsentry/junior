@@ -2,8 +2,9 @@
 
 Core stores durable Slack-destination tasks that match normalized resource
 events by namespace, identifier, and event type. Plugins own webhook
-verification and event normalization; core binds their namespace when they
-publish an event. Plugins do not know which conversations or tasks consume it.
+verification, provider-scope validation, and event normalization; core binds
+their namespace when they publish an event. Plugins do not know which
+conversations or tasks consume it.
 
 One task selector has one namespace, one identifier, and one or more event
 types. Multiple tasks may use the same selector. `resourceType` and `label` are

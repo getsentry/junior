@@ -128,7 +128,11 @@ function issueLifecyclePayload(input: {
 }
 
 function signedRequest(body: unknown, eventName = "pull_request"): Request {
-  const rawBody = JSON.stringify(body);
+  const scopedBody =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? { installation: { id: 456 }, ...body }
+      : body;
+  const rawBody = JSON.stringify(scopedBody);
   const signature = `sha256=${createHmac("sha256", "test-secret")
     .update(rawBody)
     .digest("hex")}`;
@@ -160,6 +164,7 @@ function webhookRoute(
     botEmail,
     classifyPullRequestCommits,
     db: fixture.db(),
+    installationId: () => "456",
     log: { error },
     resourceEvents: {
       async publish(event) {
@@ -647,6 +652,28 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("ignores signed deliveries from another installation", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    try {
+      const route = webhookRoute(fixture, published);
+      const response = await route.handler(
+        signedRequest({
+          ...pullRequestPayload(),
+          installation: { id: 999 },
+        }),
+      );
+
+      expect(response.status).toBe(202);
+      await expect(
+        fixture.db().select().from(juniorGitHubPullRequests),
+      ).resolves.toEqual([]);
+      expect(published).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it.each([
     "sentry-junior@example.com",
     "264270552+human@users.noreply.github.com",
@@ -699,6 +726,7 @@ describe("GitHub-owned pull request outcomes", () => {
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
     );
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const plugin = githubPlugin({
