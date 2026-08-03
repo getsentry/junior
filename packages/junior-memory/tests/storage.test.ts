@@ -386,6 +386,27 @@ function slackDestination(context: ReturnType<typeof slackContext>) {
   };
 }
 
+function viewerUser(actors: Actor[], email = "person@example.com") {
+  return {
+    email,
+    id: `user:${email}`,
+    identities: actors.flatMap((actor) =>
+      actor.platform === "system"
+        ? []
+        : [
+            {
+              id: `identity:${actor.platform}:${actor.platform === "slack" ? `${actor.teamId}:` : ""}${actor.userId}`,
+              provider: actor.platform,
+              providerSubjectId: actor.userId,
+              ...(actor.platform === "slack"
+                ? { providerTenantId: actor.teamId }
+                : {}),
+            },
+          ],
+    ),
+  };
+}
+
 function localContext(
   overrides: { conversationId?: string; userId?: string } = {},
 ) {
@@ -2146,10 +2167,7 @@ ORDER BY created_at_ms ASC
           db: memoryDb(fixture),
           log: noopLogger,
           plugin: { name: "memory" },
-          viewer: {
-            actors: [actorContext.actor],
-            email: "person@example.com",
-          },
+          viewer: viewerUser([actorContext.actor]),
         },
         { limit: 20 },
       );
@@ -2202,10 +2220,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: {
-              actors: [actorContext.actor],
-              email: "person@example.com",
-            },
+            viewer: viewerUser([actorContext.actor]),
           },
           { filter: "private", limit: 20 },
         ),
@@ -2218,10 +2233,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: {
-              actors: [actorContext.actor],
-              email: "person@example.com",
-            },
+            viewer: viewerUser([actorContext.actor]),
           },
           { filter: "public", limit: 20 },
         ),
@@ -2234,7 +2246,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: { actors: [], email: "new@example.com" },
+            viewer: viewerUser([], "new@example.com"),
           },
           { limit: 20 },
         ),
@@ -2349,9 +2361,8 @@ ORDER BY created_at_ms ASC
         idempotencyKey: "session:api:private",
         kind: "knowledge",
       });
-      const actors = [firstContext.actor!, secondContext.actor!];
+      const viewer = viewerUser([firstContext.actor!, secondContext.actor!]);
       const api = createMemoryApi({
-        actors: async () => actors,
         db: memoryDb(fixture),
         eventStats: {
           async costsByDay({ days, eventName }) {
@@ -2384,6 +2395,7 @@ ORDER BY created_at_ms ASC
           },
         },
         pluginName: "memory",
+        viewer,
       });
 
       const firstPageResponse = await api.fetch(

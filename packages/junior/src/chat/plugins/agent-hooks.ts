@@ -1,6 +1,7 @@
 import {
   missingToolAnnotationKeys,
   normalizeResourceEventIdentifier,
+  pluginApiRouteRequestContextSchema,
   promptContextSchema,
   promptMessageSchema,
   pluginResourceEventsSchema,
@@ -37,7 +38,7 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
-import { readViewerActors } from "@/chat/plugins/viewer-actors";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -574,10 +575,12 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
+        ...(context.identity ? { identity: context.identity } : {}),
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
         state: createPluginState(pluginName),
+        ...(context.user ? { user: context.user } : {}),
       };
     } else {
       if (context.destination.platform !== "local") {
@@ -595,10 +598,12 @@ export function getPluginTools(
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,
+        ...(context.identity ? { identity: context.identity } : {}),
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
         state: createPluginState(pluginName),
+        ...(context.user ? { user: context.user } : {}),
       };
     }
     const pluginTools = hook(pluginContext);
@@ -795,9 +800,6 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     const app = hook({
       ...basePluginContext(plugin),
       eventStats: createPluginConversationEventStats(plugin),
-      viewer: {
-        actors: readViewerActors,
-      },
     });
     if (app === undefined) {
       continue;
@@ -807,7 +809,26 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
-    routes.push({ app, pluginName });
+    routes.push({
+      app: {
+        async fetch(request, context) {
+          const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
+          if (!parsed.success) {
+            return await app.fetch(request, context);
+          }
+          const email = parsed.data.auth.user.email?.trim();
+          const viewer =
+            parsed.data.auth.user.emailVerified === true && email
+              ? await resolveViewerUser(email)
+              : undefined;
+          return await app.fetch(request, {
+            ...parsed.data,
+            ...(viewer ? { viewer } : {}),
+          });
+        },
+      },
+      pluginName,
+    });
   }
 
   return routes;

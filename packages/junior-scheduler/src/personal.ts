@@ -1,4 +1,4 @@
-import type { PluginUserPageActor } from "@sentry/junior-plugin-api";
+import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { SchedulerStore } from "./store";
 import type { ScheduledTask } from "./types";
@@ -76,20 +76,12 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Build scheduled-task operations limited to tasks created by linked actors. */
+/** Build scheduled-task operations limited to tasks created by one user. */
 export function createViewerScheduledTasks(
   store: PersonalScheduledTaskStore,
-  actors: PluginUserPageActor[],
+  user: User,
 ) {
-  const creators = actors
-    .filter((actor) => actor.platform === "slack")
-    .map((actor) => ({
-      slackUserId: actor.userId,
-      teamId: actor.teamId,
-    }));
-  const creatorKeys = new Set(
-    creators.map((creator) => `${creator.teamId}:${creator.slackUserId}`),
-  );
+  const identityIds = new Set(user.identities.map((identity) => identity.id));
 
   return {
     async delete(id: string, nowMs = Date.now()): Promise<void> {
@@ -97,9 +89,12 @@ export function createViewerScheduledTasks(
       if (
         !task ||
         task.status === "deleted" ||
-        !creatorKeys.has(
-          `${task.destination.teamId}:${task.createdBy.slackUserId}`,
-        )
+        (task.creatorUserId !== user.id &&
+          !(
+            !task.creatorUserId &&
+            task.creatorIdentityId &&
+            identityIds.has(task.creatorIdentityId)
+          ))
       ) {
         throw new PersonalScheduledTaskNotFoundError();
       }
@@ -119,9 +114,10 @@ export function createViewerScheduledTasks(
       const cursor = decodeCursor(input.cursor, query);
       const matching = await store.listTasksCreatedBy({
         ...(cursor ? { before: cursor } : {}),
-        creators,
+        identityIds: [...identityIds],
         limit: input.limit + 1,
         ...(query ? { query } : {}),
+        userId: user.id,
       });
       const tasks = matching.slice(0, input.limit);
       return {

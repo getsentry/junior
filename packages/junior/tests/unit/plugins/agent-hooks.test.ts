@@ -13,8 +13,9 @@ import {
 import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { logWarnMock } = vi.hoisted(() => ({
+const { logWarnMock, resolveViewerUserMock } = vi.hoisted(() => ({
   logWarnMock: vi.fn(),
+  resolveViewerUserMock: vi.fn(),
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => {
@@ -24,6 +25,9 @@ vi.mock("@/chat/logging", async (importOriginal) => {
     logWarn: logWarnMock,
   };
 });
+vi.mock("@/chat/plugins/viewer", () => ({
+  resolveViewerUser: resolveViewerUserMock,
+}));
 import {
   createPluginHookRunner,
   getPluginApiRoutes,
@@ -173,6 +177,7 @@ function fakeSandbox(
 describe("agent plugin hooks", () => {
   beforeEach(() => {
     logWarnMock.mockReset();
+    resolveViewerUserMock.mockReset();
   });
 
   it("accepts Slack source visibility from the runtime boundary", () => {
@@ -497,6 +502,17 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects turn-scoped tools from configured plugins", () => {
+    const identity = {
+      id: "identity-1",
+      provider: "slack",
+      providerSubjectId: TEST_ACTOR.userId,
+      providerTenantId: TEST_ACTOR.teamId,
+    };
+    const user = {
+      email: "person@example.com",
+      id: "user-1",
+      identities: [identity],
+    };
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -508,6 +524,8 @@ describe("agent plugin hooks", () => {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
             expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            expect(ctx.identity).toEqual(identity);
+            expect(ctx.user).toEqual(user);
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -520,7 +538,9 @@ describe("agent plugin hooks", () => {
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
+        identity,
         source: SLACK_SOURCE,
+        user,
         workspace: {} as any,
       });
 
@@ -1158,7 +1178,14 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects API route apps from configured plugins", async () => {
-    let hasViewerActorResolver = false;
+    let hasViewerResolver = false;
+    let receivedContext: unknown;
+    const viewer = {
+      email: "person@example.com",
+      id: "user-1",
+      identities: [],
+    };
+    resolveViewerUserMock.mockResolvedValue(viewer);
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -1168,9 +1195,12 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           apiRoutes(ctx) {
-            hasViewerActorResolver = typeof ctx.viewer.actors === "function";
+            hasViewerResolver = "viewer" in ctx;
             return {
-              fetch: () => new Response("api demo"),
+              fetch: (_request, context) => {
+                receivedContext = context;
+                return new Response("api demo");
+              },
             };
           },
         },
@@ -1181,11 +1211,22 @@ describe("agent plugin hooks", () => {
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
-      expect(hasViewerActorResolver).toBe(true);
+      expect(hasViewerResolver).toBe(false);
       const response = await routes[0]!.app.fetch(
         new Request("http://localhost/demo"),
+        {
+          auth: {
+            user: {
+              email: "person@example.com",
+              emailVerified: true,
+            },
+          },
+          pluginName: "agent-demo",
+        },
       );
       await expect(response.text()).resolves.toBe("api demo");
+      expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
+      expect(receivedContext).toMatchObject({ viewer });
     } finally {
       setPlugins(previous);
     }

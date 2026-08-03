@@ -40,7 +40,7 @@ export function createSchedulerUserPage(): PluginUserPageDefinition {
     async read(ctx, input) {
       const page = await createViewerScheduledTasks(
         createSchedulerSqlStore(ctx.db as SchedulerDb),
-        ctx.viewer.actors,
+        ctx.viewer,
       ).list({
         cursor: input.cursor,
         limit: input.limit,

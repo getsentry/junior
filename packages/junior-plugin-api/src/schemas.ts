@@ -136,6 +136,28 @@ export const actorSchema = z.discriminatedUnion("platform", [
   systemActorSchema,
 ]);
 
+/** Core-owned provider account linked to a user when verified. */
+export const identitySchema = z
+  .object({
+    displayName: nonBlankStringSchema.optional(),
+    handle: nonBlankStringSchema.optional(),
+    id: exactNonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
+    providerSubjectId: exactNonBlankStringSchema,
+    providerTenantId: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Core-owned person with every linked provider identity. */
+export const userSchema = z
+  .object({
+    displayName: nonBlankStringSchema.optional(),
+    email: nonBlankStringSchema.max(320),
+    id: exactNonBlankStringSchema,
+    identities: z.array(identitySchema).max(100),
+  })
+  .strict();
+
 const dispatchMetadataSchema = z
   .record(z.string(), z.string())
   .superRefine((metadata, ctx) => {

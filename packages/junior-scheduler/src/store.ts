@@ -12,6 +12,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   ne,
@@ -89,6 +90,8 @@ const taskRecordFields = {
     .strict(),
   createdAtMs: z.number(),
   createdBy: taskPrincipalSchema,
+  creatorIdentityId: z.string(),
+  creatorUserId: z.string().optional(),
   destination: slackDestinationSchema,
   executionActor: z
     .object({
@@ -188,9 +191,10 @@ export interface SchedulerStore {
 
 export interface ListTasksCreatedByInput {
   before?: { createdAtMs: number; id: string };
-  creators: Array<{ slackUserId: string; teamId: string }>;
+  identityIds: string[];
   limit: number;
   query?: string;
+  userId: string;
 }
 
 export interface SchedulerOperationalStore {
@@ -200,10 +204,6 @@ export interface SchedulerOperationalStore {
 
 function normalizedTaskQuery(query: string | undefined): string | undefined {
   return query?.trim().toLowerCase() || undefined;
-}
-
-function taskCreatorKey(task: ScheduledTask): string {
-  return `${task.destination.teamId}:${task.createdBy.slackUserId}`;
 }
 
 function listedAfter(
@@ -229,12 +229,17 @@ function listCreatedTasks(
   tasks: ScheduledTask[],
   input: ListTasksCreatedByInput,
 ): ScheduledTask[] {
-  const creators = new Set(
-    input.creators.map((creator) => `${creator.teamId}:${creator.slackUserId}`),
-  );
+  const identityIds = new Set(input.identityIds);
   const query = normalizedTaskQuery(input.query);
   return tasks
-    .filter((task) => creators.has(taskCreatorKey(task)))
+    .filter(
+      (task) =>
+        task.creatorUserId === input.userId ||
+        (!task.creatorUserId &&
+          Boolean(
+            task.creatorIdentityId && identityIds.has(task.creatorIdentityId),
+          )),
+    )
     .filter((task) => !query || taskMatchesQuery(task, query))
     .sort(
       (left, right) =>
@@ -1174,7 +1179,8 @@ async function upsertSqlTask(
     .insert(juniorSchedulerTasks)
     .values({
       createdAtMs: task.createdAtMs,
-      creatorSlackUserId: task.createdBy.slackUserId,
+      creatorIdentityId: task.creatorIdentityId,
+      creatorUserId: task.creatorUserId,
       id: task.id,
       nextRunAtMs: task.nextRunAtMs,
       record: task,
@@ -1186,7 +1192,8 @@ async function upsertSqlTask(
       target: juniorSchedulerTasks.id,
       set: {
         createdAtMs: sql`excluded.created_at_ms`,
-        creatorSlackUserId: sql`excluded.creator_slack_user_id`,
+        creatorIdentityId: sql`excluded.creator_identity_id`,
+        creatorUserId: sql`excluded.creator_user_id`,
         nextRunAtMs: sql`excluded.next_run_at_ms`,
         record: sql`excluded.record`,
         runNowAtMs: sql`excluded.run_now_at_ms`,
@@ -1257,59 +1264,68 @@ async function listTasksCreatedByFromSql(
   db: SchedulerDb,
   input: ListTasksCreatedByInput,
 ): Promise<ScheduledTask[]> {
-  if (input.creators.length === 0) {
-    return [];
-  }
   const query = normalizedTaskQuery(input.query);
   const tasks: ScheduledTask[] = [];
   let before = input.before;
 
   while (tasks.length < input.limit) {
-    const rows = await db
-      .select({
-        createdAtMs: juniorSchedulerTasks.createdAtMs,
-        id: juniorSchedulerTasks.id,
-        record: juniorSchedulerTasks.record,
-      })
-      .from(juniorSchedulerTasks)
-      .where(
-        and(
-          ne(juniorSchedulerTasks.status, "deleted"),
-          or(
-            ...input.creators.map((creator) =>
-              and(
-                eq(juniorSchedulerTasks.teamId, creator.teamId),
-                eq(
-                  juniorSchedulerTasks.creatorSlackUserId,
-                  creator.slackUserId,
-                ),
-              ),
-            ),
+    const cursor = before
+      ? or(
+          lt(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+          and(
+            eq(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+            lt(juniorSchedulerTasks.id, before.id),
           ),
-          before
-            ? or(
-                lt(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
-                and(
-                  eq(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
-                  lt(juniorSchedulerTasks.id, before.id),
-                ),
-              )
-            : undefined,
-          query
-            ? or(
-                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
-                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
-                sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
-                sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
-              )
-            : undefined,
-        ),
+        )
+      : undefined;
+    const search = query
+      ? or(
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
+        )
+      : undefined;
+    const owners = [eq(juniorSchedulerTasks.creatorUserId, input.userId)];
+    if (input.identityIds.length > 0) {
+      const identityOwner = and(
+        isNull(juniorSchedulerTasks.creatorUserId),
+        inArray(juniorSchedulerTasks.creatorIdentityId, input.identityIds),
+      );
+      if (identityOwner) owners.push(identityOwner);
+    }
+    const pages = await Promise.all(
+      owners.map((owner) =>
+        db
+          .select({
+            createdAtMs: juniorSchedulerTasks.createdAtMs,
+            id: juniorSchedulerTasks.id,
+            record: juniorSchedulerTasks.record,
+          })
+          .from(juniorSchedulerTasks)
+          .where(
+            and(
+              ne(juniorSchedulerTasks.status, "deleted"),
+              owner,
+              cursor,
+              search,
+            ),
+          )
+          .orderBy(
+            desc(juniorSchedulerTasks.createdAtMs),
+            desc(juniorSchedulerTasks.id),
+          )
+          .limit(input.limit),
+      ),
+    );
+    const rows = pages
+      .flat()
+      .sort(
+        (left, right) =>
+          right.createdAtMs - left.createdAtMs ||
+          right.id.localeCompare(left.id),
       )
-      .orderBy(
-        desc(juniorSchedulerTasks.createdAtMs),
-        desc(juniorSchedulerTasks.id),
-      )
-      .limit(input.limit);
+      .slice(0, input.limit);
     tasks.push(...rows.map(parseSqlTaskRow).filter(present));
     if (rows.length < input.limit) {
       break;

@@ -9,6 +9,11 @@ Canonical words used across Junior's code and documentation.
 - **Source**: where an inbound event came from, such as Slack, local CLI,
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
+- **User**: one person-level record. A user may have several linked identities.
+- **Identity**: one provider account, such as a Slack account in one workspace,
+  optionally linked to a user.
+- **Actor**: the runtime participant for one source invocation. Actor ids are
+  provider-scoped and are not canonical user ids.
 - **Resource event**: one normalized change published by a plugin, delivered
   within a verified workspace and identified by namespace, identifier, event
   type, and an idempotency key.

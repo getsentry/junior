@@ -1,12 +1,16 @@
 /**
  * Authenticated-viewer memory access shared by REST and dashboard projections.
  *
- * Viewer identity may resolve to multiple platform actors. This module keeps
- * that federation behind one viewer-memory collection spanning personal and
- * authorized public workspace scopes.
+ * One user may have multiple provider identities. This module adapts those
+ * identities to the existing personal and public workspace scopes.
  */
 import { z } from "zod";
-import type { PluginUserPageActor } from "@sentry/junior-plugin-api";
+import {
+  localActorSchema,
+  slackActorSchema,
+  type Identity,
+  type User,
+} from "@sentry/junior-plugin-api";
 import {
   createPersonalMemoryCollection,
   type MemoryVisibility,
@@ -51,20 +55,36 @@ export class InvalidMemoryCursorError extends Error {
 export { PersonalMemoryNotFoundError } from "./personal-store";
 export type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
 
-function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
-  if (actor.platform === "slack") {
+function runtimeContext(identity: Identity): MemoryRuntimeContext | undefined {
+  if (identity.provider === "slack" && identity.providerTenantId) {
+    const actor = slackActorSchema.safeParse({
+      platform: "slack",
+      teamId: identity.providerTenantId,
+      userId: identity.providerSubjectId,
+      ...(identity.displayName ? { fullName: identity.displayName } : {}),
+      ...(identity.handle ? { userName: identity.handle } : {}),
+    });
+    if (!actor.success) return undefined;
     return {
-      actor,
+      actor: actor.data,
       source: {
         platform: "slack",
         visibility: "private",
-        teamId: actor.teamId,
+        teamId: actor.data.teamId,
         channelId: "DDASHBOARD",
       },
     };
   }
+  if (identity.provider !== "local") return undefined;
+  const actor = localActorSchema.safeParse({
+    platform: "local",
+    userId: identity.providerSubjectId,
+    ...(identity.displayName ? { fullName: identity.displayName } : {}),
+    ...(identity.handle ? { userName: identity.handle } : {}),
+  });
+  if (!actor.success) return undefined;
   return {
-    actor,
+    actor: actor.data,
     source: {
       platform: "local",
       visibility: "private",
@@ -119,14 +139,13 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Build viewer memory operations authorized by a viewer's linked actors. */
-export function createViewerMemories(
-  db: MemoryDb,
-  actors: PluginUserPageActor[],
-) {
+/** Build viewer memory operations authorized by a user's linked identities. */
+export function createViewerMemories(db: MemoryDb, user: User) {
   const collection = createPersonalMemoryCollection(
     db,
-    actors.map(runtimeContext),
+    user.identities
+      .map(runtimeContext)
+      .filter((context): context is MemoryRuntimeContext => Boolean(context)),
   );
   return {
     async archive(id: string): Promise<MemoryRecord> {

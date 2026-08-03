@@ -2,9 +2,11 @@ import type {
   PluginContext,
   LocalInvocationContext,
   PluginEmbedder,
+  Identity,
   PluginModel,
   Actor,
   SlackInvocationContext,
+  User,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
@@ -529,10 +531,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   embedder: PluginEmbedder;
   egress: PluginEgress;
+  identity?: Identity;
   mcp?: PluginMcp;
   model: PluginModel;
   resourceEvents: PluginResourceEventToolContext;
   state: PluginState;
+  user?: User;
   userText?: string;
 }
 

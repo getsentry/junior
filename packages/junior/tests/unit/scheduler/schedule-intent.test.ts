@@ -14,6 +14,7 @@ function scheduledTask(
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs,
     createdBy: { slackUserId: "U123" },
+    creatorIdentityId: "identity-schedule-test",
     credentialMode: "system",
     destination: {
       platform: "slack",
@@ -169,6 +170,7 @@ describe("schedule intent compiler", () => {
       conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: Date.parse("2026-03-07T08:00:00.000Z"),
       createdBy: { slackUserId: "U123" },
+      creatorIdentityId: "identity-schedule-dst",
       credentialMode: "system",
       destination: {
         platform: "slack",

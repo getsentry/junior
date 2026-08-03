@@ -1,12 +1,14 @@
 import type { FileUpload } from "chat";
 import type {
   Destination,
+  Identity,
   LocalDestination,
   LocalSource,
   PluginEgress,
   SlackDestination,
   SlackSource,
   Source,
+  User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -88,6 +90,7 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor;
+  identity?: Identity;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */
@@ -100,6 +103,7 @@ interface BaseToolRuntimeContext {
   workspace: SandboxWorkspace;
   /** Report whether the model currently executing the turn accepts images. */
   supportsImageInput?: () => boolean;
+  user?: User;
 }
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {

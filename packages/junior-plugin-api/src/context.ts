@@ -2,12 +2,14 @@ import { z } from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
+  identitySchema,
   localActorSchema,
   platformSchema,
   actorSchema,
   slackActorSchema,
   systemActorSchema,
   sourceSchema,
+  userSchema,
 } from "./schemas";
 
 /** Runtime platform name without source or destination coordinates. */
@@ -16,6 +18,8 @@ export type Actor = z.output<typeof actorSchema>;
 export type SlackActor = z.output<typeof slackActorSchema>;
 export type LocalActor = z.output<typeof localActorSchema>;
 export type SystemActor = z.output<typeof systemActorSchema>;
+export type Identity = z.output<typeof identitySchema>;
+export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;

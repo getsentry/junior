@@ -1,8 +1,8 @@
 /**
  * SQL operations over memories visible to one authenticated viewer.
  *
- * A viewer may resolve to several runtime actors. This store combines their
- * personal scopes with authorized public workspace conversation scopes.
+ * A user may have several linked identities. This store combines their
+ * identity-scoped personal memories with authorized public workspace scopes.
  */
 import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";

@@ -13,7 +13,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { readViewerActors } from "@/chat/plugins/viewer-actors";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 
 /** List safe navigation metadata for registered plugin user pages. */
@@ -57,6 +57,10 @@ export async function readPluginUserPage(input: {
     (candidate) => candidate.id === input.pageId,
   );
   if (!plugin || !page) return undefined;
+  const viewer = await resolveViewerUser(input.email);
+  if (!viewer) {
+    throw new Error("Authenticated viewer user could not be resolved");
+  }
 
   const content = pluginUserPageContentSchema.parse(
     await page.read(
@@ -64,10 +68,7 @@ export async function readPluginUserPage(input: {
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),
         plugin: { name: plugin.manifest.name },
-        viewer: {
-          actors: await readViewerActors(input.email),
-          email: input.email,
-        },
+        viewer,
       },
       input.query,
     ),

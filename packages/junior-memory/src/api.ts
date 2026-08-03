@@ -1,17 +1,14 @@
 /**
  * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity is one verified viewer. Linked platform actors are resolved
- * behind the route boundary and used only to authorize personal and public
- * workspace scopes.
+ * HTTP identity is one verified user whose linked identities authorize
+ * personal and public workspace scopes.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventStats,
-  type PluginApiRouteRequestContext,
   type PluginRouteApp,
-  type PluginUserPageActor,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
@@ -94,7 +91,6 @@ const memoryListQuerySchema = z
   .strict();
 
 interface MemoryApiOptions {
-  actors(email: string): Promise<PluginUserPageActor[]>;
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
 }
@@ -122,22 +118,12 @@ function apiMemory(
   };
 }
 
-function viewerEmail(
-  context: PluginApiRouteRequestContext | undefined,
-): string | undefined {
-  const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
-  if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
-    return undefined;
-  }
-  return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
-}
-
 /** Create the authenticated viewer-memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {
-      const email = viewerEmail(context);
-      if (!email) {
+      const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
+      if (!parsed.success || !parsed.data.viewer) {
         return json({ error: "Authentication required." }, 401);
       }
 
@@ -149,8 +135,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Not found." }, 404);
       }
 
-      const actors = await options.actors(email);
-      const memories = createViewerMemories(options.db, actors);
+      const memories = createViewerMemories(options.db, parsed.data.viewer);
       try {
         if (
           isDashboard &&

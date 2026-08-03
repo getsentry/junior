@@ -152,7 +152,9 @@ function createSchedulerToolContext(
   return {
     source: ctx.source.platform === "slack" ? ctx.source : undefined,
     actor: ctx.actor?.platform === "slack" ? ctx.actor : undefined,
+    identity: ctx.identity,
     store: schedulerStore(ctx),
+    user: ctx.user,
     userText: ctx.userText,
   };
 }
@@ -460,7 +462,6 @@ export function schedulerPlugin() {
     hooks: {
       apiRoutes(ctx) {
         return createSchedulerApi({
-          actors: ctx.viewer.actors,
           db: ctx.db as SchedulerDb,
         });
       },

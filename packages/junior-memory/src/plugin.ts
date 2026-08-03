@@ -135,7 +135,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       apiRoutes(ctx) {
         return createMemoryApi({
-          actors: ctx.viewer.actors,
           db: ctx.db as MemoryDb,
           eventStats: ctx.eventStats,
         });

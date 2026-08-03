@@ -69,6 +69,8 @@ export interface ScheduledTask {
   id: string;
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
+  creatorIdentityId: string;
+  creatorUserId?: string;
   conversationAccess: ScheduledTaskConversationAccess;
   /** Selects system credentials or task-bound creator credential delegation. */
   credentialMode: ScheduledTaskCredentialMode;

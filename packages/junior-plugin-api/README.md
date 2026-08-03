@@ -55,12 +55,13 @@ reports, and other typed hook surfaces exported by this package.
   binds the plugin namespace and owns access to the conversation event log.
   Event `costUsd` is additive operation cost and must not duplicate cost
   already recorded in the conversation's agent model usage.
-- Authenticated API route apps receive one verified viewer in their request
-  context. The registration hook exposes actor resolution for plugins whose
-  viewer-owned data spans platform identities.
-- User page readers receive the signed-in email plus runtime-owned actors linked
-  to that user. Plugins return bounded data and do not mount their own page
-  routes or browser code.
+- Tool hooks receive canonical `user` and `identity` data when the active actor
+  is stored and linked.
+- Authenticated API route apps receive the canonical viewer `User` in their
+  request context.
+- User page readers receive the canonical viewer `User` with linked identities.
+  Plugins return bounded data and do not mount their own page routes or browser
+  code.
 
 ## User Pages
 
@@ -72,7 +73,7 @@ Set `navigation: "primary"` for a top-level dashboard navigation item. The
 default `profile` placement keeps account-oriented pages in the signed-in user
 menu. Junior always renders core System navigation after plugin pages.
 Records may expose bounded `DELETE` actions inside their own authenticated
-plugin API namespace. Core owns discovery, authentication, actor resolution,
+plugin API namespace. Core owns discovery, authentication, user resolution,
 routing, response validation, rendering, confirmation, and query state.
 
 ## Durable Work

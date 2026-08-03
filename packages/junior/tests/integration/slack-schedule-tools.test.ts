@@ -68,6 +68,23 @@ function createContext(
   const contextOverrides = { ...overrides };
   delete contextOverrides.channelId;
   delete contextOverrides.teamId;
+  const actor = overrides.actor ?? {
+    platform: "slack" as const,
+    teamId,
+    userId: "U123",
+    userName: "dcramer",
+    fullName: "David Cramer",
+  };
+  const identity =
+    overrides.identity ??
+    (actor
+      ? {
+          id: `identity:${actor.teamId}:${actor.userId}`,
+          provider: "slack",
+          providerSubjectId: actor.userId,
+          providerTenantId: actor.teamId,
+        }
+      : undefined);
   const context: SchedulerToolContext = {
     source: createSlackSource({
       teamId,
@@ -75,16 +92,20 @@ function createContext(
 
       visibility: channelId.startsWith("C") ? "public" : "private",
     }),
-    actor: {
-      platform: "slack",
-      teamId,
-      userId: "U123",
-      userName: "dcramer",
-      fullName: "David Cramer",
-    },
+    actor,
+    ...(identity ? { identity } : {}),
     now: () => Date.parse("2026-05-24T12:00:00.000Z"),
     userText: "schedule this weekly",
     store: schedulerStore(),
+    ...(identity
+      ? {
+          user: {
+            email: `${actor!.userId.toLowerCase()}@example.com`,
+            id: `user:${actor!.userId}`,
+            identities: [identity],
+          },
+        }
+      : {}),
     ...contextOverrides,
   };
   return context;
@@ -231,6 +252,12 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-25T16:00:00.000Z",
       },
     });
+    await expect(
+      schedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({
+      creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
+      creatorUserId: "user:U123",
+    });
 
     const listed = await executeTool(
       createSlackScheduleListTasksTool(createContext()),
@@ -259,6 +286,17 @@ describe("Slack schedule tools", () => {
         },
       ],
     });
+  });
+
+  it("stores identity ownership before the creator is linked to a user", async () => {
+    const context = createContext({ user: undefined });
+    const created = await createTask(context);
+
+    const stored = await schedulerStore().getTask(created.task.id);
+    expect(stored).toMatchObject({
+      creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
+    });
+    expect(stored?.creatorUserId).toBeUndefined();
   });
 
   it("creates clear recurring tasks without a second confirmation", async () => {
@@ -1452,12 +1490,30 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
           userName: "alice",
           fullName: "Alice",
         },
+        identity: {
+          id: `identity:${TEAM_ID}:U123`,
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: TEAM_ID,
+        },
         egress: {
           async fetch() {
             return new Response("ok");
           },
         },
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+        user: {
+          email: "alice@example.com",
+          id: "user:alice",
+          identities: [
+            {
+              id: `identity:${TEAM_ID}:U123`,
+              provider: "slack",
+              providerSubjectId: "U123",
+              providerTenantId: TEAM_ID,
+            },
+          ],
+        },
       });
 
       expect(tools).toHaveProperty("scheduler_slackScheduleCreateTask");

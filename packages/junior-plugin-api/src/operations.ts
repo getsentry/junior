@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { LocalActor, PluginContext, SlackActor } from "./context";
+import type { PluginContext } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
-import { nonBlankStringSchema } from "./schemas";
+import { nonBlankStringSchema, userSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
@@ -124,10 +124,6 @@ export interface RouteRegistrationHookContext extends PluginContext {
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
   eventStats: PluginConversationEventStats;
-  viewer: {
-    /** Resolve every runtime actor linked to one authenticated viewer email. */
-    actors(email: string): Promise<Array<LocalActor | SlackActor>>;
-  };
 }
 
 /** Per-request context Junior passes to authenticated plugin product API routes. */
@@ -145,6 +141,7 @@ export const pluginApiRouteRequestContextSchema = z
       })
       .strict(),
     pluginName: nonBlankStringSchema,
+    viewer: userSchema.optional(),
   })
   .strict();
 

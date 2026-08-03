@@ -95,6 +95,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nextRunAtMs,
     createdBy: { slackUserId: "U123" },
+    creatorIdentityId: "identity-scheduler-user-123",
     credentialMode: "system",
     destination: SLACK_DESTINATION,
     nextRunAtMs,

@@ -5,7 +5,7 @@
  * routing, response validation, and browser rendering.
  */
 import { z } from "zod";
-import type { LocalActor, PluginContext, SlackActor } from "./context";
+import type { PluginContext, User } from "./context";
 import { nonBlankStringSchema } from "./schemas";
 
 const userPageIdSchema = nonBlankStringSchema
@@ -98,15 +98,9 @@ export const pluginUserPageInputSchema = z
 
 export type PluginUserPageInput = z.output<typeof pluginUserPageInputSchema>;
 
-/** Runtime-owned actor shapes that may belong to an authenticated viewer. */
-export type PluginUserPageActor = SlackActor | LocalActor;
-
 /** Trusted host context supplied while reading one plugin user page. */
 export interface PluginUserPageContext extends PluginContext {
-  viewer: {
-    actors: PluginUserPageActor[];
-    email: string;
-  };
+  viewer: User;
 }
 
 /** Navigation metadata and reader for one core-rendered plugin user page. */

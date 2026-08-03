@@ -66,6 +66,7 @@ import { createToolActionReview } from "@/chat/tool-support/action-review";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
 import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -157,6 +158,9 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.routing.source;
+  const actorIdentity = args.currentActor
+    ? await readActorIdentity(args.currentActor)
+    : undefined;
   const credentialUserId = args.routing.credentialContext
     ? credentialUserSubjectId(args.routing.credentialContext)
     : undefined;
@@ -286,6 +290,8 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(actorIdentity?.identity ? { identity: actorIdentity.identity } : {}),
+    ...(actorIdentity?.user ? { user: actorIdentity.user } : {}),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
   const toolDestination = toolInvocationDestination(args.routing);
