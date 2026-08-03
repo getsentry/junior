@@ -2362,6 +2362,7 @@ ORDER BY created_at_ms ASC
         kind: "knowledge",
       });
       const viewer = viewerUser([firstContext.actor!, secondContext.actor!]);
+      const resolveUser = vi.fn(async () => viewer);
       const api = createMemoryApi({
         db: memoryDb(fixture),
         eventStats: {
@@ -2386,7 +2387,7 @@ ORDER BY created_at_ms ASC
             }));
           },
         },
-        users: { resolve: async () => viewer },
+        users: { resolve: resolveUser },
       });
       const requestContext = pluginApiRouteRequestContextSchema.parse({
         auth: {
@@ -2397,6 +2398,18 @@ ORDER BY created_at_ms ASC
         },
         pluginName: "memory",
       });
+
+      const unknownRouteResponse = await api.fetch(
+        new Request("http://localhost/unknown"),
+        requestContext,
+      );
+      expect(unknownRouteResponse.status).toBe(404);
+      const invalidMethodResponse = await api.fetch(
+        new Request("http://localhost/memories", { method: "POST" }),
+        requestContext,
+      );
+      expect(invalidMethodResponse.status).toBe(405);
+      expect(resolveUser).not.toHaveBeenCalled();
 
       const firstPageResponse = await api.fetch(
         new Request("http://localhost/memories?limit=2"),

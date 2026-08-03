@@ -138,8 +138,6 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       if (!email) {
         return json({ error: "Authentication required." }, 401);
       }
-      const user = await options.users.resolve(email);
-      if (!user) return json({ error: "Authentication required." }, 401);
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
@@ -148,13 +146,17 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       if (!isCollection && !isDashboard && !memoryPath) {
         return json({ error: "Not found." }, 404);
       }
+      const isRead = request.method === "GET" || request.method === "HEAD";
+      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+        return json({ error: "Method not allowed." }, 405);
+      }
+
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
 
       const memories = createViewerMemories(options.db, user);
       try {
-        if (
-          isDashboard &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
             memories.stats(),
             memories.timeline({ days: 90 }),
@@ -182,10 +184,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (
-          isCollection &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (isCollection && isRead) {
           const query = memoryListQuerySchema.parse({
             cursor: url.searchParams.get("cursor") ?? undefined,
             limit: url.searchParams.get("limit") ?? undefined,
@@ -208,10 +207,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (
-          memoryPath &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (memoryPath && isRead) {
           const memory = memoryApiSchema.parse(
             apiMemory(await memories.get(decodeURIComponent(memoryPath[1]!))),
           );

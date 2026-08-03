@@ -41,8 +41,6 @@ export function createSchedulerApi(
       if (!email) {
         return json({ error: "Authentication required." }, 401);
       }
-      const user = await options.users.resolve(email);
-      if (!user) return json({ error: "Authentication required." }, 401);
 
       const taskPath = /^\/tasks\/([^/]+)$/.exec(new URL(request.url).pathname);
       if (!taskPath) {
@@ -51,6 +49,9 @@ export function createSchedulerApi(
       if (request.method !== "DELETE") {
         return json({ error: "Method not allowed." }, 405);
       }
+
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
 
       try {
         await createViewerScheduledTasks(

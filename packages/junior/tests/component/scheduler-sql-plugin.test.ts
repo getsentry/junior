@@ -590,6 +590,7 @@ INSERT INTO junior_scheduler_tasks (
         expect.objectContaining({ id: visibleOld.id }),
       ]);
 
+      const resolveUser = vi.fn(async () => context.viewer);
       const api = schedulerPlugin().hooks?.apiRoutes?.({
         db,
         eventStats: {
@@ -599,7 +600,7 @@ INSERT INTO junior_scheduler_tasks (
         },
         log: noopLogger,
         plugin: { name: "scheduler" },
-        users: { resolve: async () => context.viewer },
+        users: { resolve: resolveUser },
       });
       expect(api).toBeDefined();
       const requestContext = pluginApiRouteRequestContextSchema.parse({
@@ -611,6 +612,18 @@ INSERT INTO junior_scheduler_tasks (
         },
         pluginName: "scheduler",
       });
+      const unknownRouteResponse = await api!.fetch(
+        new Request("http://localhost/unknown", { method: "DELETE" }),
+        requestContext,
+      );
+      expect(unknownRouteResponse.status).toBe(404);
+      const invalidMethodResponse = await api!.fetch(
+        new Request(`http://localhost/tasks/${visibleOld.id}`),
+        requestContext,
+      );
+      expect(invalidMethodResponse.status).toBe(405);
+      expect(resolveUser).not.toHaveBeenCalled();
+
       const deleteResponse = await api!.fetch(
         new Request(`http://localhost/tasks/${visibleOld.id}`, {
           method: "DELETE",
