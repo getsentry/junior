@@ -57,32 +57,37 @@ html:root[data-theme="light"] {
 }
 
 body:has(.jr-home) {
-  background: var(--jr-acid);
-  color: var(--jr-black);
+  background: #0a0a0f;
+  color: var(--jr-cream);
 }
 
 body:has(.jr-home) .header {
-  background: var(--jr-cream);
-  border-bottom: 4px solid var(--jr-black);
+  background: #0d0d14;
+  border-bottom: 4px solid var(--jr-acid);
 }
 
 body:has(.jr-home) .site-title,
 body:has(.jr-home) .social-icons a,
 body:has(.jr-home) starlight-theme-select label,
 body:has(.jr-home) site-search button {
-  color: var(--jr-black);
+  color: var(--jr-cream);
 }
 
 body:has(.jr-home) site-search button {
-  background: #fff;
-  border: 3px solid var(--jr-black);
-  border-radius: 0;
-  box-shadow: 4px 4px 0 var(--jr-black);
+  background: #15151d;
+  border: 1px solid #34343f;
+  border-radius: 0.5rem;
+  box-shadow: none;
 }
 
 body:has(.jr-home) .page {
-  background-color: var(--jr-acid);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 17 17'%3E%3Ccircle cx='1.5' cy='1.5' r='1.2' fill='%23000' fill-opacity='.17'/%3E%3C/svg%3E");
+  background-color: #0a0a0f;
+  background-image: radial-gradient(
+    circle,
+    rgba(204, 255, 0, 0.16) 1px,
+    transparent 1px
+  );
+  background-size: 17px 17px;
 }
 
 body:has(.jr-home) main {
@@ -146,7 +151,7 @@ body:has(.jr-home) main {
 }
 
 .jr-home-mega {
-  color: var(--jr-black);
+  color: var(--jr-acid);
   display: block;
   font-family: "Arial Black", Impact, Haettenschweiler, sans-serif;
   font-size: clamp(5.2rem, 18vw, 16rem);
@@ -214,7 +219,7 @@ body:has(.jr-home) main {
 }
 
 .jr-home {
-  color: var(--jr-black);
+  color: var(--jr-cream);
   margin: -4rem auto 0;
   max-width: 86rem;
   padding: 0 1.25rem 4rem;
@@ -327,7 +332,7 @@ body:has(.jr-home) main {
 }
 
 .jr-flow-arrow-green {
-  color: #5ca800;
+  color: var(--jr-acid);
   transform: rotate(6deg);
 }
 
@@ -441,7 +446,7 @@ body:has(.jr-home) main {
 }
 
 .jr-section-number {
-  color: var(--jr-black) !important;
+  color: var(--jr-acid) !important;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
@@ -451,7 +456,6 @@ body:has(.jr-home) main {
 
 .jr-proof-copy h2,
 .jr-card h2 {
-  color: var(--jr-black);
   font-family: "Arial Black", Impact, sans-serif;
   font-weight: 950;
   letter-spacing: -0.055em;
@@ -461,11 +465,12 @@ body:has(.jr-home) main {
 }
 
 .jr-proof-copy h2 {
+  color: var(--jr-cream);
   font-size: clamp(3rem, 6vw, 5.5rem);
 }
 
 .jr-proof-copy > p:not(.jr-section-number) {
-  color: var(--jr-black);
+  color: var(--jr-cream);
   font-size: 1.05rem;
   font-weight: 700;
   line-height: 1.5;
@@ -670,6 +675,7 @@ body:has(.jr-home) main {
   display: grid;
   gap: 1.5rem;
   grid-template-columns: repeat(3, 1fr);
+  margin-inline: clamp(0.5rem, 2.5vw, 2.5rem);
   padding-bottom: clamp(5rem, 9vw, 9rem);
 }
 
@@ -720,6 +726,7 @@ body:has(.jr-home) main {
 }
 
 .jr-card h2 {
+  color: var(--jr-black);
   font-size: clamp(2.2rem, 4vw, 3.7rem);
   hyphens: none;
   overflow-wrap: normal;
@@ -790,7 +797,7 @@ body:has(.jr-home) main {
 }
 
 .jr-made-this {
-  color: var(--jr-black) !important;
+  color: var(--jr-cream) !important;
   font-size: 0.8rem;
   font-style: italic;
   margin: 0 0 1rem auto;
@@ -804,7 +811,7 @@ body:has(.jr-home) main {
 }
 
 body:has(.jr-home) footer {
-  color: var(--jr-black);
+  color: var(--jr-cream);
 }
 
 @media (max-width: 64rem) {
