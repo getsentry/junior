@@ -1,4 +1,4 @@
-import { Brain } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewReasoningPart } from "../types";
@@ -23,7 +23,7 @@ export function TranscriptReasoningView(props: {
         className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-dashboard-text-muted"
         title="Reasoning"
       >
-        <Brain aria-hidden="true" size={14} strokeWidth={1.8} />
+        <Lightbulb aria-hidden="true" size={14} strokeWidth={1.8} />
       </span>
       <TranscriptHeadingRow
         left={

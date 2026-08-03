@@ -1,10 +1,20 @@
 import { Fragment, type ClipboardEventHandler, type ReactNode } from "react";
 import {
+  Activity,
   Bot,
+  Brain,
+  Calendar,
+  Check,
   CircleAlert,
+  Database,
   Diff,
+  Info,
+  KeyRound,
+  Link,
   Minimize2,
   Send,
+  Sparkles,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -334,10 +344,15 @@ function VisibleTranscriptEntries(props: {
         )
       }
       renderStructuredEvent={(entry) => (
-        <TranscriptStructuredEventView
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+        <TranscriptRailEvent
+          icon={structuredEventIcon(entry.part.presentation.icon)}
+          kind="structured_event"
+        >
+          <TranscriptStructuredEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderSubagent={(entry) => (
         <TranscriptRailEvent kind="subagent">
@@ -480,15 +495,17 @@ type TranscriptRailEventKind =
   | "compaction"
   | "handoff"
   | "resource_event"
+  | "structured_event"
   | "subagent";
 
 /** Anchor noteworthy transcript events to the same visual rail as turn markers. */
 function TranscriptRailEvent(props: {
   children: ReactNode;
+  icon?: LucideIcon;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);
-  const Icon = marker.icon;
+  const Icon = props.icon ?? marker.icon;
 
   return (
     <div className="relative min-w-0" data-transcript-rail-event={props.kind}>
@@ -517,6 +534,12 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: Diff,
     };
   }
+  if (kind === "structured_event") {
+    return {
+      className: "border-violet-300/35 text-violet-200",
+      icon: Activity,
+    };
+  }
   if (kind === "subagent") {
     return {
       className: "border-cyan-300/35 text-cyan-200",
@@ -533,6 +556,28 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     className: "border-amber-300/35 text-amber-200",
     icon: Minimize2,
   };
+}
+
+const structuredEventIcons: Record<
+  NonNullable<TranscriptStructuredEventEntry["part"]["presentation"]["icon"]>,
+  LucideIcon
+> = {
+  activity: Activity,
+  brain: Brain,
+  calendar: Calendar,
+  check: Check,
+  database: Database,
+  info: Info,
+  key: KeyRound,
+  link: Link,
+  sparkles: Sparkles,
+  warning: TriangleAlert,
+};
+
+function structuredEventIcon(
+  icon: TranscriptStructuredEventEntry["part"]["presentation"]["icon"],
+): LucideIcon {
+  return icon ? structuredEventIcons[icon] : Activity;
 }
 
 function RedactedTranscriptView(props: {
@@ -577,10 +622,15 @@ function RedactedTranscriptView(props: {
         )
       }
       renderStructuredEvent={(entry) => (
-        <TranscriptStructuredEventView
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+        <TranscriptRailEvent
+          icon={structuredEventIcon(entry.part.presentation.icon)}
+          kind="structured_event"
+        >
+          <TranscriptStructuredEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderSubagent={(entry) => (
         <TranscriptRailEvent kind="subagent">

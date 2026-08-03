@@ -542,6 +542,28 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Agent response failed");
   });
 
+  it("anchors structured events to the transcript rail", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "structured_event",
+          namespace: "memory",
+          name: "memories_captured",
+          version: 1,
+          turnId: "turn-1",
+          presentation: {
+            icon: "brain",
+            title: "2 memories captured",
+          },
+        }),
+      ]),
+    );
+
+    expect(html).toContain('data-transcript-rail-event="structured_event"');
+    expect(html).toContain("lucide-brain");
+    expect(html).toContain("2 memories captured");
+  });
+
   it("keeps recalled memory context collapsed on its user message", () => {
     const html = renderTranscript(
       conversation([

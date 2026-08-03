@@ -410,8 +410,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         turnId: "qa-turn",
         presentation: {
           icon: "brain",
-          title: "Memories captured",
-          preview: "2 memories",
+          title: "2 memories captured",
           details: [
             {
               title: "Use pnpm for repository commands.",

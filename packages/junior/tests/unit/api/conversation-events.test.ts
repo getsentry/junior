@@ -56,8 +56,7 @@ describe("conversation report event projection", () => {
       renderEvent(value) {
         return {
           icon: "brain",
-          title: "Memories captured",
-          preview: `${value.count} memories`,
+          title: `${value.count} memories captured`,
         };
       },
     });
@@ -98,8 +97,7 @@ describe("conversation report event projection", () => {
             turnId: "turn-1",
             presentation: {
               icon: "brain",
-              title: "Memories captured",
-              preview: "2 memories",
+              title: "2 memories captured",
             },
           },
         },
