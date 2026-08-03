@@ -79,7 +79,7 @@ function createGithubPrSubscription(input: {
   );
 }
 
-describe("resource event subscriptions", () => {
+describe("resource event delivery", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
   });
@@ -225,6 +225,7 @@ describe("resource event subscriptions", () => {
       );
 
       expect(response.status).toBe(202);
+      expect(queue.sentRecords()).toHaveLength(2);
       expect(queue.sentRecords()).toEqual(
         expect.arrayContaining([
           {

@@ -58,6 +58,7 @@ function bindDispatchCredentialSubject(
   };
 }
 
+/** Verify, persist, and enqueue one idempotent agent dispatch. */
 async function dispatch(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;

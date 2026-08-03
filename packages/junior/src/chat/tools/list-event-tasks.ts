@@ -5,12 +5,13 @@ import {
   compactEventTask,
   eventTaskListToolResultSchema,
   eventTaskMatchesDestination,
-  MAX_LISTED_EVENT_TASKS,
   requireEventTaskSlackContext,
 } from "@/chat/event-tasks/tool-support";
 import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+const MAX_LISTED_EVENT_TASKS = 50;
 
 /** Create the core tool that lists event tasks for this destination. */
 export function createListEventTasksTool(

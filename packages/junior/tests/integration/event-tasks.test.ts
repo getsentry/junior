@@ -93,6 +93,26 @@ async function execute<TInput>(
   });
 }
 
+function jsonSchemaAllowsNull(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") {
+    return false;
+  }
+  const candidate = schema as {
+    anyOf?: unknown[];
+    oneOf?: unknown[];
+    type?: string | string[];
+  };
+  if (
+    candidate.type === "null" ||
+    (Array.isArray(candidate.type) && candidate.type.includes("null"))
+  ) {
+    return true;
+  }
+  return [...(candidate.anyOf ?? []), ...(candidate.oneOf ?? [])].some(
+    jsonSchemaAllowsNull,
+  );
+}
+
 async function createTask(
   task: string,
   toolCallId?: string,
@@ -280,6 +300,62 @@ describe("event tasks", () => {
       tasks: unknown[];
     };
     expect(listed.tasks).toEqual([]);
+  });
+
+  it("keeps tool schemas aligned with normalization and storage limits", () => {
+    const createTool = createEventTaskTool(context(), EVENT_CATALOG);
+    const createProperties = (
+      createTool.inputSchema as { properties?: Record<string, unknown> }
+    ).properties;
+    expect(jsonSchemaAllowsNull(createProperties?.credentialMode)).toBe(true);
+
+    const createInput = {
+      task: "Address the requested changes.",
+      trigger: {
+        namespace: "github",
+        identifier: "getsentry/junior#1174",
+        resourceType: "pull_request",
+        label: "GitHub PR getsentry/junior#1174",
+        events: ["pull_request.review.changes_requested"],
+      },
+    };
+    expect(
+      createTool.prepareArguments?.({
+        ...createInput,
+        credentialMode: null,
+      }),
+    ).not.toHaveProperty("credentialMode");
+    expect(() =>
+      createTool.prepareArguments?.({
+        ...createInput,
+        credentialMode: "invalid",
+      }),
+    ).toThrow(/credentialMode/);
+    expect(() =>
+      createTool.prepareArguments?.({
+        ...createInput,
+        trigger: {
+          ...createInput.trigger,
+          identifier: "x".repeat(301),
+        },
+      }),
+    ).toThrow(/identifier/);
+
+    const updateTool = createUpdateEventTaskTool(context(), EVENT_CATALOG);
+    const updateProperties = (
+      updateTool.inputSchema as { properties?: Record<string, unknown> }
+    ).properties;
+    expect(jsonSchemaAllowsNull(updateProperties?.task)).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.trigger)).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.credentialMode)).toBe(true);
+    expect(
+      updateTool.prepareArguments?.({
+        taskId: "evt_test",
+        task: null,
+        trigger: null,
+        credentialMode: null,
+      }),
+    ).toEqual({ taskId: "evt_test" });
   });
 
   it("dispatches one task for every selected event type", async () => {

@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { getEventTask } from "@/chat/event-tasks/store";
 import {
+  EVENT_TASK_IDENTIFIER_MAX_LENGTH,
   eventTaskPrincipalSchema,
   type EventTask,
-  type EventTaskPrincipal,
 } from "@/chat/event-tasks/types";
 import {
   eventNamespaceSchema,
@@ -17,8 +16,6 @@ import {
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-export const MAX_LISTED_EVENT_TASKS = 50;
 
 const compactEventTaskResultSchema = z
   .object({
@@ -39,6 +36,7 @@ const eventTaskResultDataSchema = z
   .object({ task: compactEventTaskResultSchema })
   .strict();
 
+/** Validate one successful event-task mutation result. */
 export const eventTaskToolResultSchema = juniorToolResultSchema
   .extend({
     ok: z.literal(true),
@@ -55,6 +53,7 @@ const eventTaskListResultDataSchema = z
   })
   .strict();
 
+/** Validate one successful event-task list result. */
 export const eventTaskListToolResultSchema = juniorToolResultSchema
   .extend({
     ok: z.literal(true),
@@ -66,11 +65,17 @@ export const eventTaskListToolResultSchema = juniorToolResultSchema
   .strict();
 
 /** Build the validated resource-event trigger accepted by event-task tools. */
-export function eventTaskTriggerSchema(catalog: ResourceEventCatalog) {
+export function registeredEventTaskTriggerSchema(
+  catalog: ResourceEventCatalog,
+) {
   return z
     .object({
       namespace: eventNamespaceSchema(catalog),
-      identifier: z.string().trim().min(1),
+      identifier: z
+        .string()
+        .trim()
+        .min(1)
+        .max(EVENT_TASK_IDENTIFIER_MAX_LENGTH),
       resourceType: registeredResourceTypeSchema(catalog),
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(catalog)).min(1),
@@ -122,20 +127,6 @@ export function requireEventTaskSlackContext(context: ToolRuntimeContext) {
   };
 }
 
-/** Project a Slack actor into the durable event-task creator identity. */
-export function eventTaskPrincipal(
-  actor: Extract<
-    NonNullable<ToolRuntimeContext["actor"]>,
-    { platform: "slack" }
-  >,
-): EventTaskPrincipal {
-  return {
-    slackUserId: actor.userId,
-    ...(actor.fullName ? { fullName: actor.fullName } : {}),
-    ...(actor.userName ? { userName: actor.userName } : {}),
-  };
-}
-
 /** Return whether an event task belongs to the active Slack destination. */
 export function eventTaskMatchesDestination(
   task: EventTask,
@@ -162,50 +153,12 @@ export async function writableEventTask(
   return task;
 }
 
-/** Build a retry-stable task id scoped to actor, destination, and tool call. */
-export function buildEventTaskId(args: {
-  channelId: string;
-  teamId: string;
-  toolCallId: string | undefined;
-  userId: string;
-}): string {
-  const toolCallId = args.toolCallId?.trim();
-  if (!toolCallId) {
-    throw new Error("Event task creation requires a tool-call identity.");
-  }
-  const digest = createHash("sha256")
-    .update(
-      JSON.stringify({
-        actor: args.userId,
-        channel: args.channelId,
-        operation: toolCallId,
-        team: args.teamId,
-      }),
-    )
-    .digest("hex")
-    .slice(0, 32);
-  return `evt_${digest}`;
-}
-
-/** Return whether an edit changes the task's executable event source. */
-export function changesEventTaskTrigger(
-  current: EventTask["trigger"],
-  next: EventTask["trigger"],
-): boolean {
-  const currentEvents = [...current.events].sort();
-  const nextEvents = [...next.events].sort();
-  return (
-    current.namespace !== next.namespace ||
-    current.identifier !== next.identifier ||
-    currentEvents.length !== nextEvents.length ||
-    currentEvents.some((event, index) => event !== nextEvents[index])
-  );
-}
-
 function triggerAvailable(
   task: EventTask,
   catalog: ResourceEventCatalog,
 ): boolean {
+  // resourceType is presentation metadata; runtime matching uses namespace,
+  // identifier, and event type.
   const registration = catalog[task.trigger.namespace];
   return Boolean(
     registration &&

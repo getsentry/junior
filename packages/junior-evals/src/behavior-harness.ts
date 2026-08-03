@@ -667,12 +667,14 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
   return fixture.id;
 }
 
-function createEvalDestination(thread: TestThread): Destination {
+function createEvalDestination(
+  thread: TestThread,
+): Extract<Destination, { platform: "slack" }> {
   const destination = createSlackDestination({
     teamId: EVAL_SLACK_TEAM_ID,
     channelId: thread.channelId,
   });
-  if (!destination) {
+  if (!destination || destination.platform !== "slack") {
     throw new Error("Eval Slack destination requires a Slack channel id");
   }
   return destination;
@@ -2450,7 +2452,7 @@ async function processEvents(args: {
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       credentialMode: "system",
-      destination: createEvalDestination(thread) as EventTask["destination"],
+      destination: createEvalDestination(thread),
       destinationVisibility: "public",
       task: { text: event.task_text },
       trigger: {

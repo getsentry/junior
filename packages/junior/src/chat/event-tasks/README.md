@@ -23,9 +23,11 @@ provider retries do not execute the same task twice. Distinct matching events
 are not silently dropped by a task-level quota. Task management is bound to the
 Slack channel or DM where the task was created. Threads in the same channel
 share event-task management; temporary resource watches remain thread-bound.
-One Junior deployment serves one Slack workspace. Event tasks exist only while
-configured: deletion removes the stored task, and there is no pause state or
-separate event-task run history.
+One Junior deployment serves one Slack workspace. A task matched before a
+concurrent update or deletion dispatches from that matched snapshot; later
+events use the current stored task. Event tasks exist only while configured:
+deletion removes the stored task, and there is no pause state or separate
+event-task run history.
 
 The dispatched input keeps authority explicit: the stored task text remains a
 user-authored instruction, the matching normalized event is system-authored
@@ -34,9 +36,9 @@ input, and bounded provider text remains untrusted data.
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system
 credentials instead. Only the creator may enable or re-enable creator mode; any
-conversation manager may disable it, and another user's executable task edit
-clears it. Event execution remains a system actor, with creator credentials
-bound to the exact event task.
+member of the Slack destination may disable it, and another user's executable
+task edit clears it. Event execution remains a system actor, with creator
+credentials bound to the exact event task.
 
 Management results include creator attribution and whether the registered
 trigger is currently available from the enabled plugin catalog. An unavailable

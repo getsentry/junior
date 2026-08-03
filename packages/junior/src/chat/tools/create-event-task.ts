@@ -1,13 +1,12 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { createEventTask, getEventTask } from "@/chat/event-tasks/store";
 import {
-  buildEventTaskId,
   eventTaskMatchesDestination,
-  eventTaskPrincipal,
   eventTaskSuccess,
   eventTaskToolResultSchema,
-  eventTaskTriggerSchema,
+  registeredEventTaskTriggerSchema,
   requireEventTaskSlackContext,
   requireSupportedEventTaskTrigger,
 } from "@/chat/event-tasks/tool-support";
@@ -20,12 +19,37 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
+/** Build a retry-stable task id scoped to actor, destination, and tool call. */
+function buildEventTaskId(args: {
+  channelId: string;
+  teamId: string;
+  toolCallId: string | undefined;
+  userId: string;
+}): string {
+  const toolCallId = args.toolCallId?.trim();
+  if (!toolCallId) {
+    throw new Error("Event task creation requires a tool-call identity.");
+  }
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        actor: args.userId,
+        channel: args.channelId,
+        operation: toolCallId,
+        team: args.teamId,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 32);
+  return `evt_${digest}`;
+}
+
 /** Create the core tool that stores an event task. */
 export function createEventTaskTool(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
 ) {
-  const trigger = eventTaskTriggerSchema(catalog);
+  const trigger = registeredEventTaskTriggerSchema(catalog);
   return zodTool({
     approvalMode: "review",
     annotations: {
@@ -43,8 +67,9 @@ export function createEventTaskTool(
         trigger,
         credentialMode: z
           .enum(["creator", "system"])
+          .nullable()
           .describe(
-            "Use creator to make the task creator's connected credentials available, or system when the creator says not to use them. Omit for the creator default.",
+            "Use creator to make the task creator's connected credentials available, or system when the creator says not to use them. Omit or use null for the creator default.",
           )
           .optional(),
       })
@@ -55,10 +80,15 @@ export function createEventTaskTool(
         trigger: z.input<typeof trigger>;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, ...prepared } = input;
-      return credentialMode === "system"
-        ? { ...prepared, credentialMode }
-        : prepared;
+      if (
+        input?.credentialMode !== "creator" &&
+        input?.credentialMode !== null
+      ) {
+        return input;
+      }
+      const prepared = { ...input };
+      delete prepared.credentialMode;
+      return prepared;
     },
     outputSchema: eventTaskToolResultSchema,
     async execute(input, options) {
@@ -86,7 +116,11 @@ export function createEventTaskTool(
         id,
         destinationVisibility: source.visibility,
         createdAtMs: Date.now(),
-        createdBy: eventTaskPrincipal(actor),
+        createdBy: {
+          slackUserId: actor.userId,
+          ...(actor.fullName ? { fullName: actor.fullName } : {}),
+          ...(actor.userName ? { userName: actor.userName } : {}),
+        },
         credentialMode: input.credentialMode ?? "creator",
         destination,
         task: { text: input.task },

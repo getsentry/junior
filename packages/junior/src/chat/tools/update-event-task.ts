@@ -2,10 +2,9 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { saveEventTask } from "@/chat/event-tasks/store";
 import {
-  changesEventTaskTrigger,
   eventTaskSuccess,
   eventTaskToolResultSchema,
-  eventTaskTriggerSchema,
+  registeredEventTaskTriggerSchema,
   requireEventTaskSlackContext,
   requireSupportedEventTaskTrigger,
   writableEventTask,
@@ -18,6 +17,21 @@ import {
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+/** Return whether an edit changes the task's executable event source. */
+function changesEventTaskTrigger(
+  current: EventTask["trigger"],
+  next: EventTask["trigger"],
+): boolean {
+  const currentEvents = [...current.events].sort();
+  const nextEvents = [...next.events].sort();
+  return (
+    current.namespace !== next.namespace ||
+    current.identifier !== next.identifier ||
+    currentEvents.length !== nextEvents.length ||
+    currentEvents.some((event, index) => event !== nextEvents[index])
+  );
+}
 
 /** Create the core tool that updates an event task in this destination. */
 export function createUpdateEventTaskTool(
@@ -38,12 +52,15 @@ export function createUpdateEventTaskTool(
     inputSchema: z
       .object({
         taskId: z.string().min(1),
-        task: z.string().trim().min(1).max(4000).optional(),
-        trigger: eventTaskTriggerSchema(catalog).optional(),
+        task: z.string().trim().min(1).max(4000).nullable().optional(),
+        trigger: registeredEventTaskTriggerSchema(catalog)
+          .nullable()
+          .optional(),
         credentialMode: z
           .enum(["system", "creator"])
+          .nullable()
           .describe(
-            "Set creator to make the task's original creator credentials available, or system to disable them. Creator always means the task's createdBy actor, never the current requester. Only that original creator may enable creator mode. Omit to leave unchanged.",
+            "Set creator to make the task's original creator credentials available, or system to disable them. Creator always means the task's createdBy actor, never the current requester. Only that original creator may enable creator mode. Omit or use null to leave unchanged.",
           )
           .optional(),
       })
@@ -52,7 +69,9 @@ export function createUpdateEventTaskTool(
       const input = args as {
         taskId: string;
         task?: string | null;
-        trigger?: z.input<ReturnType<typeof eventTaskTriggerSchema>> | null;
+        trigger?: z.input<
+          ReturnType<typeof registeredEventTaskTriggerSchema>
+        > | null;
         credentialMode?: "creator" | "system" | null;
       };
       const { credentialMode, task, trigger, ...prepared } = input;
