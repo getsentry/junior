@@ -29,10 +29,18 @@ import {
 } from "@/chat/conversations/projection";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
+import {
+  addAgentTurnUsage,
+  agentTurnUsageSchema,
+  type AgentTurnUsage,
+} from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { logWarn } from "@/chat/logging";
+import {
+  extractGenAiUsageAttributes,
+  logWarn,
+  setSpanAttributes,
+} from "@/chat/logging";
 import {
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
@@ -103,6 +111,7 @@ export interface AgentTurnSessionRecord {
   resumedFromSliceId?: number;
   sessionId: string;
   sliceId: number;
+  stepCount: number;
   startedAtMs: number;
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
@@ -186,6 +195,7 @@ const agentTurnSessionSummarySchema = z
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     sessionId: z.string().min(1),
     sliceId: z.number().int().nonnegative(),
+    stepCount: z.number().int().nonnegative().default(0),
     startedAtMs: nonNegativeNumberSchema,
     state: agentTurnSessionStatusSchema,
     surface: agentTurnSurfaceSchema.optional(),
@@ -233,6 +243,51 @@ function parseAgentTurnSessionRecord(
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
   return agentTurnSessionSummarySchema.parse(value);
+}
+
+type TurnTelemetrySummary = Pick<
+  AgentTurnSessionSummary,
+  | "conversationId"
+  | "cumulativeDurationMs"
+  | "cumulativeUsage"
+  | "modelId"
+  | "resumeReason"
+  | "sessionId"
+  | "sliceId"
+  | "state"
+  | "stepCount"
+  | "surface"
+>;
+
+/** Return OTEL-aligned and Junior-specific attributes for one durable turn. */
+export function getTurnTelemetryAttributes(
+  summary: TurnTelemetrySummary,
+): Record<string, string | number> {
+  return {
+    "gen_ai.conversation.id": summary.conversationId,
+    ...(summary.modelId ? { "gen_ai.request.model": summary.modelId } : {}),
+    ...extractGenAiUsageAttributes(summary.cumulativeUsage),
+    "app.ai.turn.id": summary.sessionId,
+    "app.ai.turn.runtime_ms": summary.cumulativeDurationMs,
+    "app.ai.turn.slice_id": summary.sliceId,
+    "app.ai.turn.state": summary.state,
+    "app.ai.turn.step_count": summary.stepCount,
+    ...(summary.resumeReason
+      ? { "app.ai.turn.resume_reason": summary.resumeReason }
+      : {}),
+    ...(summary.surface ? { "app.ai.turn.surface": summary.surface } : {}),
+  };
+}
+
+function recordTerminalTurnTelemetry(summary: TurnTelemetrySummary): void {
+  if (
+    summary.state !== "completed" &&
+    summary.state !== "failed" &&
+    summary.state !== "abandoned"
+  ) {
+    return;
+  }
+  setSpanAttributes(getTurnTelemetryAttributes(summary));
 }
 
 async function appendAgentTurnSessionSummary(
@@ -314,6 +369,7 @@ function materializeAgentTurnSessionRecord(
     conversationId: stored.conversationId,
     sessionId: stored.sessionId,
     sliceId: stored.sliceId,
+    stepCount: stored.stepCount,
     state: stored.state,
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
@@ -497,6 +553,7 @@ function buildStoredRecord(args: {
   actors?: Actor[];
   sessionId: string;
   sliceId: number;
+  stepCount?: number;
   startedAtMs?: number;
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
@@ -514,6 +571,7 @@ function buildStoredRecord(args: {
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
+    stepCount: args.stepCount ?? 0,
     state: args.state,
     startedAtMs: args.startedAtMs ?? nowMs,
     lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
@@ -586,6 +644,7 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
+  recordTerminalTurnTelemetry(summary);
   return materializeAgentTurnSessionRecord(
     args.record,
     {
@@ -699,6 +758,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
+  stepCount?: number;
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
@@ -798,6 +858,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       conversationId: args.conversationId,
       sessionId: args.sessionId,
       sliceId: args.sliceId,
+      stepCount: args.stepCount ?? existingRecord?.stepCount ?? 0,
       state: args.state,
       ...(existingRecord?.startedAtMs !== undefined
         ? { startedAtMs: existingRecord.startedAtMs }
@@ -877,6 +938,8 @@ export async function recordAgentTurnSessionSummary(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
   destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -893,6 +956,7 @@ export async function recordAgentTurnSessionSummary(args: {
   reasoningLevel?: string;
   sessionId: string;
   sliceId: number;
+  stepCount?: number;
   startedAtMs?: number;
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
@@ -923,6 +987,14 @@ export async function recordAgentTurnSessionSummary(args: {
   }
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  const cumulativeDurationMs =
+    args.cumulativeDurationMs ??
+    (args.currentDurationMs !== undefined
+      ? (existing?.cumulativeDurationMs ?? 0) + args.currentDurationMs
+      : (existing?.cumulativeDurationMs ?? 0));
+  const cumulativeUsage =
+    args.cumulativeUsage ??
+    addAgentTurnUsage(existing?.cumulativeUsage, args.currentUsage);
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     ...((args.channelName ?? existing?.channelName)
@@ -931,15 +1003,13 @@ export async function recordAgentTurnSessionSummary(args: {
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
+    stepCount: args.stepCount ?? existing?.stepCount ?? 0,
     startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
     lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
     state: args.state,
     updatedAtMs: nowMs,
-    cumulativeDurationMs:
-      args.cumulativeDurationMs ?? existing?.cumulativeDurationMs ?? 0,
-    ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
-      ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
-      : {}),
+    cumulativeDurationMs,
+    ...(cumulativeUsage ? { cumulativeUsage } : {}),
     ...((args.destination ?? existing?.destination)
       ? { destination: args.destination ?? existing?.destination }
       : {}),
@@ -984,6 +1054,7 @@ export async function recordAgentTurnSessionSummary(args: {
     summary,
   });
   await appendAgentTurnSessionSummary(summary, ttlMs);
+  recordTerminalTurnTelemetry(summary);
 }
 
 async function readAgentTurnSessionSummariesFromIndex(

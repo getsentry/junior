@@ -14,7 +14,11 @@ import type {
   PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
-import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
+import {
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+  type DashboardConfig,
+} from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
@@ -55,6 +59,7 @@ export interface JuniorDashboardOptions {
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
   pluginRoutes?: DashboardPluginRoute[];
+  systemBudgets?: NonNullable<DashboardConfig["systemBudgets"]>;
 }
 
 interface DashboardPluginRoute {
@@ -767,6 +772,9 @@ export function createDashboardApp(
       basePath,
       componentGallery: options.componentGallery === true,
       sentryConversationLinks: hasSentryConversationLinks(),
+      ...(options.systemBudgets
+        ? { systemBudgets: options.systemBudgets }
+        : {}),
       timeZone: dashboardTimeZone(),
     });
   });

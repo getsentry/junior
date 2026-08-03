@@ -29,6 +29,7 @@ export interface AgentTurnDiagnostics {
   outcome: "success" | "execution_failure" | "provider_error";
   reasoningLevel?: TurnRoute["reasoningLevel"];
   stopReason?: string;
+  stepCount?: number;
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
@@ -59,6 +60,7 @@ export interface TurnResultInput {
   executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
+  stepCount?: number;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -73,6 +75,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     usage,
     executionProfile,
     modelId,
+    stepCount,
   } = input;
 
   const toolResults = newMessages.filter(isToolResultMessage);
@@ -184,6 +187,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     durationMs,
     usage,
     stopReason,
+    stepCount,
     errorMessage,
     providerError:
       resolvedOutcome === "provider_error" && errorMessage

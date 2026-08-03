@@ -81,6 +81,7 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
+import { isBudgetExceededError } from "@/chat/services/budgets";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
@@ -231,6 +232,7 @@ export async function executeAgentRun(
     userName: userActor?.userName,
     userEmail: userActor?.email,
     runId: request.runId,
+    turnId: request.turnId,
     actorType: credentialActor
       ? "type" in credentialActor
         ? credentialActor.type
@@ -1004,12 +1006,17 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
+    const tracedStreamFn = createTracedStreamFn({
+      conversationPrivacy,
+      ...(streamFn ? { base: streamFn } : {}),
+    });
+    const limitedStreamFn: StreamFn = async (...args) => {
+      await runResume.startStep();
+      return await tracedStreamFn(...args);
+    };
     agent = new Agent({
       ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
-      streamFn: createTracedStreamFn({
-        conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : {}),
-      }),
+      streamFn: limitedStreamFn,
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
@@ -1427,7 +1434,7 @@ async function executeAgentRunInPrivacyContext(
             ? { "app.conversation.privacy": conversationPrivacy }
             : {}),
           "app.ai.session.conversation_id": conversationId,
-          "app.ai.turn.session_id": turnId,
+          "app.ai.turn.id": turnId,
           ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
@@ -1463,6 +1470,7 @@ async function executeAgentRunInPrivacyContext(
       executionProfile: turnRoute,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
+      stepCount: runResume.stepCount,
     });
     return {
       status: "completed",
@@ -1510,6 +1518,9 @@ async function executeAgentRunInPrivacyContext(
     if (isTurnInputCommitLostError(error)) {
       throw error;
     }
+    if (isBudgetExceededError(error)) {
+      throw error;
+    }
     if (error instanceof AuthorizationFlowDisabledError) {
       throw error;
     }
@@ -1544,6 +1555,7 @@ async function executeAgentRunInPrivacyContext(
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,
+          stepCount: resume?.stepCount ?? 0,
           usedPrimaryText: false,
           durationMs: Date.now() - replyStartedAtMs,
           errorMessage: message,

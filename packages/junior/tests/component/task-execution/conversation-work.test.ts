@@ -1554,12 +1554,17 @@ describe("conversation work execution", () => {
   it("extends the lease with worker check-ins during long execution", async () => {
     vi.useFakeTimers({ now: 1_000 });
     const queue = createConversationWorkQueueTestAdapter();
+    const limits = {
+      active_conversations_global: 1,
+      active_conversations_user: 5,
+    };
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
     const finish = deferred<void>();
 
     const running = processConversationWork(conversationQueueMessage(), {
       checkInIntervalMs: 15_000,
+      conversationBudgets: limits,
       queue,
       run: async (context) => {
         await context.attempt.drain(async () => {});
@@ -1585,8 +1590,201 @@ describe("conversation work execution", () => {
       16_000 + CONVERSATION_WORK_LEASE_TTL_MS,
     );
 
+    const otherConversationId = "slack:C123:check-in-capacity";
+    await appendInboundMessage({
+      message: inboundMessage("check-in-capacity", {
+        conversationId: otherConversationId,
+        input: { authorId: "U456", text: "wait for capacity" },
+      }),
+      nowMs: 17_000,
+    });
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U456",
+        conversationId: otherConversationId,
+        budgets: limits,
+        nowMs: 92_000,
+      }),
+    ).resolves.toMatchObject({
+      budget: { name: "active_conversations_global" },
+      status: "limited",
+    });
+
+    vi.setSystemTime(92_000);
     finish.resolve();
     await expect(running).resolves.toEqual({ status: "completed" });
+  });
+
+  it("keeps conversation work queued when the global active limit is full", async () => {
+    const activeConversationId = "slack:C123:active-global";
+    const queuedConversationId = "slack:C123:queued-global";
+    const limits = {
+      active_conversations_global: 1,
+      active_conversations_user: 5,
+    };
+    await appendInboundMessage({
+      message: inboundMessage("active-global", {
+        conversationId: activeConversationId,
+      }),
+      nowMs: 1_000,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("queued-global", {
+        conversationId: queuedConversationId,
+        input: { authorId: "U456", text: "queued global" },
+      }),
+      nowMs: 1_000,
+    });
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U123",
+        conversationId: activeConversationId,
+        budgets: limits,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "acquired" });
+    const queue = createConversationWorkQueueTestAdapter();
+    const run = vi.fn();
+
+    await expect(
+      processConversationWork(
+        conversationQueueMessage({ conversationId: queuedConversationId }),
+        {
+          conversationBudgets: limits,
+          nowMs: () => 3_000,
+          queue,
+          run,
+        },
+      ),
+    ).resolves.toEqual({ status: "capacity_deferred" });
+
+    expect(run).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: queuedConversationId,
+        delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
+        idempotencyKey: `budget_active_conversations_global:${queuedConversationId}:3000`,
+      },
+    ]);
+    const queuedState = await getConversationWorkState({
+      conversationId: queuedConversationId,
+    });
+    expect(queuedState).toMatchObject({ needsRun: true });
+    expect(queuedState?.lease).toBeUndefined();
+  });
+
+  it("ignores an admission entry when the matching conversation lease was not written", async () => {
+    const conversationId = "slack:C123:orphaned-admission";
+    const state = getStateAdapter();
+    await appendInboundMessage({
+      message: inboundMessage("orphaned-admission", { conversationId }),
+      nowMs: 1_000,
+      state,
+    });
+    let failConversationWrite = true;
+    const failingState = new Proxy(state, {
+      get(target, property, receiver) {
+        if (property === "set") {
+          return async (key: string, value: unknown, ttlMs?: number) => {
+            if (
+              failConversationWrite &&
+              key === `junior:conversation:${conversationId}`
+            ) {
+              failConversationWrite = false;
+              throw new Error("conversation write failed");
+            }
+            return await target.set(key, value, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+    const budgets = {
+      active_conversations_global: 1,
+      active_conversations_user: 1,
+    };
+
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U123",
+        budgets,
+        conversationId,
+        nowMs: 2_000,
+        state: failingState,
+      }),
+    ).rejects.toThrow("conversation write failed");
+
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U123",
+        budgets,
+        conversationId,
+        nowMs: 3_000,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "acquired" });
+  });
+
+  it("keeps a user's extra conversation queued while other users can run", async () => {
+    const activeConversationId = "slack:C123:active-user";
+    const queuedConversationId = "slack:C123:queued-user";
+    const otherUserConversationId = "slack:C123:other-user";
+    const limits = {
+      active_conversations_global: 2,
+      active_conversations_user: 1,
+    };
+    await appendInboundMessage({
+      message: inboundMessage("active-user", {
+        conversationId: activeConversationId,
+      }),
+      nowMs: 1_000,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("queued-user", {
+        conversationId: queuedConversationId,
+      }),
+      nowMs: 1_000,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("other-user", {
+        conversationId: otherUserConversationId,
+        input: { authorId: "U456", text: "other user" },
+      }),
+      nowMs: 1_000,
+    });
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U123",
+        conversationId: activeConversationId,
+        budgets: limits,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "acquired" });
+
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U123",
+        conversationId: queuedConversationId,
+        budgets: limits,
+        nowMs: 2_001,
+      }),
+    ).resolves.toMatchObject({
+      budget: { name: "active_conversations_user" },
+      status: "limited",
+    });
+    await expect(
+      startConversationWork({
+        activeUserKey: "slack:T123:U456",
+        conversationId: otherUserConversationId,
+        budgets: limits,
+        nowMs: 2_002,
+      }),
+    ).resolves.toMatchObject({
+      activeConversationCount: 2,
+      activeUserConversationCount: 1,
+      status: "acquired",
+    });
   });
 
   it("reports lost lease after periodic check-in loses ownership", async () => {

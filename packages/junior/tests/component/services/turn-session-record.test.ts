@@ -729,7 +729,45 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("fails timeout sessions instead of scheduling beyond the execution limit", async () => {
+  it("adds current-slice totals when completing from summary-only resume state", async () => {
+    const {
+      listAgentTurnSessionSummariesForConversation,
+      recordAgentTurnSessionSummary,
+    } = await import("@/chat/state/turn-session");
+    const conversationId = "conversation-summary-totals";
+    const sessionId = "turn-summary-totals";
+
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 10 },
+      sessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      stepCount: 2,
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      currentDurationMs: 2_250,
+      currentUsage: { outputTokens: 7 },
+      sessionId,
+      sliceId: 2,
+      state: "completed",
+      stepCount: 3,
+    });
+
+    const summary = (
+      await listAgentTurnSessionSummariesForConversation(conversationId)
+    ).find((candidate) => candidate.sessionId === sessionId);
+    expect(summary).toMatchObject({
+      cumulativeDurationMs: 3_750,
+      cumulativeUsage: { inputTokens: 10, outputTokens: 7 },
+      state: "completed",
+      stepCount: 3,
+    });
+  });
+
+  it("fails timeout sessions after the cumulative runtime limit", async () => {
     const { persistContinuationSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { botConfig } = await import("@/chat/config");
@@ -748,11 +786,11 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: botConfig.maxSlicesPerTurn,
+      sliceId: 9,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
-      cumulativeDurationMs: 12_000,
+      cumulativeDurationMs: botConfig.budgets.turn_runtime - 3_000,
     });
 
     await expect(
@@ -761,16 +799,16 @@ describe("persistAuthPauseSessionRecord", () => {
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
-        currentSliceId: botConfig.maxSlicesPerTurn,
+        currentSliceId: 9,
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
       }),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: botConfig.maxSlicesPerTurn,
-      cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("execution limit"),
+      sliceId: 9,
+      cumulativeDurationMs: botConfig.budgets.turn_runtime,
+      errorMessage: expect.stringContaining("turn_runtime"),
       piMessages,
     });
 
@@ -778,9 +816,9 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: botConfig.maxSlicesPerTurn,
-      cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("execution limit"),
+      sliceId: 9,
+      cumulativeDurationMs: botConfig.budgets.turn_runtime,
+      errorMessage: expect.stringContaining("turn_runtime"),
       piMessages,
     });
   });

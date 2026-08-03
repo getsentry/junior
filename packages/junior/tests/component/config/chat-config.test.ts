@@ -392,9 +392,37 @@ describe("chat config", () => {
     );
   });
 
-  it("sets max slices per turn from core config", async () => {
+  it("uses default system budgets", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxSlicesPerTurn).toBe(100);
+    expect(botConfig.budgets).toEqual({
+      active_conversations_global: 100,
+      active_conversations_user: 5,
+      turn_runtime: 21_600_000,
+      turn_steps: 500,
+    });
+  });
+
+  it("reads conversation safety limit overrides", async () => {
+    process.env.JUNIOR_MAX_ACTIVE_CONVERSATIONS = "20";
+    process.env.JUNIOR_MAX_ACTIVE_CONVERSATIONS_PER_USER = "2";
+    process.env.JUNIOR_MAX_STEPS_PER_TURN = "750";
+    process.env.JUNIOR_MAX_TURN_RUNTIME_MS = "3600000";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.budgets).toEqual({
+      active_conversations_global: 20,
+      active_conversations_user: 2,
+      turn_runtime: 3_600_000,
+      turn_steps: 750,
+    });
+  });
+
+  it("rejects invalid conversation safety limits", async () => {
+    process.env.JUNIOR_MAX_ACTIVE_CONVERSATIONS = "0";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_MAX_ACTIVE_CONVERSATIONS must be a positive integer",
+    );
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

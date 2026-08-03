@@ -14,6 +14,10 @@ import {
   getSlackReactionConfig,
   setSlackReactionConfig,
 } from "@/chat/config";
+import {
+  describeBudgets,
+  type BudgetDescription,
+} from "@/chat/services/budgets";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -140,6 +144,7 @@ export interface JuniorDashboardOptions {
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
   pluginRoutes?: PluginApiRouteRegistration[];
+  systemBudgets?: BudgetDescription[];
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
@@ -509,6 +514,7 @@ function dashboardRouteRegistrations(args: {
       ...args.dashboard,
       agentName: botConfig.userName,
       pluginRoutes: args.pluginRoutes,
+      systemBudgets: describeBudgets(botConfig.budgets),
     });
     if (!app || typeof app.fetch !== "function") {
       throw new Error("createDashboardApp() must return an app with fetch()");

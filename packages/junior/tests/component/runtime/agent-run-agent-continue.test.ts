@@ -360,7 +360,7 @@ describe("agent continuation composition", () => {
     ]);
   });
 
-  it("throws terminal timeout failures instead of returning an error reply after the execution limit", async () => {
+  it("throws terminal timeout failures after the cumulative runtime limit", async () => {
     promptMode.value = "continueSettlesAfterAbort";
     const piMessages: PiMessage[] = [
       {
@@ -373,10 +373,11 @@ describe("agent continuation composition", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: botConfig.maxSlicesPerTurn,
+      sliceId: 2,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
+      cumulativeDurationMs: botConfig.budgets.turn_runtime - 10_000,
     });
 
     const replyPromise = executeAgentRun({
@@ -394,11 +395,11 @@ describe("agent continuation composition", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
 
-    const { TurnSliceLimitExceededError } =
-      await import("@/chat/services/turn-limit");
-    expect(error).toBeInstanceOf(TurnSliceLimitExceededError);
+    const { BudgetExceededError } = await import("@/chat/services/budgets");
+    expect(error).toBeInstanceOf(BudgetExceededError);
+    expect(error).toMatchObject({ budget: { name: "turn_runtime" } });
     expect(error).not.toHaveProperty("text");
-    expect(error.message).toContain("execution limit");
+    expect(error.message).toContain("turn_runtime");
 
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-timeout-cap",
@@ -407,8 +408,8 @@ describe("agent continuation composition", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: botConfig.maxSlicesPerTurn,
-      errorMessage: expect.stringContaining("execution limit"),
+      sliceId: 2,
+      errorMessage: expect.stringContaining("turn_runtime"),
     });
   });
 
