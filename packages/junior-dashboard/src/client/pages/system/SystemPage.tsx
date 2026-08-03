@@ -55,7 +55,7 @@ export function SystemPage(props: { data: SystemData }) {
   }
 
   return (
-    <SystemPageLayout plugins={plugins} reportingPlugins={reportingPlugins}>
+    <SystemPageLayout navigation={{ plugins, reportingPlugins }}>
       {plugin ? (
         <PluginSystemPage
           data={props.data}

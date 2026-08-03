@@ -33,6 +33,7 @@ import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
 import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
+import { emptySystemNavigationData } from "../src/client/pages/system/useSystemNavigationData";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
 const client = new QueryClient();
@@ -1140,7 +1141,11 @@ describe("dashboard canonical-event components", () => {
     };
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <LocationsPageContent data={data} error={new Error("refresh failed")} />
+        <LocationsPageContent
+          data={data}
+          error={new Error("refresh failed")}
+          navigation={emptySystemNavigationData}
+        />
       </MemoryRouter>,
     );
     expect(html).toContain("Location telemetry refresh failed");
@@ -1198,6 +1203,7 @@ describe("dashboard canonical-event components", () => {
         <LocationDetailPageContent
           data={detail}
           error={new Error("refresh failed")}
+          navigation={emptySystemNavigationData}
         />
       </MemoryRouter>,
     );

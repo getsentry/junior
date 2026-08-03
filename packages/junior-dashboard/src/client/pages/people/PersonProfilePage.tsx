@@ -24,6 +24,7 @@ import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
+import { useSystemNavigationData } from "../system/useSystemNavigationData";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -35,11 +36,12 @@ export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
   const query = useActorProfileData(email);
+  const navigation = useSystemNavigationData();
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
   return (
-    <SystemPageLayout>
+    <SystemPageLayout navigation={navigation}>
       {query.data ? (
         <Profile profile={query.data} />
       ) : (

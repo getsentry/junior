@@ -137,6 +137,31 @@ export function useLocationDetailData(locationId: string | undefined) {
   });
 }
 
+/** Fetch discovered skills used by System navigation and capability views. */
+export function useSkillsData() {
+  return useQuery({
+    queryKey: ["dashboard", "skills"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
+    retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
+  });
+}
+
+/** Fetch operational plugin reports used by System navigation and pages. */
+export function usePluginReportsData() {
+  return useQuery({
+    queryKey: ["dashboard", "plugin-reports"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        pluginOperationalReportFeedSchema,
+        "/api/plugin-reports",
+        signal,
+      ),
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -150,23 +175,8 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
-  const skillsQuery = useQuery({
-    queryKey: ["dashboard", "skills"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
-    retry: false,
-    staleTime: dashboardMetadataStaleTimeMs,
-  });
-  const pluginReportsQuery = useQuery({
-    queryKey: ["dashboard", "plugin-reports"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        pluginOperationalReportFeedSchema,
-        "/api/plugin-reports",
-        signal,
-      ),
-    retry: false,
-  });
+  const skillsQuery = useSkillsData();
+  const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
   return {
     data: dataReady

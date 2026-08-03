@@ -11,13 +11,13 @@ import {
 
 /** Render route-backed navigation for System activity and capabilities. */
 export function SystemNavigation(props: {
-  plugins?: SystemPlugin[];
-  reportingPlugins?: SystemPlugin[];
+  plugins: SystemPlugin[];
+  reportingPlugins: SystemPlugin[];
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const plugins = props.plugins ?? [];
-  const reportingPlugins = props.reportingPlugins ?? [];
+  const plugins = props.plugins;
+  const reportingPlugins = props.reportingPlugins;
   const currentPlugin = findSystemPlugin(location.pathname, plugins);
   const currentPluginHasReporting = reportingPlugins.some(
     (plugin) => plugin.name === currentPlugin?.name,

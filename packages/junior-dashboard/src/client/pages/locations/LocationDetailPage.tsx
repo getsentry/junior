@@ -15,25 +15,37 @@ import {
   peoplePath,
 } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
+import {
+  type SystemNavigationData,
+  useSystemNavigationData,
+} from "../system/useSystemNavigationData";
 import { LocationActivityChart } from "./LocationActivityChart";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
   const params = useParams();
   const query = useLocationDetailData(params.locationId);
-  return <LocationDetailPageContent data={query.data} error={query.error} />;
+  const navigation = useSystemNavigationData();
+  return (
+    <LocationDetailPageContent
+      data={query.data}
+      error={query.error}
+      navigation={navigation}
+    />
+  );
 }
 
 /** Render loaded, stale, failed, and loading public-location detail states. */
 export function LocationDetailPageContent(props: {
   data: LocationDetailReport | undefined;
   error: unknown;
+  navigation: SystemNavigationData;
 }) {
   if (!props.data && !props.error) {
     return <LoadingView label="Loading location" />;
   }
   return (
-    <SystemPageLayout>
+    <SystemPageLayout navigation={props.navigation}>
       {props.error ? (
         <Card padding="sm">
           <EmptyTelemetry>
