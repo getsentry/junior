@@ -37,7 +37,8 @@
     "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm lint-staged"
+    "pre-commit": "pnpm lint-staged",
+    "pre-push": "pnpm lint"
   },
   "lint-staged": {
     "packages/junior-dashboard/src/**/*.{ts,tsx}": "pnpm --filter @sentry/junior-dashboard lint",

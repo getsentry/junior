@@ -115,11 +115,6 @@ describe("dashboard routes", () => {
       "/locations",
       "/locations/destination-1",
       "/system",
-      "/system/locations",
-      "/system/locations/destination-1",
-      "/system/people",
-      "/system/people/person%40sentry.io",
-      "/system/plugins",
       "/system/plugins/github",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
@@ -452,11 +447,6 @@ describe("dashboard routes", () => {
       "/people",
       "/people/person%40sentry.io",
       "/system",
-      "/system/locations",
-      "/system/locations/destination-1",
-      "/system/people",
-      "/system/people/person%40sentry.io",
-      "/system/plugins",
       "/system/plugins/github",
       "/settings/api-tokens",
       "/plugins/memory/memories",

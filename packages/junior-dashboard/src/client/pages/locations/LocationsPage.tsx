@@ -16,7 +16,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
+import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
