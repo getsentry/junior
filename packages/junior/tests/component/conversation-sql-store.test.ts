@@ -92,8 +92,16 @@ describe("conversation SQL store", () => {
           teamId: "T123",
         },
         source: "slack",
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
         title: "SQL conversation store",
         nowMs: 3_000,
+        visibility: "public",
       });
 
       const conversations = await store.listByActivity({
@@ -107,6 +115,13 @@ describe("conversation SQL store", () => {
             platform: "slack",
             teamId: "T123",
             channelId: "C123",
+          },
+          location: {
+            provider: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
+            visibility: "public",
           },
           actor: {
             platform: "slack",
@@ -194,12 +209,58 @@ describe("conversation SQL store", () => {
           teamId: "T123",
           channelId: "C123",
         },
+        location: {
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+          visibility: "public",
+        },
         actor: {
           platform: "slack",
           teamId: "T123",
           slackUserId: "U123",
         },
       });
+
+      const localConversationId = "local:test:location";
+      await store.recordActivity({
+        conversationId: localConversationId,
+        destination: {
+          platform: "local",
+          conversationId: localConversationId,
+        },
+        nowMs: 4_000,
+        sessionSource: {
+          platform: "local",
+          visibility: "private",
+          conversationId: localConversationId,
+        },
+        source: "local",
+        visibility: "private",
+      });
+      const localConversation = await store.get({
+        conversationId: localConversationId,
+      });
+      expect(localConversation).toBeDefined();
+      expect(localConversation).not.toHaveProperty("location");
+
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          sessionSource: {
+            platform: "slack",
+            visibility: "public",
+            teamId: "T123",
+            channelId: "C999",
+            threadTs: "1700000000.000100",
+          },
+        })
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).rejects.toThrow("Conversation Slack location is inconsistent");
     } finally {
       await fixture.close();
     }

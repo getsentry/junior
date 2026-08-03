@@ -6,6 +6,7 @@ import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
+import { locationFromConversation } from "@/chat/location";
 import {
   normalizeSessionSource,
   parseSessionSource,
@@ -328,6 +329,11 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
   };
+  const location = locationFromConversation({
+    destination,
+    source: sessionSource,
+    visibility,
+  });
 
   return {
     schemaVersion: 1,
@@ -344,6 +350,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
         }
       : {}),
     ...(destination ? { destination } : {}),
+    ...(location ? { location } : {}),
     ...(actor ? { actor } : {}),
     ...(msFromDate(row.archivedAt) !== undefined
       ? { archivedAtMs: msFromDate(row.archivedAt) }

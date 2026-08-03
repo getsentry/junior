@@ -2,6 +2,17 @@
 
 This module owns Junior's durable conversation record, search, and retention.
 
+## Location Read Model
+
+`Conversation.location` is the provider-location read model for new code. A
+Slack location combines the stable thread anchor from `sessionSource` with the
+provider identity and current visibility represented by the linked destination.
+Local conversations have no provider location.
+
+During the destination cutover, `destination` and `sessionSource` remain the
+durable compatibility fields. Reads reject contradictory Slack team or channel
+coordinates instead of guessing which field is authoritative.
+
 ## Storage Model
 
 `junior_conversation_events` is the only transcript/history table. Every row
