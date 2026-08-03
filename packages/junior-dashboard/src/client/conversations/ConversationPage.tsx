@@ -80,7 +80,7 @@ export function ConversationPage(props: {
       <section className="min-w-0">
         <Card className="relative mb-3 grid gap-2 border-white/[0.07] bg-white/[0.025] p-3 md:mb-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-3 md:p-5">
           <div className="min-w-0">
-            <div className="mb-1 hidden font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65 md:mb-2 md:block">
+            <div className="mb-1 hidden font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65 md:mb-2 md:block">
               Conversation
             </div>
             <div className="min-w-0">
@@ -88,7 +88,7 @@ export function ConversationPage(props: {
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
-            <div className="mt-1.5 min-w-0 font-mono text-[0.68rem] leading-snug text-dashboard-text-muted md:mt-2">
+            <div className="mt-1.5 min-w-0 font-mono text-xs leading-snug text-dashboard-text-muted md:mt-2">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
@@ -96,7 +96,7 @@ export function ConversationPage(props: {
               />
             </div>
           </div>
-          <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-3 gap-y-2 self-start font-mono text-[0.65rem] leading-snug text-dashboard-text-muted md:flex-col md:items-end md:text-right">
+          <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-3 gap-y-2 self-start font-mono text-xs leading-snug text-dashboard-text-muted md:flex-col md:items-end md:text-right">
             <div className="break-words">
               updated{" "}
               {formatRelativeTime(
@@ -473,7 +473,7 @@ function ConversationStats(props: {
   return (
     <div className="col-span-full mt-1 hidden border-t border-white/[0.07] pt-3 md:block">
       <MetricList
-        className="break-words text-[0.72rem] leading-[1.5] text-dashboard-text-muted"
+        className="break-words text-xs leading-[1.5] text-dashboard-text-muted"
         items={stats}
       />
     </div>

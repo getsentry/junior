@@ -33,7 +33,7 @@ export function ConversationSidebar(props: {
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
-        <div className="mb-2 flex items-center gap-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+        <div className="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
           <MessageSquareText aria-hidden="true" size={13} />
           Your trail
         </div>
@@ -41,7 +41,7 @@ export function ConversationSidebar(props: {
           <h2 className="m-0 font-display text-xl font-medium leading-tight text-dashboard-text">
             Conversations
           </h2>
-          <div className="rounded border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-[0.62rem] text-dashboard-text-muted">
+          <div className="rounded border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-xs text-dashboard-text-muted">
             {props.loading ? "…" : props.conversations.length}
           </div>
         </div>
@@ -154,7 +154,7 @@ function ConversationSidebarRow(props: {
             {title}
           </div>
         </div>
-        <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.62rem] leading-tight text-dashboard-text-muted">
+        <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-xs leading-tight text-dashboard-text-muted">
           <span className="shrink-0">
             {formatRelativeTime(props.conversation.lastSeenAt)}
           </span>

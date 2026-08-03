@@ -139,19 +139,19 @@ export function ProfileMenu({
       >
         <span className="hidden items-center gap-2 sm:flex">
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-[0.58rem] font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <span className="text-xs font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
               7d
             </span>
-            <span className="text-[0.72rem] font-semibold text-dashboard-text">
+            <span className="text-xs font-semibold text-dashboard-text">
               {sevenDaySpend}
             </span>
           </span>
           <span aria-hidden="true" className="h-3 w-px bg-white/10" />
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-[0.58rem] font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <span className="text-xs font-medium uppercase tracking-[0.1em] text-dashboard-text-muted">
               30d
             </span>
-            <span className="text-[0.72rem] font-semibold text-dashboard-text">
+            <span className="text-xs font-semibold text-dashboard-text">
               {thirtyDaySpend}
             </span>
           </span>

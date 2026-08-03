@@ -10,6 +10,8 @@
   --font-mono:
     "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1rem;
   --color-dashboard-text: #f4f4f5;
   --color-dashboard-text-muted: #a1a1aa;
   --color-dashboard-surface-panel: #09090b;
