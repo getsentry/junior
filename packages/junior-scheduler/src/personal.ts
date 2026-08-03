@@ -89,12 +89,7 @@ export function createViewerScheduledTasks(
       if (
         !task ||
         task.status === "deleted" ||
-        (task.creatorUserId !== user.id &&
-          !(
-            !task.creatorUserId &&
-            task.creatorIdentityId &&
-            identityIds.has(task.creatorIdentityId)
-          ))
+        !identityIds.has(task.creatorIdentityId)
       ) {
         throw new PersonalScheduledTaskNotFoundError();
       }

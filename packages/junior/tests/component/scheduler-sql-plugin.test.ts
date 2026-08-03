@@ -519,7 +519,8 @@ INSERT INTO junior_scheduler_tasks (
           createdAtMs: TEST_RUN_AT_MS + 300,
           createdBy: { slackUserId: "U999" },
           creatorIdentityId: "identity-other",
-          creatorUserId: "user-other",
+          // A stale or incorrect listing projection must not grant ownership.
+          creatorUserId: "user-viewer",
           id: "sched_other_creator",
         }),
       );

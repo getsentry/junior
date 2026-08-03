@@ -232,14 +232,7 @@ function listCreatedTasks(
   const identityIds = new Set(input.identityIds);
   const query = normalizedTaskQuery(input.query);
   return tasks
-    .filter(
-      (task) =>
-        task.creatorUserId === input.userId ||
-        (!task.creatorUserId &&
-          Boolean(
-            task.creatorIdentityId && identityIds.has(task.creatorIdentityId),
-          )),
-    )
+    .filter((task) => identityIds.has(task.creatorIdentityId))
     .filter((task) => !query || taskMatchesQuery(task, query))
     .sort(
       (left, right) =>
@@ -1264,6 +1257,7 @@ async function listTasksCreatedByFromSql(
   db: SchedulerDb,
   input: ListTasksCreatedByInput,
 ): Promise<ScheduledTask[]> {
+  if (input.identityIds.length === 0) return [];
   const query = normalizedTaskQuery(input.query);
   const tasks: ScheduledTask[] = [];
   let before = input.before;
@@ -1286,14 +1280,14 @@ async function listTasksCreatedByFromSql(
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
         )
       : undefined;
-    const owners = [eq(juniorSchedulerTasks.creatorUserId, input.userId)];
-    if (input.identityIds.length > 0) {
-      const identityOwner = and(
-        isNull(juniorSchedulerTasks.creatorUserId),
-        inArray(juniorSchedulerTasks.creatorIdentityId, input.identityIds),
-      );
-      if (identityOwner) owners.push(identityOwner);
-    }
+    const identityOwner = inArray(
+      juniorSchedulerTasks.creatorIdentityId,
+      input.identityIds,
+    );
+    const owners = [
+      and(eq(juniorSchedulerTasks.creatorUserId, input.userId), identityOwner),
+      and(isNull(juniorSchedulerTasks.creatorUserId), identityOwner),
+    ].filter((owner) => owner !== undefined);
     const pages = await Promise.all(
       owners.map((owner) =>
         db

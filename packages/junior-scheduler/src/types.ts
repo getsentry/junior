@@ -69,7 +69,9 @@ export interface ScheduledTask {
   id: string;
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
+  /** Authoritative provider identity that created the task. */
   creatorIdentityId: string;
+  /** Denormalized linked-user projection used only for ordered SQL listing. */
   creatorUserId?: string;
   conversationAccess: ScheduledTaskConversationAccess;
   /** Selects system credentials or task-bound creator credential delegation. */
