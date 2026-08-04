@@ -194,19 +194,19 @@ async function buildThread(args: {
   route: SlackConversationRoute;
   state: StateAdapter;
   threadId?: string;
-  providerThreadId?: string;
+  slackThreadId?: string;
 }): Promise<ThreadImpl> {
   const threadId = args.threadId ?? normalizeMessageThreadId(args.message);
-  const providerThreadId = args.providerThreadId ?? threadId;
+  const slackThreadId = args.slackThreadId ?? threadId;
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
     id: threadId,
-    channelId: args.adapter.channelIdFromThreadId(providerThreadId),
-    channelVisibility: args.adapter.getChannelVisibility(providerThreadId),
+    channelId: args.adapter.channelIdFromThreadId(slackThreadId),
+    channelVisibility: args.adapter.getChannelVisibility(slackThreadId),
     currentMessage: args.message,
     initialMessage: args.message,
-    isDM: args.adapter.isDM(providerThreadId),
+    isDM: args.adapter.isDM(slackThreadId),
     isSubscribedContext: args.route === "subscribed",
   });
 }
@@ -230,15 +230,18 @@ async function resolveSlackConversationId(args: {
 }): Promise<string> {
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
-  if (!providerThread || !conversationStore.getConversationIdByProviderThread) {
+  if (
+    !providerThread ||
+    !conversationStore.getConversationIdByProviderConversation
+  ) {
     return args.canonicalThreadId;
   }
   return (
-    (await conversationStore.getConversationIdByProviderThread({
+    (await conversationStore.getConversationIdByProviderConversation({
       provider: "slack",
       providerDestinationId: providerThread.channelId,
       providerTenantId: args.installation.teamId ?? "",
-      providerThreadId: providerThread.threadTs,
+      providerConversationId: providerThread.threadTs,
     })) ?? args.canonicalThreadId
   );
 }
@@ -271,7 +274,7 @@ async function persistSlackMessage(args: {
   const thread = await buildThread({
     ...args,
     threadId: conversationId,
-    providerThreadId: canonicalThreadId,
+    slackThreadId: canonicalThreadId,
   });
   const inbound = buildSlackInboundMessage({
     conversationId,

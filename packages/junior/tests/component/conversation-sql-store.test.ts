@@ -31,7 +31,7 @@ import {
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
-  it("binds one provider thread to an existing durable conversation", async () => {
+  it("binds one provider conversation to an existing durable conversation", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -43,37 +43,52 @@ describe("conversation SQL store", () => {
         nowMs: 1_000,
       });
 
-      await store.bindProviderThread({
+      await store.bindProviderConversation({
         conversationId: "agent-dispatch:dispatch-1",
         provider: "slack",
         providerDestinationId: "C123",
         providerTenantId: "T123",
-        providerThreadId: "1700000000.100000",
+        providerConversationId: "1700000000.100000",
       });
 
       await expect(
-        store.getConversationIdByProviderThread({
+        store.getConversationIdByProviderConversation({
           provider: "slack",
           providerDestinationId: "C123",
           providerTenantId: "T123",
-          providerThreadId: "1700000000.100000",
+          providerConversationId: "1700000000.100000",
         }),
       ).resolves.toBe("agent-dispatch:dispatch-1");
       await expect(
-        store.bindProviderThread({
+        store.bindProviderConversation({
           conversationId: "agent-dispatch:dispatch-1",
           provider: "slack",
           providerDestinationId: "C123",
           providerTenantId: "T123",
-          providerThreadId: "1700000000.100000",
+          providerConversationId: "1700000000.100000",
         }),
       ).resolves.toBeUndefined();
+      await store.bindProviderConversation({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: "1700000000.200000",
+      });
+      await expect(
+        store.getConversationIdByProviderConversation({
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerConversationId: "1700000000.200000",
+        }),
+      ).resolves.toBe("agent-dispatch:dispatch-1");
     } finally {
       await fixture.close();
     }
   });
 
-  it("rejects provider thread rebinding to another conversation", async () => {
+  it("rejects provider conversation rebinding to another conversation", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -89,21 +104,21 @@ describe("conversation SQL store", () => {
           nowMs: 1_000,
         });
       }
-      await store.bindProviderThread({
+      await store.bindProviderConversation({
         conversationId: "agent-dispatch:dispatch-1",
         provider: "slack",
         providerDestinationId: "C123",
         providerTenantId: "T123",
-        providerThreadId: "1700000000.100000",
+        providerConversationId: "1700000000.100000",
       });
 
       await expect(
-        store.bindProviderThread({
+        store.bindProviderConversation({
           conversationId: "agent-dispatch:dispatch-2",
           provider: "slack",
           providerDestinationId: "C123",
           providerTenantId: "T123",
-          providerThreadId: "1700000000.100000",
+          providerConversationId: "1700000000.100000",
         }),
       ).rejects.toThrow("already bound to another conversation");
     } finally {

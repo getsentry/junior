@@ -493,11 +493,11 @@ function updateConversationUsage(args: {
 export class SqlStore implements ConversationStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
-  async getConversationIdByProviderThread(args: {
-    provider: "slack";
+  async getConversationIdByProviderConversation(args: {
+    provider: string;
     providerDestinationId: string;
     providerTenantId: string;
-    providerThreadId: string;
+    providerConversationId: string;
   }): Promise<string | undefined> {
     const rows = await this.executor
       .db()
@@ -514,19 +514,22 @@ export class SqlStore implements ConversationStore {
             juniorConversationBindings.providerDestinationId,
             args.providerDestinationId,
           ),
-          eq(juniorConversationBindings.providerThreadId, args.providerThreadId),
+          eq(
+            juniorConversationBindings.providerConversationId,
+            args.providerConversationId,
+          ),
         ),
       )
       .limit(1);
     return rows[0]?.conversationId;
   }
 
-  async bindProviderThread(args: {
+  async bindProviderConversation(args: {
     conversationId: string;
-    provider: "slack";
+    provider: string;
     providerDestinationId: string;
     providerTenantId: string;
-    providerThreadId: string;
+    providerConversationId: string;
   }): Promise<void> {
     const rows = await this.executor
       .db()
@@ -536,9 +539,11 @@ export class SqlStore implements ConversationStore {
       .returning({ conversationId: juniorConversationBindings.conversationId });
     const boundConversationId =
       rows[0]?.conversationId ??
-      (await this.getConversationIdByProviderThread(args));
+      (await this.getConversationIdByProviderConversation(args));
     if (boundConversationId !== args.conversationId) {
-      throw new Error("Provider thread is already bound to another conversation");
+      throw new Error(
+        "Provider conversation is already bound to another conversation",
+      );
     }
   }
 

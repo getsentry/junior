@@ -67,20 +67,20 @@ export interface Conversation {
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
-  /** Resolve the durable conversation bound to one provider thread. */
-  getConversationIdByProviderThread?(args: {
-    provider: "slack";
+  /** Resolve the durable conversation bound to one provider conversation. */
+  getConversationIdByProviderConversation?(args: {
+    provider: string;
     providerDestinationId: string;
     providerTenantId: string;
-    providerThreadId: string;
+    providerConversationId: string;
   }): Promise<string | undefined>;
-  /** Bind one provider thread to its pre-existing durable conversation. */
-  bindProviderThread?(args: {
+  /** Bind one provider conversation to its pre-existing durable conversation. */
+  bindProviderConversation?(args: {
     conversationId: string;
-    provider: "slack";
+    provider: string;
     providerDestinationId: string;
     providerTenantId: string;
-    providerThreadId: string;
+    providerConversationId: string;
   }): Promise<void>;
   /** Read confirmed public/private visibility for one destination. */
   getDestinationVisibility(args: {
