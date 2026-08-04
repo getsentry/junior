@@ -184,24 +184,22 @@ export async function persistRunningSessionRecord(args: {
     });
     return true;
   } catch (recordError) {
-    // Permanent history-shape failures must not collapse into false →
-    // TurnInputCommitLost → lost_lease recovery, which requeues forever.
+    // Boundary mismatch is permanent for this attempt's message shape. Log it
+    // distinctly, but still return false: the poison-turn farm is stopped by
+    // treating already-checkpointed running turns as resume (no rebuild /
+    // recheckpoint), not by failing closed here. Handoff/compaction follow-ups
+    // and no-checkpoint resume still rely on false when no mailbox ack is
+    // pending.
     const message =
       recordError instanceof Error ? recordError.message : String(recordError);
-    if (message.includes("changed before its committed boundary")) {
-      logSessionRecordError(
-        recordError,
-        "agent.turn.running_session_record.boundary_mismatch",
-        args,
-        {
-          "app.ai.resume_slice_id": args.sliceId,
-        },
-      );
-      throw recordError;
-    }
+    const boundaryMismatch = message.includes(
+      "changed before its committed boundary",
+    );
     logSessionRecordError(
       recordError,
-      "agent.turn.running_session_record.failed",
+      boundaryMismatch
+        ? "agent.turn.running_session_record.boundary_mismatch"
+        : "agent.turn.running_session_record.failed",
       args,
       {
         "app.ai.resume_slice_id": args.sliceId,

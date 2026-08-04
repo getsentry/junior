@@ -9,6 +9,7 @@ export {
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
+  CONVERSATION_WORK_MAX_EMPTY_WAKES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   isFinalAttempt,
   isInvalidConversationRecordError,
@@ -451,6 +452,32 @@ export async function completeConversationWork(args: {
   const result = await workState.completeConversationWork(args);
   await recordExecutionMetadata(args);
   return result;
+}
+
+/** Record one empty wake with no mailbox progress before fail-closed. */
+export async function recordEmptyWakeFailure(args: {
+  conversationId: string;
+  leaseToken: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.recordEmptyWakeFailure(args);
+  if (result.status === "recorded") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
+/** Clear empty-wake streak after durable progress. */
+export async function clearEmptyWakeCount(args: {
+  conversationId: string;
+  leaseToken?: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  return await workState.clearEmptyWakeCount(args);
 }
 
 /** Record one failed delivery attempt and dead-letter messages at their limit. */

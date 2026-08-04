@@ -117,7 +117,10 @@ import { z } from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import {
+  getAgentTurnSessionRecord,
+  upsertAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 
@@ -313,15 +316,12 @@ describe("plugin prompt hook composition", () => {
       }),
     ).rejects.toBeInstanceOf(TurnInputCommitLostError);
 
+    // Prompt is already owned by the still-running record. Redelivery continues
+    // that history instead of rebuilding / re-running user-prompt hooks.
     await executeAgentRun(request);
 
     expect(recallCount).toBe(1);
-    expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "Use pnpm snapshot 1.",
-    );
-    expect(JSON.stringify(captured.promptMessages[0])).not.toContain(
-      "Use pnpm snapshot 2.",
-    );
+    expect(captured.promptMessages).toEqual([]);
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
       `turn:${turnId}:context:memory:0`,
@@ -332,6 +332,16 @@ describe("plugin prompt hook composition", () => {
         memories: [{ id: "memory-1", content: "Use pnpm snapshot 1." }],
       },
     });
+    const session = await getAgentTurnSessionRecord(
+      LOCAL_DESTINATION.conversationId,
+      turnId,
+    );
+    expect(JSON.stringify(session?.piMessages)).toContain(
+      "Use pnpm snapshot 1.",
+    );
+    expect(JSON.stringify(session?.piMessages)).not.toContain(
+      "Use pnpm snapshot 2.",
+    );
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {

@@ -60,6 +60,8 @@ export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 export const CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS = 5;
+/** Empty continue/lost-lease wakes with no mailbox progress before fail-closed. */
+export const CONVERSATION_WORK_MAX_EMPTY_WAKES = 5;
 
 const inboundMessageSourceSchema = z.enum([
   "api",
@@ -127,6 +129,8 @@ export interface Lease {
 }
 
 export interface ConversationExecution {
+  /** Consecutive empty wakes (no mailbox attempt) that made no durable progress. */
+  emptyWakeCount?: number;
   inboundMessageIds: string[];
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
@@ -432,6 +436,7 @@ function normalizeExecution(
     pendingCount: pendingMessages.length,
     pendingMessages,
     lease,
+    emptyWakeCount: toOptionalNumber(value.emptyWakeCount),
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     runId: toOptionalString(value.runId),
@@ -1138,6 +1143,8 @@ export async function appendInboundMessage(args: {
           next,
           {
             ...current.execution,
+            // Fresh mailbox work resets the empty-wake poison budget.
+            emptyWakeCount: undefined,
             status,
             inboundMessageIds: [
               ...current.execution.inboundMessageIds,
@@ -1741,11 +1748,101 @@ export async function completeConversationWork(args: {
   });
 }
 
+/**
+ * Record one empty wake that made no mailbox progress (continue / lost-lease
+ * recovery with nothing to ack). Caps poison requeue farms that bypass the
+ * per-message delivery attempt counter.
+ */
+export async function recordEmptyWakeFailure(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AttemptFailure> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return {
+        status: "lost_lease",
+        pendingCount: 0,
+        deadLetteredMessages: [],
+      };
+    }
+    const emptyWakeCount = (current.execution.emptyWakeCount ?? 0) + 1;
+    const terminal = emptyWakeCount >= CONVERSATION_WORK_MAX_EMPTY_WAKES;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          emptyWakeCount,
+          ...(terminal
+            ? {
+                lease: undefined,
+                status: pendingMessages(current).length > 0 ? "pending" : "failed",
+              }
+            : {}),
+        },
+        nowMs,
+      ),
+    );
+    return {
+      status: "recorded",
+      pendingCount: current.execution.pendingMessages.length,
+      deadLetteredMessages: [],
+      ...(terminal ? { terminal: true as const } : {}),
+    };
+  });
+}
+
+/** Clear empty-wake streak after durable progress (ack, complete, new work). */
+export async function clearEmptyWakeCount(args: {
+  conversationId: string;
+  leaseToken?: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return false;
+    }
+    if (
+      args.leaseToken !== undefined &&
+      current.execution.lease?.token !== args.leaseToken
+    ) {
+      return false;
+    }
+    if ((current.execution.emptyWakeCount ?? 0) === 0) {
+      return true;
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          emptyWakeCount: undefined,
+        },
+        nowMs,
+      ),
+    );
+    return true;
+  });
+}
+
 /** Failure outcome: `lost_lease` (another owner took over), `recorded` (attempt counted), or `skipped` (durable progress was made). */
 export interface AttemptFailure {
   pendingCount: number;
   deadLetteredMessages: InboundMessage[];
   status: "lost_lease" | "recorded" | "skipped";
+  /** True when empty-wake failures hit the fail-closed ceiling. */
+  terminal?: boolean;
 }
 
 /**

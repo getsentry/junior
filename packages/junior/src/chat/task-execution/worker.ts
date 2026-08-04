@@ -14,6 +14,7 @@ import {
   beginConversationResume,
   checkInConversationWork,
   clearConsumedConversationWake,
+  clearEmptyWakeCount,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   countPendingConversationMessages,
@@ -24,6 +25,7 @@ import {
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
+  recordEmptyWakeFailure,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
@@ -120,13 +122,37 @@ function nudgeIdempotencyKey(
   return `${reason}:${conversationId}:${nowMs}`;
 }
 
+/**
+ * Requeue after lease loss. Empty wakes (no mailbox attempt) count toward
+ * CONVERSATION_WORK_MAX_EMPTY_WAKES so poison continue loops fail closed.
+ */
 async function requestLostLeaseRecovery(args: {
   conversationId: string;
   destination: Destination;
+  /** True when this wake had no mailbox messages to attempt. */
+  emptyWake: boolean;
   leaseToken: string;
   nowMs: number;
   options: ProcessConversationWorkOptions;
-}): Promise<void> {
+}): Promise<"requeued" | "terminal" | "skipped"> {
+  if (args.emptyWake) {
+    const emptyFailure = await recordEmptyWakeFailure({
+      conversationId: args.conversationId,
+      leaseToken: args.leaseToken,
+      nowMs: args.nowMs,
+      state: args.options.state,
+    });
+    if (emptyFailure.status === "lost_lease") {
+      return "skipped";
+    }
+    if (emptyFailure.terminal) {
+      logWarn("conversation.work.empty_wake.terminal", {
+        "app.conversation.empty_wake_count": "max",
+      });
+      return "terminal";
+    }
+  }
+
   const resumeRequested = await requestConversationContinuation({
     conversationId: args.conversationId,
     destination: args.destination,
@@ -136,7 +162,7 @@ async function requestLostLeaseRecovery(args: {
     state: args.options.state,
   });
   if (!resumeRequested) {
-    return;
+    return "skipped";
   }
   const released = await releaseConversationWork({
     conversationId: args.conversationId,
@@ -146,7 +172,7 @@ async function requestLostLeaseRecovery(args: {
     state: args.options.state,
   });
   if (!released) {
-    return;
+    return "skipped";
   }
   await ensureConversationWake({
     conversationId: args.conversationId,
@@ -161,6 +187,7 @@ async function requestLostLeaseRecovery(args: {
     replaceExistingWake: true,
     state: args.options.state,
   });
+  return "requeued";
 }
 
 /**
@@ -434,14 +461,17 @@ async function processConversationWorkInContext(
         leaseLost
       ) {
         markLeaseLost();
-        await requestLostLeaseRecovery({
+        const recovery = await requestLostLeaseRecovery({
           conversationId,
           destination,
+          emptyWake: true,
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
         });
-        return { status: "lost_lease" };
+        return {
+          status: recovery === "terminal" ? "failed" : "lost_lease",
+        };
       }
 
       const resumePending = leasedWork.execution.status === "awaiting_resume";
@@ -467,14 +497,17 @@ async function processConversationWorkInContext(
         });
         if (!resumeStarted) {
           markLeaseLost();
-          await requestLostLeaseRecovery({
+          const recovery = await requestLostLeaseRecovery({
             conversationId,
             destination,
+            emptyWake: true,
             leaseToken: lease.leaseToken,
             nowMs: now(options),
             options,
           });
-          return { status: "lost_lease" };
+          return {
+            status: recovery === "terminal" ? "failed" : "lost_lease",
+          };
         }
       }
 
@@ -517,25 +550,40 @@ async function processConversationWorkInContext(
 
       const result = await options.run(workerContext);
       hasRun = true;
+      const emptyWake = attemptMessageIds.length === 0;
       if (result.status === "lost_lease") {
-        await requestLostLeaseRecovery({
+        const recovery = await requestLostLeaseRecovery({
           conversationId,
           destination,
+          emptyWake,
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
         });
-        return { status: "lost_lease" };
+        return {
+          status: recovery === "terminal" ? "failed" : "lost_lease",
+        };
       }
       if (leaseLost) {
-        await requestLostLeaseRecovery({
+        const recovery = await requestLostLeaseRecovery({
           conversationId,
           destination,
+          emptyWake,
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
         });
-        return { status: "lost_lease" };
+        return {
+          status: recovery === "terminal" ? "failed" : "lost_lease",
+        };
+      }
+      if (!emptyWake) {
+        await clearEmptyWakeCount({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          state: options.state,
+        });
       }
       if (result.status === "yielded") {
         const resumeRequested = await requestConversationContinuation({
@@ -622,6 +670,36 @@ async function processConversationWorkInContext(
       ) {
         break;
       }
+      // Continue/resume wakes with nothing left to ack must not loop forever.
+      if (attemptMessageIds.length === 0) {
+        const emptyFailure = await recordEmptyWakeFailure({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (emptyFailure.status === "lost_lease") {
+          return { status: "lost_lease" };
+        }
+        if (emptyFailure.terminal) {
+          logWarn("conversation.work.empty_wake.terminal", {
+            "app.conversation.empty_wake_count": "max",
+          });
+          return { status: "failed" };
+        }
+        const resumeRequested = await requestConversationContinuation({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (!resumeRequested) {
+          return { status: "lost_lease" };
+        }
+        return await yieldWork();
+      }
     }
 
     const completion = await completeConversationWork({
@@ -653,6 +731,12 @@ async function processConversationWorkInContext(
         : { status: "completed" };
     }
 
+    // Lease may already be released by completeConversationWork.
+    await clearEmptyWakeCount({
+      conversationId,
+      nowMs: now(options),
+      state: options.state,
+    });
     logInfo("conversation.work.completed", {
       "app.worker.elapsed_ms": now(options) - startedAtMs,
     });
@@ -684,28 +768,47 @@ async function processConversationWorkInContext(
           state: options.state,
         });
       } else {
-        const resumeRequested = await requestConversationContinuation({
-          conversationId,
-          destination,
-          leaseToken: lease.leaseToken,
-          conversationStore: options.conversationStore,
-          nowMs: errorNowMs,
-          state: options.state,
-        });
-        if (resumeRequested) {
-          await ensureConversationWake({
+        let skipWake = false;
+        if (attemptMessageIds.length === 0) {
+          const emptyFailure = await recordEmptyWakeFailure({
             conversationId,
-            conversationStore: options.conversationStore,
-            idempotencyKey: nudgeIdempotencyKey(
-              "error",
-              conversationId,
-              errorNowMs,
-            ),
+            leaseToken: lease.leaseToken,
             nowMs: errorNowMs,
-            queue: options.queue,
-            replaceExistingWake: true,
             state: options.state,
           });
+          if (emptyFailure.status === "lost_lease") {
+            skipWake = true;
+          } else if (emptyFailure.terminal) {
+            logWarn("conversation.work.empty_wake.terminal", {
+              "app.conversation.empty_wake_count": "max",
+            });
+            skipWake = true;
+          }
+        }
+        if (!skipWake) {
+          const resumeRequested = await requestConversationContinuation({
+            conversationId,
+            destination,
+            leaseToken: lease.leaseToken,
+            conversationStore: options.conversationStore,
+            nowMs: errorNowMs,
+            state: options.state,
+          });
+          if (resumeRequested) {
+            await ensureConversationWake({
+              conversationId,
+              conversationStore: options.conversationStore,
+              idempotencyKey: nudgeIdempotencyKey(
+                "error",
+                conversationId,
+                errorNowMs,
+              ),
+              nowMs: errorNowMs,
+              queue: options.queue,
+              replaceExistingWake: true,
+              state: options.state,
+            });
+          }
         }
         await releaseConversationWork({
           conversationId,

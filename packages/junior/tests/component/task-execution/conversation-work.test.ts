@@ -13,6 +13,7 @@ import {
   completeConversationWork,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
+  CONVERSATION_WORK_MAX_EMPTY_WAKES,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
@@ -1291,12 +1292,81 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(state?.lastEnqueuedAtMs).toBe(2_000);
+    // Pending mailbox work is not an empty wake — do not burn the empty-wake budget.
+    expect(state?.execution.emptyWakeCount).toBeUndefined();
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `lost_lease:${CONVERSATION_ID}:2000`,
       },
     ]);
+  });
+
+  it("fails closed after consecutive empty continue wakes without mailbox progress", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    // Seed an awaiting_resume conversation with no pending mailbox messages —
+    // the poison continue / lost_lease farm path.
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+    });
+    const started = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 1_000,
+    });
+    expect(started.status).toBe("acquired");
+    if (started.status !== "acquired") return;
+    await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        leaseToken: started.leaseToken,
+        nowMs: 1_000,
+      }),
+    ).resolves.toBe(true);
+    await releaseConversationWork({
+      conversationId: CONVERSATION_ID,
+      leaseToken: started.leaseToken,
+      nowMs: 1_000,
+    });
+
+    for (let attempt = 0; attempt < CONVERSATION_WORK_MAX_EMPTY_WAKES; attempt++) {
+      currentNowMs = 2_000 + attempt;
+      const result = await processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => {
+          currentNowMs += 1;
+          return { status: "lost_lease" };
+        },
+      });
+      if (attempt < CONVERSATION_WORK_MAX_EMPTY_WAKES - 1) {
+        expect(result).toEqual({ status: "lost_lease" });
+      } else {
+        expect(result).toEqual({ status: "failed" });
+      }
+    }
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.execution.emptyWakeCount).toBe(
+      CONVERSATION_WORK_MAX_EMPTY_WAKES,
+    );
+    expect(state?.execution.status).toBe("failed");
+    expect(state?.lease).toBeUndefined();
+    // Final terminal wake must not schedule another recovery nudge.
+    expect(
+      queue
+        .sentRecords()
+        .filter((record) =>
+          (record.idempotencyKey ?? "").startsWith(
+            `lost_lease:${CONVERSATION_ID}:`,
+          ),
+        ),
+    ).toHaveLength(CONVERSATION_WORK_MAX_EMPTY_WAKES - 1);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
