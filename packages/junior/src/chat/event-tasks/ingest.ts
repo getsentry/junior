@@ -123,6 +123,7 @@ export async function ingestEventTasks(
           destination: task.destination,
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event),
+          metadata: { eventTaskId: task.id },
           replyAttribution: replyAttribution(task, event),
           source: createSlackSource({
             teamId: task.destination.teamId,

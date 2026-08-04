@@ -20,7 +20,10 @@ export async function readRegisteredTasks(): Promise<RegisteredTaskSummary[]> {
         async (plugin) =>
           [
             plugin.manifest.name,
-            await readNamedStats(plugin.manifest.name, "task.completed"),
+            await readNamedStats(
+              plugin.manifest.name,
+              "task.execution.registered",
+            ),
           ] as const,
       ),
     ),

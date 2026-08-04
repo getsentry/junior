@@ -55,7 +55,6 @@ import {
 import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
-import { incrementStat } from "@/stats";
 import type { Lock } from "chat";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -461,19 +460,8 @@ export async function processPluginTask(
     await resolved.task.run(
       taskPluginContext(resolved.plugin, message, options),
     );
-    try {
-      await incrementStat({
-        metric: "task.completed",
-        name: message.name,
-        namespace: message.plugin,
-      });
-    } catch (error) {
-      logWarn("plugin.task.stat_failed", {
-        error,
-        "app.plugin.name": message.plugin,
-        "app.plugin.task.name": message.name,
-      });
-    }
-    await recordTaskExecution("registered");
+    await recordTaskExecution("registered", message.name, {
+      namespace: message.plugin,
+    });
   });
 }

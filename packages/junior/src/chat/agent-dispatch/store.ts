@@ -476,7 +476,12 @@ export async function markDispatchCompleted(
     previous?.status !== "completed" &&
     next.plugin === "junior"
   ) {
-    await recordTaskExecution("event", { nowMs: next.updatedAtMs });
+    const eventTaskId = next.metadata?.eventTaskId;
+    if (eventTaskId) {
+      await recordTaskExecution("event", eventTaskId, {
+        nowMs: next.updatedAtMs,
+      });
+    }
   }
   return next;
 }

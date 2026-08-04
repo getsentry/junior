@@ -1,12 +1,10 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { juniorStats } from "@/db/schema";
 import { incrementStat } from "@/stats";
 
 export const TASK_EXECUTION_NAMESPACE = "junior";
-export const TASK_EXECUTION_METRIC = "task.execution";
-
 export const TASK_EXECUTION_TYPES = [
   "registered",
   "scheduled",
@@ -14,6 +12,10 @@ export const TASK_EXECUTION_TYPES = [
 ] as const;
 
 export type TaskExecutionType = (typeof TASK_EXECUTION_TYPES)[number];
+
+function taskExecutionMetric(type: TaskExecutionType): string {
+  return `task.execution.${type}`;
+}
 
 export type TaskExecutionDay = {
   date: string;
@@ -30,23 +32,27 @@ function emptyDay(date: string): TaskExecutionDay {
   return { date, event: 0, registered: 0, scheduled: 0 };
 }
 
-/** Record one successful task execution into durable daily counters. */
+/** Record one successful task execution into a per-task daily counter. */
 export async function recordTaskExecution(
   type: TaskExecutionType,
-  options: { nowMs?: number } = {},
+  taskId: string,
+  options: { namespace?: string; nowMs?: number } = {},
 ): Promise<void> {
+  const namespace = options.namespace ?? TASK_EXECUTION_NAMESPACE;
   try {
     await incrementStat(
       {
-        metric: TASK_EXECUTION_METRIC,
-        name: type,
-        namespace: TASK_EXECUTION_NAMESPACE,
+        metric: taskExecutionMetric(type),
+        name: taskId,
+        namespace,
       },
       options,
     );
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
+      "app.task.execution.id": taskId,
+      "app.task.execution.namespace": namespace,
       "app.task.execution.type": type,
     });
   }
@@ -64,20 +70,23 @@ export async function readTaskExecutionDays(
   const start = utcDate(startMs);
   const rows = await getDb()
     .select({
-      count: juniorStats.count,
+      count: sql<number>`sum(${juniorStats.count})::int`,
       date: juniorStats.date,
-      name: juniorStats.name,
+      metric: juniorStats.metric,
     })
     .from(juniorStats)
     .where(
       and(
-        eq(juniorStats.namespace, TASK_EXECUTION_NAMESPACE),
-        eq(juniorStats.metric, TASK_EXECUTION_METRIC),
+        inArray(
+          juniorStats.metric,
+          TASK_EXECUTION_TYPES.map(taskExecutionMetric),
+        ),
         gte(juniorStats.date, start),
         lte(juniorStats.date, end),
       ),
     )
-    .orderBy(asc(juniorStats.date), asc(juniorStats.name));
+    .groupBy(juniorStats.date, juniorStats.metric)
+    .orderBy(asc(juniorStats.date), asc(juniorStats.metric));
 
   const byDate = new Map<string, TaskExecutionDay>();
   for (let offset = 0; offset < dayCount; offset += 1) {
@@ -87,9 +96,13 @@ export async function readTaskExecutionDays(
   for (const row of rows) {
     const day = byDate.get(row.date);
     if (!day) continue;
-    if (row.name === "registered") day.registered = row.count;
-    else if (row.name === "scheduled") day.scheduled = row.count;
-    else if (row.name === "event") day.event = row.count;
+    if (row.metric === taskExecutionMetric("registered")) {
+      day.registered = row.count;
+    } else if (row.metric === taskExecutionMetric("scheduled")) {
+      day.scheduled = row.count;
+    } else if (row.metric === taskExecutionMetric("event")) {
+      day.event = row.count;
+    }
   }
   return [...byDate.values()];
 }

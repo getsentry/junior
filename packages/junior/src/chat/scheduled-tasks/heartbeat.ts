@@ -122,7 +122,9 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
-    await recordTaskExecution("scheduled", { nowMs: args.nowMs });
+    await recordTaskExecution("scheduled", args.run.taskId, {
+      nowMs: args.nowMs,
+    });
     return true;
   }
   if (args.dispatch.status === "blocked") {
