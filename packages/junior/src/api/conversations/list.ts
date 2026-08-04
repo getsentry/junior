@@ -1,7 +1,6 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
-import { parseDestination } from "@/chat/destination";
 import { locationFromConversation } from "@/chat/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
@@ -32,9 +31,6 @@ async function conversationRows(
     .select({
       conversation: juniorConversations,
       destinationId: juniorDestinations.id,
-      destinationProvider: juniorDestinations.provider,
-      destinationProviderId: juniorDestinations.providerDestinationId,
-      destinationTenantId: juniorDestinations.providerTenantId,
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -101,30 +97,12 @@ function conversationFromRow(row: ConversationRow): Conversation {
           ...(row.identityTenantId ? { teamId: row.identityTenantId } : {}),
         }
       : undefined;
-  const destinationValue =
-    row.destinationProvider === "slack"
-      ? {
-          platform: "slack",
-          teamId: row.destinationTenantId,
-          channelId: row.destinationProviderId,
-        }
-      : row.destinationProvider === "local"
-        ? {
-            platform: "local",
-            conversationId: row.destinationProviderId,
-          }
-        : undefined;
-  const destination = parseDestination(destinationValue);
-  if (row.destinationId && !destination) {
-    throw new Error("Conversation record destination is invalid");
-  }
   const visibility = row.destinationId
     ? row.destinationVisibility === "public"
       ? "public"
       : "private"
     : undefined;
   const location = locationFromConversation({
-    destination,
     source: sessionSource,
     visibility,
   });
@@ -172,9 +150,6 @@ export async function readConversationRecordFromSql(
     .select({
       conversation: juniorConversations,
       destinationId: juniorDestinations.id,
-      destinationProvider: juniorDestinations.provider,
-      destinationProviderId: juniorDestinations.providerDestinationId,
-      destinationTenantId: juniorDestinations.providerTenantId,
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
