@@ -68,6 +68,12 @@ export interface PromptAssembly {
   }>;
   inputMessagesAttribute: string | undefined;
   promptContentParts: UserContentPart[];
+  /**
+   * Exact durable prompt message to re-checkpoint when replaying a still-running
+   * turn. Prefer this over synthesizing a new timestamped user message so
+   * commitMessages stays append-only / idempotent.
+   */
+  checkpointedPromptMessage?: PiMessage;
   promptHistoryMessages: PiMessage[];
   shouldPromptAgent: boolean;
   turnContexts: PluginTurnContext[];
@@ -377,11 +383,11 @@ function isUserContentPart(value: unknown): value is UserContentPart {
 
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
-function checkpointedPromptContent(args: {
+function checkpointedPromptMessage(args: {
   messages: PiMessage[] | undefined;
   turnStartMessageIndex: number | undefined;
   userContentParts: UserContentPart[];
-}): UserContentPart[] | undefined {
+}): PiMessage | undefined {
   if (
     !args.messages ||
     args.turnStartMessageIndex === undefined ||
@@ -407,7 +413,7 @@ function checkpointedPromptContent(args: {
   if (!content.every(isUserContentPart)) {
     return undefined;
   }
-  return content;
+  return message as PiMessage;
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
@@ -461,14 +467,26 @@ export async function assemblePrompt(args: {
         requestContentParts,
       )
     : args.existingSessionPiMessages!;
-  const replayedPromptContent =
+  // Redelivery against a still-running record must reuse the exact durable
+  // prompt message (including timestamp). A freshly synthesized Date.now()
+  // prompt fails commitMessages' deep-equal prefix check and storms retries.
+  const replayedPromptMessage =
     shouldPromptAgent && !args.resumedFromSessionRecord
-      ? checkpointedPromptContent({
+      ? checkpointedPromptMessage({
           messages: args.existingSessionPiMessages,
           turnStartMessageIndex: args.existingTurnStartMessageIndex,
           userContentParts: requestContentParts,
         })
       : undefined;
+  const replayedPromptContent = (() => {
+    if (!replayedPromptMessage) {
+      return undefined;
+    }
+    const content = (replayedPromptMessage as { content?: unknown }).content;
+    return Array.isArray(content) && content.every(isUserContentPart)
+      ? content
+      : undefined;
+  })();
   const needsBootstrapContextForPrompt =
     shouldPromptAgent &&
     !replayedPromptContent &&
@@ -554,6 +572,9 @@ export async function assemblePrompt(args: {
     inputMessages,
     inputMessagesAttribute,
     promptContentParts,
+    ...(replayedPromptMessage
+      ? { checkpointedPromptMessage: replayedPromptMessage }
+      : {}),
     promptHistoryMessages,
     shouldPromptAgent,
     turnContexts: pluginUserPromptContributions.flatMap((contribution) =>

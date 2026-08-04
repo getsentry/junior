@@ -31,6 +31,7 @@ import {
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
+import { AgentHistoryBoundaryError } from "@/chat/runtime/turn";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -363,7 +364,7 @@ async function commitMessagesLocked(
       ...turnContextEvents,
     ]);
   } else {
-    throw new Error(
+    throw new AgentHistoryBoundaryError(
       `Agent history for ${args.conversationId} changed before its committed boundary`,
     );
   }

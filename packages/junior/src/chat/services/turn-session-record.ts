@@ -15,6 +15,10 @@ import {
   isContinuablePiBoundary,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
+import {
+  isAgentHistoryBoundaryError,
+  isAgentHistoryBoundaryMessage,
+} from "@/chat/runtime/turn";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
@@ -177,6 +181,23 @@ export async function persistRunningSessionRecord(args: {
     });
     return true;
   } catch (recordError) {
+    // History-boundary mismatch is permanent for this attempt. Swallowing it as
+    // false promotes TurnInputCommitLost → lost_lease recovery, which requeues
+    // forever. Fail closed so the worker can count the attempt / dead-letter.
+    if (
+      isAgentHistoryBoundaryError(recordError) ||
+      isAgentHistoryBoundaryMessage(recordError)
+    ) {
+      logSessionRecordError(
+        recordError,
+        "agent.turn.running_session_record.boundary_mismatch",
+        args,
+        {
+          "app.ai.resume_slice_id": args.sliceId,
+        },
+      );
+      throw recordError;
+    }
     logSessionRecordError(
       recordError,
       "agent.turn.running_session_record.failed",

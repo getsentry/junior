@@ -1351,12 +1351,19 @@ describe("agent run continuation", () => {
       await executeAgentRun({
         conversationId,
         turnId: sessionId,
+        // Production redelivery passes live projection history that already
+        // ends with the durable checkpoint. The agent must re-checkpoint that
+        // exact message (not a Date.now() rebuild) so commitMessages stays
+        // append-only.
         input: { messageText: "help me", piMessages: [checkpointedPrompt] },
         routing: {
           destinationVisibility: "private",
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        durability: {
+          onInputCommitted: async () => undefined,
         },
       }),
     );
@@ -1370,6 +1377,10 @@ describe("agent run continuation", () => {
       sessionRecord?.piMessages.filter((message) => message.role === "user") ??
       [];
     expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]).toMatchObject({
+      role: "user",
+      timestamp: 5,
+    });
     expect(
       JSON.stringify(sessionRecord?.piMessages).split("help me"),
     ).toHaveLength(2);
