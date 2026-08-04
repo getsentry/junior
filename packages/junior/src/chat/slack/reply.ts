@@ -25,13 +25,13 @@ export async function sendSlackReply(args: {
   replyAttribution?: ReplyAttribution;
   text: string;
   threadTs?: string;
-}): Promise<string | undefined> {
+}): Promise<string[]> {
   const chunks = splitSlackReplyText(args.text);
   const footer = buildSlackReplyFooter({
     conversationId: args.conversationId,
     replyAttribution: args.replyAttribution,
   });
-  let lastMessageTs: string | undefined;
+  const messageTs: string[] = [];
 
   for (const [index, text] of chunks.entries()) {
     const isFinalChunk = index === chunks.length - 1;
@@ -49,8 +49,10 @@ export async function sendSlackReply(args: {
       text: fallbackText,
       ...(blocks ? { blocks } : {}),
     });
-    lastMessageTs = response.ts;
+    if (response.ts) {
+      messageTs.push(response.ts);
+    }
   }
 
-  return lastMessageTs;
+  return messageTs;
 }

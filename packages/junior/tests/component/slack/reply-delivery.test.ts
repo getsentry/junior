@@ -17,7 +17,7 @@ describe("sendSlackReply", () => {
   });
 
   it("posts text with compact attribution in the conversation footer", async () => {
-    const ts = await sendSlackReply({
+    const messageTs = await sendSlackReply({
       channelId: "C123",
       conversationId: "slack:C123:1700000000.000100",
       replyAttribution: {
@@ -28,7 +28,7 @@ describe("sendSlackReply", () => {
       threadTs: "1700000000.000100",
     });
 
-    expect(typeof ts).toBe("string");
+    expect(messageTs).toHaveLength(1);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -57,6 +57,17 @@ describe("sendSlackReply", () => {
         }),
       }),
     ]);
+  });
+
+  it("returns every posted message timestamp for chunked replies", async () => {
+    const messageTs = await sendSlackReply({
+      channelId: "C123",
+      conversationId: "agent-dispatch:dispatch-1",
+      text: "a".repeat(4_500),
+    });
+
+    expect(messageTs).toHaveLength(3);
+    expect(messageTs.every(Boolean)).toBe(true);
   });
 
   it("escapes attribution in mrkdwn fallback text", async () => {
@@ -101,7 +112,7 @@ describe("sendSlackReply", () => {
         text: "   ",
         threadTs: "1700000000.000100",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 });

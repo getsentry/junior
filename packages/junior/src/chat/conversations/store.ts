@@ -68,14 +68,14 @@ export interface Conversation {
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
   /** Resolve the durable conversation bound to one provider conversation. */
-  getConversationIdByProviderConversation?(args: {
+  getConversationIdByProviderConversation(args: {
     provider: string;
     providerDestinationId: string;
     providerTenantId: string;
     providerConversationId: string;
   }): Promise<string | undefined>;
   /** Bind one provider conversation to its pre-existing durable conversation. */
-  bindProviderConversation?(args: {
+  bindProviderConversation(args: {
     conversationId: string;
     provider: string;
     providerDestinationId: string;

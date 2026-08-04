@@ -139,7 +139,7 @@ describe("Slack webhook persistence contract", () => {
       },
       nowMs: 1_000,
     });
-    await conversationStore.bindProviderConversation?.({
+    await conversationStore.bindProviderConversation({
       conversationId,
       provider: "slack",
       providerDestinationId: "C123",

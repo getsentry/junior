@@ -562,14 +562,16 @@ async function resumeSlackTurnInContext(
       const deliveryState = await getDeliveryConversation();
       let messageTs: string | undefined;
       try {
-        messageTs = await sendSlackReply({
-          channelId: runArgs.channelId,
-          conversationId: runArgs.conversationId,
-          replyAttribution:
-            runArgs.replyContext?.routing.dispatch?.replyAttribution,
-          text,
-          threadTs: runArgs.threadTs,
-        });
+        messageTs = (
+          await sendSlackReply({
+            channelId: runArgs.channelId,
+            conversationId: runArgs.conversationId,
+            replyAttribution:
+              runArgs.replyContext?.routing.dispatch?.replyAttribution,
+            text,
+            threadTs: runArgs.threadTs,
+          })
+        ).at(-1);
       } catch (error) {
         if (isRetryableSlackPostError(error)) {
           throw new RetryableDeliveryError(error);
