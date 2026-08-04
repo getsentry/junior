@@ -327,6 +327,12 @@ export async function commitAcceptedReply(args: {
   );
 }
 
+function throwCommittedBoundaryChanged(conversationId: string): never {
+  throw new Error(
+    `Agent history for ${conversationId} changed before its committed boundary`,
+  );
+}
+
 async function resolveCommitBase(
   args: Parameters<typeof commitMessages>[0],
   eventStore: ReturnType<typeof createSqlConversationEventStore>,
@@ -338,20 +344,39 @@ async function resolveCommitBase(
       nextLocalMessages,
     );
     if (matchingPrefix !== args.base.messages.length) {
-      throw new Error(
-        `Agent history for ${args.conversationId} changed before its committed boundary`,
-      );
+      throwCommittedBoundaryChanged(args.conversationId);
     }
+    // Empty append is the cheap live cursor read under the conversation lock.
     const live = await eventStore.append(args.conversationId, []);
     if (
       live.historyVersion !== args.base.historyVersion ||
-      live.committedSeq !== args.base.committedSeq
+      live.committedSeq < args.base.committedSeq
     ) {
-      throw new Error(
-        `Agent history for ${args.conversationId} changed before its committed boundary`,
-      );
+      throwCommittedBoundaryChanged(args.conversationId);
     }
-    return args.base;
+    if (live.committedSeq === args.base.committedSeq) {
+      return args.base;
+    }
+    // Global cursor advanced after the caller's base. Host-only facts (MCP
+    // connect, turn_context, native events) do that without changing agent
+    // history; concurrent agent-message writes must still fail closed.
+    const currentEvents = await eventStore.loadCurrentHistory(
+      args.conversationId,
+    );
+    const current = projectConversationEvents(currentEvents);
+    if (
+      current.messages.length !== args.base.messages.length ||
+      current.seqs.length !== args.base.messageSeqs.length ||
+      countMatchingPrefix(args.base.messages, current.messages) !==
+        args.base.messages.length ||
+      args.base.messageSeqs.some((seq, index) => current.seqs[index] !== seq)
+    ) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
+    return {
+      ...args.base,
+      committedSeq: live.committedSeq,
+    };
   }
 
   const currentEvents = await eventStore.loadCurrentHistory(
@@ -363,9 +388,7 @@ async function resolveCommitBase(
     nextLocalMessages,
   );
   if (matchingPrefix !== current.messages.length) {
-    throw new Error(
-      `Agent history for ${args.conversationId} changed before its committed boundary`,
-    );
+    throwCommittedBoundaryChanged(args.conversationId);
   }
   return {
     committedSeq: currentEvents.at(-1)?.seq ?? -1,

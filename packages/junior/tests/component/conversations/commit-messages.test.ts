@@ -120,4 +120,56 @@ describe("commitMessages cursor fencing", () => {
       await fixture.close();
     }
   });
+
+  it("keeps a fenced base when only host-only events advanced the cursor", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+
+      const first = await commitMessages({
+        conversationId: CONVERSATION_ID,
+        messages: [user("hello", 1), assistant("hi", 2)],
+        executor: fixture.sql,
+      });
+
+      const store = createSqlConversationEventStore(fixture.sql);
+      await store.append(CONVERSATION_ID, [
+        {
+          data: { type: "mcp_provider_connected", provider: "github" },
+          createdAtMs: 3,
+        },
+      ]);
+
+      const second = await commitMessages({
+        conversationId: CONVERSATION_ID,
+        messages: [
+          user("hello", 1),
+          assistant("hi", 2),
+          user("follow up", 4),
+        ],
+        base: {
+          committedSeq: first.committedSeq,
+          historyVersion: first.historyVersion,
+          messageSeqs: first.messageSeqs,
+          messages: first.messages,
+          provenance: first.provenance,
+        },
+        executor: fixture.sql,
+      });
+
+      expect(second.messageSeqs).toEqual([0, 1, 3]);
+      expect(second.committedSeq).toBe(3);
+      expect(second.historyVersion).toBe(0);
+
+      const history = await store.loadHistory(CONVERSATION_ID);
+      expect(history.map((event) => [event.seq, event.data.type])).toEqual([
+        [0, "user_message"],
+        [1, "assistant_message"],
+        [2, "mcp_provider_connected"],
+        [3, "user_message"],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
