@@ -1066,13 +1066,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
-          let slackTs: string | undefined;
+          let slackMessageTs: string[] = [];
           // Prep runs outside the post try/catch so non-Slack failures are not
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
             if (channelId && thread.adapter.name === "slack") {
-              slackTs = await sendSlackReply({
+              slackMessageTs = await sendSlackReply({
                 channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
@@ -1081,7 +1081,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             } else {
               for (const part of splitSlackReplyText(text)) {
-                slackTs = (await thread.post(buildSlackOutputMessage(part))).id;
+                const postedMessageTs = (
+                  await thread.post(buildSlackOutputMessage(part))
+                ).id;
+                if (postedMessageTs) {
+                  slackMessageTs.push(postedMessageTs);
+                }
               }
             }
           } catch (error) {
@@ -1099,6 +1104,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               failureCode: "delivery_failed",
             });
           }
+          const slackTs = slackMessageTs.at(-1);
           assistantMessageDelivered = true;
           acceptedDeliveryId = slackTs;
           options.onTurnDeliveryAccepted?.(slackTs);
@@ -1116,28 +1122,29 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           try {
+            const providerConversationIds = threadTs
+              ? [threadTs]
+              : slackMessageTs;
             await persistWithRetry(() =>
-              agentMessage && conversationId
-                ? commitAcceptedReply({
-                    agentMessage,
-                    conversation: preparedState.conversation,
-                    conversationMessageId: recordedMessageId,
-                    conversationId,
-                    ...(slackTs && options.execution?.dispatch
-                      ? {
-                          providerConversationBinding: {
-                            provider: "slack",
-                            providerDestinationId: destination.channelId,
-                            providerTenantId: destination.teamId,
-                            providerConversationId: slackTs,
-                          },
-                        }
-                      : {}),
-                  })
-                : persistConversationMessages({
-                    conversation: preparedState.conversation,
-                    conversationId,
-                  }),
+              commitAcceptedReply({
+                ...(agentMessage ? { agentMessage } : {}),
+                conversation: preparedState.conversation,
+                conversationMessageId: recordedMessageId,
+                conversationId,
+                ...(options.execution?.dispatch &&
+                providerConversationIds.length > 0
+                  ? {
+                      providerConversationBindings: providerConversationIds.map(
+                        (providerConversationId) => ({
+                          provider: "slack",
+                          providerDestinationId: destination.channelId,
+                          providerTenantId: destination.teamId,
+                          providerConversationId,
+                        }),
+                      ),
+                    }
+                  : {}),
+              }),
             );
             await options.onTurnStatePersisted?.();
           } catch (error) {

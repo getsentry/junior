@@ -67,6 +67,8 @@ const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 function failingMetadataStore(): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
+    getConversationIdByProviderConversation: vi.fn(async () => undefined),
+    bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
@@ -79,6 +81,8 @@ function failingMetadataStore(): ConversationStore {
 function metadataEventsStore(events: string[]): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
+    getConversationIdByProviderConversation: vi.fn(async () => undefined),
+    bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {

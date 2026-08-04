@@ -273,30 +273,31 @@ export async function commitMessages(args: {
  * produced it.
  */
 export async function commitAcceptedReply(args: {
-  agentMessage: AssistantMessage;
+  agentMessage?: AssistantMessage;
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBinding?: Omit<
-    ProviderConversationBinding,
-    "conversationId"
+  providerConversationBindings?: Array<
+    Omit<ProviderConversationBinding, "conversationId">
   >;
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
   await withConversationEventLock(executor, args.conversationId, async () =>
     executor.transaction(async () => {
-      const agentMessage = normalizeDurableMessage(args.agentMessage);
-      await createSqlConversationEventStore(executor).append(
-        args.conversationId,
-        [
-          {
-            idempotencyKey: `message:${args.conversationMessageId}:agent`,
-            data: historyItemFromPiMessage(agentMessage, contextProvenance),
-            createdAtMs: messageTimestamp(agentMessage),
-          },
-        ],
-      );
+      if (args.agentMessage) {
+        const agentMessage = normalizeDurableMessage(args.agentMessage);
+        await createSqlConversationEventStore(executor).append(
+          args.conversationId,
+          [
+            {
+              idempotencyKey: `message:${args.conversationMessageId}:agent`,
+              data: historyItemFromPiMessage(agentMessage, contextProvenance),
+              createdAtMs: messageTimestamp(agentMessage),
+            },
+          ],
+        );
+      }
       await appendConversationMessages(
         createSqlConversationEventStore(executor),
         {
@@ -307,10 +308,10 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
-      if (args.providerConversationBinding) {
+      for (const binding of args.providerConversationBindings ?? []) {
         await bindProviderConversation(executor, {
           conversationId: args.conversationId,
-          ...args.providerConversationBinding,
+          ...binding,
         });
       }
     }),

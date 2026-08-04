@@ -227,10 +227,7 @@ async function resolveSlackConversationId(args: {
 }): Promise<string> {
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
-  if (
-    !providerThread ||
-    !conversationStore.getConversationIdByProviderConversation
-  ) {
+  if (!providerThread) {
     return args.canonicalThreadId;
   }
   return (
