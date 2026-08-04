@@ -1,4 +1,11 @@
-import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+} from "drizzle-orm/pg-core";
+import { juniorConversations } from "./conversations";
 
 /** One successful task execution linked to its durable conversation. */
 export const juniorTaskExecutions = pgTable(
@@ -12,6 +19,11 @@ export const juniorTaskExecutions = pgTable(
     executedAtMs: bigint("executed_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
+    foreignKey({
+      name: "junior_task_executions_conversation_id_junior_conversations_conversation_id_fk",
+      columns: [table.conversationId],
+      foreignColumns: [juniorConversations.conversationId],
+    }),
     index("junior_task_executions_task_time_idx").on(
       table.kind,
       table.namespace,
