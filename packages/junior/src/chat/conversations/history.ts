@@ -503,6 +503,22 @@ export const newConversationEventSchema = z
 /** An event to append; the store assigns `seq` and current history version. */
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
+/**
+ * Result of an append: newly inserted events plus the active history version.
+ *
+ * Callers that need a post-write cursor use this instead of reloading the full
+ * current history. Idempotent no-ops still report the live history version and
+ * an empty `inserted` list.
+ */
+export interface ConversationEventAppendResult {
+  /** Active model-history version after the append. */
+  historyVersion: number;
+  /** Events that were newly inserted, in `seq` order. */
+  inserted: ConversationEvent[];
+  /** Next free `seq` after the append. */
+  nextSeq: number;
+}
+
 /** Bounded observational page over the durable conversation event log. */
 export interface ConversationEventQuery {
   /** Exclusive lower bound on `seq`. */
@@ -531,7 +547,7 @@ export interface ConversationEventStore {
     conversationId: string,
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
-  ): Promise<void>;
+  ): Promise<ConversationEventAppendResult>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,

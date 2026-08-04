@@ -334,47 +334,46 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  if (matchingPrefix === current.messages.length) {
-    const newMessages = nextLocalMessages.slice(matchingPrefix);
-    const turnContext = args.turnContext;
-    const turnContextEvents =
-      turnContext?.contexts.map((context, index) => ({
-        idempotencyKey:
-          `turn:${turnContext.turnId}:context:` +
-          `${context.pluginName}:${index}`,
-        createdAtMs: context.loadedAtMs,
-        data: {
-          type: "turn_context" as const,
-          turnId: turnContext.turnId,
-          pluginName: context.pluginName,
-          kind: context.kind,
-          version: context.version,
-          content: context.content,
-        },
-      })) ?? [];
-    await eventStore.append(args.conversationId, [
-      ...newMessages.map((message, index) => ({
-        data: historyItemFromPiMessage(
-          message,
-          nextLocalProvenance[matchingPrefix + index]!,
-        ),
-        createdAtMs: messageTimestamp(message),
-      })),
-      ...turnContextEvents,
-    ]);
-  } else {
+  if (matchingPrefix !== current.messages.length) {
     throw new Error(
       `Agent history for ${args.conversationId} changed before its committed boundary`,
     );
   }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents);
+  const newMessages = nextLocalMessages.slice(matchingPrefix);
+  const turnContext = args.turnContext;
+  const turnContextEvents =
+    turnContext?.contexts.map((context, index) => ({
+      idempotencyKey:
+        `turn:${turnContext.turnId}:context:` +
+        `${context.pluginName}:${index}`,
+      createdAtMs: context.loadedAtMs,
+      data: {
+        type: "turn_context" as const,
+        turnId: turnContext.turnId,
+        pluginName: context.pluginName,
+        kind: context.kind,
+        version: context.version,
+        content: context.content,
+      },
+    })) ?? [];
+  // Append returns only the inserted delta. Build the committed cursor from the
+  // pre-append projection plus those rows instead of reloading full history.
+  const appendResult = await eventStore.append(args.conversationId, [
+    ...newMessages.map((message, index) => ({
+      data: historyItemFromPiMessage(
+        message,
+        nextLocalProvenance[matchingPrefix + index]!,
+      ),
+      createdAtMs: messageTimestamp(message),
+    })),
+    ...turnContextEvents,
+  ]);
+  const appended = projectConversationEvents(appendResult.inserted);
+  const lastInserted = appendResult.inserted.at(-1);
   return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
+    committedSeq: lastInserted?.seq ?? appendResult.nextSeq - 1,
+    historyVersion: lastInserted?.historyVersion ?? appendResult.historyVersion,
+    messageSeqs: [...current.seqs, ...appended.seqs],
     messages: nextLocalMessages,
     provenance: nextLocalProvenance,
   };

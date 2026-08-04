@@ -372,7 +372,7 @@ describe("SQL conversation storage", () => {
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
 
-      await store.append(CONVERSATION_ID, [
+      const first = await store.append(CONVERSATION_ID, [
         {
           data: userMessageEvent("one"),
           createdAtMs: 1_000,
@@ -382,11 +382,25 @@ describe("SQL conversation storage", () => {
           createdAtMs: 2_000,
         },
       ]);
-      await store.append(CONVERSATION_ID, [
+      expect(first.historyVersion).toBe(0);
+      expect(first.nextSeq).toBe(2);
+      expect(first.inserted.map((event) => event.seq)).toEqual([0, 1]);
+      expect(first.inserted.map((event) => event.data.type)).toEqual([
+        "user_message",
+        "user_message",
+      ]);
+
+      const second = await store.append(CONVERSATION_ID, [
         {
           data: { type: "mcp_provider_connected", provider: "github" },
           createdAtMs: 3_000,
         },
+      ]);
+      expect(second.historyVersion).toBe(0);
+      expect(second.nextSeq).toBe(3);
+      expect(second.inserted.map((event) => event.seq)).toEqual([2]);
+      expect(second.inserted.map((event) => event.data.type)).toEqual([
+        "mcp_provider_connected",
       ]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
@@ -494,19 +508,30 @@ describe("SQL conversation storage", () => {
       };
       const archived = await readConversationTimestamps();
 
-      await store.append(CONVERSATION_ID, [
+      const duplicate = await store.append(CONVERSATION_ID, [
         { ...firstEvent, createdAtMs: 9_000 },
       ]);
+      expect(duplicate).toEqual({
+        historyVersion: 0,
+        inserted: [],
+        nextSeq: 1,
+      });
 
       expect(await readConversationTimestamps()).toEqual(archived);
 
-      await store.append(CONVERSATION_ID, [
+      const mixed = await store.append(CONVERSATION_ID, [
         { ...firstEvent, createdAtMs: 10_000 },
         {
           data: userMessageEvent("second"),
           idempotencyKey: "event:second",
           createdAtMs: 8_000,
         },
+      ]);
+      expect(mixed.historyVersion).toBe(0);
+      expect(mixed.nextSeq).toBe(2);
+      expect(mixed.inserted.map((event) => event.seq)).toEqual([1]);
+      expect(mixed.inserted.map((event) => event.data.type)).toEqual([
+        "user_message",
       ]);
 
       expect(await readConversationTimestamps()).toEqual({
