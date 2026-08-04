@@ -44,4 +44,67 @@ BEGIN
 	END IF;
 END
 $migration$;--> statement-breakpoint
+-- TODO(v0.128.0): Drop this trigger with the legacy Slack creator column.
+CREATE OR REPLACE FUNCTION "junior_scheduler_assign_creator_identity"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+	resolved_identity_id text;
+BEGIN
+	IF NEW."creator_identity_id" IS NOT NULL
+		OR NEW."creator_slack_user_id" IS NULL
+		OR to_regclass('public.junior_identities') IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	EXECUTE $sql$
+		INSERT INTO "junior_identities" (
+			"id",
+			"kind",
+			"provider",
+			"provider_tenant_id",
+			"provider_subject_id",
+			"created_at",
+			"updated_at"
+		) VALUES (
+			'scheduler-slack-' || md5($1 || ':' || $2),
+			'user',
+			'slack',
+			$1,
+			$2,
+			to_timestamp($3 / 1000.0),
+			CURRENT_TIMESTAMP
+		)
+		ON CONFLICT ("provider", "provider_tenant_id", "provider_subject_id") DO NOTHING
+	$sql$ USING NEW."team_id", NEW."creator_slack_user_id", NEW."created_at_ms";
+
+	EXECUTE $sql$
+		SELECT "id"
+		FROM "junior_identities"
+		WHERE "kind" = 'user'
+			AND "provider" = 'slack'
+			AND "provider_tenant_id" = $1
+			AND "provider_subject_id" = $2
+		LIMIT 1
+	$sql$
+	INTO resolved_identity_id
+	USING NEW."team_id", NEW."creator_slack_user_id";
+
+	IF resolved_identity_id IS NOT NULL THEN
+		NEW."creator_identity_id" := resolved_identity_id;
+		IF jsonb_typeof(NEW."record") = 'object' THEN
+			NEW."record" := NEW."record" || jsonb_build_object(
+				'creatorIdentityId',
+				resolved_identity_id
+			);
+		END IF;
+	END IF;
+	RETURN NEW;
+END
+$function$;--> statement-breakpoint
+CREATE TRIGGER "junior_scheduler_assign_creator_identity"
+BEFORE INSERT ON "junior_scheduler_tasks"
+FOR EACH ROW
+EXECUTE FUNCTION "junior_scheduler_assign_creator_identity"();--> statement-breakpoint
 CREATE INDEX "junior_scheduler_tasks_creator_identity_idx" ON "junior_scheduler_tasks" USING btree ("creator_identity_id","created_at_ms","id") WHERE "junior_scheduler_tasks"."status" <> 'deleted' AND "junior_scheduler_tasks"."creator_identity_id" IS NOT NULL;

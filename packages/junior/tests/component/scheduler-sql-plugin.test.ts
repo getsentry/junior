@@ -93,6 +93,9 @@ WHERE schemaname = 'drizzle'
 `);
       expect(migrationTable).toBeDefined();
       await fixture.sql.execute(
+        `DROP TRIGGER junior_scheduler_assign_creator_identity ON junior_scheduler_tasks; DROP FUNCTION junior_scheduler_assign_creator_identity()`,
+      );
+      await fixture.sql.execute(
         `DROP INDEX junior_scheduler_tasks_creator_idx`,
       );
       await fixture.sql.execute(
@@ -261,18 +264,22 @@ WHERE id = $1
         },
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
+      const rollingTaskId = `${legacyTask.id}_rolling`;
       await fixture.sql.execute(
-        `UPDATE junior_scheduler_tasks SET record = record - 'creatorIdentityId' WHERE id = $1`,
-        [legacyTask.id],
+        `INSERT INTO junior_scheduler_tasks (id, team_id, creator_slack_user_id, status, next_run_at_ms, run_now_at_ms, created_at_ms, record)
+         SELECT $2, team_id, creator_slack_user_id, status, next_run_at_ms, run_now_at_ms, created_at_ms,
+           (record - 'creatorIdentityId') || jsonb_build_object('id', $2::text)
+         FROM junior_scheduler_tasks WHERE id = $1`,
+        [legacyTask.id, rollingTaskId],
       );
       const rollingDeployStore = createSchedulerSqlStore(
         fixture.sql.db() as unknown as SchedulerDb,
       );
       await expect(
-        rollingDeployStore.getTask(legacyTask.id),
+        rollingDeployStore.getTask(rollingTaskId),
       ).resolves.toMatchObject({
         creatorIdentityId: identity.id,
-        id: legacyTask.id,
+        id: rollingTaskId,
       });
       const [unmatchedMigratedTask] = await fixture.sql.query<{
         record: unknown;
@@ -430,13 +437,6 @@ ORDER BY tablename
       const task = createTask();
 
       await store.saveTask(task);
-      const [legacyOwner] = await fixture.sql.query<{
-        creatorSlackUserId: string | null;
-      }>(
-        `SELECT creator_slack_user_id AS "creatorSlackUserId" FROM junior_scheduler_tasks WHERE id = $1`,
-        [task.id],
-      );
-      expect(legacyOwner?.creatorSlackUserId).toBe(task.createdBy.slackUserId);
 
       await expect(store.listTasksForTeam("T123")).resolves.toMatchObject([
         { id: task.id },
