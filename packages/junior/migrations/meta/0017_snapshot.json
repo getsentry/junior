@@ -1,5 +1,5 @@
 {
-  "id": "a6ce2a98-18b4-4a62-89d8-4ab8bcaefd8a",
+  "id": "329fdadc-e5f3-4e44-9b3c-545cf5c502bd",
   "prevId": "099cc3d5-3695-47ae-9c39-fd3eff0b6650",
   "version": "7",
   "dialect": "postgresql",
@@ -188,7 +188,7 @@
         "conversation_id": {
           "name": "conversation_id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "provider": {
@@ -210,8 +210,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "provider_thread_id": {
-          "name": "provider_thread_id",
+        "provider_conversation_id": {
+          "name": "provider_conversation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -224,56 +224,11 @@
         }
       },
       "indexes": {
-        "junior_conversation_bindings_provider_thread_uidx": {
-          "name": "junior_conversation_bindings_provider_thread_uidx",
+        "junior_conversation_bindings_conversation_idx": {
+          "name": "junior_conversation_bindings_conversation_idx",
           "columns": [
             {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_destination_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_bindings_destination_idx": {
-          "name": "junior_conversation_bindings_destination_idx",
-          "columns": [
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_destination_id",
+              "expression": "conversation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -300,7 +255,17 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "junior_conversation_bindings_provider_conversation_pk": {
+          "name": "junior_conversation_bindings_provider_conversation_pk",
+          "columns": [
+            "provider",
+            "provider_tenant_id",
+            "provider_destination_id",
+            "provider_conversation_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
