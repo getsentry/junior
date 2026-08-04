@@ -6,7 +6,6 @@ import { useArchiveConversation } from "./queries";
 import {
   conversationDisplayTitle,
   conversationPath,
-  formatRelativeTime,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
@@ -14,10 +13,18 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ActiveIndicator } from "../components/ActiveIndicator";
 import { AnimatedList } from "./AnimatedList";
+import {
+  buildConversationSections,
+  type ConversationSection,
+} from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 
-const conversationKey = (conversation: Conversation) => conversation.id;
+type ConversationSidebarEntry =
+  | { key: string; kind: "section"; label: string }
+  | { conversation: Conversation; key: string; kind: "conversation" };
+
+const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
 /** Render the compact personal conversation picker used by the home workspace. */
 export function ConversationSidebar(props: {
@@ -26,11 +33,18 @@ export function ConversationSidebar(props: {
   loading: boolean;
   query: string;
   selectedId?: string;
+  timeZone: string;
   onQueryChange(value: string): void;
 }) {
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<Conversation>();
+  const entries = conversationSidebarEntries(
+    buildConversationSections(props.conversations, {
+      nowMs: Date.now(),
+      timeZone: props.timeZone,
+    }),
+  );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
@@ -74,21 +88,27 @@ export function ConversationSidebar(props: {
                 </div>
               ) : undefined
             }
-            getKey={conversationKey}
-            items={props.conversations}
-            renderItem={(conversation) => (
-              <ConversationSidebarRow
-                conversation={conversation}
-                onArchiveError={setArchiveError}
-                onArchived={(conversation) => {
-                  setArchiveError((current) =>
-                    current?.id === conversation.id ? undefined : current,
-                  );
-                  setArchivedConversation(conversation);
-                }}
-                selected={conversation.id === props.selectedId}
-              />
-            )}
+            getKey={conversationEntryKey}
+            items={entries}
+            renderItem={(entry) =>
+              entry.kind === "section" ? (
+                <h3 className="m-0 px-3 pb-1 pt-4 font-display text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/60">
+                  {entry.label}
+                </h3>
+              ) : (
+                <ConversationSidebarRow
+                  conversation={entry.conversation}
+                  onArchiveError={setArchiveError}
+                  onArchived={(conversation) => {
+                    setArchiveError((current) =>
+                      current?.id === conversation.id ? undefined : current,
+                    );
+                    setArchivedConversation(conversation);
+                  }}
+                  selected={entry.conversation.id === props.selectedId}
+                />
+              )
+            }
             role="navigation"
           />
         )}
@@ -113,6 +133,23 @@ export function ConversationSidebar(props: {
   );
 }
 
+function conversationSidebarEntries(
+  sections: ConversationSection[],
+): ConversationSidebarEntry[] {
+  return sections.flatMap((section) => [
+    {
+      key: `section-${section.key}`,
+      kind: "section" as const,
+      label: section.label,
+    },
+    ...section.conversations.map((conversation) => ({
+      conversation,
+      key: `conversation-${conversation.id}`,
+      kind: "conversation" as const,
+    })),
+  ]);
+}
+
 function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation): void;
@@ -135,7 +172,7 @@ function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:border-white/[0.07] hover:bg-white/[0.035]",
+          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:bg-white/[0.035]",
           props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
         )}
         to={conversationPath(props.conversation.id)}
@@ -157,21 +194,15 @@ function ConversationSidebarRow(props: {
             {title}
           </div>
         </div>
-        <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-xs leading-tight text-dashboard-text-muted">
-          <span className="shrink-0">
-            {formatRelativeTime(props.conversation.lastSeenAt)}
-          </span>
-          {location ? (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="truncate">{location}</span>
-            </>
-          ) : null}
-        </div>
+        {location ? (
+          <div className="ml-3.5 mt-1.5 truncate font-mono text-xs leading-tight text-dashboard-text-muted">
+            {location}
+          </div>
+        ) : null}
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-md border border-white/15 bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:border-white/30 hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
