@@ -32,6 +32,7 @@ import {
   scheduledTaskCredentialModeSchema,
   type ScheduledRun,
   type ScheduledTask,
+  type ScheduledTaskStatus,
 } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
@@ -382,6 +383,21 @@ function isFinishedRun(run: ScheduledRun): boolean {
     run.status === "blocked" ||
     run.status === "skipped"
   );
+}
+
+/** Tasks with no future occurrence are tombstoned so listings and the UI hide them. */
+function statusAfterTerminalOccurrence(args: {
+  blocked?: boolean;
+  nextRunAtMs: number | undefined;
+  previousStatus?: ScheduledTaskStatus;
+}): ScheduledTaskStatus {
+  if (args.blocked) {
+    return "blocked";
+  }
+  if (args.nextRunAtMs) {
+    return args.previousStatus ?? "active";
+  }
+  return "deleted";
 }
 
 function isStaleActiveRun(
@@ -858,7 +874,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
               ? getNextRunAtMs(current, args.scheduledForMs, args.nowMs)
               : undefined;
       }
-      const nextStatus = nextRunAtMs ? "active" : "paused";
+      const nextStatus = statusAfterTerminalOccurrence({ nextRunAtMs });
 
       await this.saveTaskRecord(
         {
@@ -866,7 +882,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
           nextRunAtMs,
           runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
           status: nextStatus,
-          statusReason: nextStatus === "paused" ? errorMessage : undefined,
+          statusReason: nextStatus === "deleted" ? errorMessage : undefined,
           updatedAtMs: args.nowMs,
         },
         current,
@@ -1044,12 +1060,11 @@ class PluginStateSchedulerStore implements SchedulerStore {
             lastRunAtMs: args.run.scheduledForMs,
             nextRunAtMs,
             runNowAtMs: undefined,
-            status:
-              args.status === "blocked"
-                ? "blocked"
-                : nextRunAtMs
-                  ? current.status
-                  : "paused",
+            status: statusAfterTerminalOccurrence({
+              blocked: args.status === "blocked",
+              nextRunAtMs,
+              previousStatus: current.status,
+            }),
             statusReason:
               args.status === "blocked" ? args.errorMessage : undefined,
             updatedAtMs: args.nowMs,
@@ -1084,12 +1099,10 @@ class PluginStateSchedulerStore implements SchedulerStore {
           ...current,
           lastRunAtMs: args.run.scheduledForMs,
           nextRunAtMs,
-          status:
-            args.status === "blocked"
-              ? "blocked"
-              : nextRunAtMs
-                ? "active"
-                : "paused",
+          status: statusAfterTerminalOccurrence({
+            blocked: args.status === "blocked",
+            nextRunAtMs,
+          }),
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,
           updatedAtMs: args.nowMs,
@@ -1613,7 +1626,7 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
             ? getNextRunAtMs(current, args.scheduledForMs, args.nowMs)
             : undefined;
     }
-    const nextStatus = nextRunAtMs ? "active" : "paused";
+    const nextStatus = statusAfterTerminalOccurrence({ nextRunAtMs });
 
     await this.saveTaskRecord(
       db,
@@ -1622,7 +1635,7 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
         nextRunAtMs,
         runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
         status: nextStatus,
-        statusReason: nextStatus === "paused" ? errorMessage : undefined,
+        statusReason: nextStatus === "deleted" ? errorMessage : undefined,
         updatedAtMs: args.nowMs,
       },
       current,
@@ -1787,12 +1800,11 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
             lastRunAtMs: args.run.scheduledForMs,
             nextRunAtMs,
             runNowAtMs: undefined,
-            status:
-              args.status === "blocked"
-                ? "blocked"
-                : nextRunAtMs
-                  ? current.status
-                  : "paused",
+            status: statusAfterTerminalOccurrence({
+              blocked: args.status === "blocked",
+              nextRunAtMs,
+              previousStatus: current.status,
+            }),
             statusReason:
               args.status === "blocked" ? args.errorMessage : undefined,
             updatedAtMs: args.nowMs,
@@ -1829,12 +1841,10 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
           ...current,
           lastRunAtMs: args.run.scheduledForMs,
           nextRunAtMs,
-          status:
-            args.status === "blocked"
-              ? "blocked"
-              : nextRunAtMs
-                ? "active"
-                : "paused",
+          status: statusAfterTerminalOccurrence({
+            blocked: args.status === "blocked",
+            nextRunAtMs,
+          }),
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,
           updatedAtMs: args.nowMs,

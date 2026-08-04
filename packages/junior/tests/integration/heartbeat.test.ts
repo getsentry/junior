@@ -730,7 +730,7 @@ describe("plugin heartbeat", () => {
     });
     await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
       lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      status: "paused",
+      status: "deleted",
     });
   }, 30_000);
 
@@ -839,7 +839,7 @@ describe("plugin heartbeat", () => {
       errorMessage: "Scheduled task dispatch record is missing.",
     });
     await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
-      status: "paused",
+      status: "deleted",
     });
   }, 30_000);
 
@@ -959,7 +959,7 @@ describe("plugin heartbeat", () => {
     });
     const duplicateTask = await store.getTask(duplicate.id);
     expect(duplicateTask).toMatchObject({
-      status: "paused",
+      status: "deleted",
       statusReason: expect.stringContaining(first.id),
     });
     expect(duplicateTask).not.toHaveProperty("nextRunAtMs");
