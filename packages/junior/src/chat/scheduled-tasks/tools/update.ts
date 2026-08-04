@@ -52,7 +52,7 @@ export function createSlackScheduleUpdateTaskTool(
         status: z
           .enum(["active", "blocked"])
           .describe(
-            "Set to active to resume a blocked task, or blocked to stop future runs.",
+            "Set to active to clear a blocked task, or blocked when dispatch cannot continue.",
           )
           .optional(),
         credential_mode: z

@@ -125,7 +125,7 @@
       "idx": 17,
       "version": "7",
       "when": 1785862792967,
-      "tag": "0017_tombstone_completed_scheduled_tasks",
+      "tag": "0017_drop_paused_scheduled_tasks",
       "breakpoints": true
     }
   ]

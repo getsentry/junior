@@ -553,7 +553,7 @@ function canFinishRun(
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
   return parsed.success
-    ? stripLegacyTaskFields(parsed.data as StoredScheduledTask)
+    ? stripLegacyTaskFields(parsed.data)
     : undefined;
 }
 
@@ -563,11 +563,9 @@ function parseStoredRun(value: unknown): ScheduledRun | undefined {
   return parsed.success ? stripLegacyRunFields(parsed.data) : undefined;
 }
 
-type StoredScheduledTask = Omit<ScheduledTask, "status"> & {
-  status: ScheduledTaskStatus | "paused";
-  version?: number;
-};
+type StoredScheduledTask = z.infer<typeof taskRecordSchema>;
 
+/** Coerce legacy paused rows to deleted tombstones during rolling deploy. */
 function stripLegacyTaskFields(task: StoredScheduledTask): ScheduledTask {
   const { version: _version, status, ...current } = task;
   if (status === "paused") {
@@ -1183,7 +1181,7 @@ function parseSqlTaskRecord(
   const parsed = taskRecordSchema.safeParse(
     record && creatorIdentityId ? { ...record, creatorIdentityId } : record,
   );
-  return parsed.success ? stripLegacyTaskFields(parsed.data as StoredScheduledTask) : undefined;
+  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
 }
 
 function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
