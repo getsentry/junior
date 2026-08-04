@@ -167,10 +167,10 @@ pull request watch after Junior accepts the event. Other watch events remain
 active until the watch expires or is cancelled. Event tasks do not complete
 after a terminal event; they remain configured until deleted.
 
-Issue events can target one issue with `owner/repo#number` or every issue in a
-repository with `owner/repo`. Webhook events use normal queued delivery. They do
-not interrupt active work, bypass Slack routing, or act as user-authored
-commands.
+Issue and pull request events can target one item with `owner/repo#number` or
+every item of that kind in a repository with `owner/repo`. Webhook events use
+normal queued delivery. They do not interrupt active work, bypass Slack routing,
+or act as user-authored commands.
 
 ## Watch deployment events
 
