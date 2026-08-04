@@ -4,10 +4,22 @@
  * A user may have several linked identities. This store combines their
  * identity-scoped personal memories with authorized public workspace scopes.
  */
-import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  like,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import type { ResolvedMemoryScope } from "./scope";
+import type { ResolvedMemoryScope, ViewerMemoryScopes } from "./scope";
 import {
   activeVisiblePredicate,
   archiveExpiredMemoryBatch,
@@ -57,7 +69,9 @@ export interface PersonalMemoryPage {
 
 /** Safe provenance attached to one viewer-visible memory. */
 export type PersonalMemoryRecord = MemoryRecord & {
+  manageable: boolean;
   origin: "automatic" | "explicit" | "other";
+  publishable: boolean;
   sourcePlatform: "local" | "slack";
   visibility: MemoryVisibility;
 };
@@ -91,14 +105,24 @@ export class PersonalMemoryNotFoundError extends Error {
   }
 }
 
+/** Expected failure when a personal memory has no public workspace target. */
+export class PersonalMemoryPublishError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PersonalMemoryPublishError";
+  }
+}
+
 /** Viewer-scoped memory operations shared by dashboard and REST. */
 export interface PersonalMemoryCollection {
-  /** Archive one exact personal memory owned by a linked identity. */
+  /** Archive one exact memory managed by a linked identity. */
   archive(id: string): Promise<MemoryRecord>;
   /** Read one exact memory visible to a linked identity. */
   get(id: string): Promise<PersonalMemoryRecord>;
   /** List one stable page across every authorized viewer scope. */
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
+  /** Publish one personal memory to its provider workspace. */
+  publish(id: string): Promise<PersonalMemoryRecord>;
   /** Summarize active memories across every authorized viewer scope. */
   stats(): Promise<PersonalMemoryStats>;
   /** Read memory creation history across every authorized viewer scope. */
@@ -149,11 +173,35 @@ function memoryVisibility(
 
 function personalMemoryRecord(
   row: typeof juniorMemoryMemories.$inferSelect,
+  options: {
+    privateScopeKeys: Set<string>;
+    publicScopes: ResolvedMemoryScope[];
+    workspaceScopesByPrivateKey: ReadonlyMap<string, ResolvedMemoryScope>;
+  },
 ): PersonalMemoryRecord {
   const memory = parseMemoryRow(row);
+  const ownsSubject = Boolean(
+    row.subjectType === "user" &&
+    row.subjectKey &&
+    options.privateScopeKeys.has(row.subjectKey),
+  );
+  const targetScope = options.workspaceScopesByPrivateKey.get(row.scopeKey);
+  const publishable = Boolean(
+    row.scope === "personal" &&
+    row.subjectType === "user" &&
+    row.subjectKey === row.scopeKey &&
+    targetScope &&
+    options.publicScopes.some(
+      (scope) =>
+        scope.scope === targetScope.scope &&
+        scope.scopeKey === targetScope.scopeKey,
+    ),
+  );
   return {
     ...memory,
+    manageable: row.scope === "personal" || ownsSubject,
     origin: memoryOrigin(row.idempotencyKey),
+    publishable,
     sourcePlatform: row.sourcePlatform,
     visibility: memoryVisibility(memory.scope),
   };
@@ -177,15 +225,49 @@ function emptyStats(): PersonalMemoryStats {
 /** Build storage operations for every memory scope linked to one viewer. */
 export function createPersonalMemoryCollection(
   db: MemoryDb,
-  scopes: {
-    privateScopes: ResolvedMemoryScope[];
-    publicScopes: ResolvedMemoryScope[];
-  },
-  options: { now?: () => number } = {},
+  scopes: ViewerMemoryScopes,
+  options: {
+    now?: () => number;
+    ownerLabels?: ReadonlyMap<string, string>;
+  } = {},
 ): PersonalMemoryCollection {
-  const { privateScopes, publicScopes } = scopes;
+  const { privateScopes, publicScopes, workspaceScopesByPrivateKey } = scopes;
   const allScopes = [...privateScopes, ...publicScopes];
+  const privateScopeKeys = new Set(
+    privateScopes.map((scope) => scope.scopeKey),
+  );
   const getNowMs = () => options.now?.() ?? Date.now();
+
+  function record(row: typeof juniorMemoryMemories.$inferSelect) {
+    return personalMemoryRecord(row, {
+      privateScopeKeys,
+      publicScopes,
+      workspaceScopesByPrivateKey,
+    });
+  }
+
+  function manageablePredicate(nowMs: number) {
+    const predicates = [];
+    const privateActive = activeVisiblePredicate({
+      nowMs,
+      scopes: privateScopes,
+    });
+    if (privateActive) predicates.push(privateActive);
+    const publicActive = activeVisiblePredicate({
+      nowMs,
+      scopes: publicScopes,
+    });
+    if (publicActive && privateScopeKeys.size > 0) {
+      predicates.push(
+        and(
+          publicActive,
+          eq(juniorMemoryMemories.subjectType, "user"),
+          inArray(juniorMemoryMemories.subjectKey, [...privateScopeKeys]),
+        ),
+      );
+    }
+    return predicates.length > 0 ? or(...predicates) : undefined;
+  }
 
   function scopesForVisibility(
     visibility: MemoryVisibility | undefined,
@@ -199,11 +281,7 @@ export function createPersonalMemoryCollection(
     async archive(id) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
-      // Forget is personal-only; public workspace memories stay shared.
-      const predicate = activeVisiblePredicate({
-        nowMs,
-        scopes: privateScopes,
-      });
+      const predicate = manageablePredicate(nowMs);
       if (!predicate) {
         throw new PersonalMemoryNotFoundError();
       }
@@ -239,7 +317,7 @@ export function createPersonalMemoryCollection(
       if (!rows[0]) {
         throw new PersonalMemoryNotFoundError();
       }
-      return personalMemoryRecord(rows[0]);
+      return record(rows[0]);
     },
 
     async list(input) {
@@ -291,7 +369,8 @@ export function createPersonalMemoryCollection(
         )
         .limit(input.limit + 1);
       const hasNextPage = rows.length > input.limit;
-      const memories = rows.slice(0, input.limit).map(personalMemoryRecord);
+      const pageRows = rows.slice(0, input.limit);
+      const memories = pageRows.map(record);
       const last = memories.at(-1);
       return {
         memories,
@@ -304,6 +383,55 @@ export function createPersonalMemoryCollection(
             }
           : {}),
       };
+    },
+
+    async publish(id) {
+      const memoryId = nonEmptyStringSchema.parse(id);
+      const nowMs = getNowMs();
+      const predicate = activeVisiblePredicate({
+        nowMs,
+        scopes: privateScopes,
+      });
+      if (!predicate) throw new PersonalMemoryNotFoundError();
+      const rows = await db
+        .select()
+        .from(juniorMemoryMemories)
+        .where(and(predicate, eq(juniorMemoryMemories.id, memoryId)))
+        .limit(1);
+      const row = rows[0];
+      if (!row) throw new PersonalMemoryNotFoundError();
+      const subjectLabel = options.ownerLabels?.get(row.scopeKey)?.trim();
+      if (!subjectLabel) {
+        throw new PersonalMemoryPublishError(
+          "Memory owner name is unavailable.",
+        );
+      }
+      const targetScope = workspaceScopesByPrivateKey.get(row.scopeKey);
+      const canPublish =
+        row.subjectType === "user" &&
+        row.subjectKey === row.scopeKey &&
+        targetScope &&
+        publicScopes.some(
+          (scope) =>
+            scope.scope === targetScope.scope &&
+            scope.scopeKey === targetScope.scopeKey,
+        );
+      if (!canPublish || !targetScope) {
+        throw new PersonalMemoryPublishError(
+          "This personal memory has no workspace audience.",
+        );
+      }
+      const updated = await db
+        .update(juniorMemoryMemories)
+        .set({
+          scope: targetScope.scope,
+          scopeKey: targetScope.scopeKey,
+          subjectLabel,
+        })
+        .where(and(predicate, eq(juniorMemoryMemories.id, memoryId)))
+        .returning();
+      if (!updated[0]) throw new PersonalMemoryNotFoundError();
+      return record(updated[0]);
     },
 
     async stats() {

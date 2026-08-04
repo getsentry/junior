@@ -666,25 +666,31 @@ function MemoryDetails(props: {
   const source = metadataValue(props.record, "Source");
   const visibility = metadataValue(props.record, "Visibility");
   const isPublic = visibility === "Public";
+  const forgetAction = props.record.actions?.find(
+    (recordAction) => recordAction.tone === "danger",
+  );
+  const ownedByViewer = !isPublic || Boolean(forgetAction);
   const story =
     learned === "Automatic"
       ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
-        ? isPublic
-          ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
-          : `You asked Junior to remember this on ${shortDate(remembered)}.`
+        ? ownedByViewer
+          ? `You asked Junior to remember this on ${shortDate(remembered)}.`
+          : `Someone asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
   const scopeCopy = isPublic
     ? `It is stored as workspace ${kind.toLowerCase()} for future channels.`
-    : `It is stored as a ${kind.toLowerCase()} for future conversations.`;
+    : kind === "Knowledge"
+      ? "It is stored as personal knowledge for future conversations."
+      : `It is stored as a ${kind.toLowerCase()} for future conversations.`;
   const hiddenMetadata = props.inline
     ? ["Type", "Learned", "Source", "Memory ID"]
     : ["Learned", "Source", "Memory ID"];
   const visibleMetadata = (props.record.metadata ?? []).filter(
     (item) => !hiddenMetadata.includes(item.label),
   );
-  const forgetAction = props.record.actions?.find(
-    (recordAction) => recordAction.tone === "danger",
+  const publishAction = props.record.actions?.find(
+    (recordAction) => recordAction.label === "Make Public",
   );
 
   return (
@@ -791,16 +797,31 @@ function MemoryDetails(props: {
               ))}
             </dl>
           ) : null}
-          {forgetAction ? (
-            <button
-              className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
-              disabled={props.action.isPending}
-              onClick={() => props.onAction(forgetAction)}
-              type="button"
-            >
-              <Trash2 aria-hidden="true" size={13} />
-              Forget this memory
-            </button>
+          {publishAction || forgetAction ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {publishAction ? (
+                <button
+                  className="inline-flex cursor-pointer items-center gap-2 rounded border border-cyan-300/15 bg-cyan-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-cyan-100/75 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/[0.07] hover:text-cyan-50"
+                  disabled={props.action.isPending}
+                  onClick={() => props.onAction(publishAction)}
+                  type="button"
+                >
+                  <Globe2 aria-hidden="true" size={13} />
+                  Make public
+                </button>
+              ) : null}
+              {forgetAction ? (
+                <button
+                  className="inline-flex cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+                  disabled={props.action.isPending}
+                  onClick={() => props.onAction(forgetAction)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                  Forget this memory
+                </button>
+              ) : null}
+            </div>
           ) : isPublic ? (
             <div className="mt-4 inline-flex items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
               <Globe2 aria-hidden="true" size={13} />

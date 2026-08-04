@@ -1,0 +1,1 @@
+ALTER TABLE "junior_memory_memories" ADD COLUMN "subject_label" text;

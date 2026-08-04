@@ -40,6 +40,7 @@ export const juniorMemoryMemories = pgTable(
     kind: text("type", { enum: MEMORY_KINDS }).notNull(),
     subjectType: text("subject_type", { enum: MEMORY_SUBJECT_TYPES }).notNull(),
     subjectKey: text("subject_key"),
+    subjectLabel: text("subject_label"),
     content: text("content").notNull(),
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', "content")`,

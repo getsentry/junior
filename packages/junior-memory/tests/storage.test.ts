@@ -35,6 +35,7 @@ import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
+import { createMemoryPromptContributions } from "../src/recall";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
@@ -507,6 +508,7 @@ function allowMemory(
         decision: "store",
         kind: target === "actor" ? "preference" : "knowledge",
         content: testCanonicalContent(candidate.content),
+        target,
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
           : {}),
@@ -536,6 +538,7 @@ describe("memory plugin storage", () => {
             kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
             expiresAtMs: null,
+            target: "actor",
           },
         };
       },
@@ -551,6 +554,7 @@ describe("memory plugin storage", () => {
       decision: "store",
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
+      target: "actor",
     });
     expect(calls[0]?.schema).toBeDefined();
   });
@@ -2218,6 +2222,14 @@ ORDER BY created_at_ms ASC
           {
             actions: [
               {
+                confirmation:
+                  "Make this memory public to the workspace where it was created?",
+                href: `/api/plugins/memory/memories/${personal.memory.id}/publish`,
+                label: "Make Public",
+                method: "POST",
+                tone: "neutral",
+              },
+              {
                 confirmation: "Forget this memory?",
                 href: `/api/plugins/memory/memories/${personal.memory.id}`,
                 label: "Forget",
@@ -2386,7 +2398,10 @@ ORDER BY created_at_ms ASC
         idempotencyKey: "session:api:private",
         kind: "knowledge",
       });
-      const viewer = viewerUser([firstContext.actor!, secondContext.actor!]);
+      const viewer = {
+        ...viewerUser([firstContext.actor!, secondContext.actor!]),
+        displayName: "David Cramer",
+      };
       const resolveUser = vi.fn(async () => viewer);
       const api = createMemoryApi({
         db: memoryDb(fixture),
@@ -2560,6 +2575,130 @@ ORDER BY created_at_ms ASC
         personal: 2,
         public: 1,
       });
+
+      const publishResponse = await api.fetch(
+        new Request(`http://localhost/memories/${first.memory.id}/publish`, {
+          method: "POST",
+        }),
+        requestContext,
+      );
+      expect(publishResponse.status).toBe(204);
+      const publishedDetailResponse = await api.fetch(
+        new Request(`http://localhost/memories/${first.memory.id}`),
+        requestContext,
+      );
+      expect(publishedDetailResponse.status).toBe(200);
+      expect(
+        memoryApiSchema.parse(await publishedDetailResponse.json()),
+      ).toMatchObject({
+        content: "Prefers concise release notes.",
+        id: first.memory.id,
+        subject: { label: "David Cramer", type: "user" },
+        visibility: "public",
+      });
+      const otherViewerContext = slackContext({
+        channelId: "C888",
+        teamId: "T123",
+        userId: "U888",
+      });
+      const otherToolContext = {
+        agent: rejectMemory,
+        db: memoryDb(fixture),
+        ...otherViewerContext,
+      };
+      await expect(
+        createMemoryListTool(otherToolContext).execute({ limit: 20 }, {}),
+      ).resolves.toMatchObject({
+        memories: expect.arrayContaining([
+          expect.objectContaining({
+            content: "About David Cramer: Prefers concise release notes.",
+            id: first.memory.id,
+          }),
+        ]),
+      });
+      await expect(
+        createMemoryRemoveTool(otherToolContext).execute(
+          { id: first.memory.id },
+          {},
+        ),
+      ).rejects.toThrow("Memory was not found in the current context.");
+      const ownerToolMemory = await firstStore.createMemory({
+        content: "Prefers owner-managed public memories.",
+        idempotencyKey: "tool:api:owner-managed",
+        kind: "preference",
+      });
+      const ownerPublishResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories/${ownerToolMemory.memory.id}/publish`,
+          { method: "POST" },
+        ),
+        requestContext,
+      );
+      expect(ownerPublishResponse.status).toBe(204);
+      await expect(
+        createMemoryRemoveTool({
+          agent: rejectMemory,
+          db: memoryDb(fixture),
+          ...firstContext,
+        }).execute({ id: ownerToolMemory.memory.id }, {}),
+      ).resolves.toMatchObject({
+        memory: { id: ownerToolMemory.memory.id },
+      });
+      const publicMemoryPage = memoryPlugin().userPages?.[0];
+      if (!publicMemoryPage) throw new Error("Expected Memory dashboard page");
+      await expect(
+        publicMemoryPage.read(
+          {
+            db: memoryDb(fixture),
+            log: noopLogger,
+            plugin: { name: "memory" },
+            viewer: viewerUser([otherViewerContext.actor!]),
+          },
+          { limit: 20 },
+        ),
+      ).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({
+            actions: [],
+            id: first.memory.id,
+            title: "David Cramer — Prefers concise release notes.",
+          }),
+        ]),
+      });
+      const recallInputs: unknown[] = [];
+      const contributions = await createMemoryPromptContributions({
+        actor: otherViewerContext.actor,
+        agent: {
+          selectRelevantMemories(input) {
+            recallInputs.push(input);
+            return { relevantIds: input.candidates.map(({ id }) => id) };
+          },
+        },
+        db: memoryDb(fixture),
+        log: noopLogger,
+        source: otherViewerContext.source,
+        text: "concise release notes",
+      });
+      expect(recallInputs).toEqual([
+        expect.objectContaining({
+          candidates: [
+            expect.objectContaining({
+              content: "About David Cramer: Prefers concise release notes.",
+              id: first.memory.id,
+            }),
+          ],
+        }),
+      ]);
+      expect(contributions?.[0]?.renderPrompt()).toContain(
+        "About David Cramer: Prefers concise release notes.",
+      );
+      const publishedDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${first.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publishedDeleteResponse.status).toBe(204);
 
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
@@ -3493,6 +3632,35 @@ WHERE id = '${superseded.memory.id}'
         },
       });
       expect(reviewedRequests[0]).not.toHaveProperty("expiresAtMs");
+      await createMemoryCreateTool({
+        ...context,
+        agent: {
+          reviewCreateRequest() {
+            return {
+              content: "Prefers risk summaries first.",
+              decision: "store",
+              kind: "preference",
+              target: "conversation",
+            };
+          },
+        },
+      }).execute(
+        { content: "I prefer risk summaries first." },
+        { toolCallId: "tool-create-conflicting-preference" },
+      );
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(
+              memorySqlSchema.juniorMemoryMemories.content,
+              "Prefers risk summaries first.",
+            ),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({ kind: "preference", scope: "personal" }),
+      ]);
       await expect(
         createMemoryCreateTool({
           ...context,
@@ -3533,6 +3701,9 @@ WHERE id = '${superseded.memory.id}'
         memories: [
           expect.objectContaining({
             content: "Incident notes live in Linear.",
+          }),
+          expect.objectContaining({
+            content: "Prefers risk summaries first.",
           }),
           expect.objectContaining({
             content: "Prefers terse status updates.",

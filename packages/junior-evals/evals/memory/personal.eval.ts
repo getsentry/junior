@@ -137,6 +137,51 @@ describeEval("Personal Memory", slackEvals, (it) => {
     });
   });
 
+  const outOfOfficeThread = {
+    id: "thread-memory-out-of-office",
+    channel_id: "CMEMORYOUTOFOFFICE",
+    thread_ts: "17000000.000003",
+  };
+
+  it("when explicitly asked to remember expiring availability, store actor knowledge", async ({
+    run,
+  }) => {
+    await clearMemories();
+    const userText =
+      "Please remember that I will be out of office from August 10 through August 14, 2026 for a family trip. Expire this memory at 2026-08-15T00:00:00-07:00.";
+    const result = await run({
+      overrides: memoryPluginOverrides,
+      initialEvents: [mention(userText, { thread: outOfOfficeThread })],
+      criteria: rubric({
+        pass: [
+          "The assistant stores the actor's out-of-office dates and family-trip reason as an expiring personal memory.",
+          "The assistant does not expose hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not reject the memory merely because it is temporary; it has an exact expiration.",
+          "Do not store the fact as shared conversation knowledge.",
+        ],
+      }),
+    });
+
+    const rows = await readActiveMemories(outOfOfficeThread);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        expiresAtMs: Date.parse("2026-08-15T00:00:00-07:00"),
+        kind: "knowledge",
+        scope: "personal",
+        subjectType: "user",
+      }),
+    ]);
+    await expectActorMemorySemantics({
+      assistantText: visibleAssistantText(result),
+      expectedMeaning:
+        "The actor will be out of office from August 10 through August 14, 2026 for a family trip.",
+      storedMemories: rows,
+      userText,
+    });
+  });
+
   const explicitDuplicateThread = {
     id: "thread-memory-explicit-duplicate",
     channel_id: "CMEMORYEXPLICITDUPLICATE",

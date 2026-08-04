@@ -26,6 +26,14 @@ function visibilityLabel(visibility: MemoryVisibility): string {
   return visibility === "public" ? "Public" : "Private";
 }
 
+function memoryTitle(memory: PersonalMemoryRecord): string {
+  return memory.visibility === "public" &&
+    memory.subjectType === "user" &&
+    memory.subjectLabel
+    ? `${memory.subjectLabel} — ${memory.content}`
+    : memory.content;
+}
+
 function pageFilter(filter: string | undefined): {
   visibility?: MemoryVisibility;
 } {
@@ -63,8 +71,20 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
-          actions:
-            memory.visibility === "private"
+          actions: [
+            ...(memory.publishable
+              ? [
+                  {
+                    confirmation:
+                      "Make this memory public to the workspace where it was created?",
+                    href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}/publish`,
+                    label: "Make Public",
+                    method: "POST" as const,
+                    tone: "neutral" as const,
+                  },
+                ]
+              : []),
+            ...(memory.manageable
               ? [
                   {
                     confirmation: "Forget this memory?",
@@ -74,9 +94,10 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
                     tone: "danger" as const,
                   },
                 ]
-              : [],
+              : []),
+          ],
           id: memory.id,
-          title: memory.content,
+          title: memoryTitle(memory),
           metadata: [
             { label: "Type", value: titleCase(memory.kind) },
             { label: "Learned", value: originLabel(memory.origin) },
@@ -85,6 +106,14 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
               label: "Visibility",
               value: visibilityLabel(memory.visibility),
             },
+            ...(memory.visibility === "public" && memory.subjectType === "user"
+              ? [
+                  {
+                    label: "About",
+                    value: memory.subjectLabel ?? "Identity unavailable",
+                  },
+                ]
+              : []),
             { label: "Remembered", value: rememberedDate(memory.createdAtMs) },
             { label: "Observed", value: rememberedDate(memory.observedAtMs) },
             {

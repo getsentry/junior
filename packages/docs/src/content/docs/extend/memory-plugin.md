@@ -78,26 +78,34 @@ For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set 
 
 ## Manage personal memories
 
-Signed-in users can search, page through, and forget their personal memories
+Signed-in users can search, page through, publish, and forget their personal memories
 from the top-level **Memories** dashboard page. The page shows viewer-scoped
 memory totals, embedding coverage, and history on **Overview**. The separate
 **Memories** view provides search and collections for preferences,
 automatically learned memories, and explicitly saved memories. Each record
 explains whether Junior learned it automatically or saved it because the user
 asked. Overview groups the viewer's active memories by type and how they were
-added. Forgetting archives the memory so Junior no longer recalls it.
+added. Personal memories tied to a provider workspace can be made public to
+that workspace. Stored content stays canonical; publishing snapshots a display
+label as separate subject metadata for the dashboard and recall prompt. Owners
+can forget their published personal memories; shared workspace knowledge
+remains view-only. Forgetting archives the memory so Junior no longer recalls
+it.
 
 The plugin also exposes authenticated REST resources:
 
-| Method   | Path                               | Purpose                                       |
-| -------- | ---------------------------------- | --------------------------------------------- |
-| `GET`    | `/api/plugins/memory/dashboard`    | Read viewer-scoped memory totals and timeline |
-| `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
-| `GET`    | `/api/plugins/memory/memories/:id` | Read one personal memory                      |
-| `DELETE` | `/api/plugins/memory/memories/:id` | Forget one personal memory                    |
+| Method   | Path                                       | Purpose                                          |
+| -------- | ------------------------------------------ | ------------------------------------------------ |
+| `GET`    | `/api/plugins/memory/dashboard`            | Read viewer-scoped memory totals and timeline    |
+| `GET`    | `/api/plugins/memory/memories`             | List memories with `q`, `cursor`, and `limit`    |
+| `GET`    | `/api/plugins/memory/memories/:id`         | Read one personal memory                         |
+| `POST`   | `/api/plugins/memory/memories/:id/publish` | Make one workspace-backed personal memory public |
+| `DELETE` | `/api/plugins/memory/memories/:id`         | Forget one personal memory                       |
 
-Personal API tokens can use the read endpoints. Deletion requires an
-authenticated dashboard browser session.
+Personal API tokens can use the read endpoints. Publishing and deletion require
+an authenticated dashboard browser session. User-subject memories include a
+structured `subject` projection with the published display label when
+available; stored `content` remains canonical and subject-less.
 
 ## Run migrations
 
@@ -131,7 +139,10 @@ What do you remember about my preferences?
 
 Junior should recall the preference without prompting.
 
-Public Slack channel memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from another public channel in the same Slack workspace. Private Slack and local conversation memories remain scoped to their original conversation.
+Workspace-public memories can be recalled from public conversations in the same
+provider workspace. Private conversation memories remain scoped to their
+original conversation, and local identities without a workspace cannot publish
+personal memories.
 
 ## Failure modes
 

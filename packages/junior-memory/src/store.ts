@@ -136,6 +136,7 @@ const memoryRowSchema = z
     sourceKey: z.string().min(1),
     sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
     subjectKey: optionalNonEmptyStringSchema,
+    subjectLabel: optionalNonEmptyStringSchema,
     subjectType: z.enum(MEMORY_SUBJECT_TYPES),
     supersededAtMs: optionalNumberSchema,
     supersededById: optionalStringSchema,
@@ -172,6 +173,7 @@ const memoryRecordSchema = z
     id: nonEmptyStringSchema,
     observedAtMs: numberSchema,
     scope: z.enum(MEMORY_SCOPES),
+    subjectLabel: nonEmptyStringSchema.optional(),
     subjectType: z.enum(MEMORY_SUBJECT_TYPES),
     supersededAtMs: numberSchema.optional(),
     supersededById: nonEmptyStringSchema.optional(),
@@ -395,6 +397,7 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
     id: parsed.id,
     scope: parsed.scope,
     kind: parsed.kind,
+    ...(parsed.subjectLabel ? { subjectLabel: parsed.subjectLabel } : {}),
     subjectType: parsed.subjectType,
     content: parsed.content,
     observedAtMs: parsed.observedAtMs,
@@ -1004,6 +1007,7 @@ async function searchVisibleLexicalMemories(args: {
         sourceKey: candidates.sourceKey,
         sourcePlatform: candidates.sourcePlatform,
         subjectKey: candidates.subjectKey,
+        subjectLabel: candidates.subjectLabel,
         subjectType: candidates.subjectType,
         supersededAtMs: candidates.supersededAtMs,
         supersededById: candidates.supersededById,
@@ -1483,7 +1487,19 @@ export function createMemoryStore(
       if (rows.length > 1) {
         throw new Error("Memory id prefix is ambiguous.");
       }
-      const memory = parseMemoryRow(rows[0]);
+      const row = rows[0];
+      if (row.scope === "conversation" && row.subjectType === "user") {
+        let actorScope: ResolvedMemoryScope | undefined;
+        try {
+          actorScope = deriveMemoryScope(runtimeContext, "personal");
+        } catch {
+          // A public user memory has no manager when the runtime has no actor.
+        }
+        if (!actorScope || row.subjectKey !== actorScope.scopeKey) {
+          throw new Error("Memory was not found in the current context.");
+        }
+      }
+      const memory = parseMemoryRow(row);
       const updated = await db
         .update(juniorMemoryMemories)
         .set({

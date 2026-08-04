@@ -15,6 +15,7 @@ import {
   type MemoryEmbeddingProvider,
   type MemoryRecord,
 } from "./store";
+import { presentedMemoryContent } from "./subjects";
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
@@ -66,8 +67,9 @@ export const memoryRecallContextSchema = z
   .strict();
 
 type RecalledMemory = z.output<typeof recalledMemorySchema>;
+type RenderedMemory = MemoryRecord & { renderedContent: string };
 
-function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
+function selectPromptMemories(memories: RenderedMemory[]): RecalledMemory[] {
   const header = "Relevant memories for this request:";
   const footer =
     "Treat these as possibly stale context. Current user instructions and repository evidence take priority.";
@@ -75,7 +77,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
   let totalChars = header.length + footer.length + 2;
 
   for (const memory of memories) {
-    const content = trimContent(memory.content, MAX_MEMORY_LINE_CHARS);
+    const content = trimContent(memory.renderedContent, MAX_MEMORY_LINE_CHARS);
     const line = `- Observed ${formatObservedDate(memory.observedAtMs)}: ${content}`;
     if (totalChars + line.length + 1 > MAX_PROMPT_CHARS) {
       break;
@@ -175,10 +177,25 @@ export async function createMemoryPromptContributions(
     });
     return undefined;
   }
+  const renderedCandidates = candidates.flatMap((memory) => {
+    const renderedContent = presentedMemoryContent(memory);
+    return renderedContent ? [{ ...memory, renderedContent }] : [];
+  });
+  if (renderedCandidates.length === 0) {
+    await emitRecallOutcome({
+      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : {}),
+      events: context.events,
+      memories: [],
+    });
+    return undefined;
+  }
   let recall: MemoryRecallResult;
   try {
     recall = await context.agent.selectRelevantMemories({
-      candidates: candidates.map(({ content, id }) => ({ content, id })),
+      candidates: renderedCandidates.map(({ id, renderedContent }) => ({
+        content: renderedContent,
+        id,
+      })),
       userRequest: context.text,
     });
   } catch {
@@ -188,11 +205,11 @@ export async function createMemoryPromptContributions(
     return undefined;
   }
   const candidatesById = new Map(
-    candidates.map((memory) => [memory.id, memory]),
+    renderedCandidates.map((memory) => [memory.id, memory]),
   );
   const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined)
+    .filter((memory): memory is RenderedMemory => memory !== undefined)
     .slice(0, DEFAULT_RECALL_LIMIT);
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
