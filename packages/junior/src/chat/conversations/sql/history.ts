@@ -18,6 +18,7 @@ import {
   historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
+  type ConversationEventAppendResult,
   type ConversationEventPage,
   type ConversationEventQuery,
   type ConversationEventStore,
@@ -99,79 +100,89 @@ class SqlConversationEventStore implements ConversationEventStore {
     conversationId: string,
     events: NewConversationEvent[],
     options: { activity?: "preserve" } = {},
-  ): Promise<void> {
+  ): Promise<ConversationEventAppendResult> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
     );
-    if (parsed.length === 0) {
-      return;
-    }
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      const existingKeys = parsed
-        .map((event) => event.idempotencyKey)
-        .filter((key): key is string => key !== undefined);
-      const persistedKeys =
-        existingKeys.length === 0
-          ? new Set<string>()
-          : new Set(
-              (
-                await this.executor
-                  .db()
-                  .select({ key: juniorConversationEvents.idempotencyKey })
-                  .from(juniorConversationEvents)
-                  .where(
-                    and(
-                      eq(
-                        juniorConversationEvents.conversationId,
-                        conversationId,
+    return await withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        if (parsed.length === 0) {
+          return this.appendResultFromCursor(conversationId);
+        }
+        const existingKeys = parsed
+          .map((event) => event.idempotencyKey)
+          .filter((key): key is string => key !== undefined);
+        const persistedKeys =
+          existingKeys.length === 0
+            ? new Set<string>()
+            : new Set(
+                (
+                  await this.executor
+                    .db()
+                    .select({ key: juniorConversationEvents.idempotencyKey })
+                    .from(juniorConversationEvents)
+                    .where(
+                      and(
+                        eq(
+                          juniorConversationEvents.conversationId,
+                          conversationId,
+                        ),
+                        inArray(
+                          juniorConversationEvents.idempotencyKey,
+                          existingKeys,
+                        ),
                       ),
-                      inArray(
-                        juniorConversationEvents.idempotencyKey,
-                        existingKeys,
-                      ),
-                    ),
-                  )
-              ).flatMap((row) => (row.key ? [row.key] : [])),
+                    )
+                ).flatMap((row) => (row.key ? [row.key] : [])),
+              );
+        const acceptedKeys = new Set(persistedKeys);
+        const pending = parsed.filter((event) => {
+          if (event.idempotencyKey === undefined) return true;
+          if (acceptedKeys.has(event.idempotencyKey)) return false;
+          acceptedKeys.add(event.idempotencyKey);
+          return true;
+        });
+        if (pending.length === 0) {
+          return this.appendResultFromCursor(conversationId);
+        }
+        const newestCreatedAtMs = Math.max(
+          ...pending.map((event) => event.createdAtMs),
+        );
+        await ensureConversationRow(
+          this.executor,
+          conversationId,
+          newestCreatedAtMs,
+          options,
+        );
+        if (options.activity !== "preserve") {
+          await this.executor
+            .db()
+            .update(juniorConversations)
+            .set({ archivedAt: null })
+            .where(
+              and(
+                eq(juniorConversations.conversationId, conversationId),
+                isNotNull(juniorConversations.archivedAt),
+              ),
             );
-      const acceptedKeys = new Set(persistedKeys);
-      const pending = parsed.filter((event) => {
-        if (event.idempotencyKey === undefined) return true;
-        if (acceptedKeys.has(event.idempotencyKey)) return false;
-        acceptedKeys.add(event.idempotencyKey);
-        return true;
-      });
-      if (pending.length === 0) {
-        return;
-      }
-      const newestCreatedAtMs = Math.max(
-        ...pending.map((event) => event.createdAtMs),
-      );
-      await ensureConversationRow(
-        this.executor,
-        conversationId,
-        newestCreatedAtMs,
-        options,
-      );
-      if (options.activity !== "preserve") {
-        await this.executor
-          .db()
-          .update(juniorConversations)
-          .set({ archivedAt: null })
-          .where(
-            and(
-              eq(juniorConversations.conversationId, conversationId),
-              isNotNull(juniorConversations.archivedAt),
-            ),
-          );
-      }
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = cursor.maxHistoryVersion ?? 0;
-      let seq = cursor.nextSeq;
-      const rows = pending.map((event) =>
-        insertFromEvent(conversationId, seq++, historyVersion, event),
-      );
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
-    });
+        }
+        const cursor = await this.readCursor(conversationId);
+        const historyVersion = cursor.maxHistoryVersion ?? 0;
+        let seq = cursor.nextSeq;
+        const rows = pending.map((event) =>
+          insertFromEvent(conversationId, seq++, historyVersion, event),
+        );
+        await this.executor.db().insert(juniorConversationEvents).values(rows);
+        const inserted = rows.map((row) => ({ seq: row.seq }));
+        return {
+          historyVersion,
+          inserted,
+          committedSeq: inserted.at(-1)?.seq ?? seq - 1,
+        };
+      },
+    );
   }
 
   async replaceHistory(
@@ -450,6 +461,18 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .limit(1);
     return row !== undefined;
+  }
+
+  /** Build an append result from the live cursor without inserting rows. */
+  private async appendResultFromCursor(
+    conversationId: string,
+  ): Promise<ConversationEventAppendResult> {
+    const cursor = await this.readCursor(conversationId);
+    return {
+      historyVersion: cursor.maxHistoryVersion ?? 0,
+      inserted: [],
+      committedSeq: cursor.nextSeq - 1,
+    };
   }
 
   /** Read the next sequence and active model-history version. */

@@ -221,13 +221,37 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Append newly stable native history items. A shorter or changed prefix indicates
- * that a caller persisted volatile Pi state; only compaction and handoff may
- * intentionally replace active model history.
+ * Already-committed agent history known to the caller.
+ *
+ * When present, the commit path fences on this cursor and appends only the
+ * delta instead of reloading and deep-comparing the full active history.
+ */
+export interface CommitMessagesBase {
+  /** `seq` of the last event already committed for this base. */
+  committedSeq: number;
+  /** History version that owns `committedSeq`. */
+  historyVersion: number;
+  /** Event sequence for every projected agent-history item already committed. */
+  messageSeqs: number[];
+  /** Durable messages already committed for this base. */
+  messages: PiMessage[];
+  /** Provenance aligned one-to-one with `messages`. */
+  provenance: ConversationMessageProvenance[];
+}
+
+/**
+ * Append newly stable native history items.
+ *
+ * Prefer supplying `base` from an already-loaded turn projection so checkpoints
+ * only write the delta. Without `base`, the store loads current history and
+ * rejects a shorter or changed committed prefix. Only compaction and handoff
+ * may intentionally replace active model history.
  */
 export async function commitMessages(args: {
   conversationId: string;
   messages: PiMessage[];
+  /** Already-committed cursor/projection used to fence and append the delta. */
+  base?: CommitMessagesBase;
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
   /** Explicit provenance for the trailing newly committed messages. */
@@ -239,7 +263,7 @@ export async function commitMessages(args: {
     contexts: PluginTurnContext[];
     turnId: string;
   };
-  /** SQL authority for the atomic commit; defaults to the process executor. */
+  /** SQL executor for the atomic commit; defaults to the process executor. */
   executor?: JuniorSqlDatabase;
 }): Promise<{
   committedSeq: number;
@@ -303,27 +327,115 @@ export async function commitAcceptedReply(args: {
   );
 }
 
+function throwCommittedBoundaryChanged(conversationId: string): never {
+  throw new Error(
+    `Agent history for ${conversationId} changed before its committed boundary`,
+  );
+}
+
+async function resolveCommitBase(
+  args: Parameters<typeof commitMessages>[0],
+  eventStore: ReturnType<typeof createSqlConversationEventStore>,
+  nextLocalMessages: PiMessage[],
+): Promise<CommitMessagesBase> {
+  if (args.base) {
+    const matchingPrefix = countMatchingPrefix(
+      args.base.messages,
+      nextLocalMessages,
+    );
+    if (matchingPrefix !== args.base.messages.length) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
+    // Empty append is the cheap live cursor read under the conversation lock.
+    const live = await eventStore.append(args.conversationId, []);
+    if (
+      live.historyVersion !== args.base.historyVersion ||
+      live.committedSeq < args.base.committedSeq
+    ) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
+    if (live.committedSeq === args.base.committedSeq) {
+      return args.base;
+    }
+    // Global cursor advanced after the caller's base. That can be:
+    // - host-only facts (MCP connect, turn_context, tool_execution_started)
+    // - a concurrent checkpoint that already committed part of `nextLocalMessages`
+    //   (turn_end persist racing a timeout/yield continuation)
+    // Divergent agent-history rewrites still fail closed.
+    const currentEvents = await eventStore.loadCurrentHistory(
+      args.conversationId,
+    );
+    const current = projectConversationEvents(currentEvents);
+    const basePrefix = countMatchingPrefix(
+      args.base.messages,
+      current.messages,
+    );
+    if (
+      basePrefix !== args.base.messages.length ||
+      args.base.messageSeqs.some((seq, index) => current.seqs[index] !== seq)
+    ) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
+    if (current.messages.length === args.base.messages.length) {
+      return {
+        ...args.base,
+        committedSeq: live.committedSeq,
+      };
+    }
+    // Live agent history already extends the caller's base. Adopt it only when
+    // those extras are exactly the prefix of what this commit still wants.
+    const adoptedMessages = current.messages;
+    const adoptedPrefix = countMatchingPrefix(
+      adoptedMessages,
+      nextLocalMessages,
+    );
+    if (adoptedPrefix !== adoptedMessages.length) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
+    return {
+      committedSeq: live.committedSeq,
+      historyVersion: live.historyVersion,
+      messageSeqs: current.seqs,
+      messages: adoptedMessages,
+      provenance: current.provenance,
+    };
+  }
+
+  const currentEvents = await eventStore.loadCurrentHistory(
+    args.conversationId,
+  );
+  const current = projectConversationEvents(currentEvents);
+  const matchingPrefix = countMatchingPrefix(
+    current.messages,
+    nextLocalMessages,
+  );
+  if (matchingPrefix !== current.messages.length) {
+    throwCommittedBoundaryChanged(args.conversationId);
+  }
+  return {
+    committedSeq: currentEvents.at(-1)?.seq ?? -1,
+    historyVersion: currentEvents.at(-1)?.historyVersion ?? 0,
+    messageSeqs: current.seqs,
+    messages: current.messages,
+    provenance: current.provenance,
+  };
+}
+
 async function commitMessagesLocked(
   args: Parameters<typeof commitMessages>[0],
   executor: JuniorSqlDatabase,
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
-  const currentEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const current = projectConversationEvents(currentEvents);
   // Runtime bootstrap is per-run input, not durable agent history. Session
   // records may retain it while a turn is live, but event replay must not need
   // a compensating history rewrite when that bootstrap changes.
   const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
     normalizeDurableMessage,
   );
-  const matchingPrefix = countMatchingPrefix(
-    current.messages,
-    nextLocalMessages,
-  );
+  const base = await resolveCommitBase(args, eventStore, nextLocalMessages);
+  const matchingPrefix = base.messages.length;
   const nextLocalProvenance = resolveCommitProvenance({
-    existing: current,
+    existing: base,
     nextMessages: nextLocalMessages,
     matchingPrefix,
     ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
@@ -334,47 +446,55 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  if (matchingPrefix === current.messages.length) {
-    const newMessages = nextLocalMessages.slice(matchingPrefix);
-    const turnContext = args.turnContext;
-    const turnContextEvents =
-      turnContext?.contexts.map((context, index) => ({
-        idempotencyKey:
-          `turn:${turnContext.turnId}:context:` +
-          `${context.pluginName}:${index}`,
-        createdAtMs: context.loadedAtMs,
-        data: {
-          type: "turn_context" as const,
-          turnId: turnContext.turnId,
-          pluginName: context.pluginName,
-          kind: context.kind,
-          version: context.version,
-          content: context.content,
-        },
-      })) ?? [];
-    await eventStore.append(args.conversationId, [
-      ...newMessages.map((message, index) => ({
-        data: historyItemFromPiMessage(
-          message,
-          nextLocalProvenance[matchingPrefix + index]!,
-        ),
-        createdAtMs: messageTimestamp(message),
-      })),
-      ...turnContextEvents,
-    ]);
-  } else {
-    throw new Error(
-      `Agent history for ${args.conversationId} changed before its committed boundary`,
-    );
-  }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents);
+  const newMessages = nextLocalMessages.slice(matchingPrefix);
+  const turnContext = args.turnContext;
+  const turnContextEvents =
+    turnContext?.contexts.map((context, index) => ({
+      idempotencyKey:
+        `turn:${turnContext.turnId}:context:` +
+        `${context.pluginName}:${index}`,
+      createdAtMs: context.loadedAtMs,
+      data: {
+        type: "turn_context" as const,
+        turnId: turnContext.turnId,
+        pluginName: context.pluginName,
+        kind: context.kind,
+        version: context.version,
+        content: context.content,
+      },
+    })) ?? [];
+
+  // Append native messages and host-only turn context separately so message
+  // sequence assignment never depends on mixed-event ordering assumptions.
+  const messageAppend =
+    newMessages.length === 0
+      ? {
+          historyVersion: base.historyVersion,
+          inserted: [] as Array<{ seq: number }>,
+          committedSeq: base.committedSeq,
+        }
+      : await eventStore.append(
+          args.conversationId,
+          newMessages.map((message, index) => ({
+            data: historyItemFromPiMessage(
+              message,
+              nextLocalProvenance[matchingPrefix + index]!,
+            ),
+            createdAtMs: messageTimestamp(message),
+          })),
+        );
+  const contextAppend =
+    turnContextEvents.length === 0
+      ? messageAppend
+      : await eventStore.append(args.conversationId, turnContextEvents);
+
   return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
+    committedSeq: contextAppend.committedSeq,
+    historyVersion: contextAppend.historyVersion,
+    messageSeqs: [
+      ...base.messageSeqs,
+      ...messageAppend.inserted.map((event) => event.seq),
+    ],
     messages: nextLocalMessages,
     provenance: nextLocalProvenance,
   };
@@ -503,9 +623,7 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId
-      ? { authorizationId: args.authorizationId }
-      : {}),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
   });
   await getConversationEventStore().append(args.conversationId, [

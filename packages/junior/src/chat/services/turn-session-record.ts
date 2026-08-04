@@ -148,6 +148,7 @@ export async function persistRunningSessionRecord(args: {
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
+      ...(latestSessionRecord ? { existing: latestSessionRecord } : {}),
       ...(args.trailingMessageProvenance
         ? { trailingMessageProvenance: args.trailingMessageProvenance }
         : {}),
@@ -308,6 +309,7 @@ export async function persistCompletedSessionRecord(args: {
             latestSessionRecord?.turnStartMessageIndex,
         }
       : {}),
+    ...(latestSessionRecord ? { existing: latestSessionRecord } : {}),
   };
   await persistWithRetry(async () => {
     await upsertAgentTurnSessionRecord(target);

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
@@ -29,26 +30,90 @@ describe("reporting support", () => {
   });
 
   it("indexes only the latest safe turn-session summary", async () => {
-    const { listAgentTurnSessionSummaries, upsertAgentTurnSessionRecord } =
+    const { getConversationStore } = await import("@/chat/db");
+    const { completeDeliveredTurn, persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { listAgentTurnSessionSummaries } =
       await import("@/chat/state/turn-session");
-    const conversationId = "slack:C-reporting-support:summary-index";
-
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId: "reporting-support-turn",
-      sliceId: 1,
-      state: "running",
-      piMessages: [],
+    const conversationId = "slack:CREPORTINGSUPPORT:summary-index";
+    const destination = {
+      platform: "slack" as const,
+      teamId: "TREPORTINGSUPPORT",
+      channelId: "CREPORTINGSUPPORT",
+    };
+    const source = createSlackSource({
+      teamId: "TREPORTINGSUPPORT",
+      channelId: "CREPORTINGSUPPORT",
+      messageTs: "1700000000.100",
+      threadTs: "1700000000.100",
+      visibility: "public",
     });
-    await upsertAgentTurnSessionRecord({
+    const userMessage = {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: "summarize this" }],
+      timestamp: 1,
+    };
+    const assistantMessage = {
+      role: "assistant" as const,
+      content: [{ type: "text" as const, text: "done" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test/model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop" as const,
+      timestamp: 2,
+    };
+
+    // Product session writes also mirror execution into the conversation store.
+    await getConversationStore().recordActivity({
+      conversationId,
+      channelName: "reporting-support-summary",
+      destination,
+      nowMs: Date.now(),
+      source: "slack",
+      title: "Reporting support summary",
+      visibility: "public",
+    });
+
+    expect(
+      await persistRunningSessionRecord({
+        modelId: "test/model",
+        conversationId,
+        destination,
+        destinationVisibility: "public",
+        source,
+        sessionId: "reporting-support-turn",
+        sliceId: 1,
+        messages: [userMessage],
+        surface: "slack",
+        loadedSkillNames: ["triage"],
+      }),
+    ).toBe(true);
+
+    await completeDeliveredTurn({
       modelId: "test/model",
       conversationId,
+      destination,
+      destinationVisibility: "public",
+      source,
       sessionId: "reporting-support-turn",
       sliceId: 2,
-      state: "completed",
-      piMessages: [],
-      cumulativeDurationMs: 1_200,
+      messages: [userMessage, assistantMessage],
+      surface: "slack",
+      durationMs: 1_200,
       errorMessage: "provider failed with sensitive details",
       loadedSkillNames: ["triage"],
     });
@@ -67,6 +132,9 @@ describe("reporting support", () => {
       loadedSkillNames: ["triage"],
     });
     expect(matching[0]).not.toHaveProperty("errorMessage");
+    expect(matching[0]).not.toHaveProperty("messageSeqs");
+    expect(matching[0]).not.toHaveProperty("committedSeq");
+    expect(matching[0]).not.toHaveProperty("historyVersion");
   });
 
   it("lists recent conversations through the conversation reporting API", async () => {

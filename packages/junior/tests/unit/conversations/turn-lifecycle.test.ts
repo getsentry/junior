@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   ConversationEvent,
+  ConversationEventAppendResult,
   ConversationEventPage,
   ConversationEventQuery,
   ConversationEventStore,
@@ -17,7 +18,8 @@ class MemoryConversationEventStore implements ConversationEventStore {
   async append(
     _conversationId: string,
     events: NewConversationEvent[],
-  ): Promise<void> {
+  ): Promise<ConversationEventAppendResult> {
+    const inserted: ConversationEventAppendResult["inserted"] = [];
     for (const event of events) {
       if (
         event.idempotencyKey &&
@@ -28,7 +30,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
       if (event.idempotencyKey) {
         this.idempotencyKeys.add(event.idempotencyKey);
       }
-      this.history.push({
+      const next: ConversationEvent = {
         schemaVersion: 1,
         seq: this.history.length,
         historyVersion: 0,
@@ -37,8 +39,17 @@ class MemoryConversationEventStore implements ConversationEventStore {
           : {}),
         createdAtMs: event.createdAtMs,
         data: event.data,
+      };
+      this.history.push(next);
+      inserted.push({
+        seq: next.seq,
       });
     }
+    return {
+      historyVersion: this.history.at(-1)?.historyVersion ?? 0,
+      inserted,
+      committedSeq: this.history.at(-1)?.seq ?? -1,
+    };
   }
 
   async replaceHistory(
