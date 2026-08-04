@@ -1,37 +1,30 @@
-import {
-  bigint,
-  date,
-  index,
-  integer,
-  pgTable,
-  primaryKey,
-  text,
-} from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
-/** Daily successful execution counters owned by individual tasks. */
+/** One successful task execution linked to its durable conversation. */
 export const juniorTaskExecutions = pgTable(
   "junior_task_executions",
   {
-    date: date("date", { mode: "string" }).notNull(),
+    id: text("id").primaryKey(),
     kind: text("kind").notNull(),
     namespace: text("namespace").notNull(),
     taskId: text("task_id").notNull(),
-    count: integer("count").notNull().default(0),
-    lastExecutedAtMs: bigint("last_executed_at_ms", {
-      mode: "number",
-    }).notNull(),
+    conversationId: text("conversation_id").notNull(),
+    executedAtMs: bigint("executed_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
-    primaryKey({
-      name: "junior_task_executions_date_kind_namespace_task_id_pk",
-      columns: [table.date, table.kind, table.namespace, table.taskId],
-    }),
-    index("junior_task_executions_task_date_idx").on(
+    index("junior_task_executions_task_time_idx").on(
       table.kind,
       table.namespace,
       table.taskId,
-      table.date,
+      table.executedAtMs,
     ),
-    index("junior_task_executions_kind_date_idx").on(table.kind, table.date),
+    index("junior_task_executions_time_kind_idx").on(
+      table.executedAtMs,
+      table.kind,
+    ),
+    index("junior_task_executions_conversation_time_idx").on(
+      table.conversationId,
+      table.executedAtMs,
+    ),
   ],
 );

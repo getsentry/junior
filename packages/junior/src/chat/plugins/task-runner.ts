@@ -461,6 +461,8 @@ export async function processPluginTask(
       taskPluginContext(resolved.plugin, message, options),
     );
     await recordTaskExecution("registered", message.name, {
+      conversationId: message.params.conversationId,
+      executionId: pluginTaskId(message),
       namespace: message.plugin,
     });
   });

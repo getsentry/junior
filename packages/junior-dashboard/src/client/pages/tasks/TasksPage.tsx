@@ -21,7 +21,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
-import { formatTime, peoplePath } from "../../format";
+import { conversationPath, formatTime, peoplePath } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 import { TaskExecutionChart } from "./TaskExecutionChart";
 
@@ -582,7 +582,7 @@ function TaskTag(props: {
 function TaskExecutionSummary(props: {
   task: Pick<
     TaskSummary | RegisteredTaskSummary,
-    "lastRunAt" | "runsLast7Days" | "totalRuns"
+    "lastConversationId" | "lastRunAt" | "runsLast7Days" | "totalRuns"
   >;
 }) {
   const { task } = props;
@@ -594,9 +594,17 @@ function TaskExecutionSummary(props: {
       <span className="mx-2 opacity-45">·</span>
       <span>
         {task.totalRuns} total
-        {task.lastRunAt
-          ? ` · Last execution ${formatRunDate(task.lastRunAt)}`
-          : " · Never run"}
+        {task.lastRunAt ? " · Last execution " : " · Never run"}
+        {task.lastRunAt && task.lastConversationId ? (
+          <Link
+            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+            to={conversationPath(task.lastConversationId)}
+          >
+            {formatRunDate(task.lastRunAt)}
+          </Link>
+        ) : task.lastRunAt ? (
+          formatRunDate(task.lastRunAt)
+        ) : null}
       </span>
     </div>
   );

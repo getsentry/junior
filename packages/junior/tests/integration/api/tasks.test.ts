@@ -200,13 +200,24 @@ describe("Tasks API", () => {
       });
 
       await recordTaskExecution("scheduled", "sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-1",
+        executionId: "sched-run-1",
         nowMs: Date.parse("2026-08-04T12:00:00.000Z"),
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-2",
+        executionId: "sched-run-2",
         nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
       });
       await recordTaskExecution("event", "event_tasks_api", {
+        conversationId: "agent-dispatch:event-run-1",
+        executionId: "event-run-1",
         nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
+      });
+      await recordTaskExecution("scheduled", "sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-2",
+        executionId: "sched-run-2",
+        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
       });
 
       const response = await authenticatedApi("VIEWER@example.com").request(
@@ -245,6 +256,7 @@ describe("Tasks API", () => {
             createdByEmail: "viewer@example.com",
             id: "event_tasks_api",
             kind: "event",
+            lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: "2026-08-03T12:00:00.000Z",
             ownedByViewer: true,
             runsLast7Days: 1,
@@ -260,6 +272,7 @@ describe("Tasks API", () => {
             id: "sched_tasks_api",
             instruction: "Untitled scheduled task",
             kind: "scheduled",
+            lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: "2026-08-04T13:00:00.000Z",
             ownedByViewer: true,
             runsLast7Days: 2,

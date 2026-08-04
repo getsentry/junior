@@ -8,6 +8,7 @@ import {
   dispatchScheduledTask,
   getScheduledTaskDispatch,
 } from "@/chat/agent-dispatch/context";
+import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
@@ -122,9 +123,14 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
-    await recordTaskExecution("scheduled", args.run.taskId, {
-      nowMs: args.nowMs,
-    });
+    const dispatchId = args.run.dispatchId;
+    if (dispatchId) {
+      await recordTaskExecution("scheduled", args.run.taskId, {
+        conversationId: getDispatchConversationId({ id: dispatchId }),
+        executionId: args.run.id,
+        nowMs: args.nowMs,
+      });
+    }
     return true;
   }
   if (args.dispatch.status === "blocked") {

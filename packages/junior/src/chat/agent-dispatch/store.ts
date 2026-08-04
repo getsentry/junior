@@ -479,6 +479,8 @@ export async function markDispatchCompleted(
     const eventTaskId = next.metadata?.eventTaskId;
     if (eventTaskId) {
       await recordTaskExecution("event", eventTaskId, {
+        conversationId: getDispatchConversationId(next),
+        executionId: next.id,
         nowMs: next.updatedAtMs,
       });
     }

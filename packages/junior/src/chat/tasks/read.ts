@@ -172,6 +172,9 @@ async function destinationDetails(
 
 function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
   return {
+    ...(stats?.lastConversationId
+      ? { lastConversationId: stats.lastConversationId }
+      : {}),
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : {}),

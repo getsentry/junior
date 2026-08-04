@@ -16,6 +16,7 @@ const taskSummaryBaseSchema = z.object({
   destination: taskDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   ownedByViewer: z.boolean(),
   runsLast7Days: z.number().int().nonnegative(),
@@ -50,6 +51,7 @@ export const taskSummarySchema = z.discriminatedUnion("kind", [
 export const registeredTaskSummarySchema = z
   .object({
     id: z.string().min(1),
+    lastConversationId: z.string().min(1).optional(),
     lastRunAt: z.string().datetime().optional(),
     name: z.string().min(1),
     pluginDisplayName: z.string().min(1),

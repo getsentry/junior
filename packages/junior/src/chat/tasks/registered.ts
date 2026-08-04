@@ -40,6 +40,9 @@ export async function readRegisteredTasks(): Promise<RegisteredTaskSummary[]> {
           pluginName: plugin.manifest.name,
           runsLast7Days: stats?.runsLast7Days ?? 0,
           totalRuns: stats?.totalRuns ?? 0,
+          ...(stats?.lastConversationId
+            ? { lastConversationId: stats.lastConversationId }
+            : {}),
           ...(stats?.lastExecutedAtMs
             ? {
                 lastRunAt: new Date(stats.lastExecutedAtMs).toISOString(),

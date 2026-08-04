@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, lte, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { juniorTaskExecutions } from "@/db/schema";
@@ -19,6 +19,7 @@ export type TaskExecutionDay = {
 };
 
 export type TaskExecutionSummary = {
+  lastConversationId?: string;
   lastExecutedAtMs?: number;
   runsLast7Days: number;
   totalRuns: number;
@@ -32,11 +33,16 @@ function emptyDay(date: string): TaskExecutionDay {
   return { date, event: 0, registered: 0, scheduled: 0 };
 }
 
-/** Record one successful task execution in its daily analytics row. */
+/** Record one successful task execution and its durable conversation. */
 export async function recordTaskExecution(
   type: TaskExecutionType,
   taskId: string,
-  options: { namespace?: string; nowMs?: number } = {},
+  options: {
+    conversationId: string;
+    executionId: string;
+    namespace?: string;
+    nowMs?: number;
+  },
 ): Promise<void> {
   const namespace = options.namespace ?? "junior";
   const nowMs = options.nowMs ?? Date.now();
@@ -44,30 +50,20 @@ export async function recordTaskExecution(
     await getDb()
       .insert(juniorTaskExecutions)
       .values({
-        count: 1,
-        date: utcDate(nowMs),
+        conversationId: options.conversationId,
+        executedAtMs: nowMs,
+        id: options.executionId,
         kind: type,
-        lastExecutedAtMs: nowMs,
         namespace,
         taskId,
       })
-      .onConflictDoUpdate({
-        target: [
-          juniorTaskExecutions.date,
-          juniorTaskExecutions.kind,
-          juniorTaskExecutions.namespace,
-          juniorTaskExecutions.taskId,
-        ],
-        set: {
-          count: sql`${juniorTaskExecutions.count} + 1`,
-          lastExecutedAtMs: nowMs,
-        },
-      });
+      .onConflictDoNothing({ target: juniorTaskExecutions.id });
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
-      "app.task.execution.id": taskId,
+      "app.task.execution.id": options.executionId,
       "app.task.execution.namespace": namespace,
+      "app.task.execution.task_id": taskId,
       "app.task.execution.type": type,
     });
   }
@@ -79,15 +75,15 @@ export async function readTaskExecutionSummaries(
   namespace: string,
   options: { nowMs?: number } = {},
 ): Promise<Map<string, TaskExecutionSummary>> {
-  const sevenDaysAgo = utcDate(
-    (options.nowMs ?? Date.now()) - 6 * 24 * 60 * 60 * 1000,
-  );
+  const sevenDaysAgoMs =
+    (options.nowMs ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
   const rows = await getDb()
     .select({
-      lastExecutedAtMs: sql<number>`max(${juniorTaskExecutions.lastExecutedAtMs})::bigint`,
-      runsLast7Days: sql<number>`coalesce(sum(${juniorTaskExecutions.count}) filter (where ${juniorTaskExecutions.date} >= ${sevenDaysAgo}), 0)::int`,
+      lastConversationId: sql<string>`(array_agg(${juniorTaskExecutions.conversationId} order by ${juniorTaskExecutions.executedAtMs} desc))[1]`,
+      lastExecutedAtMs: max(juniorTaskExecutions.executedAtMs),
+      runsLast7Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
       taskId: juniorTaskExecutions.taskId,
-      totalRuns: sql<number>`sum(${juniorTaskExecutions.count})::int`,
+      totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorTaskExecutions)
     .where(
@@ -101,7 +97,10 @@ export async function readTaskExecutionSummaries(
     rows.map((row) => [
       row.taskId,
       {
-        lastExecutedAtMs: row.lastExecutedAtMs,
+        lastConversationId: row.lastConversationId,
+        ...(row.lastExecutedAtMs !== null
+          ? { lastExecutedAtMs: row.lastExecutedAtMs }
+          : {}),
         runsLast7Days: row.runsLast7Days,
         totalRuns: row.totalRuns,
       },
@@ -116,24 +115,25 @@ export async function readTaskExecutionDays(
 ): Promise<TaskExecutionDay[]> {
   const nowMs = options.nowMs ?? Date.now();
   const end = utcDate(nowMs);
+  const endMs = Date.parse(`${end}T23:59:59.999Z`);
   const startMs =
     Date.parse(`${end}T00:00:00.000Z`) - (dayCount - 1) * 86_400_000;
-  const start = utcDate(startMs);
+  const executionDate = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
   const rows = await getDb()
     .select({
-      count: sql<number>`sum(${juniorTaskExecutions.count})::int`,
-      date: juniorTaskExecutions.date,
+      count: count(),
+      date: executionDate,
       kind: juniorTaskExecutions.kind,
     })
     .from(juniorTaskExecutions)
     .where(
       and(
-        gte(juniorTaskExecutions.date, start),
-        lte(juniorTaskExecutions.date, end),
+        gte(juniorTaskExecutions.executedAtMs, startMs),
+        lte(juniorTaskExecutions.executedAtMs, endMs),
       ),
     )
-    .groupBy(juniorTaskExecutions.date, juniorTaskExecutions.kind)
-    .orderBy(asc(juniorTaskExecutions.date), asc(juniorTaskExecutions.kind));
+    .groupBy(executionDate, juniorTaskExecutions.kind)
+    .orderBy(asc(executionDate), asc(juniorTaskExecutions.kind));
 
   const byDate = new Map<string, TaskExecutionDay>();
   for (let offset = 0; offset < dayCount; offset += 1) {
