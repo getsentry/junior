@@ -3776,12 +3776,18 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      const conversation = await createMemoryStore(memoryDb(fixture), context, {
+      const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
-      }).createConversationMemory({
+      });
+      const conversation = await store.createConversationMemory({
         content: "Release notes live in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-conversation-context",
+      });
+      await store.createConversationMemory({
+        content: "Release checklists live in the deployment dashboard.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recall-conversation-broad-distractor",
       });
 
       const plugin = memoryPlugin();

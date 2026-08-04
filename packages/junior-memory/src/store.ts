@@ -57,6 +57,9 @@ const MAX_LEXICAL_RANK_CANDIDATES = 1_000;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
 
+type LexicalSearchMode = "broad" | "strict";
+type LexicalSearchStrategy = "broad" | "tiered";
+
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
 interface MemoryEmbedding {
@@ -953,6 +956,7 @@ async function listVisibleMemories(args: {
 async function searchVisibleLexicalMemories(args: {
   db: MemoryDb;
   limit: number;
+  mode: LexicalSearchMode;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
@@ -961,14 +965,18 @@ async function searchVisibleLexicalMemories(args: {
   if (!predicate) {
     return [];
   }
-  const queryVector = sql`to_tsvector('english', ${args.query})`;
-  const tsquery = sql`(
-    SELECT COALESCE(
-      string_agg(quote_literal(term), ' | ')::tsquery,
-      ''::tsquery
-    )
-    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
-  )`;
+  const tsquery =
+    args.mode === "strict"
+      ? sql`plainto_tsquery('english', ${args.query})`
+      : sql`(
+          SELECT COALESCE(
+            string_agg(quote_literal(term), ' | ')::tsquery,
+            ''::tsquery
+          )
+          FROM unnest(
+            tsvector_to_array(to_tsvector('english', ${args.query}))
+          ) AS query_terms(term)
+        )`;
   const candidateLimit = Math.min(
     MAX_LEXICAL_RANK_CANDIDATES,
     args.limit * LEXICAL_RANK_OVERFETCH,
@@ -1357,6 +1365,7 @@ export function createMemoryStore(
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
     vectorMaxDistance: number | undefined,
+    lexicalStrategy: LexicalSearchStrategy,
   ): Promise<MemoryRecord[]> {
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
@@ -1368,7 +1377,7 @@ export function createMemoryStore(
     });
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
     const candidateLimit = limit * VECTOR_SEARCH_OVERFETCH;
-    const [vectorMatches, lexicalMatches] = await Promise.all([
+    const [vectorMatches, primaryLexicalMatches] = await Promise.all([
       searchVisibleVectorMemories({
         db,
         embedder,
@@ -1383,11 +1392,25 @@ export function createMemoryStore(
       searchVisibleLexicalMemories({
         db,
         limit: candidateLimit,
+        mode: lexicalStrategy === "tiered" ? "strict" : "broad",
         nowMs,
         query: input.query,
         scopes,
       }),
     ]);
+    const lexicalMatches =
+      lexicalStrategy === "tiered" &&
+      vectorMatches.length === 0 &&
+      primaryLexicalMatches.length === 0
+        ? await searchVisibleLexicalMemories({
+            db,
+            limit: candidateLimit,
+            mode: "broad",
+            nowMs,
+            query: input.query,
+            scopes,
+          })
+        : primaryLexicalMatches;
     const channelPrefix = sourceChannelPrefix(runtimeContext);
     return rankMemoryMatches([...vectorMatches, ...lexicalMatches], {
       nowMs,
@@ -1445,11 +1468,11 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(input, maxVectorDistance);
+      return await retrieveVisibleMemories(input, maxVectorDistance, "tiered");
     },
 
     async searchMemories(input) {
-      return await retrieveVisibleMemories(input, undefined);
+      return await retrieveVisibleMemories(input, undefined, "broad");
     },
 
     async archiveMemory(input) {
