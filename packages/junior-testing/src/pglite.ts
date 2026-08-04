@@ -4,12 +4,13 @@ import {
   type PGliteOptions,
   type Transaction,
 } from "@electric-sql/pglite";
+import { btree_gin as pgliteBtreeGinExtension } from "@electric-sql/pglite/contrib/btree_gin";
 import { vector as pgliteVectorExtension } from "@electric-sql/pglite/vector";
 import { drizzle } from "drizzle-orm/pglite";
 
 type PgliteQueryClient = PGlite | Transaction;
 
-export { pgliteVectorExtension };
+export { pgliteBtreeGinExtension, pgliteVectorExtension };
 
 export interface LocalPgliteFixture<TDatabase> {
   client: PGlite;

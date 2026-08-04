@@ -128,6 +128,7 @@ const memoryRowSchema = z
     id: z.string().min(1),
     idempotencyKey: optionalStringSchema,
     observedAtMs: z.coerce.number(),
+    searchVector: z.string().optional(),
     scope: z.enum(MEMORY_SCOPES),
     scopeKey: z.string().min(1),
     sourceKey: z.string().min(1),
@@ -966,7 +967,7 @@ async function searchVisibleLexicalMemories(args: {
     )
     FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
   )`;
-  const textsearch = sql`to_tsvector('english', ${juniorMemoryMemories.content})`;
+  const textsearch = juniorMemoryMemories.searchVector;
   const textRank = sql<number>`ts_rank_cd(${textsearch}, ${tsquery})`;
   const rows = await args.db
     .select({

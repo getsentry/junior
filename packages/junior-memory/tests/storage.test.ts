@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createLocalPgliteFixture,
+  pgliteBtreeGinExtension,
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
@@ -179,7 +180,10 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
   const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: { vector: pgliteVectorExtension },
+    extensions: {
+      btree_gin: pgliteBtreeGinExtension,
+      vector: pgliteVectorExtension,
+    },
   });
   const migrationsDir = resolve(__dirname, "../migrations");
   const migrations = (await readdir(migrationsDir))

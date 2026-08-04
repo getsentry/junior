@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  customType,
   index,
   integer,
   pgTable,
@@ -24,6 +25,12 @@ import {
   MEMORY_KINDS,
 } from "../types";
 
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
 export const juniorMemoryMemories = pgTable(
   "junior_memory_memories",
   {
@@ -34,6 +41,9 @@ export const juniorMemoryMemories = pgTable(
     subjectType: text("subject_type", { enum: MEMORY_SUBJECT_TYPES }).notNull(),
     subjectKey: text("subject_key"),
     content: text("content").notNull(),
+    searchVector: tsvector("search_vector").generatedAlwaysAs(
+      sql`to_tsvector('english', "content")`,
+    ),
     sourcePlatform: text("source_platform", {
       enum: MEMORY_SOURCE_PLATFORMS,
     }).notNull(),
@@ -59,7 +69,7 @@ export const juniorMemoryMemories = pgTable(
         sql`${table.archivedAtMs} IS NULL AND ${table.expiresAtMs} IS NOT NULL`,
       ),
     index("junior_memory_memories_search_idx")
-      .using("gin", sql`to_tsvector('english', ${table.content})`)
+      .using("gin", table.scope, table.scopeKey, table.searchVector)
       .where(
         sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),

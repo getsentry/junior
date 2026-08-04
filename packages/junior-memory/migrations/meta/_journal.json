@@ -43,6 +43,13 @@
       "when": 1785293874649,
       "tag": "0005_short_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785878952301,
+      "tag": "0006_friendly_hydra",
+      "breakpoints": true
     }
   ]
 }

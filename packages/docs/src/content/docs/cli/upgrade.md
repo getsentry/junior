@@ -58,8 +58,8 @@ An already-current database reports its migrations as existing:
 Checking database migrations...
   junior: up to date (8 migrations)
   junior-github: up to date (4 migrations)
-  junior-memory: up to date (5 migrations)
-Database is up to date (17 migrations).
+  junior-memory: up to date (6 migrations)
+Database is up to date (18 migrations).
 ```
 
 ## Failure behavior

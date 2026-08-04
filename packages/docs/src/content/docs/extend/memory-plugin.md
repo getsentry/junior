@@ -16,7 +16,7 @@ New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by 
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migration creates the `vector` extension and stores 1536-dimensional embeddings. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
+Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, and maintain a scope-aware full-text search index. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Install
 
@@ -95,7 +95,7 @@ After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin
 pnpm junior upgrade
 ```
 
-On a fresh database, this creates the `vector` extension, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column.
+On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column.
 
 ## Verify
 
@@ -125,6 +125,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 
 - **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `memoryPlugin()`. Switch to the factory call and redeploy.
 - **Migration error — extension "vector" does not exist**: the Postgres database does not have pgvector available. Use a provider that supports pgvector or install it manually with `CREATE EXTENSION vector`.
+- **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.
