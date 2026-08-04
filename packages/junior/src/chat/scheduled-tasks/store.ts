@@ -552,9 +552,7 @@ function canFinishRun(
 /** Decode retained scheduler task state, skipping invalid legacy records. */
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success
-    ? stripLegacyTaskFields(parsed.data)
-    : undefined;
+  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */

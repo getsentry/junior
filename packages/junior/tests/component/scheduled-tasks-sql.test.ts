@@ -149,10 +149,33 @@ describe("scheduled-task SQL storage", () => {
           }),
         ],
       );
+      const pausedTaskId = "sched_paused_legacy";
+      await fixture.sql.execute(
+        `INSERT INTO junior_scheduler_tasks (
+          id, team_id, status, next_run_at_ms, created_at_ms, record
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          pausedTaskId,
+          legacyTask.destination.teamId,
+          "paused",
+          null,
+          legacyTask.createdAtMs,
+          JSON.stringify({
+            ...legacyTask,
+            id: pausedTaskId,
+            nextRunAtMs: undefined,
+            status: "paused",
+            credentialSubject: {
+              type: "user",
+              userId: "slack:T123:U123",
+            },
+          }),
+        ],
+      );
 
       await expect(migrateSchema(fixture.sql)).resolves.toMatchObject({
         existing: 16,
-        migrated: 1,
+        migrated: 2,
       });
       const [migrated] = await fixture.sql.query<{
         creatorIdentityId: string | null;
@@ -177,6 +200,27 @@ describe("scheduled-task SQL storage", () => {
         },
       });
       expect(migrated?.record).not.toHaveProperty("credentialSubject");
+
+      const [paused] = await fixture.sql.query<{
+        nextRunAtMs: number | null;
+        record: Record<string, unknown>;
+        status: string;
+      }>(
+        `SELECT status,
+                next_run_at_ms AS "nextRunAtMs",
+                record
+         FROM junior_scheduler_tasks WHERE id = $1`,
+        [pausedTaskId],
+      );
+      expect(paused).toMatchObject({
+        nextRunAtMs: null,
+        status: "deleted",
+        record: {
+          status: "deleted",
+        },
+      });
+      expect(paused?.record).not.toHaveProperty("nextRunAtMs");
+      expect(paused?.record).not.toHaveProperty("runNowAtMs");
 
       const rollingTaskId = `${legacyTask.id}_rolling`;
       await fixture.sql.execute(
