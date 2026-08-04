@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
+import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
@@ -16,6 +17,7 @@ const {
   continueCallCount,
   continueStopsOnAbort,
   deliverPrivateMessageMock,
+  directMcpProviderFailure,
   guardianDecision,
   guardianProposals,
   listToolsMock,
@@ -46,6 +48,7 @@ const {
   continueCallCount: { value: 0 },
   continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
+  directMcpProviderFailure: { value: false },
   guardianDecision: {
     value: "allow" as "allow" | "deny" | "unavailable",
   },
@@ -231,6 +234,28 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       promptMessages.push(message);
       promptSeedMessages.push([...this.state.messages]);
       this.state.messages.push(message);
+
+      if (directMcpProviderFailure.value) {
+        const callMcpTool = this.state.tools.find(
+          (tool) => tool.name === "callMcpTool",
+        );
+        if (!callMcpTool) {
+          throw new Error("callMcpTool missing");
+        }
+        try {
+          await this.executeTool(callMcpTool, "tool-call-provider-failure", {
+            tool_name: "mcp__demo__ping",
+            arguments: { query: "hello" },
+          });
+        } catch {
+          if (!this.aborted) {
+            this.state.messages.push(
+              assistantMessage("I couldn't connect to the demo provider."),
+            );
+          }
+          return {};
+        }
+      }
 
       const loadSkillTool = this.state.tools.find(
         (tool) => tool.name === "loadSkill",
@@ -722,6 +747,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     continueCallCount.value = 0;
     continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
+    directMcpProviderFailure.value = false;
     guardianDecision.value = "allow";
     guardianProposals.length = 0;
     listToolsMock.mockReset();
@@ -921,6 +947,56 @@ describe("executeAgentRun progressive MCP loading", () => {
       turnId: "turn-2",
       toolCallId: expect.any(String),
       toolName: "mcp__demo__ping",
+      decision: "allow",
+      riskLevel: "low",
+      userAuthorization: "high",
+    });
+  });
+
+  it("keeps MCP activation failures outside the fatal action-review boundary", async () => {
+    directMcpProviderFailure.value = true;
+    listToolsMock.mockReset();
+    listToolsMock.mockImplementation(async () => {
+      expect(guardianProposals).toHaveLength(1);
+      throw new McpProviderError({
+        phase: "connect",
+        provider: "demo",
+      });
+    });
+
+    const reply = finalReply(
+      await executeAgentRun(
+        makeAgentRunRequest("check the demo provider", {
+          conversationId: "conversation-provider-failure",
+          threadTs: "1712345.0098",
+          turnId: "turn-provider-failure",
+        }),
+      ),
+    );
+
+    expect(reply.text).toBe("I couldn't connect to the demo provider.");
+    expect(guardianProposals).toEqual([
+      expect.objectContaining({
+        input: {
+          arguments: { query: "hello" },
+          tool_name: "mcp__demo__ping",
+        },
+        tool: expect.objectContaining({
+          name: "callMcpTool",
+        }),
+      }),
+    ]);
+    expect(listToolsMock).toHaveBeenCalledOnce();
+    expect(callToolMock).not.toHaveBeenCalled();
+    expect(agentAfterToolResults).toHaveLength(1);
+    const events = await getConversationEventStore().loadCurrentHistory(
+      "conversation-provider-failure",
+    );
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-provider-failure",
+      toolCallId: "tool-call-provider-failure",
+      toolName: "callMcpTool",
       decision: "allow",
       riskLevel: "low",
       userAuthorization: "high",

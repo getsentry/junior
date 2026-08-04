@@ -60,7 +60,7 @@ describe("callMcpTool", () => {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
-          name: "search",
+          name: "mcp__demo__search",
           rawName: "search",
           provider: "demo",
           description: "Search the remote workspace.",
@@ -78,7 +78,7 @@ describe("callMcpTool", () => {
 
     expect(
       await callMcpTool.resolveApprovalMetadata?.({
-        tool_name: "search",
+        tool_name: "mcp__demo__search",
         arguments: { query: "errors" },
       }),
     ).toEqual({
@@ -88,12 +88,13 @@ describe("callMcpTool", () => {
         readOnlyHint: true,
       },
       description: "Search the remote workspace.",
-      name: "search",
+      name: "mcp__demo__search",
       source: {
         id: "demo",
         description: "MCP provider demo",
       },
     });
+    expect(manager.activateProvider).not.toHaveBeenCalled();
   });
 
   it("preserves native MCP content from the managed tool", async () => {

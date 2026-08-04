@@ -78,11 +78,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           .optional(),
       })
       .passthrough(),
-    resolveApprovalMetadata: async ({ tool_name }) => {
-      const provider = parseMcpProviderFromToolName(tool_name);
-      if (provider) {
-        await mcpToolManager.activateProvider(provider);
-      }
+    resolveApprovalMetadata: ({ tool_name }) => {
       const activeTool = mcpToolManager
         .getResolvedActiveTools()
         .find((candidate) => candidate.name === tool_name);

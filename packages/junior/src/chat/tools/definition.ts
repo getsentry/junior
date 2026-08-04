@@ -71,6 +71,8 @@ interface BaseToolDefinition<
    * Return trusted host metadata for the exact dispatched action.
    *
    * Descriptions and annotations inform review; they do not grant authority.
+   * This projection runs before action review and must not activate providers
+   * or perform other external side effects.
    */
   resolveApprovalMetadata?(
     input: TInput,
@@ -131,6 +133,8 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    * Return trusted host metadata for the exact dispatched action.
    *
    * Descriptions and annotations inform review; they do not grant authority.
+   * This projection runs before action review and must not activate providers
+   * or perform other external side effects.
    */
   resolveApprovalMetadata?(
     input: unknown,
