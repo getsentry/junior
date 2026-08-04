@@ -29,6 +29,15 @@ if (!TEST_DATABASE_URL) {
   );
 }
 
+function slackChannelIdForConversation(conversationId: string): string {
+  const suffix =
+    conversationId
+      .replace(/[^A-Z0-9]/gi, "")
+      .toUpperCase()
+      .slice(0, 20) || "FALLBACK";
+  return `C${suffix}`;
+}
+
 async function recordRoot(
   conversationId: string,
   visibility: "private" | "public",
@@ -43,8 +52,8 @@ async function recordRoot(
     conversationId,
     destination: {
       platform: "slack",
-      teamId: "T-reporting",
-      channelId: `C-${conversationId}`,
+      teamId: "TREPORTING",
+      channelId: slackChannelIdForConversation(conversationId),
     },
     nowMs: 1,
     ...(actor ? { actor: { platform: "slack" as const, ...actor } } : {}),
@@ -662,7 +671,7 @@ describe("dashboard canonical event reporting", () => {
     const childConversationId = "child:reporting-private-owner";
     await recordRoot(rootConversationId, "private", {
       slackUserId: "U-owner",
-      teamId: "T-reporting",
+      teamId: "TREPORTING",
       email: "Owner@Example.com",
     });
     const { getDb } = await import("@/chat/db");
@@ -771,8 +780,8 @@ describe("dashboard canonical event reporting", () => {
       channelName: "forged-public-child-channel",
       destination: {
         platform: "slack",
-        teamId: "T-reporting",
-        channelId: "C-forged-child",
+        teamId: "TREPORTING",
+        channelId: "CFORGEDCHILD",
       },
       title: "Forged public child title",
       visibility: "public",
@@ -790,7 +799,7 @@ describe("dashboard canonical event reporting", () => {
     const cyclicChild = "child:reporting-cyclic-private";
     await recordRoot(cyclicRoot, "private", {
       slackUserId: "U-cyclic-owner",
-      teamId: "T-reporting",
+      teamId: "TREPORTING",
       email: "cyclic-owner@example.com",
     });
     await appendVisibleHistory(cyclicRoot, "Cyclic private answer");
@@ -815,7 +824,7 @@ describe("dashboard canonical event reporting", () => {
     const destinationlessRoot = "slack:C-reporting:destinationless-root";
     await recordRoot(destinationlessRoot, "private", {
       slackUserId: "U-destinationless-owner",
-      teamId: "T-reporting",
+      teamId: "TREPORTING",
       email: "destinationless-owner@example.com",
     });
     await appendVisibleHistory(
@@ -851,7 +860,7 @@ describe("dashboard canonical event reporting", () => {
     const malformedTopLevel = "slack:C-reporting:malformed-top-level";
     await recordRoot(foreignRoot, "private", {
       slackUserId: "U-foreign-owner",
-      teamId: "T-reporting",
+      teamId: "TREPORTING",
       email: "foreign-owner@example.com",
     });
     await recordRoot(malformedTopLevel, "private");
