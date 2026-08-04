@@ -30,6 +30,7 @@ import {
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import { resolveDashboardBaseURL } from "./url";
+import { dashboardPagePaths } from "./routes";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -444,48 +445,6 @@ function readDashboardAvatarHeader(): ArrayBuffer {
     throw new Error("Junior dashboard avatar asset was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
-}
-
-function dashboardPagePaths(
-  basePath: string,
-  options: { componentGallery?: boolean } = {},
-): Array<{ nested?: boolean; path: string }> {
-  const paths: Array<{ nested?: boolean; path: string }> = [
-    { path: basePath },
-    {
-      nested: true,
-      path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/people" : `${basePath}/people`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/locations" : `${basePath}/locations`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/system" : `${basePath}/system`,
-    },
-    {
-      path:
-        basePath === "/"
-          ? "/settings/api-tokens"
-          : `${basePath}/settings/api-tokens`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
-    },
-  ];
-  if (options.componentGallery) {
-    paths.push({
-      nested: true,
-      path: basePath === "/" ? "/dev" : `${basePath}/dev`,
-    });
-  }
-  return paths;
 }
 
 function renderDashboard(basePath: string, agentName: string): Response {

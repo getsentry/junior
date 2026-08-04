@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
+import { dashboardRoutePaths } from "../src/routes";
 import {
   createDashboardAuth,
   type DashboardAuth,
@@ -68,6 +69,7 @@ function dashboard(session: DashboardSession | null) {
 function mockDashboardVirtualConfig() {
   vi.doMock("#junior/config", () => ({
     createDashboardApp,
+    dashboardRoutePaths,
     functionMaxDurationSeconds: undefined,
     dashboard: undefined,
     pluginRuntimeRegistrations: [],
@@ -446,6 +448,7 @@ describe("dashboard routes", () => {
       "/locations/destination-1",
       "/people",
       "/people/person%40sentry.io",
+      "/tasks",
       "/system",
       "/system/plugins/github",
       "/settings/api-tokens",

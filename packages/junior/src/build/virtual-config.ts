@@ -23,10 +23,14 @@ function renderRuntimePluginImport(module: RuntimePluginModule): string {
 function renderDashboardImport(enabled: boolean): string[] {
   return enabled
     ? [
-        'import { createDashboardApp as juniorCreateDashboardApp } from "@sentry/junior-dashboard";',
+        'import { createDashboardApp as juniorCreateDashboardApp, dashboardRoutePaths as juniorDashboardRoutePaths } from "@sentry/junior-dashboard";',
         "export const createDashboardApp = juniorCreateDashboardApp;",
+        "export const dashboardRoutePaths = juniorDashboardRoutePaths;",
       ]
-    : ["export const createDashboardApp = undefined;"];
+    : [
+        "export const createDashboardApp = undefined;",
+        "export const dashboardRoutePaths = undefined;",
+      ];
 }
 
 function dashboardEnabled(

@@ -37,6 +37,7 @@ import {
   dashboardInteractiveTextClass,
 } from "./styles";
 import type { DashboardCoreData } from "./types";
+import { dashboardRoutes } from "../routes";
 
 const dashboardBackground = {
   backgroundColor: "#050507",
@@ -181,15 +182,15 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/tasks"
+          path={dashboardRoutes.tasks.path}
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}
-          path="/locations"
+          path={dashboardRoutes.locations.path}
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}
-          path="/locations/:locationId"
+          path={dashboardRoutes.location.path}
         />
         <Route
           element={
@@ -199,7 +200,7 @@ export function DashboardShell() {
               <LocationsPage />
             )
           }
-          path="/system/locations"
+          path={dashboardRoutes.systemLocations.path}
         />
         <Route
           element={
@@ -209,7 +210,7 @@ export function DashboardShell() {
               <LocationDetailPage />
             )
           }
-          path="/system/locations/:locationId"
+          path={dashboardRoutes.systemLocation.path}
         />
         <Route
           element={
@@ -223,7 +224,7 @@ export function DashboardShell() {
               />
             )
           }
-          path="/"
+          path={dashboardRoutes.home.path}
         />
         <Route
           element={
@@ -237,9 +238,12 @@ export function DashboardShell() {
               />
             )
           }
-          path="/conversations/:conversationId"
+          path={dashboardRoutes.conversation.path}
         />
-        <Route element={<Navigate replace to="/" />} path="/conversations" />
+        <Route
+          element={<Navigate replace to="/" />}
+          path={dashboardRoutes.conversations.path}
+        />
         <Route
           element={
             loading ? (
@@ -254,11 +258,11 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/dev/*"
+          path={dashboardRoutes.dev.path}
         />
         <Route
           element={<LegacySystemRedirect section="people" />}
-          path="/people"
+          path={dashboardRoutes.people.path}
         />
         <Route
           element={
@@ -268,13 +272,13 @@ export function DashboardShell() {
               <PersonProfilePage />
             )
           }
-          path="/people/:email"
+          path={dashboardRoutes.person.path}
         />
         <Route
           element={
             loading ? <LoadingView label="Loading people" /> : <PeoplePage />
           }
-          path="/system/people"
+          path={dashboardRoutes.systemPeople.path}
         />
         <Route
           element={
@@ -288,7 +292,7 @@ export function DashboardShell() {
               />
             )
           }
-          path="/system/*"
+          path={dashboardRoutes.system.path}
         />
         <Route
           element={
@@ -300,7 +304,7 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/settings/api-tokens"
+          path={dashboardRoutes.settingsApiTokens.path}
         />
         <Route
           element={
@@ -312,9 +316,12 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/plugins/:pluginName/:pageId/*"
+          path={dashboardRoutes.pluginPage.path}
         />
-        <Route element={<Navigate replace to="/" />} path="*" />
+        <Route
+          element={<Navigate replace to="/" />}
+          path={dashboardRoutes.fallback.path}
+        />
       </Routes>
       <span
         aria-hidden="true"

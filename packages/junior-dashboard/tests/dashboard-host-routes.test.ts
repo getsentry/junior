@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
+import { dashboardRoutePaths } from "../src/routes";
 
 function concreteRoutePath(path: string): string | undefined {
   if (path === "*" || path === "/*") {
@@ -34,6 +36,7 @@ it("forwards every dashboard route through the Junior app", async () => {
   }));
   vi.doMock("#junior/config", () => ({
     createDashboardApp: createForwardingDashboard,
+    dashboardRoutePaths,
     functionMaxDurationSeconds: undefined,
     dashboard: {
       authRequired: false,
@@ -55,5 +58,55 @@ it("forwards every dashboard route through the Junior app", async () => {
       await response.text(),
       `${route.method} ${route.path} was not forwarded`,
     ).toBe(`dashboard:${route.path}`);
+  }
+});
+
+it("rejects plugin routes that conflict with dashboard routes", async () => {
+  vi.doMock("#junior/config", () => ({
+    createDashboardApp,
+    dashboardRoutePaths,
+    dashboard: undefined,
+    functionMaxDurationSeconds: undefined,
+    pluginRuntimeRegistrations: [],
+    pluginSet: undefined,
+    plugins: undefined,
+  }));
+
+  for (const path of [
+    "/api/plugins/*",
+    "/api/conversations/*",
+    "/api/locations/*",
+    "/api/people/*",
+    "/conversations/*",
+    "/locations/*",
+    "/people/*",
+    "/plugins/*",
+    "/system",
+    "/system/*",
+    "/api/user-pages/*",
+    "/*",
+    "/api/*",
+    "/:slug",
+    "/api/:section/*",
+  ]) {
+    await expect(
+      createApp({
+        dashboard: { authRequired: false },
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "legacy-dashboard",
+              displayName: "Legacy Dashboard",
+              description: "Legacy dashboard route plugin",
+            },
+            hooks: {
+              routes: () => [{ path, handler: () => new Response("legacy") }],
+            },
+          }),
+        ]),
+      }),
+    ).rejects.toThrow(
+      `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
+    );
   }
 });

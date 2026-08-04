@@ -8,6 +8,9 @@ state.
 
 - `createDashboardApp` mounts the dashboard routes and receives host
   configuration through `JuniorDashboardOptions`.
+- `src/routes.ts` owns browser page paths and the full host forwarding list.
+  React routes, dashboard server routes, and core forwarding must use that
+  table instead of copying path strings.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.

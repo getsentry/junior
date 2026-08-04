@@ -19,6 +19,9 @@ declare module "#junior/config" {
         fetch(request: Request): Promise<Response> | Response;
       })
     | undefined;
+  export const dashboardRoutePaths:
+    | ((options: VirtualDashboardConfig) => string[])
+    | undefined;
   export const dashboard: VirtualDashboardConfig | undefined;
   export const functionMaxDurationSeconds: number;
   export const pluginSet: JuniorPluginSet | undefined;

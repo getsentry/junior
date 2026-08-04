@@ -47,7 +47,10 @@ describe("renderVirtualConfig", () => {
     });
 
     expect(code).toContain(
-      'import { createDashboardApp as juniorCreateDashboardApp } from "@sentry/junior-dashboard";',
+      'import { createDashboardApp as juniorCreateDashboardApp, dashboardRoutePaths as juniorDashboardRoutePaths } from "@sentry/junior-dashboard";',
+    );
+    expect(code).toContain(
+      "export const dashboardRoutePaths = juniorDashboardRoutePaths;",
     );
     expect(code).toContain(
       'export const dashboard = {"allowedGoogleDomains":["sentry.io"]};',
@@ -63,6 +66,7 @@ describe("renderVirtualConfig", () => {
 
     expect(code).not.toContain("@sentry/junior-dashboard");
     expect(code).toContain("export const createDashboardApp = undefined;");
+    expect(code).toContain("export const dashboardRoutePaths = undefined;");
     expect(code).toContain('export const dashboard = {"disabled":true};');
   });
 });

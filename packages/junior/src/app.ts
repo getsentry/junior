@@ -159,9 +159,17 @@ type CreateDashboardApp = (
   options: JuniorDashboardRuntimeOptions,
 ) => DashboardApp;
 
+type DashboardRoutePaths = (options: JuniorDashboardOptions) => string[];
+
+interface DashboardRuntime {
+  createDashboardApp: CreateDashboardApp;
+  routePaths: DashboardRoutePaths;
+}
+
 interface JuniorVirtualConfig {
   functionMaxDurationSeconds?: number;
   createDashboardApp?: CreateDashboardApp;
+  dashboardRoutePaths?: DashboardRoutePaths;
   dashboard?: JuniorVirtualDashboardOptions;
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
@@ -200,6 +208,7 @@ async function resolveVirtualConfig(): Promise<
   try {
     const mod: {
       createDashboardApp?: CreateDashboardApp;
+      dashboardRoutePaths?: DashboardRoutePaths;
       functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions;
       pluginSet?: JuniorPluginSet;
@@ -208,6 +217,7 @@ async function resolveVirtualConfig(): Promise<
     } = await import("#junior/config");
     return {
       createDashboardApp: mod.createDashboardApp,
+      dashboardRoutePaths: mod.dashboardRoutePaths,
       functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
       pluginSet: mod.pluginSet,
@@ -297,31 +307,50 @@ function validateBuildIncludesPluginRuntimeRegistrations(
   );
 }
 
-async function createDashboardRouteRegistrations(args: {
+function createDashboardRouteRegistrations(args: {
   dashboard: JuniorDashboardOptions | undefined;
-  createDashboardApp: CreateDashboardApp | undefined;
+  runtime: DashboardRuntime | undefined;
   pluginRoutes: PluginApiRouteRegistration[];
-}): Promise<HostRouteRegistration[]> {
-  if (!args.dashboard || args.dashboard.disabled) {
+}): HostRouteRegistration[] {
+  if (!args.dashboard || args.dashboard.disabled || !args.runtime) {
     return [];
   }
 
-  const createDashboardApp =
-    args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
     dashboard: args.dashboard,
-    createDashboardApp,
+    runtime: args.runtime,
     pluginRoutes: args.pluginRoutes,
   });
 }
 
-async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
+async function resolveDashboardRuntime(args: {
+  createDashboardApp: CreateDashboardApp | undefined;
+  dashboard: JuniorDashboardOptions | undefined;
+  routePaths: DashboardRoutePaths | undefined;
+}): Promise<DashboardRuntime | undefined> {
+  if (!args.dashboard || args.dashboard.disabled) {
+    return undefined;
+  }
+  if (args.createDashboardApp && args.routePaths) {
+    return {
+      createDashboardApp: args.createDashboardApp,
+      routePaths: args.routePaths,
+    };
+  }
+  const loaded = await loadDashboardRuntime();
+  return {
+    createDashboardApp: args.createDashboardApp ?? loaded.createDashboardApp,
+    routePaths: args.routePaths ?? loaded.routePaths,
+  };
+}
+
+async function loadDashboardRuntime(): Promise<DashboardRuntime> {
   try {
     const appRequire = createRequire(`${process.cwd()}/package.json`);
     const mod = await import(
       pathToFileURL(appRequire.resolve(DASHBOARD_PACKAGE_NAME)).href
     );
-    return dashboardAppFactoryFromModule(mod);
+    return dashboardRuntimeFromModule(mod);
   } catch (error) {
     if (isMissingDashboardPackage(error)) {
       throw new Error(
@@ -333,7 +362,7 @@ async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
   }
 }
 
-function dashboardAppFactoryFromModule(mod: unknown): CreateDashboardApp {
+function dashboardRuntimeFromModule(mod: unknown): DashboardRuntime {
   if (
     !mod ||
     typeof mod !== "object" ||
@@ -344,7 +373,20 @@ function dashboardAppFactoryFromModule(mod: unknown): CreateDashboardApp {
       '@sentry/junior-dashboard must export a "createDashboardApp" function',
     );
   }
-  return (mod as { createDashboardApp: CreateDashboardApp }).createDashboardApp;
+  if (
+    typeof (mod as { dashboardRoutePaths?: unknown }).dashboardRoutePaths !==
+    "function"
+  ) {
+    throw new Error(
+      '@sentry/junior-dashboard must export a "dashboardRoutePaths" function',
+    );
+  }
+  return {
+    createDashboardApp: (mod as { createDashboardApp: CreateDashboardApp })
+      .createDashboardApp,
+    routePaths: (mod as { dashboardRoutePaths: DashboardRoutePaths })
+      .dashboardRoutePaths,
+  };
 }
 
 function isMissingDashboardPackage(error: unknown): boolean {
@@ -358,83 +400,6 @@ function isMissingDashboardPackage(error: unknown): boolean {
   );
 }
 
-function stripTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 1 && value.charCodeAt(end - 1) === 47) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function normalizeDashboardPath(
-  path: string | undefined,
-  fallback: string,
-): string {
-  const value = path?.trim() || fallback;
-  const withSlash = value.startsWith("/") ? value : `/${value}`;
-  return stripTrailingSlashes(withSlash);
-}
-
-/** List every route path core forwards to the dashboard app and reserves from plugin routes. */
-function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
-  const basePath = normalizeDashboardPath(dashboard.basePath, "/");
-  const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
-  const pagePath = (suffix: string) =>
-    basePath === "/" ? `/${suffix}` : `${basePath}/${suffix}`;
-  const conversationsPath = pagePath("conversations");
-  const peoplePath = pagePath("people");
-  const pagePaths = [
-    basePath,
-    conversationsPath,
-    `${conversationsPath}/*`,
-    pagePath("locations"),
-    `${pagePath("locations")}/*`,
-    peoplePath,
-    `${peoplePath}/*`,
-    pagePath("tasks"),
-    pagePath("system"),
-    `${pagePath("system")}/*`,
-    pagePath("plugins"),
-    `${pagePath("plugins")}/*`,
-    pagePath("settings/api-tokens"),
-  ];
-  if (dashboard.componentGallery) {
-    pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
-  }
-  const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
-
-  return [
-    ...pagePaths,
-    "/favicon.ico",
-    "/_junior/dashboard/avatar.png",
-    "/_junior/dashboard/client.js",
-    loginPath,
-    "/api/health",
-    "/api/runtime",
-    "/api/plugins",
-    "/api/plugins/*",
-    "/api/plugin-reports",
-    "/api/user-pages",
-    "/api/user-pages/*",
-    "/api/tasks",
-    "/api/tasks/*",
-    "/api/skills",
-    "/api/stats",
-    "/api/conversations",
-    "/api/conversations/*",
-    "/api/locations",
-    "/api/locations/*",
-    "/api/people",
-    "/api/people/*",
-    "/api/personal-tokens",
-    "/api/personal-tokens/*",
-    "/api/config",
-    "/api/me",
-    authPath,
-    `${authPath}/*`,
-  ];
-}
-
 function routePrefixCoversPath(routePrefix: string, path: string): boolean {
   return (
     routePrefix === "/" ||
@@ -443,8 +408,13 @@ function routePrefixCoversPath(routePrefix: string, path: string): boolean {
   );
 }
 
+function normalizeRoutePath(path: string): string {
+  const withSlash = path.startsWith("/") ? path : `/${path}`;
+  return withSlash.length === 1 ? withSlash : withSlash.replace(/\/+$/, "");
+}
+
 function routeSegments(path: string): string[] {
-  return normalizeDashboardPath(path, "/").split("/").filter(Boolean);
+  return normalizeRoutePath(path).split("/").filter(Boolean);
 }
 
 function routeSegmentMatches(pattern: string, value: string): boolean {
@@ -471,15 +441,14 @@ function routePatternMatchesConcretePath(
 }
 
 function routePatternExamples(routePath: string): string[] {
-  const normalized = normalizeDashboardPath(routePath, "/");
+  const normalized = normalizeRoutePath(routePath);
   if (!normalized.endsWith("/*") && !normalized.endsWith("/**")) {
     return [normalized];
   }
-  const prefix = normalizeDashboardPath(
+  const prefix = normalizeRoutePath(
     normalized.endsWith("/*")
       ? normalized.slice(0, -2)
       : normalized.slice(0, -3),
-    "/",
   );
   return [
     prefix,
@@ -502,20 +471,21 @@ function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
 function dashboardOwnedRoutePath(
   routePath: string,
   dashboard: JuniorDashboardOptions,
+  routePaths: DashboardRoutePaths,
 ): boolean {
-  return dashboardHostRoutePaths(dashboard).some((path) =>
+  return routePaths(dashboard).some((path) =>
     routePatternOverlaps(path, routePath),
   );
 }
 
 function dashboardRouteRegistrations(args: {
   dashboard: JuniorDashboardOptions;
-  createDashboardApp: CreateDashboardApp;
+  runtime: DashboardRuntime;
   pluginRoutes: PluginApiRouteRegistration[];
 }): HostRouteRegistration[] {
   let app: DashboardApp | undefined;
   const fetch = (request: Request) => {
-    app ??= args.createDashboardApp({
+    app ??= args.runtime.createDashboardApp({
       ...args.dashboard,
       agentName: botConfig.userName,
       pluginRoutes: args.pluginRoutes,
@@ -526,7 +496,7 @@ function dashboardRouteRegistrations(args: {
     return app.fetch(request);
   };
 
-  return dashboardHostRoutePaths(args.dashboard).map((path) => ({
+  return args.runtime.routePaths(args.dashboard).map((path) => ({
     handler: fetch,
     path,
   }));
@@ -534,13 +504,14 @@ function dashboardRouteRegistrations(args: {
 
 function validateDashboardRouteOwnership(args: {
   dashboard: JuniorDashboardOptions | undefined;
+  routePaths: DashboardRoutePaths | undefined;
   routes: PluginRouteRegistration[];
 }): void {
-  if (!args.dashboard || args.dashboard.disabled) {
+  if (!args.dashboard || args.dashboard.disabled || !args.routePaths) {
     return;
   }
   for (const route of args.routes) {
-    if (dashboardOwnedRoutePath(route.path, args.dashboard)) {
+    if (dashboardOwnedRoutePath(route.path, args.dashboard, args.routePaths)) {
       throw new Error(
         `Plugin "${route.pluginName}" route "${route.path}" conflicts with core dashboard routes`,
       );
@@ -576,6 +547,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
   }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
+  const dashboardRuntime = await resolveDashboardRuntime({
+    createDashboardApp: virtualConfig?.createDashboardApp,
+    dashboard,
+    routePaths: virtualConfig?.dashboardRoutePaths,
+  });
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
@@ -646,7 +622,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     pluginRoutes = getPluginRoutes({ resourceEvents });
-    validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
+    validateDashboardRouteOwnership({
+      dashboard,
+      routePaths: dashboardRuntime?.routePaths,
+      routes: pluginRoutes,
+    });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
@@ -691,10 +671,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   mountRoutes(app, pluginRoutes);
   mountRoutes(
     app,
-    await createDashboardRouteRegistrations({
+    createDashboardRouteRegistrations({
       dashboard,
-      createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
+      runtime: dashboardRuntime,
     }),
   );
 

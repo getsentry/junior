@@ -630,6 +630,7 @@ describe("createApp plugin config", () => {
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
       createDashboardApp: undefined,
+      dashboardRoutePaths: undefined,
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
       pluginSet: defineJuniorPlugins([
@@ -814,6 +815,16 @@ describe("createApp plugin config", () => {
     );
     vi.doMock("#junior/config", () => ({
       createDashboardApp,
+      dashboardRoutePaths: () => [
+        "/api/people",
+        "/api/plugins/*",
+        "/_junior/dashboard/avatar.png",
+        "/dev",
+        "/people",
+        "/plugins",
+        "/system",
+        "/system/*",
+      ],
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
@@ -892,61 +903,12 @@ describe("createApp plugin config", () => {
     await expect(peopleApi.text()).resolves.toBe("dashboard");
   });
 
-  it("rejects app-level plugin routes that conflict with core dashboard routes", async () => {
-    for (const path of [
-      "/api/plugins/*",
-      "/api/conversations/*",
-      "/api/locations/*",
-      "/api/people/*",
-      "/conversations/*",
-      "/locations/*",
-      "/people/*",
-      "/plugins/*",
-      "/system",
-      "/system/*",
-      "/api/user-pages/*",
-      "/*",
-      "/api/*",
-      "/:slug",
-      "/api/:section/*",
-    ]) {
-      await expect(
-        createApp({
-          dashboard: {
-            authRequired: false,
-            allowedGoogleDomains: ["sentry.io"],
-          },
-          plugins: defineJuniorPlugins([
-            defineJuniorPlugin({
-              manifest: {
-                name: "legacy-dashboard",
-                displayName: "Legacy Dashboard",
-                description: "Legacy dashboard route plugin",
-              },
-              hooks: {
-                routes() {
-                  return [
-                    {
-                      path,
-                      handler: () => new Response("legacy"),
-                    },
-                  ];
-                },
-              },
-            }),
-          ]),
-        }),
-      ).rejects.toThrow(
-        `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
-      );
-    }
-  });
-
   it("configures Slack footer links from core dashboard options", async () => {
     vi.doMock("#junior/config", () => ({
       createDashboardApp: vi.fn((_options: unknown) => ({
         fetch: () => new Response("dashboard"),
       })),
+      dashboardRoutePaths: () => ["/"],
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
       pluginSet: defineJuniorPlugins([]),
