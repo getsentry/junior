@@ -1122,6 +1122,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     conversation: preparedState.conversation,
                     conversationMessageId: recordedMessageId,
                     conversationId,
+                    ...(slackTs && options.execution?.dispatch
+                      ? {
+                          providerConversationBinding: {
+                            provider: "slack",
+                            providerDestinationId: destination.channelId,
+                            providerTenantId: destination.teamId,
+                            providerConversationId: slackTs,
+                          },
+                        }
+                      : {}),
                   })
                 : persistConversationMessages({
                     conversation: preparedState.conversation,
