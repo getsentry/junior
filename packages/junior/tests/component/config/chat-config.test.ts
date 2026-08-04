@@ -12,6 +12,7 @@ describe("chat config", () => {
   beforeEach(() => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
+    delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
   });
 
   afterEach(() => {
@@ -279,6 +280,30 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_DATABASE_DRIVER must be postgres or neon",
+    );
+  });
+
+  it("uses a 30 second SQL statement timeout by default", async () => {
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.statementTimeoutMs).toBe(30_000);
+  });
+
+  it("reads the configured SQL statement timeout", async () => {
+    process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS = "15000";
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.statementTimeoutMs).toBe(15_000);
+  });
+
+  it("allows the SQL statement timeout to be disabled", async () => {
+    process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS = "0";
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.statementTimeoutMs).toBe(false);
+  });
+
+  it("throws when the SQL statement timeout is invalid", async () => {
+    process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS = "15 seconds";
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_SQL_STATEMENT_TIMEOUT_MS must be a non-negative integer",
     );
   });
 

@@ -1,9 +1,10 @@
 import type { JuniorSqlExecutor } from "./db";
 import { createNeonJuniorSqlExecutor } from "./neon";
 import { createPostgresJuniorSqlExecutor } from "./postgres";
-import type { SqlDriver } from "@/chat/config";
-
-export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
+import {
+  DEFAULT_SQL_STATEMENT_TIMEOUT_MS,
+  type SqlDriver,
+} from "@/chat/config";
 
 /** Create the SQL executor appropriate for the configured database URL. */
 export function createJuniorSqlExecutor(args: {

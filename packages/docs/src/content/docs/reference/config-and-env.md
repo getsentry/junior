@@ -19,6 +19,7 @@ related:
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                                                   |
 | `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                                                                          |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                                                  |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                                     |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                                         |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                                       |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                                                |
@@ -40,7 +41,7 @@ related:
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
 | `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                                                                           |
 
-Junior runtime database connections set PostgreSQL `statement_timeout` to 30 seconds for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
+Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
 `JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
 for its own turn. Set it to `steer` to preserve collaborative steering across

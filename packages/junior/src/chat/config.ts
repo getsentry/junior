@@ -21,6 +21,7 @@ const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
+export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
 /**
  * Buffer between the Vercel function timeout and the agent turn timeout so
  * Junior can abort, persist, and schedule continuation before host teardown.
@@ -71,6 +72,7 @@ export interface ChatConfig {
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
+    statementTimeoutMs: number | false;
   };
   slack: {
     botToken?: string;
@@ -372,6 +374,20 @@ function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
   throw new Error("JUNIOR_DATABASE_DRIVER must be postgres or neon");
 }
 
+function readSqlStatementTimeoutMs(env: NodeJS.ProcessEnv): number | false {
+  const rawValue = toOptionalTrimmed(env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS);
+  if (rawValue === undefined) {
+    return DEFAULT_SQL_STATEMENT_TIMEOUT_MS;
+  }
+  const value = Number.parseInt(rawValue, 10);
+  if (!Number.isSafeInteger(value) || value < 0 || String(value) !== rawValue) {
+    throw new Error(
+      "JUNIOR_SQL_STATEMENT_TIMEOUT_MS must be a non-negative integer",
+    );
+  }
+  return value === 0 ? false : value;
+}
+
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -390,6 +406,7 @@ export function readChatConfig(
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
+      statementTimeoutMs: readSqlStatementTimeoutMs(env),
     },
     slack: {
       botToken:

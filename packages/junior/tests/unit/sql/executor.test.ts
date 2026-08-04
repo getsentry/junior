@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JuniorSqlExecutor } from "@/db/db";
-import {
-  createJuniorSqlExecutor,
-  DEFAULT_SQL_STATEMENT_TIMEOUT_MS,
-} from "@/db/executor";
+import { DEFAULT_SQL_STATEMENT_TIMEOUT_MS } from "@/chat/config";
+import { createJuniorSqlExecutor } from "@/db/executor";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 const EXECUTORS = vi.hoisted(() => ({
