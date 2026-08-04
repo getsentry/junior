@@ -4,7 +4,6 @@ const RECIPROCAL_RANK_FUSION_K = 60;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface MemoryMatch {
-  exactIdentifier: boolean;
   lexical?: {
     rank: number;
   };
@@ -47,10 +46,7 @@ function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
   return 0;
 }
 
-/**
- * Keep exact structured-identifier matches in the strongest relevance tier,
- * then fuse lexical and vector ranks without comparing provider raw scores.
- */
+/** Fuse lexical and vector ranks without comparing provider raw scores. */
 export function rankMemoryMatches(
   matches: MemoryMatch[],
   options: {
@@ -67,17 +63,11 @@ export function rankMemoryMatches(
     }
     byId.set(match.memory.id, {
       ...existing,
-      exactIdentifier: existing.exactIdentifier || match.exactIdentifier,
       ...(match.lexical ? { lexical: match.lexical } : {}),
       ...(match.vector ? { vector: match.vector } : {}),
     });
   }
   return [...byId.values()].sort((left, right) => {
-    const identifierDelta =
-      Number(right.exactIdentifier) - Number(left.exactIdentifier);
-    if (identifierDelta !== 0) {
-      return identifierDelta;
-    }
     const scoreDelta = matchScore(right) - matchScore(left);
     if (scoreDelta !== 0) {
       return scoreDelta;

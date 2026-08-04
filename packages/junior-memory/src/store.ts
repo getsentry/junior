@@ -591,22 +591,6 @@ export async function archiveExpiredMemoryBatch(args: {
   return { archivedCount: archivedIds.length };
 }
 
-/**
- * Find path-like, dotted, underscored, and multi-part hyphenated identifiers.
- * Two-part hyphenated prose such as "long-running" remains ordinary text.
- */
-function structuredQueryIdentifiers(query: string): string[] {
-  const matches =
-    query
-      .toLowerCase()
-      .match(
-        /(?:[a-z0-9][a-z0-9._-]*\/)+[a-z0-9][a-z0-9._-]*|[a-z0-9]+(?:[._][a-z0-9]+)+|[a-z0-9]+(?:-[a-z0-9]+){2,}/g,
-      ) ?? [];
-  return [
-    ...new Set(matches.map((identifier) => identifier.replace(/\.+$/, ""))),
-  ];
-}
-
 function denseRanks<T>(
   values: T[],
   key: (value: T) => string | number,
@@ -984,48 +968,21 @@ async function searchVisibleLexicalMemories(args: {
   )`;
   const textsearch = sql`to_tsvector('english', ${juniorMemoryMemories.content})`;
   const textRank = sql<number>`ts_rank_cd(${textsearch}, ${tsquery})`;
-  const identifiers = structuredQueryIdentifiers(args.query);
-  const contentTokens = sql`regexp_split_to_array(lower(${juniorMemoryMemories.content}), '[^a-z0-9._/-]+')`;
-  const identifierArray =
-    identifiers.length > 0
-      ? sql`ARRAY[${sql.join(
-          identifiers.map((identifier) => sql`${identifier}`),
-          sql`, `,
-        )}]::text[]`
-      : undefined;
-  const exactIdentifierMatch =
-    identifierArray !== undefined
-      ? sql<boolean>`EXISTS (
-          SELECT 1
-          FROM unnest(${contentTokens}) AS content_token(value)
-          CROSS JOIN unnest(${identifierArray}) AS query_identifier(value)
-          WHERE strpos(
-            '/' || regexp_replace(content_token.value, '\\.+$', '') || '/',
-            '/' || query_identifier.value || '/'
-          ) > 0
-        )`
-      : sql<boolean>`false`;
   const rows = await args.db
     .select({
-      exactIdentifierMatch,
       memory: juniorMemoryMemories,
       textRank,
     })
     .from(juniorMemoryMemories)
     .where(and(predicate, sql`${textsearch} @@ ${tsquery}`))
     .orderBy(
-      ...(identifiers.length > 0 ? [desc(exactIdentifierMatch)] : []),
       desc(textRank),
       desc(juniorMemoryMemories.observedAtMs),
       asc(juniorMemoryMemories.id),
     )
     .limit(args.limit);
-  const ranks = denseRanks(
-    rows,
-    (row) => `${row.exactIdentifierMatch}:${Number(row.textRank)}`,
-  );
+  const ranks = denseRanks(rows, (row) => Number(row.textRank));
   return rows.map((row, index) => ({
-    exactIdentifier: row.exactIdentifierMatch,
     lexical: { rank: ranks[index] },
     memory: parseMemoryRow(row.memory),
     sourceKey: row.memory.sourceKey,
@@ -1100,7 +1057,6 @@ async function searchVisibleVectorMemories(args: {
     }
     return [
       {
-        exactIdentifier: false,
         memory: parseMemoryRow(row.memory),
         sourceKey: row.memory.sourceKey,
         vector: {

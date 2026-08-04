@@ -18,15 +18,13 @@ function memory(id: string, observedAtMs = NOW_MS): MemoryRecord {
 
 function match(
   id: string,
-  input: Omit<MemoryMatch, "exactIdentifier" | "memory" | "sourceKey"> & {
-    exactIdentifier?: boolean;
+  input: Omit<MemoryMatch, "memory" | "sourceKey"> & {
     observedAtMs?: number;
     sourceKey?: string;
   },
 ): MemoryMatch {
   return {
     ...input,
-    exactIdentifier: input.exactIdentifier ?? false,
     memory: memory(id, input.observedAtMs),
     sourceKey: input.sourceKey ?? "slack:T123:C456",
   };
@@ -75,32 +73,5 @@ describe("memory retrieval ranking", () => {
       "same-channel-old",
       "other-channel-new",
     ]);
-  });
-
-  it("keeps an exact identifier match in a crowded fused candidate window", () => {
-    const matches = [
-      match("exact", {
-        exactIdentifier: true,
-        lexical: { rank: 1 },
-      }),
-      match("exact", {
-        vector: { rank: 20 },
-      }),
-    ];
-    for (let rank = 1; rank <= 20; rank += 1) {
-      matches.push(
-        match(`generic-${rank}`, {
-          lexical: { rank },
-          vector: { rank },
-        }),
-      );
-    }
-
-    const ranked = rankMemoryMatches(matches, { nowMs: NOW_MS });
-
-    expect(ranked[0]?.memory.id).toBe("exact");
-    expect(
-      ranked.slice(0, 20).some(({ memory }) => memory.id === "exact"),
-    ).toBe(true);
   });
 });

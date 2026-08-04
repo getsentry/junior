@@ -80,26 +80,23 @@ function runtimeContext() {
 }
 
 describe("memory retrieval quality", () => {
-  it("keeps exact, lexical, and semantic facts ahead of plausible distractors", async () => {
+  it("keeps lexical and semantic facts ahead of plausible distractors", async () => {
     const fixture = await createFixture();
-    const exactContent = "getsentry/junior CI runs package tests with pnpm.";
-    const prefixContent =
-      "getsentry/junior-old CI runs package tests with pnpm.";
+    const targetedContent = "getsentry/junior CI runs package tests with pnpm.";
     const genericContent =
       "Repository CI guidance is available in the engineering dashboard.";
     const runbookContent = "Release runbooks are documented in Notion.";
     const semanticContent =
       "Deployments require canary verification before production rollout.";
-    const exactQuery = "How does CI work in getsentry/junior?";
+    const targetedQuery = "Which CI setup runs package tests with pnpm?";
     const lexicalQuery = "Where are release runbooks documented?";
     const semanticQuery = "What is the publishing process?";
     const embedder = testEmbedder({
-      [exactContent]: unitEmbedding(0),
-      [prefixContent]: unitEmbedding(0),
+      [targetedContent]: unitEmbedding(0),
       [genericContent]: unitEmbedding(0),
       [runbookContent]: unitEmbedding(1),
       [semanticContent]: unitEmbedding(2),
-      [exactQuery]: unitEmbedding(0),
+      [targetedQuery]: unitEmbedding(0),
       [lexicalQuery]: unitEmbedding(1),
       [semanticQuery]: unitEmbedding(2),
     });
@@ -111,8 +108,7 @@ describe("memory retrieval quality", () => {
     try {
       const memories = new Map<string, string>();
       for (const [key, content] of [
-        ["exact", exactContent],
-        ["prefix", prefixContent],
+        ["targeted", targetedContent],
         ["generic", genericContent],
         ["lexical", runbookContent],
         ["semantic", semanticContent],
@@ -126,7 +122,7 @@ describe("memory retrieval quality", () => {
       }
 
       const cases = [
-        { expected: memories.get("exact"), query: exactQuery },
+        { expected: memories.get("targeted"), query: targetedQuery },
         { expected: memories.get("lexical"), query: lexicalQuery },
         { expected: memories.get("semantic"), query: semanticQuery },
       ];
@@ -160,11 +156,6 @@ describe("memory retrieval quality", () => {
         meanReciprocalRank: 1,
         recallAt5: 1,
       });
-      const exactResults = await store.searchMemories({
-        limit: 1,
-        query: exactQuery,
-      });
-      expect(exactResults[0]?.id).not.toBe(memories.get("prefix"));
     } finally {
       await fixture.close();
     }
