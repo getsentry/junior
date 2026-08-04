@@ -13,8 +13,6 @@ import type {
   SteeringCandidateMessage,
 } from "@/chat/runtime/slack-runtime";
 import {
-  isAgentHistoryBoundaryError,
-  isAgentHistoryBoundaryMessage,
   isCooperativeTurnYieldError,
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
@@ -895,15 +893,6 @@ export function createSlackConversationWorker(
           }
           if (isCooperativeTurnYieldError(error)) {
             return { status: "yielded" } satisfies ConversationWorkerResult;
-          }
-          // History-boundary mismatch is permanent for this attempt. Do not map
-          // it to lost_lease recovery (infinite requeue). Let the worker catch
-          // count the attempt and dead-letter when retries are exhausted.
-          if (
-            isAgentHistoryBoundaryError(error) ||
-            isAgentHistoryBoundaryMessage(error)
-          ) {
-            throw error;
           }
           if (isTurnInputCommitLostError(error)) {
             return { status: "lost_lease" } satisfies ConversationWorkerResult;

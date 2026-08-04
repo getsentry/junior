@@ -71,11 +71,7 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import {
-  isAgentHistoryBoundaryError,
-  isAgentHistoryBoundaryMessage,
-  isTurnInputCommitLostError,
-} from "@/chat/runtime/turn";
+import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { decideReply } from "@/chat/services/assistant-reply";
@@ -806,7 +802,6 @@ async function executeAgentRunInPrivacyContext(
       inputMessages,
       inputMessagesAttribute,
       promptContentParts,
-      checkpointedPromptMessage,
       promptHistoryMessages,
       shouldPromptAgent,
       turnContexts,
@@ -994,11 +989,7 @@ async function executeAgentRunInPrivacyContext(
           });
         }
       } catch (error) {
-        if (
-          isTurnInputCommitLostError(error) ||
-          isAgentHistoryBoundaryError(error) ||
-          isAgentHistoryBoundaryMessage(error)
-        ) {
+        if (isTurnInputCommitLostError(error)) {
           throw error;
         }
         logWarn("agent.turn.steering_messages_drain.failed", {
@@ -1136,16 +1127,11 @@ async function executeAgentRunInPrivacyContext(
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
-          // Prefer the exact durable checkpointed prompt when replaying a
-          // still-running turn. A new Date.now() timestamp fails the
-          // append-only deep-equal prefix check in commitMessages.
-          const freshPromptMessage: PiMessage =
-            checkpointedPromptMessage ??
-            ({
-              role: "user",
-              content: promptContentParts,
-              timestamp: Date.now(),
-            } as PiMessage);
+          const freshPromptMessage: PiMessage = {
+            role: "user",
+            content: promptContentParts,
+            timestamp: Date.now(),
+          } as PiMessage;
           if (shouldPromptAgent) {
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint([
@@ -1155,6 +1141,10 @@ async function executeAgentRunInPrivacyContext(
             if (promptPersisted) {
               await runResume.commitInput();
             }
+          } else if (durability.onInputCommitted) {
+            // Prompt already owned by the running record. Still ack mailbox
+            // ownership when redelivery is carrying a pending inbound.
+            await runResume.commitInput();
           }
 
           /** Race one provider operation against the turn deadline and abort its owner. */
@@ -1522,12 +1512,6 @@ async function executeAgentRunInPrivacyContext(
       throw error;
     }
     if (isTurnInputCommitLostError(error)) {
-      throw error;
-    }
-    if (
-      isAgentHistoryBoundaryError(error) ||
-      isAgentHistoryBoundaryMessage(error)
-    ) {
       throw error;
     }
     if (error instanceof AuthorizationFlowDisabledError) {

@@ -15,10 +15,6 @@ import {
   isContinuablePiBoundary,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
-import {
-  isAgentHistoryBoundaryError,
-  isAgentHistoryBoundaryMessage,
-} from "@/chat/runtime/turn";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
@@ -89,12 +85,19 @@ export async function loadTurnSessionRecord(
     ctx.conversationId,
     ctx.sessionId,
   );
-  const hasAwaitingResumeRecord = Boolean(
-    existingSessionRecord && existingSessionRecord.state === "awaiting_resume",
+  // A still-running record with a committed turn-start cursor already owns its
+  // prompt. Treat that as resume so redelivery continues instead of rebuilding
+  // and re-checkpointing a non-identical user message.
+  const hasCommittedPrompt =
+    existingSessionRecord?.turnStartMessageIndex !== undefined;
+  const resumedFromSessionRecord = Boolean(
+    existingSessionRecord &&
+      (existingSessionRecord.state === "awaiting_resume" ||
+        (existingSessionRecord.state === "running" && hasCommittedPrompt)),
   );
   return {
-    resumedFromSessionRecord: hasAwaitingResumeRecord,
-    currentSliceId: hasAwaitingResumeRecord
+    resumedFromSessionRecord,
+    currentSliceId: resumedFromSessionRecord
       ? existingSessionRecord!.sliceId
       : 1,
     existingSessionRecord,
@@ -181,13 +184,11 @@ export async function persistRunningSessionRecord(args: {
     });
     return true;
   } catch (recordError) {
-    // History-boundary mismatch is permanent for this attempt. Swallowing it as
-    // false promotes TurnInputCommitLost → lost_lease recovery, which requeues
-    // forever. Fail closed so the worker can count the attempt / dead-letter.
-    if (
-      isAgentHistoryBoundaryError(recordError) ||
-      isAgentHistoryBoundaryMessage(recordError)
-    ) {
+    // Permanent history-shape failures must not collapse into false →
+    // TurnInputCommitLost → lost_lease recovery, which requeues forever.
+    const message =
+      recordError instanceof Error ? recordError.message : String(recordError);
+    if (message.includes("changed before its committed boundary")) {
       logSessionRecordError(
         recordError,
         "agent.turn.running_session_record.boundary_mismatch",

@@ -73,33 +73,6 @@ export function isTurnInputCommitLostError(
   return error instanceof TurnInputCommitLostError;
 }
 
-/**
- * Durable agent history no longer matches the messages a turn is trying to
- * checkpoint. This is a permanent shape mismatch for the current attempt, not
- * a transient lease loss — callers must not requeue as lost_lease.
- */
-export class AgentHistoryBoundaryError extends Error {
-  readonly code = "agent_history_boundary";
-
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentHistoryBoundaryError";
-  }
-}
-
-/** Return whether an error is a permanent agent-history boundary mismatch. */
-export function isAgentHistoryBoundaryError(
-  error: unknown,
-): error is AgentHistoryBoundaryError {
-  return error instanceof AgentHistoryBoundaryError;
-}
-
-/** True when error text is the durable history-boundary mismatch message. */
-export function isAgentHistoryBoundaryMessage(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("changed before its committed boundary");
-}
-
 /** Error indicating durable turn input should stay pending for a later worker. */
 export class TurnInputDeferredError extends Error {
   readonly code = "turn_input_deferred";

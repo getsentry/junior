@@ -11,8 +11,6 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import {
   getConversationTurnBoundaryError,
-  isAgentHistoryBoundaryError,
-  isAgentHistoryBoundaryMessage,
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
@@ -524,12 +522,6 @@ export function createAgentDispatchConversationWorker(
       if (isCooperativeTurnYieldError(error)) {
         await markDispatchAwaitingResume(dispatch.id);
         return { status: "yielded" };
-      }
-      if (
-        isAgentHistoryBoundaryError(error) ||
-        isAgentHistoryBoundaryMessage(error)
-      ) {
-        throw error;
       }
       if (isTurnInputCommitLostError(error)) {
         return { status: "lost_lease" };

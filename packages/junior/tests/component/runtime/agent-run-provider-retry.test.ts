@@ -1351,10 +1351,8 @@ describe("agent run continuation", () => {
       await executeAgentRun({
         conversationId,
         turnId: sessionId,
-        // Production redelivery passes live projection history that already
-        // ends with the durable checkpoint. The agent must re-checkpoint that
-        // exact message (not a Date.now() rebuild) so commitMessages stays
-        // append-only.
+        // A running record with turnStartMessageIndex already owns the prompt.
+        // Redelivery must continue that history, not rebuild/recheckpoint it.
         input: { messageText: "help me", piMessages: [checkpointedPrompt] },
         routing: {
           destinationVisibility: "private",

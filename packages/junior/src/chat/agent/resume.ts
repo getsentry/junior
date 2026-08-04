@@ -176,8 +176,6 @@ export function createResumeState(args: ResumeStateArgs) {
       messages: PiMessage[],
       trailingMessageProvenance?: ConversationMessageProvenance[],
     ): Promise<boolean> {
-      // Boundary mismatches rethrow from persistRunningSessionRecord so they
-      // never collapse into TurnInputCommitLost → lost_lease recovery.
       const persisted = await this.persistSafeBoundary(
         messages,
         trailingMessageProvenance,

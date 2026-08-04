@@ -5,10 +5,6 @@ import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
-  isAgentHistoryBoundaryError,
-  isAgentHistoryBoundaryMessage,
-} from "@/chat/runtime/turn";
-import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
   type ConversationWorkQueue,
@@ -667,14 +663,6 @@ async function processConversationWorkInContext(
     // recovery nudge. Once durable recovery state is recorded and one nudge is
     // sent, the delivery is acknowledged; only when recording recovery state
     // itself fails is the error rethrown so plain redelivery retries it.
-    //
-    // History-boundary mismatches are permanent for the current attempt shape.
-    // Requeueing them (especially empty-attempt continue wakes) farms the same
-    // poison turn forever. Fail closed: count attempts when present, otherwise
-    // release without a recovery wake.
-    const permanentBoundaryMismatch =
-      isAgentHistoryBoundaryError(error) ||
-      isAgentHistoryBoundaryMessage(error);
     let recoveryRecorded = false;
     try {
       const failure =
@@ -689,17 +677,6 @@ async function processConversationWorkInContext(
           : undefined;
       if (failure && isTerminalFailure(failure)) {
         await deadLetterAttempt({
-          conversationId,
-          leaseToken: lease.leaseToken,
-          conversationStore: options.conversationStore,
-          nowMs: errorNowMs,
-          state: options.state,
-        });
-      } else if (permanentBoundaryMismatch) {
-        // Do not schedule recovery wakes for permanent shape mismatches.
-        // Attempts are already counted above when present; releasing without a
-        // wake stops the poison-turn farm (including empty-attempt continues).
-        await releaseConversationWork({
           conversationId,
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
