@@ -9,6 +9,8 @@ describe("stripLeadingSteeringOverride", () => {
     expect(stripLeadingSteeringOverride("  <@U0BOT> !! stop")).toBe(
       "  <@U0BOT> stop",
     );
+    // Slack adapter plain-text extraction rewrites `<@U…>` to `@U…`.
+    expect(stripLeadingSteeringOverride("@U0BOT !! stop")).toBe("@U0BOT stop");
   });
 
   it("leaves other messages unchanged", () => {
