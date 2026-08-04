@@ -193,6 +193,8 @@ describe("slack outbound boundary", () => {
       channel: "C123",
       thread_ts: "1700000000.100",
       text: "Hello from Slack",
+      unfurl_links: false,
+      unfurl_media: false,
     });
     expect(getPermalink).toHaveBeenCalledWith({
       channel: "C123",

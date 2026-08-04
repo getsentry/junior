@@ -41,8 +41,8 @@ describe("Slack contract: outbound normalization", () => {
         params: expect.objectContaining({
           channel: "C123",
           text: "hello",
-          unfurl_links: false,
-          unfurl_media: false,
+          unfurl_links: "false",
+          unfurl_media: "false",
         }),
       }),
     ]);
