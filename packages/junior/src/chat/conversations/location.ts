@@ -6,10 +6,10 @@ import { z } from "zod";
 
 export const locationSchema = z
   .object({
-    provider: z.literal("slack"),
-    teamId: nonBlankStringSchema,
-    channelId: nonBlankStringSchema,
-    kind: z.enum(["channel", "dm", "group"]),
+    id: nonBlankStringSchema,
+    provider: nonBlankStringSchema,
+    tenantId: nonBlankStringSchema.optional(),
+    providerId: nonBlankStringSchema,
     visibility: sourceVisibilitySchema,
   })
   .strict();

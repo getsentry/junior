@@ -6,18 +6,14 @@ type LocationRow = typeof juniorDestinations.$inferSelect;
 
 /** Project one supported provider location from its linked SQL row. */
 export function locationFromRow(row: LocationRow | null): Location | undefined {
-  if (
-    !row ||
-    row.provider !== "slack" ||
-    (row.kind !== "channel" && row.kind !== "dm" && row.kind !== "group")
-  ) {
+  if (!row || row.provider === "local") {
     return undefined;
   }
   return locationSchema.parse({
-    provider: "slack",
-    teamId: row.providerTenantId,
-    channelId: row.providerDestinationId,
-    kind: row.kind,
+    id: row.id,
+    provider: row.provider,
+    ...(row.providerTenantId ? { tenantId: row.providerTenantId } : {}),
+    providerId: row.providerDestinationId,
     visibility: row.visibility === "public" ? "public" : "private",
   });
 }

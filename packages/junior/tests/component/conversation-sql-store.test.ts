@@ -117,10 +117,10 @@ describe("conversation SQL store", () => {
             channelId: "C123",
           },
           location: {
+            id: expect.any(String),
             provider: "slack",
-            teamId: "T123",
-            channelId: "C123",
-            kind: "channel",
+            tenantId: "T123",
+            providerId: "C123",
             visibility: "public",
           },
           actor: {
@@ -210,10 +210,10 @@ describe("conversation SQL store", () => {
           channelId: "C123",
         },
         location: {
+          id: expect.any(String),
           provider: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          kind: "channel",
+          tenantId: "T123",
+          providerId: "C123",
           visibility: "public",
         },
         actor: {

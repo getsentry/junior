@@ -10,8 +10,8 @@ Canonical words used across Junior's code and documentation.
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
 - **Location**: the optional provider container associated with a conversation,
-  such as a Slack channel, group, or direct message, including the stable
-  provider coordinates and visibility needed for context and reporting.
+  identified by Junior and provider ids plus the visibility needed for context
+  and reporting.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
