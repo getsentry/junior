@@ -89,6 +89,26 @@ function systemData(): SystemData {
       basePath: "/",
       componentGallery: false,
       sentryConversationLinks: false,
+      systemBudgets: [
+        {
+          description: "Queues additional conversations.",
+          label: "Active globally",
+          limit: 100,
+          name: "active_conversations_global",
+          outcome: "queue",
+          stage: "conversation_admission",
+          unit: "count",
+        },
+        {
+          description: "Stops runaway model and tool loops.",
+          label: "Agent steps per turn",
+          limit: 500,
+          name: "turn_steps",
+          outcome: "stop",
+          stage: "turn",
+          unit: "count",
+        },
+      ],
       timeZone: "UTC",
     },
     me: { user: { email: "viewer@example.com" } },
@@ -1302,6 +1322,9 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(systemHtml).toContain("Usage over time");
+    expect(systemHtml).toContain("System budgets");
+    expect(systemHtml).toContain("Agent steps per turn");
+    expect(systemHtml).toContain("6 hours");
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");

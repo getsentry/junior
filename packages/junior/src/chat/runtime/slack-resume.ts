@@ -55,9 +55,10 @@ import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
-  TurnSliceLimitExceededError,
-  buildTurnLimitResponse,
-} from "@/chat/services/turn-limit";
+  buildBudgetExceededResponse,
+  getBudgetAttributes,
+  isBudgetExceededError,
+} from "@/chat/services/budgets";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   hydrateConversationMessages,
@@ -242,10 +243,9 @@ async function postResumeFailureReply(args: {
   await postSlackApiMessage({
     channelId: args.channelId,
     threadTs: args.threadTs,
-    text:
-      args.error instanceof TurnSliceLimitExceededError
-        ? buildTurnLimitResponse(args.eventId)
-        : buildTurnFailureResponse(args.eventId),
+    text: isBudgetExceededError(args.error)
+      ? buildBudgetExceededResponse(args.eventId)
+      : buildTurnFailureResponse(args.eventId),
   });
 }
 
@@ -258,7 +258,14 @@ async function handleResumeFailure(args: {
   failureCode: ConversationTurnFailureCode;
   resumeArgs: ResumeSlackTurnArgs;
 }): Promise<void> {
-  const capturedEventId = logException(args.error, args.eventName);
+  const budgetError = isBudgetExceededError(args.error)
+    ? args.error
+    : undefined;
+  const capturedEventId = logException(
+    args.error,
+    budgetError ? "system.budget.exceeded" : args.eventName,
+    budgetError ? getBudgetAttributes(budgetError.budget) : {},
+  );
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
   let failureStatePersistError: unknown;
   try {
@@ -753,6 +760,7 @@ async function resumeSlackTurnInContext(
           actor: resumeActor,
           surface: replyContext.routing.surface ?? "slack",
           sliceId: runArgs.sliceId,
+          stepCount: reply.diagnostics.stepCount,
         });
       } else if (replyContext.routing.dispatch?.id) {
         await recordAgentTurnSessionSummary({
@@ -767,6 +775,9 @@ async function resumeSlackTurnInContext(
             : {}),
           sessionId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
+          stepCount: reply.diagnostics.stepCount,
+          cumulativeDurationMs: reply.diagnostics.durationMs,
+          cumulativeUsage: reply.diagnostics.usage,
           source: replyContext.routing.source,
           state:
             reply.diagnostics.outcome === "success" ? "completed" : "failed",

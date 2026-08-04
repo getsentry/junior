@@ -17,7 +17,8 @@ import {
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { BudgetExceededError, checkBudgets } from "@/chat/services/budgets";
+import { reportBudgetExceeded } from "@/chat/services/budget-reporting";
 import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
@@ -107,6 +108,7 @@ export async function persistRunningSessionRecord(args: {
   source?: Source;
   sessionId: string;
   sliceId: number;
+  stepCount?: number;
   messages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
@@ -146,6 +148,7 @@ export async function persistRunningSessionRecord(args: {
         : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
+      stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
       state: "running",
       piMessages: args.messages,
       ...(args.trailingMessageProvenance
@@ -215,6 +218,7 @@ export async function persistCompletedSessionRecord(args: {
   sessionId: string;
   /** Defaults to the latest stored slice when the deliverer does not know it. */
   sliceId?: number;
+  stepCount?: number;
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   modelId: string;
@@ -281,6 +285,7 @@ export async function persistCompletedSessionRecord(args: {
       : {}),
     sessionId: args.sessionId,
     sliceId,
+    stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
     state: "completed",
     piMessages: args.allMessages,
     ...((args.surface ?? latestSessionRecord?.surface)
@@ -332,6 +337,7 @@ export async function completeDeliveredTurn(args: {
   resultMessageId?: string;
   sessionId: string;
   sliceId: number;
+  stepCount?: number;
   source: Source;
   surface: AgentTurnSurface;
   turnStartMessageIndex?: number;
@@ -351,6 +357,7 @@ export async function completeDeliveredTurn(args: {
     source: args.source,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
+    stepCount: args.stepCount,
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     modelId: args.modelId,
@@ -370,6 +377,7 @@ export async function persistAuthPauseSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
+  stepCount?: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
@@ -422,6 +430,7 @@ export async function persistAuthPauseSessionRecord(args: {
         : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
+      stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
       state: "awaiting_resume",
       piMessages,
       ...((args.surface ?? latestSessionRecord?.surface)
@@ -466,6 +475,7 @@ interface ContinuationRecordInput {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
+  stepCount?: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
@@ -481,7 +491,7 @@ interface ContinuationRecordInput {
   surface?: AgentTurnSurface;
 }
 
-/** Persist a timeout or delivery retry under the turn's shared slice limit. */
+/** Persist a timeout or delivery retry under the turn's runtime limit. */
 export async function persistContinuationSessionRecord(
   args: ContinuationRecordInput & {
     resumeReason: "retry" | "timeout";
@@ -501,15 +511,22 @@ export async function persistContinuationSessionRecord(
     if (piMessages.length === 0 || !isContinuablePiBoundary(piMessages)) {
       return undefined;
     }
-    const cumulativeDurationMs = addDurationMs(
-      latestSessionRecord?.cumulativeDurationMs,
-      args.currentDurationMs,
-    );
+    const cumulativeDurationMs =
+      addDurationMs(
+        latestSessionRecord?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ) ?? 0;
     const cumulativeUsage = addAgentTurnUsage(
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     );
-    if (nextSliceId > botConfig.maxSlicesPerTurn) {
+    const exceeded = await checkBudgets(botConfig.budgets, {
+      runtimeMs: cumulativeDurationMs,
+      stage: "turn",
+      steps: args.stepCount ?? latestSessionRecord?.stepCount ?? 0,
+    });
+    if (exceeded) {
+      await reportBudgetExceeded(exceeded);
       return await upsertAgentTurnSessionRecord({
         ...((args.channelName ?? latestSessionRecord?.channelName)
           ? {
@@ -533,6 +550,7 @@ export async function persistContinuationSessionRecord(
           : {}),
         sessionId: args.sessionId,
         sliceId: args.currentSliceId,
+        stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
         state: "failed",
         piMessages,
         ...((args.surface ?? latestSessionRecord?.surface)
@@ -550,9 +568,7 @@ export async function persistContinuationSessionRecord(
           : {}),
         resumeReason: args.resumeReason,
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        errorMessage: new TurnSliceLimitExceededError(
-          botConfig.maxSlicesPerTurn,
-        ).message,
+        errorMessage: new BudgetExceededError(exceeded).message,
         ...((args.actor ?? latestSessionRecord?.actor)
           ? { actor: args.actor ?? latestSessionRecord?.actor }
           : {}),
@@ -580,6 +596,7 @@ export async function persistContinuationSessionRecord(
         : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
+      stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
       state: "awaiting_resume",
       piMessages,
       ...((args.surface ?? latestSessionRecord?.surface)
@@ -627,6 +644,7 @@ export async function persistYieldSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
+  stepCount?: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
@@ -675,6 +693,7 @@ export async function persistYieldSessionRecord(args: {
         : {}),
       sessionId: args.sessionId,
       sliceId: args.currentSliceId,
+      stepCount: args.stepCount ?? latestSessionRecord?.stepCount,
       state: "awaiting_resume",
       piMessages,
       ...((args.surface ?? latestSessionRecord?.surface)

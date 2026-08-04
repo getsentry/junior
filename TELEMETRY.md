@@ -26,6 +26,7 @@ use the query recipes below to find the failing turn and next query.
 | ----------------------------------- | ----------------------------- | ------------------------- | --------------------- |
 | `event_id`                          | captured Sentry error         | failed Slack reply        | open event            |
 | `gen_ai.conversation.id`            | Slack thread/run conversation | Slack footer, logs, spans | query trace/logs      |
+| `app.ai.turn.id`                    | one durable Junior turn       | logs, agent/tool spans    | query turn            |
 | `trace_id`                          | end-to-end trace              | errors, logs, spans       | open trace            |
 | `span_id`                           | one span in a trace           | logs, spans               | inspect span          |
 | `messaging.message.conversation_id` | Slack thread                  | logs, spans               | thread logs           |
@@ -33,6 +34,14 @@ use the query recipes below to find the failing turn and next query.
 | `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
 | `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
 | `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
+
+## Semantic Conventions
+
+Use OpenTelemetry GenAI attributes for the concepts the specification defines:
+operation, agent identity, conversation ID, request model, token usage, and
+errors. OpenTelemetry does not currently define a durable agent-turn ID,
+cumulative agent-step count, or cumulative turn runtime, so Junior records
+those gaps under `app.ai.turn.*` rather than inventing new `gen_ai.*` fields.
 
 ## Query Recipes
 
@@ -50,6 +59,21 @@ Conversation log history from the same pivot.
 dataset=logs query='gen_ai.conversation.id:"<conversation_id>"'
 fields=timestamp,level,event.name,trace_id,span_id,error.type,exception.message
 sort=timestamp
+```
+
+One durable turn across execution slices and child model/tool spans.
+
+```text
+dataset=spans query='app.ai.turn.id:"<turn_id>"'
+fields=timestamp,trace,span.op,span.description,span.duration,gen_ai.conversation.id,gen_ai.request.model,app.ai.turn.slice_id,app.ai.turn.step_count,app.ai.turn.runtime_ms,app.ai.turn.state,error.type
+sort=timestamp
+```
+
+Observed completed-turn step and cumulative-runtime distributions.
+
+```text
+dataset=spans query='span.op:chat.turn app.ai.turn.state:completed'
+fields=count(),p50(app.ai.turn.step_count),p90(app.ai.turn.step_count),p95(app.ai.turn.step_count),p99(app.ai.turn.step_count),max(app.ai.turn.step_count),p50(app.ai.turn.runtime_ms),p90(app.ai.turn.runtime_ms),p95(app.ai.turn.runtime_ms),p99(app.ai.turn.runtime_ms),max(app.ai.turn.runtime_ms)
 ```
 
 Trace log history after opening a Sentry event or trace.
@@ -82,6 +106,14 @@ Large tool results.
 dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.call.result.size:>20000'
 fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.result.size,span.duration
 sort=-gen_ai.tool.call.result.size
+```
+
+System budgets exceeded while admitting or running work.
+
+```text
+dataset=logs query='event.name:system.budget.exceeded'
+fields=timestamp,event.name,gen_ai.conversation.id,app.ai.turn.id,app.budget.name,app.budget.outcome,app.budget.value,app.budget.limit
+sort=-timestamp
 ```
 
 Search tool volume, truncation, and raw output size.
@@ -135,6 +167,8 @@ Spans: `chat.turn`, `chat.reply`, `chat.slash_command`,
 `chat.app_home_opened`, `chat.app_home_disconnect`
 
 Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
+`app.ai.turn.id`, `app.ai.turn.state`, `app.ai.turn.step_count`,
+`app.ai.turn.runtime_ms`,
 `messaging.message.conversation_id`, `messaging.destination.name`,
 `app.slack.reply_stage`, `app.slack.error_code`, `app.slack.api_error`
 
@@ -145,6 +179,7 @@ The turn timed out, returned no useful answer, or used unexpected reasoning.
 Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
+`system.budget.exceeded`,
 `agent.turn.empty_output.retrying`,
 `agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
 `guardian.action_review.retrying`
@@ -153,15 +188,18 @@ Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
-`gen_ai.response.finish_reasons`, `app.ai.outcome`,
-`app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
-`gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
-`gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
+`gen_ai.agent.name`, `gen_ai.conversation.id`, `gen_ai.response.finish_reasons`,
+`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`,
+`app.ai.turn.id`, `app.ai.turn.step_count`, `app.ai.turn.runtime_ms`,
+`app.ai.outcome`,
+`app.ai.reasoning_effort`, `app.ai.model_profile`,
+`gen_ai.usage.cache_read.input_tokens`,
+`gen_ai.usage.cache_creation.input_tokens`,
+`gen_ai.usage.reasoning.output_tokens`, `app.ai.reasoning_tokens`,
 `app.ai.empty_output.attempt`, `app.ai.provider_error.kind`,
 `app.guardian.review_attempt`,
-`app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
-`app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
-`app.ai.cost.total_usd`
+`app.cost.input_usd`, `app.cost.output_usd`, `app.cost.cache_read_usd`,
+`app.cost.cache_write_usd`, `app.cost.total_usd`
 
 ### Tools, MCP, And Sandbox
 

@@ -34,6 +34,12 @@ Canonical words used across Junior's code and documentation.
   normal ordering and waits when a turn is already active.
 - **Turn**: one request-to-final-response cycle. It may span multiple runs and
   execution slices; one model invocation is not a turn.
+- **Agent step**: one model response attempt inside a turn, including any tool
+  calls and results that follow that response. A turn may contain many agent
+  steps across runs and execution slices.
+- **System budget**: one configured resource boundary checked against current
+  runtime usage. Exceeding a capacity budget queues work; exceeding a turn
+  budget stops the turn.
 - **Run**: one bounded attempt to advance a turn. A later run may resume the
   same turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a run.
@@ -65,7 +71,8 @@ Canonical words used across Junior's code and documentation.
 
 ## Naming Guidance
 
-- Use `turn`, `run`, and `slice` only with the meanings above.
+- Use `turn`, `agent step`, `system budget`, `run`, and `slice` only with the
+  meanings above.
 - Use `message` for platform chat content. Use `user_message`,
   `assistant_message`, and `tool_result` for replayable agent history.
 - Use `agent history item` when referring to those three native event types as

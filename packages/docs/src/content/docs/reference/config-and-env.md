@@ -45,6 +45,34 @@ for its own turn. Set it to `steer` to preserve collaborative steering across
 actors. In `follow_up` mode, a user can start one message with `!!` to steer the
 active turn explicitly.
 
+## System protections
+
+These budgets are parsed into `botConfig.budgets` at startup, checked through
+the shared `checkBudgets()` decision path, and shown on the dashboard's
+**System** page.
+
+Junior's private internal budget registry owns each budget's environment name,
+default limit, unit, display copy, outcome, runtime stage, and measurement
+function. Nitro configuration contains only the resulting numeric limits;
+budget functions stay in the bundled runtime and are never serialized.
+
+| Variable                                   | Default    | Protection                                                                                            |
+| ------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------- |
+| `JUNIOR_MAX_ACTIVE_CONVERSATIONS`          | `100`      | Maximum conversations holding execution leases globally. Additional conversations remain queued.      |
+| `JUNIOR_MAX_ACTIVE_CONVERSATIONS_PER_USER` | `5`        | Maximum active conversations for one platform-scoped user when a stable user ID is available.         |
+| `JUNIOR_MAX_STEPS_PER_TURN`                | `500`      | Maximum agent steps in one turn across model responses, tool calls, retries, and resumes.             |
+| `JUNIOR_MAX_TURN_RUNTIME_MS`               | `21600000` | Maximum cumulative active runtime for one turn across timeout, yield, and recovery resumes (6 hours). |
+
+Active-conversation budgets are admission controls, not rejection limits. Inbound
+messages remain durable, and a conversation that cannot acquire a lease is
+queued again after a short delay. The per-user limit applies when the inbound
+source provides a stable user ID; the global limit still covers system work.
+Step and runtime budgets stop one runaway turn instead of leaving it queued.
+Those hard-budget hits are available from `/api/stats` under the `junior`
+namespace and `budget_exceeded` metric. Every exceeded budget emits the shared
+event `system.budget.exceeded` with its name, value, limit, and `queue` or
+`stop` outcome. Stop outcomes are also captured as Sentry issues.
+
 Model profile names are durable conversation bindings. Each later turn resolves
 the stored name through current configuration; the exact model ID recorded when
 an epoch opens is audit evidence, not a runtime pin. Changing a mapping retargets

@@ -12,7 +12,12 @@ import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import { getChatConfig } from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
+import {
+  checkBudgets,
+  type BudgetExceeded,
+  type ConversationAdmissionBudgets,
+} from "@/chat/services/budgets";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import {
@@ -27,6 +32,11 @@ const CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_INDEX_LOCK_TTL_MS = 10_000;
 const CONVERSATION_INDEX_LOCK_WAIT_MS = 2_000;
 const CONVERSATION_INDEX_LOCK_RETRY_MS = 25;
+const CONVERSATION_ADMISSION_LOCK_KEY = `${CONVERSATION_PREFIX}:admission`;
+const CONVERSATION_ADMISSION_STATE_KEY = `${CONVERSATION_PREFIX}:admission:leases`;
+const CONVERSATION_ADMISSION_LOCK_TTL_MS = 30_000;
+const CONVERSATION_ADMISSION_LOCK_WAIT_MS = 10_000;
+const CONVERSATION_ADMISSION_LOCK_RETRY_MS = 25;
 const CONVERSATION_MUTATION_LOCK_TTL_MS = 10_000;
 const CONVERSATION_MUTATION_WAIT_MS = 10_000;
 const CONVERSATION_MUTATION_RETRY_MS = 25;
@@ -127,6 +137,7 @@ export interface Lease {
 }
 
 export interface ConversationExecution {
+  activeUserKey?: string;
   inboundMessageIds: string[];
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
@@ -167,6 +178,8 @@ export interface ConversationWorkState extends Conversation {
 }
 
 export interface StartConversationWorkAcquired {
+  activeConversationCount: number;
+  activeUserConversationCount?: number;
   leaseExpiresAtMs: number;
   leaseToken: string;
   status: "acquired";
@@ -181,9 +194,17 @@ export interface StartConversationWorkNoWork {
   status: "no_work";
 }
 
+export interface StartConversationWorkLimited {
+  activeConversationCount: number;
+  activeUserConversationCount?: number;
+  budget: BudgetExceeded;
+  status: "limited";
+}
+
 export type StartConversationWorkResult =
   | StartConversationWorkAcquired
   | StartConversationWorkActive
+  | StartConversationWorkLimited
   | StartConversationWorkNoWork;
 
 export interface AppendInboundMessageResult {
@@ -201,6 +222,12 @@ export interface RequestConversationWorkResult {
 interface ConversationIndexEntry {
   conversationId: string;
   score: number;
+}
+
+interface ConversationAdmissionEntry {
+  conversationId: string;
+  expiresAtMs: number;
+  userKey?: string;
 }
 
 interface ConversationIndexStore {
@@ -432,6 +459,7 @@ function normalizeExecution(
     pendingCount: pendingMessages.length,
     pendingMessages,
     lease,
+    activeUserKey: toOptionalString(value.activeUserKey),
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     runId: toOptionalString(value.runId),
@@ -631,6 +659,32 @@ async function withIndexLock<T>(
   }
   try {
     return await callback();
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+async function withConversationAdmission<T>(
+  state: StateAdapter,
+  callback: (lock: Lock) => Promise<T>,
+): Promise<T> {
+  const startedAtMs = now();
+  let lock: Lock | null;
+  while (true) {
+    lock = await state.acquireLock(
+      CONVERSATION_ADMISSION_LOCK_KEY,
+      CONVERSATION_ADMISSION_LOCK_TTL_MS,
+    );
+    if (lock) {
+      break;
+    }
+    if (now() - startedAtMs >= CONVERSATION_ADMISSION_LOCK_WAIT_MS) {
+      throw new Error("Could not acquire conversation admission lock");
+    }
+    await sleep(CONVERSATION_ADMISSION_LOCK_RETRY_MS);
+  }
+  try {
+    return await callback(lock);
   } finally {
     await state.releaseLock(lock);
   }
@@ -937,6 +991,96 @@ async function readConversation(
     throw new InvalidConversationRecordError(conversationId);
   }
   return conversation;
+}
+
+function normalizeConversationAdmissionEntry(
+  value: unknown,
+): ConversationAdmissionEntry | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const conversationId = toOptionalString(value.conversationId);
+  const expiresAtMs = toOptionalNumber(value.expiresAtMs);
+  if (!conversationId || expiresAtMs === undefined) {
+    return undefined;
+  }
+  return {
+    conversationId,
+    expiresAtMs,
+    ...(toOptionalString(value.userKey)
+      ? { userKey: toOptionalString(value.userKey) }
+      : {}),
+  };
+}
+
+async function readConversationAdmissions(
+  state: StateAdapter,
+  nowMs: number,
+): Promise<ConversationAdmissionEntry[]> {
+  const value = await state.get<unknown>(CONVERSATION_ADMISSION_STATE_KEY);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const entries = new Map<string, ConversationAdmissionEntry>();
+  for (const item of value) {
+    const entry = normalizeConversationAdmissionEntry(item);
+    if (!entry || entry.expiresAtMs <= nowMs) {
+      continue;
+    }
+    const existing = entries.get(entry.conversationId);
+    if (!existing || entry.expiresAtMs > existing.expiresAtMs) {
+      entries.set(entry.conversationId, entry);
+    }
+  }
+  return [...entries.values()];
+}
+
+async function writeConversationAdmissions(
+  state: StateAdapter,
+  entries: ConversationAdmissionEntry[],
+): Promise<void> {
+  if (entries.length === 0) {
+    await state.delete(CONVERSATION_ADMISSION_STATE_KEY);
+    return;
+  }
+  await state.set(
+    CONVERSATION_ADMISSION_STATE_KEY,
+    entries,
+    JUNIOR_THREAD_STATE_TTL_MS,
+  );
+}
+
+function conversationAdmissionOccupancy(args: {
+  entries: ConversationAdmissionEntry[];
+  userKey?: string;
+}): {
+  activeConversationCount: number;
+  activeUserConversationCount?: number;
+} {
+  return {
+    activeConversationCount: args.entries.length,
+    ...(args.userKey
+      ? {
+          activeUserConversationCount: args.entries.filter(
+            (entry) => entry.userKey === args.userKey,
+          ).length,
+        }
+      : {}),
+  };
+}
+
+async function removeConversationAdmission(args: {
+  conversationId: string;
+  nowMs: number;
+  state: StateAdapter;
+}): Promise<void> {
+  await withConversationAdmission(args.state, async () => {
+    const entries = await readConversationAdmissions(args.state, args.nowMs);
+    await writeConversationAdmissions(
+      args.state,
+      entries.filter((entry) => entry.conversationId !== args.conversationId),
+    );
+  });
 }
 
 /**
@@ -1394,6 +1538,8 @@ export async function clearConsumedConversationWake(args: {
 
 /** Try to acquire the durable execution lease for one conversation. */
 export async function startConversationWork(args: {
+  activeUserKey?: string;
+  budgets?: ConversationAdmissionBudgets;
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1414,35 +1560,86 @@ export async function startConversationWork(args: {
       return { status: "no_work" };
     }
 
-    const lease: Lease = {
-      token: randomUUID(),
-      acquiredAtMs: nowMs,
-      lastCheckInAtMs: nowMs,
-      expiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
-    };
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        current,
+    return await withConversationAdmission(state, async (admissionLock) => {
+      const budgets = args.budgets ?? botConfig.budgets;
+      const entries = (await readConversationAdmissions(state, nowMs)).filter(
+        (entry) => entry.conversationId !== args.conversationId,
+      );
+      const occupancy = conversationAdmissionOccupancy({
+        entries,
+        userKey: args.activeUserKey,
+      });
+      const exceeded = await checkBudgets(budgets, {
+        activeConversations: occupancy.activeConversationCount,
+        ...(args.activeUserKey
+          ? {
+              activeConversationsForUser:
+                occupancy.activeUserConversationCount ?? 0,
+            }
+          : {}),
+        stage: "conversation_admission",
+      });
+      if (exceeded) {
+        return {
+          ...occupancy,
+          budget: exceeded,
+          status: "limited",
+        };
+      }
+
+      const fenced = await state.extendLock(
+        admissionLock,
+        CONVERSATION_ADMISSION_LOCK_TTL_MS,
+      );
+      if (!fenced) {
+        throw new Error("Conversation admission lock was lost before write");
+      }
+      const lease: Lease = {
+        token: randomUUID(),
+        acquiredAtMs: nowMs,
+        lastCheckInAtMs: nowMs,
+        expiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
+      };
+      await writeConversationAdmissions(state, [
+        ...entries,
         {
-          ...current.execution,
-          lease,
-          status:
-            current.execution.status === "awaiting_resume"
-              ? "awaiting_resume"
-              : "running",
-          runId: current.execution.runId ?? randomUUID(),
-          lastEnqueuedAtMs: undefined,
+          conversationId: args.conversationId,
+          expiresAtMs: lease.expiresAtMs,
+          ...(args.activeUserKey ? { userKey: args.activeUserKey } : {}),
         },
-        nowMs,
-      ),
-    );
-    return {
-      status: "acquired",
-      leaseToken: lease.token,
-      leaseExpiresAtMs: lease.expiresAtMs,
-    };
+      ]);
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            activeUserKey: args.activeUserKey,
+            lease,
+            status:
+              current.execution.status === "awaiting_resume"
+                ? "awaiting_resume"
+                : "running",
+            runId: current.execution.runId ?? randomUUID(),
+            lastEnqueuedAtMs: undefined,
+          },
+          nowMs,
+        ),
+      );
+      return {
+        status: "acquired",
+        activeConversationCount: occupancy.activeConversationCount + 1,
+        ...(args.activeUserKey
+          ? {
+              activeUserConversationCount:
+                (occupancy.activeUserConversationCount ?? 0) + 1,
+            }
+          : {}),
+        leaseToken: lease.token,
+        leaseExpiresAtMs: lease.expiresAtMs,
+      };
+    });
   });
 }
 
@@ -1456,25 +1653,42 @@ export async function checkInConversationWork(args: {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
-    if (!current || current.execution.lease?.token !== args.leaseToken) {
+    const lease = current?.execution.lease;
+    if (!current || !lease || lease.token !== args.leaseToken) {
       return false;
     }
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        current,
+    const expiresAtMs = nowMs + CONVERSATION_WORK_LEASE_TTL_MS;
+    await withConversationAdmission(state, async () => {
+      const entries = (await readConversationAdmissions(state, nowMs)).filter(
+        (entry) => entry.conversationId !== args.conversationId,
+      );
+      await writeConversationAdmissions(state, [
+        ...entries,
         {
-          ...current.execution,
-          lease: {
-            ...current.execution.lease,
-            lastCheckInAtMs: nowMs,
-            expiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
-          },
+          conversationId: args.conversationId,
+          expiresAtMs,
+          ...(current.execution.activeUserKey
+            ? { userKey: current.execution.activeUserKey }
+            : {}),
         },
-        nowMs,
-      ),
-    );
+      ]);
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            lease: {
+              ...lease,
+              lastCheckInAtMs: nowMs,
+              expiresAtMs,
+            },
+          },
+          nowMs,
+        ),
+      );
+    });
     return true;
   });
 }
@@ -1690,6 +1904,10 @@ export async function releaseConversationWork(args: {
         current,
         {
           ...current.execution,
+          activeUserKey:
+            current.execution.status === "awaiting_resume"
+              ? current.execution.activeUserKey
+              : undefined,
           lease: undefined,
           status:
             current.execution.status === "running"
@@ -1699,6 +1917,11 @@ export async function releaseConversationWork(args: {
         nowMs,
       ),
     );
+    await removeConversationAdmission({
+      conversationId: args.conversationId,
+      nowMs,
+      state,
+    });
     return true;
   });
 }
@@ -1726,6 +1949,7 @@ export async function completeConversationWork(args: {
         current,
         {
           ...current.execution,
+          activeUserKey: needsRun ? current.execution.activeUserKey : undefined,
           lease: undefined,
           status: needsRun
             ? "awaiting_resume"
@@ -1737,6 +1961,11 @@ export async function completeConversationWork(args: {
         nowMs,
       ),
     );
+    await removeConversationAdmission({
+      conversationId: args.conversationId,
+      nowMs,
+      state,
+    });
     return runnable ? "pending" : "completed";
   });
 }
@@ -1850,6 +2079,7 @@ export async function deadLetterAttempt(args: {
         current,
         {
           ...current.execution,
+          activeUserKey: undefined,
           lease: undefined,
           status: runnable ? "pending" : "failed",
           runId: runnable ? current.execution.runId : undefined,
@@ -1857,6 +2087,11 @@ export async function deadLetterAttempt(args: {
         nowMs,
       ),
     );
+    await removeConversationAdmission({
+      conversationId: args.conversationId,
+      nowMs,
+      state,
+    });
     return runnable ? "pending" : "failed";
   });
 }
@@ -1889,6 +2124,11 @@ export async function clearExpiredConversationLease(args: {
         nowMs,
       ),
     );
+    await removeConversationAdmission({
+      conversationId: args.conversationId,
+      nowMs,
+      state,
+    });
     return true;
   });
 }
@@ -1900,6 +2140,11 @@ export async function deleteConversationState(args: {
 }): Promise<void> {
   await withConversationMutation(args, async (state) => {
     await state.delete(conversationKey(args.conversationId));
+    await removeConversationAdmission({
+      conversationId: args.conversationId,
+      nowMs: now(),
+      state,
+    });
     await removeIndexEntry({
       state,
       indexKey: CONVERSATION_ACTIVE_INDEX_KEY,

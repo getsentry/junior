@@ -6,6 +6,7 @@ import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
+import { describeBudgets } from "@/chat/services/budgets";
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -870,6 +871,7 @@ describe("createApp plugin config", () => {
       expect.objectContaining({
         agentName: botConfig.userName,
         componentGallery: true,
+        systemBudgets: describeBudgets(botConfig.budgets),
       }),
     );
 

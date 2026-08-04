@@ -28,6 +28,7 @@ export {
   type Source,
   type StartConversationWorkAcquired,
   type StartConversationWorkActive,
+  type StartConversationWorkLimited,
   type StartConversationWorkNoWork,
   type StartConversationWorkResult,
 } from "@/chat/task-execution/state";
@@ -344,12 +345,11 @@ async function markConversationWorkEnqueued(args: {
 }
 
 /** Try to acquire the durable execution lease for one conversation. */
-export async function startConversationWork(args: {
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  nowMs?: number;
-  state?: StateAdapter;
-}) {
+export async function startConversationWork(
+  args: {
+    conversationStore?: ConversationStore;
+  } & Parameters<typeof workState.startConversationWork>[0],
+) {
   const result = await workState.startConversationWork(args);
   await recordExecutionMetadata(args);
   return result;

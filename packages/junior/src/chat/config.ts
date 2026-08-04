@@ -12,10 +12,10 @@ import {
   modelProfileSchema,
   STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
+import { readBudgetLimits, type BudgetLimits } from "@/chat/services/budgets";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
-const MAX_SLICES_PER_TURN = 100;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -44,6 +44,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotConfig {
+  budgets: BudgetLimits;
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
   embeddingModelId: string;
@@ -54,7 +55,6 @@ export interface BotConfig {
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
-  maxSlicesPerTurn: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -302,6 +302,7 @@ function readBotConfig(
     validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 
   return {
+    budgets: readBudgetLimits(env, parseOptionalPositiveInteger),
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
@@ -326,7 +327,6 @@ function readBotConfig(
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
-    maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
