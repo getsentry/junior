@@ -517,6 +517,9 @@ describe("persistAuthPauseSessionRecord", () => {
       "conversation-turn-scope",
     );
     expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
+    expect(summaries[0]).not.toHaveProperty("messageSeqs");
+    expect(summaries[0]).not.toHaveProperty("committedSeq");
+    expect(summaries[0]).not.toHaveProperty("historyVersion");
   });
 
   it("persists and materializes per-message provenance aligned to piMessages", async () => {

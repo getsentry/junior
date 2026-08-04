@@ -67,6 +67,9 @@ describe("reporting support", () => {
       loadedSkillNames: ["triage"],
     });
     expect(matching[0]).not.toHaveProperty("errorMessage");
+    expect(matching[0]).not.toHaveProperty("messageSeqs");
+    expect(matching[0]).not.toHaveProperty("committedSeq");
+    expect(matching[0]).not.toHaveProperty("historyVersion");
   });
 
   it("lists recent conversations through the conversation reporting API", async () => {

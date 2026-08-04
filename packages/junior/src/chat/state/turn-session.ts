@@ -604,6 +604,7 @@ async function setStoredRecord(args: {
     actors: _actors,
     committedSeq: _committedSeq,
     historyVersion: _historyVersion,
+    messageSeqs: _messageSeqs,
     errorMessage: _errorMessage,
     turnStartSeq: _turnStartSeq,
     runtimeContext: _runtimeContext,
