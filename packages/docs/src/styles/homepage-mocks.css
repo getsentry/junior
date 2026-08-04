@@ -261,6 +261,7 @@
   background: var(--jr-cream);
   border: 4px solid var(--jr-black);
   box-shadow: 7px 7px 0 var(--jr-black);
+  color: var(--jr-black);
   margin: 1.5rem 0 1.25rem;
   padding: 1rem;
   transform: rotate(1deg);

@@ -288,6 +288,7 @@ body:has(.jr-home) main {
 
 .jr-sticker-slack {
   background: var(--jr-cream);
+  color: var(--jr-black);
   padding: 1rem;
   transform: rotate(-6deg);
 }
@@ -407,6 +408,7 @@ body:has(.jr-home) main {
 
 .jr-sticker-more {
   background: var(--jr-cream);
+  color: var(--jr-black);
   flex-direction: row;
   font-size: 0.78rem;
   gap: 0.4rem;
