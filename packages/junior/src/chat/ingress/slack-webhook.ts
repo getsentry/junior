@@ -8,6 +8,7 @@ import {
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { getConversationStore } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
@@ -26,6 +27,7 @@ import {
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createActor, parseActorUserId } from "@/chat/actor";
@@ -191,17 +193,20 @@ async function buildThread(args: {
   message: Message;
   route: SlackConversationRoute;
   state: StateAdapter;
+  threadId?: string;
+  providerThreadId?: string;
 }): Promise<ThreadImpl> {
-  const threadId = normalizeMessageThreadId(args.message);
+  const threadId = args.threadId ?? normalizeMessageThreadId(args.message);
+  const providerThreadId = args.providerThreadId ?? threadId;
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
     id: threadId,
-    channelId: args.adapter.channelIdFromThreadId(threadId),
-    channelVisibility: args.adapter.getChannelVisibility(threadId),
+    channelId: args.adapter.channelIdFromThreadId(providerThreadId),
+    channelVisibility: args.adapter.getChannelVisibility(providerThreadId),
     currentMessage: args.message,
     initialMessage: args.message,
-    isDM: args.adapter.isDM(threadId),
+    isDM: args.adapter.isDM(providerThreadId),
     isSubscribedContext: args.route === "subscribed",
   });
 }
@@ -218,6 +223,26 @@ function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
   return body.event?.type === "app_mention" || body.event?.type === "message";
 }
 
+async function resolveSlackConversationId(args: {
+  canonicalThreadId: string;
+  conversationStore?: ConversationStore;
+  installation: SlackInstallationContext;
+}): Promise<string> {
+  const providerThread = parseSlackThreadId(args.canonicalThreadId);
+  const conversationStore = args.conversationStore ?? getConversationStore();
+  if (!providerThread || !conversationStore.getConversationIdByProviderThread) {
+    return args.canonicalThreadId;
+  }
+  return (
+    (await conversationStore.getConversationIdByProviderThread({
+      provider: "slack",
+      providerDestinationId: providerThread.channelId,
+      providerTenantId: args.installation.teamId ?? "",
+      providerThreadId: providerThread.threadTs,
+    })) ?? args.canonicalThreadId
+  );
+}
+
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
@@ -227,10 +252,29 @@ async function persistSlackMessage(args: {
   receivedAtMs: number;
   route: SlackConversationRoute;
   state: StateAdapter;
+  conversationId?: string;
 }): Promise<void> {
-  const thread = await buildThread(args);
+  const canonicalThreadId = normalizeIncomingSlackThreadId(
+    args.message.threadId,
+    args.message,
+  );
+  const conversationId =
+    args.conversationId ??
+    (await resolveSlackConversationId({
+      canonicalThreadId,
+      conversationStore: args.conversationStore,
+      installation: args.installation,
+    }));
+  if (args.message.threadId !== conversationId) {
+    (args.message as unknown as { threadId: string }).threadId = conversationId;
+  }
+  const thread = await buildThread({
+    ...args,
+    threadId: conversationId,
+    providerThreadId: canonicalThreadId,
+  });
   const inbound = buildSlackInboundMessage({
-    conversationId: thread.id,
+    conversationId,
     installation: args.installation,
     message: args.message,
     receivedAtMs: args.receivedAtMs,
@@ -261,7 +305,15 @@ async function routeParsedMessage(args: {
     return;
   }
 
-  const threadId = normalizeMessageThreadId(args.message);
+  const canonicalThreadId = normalizeMessageThreadId(args.message);
+  const threadId = await resolveSlackConversationId({
+    canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  if (args.message.threadId !== threadId) {
+    (args.message as unknown as { threadId: string }).threadId = threadId;
+  }
   const isMention =
     args.event.type === "app_mention" ||
     textMentionsBot(args.event, args.adapter.botUserId);
@@ -283,6 +335,7 @@ async function routeParsedMessage(args: {
     adapter: args.adapter,
     installation: args.installation,
     message: args.message,
+    conversationId: threadId,
     conversationStore: args.conversationStore,
     queue: args.queue,
     receivedAtMs: args.receivedAtMs,

@@ -20,6 +20,7 @@ import type {
   ConversationStore,
 } from "../store";
 import {
+  juniorConversationBindings,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -491,6 +492,55 @@ function updateConversationUsage(args: {
 
 export class SqlStore implements ConversationStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
+
+  async getConversationIdByProviderThread(args: {
+    provider: "slack";
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerThreadId: string;
+  }): Promise<string | undefined> {
+    const rows = await this.executor
+      .db()
+      .select({ conversationId: juniorConversationBindings.conversationId })
+      .from(juniorConversationBindings)
+      .where(
+        and(
+          eq(juniorConversationBindings.provider, args.provider),
+          eq(
+            juniorConversationBindings.providerTenantId,
+            args.providerTenantId,
+          ),
+          eq(
+            juniorConversationBindings.providerDestinationId,
+            args.providerDestinationId,
+          ),
+          eq(juniorConversationBindings.providerThreadId, args.providerThreadId),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.conversationId;
+  }
+
+  async bindProviderThread(args: {
+    conversationId: string;
+    provider: "slack";
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerThreadId: string;
+  }): Promise<void> {
+    const rows = await this.executor
+      .db()
+      .insert(juniorConversationBindings)
+      .values({ ...args, createdAt: new Date() })
+      .onConflictDoNothing()
+      .returning({ conversationId: juniorConversationBindings.conversationId });
+    const boundConversationId =
+      rows[0]?.conversationId ??
+      (await this.getConversationIdByProviderThread(args));
+    if (boundConversationId !== args.conversationId) {
+      throw new Error("Provider thread is already bound to another conversation");
+    }
+  }
 
   async get(args: {
     conversationId: string;

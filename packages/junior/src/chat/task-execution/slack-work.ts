@@ -704,10 +704,9 @@ function restoreThread(args: {
   state: StateAdapter;
   threadJson: SerializedThread;
 }): ThreadImpl {
-  const threadId = normalizeIncomingSlackThreadId(
-    args.threadJson.id,
-    args.message,
-  );
+  const threadId = args.threadJson.id.startsWith("agent-dispatch:")
+    ? args.threadJson.id
+    : normalizeIncomingSlackThreadId(args.threadJson.id, args.message);
   if (args.message.threadId !== threadId) {
     (args.message as unknown as { threadId: string }).threadId = threadId;
   }
