@@ -552,6 +552,7 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () =>
         Buffer.from(
@@ -1255,14 +1256,13 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(reply.text).toBe("resumed reply");
     expect(resumeMessages).toHaveLength(0);
-    expect(promptSeedMessages.at(-1)).toEqual(priorMessages);
+    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual(priorMessages);
+    expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(promptMessages.at(-1)).toMatchObject({
       role: "user",
       content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>\nTurn context\n</runtime-turn-context>",
-        },
         {
           type: "text",
           text: "<current-instruction>\ncurrent follow-up\n</current-instruction>",
@@ -1307,14 +1307,17 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]).toEqual(priorMessages);
+    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(priorMessages);
+    expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "duplicated prior transcript",
     );
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<thread-background>",
     );
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(JSON.stringify(promptMessages[0])).not.toContain("Turn context");
     expect(turnContextInputs.at(-1)?.availableSkills).toEqual([
       expect.objectContaining({ name: "demo-skill" }),
     ]);
@@ -1325,7 +1328,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const messageText = `continue & <auth> &lt;literal&gt; "now"`;
-    const currentPrompt = {
+    const currentContext = {
       role: "user",
       content: [
         {
@@ -1334,9 +1337,14 @@ describe("executeAgentRun progressive MCP loading", () => {
         },
         {
           type: "text",
-          text: renderCurrentInstruction(messageText),
+          text: "<thread-background>trusted context</thread-background>",
         },
       ],
+      timestamp: 2,
+    } as PiMessage;
+    const currentPrompt = {
+      role: "user",
+      content: [{ type: "text", text: renderCurrentInstruction(messageText) }],
       timestamp: 2,
     } as PiMessage;
     const storedMessages = [
@@ -1345,6 +1353,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "prior question" }],
         timestamp: 1,
       },
+      currentContext,
       currentPrompt,
     ] as PiMessage[];
     await upsertAgentTurnSessionRecord({
@@ -1366,7 +1375,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
+    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual([
+      storedMessages[0],
+    ]);
+    expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(JSON.stringify(promptMessages.at(-1))).toContain(
       "continue &amp; &lt;auth&gt; &amp;lt;literal&amp;gt; &quot;now&quot;",
     );
@@ -1418,9 +1432,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]).toEqual(strippedHistory);
+    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(strippedHistory);
+    expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(JSON.stringify(promptMessages[0])).not.toContain("Turn context");
     expect(JSON.stringify(promptMessages[0])).not.toContain("stale bootstrap");
   });
 

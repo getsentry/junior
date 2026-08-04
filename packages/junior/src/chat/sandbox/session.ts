@@ -83,6 +83,7 @@ interface SandboxToolExecutors {
   sessionId: string;
   bash: (input: {
     command: string;
+    cwd?: string;
     env?: Record<string, string>;
     signal?: AbortSignal;
     timeoutMs?: number;
@@ -821,7 +822,7 @@ export function createSandboxRuntime(
           const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
-            cwd: SANDBOX_WORKSPACE_ROOT,
+            cwd: input.cwd ?? SANDBOX_WORKSPACE_ROOT,
             signal: controller.signal,
           });
           return await readCommandOutput(commandResult);

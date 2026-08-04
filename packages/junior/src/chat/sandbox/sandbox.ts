@@ -28,6 +28,11 @@ import {
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  findSingleRepositoryDirectory,
+  resolveRepositoryInstructions,
+  type RepositoryInstructions,
+} from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import {
   isHostFileMissingError,
@@ -75,6 +80,8 @@ export interface SandboxTools {
 }
 
 export interface SandboxAccess {
+  /** Resolve the AGENTS.md bundle for the selected repository directory. */
+  captureRepositoryInstructions(): Promise<RepositoryInstructions | undefined>;
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
@@ -318,6 +325,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     context: SandboxToolCallContext,
   ): Promise<T> => {
     const env = parseEnv(rawInput.env);
+    const cwd =
+      typeof rawInput.cwd === "string"
+        ? resolveWorkspacePath(rawInput.cwd)
+        : SANDBOX_WORKSPACE_ROOT;
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
@@ -335,6 +346,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         try {
           const response = await executeBash({
             command,
+            cwd,
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
             ...(context.signal ? { signal: context.signal } : {}),
@@ -380,7 +392,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     return formatSandboxCommandResult({
       ok: result.exitCode === 0,
       command,
-      cwd: SANDBOX_WORKSPACE_ROOT,
+      cwd,
       exit_code: result.exitCode,
       signal: null,
       timed_out: Boolean(result.timedOut),
@@ -770,6 +782,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   };
 
   return {
+    async captureRepositoryInstructions() {
+      if (!runtime.sandboxRef()) {
+        return undefined;
+      }
+      const { fs } = await runtime.tools();
+      const selected = await findSingleRepositoryDirectory(fs);
+      if (!selected) return undefined;
+      return await resolveRepositoryInstructions({
+        cwd: selected,
+        fs,
+      });
+    },
     workspace,
     tools: {
       supports(toolName: string) {

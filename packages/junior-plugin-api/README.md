@@ -47,6 +47,9 @@ reports, and other typed hook surfaces exported by this package.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
+- Tool registration hooks may use `ctx.sandbox` for plugin-owned workspace
+  files and commands; Junior still owns sandbox lifecycle, cancellation,
+  provider egress, and authorization recovery.
 - Host-owned structured model and embedding calls do not expose provider
   credentials to plugins. Both return a best-effort provider cost estimate when
   one is available.

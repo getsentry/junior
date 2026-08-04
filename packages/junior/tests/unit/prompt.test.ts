@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
-import { buildTurnContextPrompt } from "@/chat/prompt";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
+  it("keeps direct instructions above AGENTS.md instructions", () => {
+    expect(
+      buildSystemPrompt({ source: createLocalSource("local:test") }),
+    ).toContain(
+      "Direct system/developer/user instructions (as part of a prompt) take precedence over AGENTS.md instructions.",
+    );
+  });
+
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

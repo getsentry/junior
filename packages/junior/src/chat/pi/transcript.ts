@@ -16,6 +16,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
 const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
+const AGENTS_INSTRUCTIONS_START = "# AGENTS.md instructions";
 
 function userMessageContent(message: PiMessage): unknown[] | undefined {
   const record = message as { role?: unknown; content?: unknown };
@@ -30,7 +31,42 @@ function isRuntimeTurnContextPart(part: unknown): boolean {
     typeof part === "object" &&
     (part as { type?: unknown }).type === "text" &&
     typeof (part as { text?: unknown }).text === "string" &&
-    (part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START)
+    ((part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START) ||
+      (part as { text: string }).text.startsWith(AGENTS_INSTRUCTIONS_START))
+  );
+}
+
+function hasCurrentInstruction(message: PiMessage): boolean {
+  return (
+    userMessageContent(message)?.some(
+      (part) =>
+        part !== null &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "text" &&
+        typeof (part as { text?: unknown }).text === "string" &&
+        (part as { text: string }).text.includes("<current-instruction"),
+    ) ?? false
+  );
+}
+
+function messageTimestamp(message: PiMessage): unknown {
+  return (message as { timestamp?: unknown }).timestamp;
+}
+
+function isStandaloneRuntimeContextMessage(
+  messages: PiMessage[],
+  index: number,
+): boolean {
+  const message = messages[index];
+  const next = messages[index + 1];
+  return Boolean(
+    message &&
+    next &&
+    userMessageContent(message) &&
+    userMessageContent(next) &&
+    messageTimestamp(message) === messageTimestamp(next) &&
+    !hasCurrentInstruction(message) &&
+    hasCurrentInstruction(next),
   );
 }
 
@@ -150,14 +186,19 @@ export function trimTrailingAssistantMessages(
 
 /** Return whether Pi history already carries session bootstrap context. */
 export function hasRuntimeTurnContext(messages: PiMessage[]): boolean {
-  return messages.some((message) =>
-    userMessageContent(message)?.some(isRuntimeTurnContextPart),
+  return messages.some(
+    (message, index) =>
+      isStandaloneRuntimeContextMessage(messages, index) ||
+      userMessageContent(message)?.some(isRuntimeTurnContextPart),
   );
 }
 
 /** Keep only volatile bootstrap messages needed by an in-turn context replacement. */
 export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
-  return messages.flatMap((message) => {
+  return messages.flatMap((message, index) => {
+    if (isStandaloneRuntimeContextMessage(messages, index)) {
+      return [message];
+    }
     const runtimeContent =
       userMessageContent(message)?.filter(isRuntimeTurnContextPart) ?? [];
     return runtimeContent.length > 0
@@ -213,7 +254,10 @@ export function getUserMessageInstructionText(message: PiMessage): string {
 
 /** Remove volatile runtime context before reusing messages as history. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
-  return messages.flatMap((message) => {
+  return messages.flatMap((message, index) => {
+    if (isStandaloneRuntimeContextMessage(messages, index)) {
+      return [];
+    }
     const content = userMessageContent(message);
     if (!content) return [message];
 

@@ -19,6 +19,7 @@ import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
+  contextProvenance,
   instructionActors,
   instructionProvenanceFor,
   type ConversationMessageProvenance,
@@ -33,6 +34,7 @@ import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
@@ -303,11 +305,11 @@ function materializeAgentTurnSessionRecord(
   turnStartMessageIndex?: number,
   restoreVolatileContext = true,
 ): AgentTurnSessionRecord {
-  const piMessages =
+  const restoredProjection =
     restoreVolatileContext &&
     (stored.state === "running" || stored.state === "awaiting_resume")
-      ? restoreRuntimeContext(piProjection.messages, stored.runtimeContext)
-      : piProjection.messages;
+      ? restoreRuntimeContext(piProjection, stored.runtimeContext)
+      : piProjection;
   return {
     version: stored.version,
     ...(stored.channelName ? { channelName: stored.channelName } : {}),
@@ -318,8 +320,8 @@ function materializeAgentTurnSessionRecord(
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
-    piMessages,
-    piMessageProvenance: piProjection.provenance,
+    piMessages: restoredProjection.messages,
+    piMessageProvenance: restoredProjection.provenance,
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
@@ -352,37 +354,53 @@ function materializeAgentTurnSessionRecord(
 }
 
 function restoreRuntimeContext(
-  messages: PiMessage[],
+  projection: ConversationMessageProjection,
   runtimeContext: PiMessage[] | undefined,
-): PiMessage[] {
-  if (!runtimeContext || runtimeContext.length === 0) return messages;
-  const restored = [...messages];
+): ConversationMessageProjection {
+  if (!runtimeContext || runtimeContext.length === 0) return projection;
+  const restoredMessages = [...projection.messages];
+  const restoredProvenance = [...projection.provenance];
   const unmatchedRuntimeContext: PiMessage[] = [];
   for (const runtimeMessage of runtimeContext) {
     const runtime = runtimeMessage as {
       timestamp?: unknown;
       content?: unknown;
     };
-    const targetIndex = restored.findIndex((message) => {
+    const targetIndex = restoredMessages.findIndex((message) => {
       const candidate = message as { role?: unknown; timestamp?: unknown };
       return (
         candidate.role === "user" && candidate.timestamp === runtime.timestamp
       );
     });
     if (targetIndex < 0) {
-      unmatchedRuntimeContext.push(runtimeMessage);
+      if (isAgentsInstructionsMessage(runtimeMessage)) {
+        const followingIndex = restoredMessages.findIndex((message) => {
+          const timestamp = (message as { timestamp?: unknown }).timestamp;
+          return (
+            typeof runtime.timestamp === "number" &&
+            typeof timestamp === "number" &&
+            timestamp > runtime.timestamp
+          );
+        });
+        const insertionIndex =
+          followingIndex < 0 ? restoredMessages.length : followingIndex;
+        restoredMessages.splice(insertionIndex, 0, runtimeMessage);
+        restoredProvenance.splice(insertionIndex, 0, contextProvenance);
+      } else {
+        unmatchedRuntimeContext.push(runtimeMessage);
+      }
       continue;
     }
-    const target = restored[targetIndex] as { content?: unknown };
-    restored[targetIndex] = {
-      ...restored[targetIndex],
-      content: [
-        ...(Array.isArray(runtime.content) ? runtime.content : []),
-        ...(Array.isArray(target.content) ? target.content : []),
-      ],
-    } as PiMessage;
+    restoredMessages.splice(targetIndex, 0, runtimeMessage);
+    restoredProvenance.splice(targetIndex, 0, contextProvenance);
   }
-  return [...unmatchedRuntimeContext, ...restored];
+  return {
+    messages: [...unmatchedRuntimeContext, ...restoredMessages],
+    provenance: [
+      ...unmatchedRuntimeContext.map(() => contextProvenance),
+      ...restoredProvenance,
+    ],
+  };
 }
 
 /** Read only the stored metadata record without materializing transcript logs. */

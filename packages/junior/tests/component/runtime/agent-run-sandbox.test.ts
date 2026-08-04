@@ -5,11 +5,20 @@ const {
   agentMode,
   createSandboxCallCount,
   activeSandboxVersion,
+  preparedMessages,
+  repositoryInstructionsAvailable,
+  sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
+  sessionRecordResumed,
+  sessionRecordTurnStartMessageIndex,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as "plain" | "loadSkill" | "bashThenError",
+    value: "plain" as
+      | "plain"
+      | "loadSkill"
+      | "bashThenError"
+      | "agentsAfterBash",
   },
   createSandboxCallCount: {
     value: 0,
@@ -17,8 +26,23 @@ const {
   activeSandboxVersion: {
     value: 1,
   },
+  preparedMessages: {
+    value: [] as unknown[],
+  },
+  repositoryInstructionsAvailable: {
+    value: true,
+  },
+  sessionRecordPiMessageProvenance: {
+    value: [] as unknown[],
+  },
   sessionRecordPiMessages: {
     value: [] as unknown[],
+  },
+  sessionRecordResumed: {
+    value: false,
+  },
+  sessionRecordTurnStartMessageIndex: {
+    value: undefined as number | undefined,
   },
   selectedThinkingLevels: {
     value: [] as unknown[],
@@ -38,8 +62,12 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
+    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
 
     constructor(input: {
+      prepareNextTurnWithContext?: (
+        context: unknown,
+      ) => Promise<unknown> | unknown;
       initialState: {
         model: unknown;
         thinkingLevel?: unknown;
@@ -56,6 +84,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      this.prepareNextTurn = input.prepareNextTurnWithContext;
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
 
@@ -64,6 +93,16 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }
 
     abort() {}
+
+    async continue() {
+      preparedMessages.value = [...this.state.messages];
+      this.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "Plain reply." }],
+        stopReason: "stop",
+      });
+      return {};
+    }
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
@@ -95,6 +134,49 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           command: "pwd",
         });
         throw new Error("agent exploded");
+      }
+
+      if (agentMode.value === "agentsAfterBash") {
+        const bashTool = this.state.tools.find((tool) => tool.name === "bash");
+        if (!bashTool) {
+          throw new Error("bash tool missing");
+        }
+        const assistantMessage = {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-call-bash",
+              name: "bash",
+              arguments: { command: "git init repo" },
+            },
+          ],
+          stopReason: "toolUse",
+        };
+        const toolResult = await bashTool.execute("tool-call-bash", {
+          command: "git init repo",
+        });
+        this.state.messages.push(assistantMessage, {
+          role: "toolResult",
+          toolCallId: "tool-call-bash",
+          toolName: "bash",
+          content: [{ type: "text", text: JSON.stringify(toolResult) }],
+          isError: false,
+        });
+        const update = (await this.prepareNextTurn?.({
+          context: {
+            messages: this.state.messages,
+            systemPrompt: this.state.systemPrompt,
+            tools: this.state.tools,
+          },
+          message: assistantMessage,
+          newMessages: [],
+          toolResults: [toolResult],
+        })) as { context?: { messages?: unknown[] } } | undefined;
+        if (update?.context?.messages) {
+          this.state.messages = update.context.messages;
+        }
+        preparedMessages.value = [...this.state.messages];
       }
 
       this.state.messages.push({
@@ -226,12 +308,19 @@ vi.mock("@/chat/oauth-flow", () => ({
 
 vi.mock("@/chat/services/turn-session-record", () => ({
   loadTurnSessionRecord: async () => ({
-    resumedFromSessionRecord: false,
+    resumedFromSessionRecord: sessionRecordResumed.value,
     currentSliceId: 1,
     existingSessionRecord:
       sessionRecordPiMessages.value.length > 0
         ? {
             piMessages: [...sessionRecordPiMessages.value],
+            piMessageProvenance: [...sessionRecordPiMessageProvenance.value],
+            ...(sessionRecordTurnStartMessageIndex.value !== undefined
+              ? {
+                  turnStartMessageIndex:
+                    sessionRecordTurnStartMessageIndex.value,
+                }
+              : {}),
           }
         : undefined,
   }),
@@ -290,6 +379,10 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       id: string;
       profileHash?: string;
     }) => void | Promise<void>;
+    sandboxRef?: {
+      id: string;
+      profileHash?: string;
+    };
   }) => {
     const acquire = async () => {
       createSandboxCallCount.value += 1;
@@ -302,6 +395,27 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       });
     };
     return {
+      captureRepositoryInstructions: async () =>
+        repositoryInstructionsAvailable.value &&
+        (options.sandboxRef || createSandboxCallCount.value > 0)
+          ? {
+              directory: "/vercel/sandbox/repo",
+              fingerprint: `agents-v${activeSandboxVersion.value}`,
+              sources: [
+                {
+                  path: "/vercel/sandbox/repo/AGENTS.md",
+                  content:
+                    activeSandboxVersion.value === 1
+                      ? "Call retries the cobalt budget."
+                      : "Use the current repository formatter.",
+                },
+              ],
+              text:
+                activeSandboxVersion.value === 1
+                  ? "Call retries the cobalt budget."
+                  : "Use the current repository formatter.",
+            }
+          : undefined,
       workspace: {
         readFileToBuffer: async () => {
           await acquire();
@@ -331,7 +445,9 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       },
       tools: {
         supports: (toolName: string) =>
-          agentMode.value === "bashThenError" && toolName === "bash",
+          (agentMode.value === "bashThenError" ||
+            agentMode.value === "agentsAfterBash") &&
+          toolName === "bash",
         execute: async ({ toolName }: { toolName: string; input: unknown }) => {
           if (toolName !== "bash") {
             throw new Error(
@@ -339,7 +455,10 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
             );
           }
 
-          if (agentMode.value !== "bashThenError") {
+          if (
+            agentMode.value !== "bashThenError" &&
+            agentMode.value !== "agentsAfterBash"
+          ) {
             throw new Error(
               "sandbox executor should not handle tools in this test",
             );
@@ -360,7 +479,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         },
       },
       sandboxRef: () =>
-        createSandboxCallCount.value > 0
+        options.sandboxRef ??
+        (createSandboxCallCount.value > 0
           ? {
               id:
                 activeSandboxVersion.value === 1
@@ -368,7 +488,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
                   : `sandbox-test-${activeSandboxVersion.value}`,
               profileHash: "hash-test",
             }
-          : undefined,
+          : undefined),
       close: vi.fn(),
     };
   },
@@ -413,7 +533,12 @@ describe("executeAgentRun lazy sandbox boot", () => {
     agentMode.value = "plain";
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
+    preparedMessages.value = [];
+    repositoryInstructionsAvailable.value = true;
+    sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
+    sessionRecordResumed.value = false;
+    sessionRecordTurnStartMessageIndex.value = undefined;
     selectedThinkingLevels.value = [];
   });
 
@@ -457,6 +582,117 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.diagnostics.toolCalls).toEqual([]);
+  });
+
+  it("keeps restored AGENTS context when no sandbox is available", async () => {
+    sessionRecordResumed.value = true;
+    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordPiMessages.value = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nUse pnpm.\n</INSTRUCTIONS>",
+          },
+        ],
+        timestamp: 1,
+      },
+    ];
+    sessionRecordPiMessageProvenance.value = [{ authority: "context" }];
+
+    const reply = await generateLocalReply("resume the request");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(createSandboxCallCount.value).toBe(0);
+    expect(JSON.stringify(preparedMessages.value)).toContain("Use pnpm.");
+    expect(JSON.stringify(preparedMessages.value)).not.toContain(
+      "no longer apply",
+    );
+  });
+
+  it("removes restored AGENTS context when the repository is gone", async () => {
+    repositoryInstructionsAvailable.value = false;
+    sessionRecordResumed.value = true;
+    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordPiMessages.value = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nUse pnpm.\n</INSTRUCTIONS>",
+          },
+        ],
+        timestamp: 1,
+      },
+    ];
+    sessionRecordPiMessageProvenance.value = [{ authority: "context" }];
+
+    const reply = await generateLocalReply("resume the request", {
+      state: {
+        sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+      },
+    });
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(JSON.stringify(preparedMessages.value)).toContain(
+      "The previously provided AGENTS.md instructions no longer apply.",
+    );
+  });
+
+  it("replaces replayed AGENTS context before a later model sample", async () => {
+    agentMode.value = "agentsAfterBash";
+    activeSandboxVersion.value = 2;
+    const checkpointedContext = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nUse the old formatter.\n</INSTRUCTIONS>",
+        },
+      ],
+      timestamp: 5,
+    };
+    const checkpointedInstruction = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "<current-instruction>\ncontinue the work\n</current-instruction>",
+        },
+      ],
+      timestamp: 5,
+    };
+    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordPiMessages.value = [
+      checkpointedContext,
+      checkpointedInstruction,
+    ];
+    sessionRecordPiMessageProvenance.value = [
+      { authority: "context" },
+      { authority: "instruction" },
+    ];
+
+    const reply = await generateLocalReply("continue the work", {
+      input: {
+        piMessages: [checkpointedContext, checkpointedInstruction] as never,
+      },
+      state: {
+        sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+      },
+    });
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(JSON.stringify(preparedMessages.value)).toContain(
+      "Use the old formatter.",
+    );
+    expect(JSON.stringify(preparedMessages.value)).toContain(
+      "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.",
+    );
+    expect(JSON.stringify(preparedMessages.value)).toContain(
+      "Use the current repository formatter.",
+    );
   });
 
   it("uses a high thinking level for explicit code-change asks", async () => {
@@ -523,5 +759,19 @@ describe("executeAgentRun lazy sandbox boot", () => {
       id: "sandbox-test",
       profileHash: "hash-test",
     });
+  });
+
+  it("adds newly available AGENTS.md instructions after a sandbox tool call", async () => {
+    agentMode.value = "agentsAfterBash";
+
+    const reply = await generateLocalReply("initialize the repository");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(JSON.stringify(preparedMessages.value)).toContain(
+      "# AGENTS.md instructions for /vercel/sandbox/repo\\n\\n<INSTRUCTIONS>\\nCall retries the cobalt budget.\\n</INSTRUCTIONS>",
+    );
+    expect(JSON.stringify(preparedMessages.value)).not.toContain(
+      '"stdout":"# AGENTS.md instructions',
+    );
   });
 });

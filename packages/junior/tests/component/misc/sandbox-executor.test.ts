@@ -1139,6 +1139,30 @@ describe("createTestSandbox", () => {
     expect(invocation.args?.[1]).toContain("echo ok");
   });
 
+  it("runs bash in an explicit workspace cwd", async () => {
+    const sandbox = makeSandbox("sbx_bash_cwd");
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createTestSandbox({ sandboxId: "sbx_bash_cwd" });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: {
+        command: "pwd",
+        cwd: "repo/packages/api",
+      },
+    });
+
+    expect(sandbox.runCommand.mock.calls[0]?.[0]).toMatchObject({
+      cmd: "bash",
+      cwd: "/vercel/sandbox/repo/packages/api",
+    });
+    expect(response.result.details).toMatchObject({
+      cwd: "/vercel/sandbox/repo/packages/api",
+    });
+  });
+
   it("applies a host timeout to bash commands when the model omits one", async () => {
     vi.useFakeTimers();
     const sandbox = makeSandbox("sbx_bash_timeout");

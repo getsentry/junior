@@ -63,6 +63,8 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
+import { renderAgentsInstructions } from "@/chat/repository-instructions";
+import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
   getUserMessageInstructionText,
@@ -486,9 +488,9 @@ async function executeAgentRunInPrivacyContext(
     const explicitSkill = invokedSkill
       ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
       : null;
-
     // ── Prompt input ─────────────────────────────────────────────────
-    const { routerBlocks, userContentParts } = buildPromptInput(input);
+    const { contextContentParts, routerBlocks, userContentParts } =
+      buildPromptInput(input);
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
@@ -768,6 +770,9 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
+    const initialRepositoryInstructions = wiring.getSandboxRef()
+      ? await wiring.captureRepositoryInstructions()
+      : undefined;
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsWithoutHandoff = wiring.agentTools.filter(
       (tool) => tool.name !== HANDOFF_TOOL_NAME,
@@ -799,18 +804,31 @@ async function executeAgentRunInPrivacyContext(
     // ── Prompt context ───────────────────────────────────────────────
     const {
       baseInstructions,
+      contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
-      promptContentParts,
+      promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
       shouldPromptAgent,
       turnContexts,
+      userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
       currentActor: actor,
       artifactState: state.artifactState,
       availableSkills,
       configurationValues,
+      contextContentParts: [
+        ...(initialRepositoryInstructions
+          ? [
+              {
+                type: "text" as const,
+                text: renderAgentsInstructions(initialRepositoryInstructions),
+              },
+            ]
+          : []),
+        ...contextContentParts,
+      ],
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
@@ -824,6 +842,18 @@ async function executeAgentRunInPrivacyContext(
       toolGuidance: wiring.toolGuidance,
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
+    });
+    const repositoryInstructionsContext = createRepositoryInstructionsContext({
+      capture: wiring.captureRepositoryInstructions,
+      hasSandbox: () => Boolean(wiring.getSandboxRef()),
+      initialInstructions: initialRepositoryInstructions,
+      promptContextContentParts,
+      restoredMessages: existingSessionRecord?.piMessages,
+      restoredProvenance: existingSessionRecord?.piMessageProvenance,
+      setMessages(messages) {
+        agent!.state.messages = messages;
+      },
+      shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
     /** Apply a committed handoff to Pi and reset its durable resume baseline. */
@@ -866,6 +896,7 @@ async function executeAgentRunInPrivacyContext(
         provenance: ConversationMessageProvenance;
       }>,
       clearSteeringQueueOnCommit = false,
+      pairPendingRuntimeContext = false,
     ): Promise<AgentLoopTurnUpdate | undefined> => {
       const compaction = await compactActiveContextIfNeeded(
         {
@@ -883,6 +914,14 @@ async function executeAgentRunInPrivacyContext(
             observers.onStatus?.({ text: "Compacting context" }),
           pendingMessages,
           piMessages: messages,
+          ...(pairPendingRuntimeContext && pendingMessages
+            ? {
+                runtimeContextMessages: [
+                  ...messages,
+                  ...pendingMessages.map((entry) => entry.message),
+                ],
+              }
+            : {}),
           signal: hookSignal,
         },
         {
@@ -1053,15 +1092,22 @@ async function executeAgentRunInPrivacyContext(
             pendingMessages,
             true,
           );
+          const combinedUpdate =
+            capacityUpdate && handoffUpdate
+              ? { ...handoffUpdate, ...capacityUpdate }
+              : (capacityUpdate ?? handoffUpdate);
+          const repositoryInstructionsUpdate =
+            await repositoryInstructionsContext.applyUpdate(
+              combinedUpdate,
+              nextTurn.context,
+            );
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return capacityUpdate && handoffUpdate
-            ? { ...handoffUpdate, ...capacityUpdate }
-            : (capacityUpdate ?? handoffUpdate);
+          return repositoryInstructionsUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));
@@ -1127,20 +1173,40 @@ async function executeAgentRunInPrivacyContext(
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
+          const promptTimestamp = restoredPromptTimestamp ?? Date.now();
+          const contextMessage: PiMessage | undefined =
+            shouldPromptAgent && promptContextContentParts.length > 0
+              ? ({
+                  role: "user",
+                  content: promptContextContentParts,
+                  timestamp: promptTimestamp,
+                } as PiMessage)
+              : undefined;
           const freshPromptMessage: PiMessage = {
             role: "user",
-            content: promptContentParts,
-            timestamp: Date.now(),
+            content: promptUserContentParts,
+            timestamp: promptTimestamp,
           } as PiMessage;
           if (shouldPromptAgent) {
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint([
                 ...agent!.state.messages,
+                ...(contextMessage ? [contextMessage] : []),
                 freshPromptMessage,
               ]);
             if (promptPersisted) {
               await runResume.commitInput();
             }
+          }
+          if (contextMessage) {
+            agent!.state.messages = [...agent!.state.messages, contextMessage];
+          }
+          if (!shouldPromptAgent) {
+            await repositoryInstructionsContext.applyUpdate(undefined, {
+              messages: agent!.state.messages,
+              systemPrompt: agent!.state.systemPrompt,
+              tools: agent!.state.tools,
+            });
           }
 
           /** Race one provider operation against the turn deadline and abort its owner. */
@@ -1257,7 +1323,10 @@ async function executeAgentRunInPrivacyContext(
               scheduleHandoff({
                 profile: requestedProfile,
                 runtimeContextSourceMessages: shouldPromptAgent
-                  ? [freshPromptMessage]
+                  ? [
+                      ...(contextMessage ? [contextMessage] : []),
+                      freshPromptMessage,
+                    ]
                   : undefined,
                 signal: handoffAbortController.signal,
                 sourceMessages: [...agent!.state.messages],
@@ -1279,6 +1348,8 @@ async function executeAgentRunInPrivacyContext(
                     },
                   ]
                 : undefined,
+              false,
+              Boolean(contextMessage),
             ),
             () => compactionAbortController.abort(),
           );

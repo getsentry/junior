@@ -559,6 +559,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
@@ -773,6 +774,7 @@ describe("agent run continuation", () => {
 
     expect(reply.piMessages?.map((message) => message.role)).toEqual([
       "user",
+      "user",
       "assistant",
       "toolResult",
       "assistant",
@@ -786,6 +788,7 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
       "user",
       "assistant",
       "toolResult",
@@ -1067,6 +1070,7 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
+      "user",
       "assistant",
       "user",
     ]);
@@ -1105,6 +1109,7 @@ describe("agent run continuation", () => {
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
       "user",
     ]);
     await expect(
@@ -1260,6 +1265,7 @@ describe("agent run continuation", () => {
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
       "user",
       "user",
     ]);

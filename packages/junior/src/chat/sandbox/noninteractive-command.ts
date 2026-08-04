@@ -63,7 +63,10 @@ function buildEnvExports(options: NonInteractiveShellOptions): string[] {
   return lines;
 }
 
-function toCommandScript(input: NonInteractiveCommandInput): string {
+/** Render one argv command as a safely quoted shell script. */
+export function buildCommandScript(
+  input: Pick<NonInteractiveCommandInput, "args" | "cmd">,
+): string {
   return [shellQuote(input.cmd), ...(input.args ?? []).map(shellQuote)].join(
     " ",
   );
@@ -86,7 +89,7 @@ function buildNonInteractiveCommand(input: NonInteractiveCommandInput): {
     cmd: "bash",
     args: [
       input.login ? "-lc" : "-c",
-      buildNonInteractiveShellScript(toCommandScript(input), {
+      buildNonInteractiveShellScript(buildCommandScript(input), {
         env: input.env,
         pathPrefix: input.pathPrefix,
       }),

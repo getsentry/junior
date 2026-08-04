@@ -513,6 +513,7 @@ export async function getPluginUserPromptContributions(args: {
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
+  sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
   for (const plugin of getPlugins()) {
@@ -579,6 +580,7 @@ export function getPluginTools(
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
+        sandbox,
         state: createPluginState(pluginName),
         users: { resolveActor },
       };
@@ -601,6 +603,7 @@ export function getPluginTools(
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
         resourceEvents,
+        sandbox,
         state: createPluginState(pluginName),
         users: { resolveActor },
       };

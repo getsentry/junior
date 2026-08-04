@@ -25,6 +25,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   hasRuntimeTurnContext,
+  retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { serializeGenAiAttribute, type LogContext } from "@/chat/logging";
@@ -55,6 +56,7 @@ type UserTurnAttachment = NonNullable<AgentRunInput["userAttachments"]>[number];
 
 /** User-turn content parts plus the plain-text blocks used for routing decisions. */
 export interface PromptInput {
+  contextContentParts: UserContentPart[];
   routerBlocks: string[];
   userContentParts: UserContentPart[];
 }
@@ -62,15 +64,17 @@ export interface PromptInput {
 /** Fully assembled prompt state for one run slice. */
 export interface PromptAssembly {
   baseInstructions: string;
+  contextContentParts: UserContentPart[];
   inputMessages: Array<{
     role: string;
     content: Record<string, unknown>[];
   }>;
   inputMessagesAttribute: string | undefined;
-  promptContentParts: UserContentPart[];
+  promptTimestamp?: number;
   promptHistoryMessages: PiMessage[];
   shouldPromptAgent: boolean;
   turnContexts: PluginTurnContext[];
+  userContentParts: UserContentPart[];
 }
 
 function isStructuredThreadContext(context: string): boolean {
@@ -86,26 +90,12 @@ function renderThreadContextForPrompt(context: string): string {
   return ["<thread-background>", context, "</thread-background>"].join("\n");
 }
 
-/**
- * Keep thread text separate from the canonical active task boundary.
- */
+/** Render the current actor's instruction without host-owned thread context. */
 export function buildUserTurnText(
   userInput: string,
-  conversationContext?: string,
   actor?: AgentRunInstructionActor,
 ): string {
-  const trimmedContext = conversationContext?.trim();
-  const currentInstruction = renderCurrentInstruction(userInput, actor);
-
-  if (!trimmedContext) {
-    return currentInstruction;
-  }
-
-  return [
-    renderThreadContextForPrompt(trimmedContext),
-    "",
-    currentInstruction,
-  ].join("\n");
+  return renderCurrentInstruction(userInput, actor);
 }
 
 /** Render an explicitly selected skill as instructions for the current turn. */
@@ -282,7 +272,7 @@ function buildUserTurnInput(args: {
     });
   }
 
-  return { routerBlocks, userContentParts };
+  return { contextContentParts: [], routerBlocks, userContentParts };
 }
 
 /** Build the prompt-facing user input, keeping router text aligned with Pi content. */
@@ -293,16 +283,18 @@ export function buildPromptInput(input: AgentRunInput): PromptInput {
     !input.includeConversationContextWithPiMessages
       ? undefined
       : input.conversationContext;
-  const userTurnText = buildUserTurnText(
-    input.messageText,
-    promptConversationContext,
-    input.actor,
-  );
-  return buildUserTurnInput({
+  const promptInput = buildUserTurnInput({
     omittedImageAttachmentCount: input.omittedImageAttachmentCount ?? 0,
     userAttachments: input.userAttachments,
-    userTurnText,
+    userTurnText: buildUserTurnText(input.messageText, input.actor),
   });
+  const trimmedContext = promptConversationContext?.trim();
+  return {
+    ...promptInput,
+    contextContentParts: trimmedContext
+      ? [{ type: "text", text: renderThreadContextForPrompt(trimmedContext) }]
+      : [],
+  };
 }
 
 /**
@@ -314,7 +306,7 @@ export function buildSteeringPiMessage(
   message: AgentRunSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: buildUserTurnText(message.text, undefined, message.actor),
+    userTurnText: buildUserTurnText(message.text, message.actor),
     userAttachments: message.userAttachments,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
@@ -328,16 +320,16 @@ export function buildSteeringPiMessage(
 function withoutTrailingUncheckpointedUserPrompt(
   messages: PiMessage[] | undefined,
   userContentParts: UserContentPart[],
-): PiMessage[] {
+): { messages: PiMessage[]; promptTimestamp?: number } {
   if (!messages || messages.length === 0) {
-    return [];
+    return { messages: [] };
   }
 
   const lastMessage = messages.at(-1) as
     | { content?: unknown; role?: unknown }
     | undefined;
   if (lastMessage?.role !== "user") {
-    return messages;
+    return { messages };
   }
   const comparableLastMessage = stripRuntimeTurnContext([
     lastMessage as PiMessage,
@@ -345,9 +337,22 @@ function withoutTrailingUncheckpointedUserPrompt(
   if (
     !userPromptContentMatches(comparableLastMessage?.content, userContentParts)
   ) {
-    return messages;
+    return { messages };
   }
-  return messages.slice(0, -1);
+  const promptTimestamp =
+    typeof (lastMessage as { timestamp?: unknown }).timestamp === "number"
+      ? (lastMessage as { timestamp: number }).timestamp
+      : undefined;
+  const withoutPrompt = messages.slice(0, -1);
+  const previousMessage = withoutPrompt.at(-1);
+  if (
+    previousMessage &&
+    stripRuntimeTurnContext([previousMessage, lastMessage as PiMessage])
+      .length === 1
+  ) {
+    return { messages: withoutPrompt.slice(0, -1), promptTimestamp };
+  }
+  return { messages: withoutPrompt, promptTimestamp };
 }
 
 // Deep equality, not serialized-string equality: durable history round-trips
@@ -377,37 +382,52 @@ function isUserContentPart(value: unknown): value is UserContentPart {
 
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
-function checkpointedPromptContent(args: {
+function checkpointedPrompt(args: {
   messages: PiMessage[] | undefined;
   turnStartMessageIndex: number | undefined;
   userContentParts: UserContentPart[];
-}): UserContentPart[] | undefined {
+}):
+  | {
+      contextContentParts: UserContentPart[];
+      userContentParts: UserContentPart[];
+    }
+  | undefined {
   if (
     !args.messages ||
     args.turnStartMessageIndex === undefined ||
-    args.turnStartMessageIndex !== args.messages.length - 1
+    args.turnStartMessageIndex >= args.messages.length
   ) {
     return undefined;
   }
-  const message = args.messages[args.turnStartMessageIndex] as
+  const turnMessages = args.messages.slice(args.turnStartMessageIndex);
+  const durableTurnMessages = stripRuntimeTurnContext(turnMessages);
+  if (durableTurnMessages.length !== 1) {
+    return undefined;
+  }
+  const message = durableTurnMessages[0] as
     | { content?: unknown; role?: unknown }
     | undefined;
   if (message?.role !== "user" || !Array.isArray(message.content)) {
     return undefined;
   }
-  const durableMessage = stripRuntimeTurnContext([message as PiMessage])[0] as
-    | { content?: unknown }
-    | undefined;
-  if (
-    !userPromptContentMatches(durableMessage?.content, args.userContentParts)
-  ) {
+  if (!userPromptContentMatches(message.content, args.userContentParts)) {
     return undefined;
   }
-  const content = message.content;
-  if (!content.every(isUserContentPart)) {
+  if (!message.content.every(isUserContentPart)) {
     return undefined;
   }
-  return content;
+  const contextContentParts = retainRuntimeTurnContext(turnMessages).flatMap(
+    (runtimeMessage) => {
+      const content = (runtimeMessage as { content?: unknown }).content;
+      return Array.isArray(content) && content.every(isUserContentPart)
+        ? content
+        : [];
+    },
+  );
+  return {
+    contextContentParts,
+    userContentParts: message.content,
+  };
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
@@ -417,6 +437,7 @@ export async function assemblePrompt(args: {
   artifactState?: ThreadArtifactsState;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
+  contextContentParts: UserContentPart[];
   conversationPrivacy?: ConversationPrivacy;
   existingSessionPiMessages?: PiMessage[];
   existingTurnStartMessageIndex?: number;
@@ -440,30 +461,21 @@ export async function assemblePrompt(args: {
     args.existingTurnStartMessageIndex !== undefined;
   const shouldPromptAgent =
     !args.resumedFromSessionRecord || !hasPromptCheckpoint;
-  const requestContentParts: UserContentPart[] = [
-    ...(args.explicitSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
-          },
-        ]
-      : []),
-    ...args.userContentParts,
-  ];
+  const requestContentParts = args.userContentParts;
   // Every re-prompt shape must trim a trailing checkpointed copy of the same
   // user prompt, including redelivery of the same inbound message after a
   // lost input commit against a still-`running` record; otherwise the prompt
   // appears twice in Pi history.
-  const promptHistoryMessages = shouldPromptAgent
+  const trimmedPrompt = shouldPromptAgent
     ? withoutTrailingUncheckpointedUserPrompt(
         args.priorPiMessages,
         requestContentParts,
       )
-    : args.existingSessionPiMessages!;
-  const replayedPromptContent =
+    : { messages: args.existingSessionPiMessages! };
+  const promptHistoryMessages = trimmedPrompt.messages;
+  const replayedPrompt =
     shouldPromptAgent && !args.resumedFromSessionRecord
-      ? checkpointedPromptContent({
+      ? checkpointedPrompt({
           messages: args.existingSessionPiMessages,
           turnStartMessageIndex: args.existingTurnStartMessageIndex,
           userContentParts: requestContentParts,
@@ -471,7 +483,7 @@ export async function assemblePrompt(args: {
       : undefined;
   const needsBootstrapContextForPrompt =
     shouldPromptAgent &&
-    !replayedPromptContent &&
+    !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
   const systemPromptContributions =
     await getPluginSystemPromptContributions(source);
@@ -482,7 +494,7 @@ export async function assemblePrompt(args: {
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =
-    !shouldPromptAgent || replayedPromptContent
+    !shouldPromptAgent || replayedPrompt
       ? []
       : await getPluginUserPromptContributions({
           context: args.toolRuntimeContext,
@@ -515,19 +527,39 @@ export async function assemblePrompt(args: {
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];
-  const promptContentParts = replayedPromptContent ?? [
+  const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...requestContentParts,
+    ...(args.explicitSkill
+      ? [
+          {
+            type: "text" as const,
+            text: renderExplicitSkillInstructions(args.explicitSkill),
+          },
+        ]
+      : []),
+    ...args.contextContentParts,
   ];
+  const userContentParts =
+    replayedPrompt?.userContentParts ?? requestContentParts;
 
   const inputMessages = [
     {
       role: "system",
       content: [{ type: "text", text: baseInstructions }],
     },
+    ...(contextContentParts.length > 0
+      ? [
+          {
+            role: "user",
+            content: contextContentParts.map((part) =>
+              toObservablePromptPart(part),
+            ),
+          },
+        ]
+      : []),
     {
       role: "user",
-      content: promptContentParts.map((part) => toObservablePromptPart(part)),
+      content: userContentParts.map((part) => toObservablePromptPart(part)),
     },
   ];
   const inputMessagesAttribute = serializeGenAiAttribute(
@@ -537,9 +569,21 @@ export async function assemblePrompt(args: {
             role: "system",
             parts: [{ type: "text", content: baseInstructions }],
           },
+          ...(contextContentParts.length > 0
+            ? [
+                {
+                  role: "user",
+                  parts: contextContentParts.flatMap((part) =>
+                    part.type === "text"
+                      ? [{ type: "text", content: part.text }]
+                      : [],
+                  ),
+                },
+              ]
+            : []),
           {
             role: "user",
-            parts: promptContentParts.flatMap((part) =>
+            parts: userContentParts.flatMap((part) =>
               part.type === "text"
                 ? [{ type: "text", content: part.text }]
                 : [],
@@ -551,13 +595,17 @@ export async function assemblePrompt(args: {
 
   return {
     baseInstructions,
+    contextContentParts,
     inputMessages,
     inputMessagesAttribute,
-    promptContentParts,
+    ...(trimmedPrompt.promptTimestamp !== undefined
+      ? { promptTimestamp: trimmedPrompt.promptTimestamp }
+      : {}),
     promptHistoryMessages,
     shouldPromptAgent,
     turnContexts: pluginUserPromptContributions.flatMap((contribution) =>
       contribution.context ? [contribution.context] : [],
     ),
+    userContentParts,
   };
 }

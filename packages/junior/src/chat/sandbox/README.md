@@ -27,6 +27,18 @@ traffic through verified host egress.
 - Generated files become shareable only after artifact validation and
   destination-aware delivery planning.
 
+## Repository Instructions
+
+- Bash `cwd` applies only to that command. It does not select AGENTS scope, and
+  Junior does not parse shell text or process-local `cd` state.
+- Exactly one direct-child Git worktree may be selected automatically. Zero or
+  multiple worktrees leave repository instructions unset.
+- Automatic selection currently uses the worktree root, so Junior reads only
+  its root `AGENTS.md`. Changed instructions are added as runtime-owned user
+  context; sandbox tool results never contain them.
+- Only `AGENTS.md` is supported. Overrides, Git hooks, recursive repository
+  discovery, and filesystem watchers are intentionally out of scope.
+
 ## Dependency Snapshots
 
 - The declared plugin/runtime dependency profile is the source of truth.

@@ -7,6 +7,7 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -1475,6 +1476,45 @@ describe("persistAuthPauseSessionRecord", () => {
       runtimeContext,
       instruction,
       summary,
+    ]);
+  });
+
+  it("restores mid-run AGENTS context at its causal position", async () => {
+    const { loadTurnSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const instruction: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "start the request" }],
+      timestamp: 1,
+    };
+    const agents = buildAgentsInstructionsMessage({
+      directory: "/vercel/sandbox/repo",
+      text: "Use the repository formatter.",
+      timestamp: 3,
+    });
+    const assistant = assistantMessage("continued after instructions", 4);
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId: "conversation-agents-order-resume",
+      sessionId: "turn-agents-order-resume",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      piMessages: [instruction, agents, assistant],
+    });
+
+    const resumed = await loadTurnSessionRecord({
+      conversationId: "conversation-agents-order-resume",
+      sessionId: "turn-agents-order-resume",
+    });
+
+    expect(resumed.existingSessionRecord?.piMessages).toEqual([
+      instruction,
+      agents,
+      assistant,
     ]);
   });
 });

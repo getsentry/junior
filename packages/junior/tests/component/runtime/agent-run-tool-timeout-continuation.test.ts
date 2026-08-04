@@ -137,6 +137,7 @@ vi.mock("@/chat/pi/traced-stream", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),

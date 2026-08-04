@@ -10,7 +10,10 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { createAgentSandbox } from "@/chat/agent/sandbox";
+import {
+  createAgentSandbox,
+  createPluginToolSandbox,
+} from "@/chat/agent/sandbox";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import {
@@ -34,6 +37,7 @@ import {
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -144,6 +148,10 @@ export interface ToolWiring {
     result: TResult,
   ): TResult;
   getSandboxRef: () => SandboxRef | undefined;
+  /** Resolve the AGENTS.md bundle selected by the sandbox workspace. */
+  captureRepositoryInstructions: () => Promise<
+    RepositoryInstructions | undefined
+  >;
   close(): Promise<void>;
   toolGuidance: Array<{
     name: string;
@@ -403,7 +411,12 @@ export async function wireAgentTools(
       },
     },
     toolRuntimeContext,
-    { includeLoadSkill: !explicitSkillLoaded },
+    {
+      includeLoadSkill: !explicitSkillLoaded,
+      pluginSandbox: createPluginToolSandbox(agentSandbox, {
+        handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
+      }),
+    },
   );
 
   const plannedToolExposure = planToolExposure(
@@ -512,6 +525,7 @@ export async function wireAgentTools(
       return actionReview.projectToolResult(toolCallId, result);
     },
     getSandboxRef: agentSandbox.sandboxRef,
+    captureRepositoryInstructions: agentSandbox.captureRepositoryInstructions,
     async close() {
       agentSandbox.close();
       try {

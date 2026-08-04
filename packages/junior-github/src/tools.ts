@@ -2,6 +2,7 @@ import type {
   PluginToolDefinition,
   ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
 import { createGitHubIssueTool } from "./tools/create-issue.js";
 import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
 import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
@@ -15,6 +16,7 @@ export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
 ): Record<string, PluginToolDefinition> {
   return {
+    cloneRepository: createGitHubCloneRepositoryTool(ctx),
     createIssue: createGitHubIssueTool(ctx),
     createPullRequest: createGitHubPullRequestTool(ctx),
     getDeployment: createGitHubGetDeploymentTool(ctx),

@@ -41,6 +41,7 @@ export interface PluginSandbox {
     cmd: string;
     cwd?: string;
     env?: Record<string, string>;
+    signal?: AbortSignal;
     sudo?: boolean;
   }): Promise<{
     exitCode: number;
@@ -185,6 +186,8 @@ export interface PluginToolExecuteOptions {
    * Plugin tools should use typed input fields and runtime hook context instead.
    */
   experimental_context?: unknown;
+  /** Abort when the owning agent tool call is cancelled or times out. */
+  signal?: AbortSignal;
   /** Stable runtime tool-call id; durable create tools should derive idempotency keys from it. */
   toolCallId?: string;
 }
@@ -521,6 +524,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   mcp?: PluginMcp;
   model: PluginModel;
   resourceEvents: PluginResourceEventToolContext;
+  /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
+  sandbox: PluginSandbox;
   state: PluginState;
   users: {
     /** Resolve the current actor's stored identity and linked user. */

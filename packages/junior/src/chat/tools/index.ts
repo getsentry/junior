@@ -43,6 +43,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
+import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
@@ -88,6 +89,7 @@ export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
   includeLoadSkill?: boolean;
+  pluginSandbox?: PluginSandbox;
 }
 
 /** Build the model-facing tool registry from runtime-owned context and capabilities. */
@@ -225,7 +227,9 @@ export function createTools(
     }
   }
 
-  for (const [name, pluginTool] of Object.entries(getPluginTools(context))) {
+  for (const [name, pluginTool] of Object.entries(
+    getPluginTools(context, options.pluginSandbox),
+  )) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

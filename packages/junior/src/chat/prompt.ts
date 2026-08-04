@@ -359,6 +359,7 @@ const EXECUTION_CONTRACT_RULES = [
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
   "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.",
+  "- Direct system/developer/user instructions (as part of a prompt) take precedence over AGENTS.md instructions.",
   "- Runtime owns continuation and authorization notices; on resumed turns, answer with the final requested content only.",
 ];
 
@@ -775,7 +776,6 @@ export function buildTurnContextPrompt(
   const sections = [
     `<${TURN_CONTEXT_TAG}>`,
     TURN_CONTEXT_HEADER,
-    "The current user instruction appears after this block in `<current-instruction>` in the same message.",
     ...runtimeSections,
     `</${TURN_CONTEXT_TAG}>`,
   ].filter((section): section is string => Boolean(section));

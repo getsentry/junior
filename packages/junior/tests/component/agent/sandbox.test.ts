@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SandboxOptions } from "@/chat/sandbox/sandbox";
 
 const {
+  captureRepositoryInstructionsMock,
   createSandboxMock,
   executeSandboxToolMock,
   executeCustomCommandMock,
   writeGeneratedArtifactsMock,
 } = vi.hoisted(() => ({
+  captureRepositoryInstructionsMock: vi.fn(),
   createSandboxMock: vi.fn(),
   executeSandboxToolMock: vi.fn(),
   executeCustomCommandMock: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock("@/chat/tools/sandbox/generated-artifacts", () => ({
 
 import {
   createAgentSandbox,
+  createPluginToolSandbox,
   type AgentSandboxOptions,
 } from "@/chat/agent/sandbox";
 
@@ -62,6 +65,7 @@ describe("createAgentSandbox", () => {
     createSandboxMock.mockImplementation((input: SandboxOptions) => {
       capturedOptions = input;
       return {
+        captureRepositoryInstructions: captureRepositoryInstructionsMock,
         workspace,
         sandboxRef: () => input.sandboxRef,
         close: vi.fn(),
@@ -71,7 +75,62 @@ describe("createAgentSandbox", () => {
         },
       };
     });
+    captureRepositoryInstructionsMock.mockResolvedValue(undefined);
     executeCustomCommandMock.mockResolvedValue({ handled: false });
+  });
+
+  it("propagates repository instruction capture failures", async () => {
+    const failure = new Error("repository instructions unavailable");
+    captureRepositoryInstructionsMock.mockRejectedValue(failure);
+
+    const sandbox = createAgentSandbox(options());
+
+    await expect(sandbox.captureRepositoryInstructions()).rejects.toBe(failure);
+  });
+
+  it("routes plugin commands through sandbox auth and cancellation", async () => {
+    const controller = new AbortController();
+    const authRequired = {
+      provider: "github",
+      kind: "auth_required",
+    };
+    executeSandboxToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "clone failed" }],
+      details: {
+        exit_code: 1,
+        stdout: "",
+        stderr: "authentication required",
+        auth_required: authRequired,
+      },
+    });
+    const handleAuthSignal = vi
+      .fn()
+      .mockRejectedValue(new Error("authorization paused"));
+    const agentSandbox = createAgentSandbox(options());
+    const pluginSandbox = createPluginToolSandbox(agentSandbox, {
+      handleAuthSignal,
+    });
+
+    await expect(
+      pluginSandbox.run({
+        cmd: "git",
+        args: ["clone", "https://github.com/getsentry/junior.git"],
+        cwd: "/vercel/sandbox",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("authorization paused");
+
+    expect(executeSandboxToolMock).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: {
+        command: "'git' 'clone' 'https://github.com/getsentry/junior.git'",
+        cwd: "/vercel/sandbox",
+      },
+      signal: controller.signal,
+    });
+    expect(handleAuthSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ auth_required: authRequired }),
+    );
   });
 
   it("updates the run reference before awaiting durable persistence", async () => {

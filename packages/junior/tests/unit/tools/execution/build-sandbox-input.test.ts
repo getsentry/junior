@@ -21,6 +21,15 @@ describe("buildSandboxInput", () => {
       command: "sleep 10",
       timeoutMs: 1000,
     });
+    expect(
+      buildSandboxInput("bash", {
+        command: "pwd",
+        cwd: "/vercel/sandbox/repo",
+      }),
+    ).toEqual({
+      command: "pwd",
+      cwd: "/vercel/sandbox/repo",
+    });
   });
 
   it("normalizes readFile path", () => {

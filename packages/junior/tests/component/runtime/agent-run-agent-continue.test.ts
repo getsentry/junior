@@ -242,6 +242,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
@@ -357,6 +358,9 @@ describe("agent continuation composition", () => {
       expect.objectContaining({
         role: "user",
       }),
+      expect.objectContaining({
+        role: "user",
+      }),
     ]);
   });
 
@@ -465,7 +469,9 @@ describe("agent continuation composition", () => {
       "conversation-2",
       "turn-2",
     );
-    const userMessage = sessionRecord?.piMessages[0] as
+    const userMessage = sessionRecord?.piMessages.find((message) =>
+      JSON.stringify(message).includes("<omitted-image-attachments>"),
+    ) as
       | {
           role?: string;
           content?: Array<{ type?: string; text?: string }>;
@@ -522,6 +528,9 @@ describe("agent continuation composition", () => {
       expect.objectContaining({
         role: "user",
       }),
+      expect.objectContaining({
+        role: "user",
+      }),
     ]);
   });
 
@@ -574,6 +583,9 @@ describe("agent continuation composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+      }),
       expect.objectContaining({
         role: "user",
       }),

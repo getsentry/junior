@@ -551,15 +551,19 @@ describe("model handoff composition", () => {
     );
     expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
       "user",
+      "user",
       "assistant",
     ]);
-    expect(observations.afterHandoffMessages).toHaveLength(1);
+    expect(observations.afterHandoffMessages).toHaveLength(2);
     expect(observations.afterHandoffMessages[0]?.role).toBe("user");
     expect(observations.afterHandoffMessages[0]?.content).toEqual([
       expect.objectContaining({
         type: "text",
         text: expect.stringContaining("<runtime-turn-context>"),
       }),
+    ]);
+    expect(observations.afterHandoffMessages[1]?.role).toBe("user");
+    expect(observations.afterHandoffMessages[1]?.content).toEqual([
       expect.objectContaining({
         type: "text",
         text: expect.stringContaining(

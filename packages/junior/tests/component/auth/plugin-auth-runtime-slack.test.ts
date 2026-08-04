@@ -38,6 +38,7 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
   return {
     ...actual,
     createSandbox: () => ({
+      captureRepositoryInstructions: async () => undefined,
       workspace: {
         readFileToBuffer: async () => {
           throw new Error(
