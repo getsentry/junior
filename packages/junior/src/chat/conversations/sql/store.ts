@@ -496,6 +496,53 @@ function updateConversationUsage(args: {
   return usage;
 }
 
+export interface ProviderConversationBinding {
+  conversationId: string;
+  provider: string;
+  providerDestinationId: string;
+  providerTenantId: string;
+  providerConversationId: string;
+}
+
+/** Bind provider coordinates to a durable conversation in the caller's SQL scope. */
+export async function bindProviderConversation(
+  executor: JuniorSqlDatabase,
+  args: ProviderConversationBinding,
+): Promise<void> {
+  const rows = await executor
+    .db()
+    .insert(juniorConversationBindings)
+    .values({ ...args, createdAt: new Date() })
+    .onConflictDoNothing()
+    .returning({ conversationId: juniorConversationBindings.conversationId });
+  const existing = await executor
+    .db()
+    .select({ conversationId: juniorConversationBindings.conversationId })
+    .from(juniorConversationBindings)
+    .where(
+      and(
+        eq(juniorConversationBindings.provider, args.provider),
+        eq(juniorConversationBindings.providerTenantId, args.providerTenantId),
+        eq(
+          juniorConversationBindings.providerDestinationId,
+          args.providerDestinationId,
+        ),
+        eq(
+          juniorConversationBindings.providerConversationId,
+          args.providerConversationId,
+        ),
+      ),
+    )
+    .limit(1);
+  const boundConversationId =
+    rows[0]?.conversationId ?? existing[0]?.conversationId;
+  if (boundConversationId !== args.conversationId) {
+    throw new Error(
+      "Provider conversation is already bound to another conversation",
+    );
+  }
+}
+
 export class SqlStore implements ConversationStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
@@ -530,27 +577,10 @@ export class SqlStore implements ConversationStore {
     return rows[0]?.conversationId;
   }
 
-  async bindProviderConversation(args: {
-    conversationId: string;
-    provider: string;
-    providerDestinationId: string;
-    providerTenantId: string;
-    providerConversationId: string;
-  }): Promise<void> {
-    const rows = await this.executor
-      .db()
-      .insert(juniorConversationBindings)
-      .values({ ...args, createdAt: new Date() })
-      .onConflictDoNothing()
-      .returning({ conversationId: juniorConversationBindings.conversationId });
-    const boundConversationId =
-      rows[0]?.conversationId ??
-      (await this.getConversationIdByProviderConversation(args));
-    if (boundConversationId !== args.conversationId) {
-      throw new Error(
-        "Provider conversation is already bound to another conversation",
-      );
-    }
+  async bindProviderConversation(
+    args: ProviderConversationBinding,
+  ): Promise<void> {
+    await bindProviderConversation(this.executor, args);
   }
 
   async get(args: {

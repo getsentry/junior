@@ -23,6 +23,10 @@ import {
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import {
+  bindProviderConversation,
+  type ProviderConversationBinding,
+} from "@/chat/conversations/sql/store";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   historyItemFromPiMessage,
@@ -273,6 +277,10 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
+  providerConversationBinding?: Omit<
+    ProviderConversationBinding,
+    "conversationId"
+  >;
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -299,6 +307,12 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
+      if (args.providerConversationBinding) {
+        await bindProviderConversation(executor, {
+          conversationId: args.conversationId,
+          ...args.providerConversationBinding,
+        });
+      }
     }),
   );
 }
