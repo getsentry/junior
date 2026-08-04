@@ -7,7 +7,6 @@ import {
 import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 const actionToken = readSlackActionToken({
@@ -78,7 +77,7 @@ function ctx(
 
 describe("Slack tool registration", () => {
   beforeEach(() => {
-    setPlugins([schedulerPlugin()]);
+    setPlugins([]);
   });
 
   afterEach(() => {
@@ -202,7 +201,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
-    setPlugins([schedulerPlugin(), resourceEventPlugin()]);
+    setPlugins([resourceEventPlugin()]);
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
       [],
@@ -219,18 +218,26 @@ describe("Slack tool registration", () => {
           teamId: "T123",
           userId: "U123",
         },
+        resolveActorIdentity: async () => ({
+          identity: {
+            id: "identity:T123:U123",
+            provider: "slack",
+            providerSubjectId: "U123",
+            providerTenantId: "T123",
+          },
+        }),
       },
     );
 
-    expect(incomplete).not.toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(incomplete).not.toHaveProperty("slackScheduleCreateTask");
     expect(incomplete).not.toHaveProperty("createEventTask");
     expect(incomplete).toHaveProperty("searchResourceEventTypes");
     expect(incomplete).toHaveProperty("watchResourceEvents");
-    expect(complete).toHaveProperty("scheduler_slackScheduleCreateTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleListTasks");
-    expect(complete).toHaveProperty("scheduler_slackScheduleUpdateTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleDeleteTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(complete).toHaveProperty("slackScheduleCreateTask");
+    expect(complete).toHaveProperty("slackScheduleListTasks");
+    expect(complete).toHaveProperty("slackScheduleUpdateTask");
+    expect(complete).toHaveProperty("slackScheduleDeleteTask");
+    expect(complete).toHaveProperty("slackScheduleRunTaskNow");
     expect(complete).toHaveProperty("createEventTask");
     expect(complete).toHaveProperty("searchResourceEventTypes");
     expect(complete).toHaveProperty("watchResourceEvents");
@@ -240,7 +247,7 @@ describe("Slack tool registration", () => {
   });
 
   it("keeps event task management but not creation without an active event plugin", () => {
-    setPlugins([schedulerPlugin(), resourceEventPlugin(false)]);
+    setPlugins([resourceEventPlugin(false)]);
     const tools = createTools(
       [],
       {},
@@ -271,11 +278,11 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleCreateTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleListTasks");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleUpdateTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleDeleteTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
+    expect(tools).not.toHaveProperty("slackScheduleListTasks");
+    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
+    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
+    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
     expect(tools).not.toHaveProperty("createEventTask");
   });
 

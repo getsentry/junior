@@ -136,7 +136,7 @@ export async function writableEventTask(
   return task;
 }
 
-function triggerAvailable(
+export function eventTaskTriggerAvailable(
   task: EventTask,
   catalog: ResourceEventCatalog,
 ): boolean {
@@ -168,7 +168,7 @@ export function compactEventTask(
     events: task.trigger.events,
     credentialMode: task.credentialMode,
     createdBy: task.createdBy,
-    triggerAvailable: triggerAvailable(task, catalog),
+    triggerAvailable: eventTaskTriggerAvailable(task, catalog),
   });
 }
 

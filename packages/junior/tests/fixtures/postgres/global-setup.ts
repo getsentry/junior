@@ -1,12 +1,10 @@
 import type { TestProject } from "vitest/node";
-import path from "node:path";
 import {
   cleanupPostgresHarness,
   setupPostgresTemplate,
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
@@ -48,12 +46,6 @@ export async function setupJuniorPostgresHarness(
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
         await migrateSchema(executor);
-        await migratePluginSchemas(executor, [
-          {
-            dir: path.resolve(process.cwd(), "../junior-scheduler/migrations"),
-            pluginName: "scheduler",
-          },
-        ]);
         await options.migrateTemplate?.(executor);
       } finally {
         await executor.close();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { createSchedulerStore } from "../../../junior-scheduler/src/store";
+import { createSchedulerStore } from "@/chat/scheduled-tasks/store";
 import { createPluginState } from "@/chat/plugins/state";
 
 describe("scheduler plugin-state indexes", () => {

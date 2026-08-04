@@ -75,7 +75,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     expect(calls.map((call) => call.name)).not.toContain("watchResourceEvents");
     expect(calls.map((call) => call.name)).not.toContain("createEventTask");
     expect(calls.map((call) => call.name)).not.toContain(
-      "scheduler_slackScheduleCreateTask",
+      "slackScheduleCreateTask",
     );
   });
 
@@ -118,7 +118,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     });
     expect(createCalls[0]!.arguments?.credentialMode).toBe("system");
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "scheduler_slackScheduleCreateTask",
+      "slackScheduleCreateTask",
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
       "watchResourceEvents",
@@ -164,7 +164,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
       new Set(["issue.closed", "issue.reopened"]),
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "scheduler_slackScheduleCreateTask",
+      "slackScheduleCreateTask",
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
       "watchResourceEvents",

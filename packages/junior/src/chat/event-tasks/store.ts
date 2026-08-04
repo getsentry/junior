@@ -1,5 +1,5 @@
-import { type ResourceEvent } from "@sentry/junior-plugin-api";
-import { and, asc, eq } from "drizzle-orm";
+import { type ResourceEvent, type User } from "@sentry/junior-plugin-api";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { eventTaskSchema, type EventTask } from "./types";
@@ -81,6 +81,49 @@ export async function listEventTasksForTeam(
     .from(juniorEventTasks)
     .where(eq(juniorEventTasks.teamId, teamId))
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
+  return rows.map((row) => parseTask(row.task));
+}
+
+function viewerSlackIdentities(user: User) {
+  return user.identities.filter(
+    (identity) =>
+      identity.provider === "slack" &&
+      Boolean(identity.providerTenantId) &&
+      Boolean(identity.providerSubjectId),
+  );
+}
+
+/** Return whether one event task was created by a viewer-linked Slack identity. */
+export function eventTaskBelongsToUser(task: EventTask, user: User): boolean {
+  return viewerSlackIdentities(user).some(
+    (identity) =>
+      identity.providerTenantId === task.destination.teamId &&
+      identity.providerSubjectId === task.createdBy.slackUserId,
+  );
+}
+
+/** List a bounded newest-first page of event tasks created by one user. */
+export async function listEventTasksCreatedBy(
+  db: JuniorDatabase,
+  user: User,
+  limit: number,
+): Promise<EventTask[]> {
+  const identities = viewerSlackIdentities(user);
+  const ownership = or(
+    ...identities.map((identity) =>
+      and(
+        eq(juniorEventTasks.teamId, identity.providerTenantId!),
+        sql`${juniorEventTasks.task}->'createdBy'->>'slackUserId' = ${identity.providerSubjectId}`,
+      ),
+    ),
+  );
+  if (!ownership) return [];
+  const rows = await db
+    .select({ task: juniorEventTasks.task })
+    .from(juniorEventTasks)
+    .where(ownership)
+    .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
+    .limit(limit);
   return rows.map((row) => parseTask(row.task));
 }
 

@@ -52,13 +52,6 @@ export default async function setup(
             ),
             pluginName: "memory",
           },
-          {
-            dir: path.resolve(
-              workspaceRoot,
-              "packages/junior-scheduler/migrations",
-            ),
-            pluginName: "scheduler",
-          },
         ]);
       } finally {
         await executor.close();

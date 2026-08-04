@@ -15,9 +15,9 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
-import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 import { createEventTaskTools } from "@/chat/tools/event-tasks";
+import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
@@ -43,7 +43,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
-import { getPlugins, getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -105,17 +105,7 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackSourceCapabilities?.canSendFiles,
   );
-  const resourceEventCatalog = Object.fromEntries(
-    canRouteResourceEvents()
-      ? getPlugins().flatMap((plugin) => {
-          const registration = plugin.resourceEvents;
-          if (!registration || registration.isEnabled?.() === false) {
-            return [];
-          }
-          return [[plugin.manifest.name, registration]];
-        })
-      : [],
-  ) satisfies ResourceEventCatalog;
+  const resourceEventCatalog = getResourceEventCatalog();
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false
       ? {}
@@ -142,6 +132,7 @@ export function createTools(
     }),
     ...createResourceEventTools(context, resourceEventCatalog),
     ...createEventTaskTools(context, resourceEventCatalog),
+    ...createScheduledTaskTools(context),
   };
   if (context.conversationId) {
     tools.queryConversationEvents = createQueryConversationEventsTool(context);

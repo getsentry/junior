@@ -91,20 +91,23 @@ test("opens a registered plugin page from primary navigation", async ({
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps other plugin pages on the generic renderer", async ({ page }) => {
+test("opens scheduled and event tasks in the native Tasks view", async ({
+  page,
+}) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
-  await page
-    .getByRole("button", { name: "Open profile menu for Dashboard User" })
-    .click();
-  await page.getByRole("link", { name: "Scheduled tasks" }).click();
+  await page.getByRole("link", { name: "Tasks" }).click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/plugins/scheduler/tasks`);
-  await expect(
-    page.getByRole("heading", { name: "Scheduled tasks" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await page.getByRole("button", { name: "event", exact: true }).click();
+  await expect(
+    page.getByText("Send the weekly project summary"),
+  ).not.toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });

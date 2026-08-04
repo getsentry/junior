@@ -1,6 +1,7 @@
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
+import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
@@ -139,6 +140,19 @@ export async function runHeartbeat(args: {
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
+  try {
+    const dispatchCount = await runScheduledTaskHeartbeat({
+      conversationWorkQueue: queue,
+      nowMs: args.nowMs,
+    });
+    if (dispatchCount > 0) {
+      logInfo("scheduled_tasks.heartbeat.dispatched", {
+        "app.dispatch.count": dispatchCount,
+      });
+    }
+  } catch (error) {
+    logException(error, "scheduled_tasks.heartbeat.failed");
+  }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,

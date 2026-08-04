@@ -81,7 +81,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleUpdateTask" &&
+          call.name === "slackScheduleUpdateTask" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -137,7 +137,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "scheduler_slackScheduleUpdateTask" &&
+          call.name === "slackScheduleUpdateTask" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),

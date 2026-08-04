@@ -122,7 +122,7 @@ Install only the plugins you plan to enable. If you are creating `plugins.ts`
 for an existing app, include the default maintenance and memory packages too:
 
 ```bash
-pnpm add @sentry/junior-maintenance @sentry/junior-memory @sentry/junior-agent-browser @sentry/junior-amplitude @sentry/junior-cloudflare @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
+pnpm add @sentry/junior-maintenance @sentry/junior-memory @sentry/junior-agent-browser @sentry/junior-amplitude @sentry/junior-cloudflare @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry @sentry/junior-vercel
 ```
 
 Add them to the plugin set in `plugins.ts`:
@@ -132,7 +132,6 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import { linearPlugin } from "@sentry/junior-linear";
-import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { vercelPlugin } from "@sentry/junior-vercel";
 
 export const plugins = defineJuniorPlugins([
@@ -149,7 +148,6 @@ export const plugins = defineJuniorPlugins([
   "@sentry/junior-hex",
   linearPlugin(),
   "@sentry/junior-notion",
-  schedulerPlugin(),
   "@sentry/junior-sentry",
   vercelPlugin(),
 ]);
@@ -193,10 +191,9 @@ pnpm check
 ```
 
 The runtime-safe plugin set is also where runtime hooks are registered.
-`schedulerPlugin()` enables scheduled task tools and heartbeat behavior, and
-`githubPlugin()` enforces Git commit attribution. See
-[Scheduler Plugin](/extend/scheduler-plugin/) and
-[GitHub Plugin](/extend/github-plugin/) for those setups.
+Scheduled task tools and heartbeat behavior are built into Junior, while
+`githubPlugin()` enforces Git commit attribution. See [Tasks](/concepts/tasks/)
+and [GitHub Plugin](/extend/github-plugin/) for those setups.
 
 ## Verify plugin content
 

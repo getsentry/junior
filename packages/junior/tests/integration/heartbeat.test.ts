@@ -8,10 +8,9 @@ import {
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import {
   createSchedulerSqlStore,
-  schedulerPlugin,
   type ScheduledTask,
   type SchedulerDb,
-} from "@sentry/junior-scheduler";
+} from "@/chat/scheduled-tasks";
 import { getDb } from "@/chat/db";
 import {
   getDispatchRecord,
@@ -645,12 +644,11 @@ describe("plugin heartbeat", () => {
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
 
-  it("dispatches and reconciles scheduled runs from the scheduler plugin", async () => {
+  it("dispatches and reconciles scheduled runs from the core heartbeat", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setPlugins([schedulerPlugin()]);
     const store = await useSchedulerSqlStore();
     await store.saveTask(
       createTask({
@@ -736,114 +734,6 @@ describe("plugin heartbeat", () => {
     });
   }, 30_000);
 
-  it("exposes sanitized scheduler operational reports through Junior reporting", async () => {
-    setPlugins([schedulerPlugin()]);
-    const store = await useSchedulerSqlStore();
-    await store.saveTask(
-      createTask({
-        createdBy: {
-          slackUserId: "U123",
-          fullName: "Alice Reviewer",
-          userName: "alice",
-        },
-        task: {
-          text: "Secret task text that must stay out of dashboard stats.",
-        },
-      }),
-    );
-    await store.saveTask(
-      createTask({
-        createdBy: {
-          slackUserId: "U456",
-          fullName: "W039RR91S",
-          userName: "U456",
-        },
-        id: "sched_plugin_blocked",
-        status: "blocked",
-        statusReason: "Secret blocked reason",
-        task: {
-          text: "Secret blocked task text",
-        },
-        updatedAtMs: TEST_NOW_MS,
-      }),
-    );
-    const { readPluginOperationalReportFeed } = await import("@/reporting");
-    const feed = await readPluginOperationalReportFeed();
-    const scheduler = feed.reports.find(
-      (report) => report.pluginName === "scheduler",
-    );
-
-    expect(feed.source).toBe("plugins");
-    expect(scheduler).toMatchObject({
-      pluginName: "scheduler",
-      title: "Scheduler",
-    });
-    expect(scheduler?.metrics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ label: "active", value: "1" }),
-        expect.objectContaining({ label: "blocked", value: "1" }),
-        expect.objectContaining({ label: "due now", value: "1" }),
-      ]),
-    );
-    expect(scheduler?.recordSets?.map((recordSet) => recordSet.title)).toEqual([
-      "Upcoming",
-      "Blocked",
-      "Running",
-    ]);
-    expect(scheduler?.recordSets?.[0]?.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ key: "author", label: "Author" }),
-      ]),
-    );
-    expect(
-      scheduler?.recordSets?.[0]?.records?.[0]?.values ?? {},
-    ).toMatchObject({
-      author: "Alice Reviewer (@alice)",
-    });
-    const blockedRecords = scheduler?.recordSets?.[1]?.records ?? [];
-    expect(
-      blockedRecords.find((record) => record.id === "sched_plugin_blocked")
-        ?.values ?? {},
-    ).toMatchObject({
-      author: "Slack User U456",
-    });
-    expect(JSON.stringify(feed)).not.toContain("Secret");
-  }, 30_000);
-
-  it("counts all running scheduler runs in operational summaries", async () => {
-    setPlugins([schedulerPlugin()]);
-    const store = await useSchedulerSqlStore();
-    for (let index = 0; index < 6; index += 1) {
-      await store.saveTask(
-        createTask({
-          id: `sched_running_${index}`,
-          createdAtMs: TEST_RUN_AT_MS + index,
-          updatedAtMs: TEST_RUN_AT_MS + index,
-        }),
-      );
-    }
-    for (let index = 0; index < 6; index += 1) {
-      await expect(
-        store.claimDueRun({ nowMs: TEST_NOW_MS + index }),
-      ).resolves.toBeDefined();
-    }
-
-    const { readPluginOperationalReportFeed } = await import("@/reporting");
-    const feed = await readPluginOperationalReportFeed();
-    const scheduler = feed.reports.find(
-      (report) => report.pluginName === "scheduler",
-    );
-    const runningSummary = scheduler?.metrics?.find(
-      (metric) => metric.label === "running",
-    );
-    const runningSection = scheduler?.recordSets?.find(
-      (recordSet) => recordSet.title === "Running",
-    );
-
-    expect(runningSummary).toMatchObject({ value: "6" });
-    expect(runningSection?.records).toHaveLength(5);
-  }, 30_000);
-
   it.each([
     {
       conversationAccess: {
@@ -864,7 +754,6 @@ describe("plugin heartbeat", () => {
   ])(
     "binds creator credentials to the scheduled task dispatch in a $label",
     async ({ conversationAccess, destination }) => {
-      setPlugins([schedulerPlugin()]);
       const store = await useSchedulerSqlStore();
       await store.saveTask(
         createTask({
@@ -913,7 +802,6 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setPlugins([schedulerPlugin()]);
     const store = await useSchedulerSqlStore();
     await store.saveTask(createTask());
 
@@ -955,12 +843,11 @@ describe("plugin heartbeat", () => {
     });
   }, 30_000);
 
-  it("blocks malformed scheduled tasks without stopping the scheduler plugin heartbeat", async () => {
+  it("blocks malformed scheduled tasks without stopping the core heartbeat", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setPlugins([schedulerPlugin()]);
     const store = await useSchedulerSqlStore();
     await store.saveTask({
       ...createTask(),
@@ -1004,7 +891,6 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setPlugins([schedulerPlugin()]);
     const store = await useSchedulerSqlStore();
     const task = createDailyTask();
     await store.saveTask(task);
@@ -1037,7 +923,6 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setPlugins([schedulerPlugin()]);
     const store = await useSchedulerSqlStore();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",

@@ -35,6 +35,9 @@ mailbox-backed provider.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `event-tasks/`: durable instructions matched to normalized resource events.
+- `scheduled-tasks/`: durable scheduled instructions, authoring tools, and
+  heartbeat dispatch.
+- `tasks/`: signed-in user projection across scheduled and event tasks.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `state/` and `conversations/`: persistence by concern.

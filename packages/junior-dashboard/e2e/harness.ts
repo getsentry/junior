@@ -112,14 +112,6 @@ export async function mockDashboardApis(page: Page) {
           pluginDisplayName: "Memory",
           pluginName: "memory",
         },
-        {
-          description: "Recurring work Junior runs for you.",
-          id: "tasks",
-          label: "Scheduled tasks",
-          navigation: "profile",
-          pluginDisplayName: "Scheduler",
-          pluginName: "scheduler",
-        },
       ],
     });
   });
@@ -188,18 +180,32 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
-  await page.route("**/api/user-pages/scheduler/tasks", async (route) => {
+  await page.route("**/api/tasks", async (route) => {
     await route.fulfill({
       json: {
-        type: "list",
-        emptyText: "No scheduled tasks yet.",
-        records: [
+        tasks: [
           {
-            id: "task-1",
-            title: "Send the weekly project summary",
-            metadata: [{ label: "Schedule", value: "Every Monday" }],
+            createdAt: "2026-07-28T16:00:00.000Z",
+            destination: { channelId: "C123", teamId: "T123" },
+            id: "scheduled-1",
+            instruction: "Send the weekly project summary",
+            kind: "scheduled",
+            nextRunAt: "2026-08-10T16:00:00.000Z",
+            schedule: "Every Monday at 9:00 AM",
+            status: "active",
+          },
+          {
+            createdAt: "2026-07-29T16:00:00.000Z",
+            destination: { channelId: "C123", teamId: "T123" },
+            events: ["issue.closed"],
+            id: "event-1",
+            instruction: "Summarize the closed issue",
+            kind: "event",
+            resource: "Issue · ACME-42",
+            triggerAvailable: true,
           },
         ],
+        truncated: false,
       },
     });
   });

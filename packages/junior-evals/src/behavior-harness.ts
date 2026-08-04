@@ -67,13 +67,13 @@ import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-c
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   createSchedulerSqlStore,
-  schedulerPlugin,
   type ScheduledTask,
   type SchedulerDb,
-} from "@sentry/junior-scheduler";
+} from "@/chat/scheduled-tasks";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
+import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
@@ -2353,7 +2353,7 @@ async function processEvents(args: {
     );
     await schedulerStore.saveTask(task);
 
-    await runPluginHeartbeats({
+    await runScheduledTaskHeartbeat({
       conversationWorkQueue,
       nowMs,
     });
@@ -2669,12 +2669,9 @@ export async function runEvalScenario(
     );
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
-      schedulerPlugin(),
       ...runtimePlugins,
       ...currentPlugins.filter(
-        (plugin) =>
-          plugin.manifest.name !== "scheduler" &&
-          !runtimePluginNames.has(plugin.manifest.name),
+        (plugin) => !runtimePluginNames.has(plugin.manifest.name),
       ),
     ]);
     const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });

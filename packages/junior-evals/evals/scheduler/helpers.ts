@@ -6,7 +6,7 @@ import {
   createSchedulerSqlStore,
   type SchedulerDb,
   type ScheduledTask,
-} from "@sentry/junior-scheduler";
+} from "@/chat/scheduled-tasks";
 
 interface ScheduledTaskThread {
   channel_id: string;
@@ -82,7 +82,7 @@ export function scheduledTaskCreateCalls(
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "scheduler_slackScheduleCreateTask" &&
+      call.name === "slackScheduleCreateTask" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
@@ -93,7 +93,7 @@ export function scheduledTaskUpdateCalls(
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "scheduler_slackScheduleUpdateTask" &&
+      call.name === "slackScheduleUpdateTask" &&
       call.status === "ok" &&
       call.result !== undefined,
   );

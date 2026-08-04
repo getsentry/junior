@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type ScheduledTask } from "@sentry/junior-scheduler";
-import { getNextRunAtMs } from "../../../../junior-scheduler/src/cadence";
-import { compileScheduleIntent } from "../../../../junior-scheduler/src/schedule-intent";
+import { type ScheduledTask } from "@/chat/scheduled-tasks";
+import { getNextRunAtMs } from "@/chat/scheduled-tasks/cadence";
+import { compileScheduleIntent } from "@/chat/scheduled-tasks/schedule-intent";
 
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
