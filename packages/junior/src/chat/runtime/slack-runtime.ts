@@ -82,6 +82,7 @@ interface SteeringDrainContext {
 }
 
 export interface SlackTurnOptions extends ReplyHooks {
+  conversationId?: string;
   destination: Destination;
 }
 
@@ -171,6 +172,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
+      conversationId?: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
@@ -780,6 +782,7 @@ export function createSlackTurnRuntime<
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+            conversationId: hooks.conversationId,
             destination: hooks.destination,
             queuedMessages,
             ack,
@@ -1087,6 +1090,7 @@ export function createSlackTurnRuntime<
 
           await deps.replyToThread(thread, message, {
             explicitMention: Boolean(message.isMention),
+            conversationId: hooks.conversationId,
             destination: hooks.destination,
             preparedState,
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,

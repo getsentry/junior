@@ -193,20 +193,17 @@ async function buildThread(args: {
   message: Message;
   route: SlackConversationRoute;
   state: StateAdapter;
-  threadId?: string;
-  slackThreadId?: string;
 }): Promise<ThreadImpl> {
-  const threadId = args.threadId ?? normalizeMessageThreadId(args.message);
-  const slackThreadId = args.slackThreadId ?? threadId;
+  const threadId = normalizeMessageThreadId(args.message);
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
     id: threadId,
-    channelId: args.adapter.channelIdFromThreadId(slackThreadId),
-    channelVisibility: args.adapter.getChannelVisibility(slackThreadId),
+    channelId: args.adapter.channelIdFromThreadId(threadId),
+    channelVisibility: args.adapter.getChannelVisibility(threadId),
     currentMessage: args.message,
     initialMessage: args.message,
-    isDM: args.adapter.isDM(slackThreadId),
+    isDM: args.adapter.isDM(threadId),
     isSubscribedContext: args.route === "subscribed",
   });
 }
@@ -268,14 +265,7 @@ async function persistSlackMessage(args: {
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
-  if (args.message.threadId !== conversationId) {
-    (args.message as unknown as { threadId: string }).threadId = conversationId;
-  }
-  const thread = await buildThread({
-    ...args,
-    threadId: conversationId,
-    slackThreadId: canonicalThreadId,
-  });
+  const thread = await buildThread(args);
   const inbound = buildSlackInboundMessage({
     conversationId,
     installation: args.installation,
