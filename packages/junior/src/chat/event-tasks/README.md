@@ -34,7 +34,9 @@ event-task run history.
 
 The dispatched input keeps authority explicit: the stored task text remains a
 user-authored instruction, the matching normalized event is system-authored
-input, and bounded provider text remains untrusted data.
+input, and bounded provider text remains untrusted data. Event-task dispatches
+set `replyAttribution` so destination replies show the same kind of footer note
+scheduled tasks do (`Event task · <trigger label> · <event type>`).
 
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system

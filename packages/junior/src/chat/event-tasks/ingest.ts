@@ -10,6 +10,7 @@ import {
   RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
   RESOURCE_EVENT_TEXT_MAX_LENGTH,
   resourceEventSchema,
+  type ReplyAttribution,
   type ResourceEvent,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventTask } from "@/chat/agent-dispatch/context";
@@ -36,6 +37,23 @@ function oneLine(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 512);
+}
+
+/** Compact destination-visible context for event-task replies. */
+function replyAttribution(
+  task: EventTask,
+  event: ResourceEvent,
+): ReplyAttribution {
+  const resourceLabel = oneLine(task.trigger.label);
+  const eventType = oneLine(event.eventType);
+  const detail = oneLine(
+    resourceLabel && eventType
+      ? `${resourceLabel} · ${eventType}`
+      : resourceLabel || eventType,
+  )
+    .slice(0, 128)
+    .trim();
+  return detail ? { label: "Event task", detail } : { label: "Event task" };
 }
 
 /** Render bounded task and event data with their original authority. */
@@ -105,6 +123,7 @@ export async function ingestEventTasks(
           destination: task.destination,
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event),
+          replyAttribution: replyAttribution(task, event),
           source: createSlackSource({
             teamId: task.destination.teamId,
             channelId: task.destination.channelId,
