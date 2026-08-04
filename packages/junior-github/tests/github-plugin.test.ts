@@ -497,14 +497,20 @@ describe("github plugin", () => {
     expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
   });
 
-  it("suggests new issue events for repository watches", () => {
+  it("suggests issue and pull request events for repository watches", () => {
     const repository = githubPlugin().resourceEvents?.resourceTypes.find(
       (resourceType) => resourceType.type === "repository",
     );
 
     expect(repository).toMatchObject({
-      supportedEvents: expect.arrayContaining(["issue.opened"]),
-      suggestedEvents: expect.arrayContaining(["issue.opened"]),
+      supportedEvents: expect.arrayContaining([
+        "issue.opened",
+        "pull_request.merged",
+      ]),
+      suggestedEvents: expect.arrayContaining([
+        "issue.opened",
+        "pull_request.merged",
+      ]),
     });
   });
 

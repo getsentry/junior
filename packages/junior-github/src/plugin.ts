@@ -642,8 +642,15 @@ export function githubPlugin(
         },
         {
           type: "repository",
-          supportedEvents: [...GITHUB_ISSUE_EVENTS],
-          suggestedEvents: ["issue.opened", ...GITHUB_ISSUE_SUGGESTED_EVENTS],
+          supportedEvents: [
+            ...GITHUB_ISSUE_EVENTS,
+            ...GITHUB_PULL_REQUEST_EVENTS,
+          ],
+          suggestedEvents: [
+            "issue.opened",
+            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+          ],
         },
       ],
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
