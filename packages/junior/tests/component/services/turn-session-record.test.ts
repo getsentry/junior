@@ -1174,6 +1174,84 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toBe(false);
   });
 
+  it("rejects a delayed running checkpoint after awaiting_resume wins the race", async () => {
+    const { persistContinuationSessionRecord, persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const {
+      getAgentTurnSessionRecord,
+      upsertAgentTurnSessionRecord,
+    } = await import("@/chat/state/turn-session");
+
+    const request = userMessage("help me");
+    const toolBoundary = assistantMessage("working", Date.now() + 1);
+    const toolResult = userMessage("tool done");
+
+    // Mid-turn checkpoint at the user prompt.
+    expect(
+      await persistRunningSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-stale-running",
+        sessionId: "turn-stale-running",
+        sliceId: 1,
+        messages: [request],
+      }),
+    ).toBe(true);
+
+    const staleRunningBase = await getAgentTurnSessionRecord(
+      "conversation-stale-running",
+      "turn-stale-running",
+    );
+    expect(staleRunningBase?.state).toBe("running");
+
+    // Timeout path already committed the tool boundary and parked the turn.
+    await persistContinuationSessionRecord({
+      resumeReason: "timeout",
+      modelId: "test-model",
+      conversationId: "conversation-stale-running",
+      sessionId: "turn-stale-running",
+      currentSliceId: 1,
+      messages: [request, toolBoundary, toolResult],
+      errorMessage: "provider stream interrupted",
+    });
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "conversation-stale-running",
+        "turn-stale-running",
+      ),
+    ).resolves.toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      resumeReason: "timeout",
+    });
+
+    // A delayed running checkpoint still holds the pre-timeout session base.
+    // History adoption may succeed, but session metadata must not regress.
+    await expect(
+      upsertAgentTurnSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-stale-running",
+        sessionId: "turn-stale-running",
+        sliceId: 1,
+        state: "running",
+        piMessages: [request, toolBoundary, toolResult],
+        existing: staleRunningBase!,
+      }),
+    ).rejects.toThrow(/changed before its session write/);
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "conversation-stale-running",
+        "turn-stale-running",
+      ),
+    ).resolves.toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      resumeReason: "timeout",
+      piMessages: [request, toolBoundary, toolResult],
+    });
+  });
+
   it("promotes the latest running record when timeout capture has no messages", async () => {
     const { persistContinuationSessionRecord, persistRunningSessionRecord } =
       await import("@/chat/services/turn-session-record");

@@ -61,6 +61,21 @@ export type AgentTurnSessionStatus =
   | "failed"
   | "abandoned";
 
+/** Lifecycle rank for concurrent session writes. Higher ranks must not regress. */
+function agentTurnSessionStateRank(state: AgentTurnSessionStatus): number {
+  switch (state) {
+    case "running":
+      return 0;
+    case "awaiting_resume":
+      return 1;
+    case "failed":
+    case "abandoned":
+      return 2;
+    case "completed":
+      return 3;
+  }
+}
+
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield" | "retry";
@@ -865,6 +880,47 @@ export async function upsertAgentTurnSessionRecord(args: {
       ? undefined
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
+  // History commits can adopt concurrent same-prefix writes. Re-check the
+  // session record before overwriting metadata so a delayed running checkpoint
+  // cannot clobber awaiting_resume/completed/failed that landed meanwhile.
+  const liveAfterCommit = await getStoredAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionId,
+  );
+  const expectedVersion = storedRecord?.version ?? existingRecord?.version;
+  if (
+    liveAfterCommit &&
+    expectedVersion !== undefined &&
+    liveAfterCommit.version !== expectedVersion
+  ) {
+    const nextRank = agentTurnSessionStateRank(args.state);
+    const liveRank = agentTurnSessionStateRank(liveAfterCommit.state);
+    const regressesLifecycle =
+      nextRank < liveRank ||
+      (nextRank === liveRank && args.sliceId < liveAfterCommit.sliceId);
+    if (regressesLifecycle) {
+      // Completed delivery retries are idempotent once the terminal record exists.
+      if (args.state === "completed" && liveAfterCommit.state === "completed") {
+        const liveRecord = await getAgentTurnSessionRecord(
+          args.conversationId,
+          args.sessionId,
+        );
+        if (liveRecord) {
+          return liveRecord;
+        }
+      }
+      throw new Error(
+        `Turn session ${args.sessionId} changed before its session write ` +
+          `(${liveAfterCommit.state}@v${liveAfterCommit.version}/slice ${liveAfterCommit.sliceId} vs ` +
+          `${args.state}/slice ${args.sliceId})`,
+      );
+    }
+  }
+  const previousVersion =
+    liveAfterCommit?.version ??
+    storedRecord?.version ??
+    existingRecord?.version;
+
   return await setStoredRecord({
     conversationStore: args.conversationStore,
     destinationVisibility: args.destinationVisibility,
@@ -893,7 +949,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(retainedRuntimeContext
         ? { runtimeContext: retainedRuntimeContext }
         : {}),
-      previousVersion: storedRecord?.version ?? existingRecord?.version,
+      previousVersion,
       cumulativeDurationMs:
         args.cumulativeDurationMs ?? existingRecord?.cumulativeDurationMs ?? 0,
       ...(args.cumulativeUsage
