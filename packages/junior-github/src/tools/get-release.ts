@@ -151,12 +151,12 @@ export function createGitHubGetReleaseTool(ctx: ToolRegistrationHookContext) {
         }
         // 404 keeps release null so the tag remains subscribable before publish.
       } else {
-        const releasesUrl = new URL(repositoryUrl(repo, "releases"));
-        releasesUrl.searchParams.set("per_page", "1");
+        // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
+        // push access cannot surface a draft as the current release.
         const response = await ctx.egress.fetch({
           provider: "github",
-          operation: "github.release.list",
-          request: new Request(releasesUrl, {
+          operation: "github.release.latest",
+          request: new Request(repositoryUrl(repo, "releases/latest"), {
             headers: {
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
@@ -164,20 +164,17 @@ export function createGitHubGetReleaseTool(ctx: ToolRegistrationHookContext) {
           }),
         });
         const body = await readJson(response);
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new PluginToolInputError(
-              `GitHub release lookup failed with HTTP ${response.status}`,
-            );
-          }
+        if (response.ok) {
+          release = mapRelease(providerReleaseSchema.parse(body));
+        } else if (response.status === 404) {
+          // Missing repo and "no published release yet" both 404. Keep the
+          // repository-wide source subscribable either way.
+          release = null;
+        } else {
           throw new Error(
             `GitHub release lookup failed with HTTP ${response.status}`,
           );
         }
-        const providerRelease = z
-          .array(providerReleaseSchema)
-          .parse(body)[0];
-        release = providerRelease ? mapRelease(providerRelease) : null;
       }
 
       const subscribable = ctx.resourceEvents.canSubscribe
