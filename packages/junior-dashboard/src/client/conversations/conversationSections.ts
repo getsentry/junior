@@ -52,7 +52,7 @@ function conversationSection(
   if (ageInDays < 7) {
     return {
       key: `day-${day}`,
-      label: new Intl.DateTimeFormat(undefined, {
+      label: new Intl.DateTimeFormat("en-US", {
         timeZone,
         weekday: "long",
       }).format(time),
