@@ -30,6 +30,12 @@ type TaskCandidate =
   | { kind: "event"; ownedByViewer: boolean; task: EventTask }
   | { kind: "scheduled"; ownedByViewer: boolean; task: ScheduledTask };
 
+function taskIsPublic(candidate: TaskCandidate): boolean {
+  return candidate.kind === "scheduled"
+    ? candidate.task.conversationAccess.visibility === "public"
+    : candidate.task.destinationVisibility === "public";
+}
+
 function creatorLabel(creator: {
   fullName?: string;
   slackUserId: string;
@@ -210,7 +216,17 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       right.task.createdAtMs - left.task.createdAtMs ||
       right.task.id.localeCompare(left.task.id),
   );
-  const selected = candidates.slice(0, TASK_LIST_LIMIT);
+  const ownedCandidates = candidates.filter(
+    (candidate) => candidate.ownedByViewer,
+  );
+  const publicCandidates = candidates.filter(taskIsPublic);
+  const selectedCandidates = new Set([
+    ...ownedCandidates.slice(0, TASK_LIST_LIMIT),
+    ...publicCandidates.slice(0, TASK_LIST_LIMIT),
+  ]);
+  const selected = candidates.filter((candidate) =>
+    selectedCandidates.has(candidate),
+  );
   const [labels, creatorEmails] = await Promise.all([
     destinationLabels(selected.map(({ task }) => task.destination)),
     creatorProfileEmails(selected),
@@ -261,11 +277,8 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   return {
     tasks,
     truncated:
-      Boolean(scheduledPage.nextCursor) ||
-      publicScheduled.length > TASK_LIST_LIMIT ||
-      eventTasks.length > TASK_LIST_LIMIT ||
-      publicEventTasks.length > TASK_LIST_LIMIT ||
-      candidates.length > TASK_LIST_LIMIT,
+      ownedCandidates.length > TASK_LIST_LIMIT ||
+      publicCandidates.length > TASK_LIST_LIMIT,
   };
 }
 

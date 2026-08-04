@@ -249,6 +249,35 @@ describe("Tasks API", () => {
         truncated: false,
       });
 
+      for (let index = 0; index <= 100; index += 1) {
+        await scheduledStore.saveTask({
+          ...scheduledTask,
+          id: `sched_public_crowding_${index}`,
+          createdAtMs: nowMs + 1_000 + index,
+          createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+          creatorIdentityId: otherIdentity!.id,
+          destination: {
+            channelId: "C456",
+            platform: "slack",
+            teamId: "T123",
+          },
+          task: { text: `Public crowding task ${index}.` },
+          updatedAtMs: nowMs + 1_000 + index,
+        });
+      }
+      const crowdedResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks");
+      expect(crowdedResponse.status).toBe(200);
+      const crowdedList = taskListSchema.parse(await crowdedResponse.json());
+      expect(crowdedList.tasks).toHaveLength(102);
+      expect(
+        crowdedList.tasks
+          .filter((task) => task.ownedByViewer)
+          .map((task) => task.id),
+      ).toEqual(["event_tasks_api", "sched_tasks_api"]);
+      expect(crowdedList.truncated).toBe(true);
+
       const deniedPublicDelete = await authenticatedApi(
         "viewer@example.com",
       ).request("http://localhost/api/tasks/event/event_public_tasks_api", {

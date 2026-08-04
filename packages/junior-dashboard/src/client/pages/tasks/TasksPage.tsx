@@ -16,17 +16,28 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
-import { peoplePath } from "../../format";
+import { formatTime, peoplePath } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 
 type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return formatTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  });
+}
+
+function formatRunDate(value: string): string {
+  return formatTime(value, {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    timeZoneName: "short",
+    year: "numeric",
+  });
 }
 
 function taskMatches(task: TaskSummary, search: string): boolean {
@@ -195,7 +206,7 @@ export function TasksPage(props: { enabled: boolean }) {
         )}
         {query.data?.truncated ? (
           <p className="m-0 text-center text-xs text-dashboard-text-muted">
-            Showing the 100 most recent tasks available to you.
+            Showing up to 100 recent tasks in each scope.
           </p>
         ) : null}
         {deletion.error ? (
@@ -287,7 +298,7 @@ function TaskRow(props: {
               <span className="text-dashboard-text">{task.schedule}</span>
               <span className="mx-2 opacity-45">·</span>
               {task.nextRunAt
-                ? `Next run ${formatDate(task.nextRunAt)}`
+                ? `Next run ${formatRunDate(task.nextRunAt)}`
                 : "No next run"}
             </>
           ) : (
