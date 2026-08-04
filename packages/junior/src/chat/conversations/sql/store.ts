@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { parseDestination, sameDestination } from "@/chat/destination";
+import { sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -31,9 +31,13 @@ import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
 } from "@/db/schema/destinations";
+import {
+  destinationFromRow,
+  privacyFromDestinationRow,
+  type DestinationRow,
+} from "./destination";
 
 type ConversationRow = typeof juniorConversations.$inferSelect;
-type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
 interface ConversationReadRow {
@@ -226,15 +230,6 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   throw new Error("Conversation record execution status is invalid");
 }
 
-function privacyFromRow(
-  row: ConversationReadRow,
-): ConversationPrivacy | undefined {
-  if (row.destination === null) {
-    return undefined;
-  }
-  return row.destination.visibility === "public" ? "public" : "private";
-}
-
 /** Reconstruct a Slack actor with the linked user name and identity-scoped provider fields. */
 function actorFromIdentityRow(
   identity: IdentityRow | null,
@@ -263,29 +258,10 @@ function actorFromIdentityRow(
   };
 }
 
-function destinationFromRow(
-  destination: DestinationRow | null,
-): Destination | undefined {
-  const value =
-    destination?.provider === "slack"
-      ? {
-          platform: "slack",
-          teamId: destination.providerTenantId,
-          channelId: destination.providerDestinationId,
-        }
-      : destination?.provider === "local"
-        ? {
-            platform: "local",
-            conversationId: destination.providerDestinationId,
-          }
-        : undefined;
-  return parseDestination(value);
-}
-
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = privacyFromRow(readRow);
+  const visibility = privacyFromDestinationRow(readRow.destination);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -300,9 +276,6 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     readRow.actorIdentity,
     readRow.actorUserDisplayName,
   );
-  if (readRow.destination !== null && !destination) {
-    throw new Error("Conversation record destination is invalid");
-  }
   const source =
     row.source === undefined || row.source === null
       ? undefined

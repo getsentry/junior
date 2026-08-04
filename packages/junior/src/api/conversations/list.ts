@@ -1,6 +1,10 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
+import {
+  destinationFromRow,
+  privacyFromDestinationRow,
+} from "@/chat/conversations/sql/destination";
 import { locationFromConversation } from "@/chat/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
@@ -30,8 +34,7 @@ async function conversationRows(
   return db
     .select({
       conversation: juniorConversations,
-      destinationId: juniorDestinations.id,
-      destinationVisibility: juniorDestinations.visibility,
+      destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -97,12 +100,10 @@ function conversationFromRow(row: ConversationRow): Conversation {
           ...(row.identityTenantId ? { teamId: row.identityTenantId } : {}),
         }
       : undefined;
-  const visibility = row.destinationId
-    ? row.destinationVisibility === "public"
-      ? "public"
-      : "private"
-    : undefined;
+  const destination = destinationFromRow(row.destination);
+  const visibility = privacyFromDestinationRow(row.destination);
   const location = locationFromConversation({
+    destination,
     source: sessionSource,
     visibility,
   });
@@ -149,8 +150,7 @@ export async function readConversationRecordFromSql(
   const rows = await db
     .select({
       conversation: juniorConversations,
-      destinationId: juniorDestinations.id,
-      destinationVisibility: juniorDestinations.visibility,
+      destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -176,8 +176,8 @@ export async function readConversationRecordFromSql(
     ? {
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
-        ...(row.destinationVisibility === "public" && row.destinationId
-          ? { locationId: row.destinationId }
+        ...(row.destination?.visibility === "public"
+          ? { locationId: row.destination.id }
           : {}),
         usage: row.conversation.usage,
         rootConversationId: row.conversation.rootConversationId,
@@ -226,8 +226,8 @@ export async function readConversationFeedFromSql(
           row.conversation.conversationId,
         ),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
-        ...(row.destinationVisibility === "public" && row.destinationId
-          ? { locationId: row.destinationId }
+        ...(row.destination?.visibility === "public"
+          ? { locationId: row.destination.id }
           : {}),
         usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });
