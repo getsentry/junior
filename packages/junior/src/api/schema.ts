@@ -84,12 +84,17 @@ export {
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
   eventTaskSummarySchema,
+  registeredTaskSummarySchema,
   scheduledTaskSummarySchema,
   taskListSchema,
   taskParamsSchema,
   taskSummarySchema,
 } from "./schema/task";
-export type { TaskList, TaskSummary } from "./schema/task";
+export type {
+  RegisteredTaskSummary,
+  TaskList,
+  TaskSummary,
+} from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

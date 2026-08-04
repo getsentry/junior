@@ -101,6 +101,9 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
 
   await expect(page).toHaveURL(`${server.baseURL}/tasks`);
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+  await expect(page.getByText("Registered plugin tasks")).toBeVisible();
+  await expect(page.getByText("processSession")).toBeVisible();
+  await expect(page.getByText("128 runs / 7d")).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();

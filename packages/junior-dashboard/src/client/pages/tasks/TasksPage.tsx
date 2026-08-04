@@ -1,8 +1,12 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { TaskSummary } from "@sentry/junior/api/schema";
+import type {
+  RegisteredTaskSummary,
+  TaskSummary,
+} from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 import {
+  Activity,
   CalendarClock,
   ChevronRight,
   Globe2,
@@ -68,6 +72,7 @@ export function TasksPage(props: { enabled: boolean }) {
   const [selectedTaskKey, setSelectedTaskKey] = useState<string>();
   const search = searchText.trim().toLowerCase();
   const tasks = query.data?.tasks ?? [];
+  const registeredTasks = query.data?.registeredTasks ?? [];
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
     (task) => task.destination.visibility === "public",
@@ -109,10 +114,28 @@ export function TasksPage(props: { enabled: boolean }) {
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
-          description="Scheduled and event-driven work across your Slack destinations."
+          description="Scheduled, event-driven, and registered plugin work."
           eyebrow="Automation"
           title="Tasks"
         />
+        {registeredTasks.length ? (
+          <Card>
+            <div className="border-b border-white/[0.07] px-4 py-3 sm:px-5">
+              <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+                Registered plugin tasks
+              </div>
+              <p className="mt-1 mb-0 text-sm text-dashboard-text-muted">
+                Background tasks installed by plugins, with run frequency and
+                last success.
+              </p>
+            </div>
+            <div className="divide-y divide-white/[0.07]" role="list">
+              {registeredTasks.map((task) => (
+                <RegisteredTaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          </Card>
+        ) : null}
         <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
           <TaskFilterGroup label="Scope">
             <ToggleButton
@@ -540,5 +563,45 @@ function TaskTag(props: {
     >
       {props.children}
     </span>
+  );
+}
+
+function RegisteredTaskRow(props: { task: RegisteredTaskSummary }) {
+  const { task } = props;
+  return (
+    <article
+      className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 p-4 sm:p-5"
+      role="listitem"
+    >
+      <div
+        aria-label="Registered plugin task"
+        className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
+        role="img"
+        title="Registered plugin task"
+      >
+        <Activity aria-hidden="true" size={17} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <TaskTag>registered</TaskTag>
+          <TaskTag>{task.pluginDisplayName}</TaskTag>
+        </div>
+        <h3 className="mt-2 mb-0 font-display text-base font-medium text-dashboard-text sm:text-lg">
+          {task.name}
+        </h3>
+        <div className="mt-3 text-sm text-dashboard-text-muted">
+          <span className="text-dashboard-text">
+            {task.runsLast7Days} runs / 7d
+          </span>
+          <span className="mx-2 opacity-45">·</span>
+          <span>
+            {task.totalRuns} total
+            {task.lastRunAt
+              ? ` · Last run ${formatRunDate(task.lastRunAt)}`
+              : " · Never run"}
+          </span>
+        </div>
+      </div>
+    </article>
   );
 }

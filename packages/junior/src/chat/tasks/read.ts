@@ -1,6 +1,7 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
 import type { TaskList, TaskSummary } from "@/api/schema/task";
+import { readRegisteredTasks } from "@/chat/tasks/registered";
 import { getDb } from "@/chat/db";
 import {
   deleteEventTask,
@@ -309,7 +310,9 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
     };
   });
+  const registeredTasks = await readRegisteredTasks();
   return {
+    registeredTasks,
     tasks,
     truncated:
       ownedCandidates.length > TASK_LIST_LIMIT ||

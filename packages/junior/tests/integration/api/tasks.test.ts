@@ -203,6 +203,7 @@ describe("Tasks API", () => {
       );
       expect(response.status).toBe(200);
       expect(taskListSchema.parse(await response.json())).toEqual({
+        registeredTasks: [],
         tasks: [
           expect.objectContaining({
             createdBy: "Aisha Patel",

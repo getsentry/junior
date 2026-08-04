@@ -183,6 +183,17 @@ export async function mockDashboardApis(page: Page) {
   await page.route("**/api/tasks", async (route) => {
     await route.fulfill({
       json: {
+        registeredTasks: [
+          {
+            id: "memory:processSession",
+            lastRunAt: "2026-08-04T05:42:18.000Z",
+            name: "processSession",
+            pluginDisplayName: "Memory",
+            pluginName: "memory",
+            runsLast7Days: 128,
+            totalRuns: 1842,
+          },
+        ],
         tasks: [
           {
             createdAt: "2026-07-28T16:00:00.000Z",
@@ -293,21 +304,12 @@ export async function mockDashboardApis(page: Page) {
           description: "GitHub repository and development workflow context.",
           displayName: "GitHub",
           name: "github",
-          tasks: [],
         },
         {
           configKeys: [],
           description: "Recurring and deferred Junior tasks.",
           displayName: "Scheduler",
           name: "scheduler",
-          tasks: [
-            {
-              lastRunAt: "2026-06-12T00:00:00.000Z",
-              name: "processSession",
-              runsLast7Days: 4,
-              totalRuns: 12,
-            },
-          ],
         },
       ],
     });

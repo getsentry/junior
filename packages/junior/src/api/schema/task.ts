@@ -43,8 +43,22 @@ export const taskSummarySchema = z.discriminatedUnion("kind", [
   eventTaskSummarySchema,
 ]);
 
+/** One registered plugin background task with run frequency and recency. */
+export const registeredTaskSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    lastRunAt: z.string().datetime().optional(),
+    name: z.string().min(1),
+    pluginDisplayName: z.string().min(1),
+    pluginName: z.string().min(1),
+    runsLast7Days: z.number().int().nonnegative(),
+    totalRuns: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const taskListSchema = z
   .object({
+    registeredTasks: z.array(registeredTaskSummarySchema),
     tasks: z.array(taskSummarySchema),
     truncated: z.boolean(),
   })
@@ -57,5 +71,8 @@ export const taskParamsSchema = z
   })
   .strict();
 
+export type RegisteredTaskSummary = z.output<
+  typeof registeredTaskSummarySchema
+>;
 export type TaskSummary = z.output<typeof taskSummarySchema>;
 export type TaskList = z.output<typeof taskListSchema>;

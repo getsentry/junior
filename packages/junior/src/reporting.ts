@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { readNamedStats } from "./stats";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -63,55 +62,14 @@ export async function readSkillReports(): Promise<SkillReport[]> {
 
 /** Read safe configured plugin metadata for authenticated runtime diagnostics. */
 export async function readPlugins(): Promise<Plugin[]> {
-  const [{ pluginCatalogRuntime }, { getPlugins }] = await Promise.all([
-    import("@/chat/plugins/catalog-runtime"),
-    import("@/chat/plugins/agent-hooks"),
-  ]);
-  const registeredPlugins = new Map(
-    getPlugins().map((plugin) => [plugin.manifest.name, plugin]),
-  );
-  const pluginTaskStats = new Map(
-    await Promise.all(
-      pluginCatalogRuntime
-        .getProviders()
-        .map(
-          async (plugin) =>
-            [
-              plugin.manifest.name,
-              await readNamedStats(plugin.manifest.name, "task.completed"),
-            ] as const,
-        ),
-    ),
-  );
-  const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const { pluginCatalogRuntime } =
+    await import("@/chat/plugins/catalog-runtime");
   return pluginsSchema.parse(
     pluginCatalogRuntime.getProviders().map((plugin) => ({
       configKeys: plugin.manifest.configKeys ?? [],
       description: plugin.manifest.description,
       displayName: plugin.manifest.displayName,
       name: plugin.manifest.name,
-      tasks: Object.keys(
-        registeredPlugins.get(plugin.manifest.name)?.tasks ?? {},
-      ).map((name) => {
-        const stats = (pluginTaskStats.get(plugin.manifest.name) ?? []).filter(
-          (stat) => stat.name === name,
-        );
-        const lastRunAtMs = Math.max(
-          ...stats.map((stat) => stat.lastOccurredAtMs ?? 0),
-        );
-        return {
-          name,
-          totalRuns: stats.reduce((total, stat) => total + stat.count, 0),
-          runsLast7Days: stats
-            .filter((stat) => stat.date >= sevenDaysAgo)
-            .reduce((total, stat) => total + stat.count, 0),
-          ...(lastRunAtMs > 0
-            ? { lastRunAt: new Date(lastRunAtMs).toISOString() }
-            : {}),
-        };
-      }),
     })),
   );
 }
