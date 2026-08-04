@@ -700,7 +700,7 @@ const HARNESS_ENV_KEYS = [
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
 const SENTRY_EVAL_SCOPE =
-  "alerts:write event:read org:read project:read team:read";
+  "alerts:write event:write member:read org:read project:releases project:write team:write";
 const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 })
