@@ -52,6 +52,8 @@ const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT = 10;
 const PREFERENCE_ADJUDICATION_VECTOR_LIMIT = 5;
 const VECTOR_SEARCH_OVERFETCH = 4;
+const LEXICAL_RANK_OVERFETCH = 4;
+const MAX_LEXICAL_RANK_CANDIDATES = 1_000;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
 
@@ -947,7 +949,7 @@ async function listVisibleMemories(args: {
   return rows.map(parseMemoryRow);
 }
 
-/** Search active visible records with PostgreSQL full-text ranking. */
+/** Search a bounded active candidate set with PostgreSQL full-text ranking. */
 async function searchVisibleLexicalMemories(args: {
   db: MemoryDb;
   limit: number;
@@ -967,20 +969,49 @@ async function searchVisibleLexicalMemories(args: {
     )
     FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
   )`;
-  const textsearch = juniorMemoryMemories.searchVector;
-  const textRank = sql<number>`ts_rank_cd(${textsearch}, ${tsquery})`;
-  const rows = await args.db
-    .select({
-      memory: juniorMemoryMemories,
-      textRank,
-    })
+  const candidateLimit = Math.min(
+    MAX_LEXICAL_RANK_CANDIDATES,
+    args.limit * LEXICAL_RANK_OVERFETCH,
+  );
+  const candidates = args.db
+    .select()
     .from(juniorMemoryMemories)
-    .where(and(predicate, sql`${textsearch} @@ ${tsquery}`))
+    .where(
+      and(predicate, sql`${juniorMemoryMemories.searchVector} @@ ${tsquery}`),
+    )
     .orderBy(
-      desc(textRank),
       desc(juniorMemoryMemories.observedAtMs),
       asc(juniorMemoryMemories.id),
     )
+    .limit(candidateLimit)
+    .as("lexical_candidates");
+  const textRank = sql<number>`ts_rank_cd(${candidates.searchVector}, ${tsquery})`;
+  const rows = await args.db
+    .select({
+      memory: {
+        archiveReason: candidates.archiveReason,
+        archivedAtMs: candidates.archivedAtMs,
+        content: candidates.content,
+        createdAtMs: candidates.createdAtMs,
+        expiresAtMs: candidates.expiresAtMs,
+        id: candidates.id,
+        idempotencyKey: candidates.idempotencyKey,
+        kind: candidates.kind,
+        observedAtMs: candidates.observedAtMs,
+        scope: candidates.scope,
+        scopeKey: candidates.scopeKey,
+        searchVector: candidates.searchVector,
+        sourceKey: candidates.sourceKey,
+        sourcePlatform: candidates.sourcePlatform,
+        subjectKey: candidates.subjectKey,
+        subjectType: candidates.subjectType,
+        supersededAtMs: candidates.supersededAtMs,
+        supersededById: candidates.supersededById,
+      },
+      textRank,
+    })
+    .from(candidates)
+    .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
   const ranks = denseRanks(rows, (row) => Number(row.textRank));
   return rows.map((row, index) => ({
