@@ -101,9 +101,10 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
 
   await expect(page).toHaveURL(`${server.baseURL}/tasks`);
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
-  await expect(page.getByText("Registered plugin tasks")).toBeVisible();
+  await expect(page.getByText("3 tasks")).toBeVisible();
   await expect(page.getByText("processSession")).toBeVisible();
   await expect(page.getByText("128 runs / 7d")).toBeVisible();
+  await expect(page.getByText(/Last execution/)).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
@@ -123,6 +124,11 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await expect(
     page.getByText("Notify responders when the incident changes"),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "registered", exact: true }).click();
+  await expect(page.getByText("processSession")).toBeVisible();
+  await expect(
+    page.getByText("Send the weekly project summary"),
   ).not.toBeVisible();
   await page.getByRole("button", { name: "event", exact: true }).click();
   await expect(
