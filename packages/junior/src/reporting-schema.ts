@@ -8,12 +8,22 @@ export const healthReportSchema = z
   })
   .strict();
 
+export const pluginTaskReportSchema = z
+  .object({
+    lastRunAt: z.string().optional(),
+    name: z.string(),
+    runsLast7Days: z.number().int().nonnegative(),
+    totalRuns: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const pluginSchema = z
   .object({
     configKeys: z.array(z.string()),
     description: z.string(),
     displayName: z.string(),
     name: z.string(),
+    tasks: z.array(pluginTaskReportSchema),
   })
   .strict();
 export const pluginsSchema = z.array(pluginSchema);

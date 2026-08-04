@@ -1,4 +1,4 @@
-import { Boxes, KeyRound, Sparkles } from "lucide-react";
+import { Activity, Boxes, KeyRound, Sparkles } from "lucide-react";
 
 import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
@@ -15,7 +15,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
         title="Details"
       />
       <Card>
-        <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-4">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
           <Detail
             icon={Sparkles}
@@ -26,6 +26,11 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
             icon={KeyRound}
             label="Configuration"
             value={String(props.plugin.configKeys.length)}
+          />
+          <Detail
+            icon={Activity}
+            label="Tasks"
+            value={String(props.plugin.tasks.length)}
           />
         </div>
         <div className="grid gap-5 border-t border-white/[0.06] p-4 sm:p-5 lg:grid-cols-2">
@@ -41,6 +46,33 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
                 items={props.plugin.configKeys}
                 title="Configuration keys"
               />
+            </div>
+          ) : null}
+          {props.plugin.tasks.length ? (
+            <div className="lg:col-span-2">
+              <h3 className="m-0 font-mono text-[0.6rem] font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
+                Background tasks
+              </h3>
+              <div className="mt-2.5 divide-y divide-white/[0.07] rounded border border-white/[0.07] bg-black/20">
+                {props.plugin.tasks.map((task) => (
+                  <div
+                    className="grid gap-1 px-3 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5"
+                    key={task.name}
+                  >
+                    <span className="font-mono text-dashboard-text">
+                      {task.name}
+                    </span>
+                    <span className="text-dashboard-text-muted">
+                      {task.runsLast7Days} runs / 7d
+                    </span>
+                    <span className="text-dashboard-text-muted">
+                      {task.lastRunAt
+                        ? `Last run ${new Date(task.lastRunAt).toLocaleString()}`
+                        : "Never run"}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>

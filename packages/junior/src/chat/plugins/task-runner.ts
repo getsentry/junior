@@ -18,6 +18,7 @@ import {
   pluginRunContextSchema,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -53,6 +54,7 @@ import {
 } from "./task-message";
 import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { incrementStat } from "@/stats";
 import type { Lock } from "chat";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -458,5 +460,18 @@ export async function processPluginTask(
     await resolved.task.run(
       taskPluginContext(resolved.plugin, message, options),
     );
+    try {
+      await incrementStat({
+        metric: "task.completed",
+        name: message.name,
+        namespace: message.plugin,
+      });
+    } catch (error) {
+      logWarn("plugin.task.stat_failed", {
+        error,
+        "app.plugin.name": message.plugin,
+        "app.plugin.task.name": message.name,
+      });
+    }
   });
 }

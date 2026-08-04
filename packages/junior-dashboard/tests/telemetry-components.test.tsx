@@ -152,6 +152,7 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
       name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
     name,
     ...overrides,
+    tasks: overrides.tasks ?? [],
   };
 }
 
@@ -1350,7 +1351,16 @@ describe("dashboard canonical-event components", () => {
       plugin("github", {
         configKeys: ["github.organization"],
       }),
-      plugin("scheduler", {}),
+      plugin("scheduler", {
+        tasks: [
+          {
+            lastRunAt: "2026-01-01T10:00:00.000Z",
+            name: "processSession",
+            runsLast7Days: 12,
+            totalRuns: 40,
+          },
+        ],
+      }),
     ];
     data.skills = [{ name: "scheduled-tasks", pluginProvider: "scheduler" }];
     data.pluginReports!.reports = [
@@ -1374,6 +1384,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
     expect(html).toContain(">scheduled-tasks<");
+    expect(html).toContain(">processSession<");
+    expect(html).toContain("12 runs / 7d");
+    expect(html).toContain("Last run");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });
