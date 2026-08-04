@@ -18,6 +18,11 @@ import { getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
+import {
+  getSandboxResourceConfig,
+  setSandboxResourceConfig,
+  type SandboxResourceConfig,
+} from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,
@@ -103,7 +108,7 @@ export interface JuniorAppOptions {
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
-  sandbox?: {
+  sandbox?: SandboxResourceConfig & {
     /**
      * Egress domains allowed to carry Sentry trace propagation headers.
      * Entries may be exact domains or leading wildcard domains such as
@@ -588,6 +593,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
+  const previousSandboxResources = getSandboxResourceConfig();
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -624,6 +630,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
+    setSandboxResourceConfig(options?.sandbox);
     setConfigDefaults(options?.configDefaults);
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
@@ -645,6 +652,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     setSlackReactionConfig(previousSlackReactionConfig);
+    setSandboxResourceConfig(previousSandboxResources);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
     throw error;
   }
