@@ -337,7 +337,7 @@ describe("Pi tool adapter", () => {
     );
   });
 
-  it("activates an MCP provider before reviewing the dispatched action", async () => {
+  it("reviews the MCP dispatcher before activating the requested provider", async () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({
       content: [{ type: "text" as const, text: "deleted" }],
@@ -402,19 +402,30 @@ describe("Pi tool adapter", () => {
           arguments: { workspace: "preview-42" },
         },
         tool: expect.objectContaining({
-          annotations: managedTool.annotations,
-          description: managedTool.description,
-          dispatcherName: "callMcpTool",
-          name: managedTool.name,
+          annotations: {
+            destructiveHint: true,
+            idempotentHint: false,
+            openWorldHint: true,
+            readOnlyHint: false,
+          },
+          name: "callMcpTool",
         }),
       }),
       {},
     );
-    expect(activateProvider.mock.invocationCallOrder[0]).toBeLessThan(
-      review.mock.invocationCallOrder[0]!,
-    );
+    expect(activateProvider).toHaveBeenCalledWith("demo");
     expect(review.mock.invocationCallOrder[0]).toBeLessThan(
+      activateProvider.mock.invocationCallOrder[0]!,
+    );
+    expect(activateProvider.mock.invocationCallOrder[0]).toBeLessThan(
       execute.mock.invocationCallOrder[0]!,
+    );
+    expect(execute).toHaveBeenCalledWith(
+      { workspace: "preview-42" },
+      {
+        conversationPrivacy: "private",
+        toolCallId: "tool-mcp",
+      },
     );
   });
 
