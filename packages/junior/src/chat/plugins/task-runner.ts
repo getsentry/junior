@@ -54,6 +54,7 @@ import {
 } from "./task-message";
 import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { incrementStat } from "@/stats";
 import type { Lock } from "chat";
 
@@ -473,5 +474,6 @@ export async function processPluginTask(
         "app.plugin.task.name": message.name,
       });
     }
+    await recordTaskExecution("registered");
   });
 }

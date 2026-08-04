@@ -203,6 +203,7 @@ describe("Tasks API", () => {
       );
       expect(response.status).toBe(200);
       expect(taskListSchema.parse(await response.json())).toEqual({
+        executionDays: expect.any(Array),
         registeredTasks: [],
         tasks: [
           expect.objectContaining({
@@ -274,6 +275,7 @@ describe("Tasks API", () => {
       ).request("http://localhost/api/tasks");
       expect(crowdedResponse.status).toBe(200);
       const crowdedList = taskListSchema.parse(await crowdedResponse.json());
+      expect(crowdedList.executionDays).toHaveLength(90);
       expect(crowdedList.tasks).toHaveLength(102);
       expect(
         crowdedList.tasks
@@ -305,6 +307,7 @@ describe("Tasks API", () => {
       ).request("http://localhost/api/tasks");
       expect(privateResponse.status).toBe(200);
       const privateList = taskListSchema.parse(await privateResponse.json());
+      expect(privateList.executionDays).toHaveLength(90);
       expect(privateList.tasks.map((task) => task.id)).toEqual([
         "event_tasks_api",
         "sched_tasks_api",

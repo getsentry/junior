@@ -56,8 +56,19 @@ export const registeredTaskSummarySchema = z
   })
   .strict();
 
+/** One UTC day of successful task executions stacked by task type. */
+export const taskExecutionDaySchema = z
+  .object({
+    date: z.string().min(1),
+    event: z.number().int().nonnegative(),
+    registered: z.number().int().nonnegative(),
+    scheduled: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const taskListSchema = z
   .object({
+    executionDays: z.array(taskExecutionDaySchema),
     registeredTasks: z.array(registeredTaskSummarySchema),
     tasks: z.array(taskSummarySchema),
     truncated: z.boolean(),
@@ -74,5 +85,6 @@ export const taskParamsSchema = z
 export type RegisteredTaskSummary = z.output<
   typeof registeredTaskSummarySchema
 >;
+export type TaskExecutionDay = z.output<typeof taskExecutionDaySchema>;
 export type TaskSummary = z.output<typeof taskSummarySchema>;
 export type TaskList = z.output<typeof taskListSchema>;

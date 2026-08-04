@@ -10,6 +10,7 @@ import {
 } from "@/chat/agent-dispatch/context";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
 import type { ScheduledRun, ScheduledTask } from "./types";
@@ -121,6 +122,7 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
+    await recordTaskExecution("scheduled", { nowMs: args.nowMs });
     return true;
   }
   if (args.dispatch.status === "blocked") {

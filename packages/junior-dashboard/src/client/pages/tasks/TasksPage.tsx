@@ -23,6 +23,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
 import { formatTime, peoplePath } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
+import { TaskExecutionChart } from "./TaskExecutionChart";
 
 type TaskFilter = "all" | "registered" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
@@ -140,6 +141,9 @@ export function TasksPage(props: { enabled: boolean }) {
           eyebrow="Automation"
           title="Tasks"
         />
+        {query.data?.executionDays?.length ? (
+          <TaskExecutionChart days={query.data.executionDays} />
+        ) : null}
         <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
           <TaskFilterGroup label="Scope">
             <ToggleButton

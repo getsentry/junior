@@ -1,6 +1,7 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
 import type { TaskList, TaskSummary } from "@/api/schema/task";
+import { readTaskExecutionDays } from "@/chat/tasks/execution-stats";
 import { readRegisteredTasks } from "@/chat/tasks/registered";
 import { getDb } from "@/chat/db";
 import {
@@ -310,8 +311,12 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
     };
   });
-  const registeredTasks = await readRegisteredTasks();
+  const [registeredTasks, executionDays] = await Promise.all([
+    readRegisteredTasks(),
+    readTaskExecutionDays(),
+  ]);
   return {
+    executionDays,
     registeredTasks,
     tasks,
     truncated:

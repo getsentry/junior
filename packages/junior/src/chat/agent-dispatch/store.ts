@@ -11,6 +11,7 @@ import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -459,7 +460,8 @@ export async function markDispatchCompleted(
   id: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
+  const previous = await getDispatchRecord(id);
+  const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record
       : {
@@ -469,6 +471,14 @@ export async function markDispatchCompleted(
           status: "completed",
         },
   );
+  if (
+    next?.status === "completed" &&
+    previous?.status !== "completed" &&
+    next.plugin === "junior"
+  ) {
+    await recordTaskExecution("event", { nowMs: next.updatedAtMs });
+  }
+  return next;
 }
 
 /** Project a terminal conversation turn failure to the plugin API. */

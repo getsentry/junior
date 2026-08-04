@@ -92,6 +92,7 @@ export {
 } from "./schema/task";
 export type {
   RegisteredTaskSummary,
+  TaskExecutionDay,
   TaskList,
   TaskSummary,
 } from "./schema/task";

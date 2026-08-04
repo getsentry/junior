@@ -101,6 +101,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
 
   await expect(page).toHaveURL(`${server.baseURL}/tasks`);
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Activity over time" }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Task executions during the last 30 days"),
+  ).toBeVisible();
   await expect(page.getByText("3 tasks")).toBeVisible();
   await expect(page.getByText("processSession")).toBeVisible();
   await expect(page.getByText("128 runs / 7d")).toBeVisible();
