@@ -103,6 +103,8 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByLabel("Scheduled task")).toBeVisible();
+  await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").first()).toBeVisible();
   await expect(
     page.getByText("Notify responders when the incident changes"),
@@ -118,6 +120,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   ).toBeVisible();
   await expect(page.getByText("#incident-response")).toBeVisible();
   await expect(page.getByText("Created by Aisha Patel")).toBeVisible();
+  await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });

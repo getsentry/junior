@@ -213,6 +213,7 @@ describe("Tasks API", () => {
             id: "event_public_tasks_api",
             kind: "event",
             ownedByViewer: false,
+            source: "pagerduty",
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
@@ -228,6 +229,7 @@ describe("Tasks API", () => {
             id: "event_tasks_api",
             kind: "event",
             ownedByViewer: true,
+            source: "linear",
             triggerAvailable: false,
           }),
           expect.objectContaining({

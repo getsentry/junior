@@ -216,6 +216,7 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: true,
             resource: "Issue · ACME-42",
+            source: "github",
             triggerAvailable: true,
           },
           {
@@ -233,6 +234,7 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: false,
             resource: "Incident · INC-17",
+            source: "pagerduty",
             triggerAvailable: false,
           },
         ],

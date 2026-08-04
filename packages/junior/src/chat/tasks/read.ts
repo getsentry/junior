@@ -196,6 +196,7 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       kind: "event",
       ownedByViewer: candidate.ownedByViewer,
       resource: `${task.trigger.label} · ${task.trigger.identifier}`,
+      source: task.trigger.namespace,
       triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
     };
   });

@@ -32,6 +32,7 @@ export const eventTaskSummarySchema = taskSummaryBaseSchema
     events: z.array(z.string().min(1)).min(1),
     kind: z.literal("event"),
     resource: z.string().min(1),
+    source: z.string().min(1),
     triggerAvailable: z.boolean(),
   })
   .strict();
