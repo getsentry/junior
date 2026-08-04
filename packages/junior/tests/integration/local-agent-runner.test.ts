@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
+  createLocalSource,
   defineJuniorPlugin,
   type PluginRunContext,
 } from "@sentry/junior-plugin-api";
@@ -17,7 +18,10 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { persistRunningSessionRecord } from "@/chat/services/turn-session-record";
+import {
+  completeDeliveredTurn,
+  persistRunningSessionRecord,
+} from "@/chat/services/turn-session-record";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -25,7 +29,12 @@ import {
 import {
   commitMessages,
   loadProjection,
+  recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
+import {
+  getAgentTurnSessionRecord,
+  listAgentTurnSessionSummariesForConversation,
+} from "@/chat/state/turn-session";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
@@ -1138,6 +1147,156 @@ describe("local agent runner", () => {
     );
 
     expect(contexts[0]?.piMessages).toEqual([generatedMessages[0]]);
+  });
+
+  it("keeps mid-turn checkpoints durable after host-only MCP events and resumes from them", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "checkpoint-host-only",
+      cwd: "/tmp/local-agent-runner-checkpoint-host-only",
+    });
+    expect(conversationId).toBeDefined();
+
+    const destination = {
+      platform: "local" as const,
+      conversationId: conversationId!,
+    };
+    const source = createLocalSource(destination.conversationId);
+    const userMessage = userPiMessage("connect github and continue", 1);
+    const assistantPartial = assistantPiMessage("connecting github", 2);
+    const toolResult = {
+      role: "toolResult",
+      toolCallId: "tool-call-github",
+      toolName: "searchMcpTools",
+      content: [{ type: "text", text: "github tools ready" }],
+      isError: false,
+      timestamp: 3,
+    } as PiMessage;
+    const checkpointMessages: PiMessage[] = [
+      userMessage,
+      assistantPartial,
+      toolResult,
+    ];
+    const finalAssistant = assistantPiMessage("github is connected", 4);
+    const finalMessages: PiMessage[] = [...checkpointMessages, finalAssistant];
+    const sessionId = "turn-checkpoint-host-only";
+
+    // Product path: checkpoint a running turn, let a host-only MCP connect
+    // advance the global cursor, checkpoint again, complete, then prove the
+    // next local turn still loads the durable history.
+    expect(
+      await persistRunningSessionRecord({
+        modelId: "fake-local-agent",
+        conversationId: conversationId!,
+        destination,
+        source,
+        sessionId,
+        sliceId: 1,
+        messages: checkpointMessages,
+        surface: "internal",
+        turnStartMessageIndex: 0,
+      }),
+    ).toBe(true);
+
+    await recordMcpProviderConnected({
+      conversationId: conversationId!,
+      provider: "github",
+    });
+
+    expect(
+      await persistRunningSessionRecord({
+        modelId: "fake-local-agent",
+        conversationId: conversationId!,
+        destination,
+        source,
+        sessionId,
+        sliceId: 1,
+        messages: checkpointMessages,
+        surface: "internal",
+        turnStartMessageIndex: 0,
+      }),
+    ).toBe(true);
+
+    const running = await getAgentTurnSessionRecord(conversationId!, sessionId);
+    expect(running).toMatchObject({
+      state: "running",
+      messageSeqs: [0, 1, 2],
+      piMessages: checkpointMessages,
+    });
+    expect(running?.committedSeq).toBeGreaterThanOrEqual(3);
+
+    const historyAfterHostOnly = await getConversationEventStore().loadHistory(
+      conversationId!,
+    );
+    expect(
+      historyAfterHostOnly.map((event) => [event.seq, event.data.type]),
+    ).toEqual([
+      [0, "user_message"],
+      [1, "assistant_message"],
+      [2, "tool_result"],
+      [3, "mcp_provider_connected"],
+    ]);
+
+    await completeDeliveredTurn({
+      conversationId: conversationId!,
+      destination,
+      source,
+      sessionId,
+      sliceId: 1,
+      messages: finalMessages,
+      modelId: "fake-local-agent",
+      surface: "internal",
+      turnStartMessageIndex: 0,
+    });
+
+    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
+      finalMessages,
+    );
+
+    const completed = await getAgentTurnSessionRecord(
+      conversationId!,
+      sessionId,
+    );
+    expect(completed).toMatchObject({
+      state: "completed",
+      messageSeqs: [0, 1, 2, 4],
+      piMessages: finalMessages,
+    });
+    expect(completed?.committedSeq).toBeGreaterThanOrEqual(4);
+
+    const summaries = await listAgentTurnSessionSummariesForConversation(
+      conversationId!,
+    );
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        conversationId: conversationId!,
+        sessionId,
+        state: "completed",
+      }),
+    ]);
+    expect(summaries[0]).not.toHaveProperty("messageSeqs");
+    expect(summaries[0]).not.toHaveProperty("committedSeq");
+    expect(summaries[0]).not.toHaveProperty("historyVersion");
+
+    const followUpContexts: FlatAgentRunRequest[] = [];
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "what did you connect?",
+      },
+      {
+        deliverReply: async () => undefined,
+        agentRunner: {
+          run: async (request) => {
+            followUpContexts.push(flattenAgentRunRequestForTest(request));
+            return completedAgentRun(successReply("github"));
+          },
+        },
+      },
+    );
+
+    // Local follow-ups load durable Pi history with trailing assistant output
+    // trimmed so the new user turn can continue from a safe boundary.
+    expect(followUpContexts[0]?.piMessages).toEqual(checkpointMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {

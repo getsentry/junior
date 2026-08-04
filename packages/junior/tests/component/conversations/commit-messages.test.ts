@@ -85,7 +85,7 @@ describe("commitMessages cursor fencing", () => {
     }
   });
 
-  it("rejects a stale base cursor before writing", async () => {
+  it("rejects a stale base when live history diverges from the next commit", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -96,9 +96,11 @@ describe("commitMessages cursor fencing", () => {
         executor: fixture.sql,
       });
 
+      // Concurrent checkpoint wrote a different assistant reply than this
+      // caller still wants to commit. Same-prefix races may adopt; rewrites must not.
       await commitMessages({
         conversationId: CONVERSATION_ID,
-        messages: [user("hello", 1), assistant("hi", 2)],
+        messages: [user("hello", 1), assistant("other path", 2)],
         executor: fixture.sql,
       });
 
@@ -168,6 +170,50 @@ describe("commitMessages cursor fencing", () => {
         [2, "mcp_provider_connected"],
         [3, "user_message"],
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("adopts a concurrent same-prefix agent commit past a stale fence base", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+
+      const first = await commitMessages({
+        conversationId: CONVERSATION_ID,
+        messages: [user("hello", 1)],
+        executor: fixture.sql,
+      });
+
+      // A racing turn_end checkpoint already wrote the tool boundary while the
+      // session record still points at the pre-tool fence.
+      const concurrent = await commitMessages({
+        conversationId: CONVERSATION_ID,
+        messages: [user("hello", 1), assistant("working", 2), user("done", 3)],
+        executor: fixture.sql,
+      });
+
+      const second = await commitMessages({
+        conversationId: CONVERSATION_ID,
+        messages: [
+          user("hello", 1),
+          assistant("working", 2),
+          user("done", 3),
+        ],
+        base: {
+          committedSeq: first.committedSeq,
+          historyVersion: first.historyVersion,
+          messageSeqs: first.messageSeqs,
+          messages: first.messages,
+          provenance: first.provenance,
+        },
+        executor: fixture.sql,
+      });
+
+      expect(second.messageSeqs).toEqual(concurrent.messageSeqs);
+      expect(second.committedSeq).toBe(concurrent.committedSeq);
+      expect(second.historyVersion).toBe(concurrent.historyVersion);
     } finally {
       await fixture.close();
     }

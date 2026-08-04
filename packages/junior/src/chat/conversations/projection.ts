@@ -357,25 +357,47 @@ async function resolveCommitBase(
     if (live.committedSeq === args.base.committedSeq) {
       return args.base;
     }
-    // Global cursor advanced after the caller's base. Host-only facts (MCP
-    // connect, turn_context, native events) do that without changing agent
-    // history; concurrent agent-message writes must still fail closed.
+    // Global cursor advanced after the caller's base. That can be:
+    // - host-only facts (MCP connect, turn_context, tool_execution_started)
+    // - a concurrent checkpoint that already committed part of `nextLocalMessages`
+    //   (turn_end persist racing a timeout/yield continuation)
+    // Divergent agent-history rewrites still fail closed.
     const currentEvents = await eventStore.loadCurrentHistory(
       args.conversationId,
     );
     const current = projectConversationEvents(currentEvents);
+    const basePrefix = countMatchingPrefix(
+      args.base.messages,
+      current.messages,
+    );
     if (
-      current.messages.length !== args.base.messages.length ||
-      current.seqs.length !== args.base.messageSeqs.length ||
-      countMatchingPrefix(args.base.messages, current.messages) !==
-        args.base.messages.length ||
+      basePrefix !== args.base.messages.length ||
       args.base.messageSeqs.some((seq, index) => current.seqs[index] !== seq)
     ) {
       throwCommittedBoundaryChanged(args.conversationId);
     }
+    if (current.messages.length === args.base.messages.length) {
+      return {
+        ...args.base,
+        committedSeq: live.committedSeq,
+      };
+    }
+    // Live agent history already extends the caller's base. Adopt it only when
+    // those extras are exactly the prefix of what this commit still wants.
+    const adoptedMessages = current.messages;
+    const adoptedPrefix = countMatchingPrefix(
+      adoptedMessages,
+      nextLocalMessages,
+    );
+    if (adoptedPrefix !== adoptedMessages.length) {
+      throwCommittedBoundaryChanged(args.conversationId);
+    }
     return {
-      ...args.base,
       committedSeq: live.committedSeq,
+      historyVersion: live.historyVersion,
+      messageSeqs: current.seqs,
+      messages: adoptedMessages,
+      provenance: current.provenance,
     };
   }
 

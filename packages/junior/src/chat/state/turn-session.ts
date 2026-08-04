@@ -7,6 +7,7 @@
  * `junior_conversation_events` so resumes can materialize the exact continuable
  * boundary without duplicating the event history.
  */
+import { isDeepStrictEqual } from "node:util";
 import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
 import {
   actorSchema,
@@ -321,6 +322,15 @@ function materializeAgentTurnSessionRecord(
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
   restoreVolatileContext = true,
+  /**
+   * Fence cursor for a newer replacement epoch. The stored record still points
+   * at the pre-handoff boundary; without this override it would look like a
+   * valid commit base for the replacement messages.
+   */
+  replacementFence?: {
+    committedSeq: number;
+    historyVersion: number;
+  },
 ): AgentTurnSessionRecord {
   const piMessages =
     restoreVolatileContext &&
@@ -339,9 +349,12 @@ function materializeAgentTurnSessionRecord(
     updatedAtMs: stored.updatedAtMs,
     piMessages,
     piMessageProvenance: piProjection.provenance,
-    committedSeq: stored.committedSeq,
-    historyVersion: stored.historyVersion ?? 0,
-    messageSeqs: stored.messageSeqs ?? piProjection.seqs,
+    committedSeq: replacementFence?.committedSeq ?? stored.committedSeq,
+    historyVersion:
+      replacementFence?.historyVersion ?? stored.historyVersion ?? 0,
+    messageSeqs: replacementFence
+      ? piProjection.seqs
+      : (stored.messageSeqs ?? piProjection.seqs),
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
@@ -470,6 +483,12 @@ async function materializeStoredAgentTurnSessionRecord(
     !followsReplacement &&
       (parsed.historyVersion === undefined ||
         parsed.historyVersion === currentHistoryVersion),
+    followsReplacement
+      ? {
+          committedSeq: currentHistory.at(-1)?.seq ?? -1,
+          historyVersion: currentHistoryVersion,
+        }
+      : undefined,
   );
 }
 
@@ -774,11 +793,20 @@ export async function upsertAgentTurnSessionRecord(args: {
   const durableExistingMessages = existingRecord
     ? stripRuntimeTurnContext(existingRecord.piMessages)
     : undefined;
+  const nextDurableMessages = stripRuntimeTurnContext(args.piMessages);
+  // Only fence on the prior session base when this write is a true prefix
+  // extension. Compaction/handoff replacements intentionally rewrite history
+  // and must take the cold path so commitMessages can adopt the new epoch.
   const commitBase =
     existingRecord &&
     durableExistingMessages &&
     existingRecord.messageSeqs.length === durableExistingMessages.length &&
-    existingRecord.piMessageProvenance.length === durableExistingMessages.length
+    existingRecord.piMessageProvenance.length ===
+      durableExistingMessages.length &&
+    nextDurableMessages.length >= durableExistingMessages.length &&
+    durableExistingMessages.every((message, index) =>
+      isDeepStrictEqual(message, nextDurableMessages[index]),
+    )
       ? {
           committedSeq: existingRecord.committedSeq,
           historyVersion: existingRecord.historyVersion,
