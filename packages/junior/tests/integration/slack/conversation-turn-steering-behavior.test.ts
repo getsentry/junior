@@ -523,7 +523,7 @@ describe("Slack behavior: durable turn steering", () => {
         user: "U456",
       },
       {
-        text: `  !! <@${SLACK_BOT_USER_ID}> stop and reconsider`,
+        text: `<@${SLACK_BOT_USER_ID}> !! stop and reconsider`,
         ts: "1712345.000600",
         user: "U999",
       },
