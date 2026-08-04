@@ -107,6 +107,7 @@ export async function runUpgrade(
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({
     connectionString: sql.databaseUrl,
     driver: sql.driver,
+    statementTimeoutMs: false,
   });
   try {
     const pluginSet =

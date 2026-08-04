@@ -141,12 +141,14 @@ class PostgresExecutor implements JuniorSqlExecutor {
 export function createPostgresJuniorSqlExecutor(args: {
   applicationName?: string;
   connectionString: string;
+  statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   return new PostgresExecutor(
     new Pool({
       application_name: args.applicationName,
       connectionString: args.connectionString,
       max: 3,
+      statement_timeout: args.statementTimeoutMs,
     }),
   );
 }

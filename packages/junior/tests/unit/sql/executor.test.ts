@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JuniorSqlExecutor } from "@/db/db";
-import { createJuniorSqlExecutor } from "@/db/executor";
+import {
+  createJuniorSqlExecutor,
+  DEFAULT_SQL_STATEMENT_TIMEOUT_MS,
+} from "@/db/executor";
+import { createNeonJuniorSqlExecutor } from "@/db/neon";
+import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 const EXECUTORS = vi.hoisted(() => ({
   neon: executor("neon"),
   postgres: executor("postgres"),
@@ -30,6 +35,10 @@ vi.mock("@/db/postgres", () => ({
 }));
 
 describe("createJuniorSqlExecutor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("uses node-postgres for the postgres driver", () => {
     expect(
       createJuniorSqlExecutor({
@@ -37,6 +46,10 @@ describe("createJuniorSqlExecutor", () => {
         driver: "postgres",
       }),
     ).toBe(EXECUTORS.postgres);
+    expect(createPostgresJuniorSqlExecutor).toHaveBeenCalledWith({
+      connectionString: "postgres://junior:junior@localhost:5432/junior",
+      statementTimeoutMs: DEFAULT_SQL_STATEMENT_TIMEOUT_MS,
+    });
   });
 
   it("uses Neon for the neon driver", () => {
@@ -46,6 +59,24 @@ describe("createJuniorSqlExecutor", () => {
         driver: "neon",
       }),
     ).toBe(EXECUTORS.neon);
+    expect(createNeonJuniorSqlExecutor).toHaveBeenCalledWith({
+      connectionString: "postgres://junior:junior@example.test/junior",
+      statementTimeoutMs: DEFAULT_SQL_STATEMENT_TIMEOUT_MS,
+    });
+  });
+
+  it("allows migration executors to disable the runtime timeout", () => {
+    expect(
+      createJuniorSqlExecutor({
+        connectionString: "postgres://junior:junior@example.test/junior",
+        driver: "neon",
+        statementTimeoutMs: false,
+      }),
+    ).toBe(EXECUTORS.neon);
+    expect(createNeonJuniorSqlExecutor).toHaveBeenCalledWith({
+      connectionString: "postgres://junior:junior@example.test/junior",
+      statementTimeoutMs: false,
+    });
   });
 
   it("passes non-URL connection strings to the configured driver", () => {

@@ -636,6 +636,26 @@ VALUES ('host-migration', 9999999999999)
   });
 
   it.skipIf(!hasJuniorPostgresTestDatabase())(
+    "cancels runtime queries after the configured statement timeout",
+    async () => {
+      const fixture = await createEmptyJuniorSqlFixture();
+      const executor = createPostgresJuniorSqlExecutor({
+        connectionString: fixture.connectionString,
+        statementTimeoutMs: 10,
+      });
+
+      try {
+        await expect(
+          executor.query("SELECT pg_sleep(0.05)"),
+        ).rejects.toMatchObject({ code: "57014" });
+      } finally {
+        await executor.close();
+        await fixture.close();
+      }
+    },
+  );
+
+  it.skipIf(!hasJuniorPostgresTestDatabase())(
     "serializes concurrent core migrations",
     async () => {
       const fixture = await createEmptyJuniorSqlFixture();

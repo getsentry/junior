@@ -40,6 +40,8 @@ related:
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
 | `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                                                                           |
 
+Junior runtime database connections set PostgreSQL `statement_timeout` to 30 seconds for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
+
 `JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
 for its own turn. Set it to `steer` to preserve collaborative steering across
 actors. In `follow_up` mode, a user can start one message with `!!` to steer the

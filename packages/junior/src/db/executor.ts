@@ -3,13 +3,24 @@ import { createNeonJuniorSqlExecutor } from "./neon";
 import { createPostgresJuniorSqlExecutor } from "./postgres";
 import type { SqlDriver } from "@/chat/config";
 
+export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
+
 /** Create the SQL executor appropriate for the configured database URL. */
 export function createJuniorSqlExecutor(args: {
   connectionString: string;
   driver: SqlDriver;
+  statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
+  const statementTimeoutMs =
+    args.statementTimeoutMs ?? DEFAULT_SQL_STATEMENT_TIMEOUT_MS;
   if (args.driver === "postgres") {
-    return createPostgresJuniorSqlExecutor(args);
+    return createPostgresJuniorSqlExecutor({
+      connectionString: args.connectionString,
+      statementTimeoutMs,
+    });
   }
-  return createNeonJuniorSqlExecutor(args);
+  return createNeonJuniorSqlExecutor({
+    connectionString: args.connectionString,
+    statementTimeoutMs,
+  });
 }
