@@ -356,8 +356,9 @@ async function commitMessagesLocked(
         content: context.content,
       },
     })) ?? [];
-  // Append returns only the inserted delta. Build the committed cursor from the
-  // pre-append projection plus those rows instead of reloading full history.
+  // Append returns assigned identities in input order. Native messages precede
+  // retry-stable turn context, so their sequence suffix stays aligned without
+  // reloading full history.
   const appendResult = await eventStore.append(args.conversationId, [
     ...newMessages.map((message, index) => ({
       data: historyItemFromPiMessage(
@@ -368,12 +369,16 @@ async function commitMessagesLocked(
     })),
     ...turnContextEvents,
   ]);
-  const appended = projectConversationEvents(appendResult.inserted);
   const lastInserted = appendResult.inserted.at(-1);
   return {
     committedSeq: lastInserted?.seq ?? appendResult.nextSeq - 1,
     historyVersion: lastInserted?.historyVersion ?? appendResult.historyVersion,
-    messageSeqs: [...current.seqs, ...appended.seqs],
+    messageSeqs: [
+      ...current.seqs,
+      ...appendResult.inserted
+        .slice(0, newMessages.length)
+        .map((event) => event.seq),
+    ],
     messages: nextLocalMessages,
     provenance: nextLocalProvenance,
   };
@@ -502,9 +507,7 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId
-      ? { authorizationId: args.authorizationId }
-      : {}),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
   });
   await getConversationEventStore().append(args.conversationId, [

@@ -109,7 +109,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       conversationId,
       async () => {
         if (parsed.length === 0) {
-          return this.appendResultFromCursor(conversationId, []);
+          return this.appendResultFromCursor(conversationId);
         }
         const existingKeys = parsed
           .map((event) => event.idempotencyKey)
@@ -145,7 +145,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           return true;
         });
         if (pending.length === 0) {
-          return this.appendResultFromCursor(conversationId, []);
+          return this.appendResultFromCursor(conversationId);
         }
         const newestCreatedAtMs = Math.max(
           ...pending.map((event) => event.createdAtMs),
@@ -174,16 +174,13 @@ class SqlConversationEventStore implements ConversationEventStore {
         const rows = pending.map((event) =>
           insertFromEvent(conversationId, seq++, historyVersion, event),
         );
-        const insertedRows = await this.executor
-          .db()
-          .insert(juniorConversationEvents)
-          .values(rows)
-          .returning();
+        await this.executor.db().insert(juniorConversationEvents).values(rows);
         return {
           historyVersion,
-          inserted: insertedRows
-            .map(eventFromRow)
-            .sort((left, right) => left.seq - right.seq),
+          inserted: rows.map((row) => ({
+            historyVersion: row.historyVersion,
+            seq: row.seq,
+          })),
           nextSeq: seq,
         };
       },
@@ -471,12 +468,11 @@ class SqlConversationEventStore implements ConversationEventStore {
   /** Build an append result from the live cursor without inserting rows. */
   private async appendResultFromCursor(
     conversationId: string,
-    inserted: ConversationEvent[],
   ): Promise<ConversationEventAppendResult> {
     const cursor = await this.readCursor(conversationId);
     return {
       historyVersion: cursor.maxHistoryVersion ?? 0,
-      inserted,
+      inserted: [],
       nextSeq: cursor.nextSeq,
     };
   }

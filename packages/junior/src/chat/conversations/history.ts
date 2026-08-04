@@ -504,17 +504,17 @@ export const newConversationEventSchema = z
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
 /**
- * Result of an append: newly inserted events plus the active history version.
+ * Result of an append: inserted event identities plus the active cursor.
  *
- * Callers that need a post-write cursor use this instead of reloading the full
- * current history. Idempotent no-ops still report the live history version and
- * an empty `inserted` list.
+ * Callers can advance after a write without reloading current history. The
+ * inserted identities stay aligned with accepted input order; idempotent
+ * no-ops return an empty list and the live cursor.
  */
 export interface ConversationEventAppendResult {
   /** Active model-history version after the append. */
   historyVersion: number;
-  /** Events that were newly inserted, in `seq` order. */
-  inserted: ConversationEvent[];
+  /** Identities assigned to newly inserted events. */
+  inserted: Array<{ historyVersion: number; seq: number }>;
   /** Next free `seq` after the append. */
   nextSeq: number;
 }

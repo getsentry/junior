@@ -19,7 +19,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
     _conversationId: string,
     events: NewConversationEvent[],
   ): Promise<ConversationEventAppendResult> {
-    const inserted: ConversationEvent[] = [];
+    const inserted: ConversationEventAppendResult["inserted"] = [];
     for (const event of events) {
       if (
         event.idempotencyKey &&
@@ -41,7 +41,10 @@ class MemoryConversationEventStore implements ConversationEventStore {
         data: event.data,
       };
       this.history.push(next);
-      inserted.push(next);
+      inserted.push({
+        historyVersion: next.historyVersion,
+        seq: next.seq,
+      });
     }
     return {
       historyVersion: this.history.at(-1)?.historyVersion ?? 0,

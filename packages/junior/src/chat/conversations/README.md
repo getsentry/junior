@@ -59,8 +59,8 @@ older source-thread context; it does not replace Pi history.
 - Persist inbound `message` events before agent execution.
 - Persist assistant `message` events only after destination acceptance.
 - Append stable native agent-history events in sequence order.
-- `append` returns the inserted delta and active history cursor so commit
-  paths can advance without reloading the full current history.
+- `append` returns inserted event identities and the active history cursor so
+  commit paths can advance without reloading the full current history.
 - Reject attempts to mutate an already committed agent-history prefix.
 - Replace agent history only through explicit compaction or handoff.
 - Restore transcripts and agent history directly from conversation events.

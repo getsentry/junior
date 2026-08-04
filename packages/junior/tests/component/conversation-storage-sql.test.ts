@@ -385,9 +385,8 @@ describe("SQL conversation storage", () => {
       expect(first.historyVersion).toBe(0);
       expect(first.nextSeq).toBe(2);
       expect(first.inserted.map((event) => event.seq)).toEqual([0, 1]);
-      expect(first.inserted.map((event) => event.data.type)).toEqual([
-        "user_message",
-        "user_message",
+      expect(first.inserted.map((event) => event.historyVersion)).toEqual([
+        0, 0,
       ]);
 
       const second = await store.append(CONVERSATION_ID, [
@@ -399,9 +398,7 @@ describe("SQL conversation storage", () => {
       expect(second.historyVersion).toBe(0);
       expect(second.nextSeq).toBe(3);
       expect(second.inserted.map((event) => event.seq)).toEqual([2]);
-      expect(second.inserted.map((event) => event.data.type)).toEqual([
-        "mcp_provider_connected",
-      ]);
+      expect(second.inserted.map((event) => event.historyVersion)).toEqual([0]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
@@ -530,9 +527,7 @@ describe("SQL conversation storage", () => {
       expect(mixed.historyVersion).toBe(0);
       expect(mixed.nextSeq).toBe(2);
       expect(mixed.inserted.map((event) => event.seq)).toEqual([1]);
-      expect(mixed.inserted.map((event) => event.data.type)).toEqual([
-        "user_message",
-      ]);
+      expect(mixed.inserted.map((event) => event.historyVersion)).toEqual([0]);
 
       expect(await readConversationTimestamps()).toEqual({
         archivedAt: null,
