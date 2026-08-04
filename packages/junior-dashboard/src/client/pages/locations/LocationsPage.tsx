@@ -20,10 +20,6 @@ import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
-import {
-  type SystemNavigationData,
-  useSystemNavigationData,
-} from "../system/useSystemNavigationData";
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
@@ -31,21 +27,13 @@ import { PrivateActivityCard } from "./PrivateActivityCard";
 /** Render the searchable directory of persisted public conversation locations. */
 export function LocationsPage() {
   const query = useLocationDirectoryData();
-  const navigation = useSystemNavigationData();
-  return (
-    <LocationsPageContent
-      data={query.data}
-      error={query.error}
-      navigation={navigation}
-    />
-  );
+  return <LocationsPageContent data={query.data} error={query.error} />;
 }
 
 /** Render loaded, failed, and empty public-location directory states. */
 export function LocationsPageContent(props: {
   data: LocationDirectoryReport | undefined;
   error: unknown;
-  navigation: SystemNavigationData;
 }) {
   const [params, setParams] = useSearchParams();
   const [range, setRange] = useState<TimeRangeDays>(90);
@@ -81,7 +69,7 @@ export function LocationsPageContent(props: {
   }
 
   return (
-    <SystemPageLayout navigation={props.navigation}>
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={

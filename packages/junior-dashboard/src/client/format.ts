@@ -661,7 +661,7 @@ export function conversationPath(conversationId: string): string {
 
 /** Build the canonical actor profile route for a trusted email address. */
 export function peoplePath(email: string): string {
-  return `/system/people/${encodeURIComponent(email)}`;
+  return `/people/${encodeURIComponent(email)}`;
 }
 
 /** Build the canonical detail route for a persisted public location. */

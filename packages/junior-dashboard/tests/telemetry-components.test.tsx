@@ -33,7 +33,6 @@ import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
 import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
-import { emptySystemNavigationData } from "../src/client/pages/system/useSystemNavigationData";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
 const client = new QueryClient();
@@ -1113,6 +1112,9 @@ describe("dashboard canonical-event components", () => {
         .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
+    expect(html).toContain('href="/system/people"');
+    expect(html).toContain("Back to people");
+    expect(html).not.toContain("System / people");
     expect(html).not.toContain('aria-label="Search recent conversations"');
     expect(html).toContain(">Places<");
     expect(html).toContain(">Surfaces<");
@@ -1163,11 +1165,7 @@ describe("dashboard canonical-event components", () => {
     };
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <LocationsPageContent
-          data={data}
-          error={new Error("refresh failed")}
-          navigation={emptySystemNavigationData}
-        />
+        <LocationsPageContent data={data} error={new Error("refresh failed")} />
       </MemoryRouter>,
     );
     expect(html).toContain("Location telemetry refresh failed");
@@ -1225,7 +1223,6 @@ describe("dashboard canonical-event components", () => {
         <LocationDetailPageContent
           data={detail}
           error={new Error("refresh failed")}
-          navigation={emptySystemNavigationData}
         />
       </MemoryRouter>,
     );
@@ -1246,7 +1243,8 @@ describe("dashboard canonical-event components", () => {
     );
     expect(loadingHtml).not.toContain("Loading plugin stats.");
     expect(loadingHtml).toContain(">GitHub<");
-    expect(loadingHtml).toContain('href="/system/plugins/github"');
+    expect(loadingHtml).toContain('href="/system/plugins"');
+    expect(loadingHtml).not.toContain('href="/system/plugins/github"');
     expect(loadingHtml).not.toContain(
       "This plugin does not expose operational activity yet.",
     );
@@ -1311,8 +1309,13 @@ describe("dashboard canonical-event components", () => {
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
-    expect(systemHtml).toContain(">Capabilities<");
-    expect(systemHtml).toContain(">All Plugins<");
+    expect(systemHtml).toContain('aria-label="System navigation"');
+    expect(systemHtml).toContain('href="/system/people"');
+    expect(systemHtml).toContain('href="/system/locations"');
+    expect(systemHtml).toContain('href="/system/plugins"');
+    expect(systemHtml).toContain(">Plugins</a>");
+    expect(systemHtml).not.toContain(">Capabilities<");
+    expect(systemHtml).not.toContain(">All Plugins<");
     expect(systemHtml).not.toContain(">Skills<");
     expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
@@ -1332,7 +1335,6 @@ describe("dashboard canonical-event components", () => {
     expect(pluginsHtml).toContain(">GitHub<");
     expect(pluginsHtml).toContain(">triage<");
     expect(pluginsHtml).not.toContain("Usage over time");
-    expect(pluginsHtml).toContain(">All Plugins<");
     expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
     const skillsHtml = renderToStaticMarkup(
@@ -1368,7 +1370,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="System navigation"');
     expect(html).not.toContain('href="/system/plugins/github"');
     expect(html).toContain('href="/system/plugins"');
-    expect(html).toContain('href="/system/plugins/scheduler"');
+    expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
     expect(html).toContain(">scheduled-tasks<");

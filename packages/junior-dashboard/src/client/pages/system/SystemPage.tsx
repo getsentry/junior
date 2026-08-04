@@ -37,9 +37,6 @@ export function SystemPage(props: { data: SystemData }) {
     reports,
     skills: props.data.skills,
   });
-  const reportingPlugins = props.data.pluginReportsLoading
-    ? plugins
-    : plugins.filter((plugin) => plugin.reports.length);
   const pathname = normalizeSystemPath(location.pathname);
   const pluginsPath = pathname === systemPluginsPath;
   const plugin = plugins.find(
@@ -55,7 +52,7 @@ export function SystemPage(props: { data: SystemData }) {
   }
 
   return (
-    <SystemPageLayout navigation={{ plugins, reportingPlugins }}>
+    <SystemPageLayout>
       {plugin ? (
         <PluginSystemPage
           data={props.data}

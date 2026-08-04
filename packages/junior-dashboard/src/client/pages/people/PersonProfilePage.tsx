@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Duration, formatDuration } from "../../components/Duration";
-import { Clock3, Coins, MessageSquare } from "lucide-react";
-import { useParams } from "react-router";
+import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
+import { Link, useParams } from "react-router";
 import type {
   ActorProfileReport,
   ConversationStatsItem,
@@ -18,13 +18,12 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { SystemPageLayout } from "../system/SystemPageLayout";
-import { useSystemNavigationData } from "../system/useSystemNavigationData";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -36,12 +35,11 @@ export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
   const query = useActorProfileData(email);
-  const navigation = useSystemNavigationData();
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
   return (
-    <SystemPageLayout navigation={navigation}>
+    <PageLayout>
       {query.data ? (
         <Profile profile={query.data} />
       ) : (
@@ -49,7 +47,7 @@ export function PersonProfilePage() {
           <EmptyTelemetry>Profile failed to load.</EmptyTelemetry>
         </Card>
       )}
-    </SystemPageLayout>
+    </PageLayout>
   );
 }
 
@@ -64,6 +62,13 @@ export function Profile(props: { profile: ActorProfileReport }) {
 
   return (
     <div className="grid min-w-0 gap-5">
+      <Link
+        className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
+        to="/system/people"
+      >
+        <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
+        Back to people
+      </Link>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -74,7 +79,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
               : ""}
           </>
         }
-        eyebrow="System / people"
+        eyebrow="Person"
         title={displayName}
       />
 

@@ -24,6 +24,7 @@ import {
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
+  peoplePath,
   slackLocationLabel,
   setDashboardTimeZone,
   summarizeMessages,
@@ -72,6 +73,10 @@ function transcript(
 }
 
 describe("dashboard conversation formatting", () => {
+  it("builds direct person profile routes", () => {
+    expect(peoplePath("avery@example.com")).toBe("/people/avery%40example.com");
+  });
+
   it("scales large values through billions and trillions", () => {
     expect(formatCompactNumber(1_912_000_000)).toBe("1.9b");
     expect(formatCompactNumber(2_100_000_000_000)).toBe("2.1t");

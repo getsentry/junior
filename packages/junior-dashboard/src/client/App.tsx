@@ -84,13 +84,10 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative shrink-0 whitespace-nowrap px-1 py-2 font-mono text-[0.62rem] font-medium uppercase tracking-[0.08em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors sm:text-[0.68rem] sm:tracking-[0.12em]",
+      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-[0.62rem] font-medium uppercase tracking-[0.08em] no-underline transition-colors sm:text-[0.68rem] sm:tracking-[0.12em]",
       isActive
-        ? "text-dashboard-text after:bg-cyan-400"
-        : cn(
-            "after:bg-transparent hover:after:bg-white/20",
-            dashboardInteractiveTextClass,
-          ),
+        ? "bg-cyan-300/[0.1] text-cyan-50"
+        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
     );
 
   return (
@@ -134,7 +131,7 @@ export function DashboardShell() {
           >
             <JuniorLogo />
           </Link>
-          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:gap-4 md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:gap-6 md:overflow-visible [&::-webkit-scrollbar]:hidden">
+          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible [&::-webkit-scrollbar]:hidden">
             <Link
               aria-current={workspace ? "page" : undefined}
               className={navLinkClass({ isActive: workspace })}
@@ -264,16 +261,6 @@ export function DashboardShell() {
           path="/people"
         />
         <Route
-          element={<LegacySystemRedirect section="people" />}
-          path="/people/:email"
-        />
-        <Route
-          element={
-            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
-          }
-          path="/system/people"
-        />
-        <Route
           element={
             loading ? (
               <LoadingView label="Loading profile" />
@@ -281,7 +268,13 @@ export function DashboardShell() {
               <PersonProfilePage />
             )
           }
-          path="/system/people/:email"
+          path="/people/:email"
+        />
+        <Route
+          element={
+            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+          }
+          path="/system/people"
         />
         <Route
           element={

@@ -16,10 +16,6 @@ import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
-import {
-  type SystemNavigationData,
-  useSystemNavigationData,
-} from "../system/useSystemNavigationData";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
   filterPeople,
@@ -30,21 +26,13 @@ import {
 /** Render the actor directory returned by the REST API. */
 export function PeoplePage() {
   const query = useActorDirectoryData();
-  const navigation = useSystemNavigationData();
-  return (
-    <PeoplePageContent
-      data={query.data}
-      error={query.error}
-      navigation={navigation}
-    />
-  );
+  return <PeoplePageContent data={query.data} error={query.error} />;
 }
 
 /** Render People analytics, failure states, and the actor directory. */
 export function PeoplePageContent(props: {
   data: ActorDirectoryReport | undefined;
   error: unknown;
-  navigation: SystemNavigationData;
 }) {
   const [peopleSearch, setPeopleSearch] = useState("");
   const [range, setRange] = useState<TimeRangeDays>(90);
@@ -73,7 +61,7 @@ export function PeoplePageContent(props: {
   const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
 
   return (
-    <SystemPageLayout navigation={props.navigation}>
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
