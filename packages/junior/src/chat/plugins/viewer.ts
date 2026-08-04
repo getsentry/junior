@@ -107,6 +107,7 @@ export async function readActorIdentityFromSql(
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
+        eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.provider, actor.platform),
         eq(juniorIdentities.providerTenantId, providerTenantId),
         eq(juniorIdentities.providerSubjectId, actor.userId),

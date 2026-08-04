@@ -7,8 +7,9 @@ export const juniorSchedulerTasks = pgTable(
   {
     id: text("id").primaryKey(),
     teamId: text("team_id").notNull(),
+    // TODO(v0.128.0): Remove after v0.127.x runtimes no longer write this column.
+    creatorSlackUserId: text("creator_slack_user_id"),
     creatorIdentityId: text("creator_identity_id"),
-    creatorUserId: text("creator_user_id"),
     status: text("status").notNull(),
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
@@ -16,11 +17,10 @@ export const juniorSchedulerTasks = pgTable(
     record: jsonb("record").$type<ScheduledTask>().notNull(),
   },
   (table) => [
-    index("junior_scheduler_tasks_creator_user_idx")
-      .on(table.creatorUserId, table.createdAtMs, table.id)
-      .where(
-        sql`${table.status} <> 'deleted' AND ${table.creatorUserId} IS NOT NULL`,
-      ),
+    // TODO(v0.128.0): Remove with creatorSlackUserId.
+    index("junior_scheduler_tasks_creator_idx")
+      .on(table.teamId, table.creatorSlackUserId, table.createdAtMs, table.id)
+      .where(sql`${table.status} <> 'deleted'`),
     index("junior_scheduler_tasks_creator_identity_idx")
       .on(table.creatorIdentityId, table.createdAtMs, table.id)
       .where(

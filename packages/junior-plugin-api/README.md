@@ -55,8 +55,8 @@ reports, and other typed hook surfaces exported by this package.
   binds the plugin namespace and owns access to the conversation event log.
   Event `costUsd` is additive operation cost and must not duplicate cost
   already recorded in the conversation's agent model usage.
-- Tool hooks receive canonical `user` and `identity` data when the active actor
-  is stored and linked.
+- Tool hooks may lazily resolve the active actor's canonical identity and linked
+  user through `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
   canonical user resolution. Routes that do not need personal ownership do not
   query identity storage.

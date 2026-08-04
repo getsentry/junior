@@ -129,7 +129,6 @@ export function createSlackScheduleCreateTaskTool(
         updatedAtMs: nowMs,
         createdBy: actor,
         creatorIdentityId: identity.id,
-        ...(creator.user ? { creatorUserId: creator.user.id } : {}),
         conversationAccess,
         credentialMode: input.credential_mode ?? "creator",
         destination,

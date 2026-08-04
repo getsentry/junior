@@ -112,7 +112,6 @@ export function createViewerScheduledTasks(
         identityIds: [...identityIds],
         limit: input.limit + 1,
         ...(query ? { query } : {}),
-        userId: user.id,
       });
       const tasks = matching.slice(0, input.limit);
       return {

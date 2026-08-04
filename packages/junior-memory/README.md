@@ -28,9 +28,9 @@ exported types, tools, and tests are authoritative.
 
 - Memory scope is derived from the active actor and source, never from
   model-supplied ownership fields.
-- Dashboard and REST requests authorize one verified viewer, then resolve every
-  linked platform actor internally so one arbitrary actor is never treated as
-  the viewer's canonical identity.
+- Dashboard and REST requests authorize one verified viewer, then derive access
+  from every linked provider identity so no arbitrary identity is treated as
+  the canonical user.
 - Private conversations and local sources remain private by default.
 - Recall filters candidates by actor, source, visibility, status, and relevance
   before content reaches the model.

@@ -1,6 +1,4 @@
-DROP INDEX "junior_scheduler_tasks_creator_idx";--> statement-breakpoint
 ALTER TABLE "junior_scheduler_tasks" ADD COLUMN "creator_identity_id" text;--> statement-breakpoint
-ALTER TABLE "junior_scheduler_tasks" ADD COLUMN "creator_user_id" text;--> statement-breakpoint
 DO $migration$
 BEGIN
 	IF to_regclass('public.junior_identities') IS NOT NULL THEN
@@ -32,13 +30,9 @@ BEGIN
 			UPDATE "junior_scheduler_tasks" AS task
 			SET
 				"creator_identity_id" = identity."id",
-				"creator_user_id" = identity."user_id",
 				"record" = CASE
 					WHEN jsonb_typeof(task."record") = 'object' THEN
-						task."record" || jsonb_strip_nulls(jsonb_build_object(
-							'creatorIdentityId', identity."id",
-							'creatorUserId', identity."user_id"
-						))
+						task."record" || jsonb_build_object('creatorIdentityId', identity."id")
 					ELSE task."record"
 				END
 			FROM "junior_identities" AS identity
@@ -50,6 +44,4 @@ BEGIN
 	END IF;
 END
 $migration$;--> statement-breakpoint
-CREATE INDEX "junior_scheduler_tasks_creator_user_idx" ON "junior_scheduler_tasks" USING btree ("creator_user_id","created_at_ms","id") WHERE "junior_scheduler_tasks"."status" <> 'deleted' AND "junior_scheduler_tasks"."creator_user_id" IS NOT NULL;--> statement-breakpoint
-CREATE INDEX "junior_scheduler_tasks_creator_identity_idx" ON "junior_scheduler_tasks" USING btree ("creator_identity_id","created_at_ms","id") WHERE "junior_scheduler_tasks"."status" <> 'deleted' AND "junior_scheduler_tasks"."creator_identity_id" IS NOT NULL;--> statement-breakpoint
-ALTER TABLE "junior_scheduler_tasks" DROP COLUMN "creator_slack_user_id";
+CREATE INDEX "junior_scheduler_tasks_creator_identity_idx" ON "junior_scheduler_tasks" USING btree ("creator_identity_id","created_at_ms","id") WHERE "junior_scheduler_tasks"."status" <> 'deleted' AND "junior_scheduler_tasks"."creator_identity_id" IS NOT NULL;

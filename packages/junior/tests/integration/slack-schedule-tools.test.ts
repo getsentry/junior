@@ -255,7 +255,6 @@ describe("Slack schedule tools", () => {
       schedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
-      creatorUserId: "user:U123",
     });
 
     const listed = await executeTool(
@@ -295,7 +294,6 @@ describe("Slack schedule tools", () => {
     expect(stored).toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
     });
-    expect(stored?.creatorUserId).toBeUndefined();
   });
 
   it("creates clear recurring tasks without a second confirmation", async () => {

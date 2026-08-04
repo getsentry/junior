@@ -93,9 +93,9 @@ export class PersonalMemoryNotFoundError extends Error {
 
 /** Viewer-scoped memory operations shared by dashboard and REST. */
 export interface PersonalMemoryCollection {
-  /** Archive one exact personal memory owned by a linked actor. */
+  /** Archive one exact personal memory owned by a linked identity. */
   archive(id: string): Promise<MemoryRecord>;
-  /** Read one exact memory visible to a linked actor. */
+  /** Read one exact memory visible to a linked identity. */
   get(id: string): Promise<PersonalMemoryRecord>;
   /** List one stable page across every authorized viewer scope. */
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;

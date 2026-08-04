@@ -126,7 +126,7 @@ describe("plugin user page API", () => {
     expect(invalid.status).toBe(400);
   });
 
-  test("passes only actors linked to the authenticated viewer", async () => {
+  test("passes only identities linked to the authenticated viewer", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {

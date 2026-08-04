@@ -1,5 +1,5 @@
 {
-  "id": "b6e8dcfa-0132-4281-86e8-a6092bf67c78",
+  "id": "68256915-458d-46fd-a787-92b9fd77b581",
   "prevId": "3afb66d0-30fd-4631-bc53-c7bd42802d91",
   "version": "7",
   "dialect": "postgresql",
@@ -112,14 +112,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "creator_identity_id": {
-          "name": "creator_identity_id",
+        "creator_slack_user_id": {
+          "name": "creator_slack_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "creator_user_id": {
-          "name": "creator_user_id",
+        "creator_identity_id": {
+          "name": "creator_identity_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -156,11 +156,17 @@
         }
       },
       "indexes": {
-        "junior_scheduler_tasks_creator_user_idx": {
-          "name": "junior_scheduler_tasks_creator_user_idx",
+        "junior_scheduler_tasks_creator_idx": {
+          "name": "junior_scheduler_tasks_creator_idx",
           "columns": [
             {
-              "expression": "creator_user_id",
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "creator_slack_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -179,7 +185,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_scheduler_tasks\".\"status\" <> 'deleted' AND \"junior_scheduler_tasks\".\"creator_user_id\" IS NOT NULL",
+          "where": "\"junior_scheduler_tasks\".\"status\" <> 'deleted'",
           "concurrently": false,
           "method": "btree",
           "with": {}

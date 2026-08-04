@@ -192,8 +192,10 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route needs canonical personal ownership. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                                  |
 
-`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`.
-Return tool definitions keyed by the plugin-local tool names your plugin owns.
+`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
+`ctx.users.resolveActor()` only when a tool needs the active actor's canonical
+identity or linked user. Return tool definitions keyed by the plugin-local tool
+names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
 `my-provider` tool `ping` is exposed as `myProvider_ping`.

@@ -9,8 +9,7 @@ Junior's durable agent runtime.
   prompt text, timezone-aware schedule, recurrence, credential mode, status, and
   next-run state.
 - `creatorIdentityId` is the authoritative creator reference used for personal
-  authorization. `creatorUserId` is a denormalized SQL listing projection and
-  never grants access by itself.
+  authorization and indexed personal listing.
 - SQL schemas and migrations are authoritative for persistence.
 - Model-facing tools accept structured schedule intent. The scheduler resolves
   relative delays and calendar fields against its server clock and timezone,

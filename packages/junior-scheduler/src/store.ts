@@ -12,7 +12,6 @@ import {
   eq,
   inArray,
   isNotNull,
-  isNull,
   lt,
   lte,
   ne,
@@ -91,7 +90,6 @@ const taskRecordFields = {
   createdAtMs: z.number(),
   createdBy: taskPrincipalSchema,
   creatorIdentityId: z.string(),
-  creatorUserId: z.string().optional(),
   destination: slackDestinationSchema,
   executionActor: z
     .object({
@@ -194,7 +192,6 @@ export interface ListTasksCreatedByInput {
   identityIds: string[];
   limit: number;
   query?: string;
-  userId: string;
 }
 
 export interface SchedulerOperationalStore {
@@ -1130,6 +1127,7 @@ export function createSchedulerOperationalStore(
 }
 
 type SchedulerTaskRow = {
+  creatorIdentityId: string | null;
   record: unknown;
 };
 
@@ -1138,13 +1136,21 @@ type SchedulerRunRow = {
 };
 
 /** Decode scheduler SQL task records and reject rows unsafe for scan paths. */
-function parseSqlTaskRecord(value: unknown): ScheduledTask | undefined {
-  const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
+function parseSqlTaskRecord(
+  value: unknown,
+  creatorIdentityId: string | null,
+): ScheduledTask | undefined {
+  const record = parseJsonRecord<Record<string, unknown>>(value);
+  // A v0.127 runtime may rewrite the JSON record during a rolling deploy, so
+  // the indexed identity column remains authoritative while both versions run.
+  const parsed = taskRecordSchema.safeParse(
+    record && creatorIdentityId ? { ...record, creatorIdentityId } : record,
+  );
   return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
 }
 
 function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
-  return parseSqlTaskRecord(row.record);
+  return parseSqlTaskRecord(row.record, row.creatorIdentityId);
 }
 
 /** Decode scheduler SQL run records and reject rows unsafe for scan paths. */
@@ -1173,7 +1179,8 @@ async function upsertSqlTask(
     .values({
       createdAtMs: task.createdAtMs,
       creatorIdentityId: task.creatorIdentityId,
-      creatorUserId: task.creatorUserId,
+      // TODO(v0.128.0): Remove after v0.127.x runtimes no longer read this column.
+      creatorSlackUserId: task.createdBy.slackUserId,
       id: task.id,
       nextRunAtMs: task.nextRunAtMs,
       record: task,
@@ -1186,7 +1193,7 @@ async function upsertSqlTask(
       set: {
         createdAtMs: sql`excluded.created_at_ms`,
         creatorIdentityId: sql`excluded.creator_identity_id`,
-        creatorUserId: sql`excluded.creator_user_id`,
+        creatorSlackUserId: sql`excluded.creator_slack_user_id`,
         nextRunAtMs: sql`excluded.next_run_at_ms`,
         record: sql`excluded.record`,
         runNowAtMs: sql`excluded.run_now_at_ms`,
@@ -1222,7 +1229,10 @@ async function getTaskFromSql(
   taskId: string,
 ): Promise<ScheduledTask | undefined> {
   const rows = await db
-    .select({ record: juniorSchedulerTasks.record })
+    .select({
+      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+      record: juniorSchedulerTasks.record,
+    })
     .from(juniorSchedulerTasks)
     .where(eq(juniorSchedulerTasks.id, taskId))
     .limit(1);
@@ -1243,7 +1253,10 @@ async function getRunFromSql(
 
 async function listTasksFromSql(db: SchedulerDb): Promise<ScheduledTask[]> {
   const rows = await db
-    .select({ record: juniorSchedulerTasks.record })
+    .select({
+      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+      record: juniorSchedulerTasks.record,
+    })
     .from(juniorSchedulerTasks)
     .where(ne(juniorSchedulerTasks.status, "deleted"))
     .orderBy(
@@ -1280,47 +1293,27 @@ async function listTasksCreatedByFromSql(
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
         )
       : undefined;
-    const identityOwner = inArray(
-      juniorSchedulerTasks.creatorIdentityId,
-      input.identityIds,
-    );
-    const owners = [
-      and(eq(juniorSchedulerTasks.creatorUserId, input.userId), identityOwner),
-      and(isNull(juniorSchedulerTasks.creatorUserId), identityOwner),
-      and(ne(juniorSchedulerTasks.creatorUserId, input.userId), identityOwner),
-    ].filter((owner) => owner !== undefined);
-    const pages = await Promise.all(
-      owners.map((owner) =>
-        db
-          .select({
-            createdAtMs: juniorSchedulerTasks.createdAtMs,
-            id: juniorSchedulerTasks.id,
-            record: juniorSchedulerTasks.record,
-          })
-          .from(juniorSchedulerTasks)
-          .where(
-            and(
-              ne(juniorSchedulerTasks.status, "deleted"),
-              owner,
-              cursor,
-              search,
-            ),
-          )
-          .orderBy(
-            desc(juniorSchedulerTasks.createdAtMs),
-            desc(juniorSchedulerTasks.id),
-          )
-          .limit(input.limit),
-      ),
-    );
-    const rows = pages
-      .flat()
-      .sort(
-        (left, right) =>
-          right.createdAtMs - left.createdAtMs ||
-          right.id.localeCompare(left.id),
+    const rows = await db
+      .select({
+        createdAtMs: juniorSchedulerTasks.createdAtMs,
+        creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+        id: juniorSchedulerTasks.id,
+        record: juniorSchedulerTasks.record,
+      })
+      .from(juniorSchedulerTasks)
+      .where(
+        and(
+          ne(juniorSchedulerTasks.status, "deleted"),
+          inArray(juniorSchedulerTasks.creatorIdentityId, input.identityIds),
+          cursor,
+          search,
+        ),
       )
-      .slice(0, input.limit);
+      .orderBy(
+        desc(juniorSchedulerTasks.createdAtMs),
+        desc(juniorSchedulerTasks.id),
+      )
+      .limit(input.limit);
     tasks.push(...rows.map(parseSqlTaskRow).filter(present));
     if (rows.length < input.limit) {
       break;
@@ -1340,7 +1333,10 @@ async function listTasksForTeamFromSql(
   teamId: string,
 ): Promise<ScheduledTask[]> {
   const rows = await db
-    .select({ record: juniorSchedulerTasks.record })
+    .select({
+      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+      record: juniorSchedulerTasks.record,
+    })
     .from(juniorSchedulerTasks)
     .where(
       and(
@@ -1452,7 +1448,10 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   }): Promise<ScheduledRun | undefined> {
     return await withSqlLock(this.db, "junior:scheduler:claim", async (db) => {
       const rows = await db
-        .select({ record: juniorSchedulerTasks.record })
+        .select({
+          creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+          record: juniorSchedulerTasks.record,
+        })
         .from(juniorSchedulerTasks)
         .where(
           and(
