@@ -29,15 +29,15 @@ The common deploy path runs snapshot warmup during build:
 
 ## Snapshot profile
 
-Junior computes the snapshot profile from loaded plugin declarations:
+Junior computes the snapshot profile from its global baseline and loaded plugin declarations. The baseline provides Docker, Docker Compose, and other core command-line tools.
 
-| Input                | Source                                                     |
-| -------------------- | ---------------------------------------------------------- |
-| Runtime              | Junior sandbox runtime, currently `node22`.                |
-| npm dependencies     | Plugin `runtime-dependencies` entries with `type: npm`.    |
-| system dependencies  | Plugin `runtime-dependencies` entries with `type: system`. |
-| postinstall commands | Plugin `runtime-postinstall` entries.                      |
-| manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                |
+| Input                | Source                                                                |
+| -------------------- | --------------------------------------------------------------------- |
+| Runtime              | Junior sandbox runtime, currently `node22`.                           |
+| npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
+| system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
+| postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
+| manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                           |
 
 Any change to those inputs produces a new profile hash and a new snapshot.
 

@@ -4,7 +4,10 @@ import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
-import { GLOBAL_RUNTIME_DEPENDENCIES } from "@/chat/sandbox/runtime-dependencies";
+import {
+  GLOBAL_RUNTIME_DEPENDENCIES,
+  GLOBAL_RUNTIME_POSTINSTALL,
+} from "@/chat/sandbox/runtime-dependencies";
 
 const VERSION = 1;
 const DEFAULT_FLOATING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -80,17 +83,18 @@ export function create(runtime: string): Profile | null {
     ...GLOBAL_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
   ]);
-  const postinstall = pluginCatalogRuntime.getRuntimePostinstall();
+  const pluginPostinstall = pluginCatalogRuntime.getRuntimePostinstall();
+  const postinstall = [...GLOBAL_RUNTIME_POSTINSTALL, ...pluginPostinstall];
   if (dependencies.length === 0 && postinstall.length === 0) {
     return null;
   }
 
   const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
-  // Postinstall commands may fetch mutable artifacts, so profiles containing
-  // them expire on the same schedule as floating npm selectors.
+  // Plugin postinstall commands may fetch mutable artifacts, so profiles
+  // containing them expire on the same schedule as floating npm selectors.
   const floating =
     dependencies.some((dependency) => isFloating(dependency)) ||
-    postinstall.length > 0;
+    pluginPostinstall.length > 0;
   const hash = createHash("sha256")
     .update(
       JSON.stringify({
