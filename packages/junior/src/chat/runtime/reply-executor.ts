@@ -445,6 +445,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
+      conversationId?: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
@@ -491,8 +492,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         conversationVisibilityFromSlackChannelType(slackChannelType),
     });
     const assistantThreadContext = getAssistantThreadContext(message);
-    const threadTs =
-      getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
+    const threadTs = getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
     const messageTs = getMessageTs(message);
     const teamId = destination.teamId;
     const source =
@@ -506,7 +506,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
-    const conversationId = threadId ?? runId;
+    const conversationId = options.conversationId ?? threadId ?? runId;
     if (!conversationId) {
       throw new Error("Slack reply execution requires a conversation id");
     }

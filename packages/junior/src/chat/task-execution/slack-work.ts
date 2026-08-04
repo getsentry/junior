@@ -704,9 +704,10 @@ function restoreThread(args: {
   state: StateAdapter;
   threadJson: SerializedThread;
 }): ThreadImpl {
-  const threadId = args.threadJson.id.startsWith("agent-dispatch:")
-    ? args.threadJson.id
-    : normalizeIncomingSlackThreadId(args.threadJson.id, args.message);
+  const threadId = normalizeIncomingSlackThreadId(
+    args.threadJson.id,
+    args.message,
+  );
   if (args.message.threadId !== threadId) {
     (args.message as unknown as { threadId: string }).threadId = threadId;
   }
@@ -865,6 +866,7 @@ export function createSlackConversationWorker(
         try {
           if (route === "mention") {
             await options.runtime.handleNewMention(thread, latestMessage, {
+              conversationId: context.conversationId,
               destination: context.destination,
               messageContext,
               drainSteeringMessages,
@@ -877,6 +879,7 @@ export function createSlackConversationWorker(
               thread,
               latestMessage,
               {
+                conversationId: context.conversationId,
                 destination: context.destination,
                 messageContext,
                 drainSteeringMessages,
