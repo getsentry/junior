@@ -293,12 +293,21 @@ export async function mockDashboardApis(page: Page) {
           description: "GitHub repository and development workflow context.",
           displayName: "GitHub",
           name: "github",
+          tasks: [],
         },
         {
           configKeys: [],
           description: "Recurring and deferred Junior tasks.",
           displayName: "Scheduler",
           name: "scheduler",
+          tasks: [
+            {
+              lastRunAt: "2026-06-12T00:00:00.000Z",
+              name: "processSession",
+              runsLast7Days: 4,
+              totalRuns: 12,
+            },
+          ],
         },
       ],
     });

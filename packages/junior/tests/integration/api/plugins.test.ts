@@ -33,6 +33,7 @@ describe("plugins API route", () => {
         description: "GitHub development workflows.",
         displayName: "GitHub",
         name: "github",
+        tasks: [],
       },
     ]);
   });
