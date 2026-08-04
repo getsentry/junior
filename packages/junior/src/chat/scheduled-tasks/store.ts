@@ -14,7 +14,6 @@ import {
   isNotNull,
   lt,
   lte,
-  ne,
   notInArray,
   or,
   sql,
