@@ -15,6 +15,7 @@ import {
   lt,
   lte,
   ne,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -613,6 +614,13 @@ function parseJsonRecord<T>(value: unknown): T | undefined {
 
 function present<T>(value: T | undefined): value is T {
   return value !== undefined;
+}
+
+/** Drop tombstones after parse so legacy paused rows never surface in listings. */
+function listedScheduledTask(
+  task: ScheduledTask | undefined,
+): task is ScheduledTask {
+  return task !== undefined && task.status !== "deleted";
 }
 
 function requireStoredTask(task: ScheduledTask): ScheduledTask {
@@ -1291,12 +1299,12 @@ async function listTasksFromSql(db: SchedulerDb): Promise<ScheduledTask[]> {
       record: juniorSchedulerTasks.record,
     })
     .from(juniorSchedulerTasks)
-    .where(ne(juniorSchedulerTasks.status, "deleted"))
+    .where(notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]))
     .orderBy(
       asc(juniorSchedulerTasks.createdAtMs),
       asc(juniorSchedulerTasks.id),
     );
-  return rows.map(parseSqlTaskRow).filter(present);
+  return rows.map(parseSqlTaskRow).filter(listedScheduledTask);
 }
 
 async function listTasksCreatedByFromSql(
@@ -1336,7 +1344,7 @@ async function listTasksCreatedByFromSql(
       .from(juniorSchedulerTasks)
       .where(
         and(
-          ne(juniorSchedulerTasks.status, "deleted"),
+          notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
           inArray(juniorSchedulerTasks.creatorIdentityId, input.identityIds),
           cursor,
           search,
@@ -1347,7 +1355,7 @@ async function listTasksCreatedByFromSql(
         desc(juniorSchedulerTasks.id),
       )
       .limit(input.limit);
-    tasks.push(...rows.map(parseSqlTaskRow).filter(present));
+    tasks.push(...rows.map(parseSqlTaskRow).filter(listedScheduledTask));
     if (rows.length < input.limit) {
       break;
     }
@@ -1374,14 +1382,14 @@ async function listTasksForTeamFromSql(
     .where(
       and(
         eq(juniorSchedulerTasks.teamId, teamId),
-        ne(juniorSchedulerTasks.status, "deleted"),
+        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
       ),
     )
     .orderBy(
       asc(juniorSchedulerTasks.createdAtMs),
       asc(juniorSchedulerTasks.id),
     );
-  return rows.map(parseSqlTaskRow).filter(present);
+  return rows.map(parseSqlTaskRow).filter(listedScheduledTask);
 }
 
 /** List scheduled tasks whose current Slack destination is public. */
@@ -1408,7 +1416,7 @@ export async function listPublicScheduledTasksForTeams(
     .where(
       and(
         inArray(juniorSchedulerTasks.teamId, teamIds),
-        ne(juniorSchedulerTasks.status, "deleted"),
+        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
         eq(juniorDestinations.visibility, "public"),
       ),
     )
@@ -1417,7 +1425,7 @@ export async function listPublicScheduledTasksForTeams(
       desc(juniorSchedulerTasks.id),
     )
     .limit(limit);
-  return rows.map(parseSqlTaskRow).filter(present);
+  return rows.map(parseSqlTaskRow).filter(listedScheduledTask);
 }
 
 async function listIncompleteRunsForTasksFromSql(
