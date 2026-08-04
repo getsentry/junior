@@ -37,7 +37,7 @@ const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 const compactTaskResultSchema = z
   .object({
     id: z.string(),
-    status: z.enum(["active", "paused", "blocked", "deleted"]),
+    status: z.enum(["active", "blocked", "deleted"]),
     task: z.string(),
     schedule: z.string(),
     timezone: z.string(),
@@ -287,7 +287,7 @@ export function schedulerStore(context: SchedulerToolContext): SchedulerStore {
 export function normalizeStatus(
   value: string | undefined,
 ): ScheduledTaskStatus | undefined {
-  if (value === "active" || value === "paused" || value === "blocked") {
+  if (value === "active" || value === "blocked") {
     return value;
   }
   return undefined;

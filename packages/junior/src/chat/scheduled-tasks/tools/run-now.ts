@@ -38,7 +38,7 @@ export function createSlackScheduleRunTaskNowTool(
       const lookup = await getWritableTask({ context, taskId: task_id });
       if (lookup.status !== "active") {
         throwToolInputError(
-          "Scheduled task must be active before it can be run now. Resume the task first if you want it to run.",
+          "Scheduled task must be active before it can be run now.",
         );
       }
 

@@ -32,7 +32,7 @@ export function createSlackScheduleUpdateTaskTool(
       readOnlyHint: false,
     },
     description:
-      "Edit, pause, resume, reschedule, or change credential use for an existing Junior scheduled task in the active Slack conversation.",
+      "Edit, reschedule, unblock, or change credential use for an existing Junior scheduled task in the active Slack conversation.",
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -50,9 +50,9 @@ export function createSlackScheduleUpdateTaskTool(
           .nullable()
           .optional(),
         status: z
-          .enum(["active", "paused", "blocked"])
+          .enum(["active", "blocked"])
           .describe(
-            "Set to active, paused, or blocked to resume, pause, or block the task.",
+            "Set to active to resume a blocked task, or blocked to stop future runs.",
           )
           .optional(),
         credential_mode: z
@@ -99,7 +99,7 @@ export function createSlackScheduleUpdateTaskTool(
 
       const status = normalizeStatus(input.status);
       if (input.status && !status) {
-        throwToolInputError("status must be active, paused, or blocked.");
+        throwToolInputError("status must be active or blocked.");
       }
       if (status === "active" && !nextRunAtMs) {
         throwToolInputError(

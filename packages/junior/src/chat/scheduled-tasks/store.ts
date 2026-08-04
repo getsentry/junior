@@ -108,7 +108,8 @@ const taskRecordFields = {
   originalRequest: z.string().optional(),
   runNowAtMs: z.number().optional(),
   schedule: taskScheduleSchema,
-  status: z.enum(["active", "paused", "blocked", "deleted"]),
+  // Accept legacy paused rows until migration 0017 tombstones them.
+  status: z.enum(["active", "blocked", "deleted", "paused"]),
   statusReason: z.string().optional(),
   task: taskSpecSchema,
   updatedAtMs: z.number(),
@@ -551,7 +552,9 @@ function canFinishRun(
 /** Decode retained scheduler task state, skipping invalid legacy records. */
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
+  return parsed.success
+    ? stripLegacyTaskFields(parsed.data as StoredScheduledTask)
+    : undefined;
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */
@@ -560,11 +563,28 @@ function parseStoredRun(value: unknown): ScheduledRun | undefined {
   return parsed.success ? stripLegacyRunFields(parsed.data) : undefined;
 }
 
-function stripLegacyTaskFields(
-  task: ScheduledTask & { version?: number },
-): ScheduledTask {
-  const { version: _version, ...current } = task;
-  return current;
+type StoredScheduledTask = Omit<ScheduledTask, "status"> & {
+  status: ScheduledTaskStatus | "paused";
+  version?: number;
+};
+
+function stripLegacyTaskFields(task: StoredScheduledTask): ScheduledTask {
+  const { version: _version, status, ...current } = task;
+  if (status === "paused") {
+    const {
+      nextRunAtMs: _nextRunAtMs,
+      runNowAtMs: _runNowAtMs,
+      ...rest
+    } = current;
+    return {
+      ...rest,
+      status: "deleted",
+    };
+  }
+  return {
+    ...current,
+    status,
+  };
 }
 
 function stripLegacyRunFields(
@@ -1163,7 +1183,7 @@ function parseSqlTaskRecord(
   const parsed = taskRecordSchema.safeParse(
     record && creatorIdentityId ? { ...record, creatorIdentityId } : record,
   );
-  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
+  return parsed.success ? stripLegacyTaskFields(parsed.data as StoredScheduledTask) : undefined;
 }
 
 function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {

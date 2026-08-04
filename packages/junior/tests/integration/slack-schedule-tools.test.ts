@@ -699,19 +699,24 @@ describe("Slack schedule tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      task: { id: string; next_run_at: string };
+      task: { id: string; next_run_at: string; task: string };
     };
 
     const updated = await executeTool(
       createSlackScheduleUpdateTaskTool(context),
-      { task_id: created.task.id, schedule: null, status: "paused" },
+      {
+        task_id: created.task.id,
+        schedule: null,
+        task: `${created.task.task} (edited)`,
+      },
     );
 
     expect(updated).toMatchObject({
       task: {
         id: created.task.id,
         next_run_at: created.task.next_run_at,
-        status: "paused",
+        status: "active",
+        task: `${created.task.task} (edited)`,
       },
     });
   });
@@ -1353,7 +1358,7 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("does not run-now a paused task without an explicit resume", async () => {
+  it("does not run-now a blocked task", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
@@ -1363,8 +1368,8 @@ describe("Slack schedule tools", () => {
     expect(task).toBeDefined();
     await store.saveTask({
       ...task!,
-      status: "paused",
-      statusReason: "Paused by user.",
+      status: "blocked",
+      statusReason: "Blocked until credentials are available.",
       updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
     });
 
@@ -1372,15 +1377,13 @@ describe("Slack schedule tools", () => {
       executeTool(createSlackScheduleRunTaskNowTool(context), {
         task_id: created.task.id,
       }),
-    ).rejects.toThrow(
-      "Scheduled task must be active before it can be run now. Resume the task first if you want it to run.",
-    );
-    const paused = await store.getTask(created.task.id);
-    expect(paused).toMatchObject({
-      status: "paused",
-      statusReason: "Paused by user.",
+    ).rejects.toThrow("Scheduled task must be active before it can be run now.");
+    const blocked = await store.getTask(created.task.id);
+    expect(blocked).toMatchObject({
+      status: "blocked",
+      statusReason: "Blocked until credentials are available.",
     });
-    expect(paused?.runNowAtMs).toBeUndefined();
+    expect(blocked?.runNowAtMs).toBeUndefined();
   });
 
   it("removes deleted tasks from scheduler listings", async () => {

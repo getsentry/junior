@@ -1,21 +1,28 @@
--- Tombstone finished scheduled tasks that used to linger as paused with no future run.
--- Explicitly paused tasks that still have a next/run-now time stay paused.
+-- Drop the paused scheduled-task status.
+-- Finished one-offs and any remaining paused rows become deleted tombstones.
 UPDATE "junior_scheduler_tasks"
 SET
   "status" = 'deleted',
-  "record" = jsonb_set(
+  "next_run_at_ms" = NULL,
+  "run_now_at_ms" = NULL,
+  "record" = (
     jsonb_set(
-      COALESCE("record", '{}'::jsonb),
-      '{status}',
-      '"deleted"'::jsonb,
+      jsonb_set(
+        jsonb_set(
+          COALESCE("record", '{}'::jsonb),
+          '{status}',
+          '"deleted"'::jsonb,
+          true
+        ),
+        '{updatedAtMs}',
+        to_jsonb(
+          (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint
+        ),
+        true
+      ),
+      '{nextRunAtMs}',
+      'null'::jsonb,
       true
-    ),
-    '{updatedAtMs}',
-    to_jsonb(
-      (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint
-    ),
-    true
+    ) - 'runNowAtMs'
   )
-WHERE "status" = 'paused'
-  AND "next_run_at_ms" IS NULL
-  AND "run_now_at_ms" IS NULL;
+WHERE "status" = 'paused';
