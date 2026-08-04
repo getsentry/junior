@@ -4,6 +4,7 @@ import type { TaskSummary } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 import {
   CalendarClock,
+  ChevronRight,
   Globe2,
   MapPin,
   Search,
@@ -64,6 +65,7 @@ export function TasksPage(props: { enabled: boolean }) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [scope, setScope] = useState<TaskScope>("mine");
   const [searchText, setSearchText] = useState("");
+  const [selectedTaskKey, setSelectedTaskKey] = useState<string>();
   const search = searchText.trim().toLowerCase();
   const tasks = query.data?.tasks ?? [];
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
@@ -186,21 +188,31 @@ export function TasksPage(props: { enabled: boolean }) {
           </Card>
         ) : (
           <Card>
+            <TaskListHeader />
             <div className="divide-y divide-white/[0.07]" role="list">
-              {visibleTasks.map((task) => (
-                <TaskRow
-                  deleting={
-                    deletion.isPending && deletion.variables?.id === task.id
-                  }
-                  key={`${task.kind}:${task.id}`}
-                  onDelete={() => {
-                    if (window.confirm(`Delete this ${task.kind} task?`)) {
-                      deletion.mutate(task);
+              {visibleTasks.map((task) => {
+                const key = `${task.kind}:${task.id}`;
+                return (
+                  <TaskRow
+                    deleting={
+                      deletion.isPending && deletion.variables?.id === task.id
                     }
-                  }}
-                  task={task}
-                />
-              ))}
+                    key={key}
+                    onDelete={() => {
+                      if (window.confirm(`Delete this ${task.kind} task?`)) {
+                        deletion.mutate(task);
+                      }
+                    }}
+                    onSelect={() =>
+                      setSelectedTaskKey((current) =>
+                        current === key ? undefined : key,
+                      )
+                    }
+                    selected={selectedTaskKey === key}
+                    task={task}
+                  />
+                );
+              })}
             </div>
           </Card>
         )}
@@ -255,93 +267,204 @@ function TaskFilterGroup(props: { children: ReactNode; label: string }) {
   );
 }
 
+function TaskListHeader() {
+  return (
+    <div
+      aria-hidden="true"
+      className="hidden grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+    >
+      <span>Task</span>
+      <span>Destination</span>
+      <span>Trigger</span>
+      <span>Status</span>
+      <span />
+      <span />
+    </div>
+  );
+}
+
 function TaskRow(props: {
   deleting: boolean;
   onDelete(): void;
+  onSelect(): void;
+  selected: boolean;
   task: TaskSummary;
 }) {
   const { task } = props;
   return (
-    <article
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-4 p-4 sm:p-5"
-      role="listitem"
-    >
-      <TaskSourceMark task={task} />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <TaskTag>{task.kind}</TaskTag>
+    <article role="listitem">
+      <div
+        className={cn(
+          "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 transition-colors md:grid-cols-[minmax(0,1.4fr)_minmax(9rem,0.7fr)_auto_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto]",
+          props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
+        )}
+      >
+        <button
+          aria-expanded={props.selected}
+          className="flex min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left"
+          onClick={props.onSelect}
+          type="button"
+        >
+          <TaskSourceMark task={task} />
+          <span className="min-w-0">
+            <span className="block truncate font-display text-base font-medium text-dashboard-text">
+              {task.instruction}
+            </span>
+            <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+              <span>{task.kind}</span>
+              <span aria-hidden="true" className="opacity-35">
+                ·
+              </span>
+              <span>
+                {task.kind === "scheduled"
+                  ? task.status
+                  : task.triggerAvailable
+                    ? "ready"
+                    : "unavailable"}
+              </span>
+              <span aria-hidden="true" className="opacity-35">
+                ·
+              </span>
+              <span className="truncate md:hidden">
+                {task.destination.label}
+              </span>
+              <span className="hidden md:inline">
+                {formatDate(task.createdAt)}
+              </span>
+            </span>
+          </span>
+        </button>
+        <div className="hidden min-w-0 md:block">
+          <div className="truncate text-sm font-medium text-dashboard-text">
+            {task.destination.label}
+          </div>
+          <div className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+            {task.destination.visibility}
+          </div>
+        </div>
+        <div className="hidden min-w-0 lg:block">
+          <div className="truncate text-sm text-dashboard-text">
+            {task.kind === "scheduled" ? task.schedule : task.resource}
+          </div>
+          <div className="mt-1 truncate font-mono text-[0.58rem] text-dashboard-text-muted">
+            {task.kind === "scheduled"
+              ? task.nextRunAt
+                ? `Next ${formatRunDate(task.nextRunAt)}`
+                : "No next run"
+              : task.events.join(", ")}
+          </div>
+        </div>
+        <div className="hidden lg:block">
           {task.kind === "scheduled" ? (
             <TaskTag tone={task.status === "active" ? "success" : "warning"}>
               {task.status}
             </TaskTag>
           ) : (
             <TaskTag tone={task.triggerAvailable ? "success" : "warning"}>
-              {task.triggerAvailable ? "trigger ready" : "trigger unavailable"}
+              {task.triggerAvailable ? "ready" : "unavailable"}
             </TaskTag>
           )}
         </div>
-        <h3 className="mt-2 mb-0 font-display text-base font-medium text-dashboard-text sm:text-lg">
-          {task.instruction}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <MapPin aria-hidden="true" className="text-cyan-300/70" size={14} />
-          <span className="font-medium text-dashboard-text">
-            {task.destination.label}
-          </span>
-          {task.destination.visibility === "public" ? (
-            <span className="text-xs text-dashboard-text-muted">· Public</span>
-          ) : null}
-        </div>
-        <div className="mt-3 text-sm text-dashboard-text-muted">
-          {task.kind === "scheduled" ? (
-            <>
-              <span className="text-dashboard-text">{task.schedule}</span>
-              <span className="mx-2 opacity-45">·</span>
-              {task.nextRunAt
-                ? `Next run ${formatRunDate(task.nextRunAt)}`
-                : "No next run"}
-            </>
-          ) : (
-            <>
-              <span className="text-dashboard-text">{task.resource}</span>
-              <span className="mx-2 opacity-45">·</span>
-              {task.events.join(", ")}
-            </>
-          )}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-x-2 text-xs text-dashboard-text-muted">
-          <span>
-            Created by{" "}
-            {task.createdByEmail ? (
-              <Link
-                className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
-                to={peoplePath(task.createdByEmail)}
-              >
-                {task.ownedByViewer ? "you" : task.createdBy}
-              </Link>
-            ) : task.ownedByViewer ? (
-              "you"
-            ) : (
-              task.createdBy
-            )}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>{formatDate(task.createdAt)}</span>
-        </div>
-      </div>
-      {task.ownedByViewer ? (
-        <Button
-          aria-label={`Delete: ${task.instruction}`}
-          className="self-start justify-self-end"
-          disabled={props.deleting}
-          onClick={props.onDelete}
-          size="icon"
-          title="Delete task"
+        <button
+          aria-expanded={props.selected}
+          aria-label={`${props.selected ? "Hide" : "View"} task details: ${task.instruction}`}
+          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-dashboard-text"
+          onClick={props.onSelect}
+          type="button"
         >
-          <Trash2 aria-hidden="true" size={15} />
-        </Button>
-      ) : null}
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              "transition-transform",
+              props.selected && "rotate-90",
+            )}
+            size={16}
+          />
+        </button>
+        {task.ownedByViewer ? (
+          <Button
+            aria-label={`Delete: ${task.instruction}`}
+            disabled={props.deleting}
+            onClick={props.onDelete}
+            size="icon"
+            title="Delete task"
+          >
+            <Trash2 aria-hidden="true" size={15} />
+          </Button>
+        ) : (
+          <span aria-hidden="true" className="size-8" />
+        )}
+      </div>
+      {props.selected ? <TaskDetails task={task} /> : null}
     </article>
+  );
+}
+
+function TaskDetails(props: { task: TaskSummary }) {
+  const { task } = props;
+  const createdBy = task.createdByEmail ? (
+    <Link
+      className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      to={peoplePath(task.createdByEmail)}
+    >
+      {task.ownedByViewer ? "you" : task.createdBy}
+    </Link>
+  ) : task.ownedByViewer ? (
+    "you"
+  ) : (
+    task.createdBy
+  );
+  const details =
+    task.kind === "scheduled"
+      ? [
+          { label: "Schedule", value: task.schedule },
+          {
+            label: "Next run",
+            value: task.nextRunAt ? formatRunDate(task.nextRunAt) : "None",
+          },
+        ]
+      : [
+          { label: "Resource", value: task.resource },
+          { label: "Events", value: task.events.join(", ") },
+        ];
+  return (
+    <div className="border-t border-cyan-300/10 bg-black/20 p-4 sm:p-5">
+      <div className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-cyan-200/65">
+        Task details
+      </div>
+      <p className="mt-2 mb-0 max-w-4xl font-display text-lg leading-relaxed text-dashboard-text">
+        {task.instruction}
+      </p>
+      <dl className="mt-4 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] sm:grid-cols-2 lg:grid-cols-4">
+        {details.map((detail) => (
+          <TaskDetail key={detail.label} label={detail.label}>
+            {detail.value}
+          </TaskDetail>
+        ))}
+        <TaskDetail label="Destination">
+          <span className="inline-flex items-center gap-1.5">
+            <MapPin aria-hidden="true" className="text-cyan-300/70" size={13} />
+            {task.destination.label} · {task.destination.visibility}
+          </span>
+        </TaskDetail>
+        <TaskDetail label="Created">
+          {createdBy} · {formatDate(task.createdAt)}
+        </TaskDetail>
+      </dl>
+    </div>
+  );
+}
+
+function TaskDetail(props: { children: ReactNode; label: string }) {
+  return (
+    <div className="min-w-0 bg-[#09090b] px-3 py-3">
+      <dt className="font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+        {props.label}
+      </dt>
+      <dd className="mt-1.5 ml-0 break-words text-sm leading-relaxed text-dashboard-text">
+        {props.children}
+      </dd>
+    </div>
   );
 }
 
@@ -351,11 +474,11 @@ function TaskSourceMark(props: { task: TaskSummary }) {
     return (
       <div
         aria-label="Scheduled task"
-        className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
+        className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
         role="img"
         title="Scheduled task"
       >
-        <CalendarClock aria-hidden="true" size={17} />
+        <CalendarClock aria-hidden="true" size={16} />
       </div>
     );
   }
@@ -372,7 +495,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
   return (
     <div
       aria-label={`${sourceLabel} event task`}
-      className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
+      className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
       role="img"
       title={`${sourceLabel} event task`}
     >

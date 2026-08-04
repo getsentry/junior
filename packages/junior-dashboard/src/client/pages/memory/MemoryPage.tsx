@@ -213,6 +213,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
         <div className="grid items-start gap-4">
           <div className="grid gap-3">
             <Card padding="none">
+              <MemoryListHeader />
               {records.map((record, index) => (
                 <MemoryRow
                   action={action}
@@ -253,6 +254,21 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
         </div>
       )}
     </section>
+  );
+}
+
+function MemoryListHeader() {
+  return (
+    <div
+      aria-hidden="true"
+      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+    >
+      <span>Memory</span>
+      <span>Visibility</span>
+      <span>Type</span>
+      <span>Learned</span>
+      <span />
+    </div>
   );
 }
 
@@ -479,18 +495,10 @@ function MemoryRow(props: {
   selected: boolean;
 }) {
   const kind = metadataValue(props.record, "Type");
-  const learned = metadataValue(props.record, "Learned");
   const remembered = metadataValue(props.record, "Remembered");
+  const source = metadataValue(props.record, "Source");
   const visibility = metadataValue(props.record, "Visibility");
   const isPublic = visibility === "Public";
-  const provenance =
-    learned === "Automatic"
-      ? "Learned by Junior"
-      : learned === "Explicit"
-        ? isPublic
-          ? "Saved explicitly"
-          : "Saved by you"
-        : "Recorded earlier";
   return (
     <>
       <div
@@ -502,11 +510,11 @@ function MemoryRow(props: {
       >
         <button
           aria-pressed={props.selected}
-          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 border-0 bg-transparent px-4 py-3.5 text-left"
+          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
           onClick={props.onSelect}
           type="button"
         >
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div
               className={cn(
                 "grid size-8 shrink-0 place-items-center rounded border",
@@ -518,30 +526,19 @@ function MemoryRow(props: {
               <BrainCircuit aria-hidden="true" size={15} />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="m-0 font-display text-base font-medium leading-snug text-dashboard-text">
+              <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
                 {props.record.title}
               </h3>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
-                <span>{provenance}</span>
+              <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
+                <span className="truncate">Source: {source}</span>
                 <span
                   aria-hidden="true"
-                  className="text-dashboard-text-muted opacity-30"
+                  className="text-dashboard-text-muted opacity-30 sm:hidden"
                 >
                   ·
                 </span>
-                <span>{shortDate(remembered)}</span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 sm:hidden",
-                    isPublic ? "text-emerald-200" : "text-dashboard-text",
-                  )}
-                >
-                  {isPublic ? (
-                    <Globe2 aria-hidden="true" size={10} />
-                  ) : (
-                    <LockKeyhole aria-hidden="true" size={10} />
-                  )}
-                  {visibility}
+                <span className="truncate sm:hidden">
+                  {kind} · {visibility} · {shortDate(remembered)}
                 </span>
               </div>
             </div>
@@ -563,11 +560,14 @@ function MemoryRow(props: {
           </span>
           <span
             className={cn(
-              "hidden rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
+              "hidden w-fit rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
               memoryKindClass(kind),
             )}
           >
             {kind}
+          </span>
+          <span className="hidden truncate font-mono text-[0.64rem] text-dashboard-text sm:block">
+            {shortDate(remembered)}
           </span>
           <ChevronRight
             aria-hidden="true"
@@ -725,11 +725,14 @@ function MemoryDetails(props: {
         )}
       >
         <div>
-          {!props.inline ? (
-            <p className="mt-5 mb-0 font-display text-xl leading-relaxed text-dashboard-text">
-              {props.record.title}
-            </p>
-          ) : null}
+          <p
+            className={cn(
+              "mb-0 font-display leading-relaxed text-dashboard-text",
+              props.inline ? "mt-0 text-lg" : "mt-5 text-xl",
+            )}
+          >
+            {props.record.title}
+          </p>
           {props.record.description ? (
             <p className="mt-3 mb-0 text-sm leading-relaxed text-dashboard-text-muted">
               {props.record.description}

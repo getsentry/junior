@@ -105,8 +105,15 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
-  await expect(page.getByText("#project-updates").first()).toBeVisible();
+  await expect(page.getByText("#project-updates").last()).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
+  await expect(page.getByText("Task details")).not.toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "View task details: Send the weekly project summary",
+    })
+    .click();
+  await expect(page.getByText("Task details")).toBeVisible();
   await expect(page.getByRole("link", { name: "you" }).first()).toHaveAttribute(
     "href",
     "/people/morgan%40sentry.io",
@@ -123,7 +130,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(
     page.getByText("Notify responders when the incident changes"),
   ).toBeVisible();
-  await expect(page.getByText("#incident-response")).toBeVisible();
+  await expect(page.getByText("#incident-response").last()).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "View task details: Notify responders when the incident changes",
+    })
+    .click();
   const creatorLink = page.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
     "href",
