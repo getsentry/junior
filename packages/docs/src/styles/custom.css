@@ -748,6 +748,156 @@ body:has(.jr-home) main {
   margin: 1rem 0 0;
 }
 
+.jr-integrations {
+  background: var(--jr-blue);
+  border-block: 5px solid var(--jr-black);
+  box-sizing: border-box;
+  margin: 0 calc(50% - 50vw) clamp(5rem, 9vw, 9rem);
+  padding: clamp(4rem, 7vw, 7rem) max(1.25rem, calc((100vw - 86rem) / 2));
+  position: relative;
+  transform: rotate(-0.35deg);
+  width: 100vw;
+}
+
+.jr-integrations > * {
+  position: relative;
+}
+
+.jr-integrations-heading {
+  align-items: end;
+  display: grid;
+  gap: 3rem;
+  grid-template-columns: 1.2fr 0.8fr;
+  margin-bottom: 3rem;
+}
+
+.jr-integrations-heading > div > span {
+  color: var(--jr-acid);
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.jr-integrations-heading h2 {
+  background: none !important;
+  color: #fff;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: clamp(3.5rem, 7vw, 6.8rem);
+  font-weight: 950;
+  letter-spacing: -0.065em;
+  line-height: 0.82;
+  margin: 0.7rem 0 0;
+  text-transform: uppercase;
+}
+
+.jr-integrations-heading h2::before,
+.jr-integrations-heading h2::after {
+  content: none !important;
+}
+
+.jr-integrations-summary {
+  align-self: end;
+}
+
+.jr-integrations-summary p {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 29rem;
+}
+
+.jr-integration-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.jr-integration-card {
+  align-items: center;
+  background: var(--jr-cream);
+  background-image: none !important;
+  border: 4px solid var(--jr-black);
+  box-shadow: 7px 7px 0 var(--jr-black);
+  color: var(--jr-black) !important;
+  display: flex;
+  gap: 1rem;
+  min-height: 6.8rem;
+  padding: 1rem 1.1rem;
+  text-decoration: none !important;
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.jr-integration-card:nth-child(3n + 2) {
+  background: var(--jr-acid);
+}
+
+.jr-integration-card:nth-child(4n) {
+  background: var(--jr-pink);
+}
+
+.jr-integration-card:hover {
+  box-shadow: 3px 3px 0 var(--jr-black);
+  transform: translate(4px, 4px);
+}
+
+.jr-integration-card img {
+  border: 0;
+  box-shadow: none;
+  display: block;
+  flex: 0 0 auto;
+  height: 2.7rem;
+  margin: 0;
+  max-width: 3.2rem;
+  object-fit: contain;
+  padding: 0;
+  width: 2.7rem;
+}
+
+.jr-integration-card > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.jr-integration-card strong,
+.jr-integration-card small {
+  background-image: none !important;
+  text-decoration: none !important;
+}
+
+.jr-integration-card strong {
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.jr-integration-card small {
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  margin-top: 0.35rem;
+}
+
+.jr-integrations-cta {
+  background: var(--jr-pink);
+  border: 4px solid var(--jr-black);
+  box-shadow: 6px 6px 0 var(--jr-black);
+  color: var(--jr-black) !important;
+  display: inline-block;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 900;
+  margin-top: 2rem;
+  padding: 0.7rem 0.9rem;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
 .jr-customers {
   align-items: center;
   background: var(--jr-cream);
@@ -832,6 +982,10 @@ body:has(.jr-home) footer {
   .jr-mascot-note {
     right: -0.5rem;
   }
+
+  .jr-integration-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 48rem) {
@@ -901,6 +1055,20 @@ body:has(.jr-home) footer {
     min-height: 15rem;
     transform: none;
   }
+
+  .jr-integrations-heading {
+    align-items: start;
+    gap: 1.5rem;
+    grid-template-columns: 1fr;
+  }
+
+  .jr-integrations-heading h2 {
+    font-size: 3.6rem;
+  }
+
+  .jr-integration-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 30rem) {
@@ -951,5 +1119,39 @@ body:has(.jr-home) footer {
   .slk-avatar {
     height: 1.9rem;
     width: 1.9rem;
+  }
+
+  .jr-integrations {
+    padding-inline: 1.25rem;
+  }
+
+  .jr-integrations-heading h2 {
+    font-size: 3rem;
+  }
+
+  .jr-integration-grid {
+    gap: 0.65rem;
+  }
+
+  .jr-integration-card {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.7rem;
+    justify-content: space-between;
+    min-height: 7.2rem;
+    padding: 0.8rem;
+  }
+
+  .jr-integration-card img {
+    height: 2.3rem;
+    width: 2.3rem;
+  }
+
+  .jr-integration-card strong {
+    font-size: 0.84rem;
+  }
+
+  .jr-integration-card small {
+    font-size: 0.48rem;
   }
 }
