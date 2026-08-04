@@ -11,7 +11,7 @@ import {
 } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -58,7 +58,7 @@ const projectedEventSchema = z
   })
   .strict();
 
-const queryConversationEventsOutputSchema = juniorToolResultSchema.extend({
+const queryConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
   events: z.array(projectedEventSchema),
   has_older: z
@@ -218,8 +218,6 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
       const projected = projectEventsForTool(page, { newestFirst });
 
       return {
-        ok: true,
-        status: "success" as const,
         conversation_id: conversationId,
         events: projected.events,
         has_older:

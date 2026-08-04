@@ -6,6 +6,10 @@ import { juniorDestinations } from "./schema/destinations";
 import { juniorEventTasks } from "./schema/event-tasks";
 import { juniorIdentities } from "./schema/identities";
 import { juniorStats } from "./schema/stats";
+import {
+  juniorSchedulerRuns,
+  juniorSchedulerTasks,
+} from "./schema/scheduled-tasks";
 import { juniorUsers } from "./schema/users";
 
 export {
@@ -17,6 +21,8 @@ export {
   juniorEventTasks,
   juniorIdentities,
   juniorStats,
+  juniorSchedulerRuns,
+  juniorSchedulerTasks,
   juniorUsers,
 };
 
@@ -29,5 +35,7 @@ export const juniorSqlSchema = {
   juniorEventTasks,
   juniorIdentities,
   juniorStats,
+  juniorSchedulerRuns,
+  juniorSchedulerTasks,
   juniorUsers,
 };

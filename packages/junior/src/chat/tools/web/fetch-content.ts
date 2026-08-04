@@ -28,8 +28,6 @@ export interface WebFetchResponseContent {
 }
 
 export type WebFetchResponse = {
-  ok: true;
-  status: "success";
   url: string;
   content: string;
   title?: string;
@@ -250,8 +248,6 @@ export async function extractWebFetchResponse(
   );
   const extracted = extractContentDetails(body, contentType, safeMaxChars);
   return {
-    ok: true,
-    status: "success",
     url: url.toString(),
     content: extracted.content,
     ...(extracted.title ? { title: extracted.title } : {}),

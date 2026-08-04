@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
@@ -12,7 +12,7 @@ import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 
-const imageGenerateOutputSchema = juniorToolResultSchema
+const imageGenerateOutputSchema = juniorToolOutputSchema
   .extend({
     model: z.string(),
     prompt: z.string(),
@@ -184,8 +184,6 @@ export function createImageGenerateTool(
         const artifactRefs = await hooks.writeGeneratedArtifacts(uploads);
 
         return {
-          ok: true,
-          status: "success" as const,
           model,
           prompt,
           enrichedPrompt,
@@ -198,8 +196,6 @@ export function createImageGenerateTool(
       }
 
       return {
-        ok: true,
-        status: "success" as const,
         model,
         prompt,
         enrichedPrompt,

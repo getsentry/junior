@@ -126,6 +126,7 @@ describe("searchTools", () => {
         },
       ],
     });
+    expect(result).not.toHaveProperty("data");
 
     const privateTraceResult = searchTools.privateTraceResult?.(result);
     expect(privateTraceResult).toEqual({

@@ -1,19 +1,19 @@
 /**
  * Authenticated-viewer memory access shared by REST and dashboard projections.
  *
- * Viewer identity may resolve to multiple platform actors. This module keeps
- * that federation behind one viewer-memory collection spanning personal and
- * authorized public workspace scopes.
+ * One user may have multiple provider identities. This module adapts those
+ * identities to the existing personal and public workspace scopes.
  */
 import { z } from "zod";
-import type { PluginUserPageActor } from "@sentry/junior-plugin-api";
+import type { User } from "@sentry/junior-plugin-api";
 import {
   createPersonalMemoryCollection,
   type MemoryVisibility,
   type PersonalMemoryRecord,
 } from "./personal-store";
+import { deriveViewerMemoryScopes } from "./scope";
 import type { MemoryDb, MemoryRecord } from "./store";
-import type { MemoryKind, MemoryRuntimeContext } from "./types";
+import type { MemoryKind } from "./types";
 
 const cursorSchema = z
   .object({
@@ -50,28 +50,6 @@ export class InvalidMemoryCursorError extends Error {
 
 export { PersonalMemoryNotFoundError } from "./personal-store";
 export type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
-
-function runtimeContext(actor: PluginUserPageActor): MemoryRuntimeContext {
-  if (actor.platform === "slack") {
-    return {
-      actor,
-      source: {
-        platform: "slack",
-        visibility: "private",
-        teamId: actor.teamId,
-        channelId: "DDASHBOARD",
-      },
-    };
-  }
-  return {
-    actor,
-    source: {
-      platform: "local",
-      visibility: "private",
-      conversationId: "local:dashboard:memories",
-    },
-  };
-}
 
 function decodeCursor(
   value: string | undefined,
@@ -119,14 +97,11 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Build viewer memory operations authorized by a viewer's linked actors. */
-export function createViewerMemories(
-  db: MemoryDb,
-  actors: PluginUserPageActor[],
-) {
+/** Build viewer memory operations authorized by a user's linked identities. */
+export function createViewerMemories(db: MemoryDb, user: User) {
   const collection = createPersonalMemoryCollection(
     db,
-    actors.map(runtimeContext),
+    deriveViewerMemoryScopes(user.identities),
   );
   return {
     async archive(id: string): Promise<MemoryRecord> {

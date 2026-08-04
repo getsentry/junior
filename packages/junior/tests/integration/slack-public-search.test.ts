@@ -54,8 +54,6 @@ describe("Slack public search", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
       query: "project gizmo",
       count: 1,
       next_cursor: "next-page",
@@ -107,18 +105,12 @@ describe("Slack public search", () => {
       needed: "search:read.public",
     });
 
-    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
-      query: "company announcement",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error:
-        "Public Slack search is unavailable because this installation is missing the `search:read.public` scope.",
-      query: "company announcement",
-      count: 0,
-      messages: [],
-    });
+    await expect(
+      executeTool(createSlackPublicSearchTool(actionToken), {
+        query: "company announcement",
+      }),
+    ).rejects.toThrow(
+      "Public Slack search is unavailable because this installation is missing the `search:read.public` scope.",
+    );
   });
 });

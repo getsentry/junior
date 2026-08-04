@@ -18,9 +18,9 @@ import {
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
 import {
-  juniorToolResultSchema,
-  makeStructuredToolResult,
-  type JuniorToolResultEnvelope,
+  juniorToolOutputSchema,
+  makeStructuredToolOutput,
+  type JuniorToolOutputEnvelope,
 } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -28,14 +28,11 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 const DEFAULT_FIND_LIMIT = 100;
 
 interface FindFilesSuccessResult {
-  content: JuniorToolResultEnvelope["content"];
+  content: JuniorToolOutputEnvelope["content"];
   details: TextSearchResultDetails & {
-    data: {
-      files: string[];
-      file_count: number;
-      path: string;
-      truncation_reasons?: string[];
-    };
+    files: string[];
+    file_count: number;
+    truncation_reasons?: string[];
     result_limit_reached?: number;
   };
 }
@@ -103,19 +100,14 @@ export async function findFiles(params: {
       ? `${bounded.content}\n\n[${notices.join(" ")}]`
       : bounded.content;
 
-  return makeStructuredToolResult(
+  return makeStructuredToolOutput(
     {
-      ok: true,
-      status: "success",
       target: params.path ?? ".",
       path: params.path ?? ".",
       truncated: limitReached || bounded.truncated,
-      data: {
-        files: relativePaths,
-        file_count: relativePaths.length,
-        path: params.path ?? ".",
-        ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-      },
+      files: relativePaths,
+      file_count: relativePaths.length,
+      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
       ...(limitReached ? { result_limit_reached: limit } : {}),
     },
     { content: [{ type: "text", text }] },
@@ -220,19 +212,14 @@ async function findFilesWithRipgrep(params: {
       ? `${bounded.content}\n\n[${notices.join(" ")}]`
       : bounded.content;
 
-  const response = makeStructuredToolResult(
+  const response = makeStructuredToolOutput(
     {
-      ok: true,
-      status: "success",
       target: params.path ?? ".",
       path: params.path ?? ".",
       truncated: limitReached || bounded.truncated,
-      data: {
-        files: relativePaths,
-        file_count: relativePaths.length,
-        path: params.path ?? ".",
-        ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-      },
+      files: relativePaths,
+      file_count: relativePaths.length,
+      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
       ...(limitReached ? { result_limit_reached: params.limit } : {}),
     },
     { content: [{ type: "text", text }] },
@@ -286,7 +273,7 @@ export function createFindFilesTool() {
         .describe("Maximum number of file paths to return. Defaults to 100.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async () => {
       throw new Error(
         "findFiles can only run when sandbox execution is enabled.",

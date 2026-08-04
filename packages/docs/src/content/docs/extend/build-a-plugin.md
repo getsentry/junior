@@ -182,18 +182,20 @@ rejects non-object replacements before the tool runs.
 
 Use the smallest surface that matches the deterministic boundary your plugin needs:
 
-| Surface                  | Purpose                                                                                                                                                                                                                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                                                                                                         |
-| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                                                                                                      |
-| `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                                                                                                                  |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                                                                                                                  |
-| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                                                                                                               |
-| `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. The app receives sanitized viewer auth as the second `fetch` argument; use `ctx.viewer.actors(email)` only when viewer-owned data spans linked platform identities. |
-| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                                                                                                               |
+| Surface                  | Purpose                                                                                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                            |
+| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                         |
+| `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                                     |
+| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                                     |
+| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                                  |
+| `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route needs canonical personal ownership. |
+| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                                  |
 
-`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`.
-Return tool definitions keyed by the plugin-local tool names your plugin owns.
+`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
+`ctx.users.resolveActor()` only when a tool needs the active actor's canonical
+identity or linked user. Return tool definitions keyed by the plugin-local tool
+names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
 `my-provider` tool `ping` is exposed as `myProvider_ping`.
@@ -201,12 +203,12 @@ Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 ```ts title="index.ts"
 import {
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-const pingResultSchema = pluginToolResultSchema.extend({
+const pingOutputSchema = pluginToolOutputSchema.extend({
   latency_ms: z.number(),
 });
 
@@ -227,17 +229,13 @@ export function myProviderPlugin() {
             },
             description: "Check my-provider connectivity.",
             inputSchema: z.object({}),
-            outputSchema: pingResultSchema,
+            outputSchema: pingOutputSchema,
             privateTraceResult: (result) => ({
-              ok: result.ok,
-              status: result.status,
               latency_ms: result.latency_ms,
             }),
             execute: async () => {
               ctx.log.info("Running my-provider ping");
               return {
-                ok: true,
-                status: "success",
                 latency_ms: 12,
               };
             },
@@ -248,6 +246,11 @@ export function myProviderPlugin() {
   });
 }
 ```
+
+The output schema describes the tool's successful value directly. Do not wrap
+it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
+model-repairable failures; Junior projects successful values and thrown errors
+onto the agent runtime's separate result channels.
 
 Use `approvalMode: "auto"` when Junior should review an action according to its
 annotations and source. Use `review` when every invocation requires review, or

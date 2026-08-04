@@ -1,4 +1,5 @@
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_READ_LIMIT = 1000;
 const MAX_READ_CHARS = 60_000;
@@ -6,17 +7,13 @@ const MAX_READ_CHARS = 60_000;
 interface TextRangeResult {
   content: [{ type: "text"; text: string }];
   details: {
-    ok: true;
-    status: "success";
     target: string;
-    data: {
-      content: string;
-      end_line?: number;
-      path: string;
-      start_line: number;
-      total_lines: number;
-      truncation_reasons?: string[];
-    };
+    content: string;
+    end_line?: number;
+    path: string;
+    start_line: number;
+    total_lines: number;
+    truncation_reasons?: string[];
     truncated: boolean;
     character_limit_reached?: number;
     line_truncated?: boolean;
@@ -28,24 +25,6 @@ interface TextRangeResult {
       };
       reason: string;
     };
-  };
-}
-
-interface TextRangeMissingPathResult {
-  content: [{ type: "text"; text: string }];
-  details: {
-    ok: false;
-    status: "error";
-    target: string;
-    data: {
-      content: "";
-      path: string;
-    };
-    error: {
-      kind: "not_found";
-      message: string;
-    };
-    truncated: false;
   };
 }
 
@@ -137,11 +116,9 @@ export function sliceFileContent(params: {
     truncated,
   };
 
-  return makeStructuredToolResult({
-    ok: true,
-    status: "success",
+  return makeStructuredToolOutput({
     target: params.path,
-    data: range,
+    ...range,
     truncated,
     ...(characterLimitReached
       ? { character_limit_reached: MAX_READ_CHARS }
@@ -164,20 +141,7 @@ export function sliceFileContent(params: {
   });
 }
 
-/** Return a model-visible result for expected missing read targets. */
-export function missingFileResult(path: string): TextRangeMissingPathResult {
-  return makeStructuredToolResult({
-    ok: false,
-    status: "error",
-    target: path,
-    data: {
-      content: "",
-      path,
-    },
-    error: {
-      kind: "not_found",
-      message: `File not found: ${path}`,
-    },
-    truncated: false,
-  });
+/** Reject an expected missing read target through the tool-error channel. */
+export function missingFileResult(path: string): never {
+  throw new ToolInputError(`File not found: ${path}`);
 }

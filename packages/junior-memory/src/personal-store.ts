@@ -1,13 +1,13 @@
 /**
  * SQL operations over memories visible to one authenticated viewer.
  *
- * A viewer may resolve to several runtime actors. This store combines their
- * personal scopes with authorized public workspace conversation scopes.
+ * A user may have several linked identities. This store combines their
+ * identity-scoped personal memories with authorized public workspace scopes.
  */
 import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import { deriveMemoryScope, type ResolvedMemoryScope } from "./scope";
+import type { ResolvedMemoryScope } from "./scope";
 import {
   activeVisiblePredicate,
   archiveExpiredMemoryBatch,
@@ -15,7 +15,7 @@ import {
   type MemoryDb,
   type MemoryRecord,
 } from "./store";
-import { MEMORY_KINDS, type MemoryRuntimeContext } from "./types";
+import { MEMORY_KINDS } from "./types";
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryVisibilitySchema = z.enum(["private", "public"]);
@@ -93,9 +93,9 @@ export class PersonalMemoryNotFoundError extends Error {
 
 /** Viewer-scoped memory operations shared by dashboard and REST. */
 export interface PersonalMemoryCollection {
-  /** Archive one exact personal memory owned by a linked actor. */
+  /** Archive one exact personal memory owned by a linked identity. */
   archive(id: string): Promise<MemoryRecord>;
-  /** Read one exact memory visible to a linked actor. */
+  /** Read one exact memory visible to a linked identity. */
   get(id: string): Promise<PersonalMemoryRecord>;
   /** List one stable page across every authorized viewer scope. */
   list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
@@ -103,42 +103,6 @@ export interface PersonalMemoryCollection {
   stats(): Promise<PersonalMemoryStats>;
   /** Read memory creation history across every authorized viewer scope. */
   timeline(input: { days: number }): Promise<PersonalMemoryDay[]>;
-}
-
-function personalScopes(
-  runtimeContexts: MemoryRuntimeContext[],
-): ResolvedMemoryScope[] {
-  return [
-    ...new Map(
-      runtimeContexts.map((context) => {
-        const scope = deriveMemoryScope(context, "personal");
-        return [`${scope.scope}:${scope.scopeKey}`, scope] as const;
-      }),
-    ).values(),
-  ];
-}
-
-/** Public workspace conversation scopes authorized by the viewer's Slack teams. */
-function publicWorkspaceScopes(
-  runtimeContexts: MemoryRuntimeContext[],
-): ResolvedMemoryScope[] {
-  return [
-    ...new Map(
-      runtimeContexts.flatMap((context) => {
-        if (context.source.platform !== "slack" || !context.actor) {
-          return [];
-        }
-        if (context.actor.platform !== "slack") {
-          return [];
-        }
-        const scope: ResolvedMemoryScope = {
-          scope: "conversation",
-          scopeKey: `slack:${context.actor.teamId}`,
-        };
-        return [[`${scope.scope}:${scope.scopeKey}`, scope] as const];
-      }),
-    ).values(),
-  ];
 }
 
 function scopePredicate(scopes: ResolvedMemoryScope[]) {
@@ -213,11 +177,13 @@ function emptyStats(): PersonalMemoryStats {
 /** Build storage operations for every memory scope linked to one viewer. */
 export function createPersonalMemoryCollection(
   db: MemoryDb,
-  runtimeContexts: MemoryRuntimeContext[],
+  scopes: {
+    privateScopes: ResolvedMemoryScope[];
+    publicScopes: ResolvedMemoryScope[];
+  },
   options: { now?: () => number } = {},
 ): PersonalMemoryCollection {
-  const privateScopes = personalScopes(runtimeContexts);
-  const publicScopes = publicWorkspaceScopes(runtimeContexts);
+  const { privateScopes, publicScopes } = scopes;
   const allScopes = [...privateScopes, ...publicScopes];
   const getNowMs = () => options.now?.() ?? Date.now();
 

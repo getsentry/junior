@@ -91,7 +91,6 @@ describe("Slack canvas file-like tools", () => {
       | undefined;
     expect(change?.[0]).not.toHaveProperty("section_id");
     expect(result).toMatchObject({
-      ok: true,
       canvas_id: "F0PREVIOUS",
       replacements: 1,
       first_changed_line: 3,
@@ -128,7 +127,6 @@ describe("Slack canvas file-like tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       replacements: 2,
     });
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
@@ -169,7 +167,6 @@ describe("Slack canvas file-like tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       first_changed_line: 3,
       normalized_heading_count: 1,
     });
@@ -189,19 +186,15 @@ describe("Slack canvas file-like tools", () => {
       throw new Error("slackCanvasEdit execute function missing");
     }
 
-    const result = await tool.execute(
-      {
-        canvas: "F0PREVIOUS",
-        edits: [{ oldText: "Missing", newText: "Replacement" }],
-      },
-      {} as never,
-    );
-
-    expect(result).toMatchObject({
-      ok: false,
-      canvas_id: "F0PREVIOUS",
-    });
-    expect((result as { error: string }).error).toContain("Could not find");
+    await expect(
+      tool.execute(
+        {
+          canvas: "F0PREVIOUS",
+          edits: [{ oldText: "Missing", newText: "Replacement" }],
+        },
+        {} as never,
+      ),
+    ).rejects.toThrow("Could not find");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
   });
 
@@ -214,19 +207,15 @@ describe("Slack canvas file-like tools", () => {
       throw new Error("slackCanvasEdit execute function missing");
     }
 
-    const result = await tool.execute(
-      {
-        canvas: "F0PREVIOUS",
-        edits: [{ oldText: "Duplicate", newText: "Replacement" }],
-      },
-      {} as never,
-    );
-
-    expect(result).toMatchObject({
-      ok: false,
-      canvas_id: "F0PREVIOUS",
-    });
-    expect((result as { error: string }).error).toContain("occurrences");
+    await expect(
+      tool.execute(
+        {
+          canvas: "F0PREVIOUS",
+          edits: [{ oldText: "Duplicate", newText: "Replacement" }],
+        },
+        {} as never,
+      ),
+    ).rejects.toThrow("occurrences");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
   });
 
@@ -250,7 +239,6 @@ describe("Slack canvas file-like tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       canvas_id: "F0PREVIOUS",
     });
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
@@ -298,7 +286,6 @@ describe("Slack canvas file-like tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       canvas_id: "F0NEWCANV",
     });
     expect(state.artifactState.lastCanvasId).toBe("F0NEWCANV");

@@ -7,6 +7,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
+    resourceEvents: { canSubscribe: true },
   } as unknown as ToolRegistrationHookContext;
   return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
 }
@@ -47,12 +48,28 @@ describe("getRepository", () => {
           "issue.comment.created",
           "issue.closed",
           "issue.reopened",
+          "pull_request.checks.failed",
+          "pull_request.comment.created",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         supportedEvents: [
           "issue.comment.created",
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "pull_request.checks.failed",
+          "pull_request.checks.recovered",
+          "pull_request.comment.created",
+          "pull_request.review.approved",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         type: "repository",
       },

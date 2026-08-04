@@ -40,7 +40,6 @@ describe("slackUserLookup", () => {
       const result = await executeTool(tool, { user_id: "U039RR91S" });
 
       expect(result).toMatchObject({
-        ok: true,
         mode: "user_id",
         user: {
           id: "U039RR91S",
@@ -77,7 +76,6 @@ describe("slackUserLookup", () => {
       const result = await executeTool(tool, { user_id: "U0BASIC" });
 
       expect(result).toMatchObject({
-        ok: true,
         mode: "user_id",
         user: {
           id: "U0BASIC",
@@ -93,10 +91,16 @@ describe("slackUserLookup", () => {
       queueSlackApiError("users.info", { error: "user_not_found" });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U0NONEXISTENT" });
-
-      expect(result.ok).toBe(false);
-      expect(result.slack_error).toBe("user_not_found");
+      await expect(
+        executeTool(tool, { user_id: "U0NONEXISTENT" }),
+      ).rejects.toMatchObject({
+        name: "ToolInputError",
+        message: "No Slack user found for the supplied user ID.",
+        cause: {
+          name: "SlackActionError",
+          apiError: "user_not_found",
+        },
+      });
     });
   });
 
@@ -115,7 +119,6 @@ describe("slackUserLookup", () => {
       const result = await executeTool(tool, { email: "emailuser@sentry.io" });
 
       expect(result).toMatchObject({
-        ok: true,
         mode: "email",
         user: {
           id: "U0EMAIL",
@@ -133,13 +136,9 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { email: "nobody@example.com" });
-
-      expect(result).toMatchObject({
-        ok: false,
-        mode: "email",
-        error: "No Slack user found with that email address.",
-      });
+      await expect(
+        executeTool(tool, { email: "nobody@example.com" }),
+      ).rejects.toThrow("No Slack user found");
     });
   });
 
@@ -165,7 +164,6 @@ describe("slackUserLookup", () => {
       const result = await executeTool(tool, { query: "markus" });
 
       expect(result).toMatchObject({
-        ok: true,
         mode: "query",
         query: "markus",
       });
@@ -190,7 +188,6 @@ describe("slackUserLookup", () => {
       const result = await executeTool(tool, { query: "zzzzzz" });
 
       expect(result).toMatchObject({
-        ok: true,
         mode: "query",
         count: 0,
         users: [],
@@ -254,7 +251,6 @@ describe("slackUserLookup", () => {
       });
 
       expect(result).toMatchObject({
-        ok: true,
         count: 2,
         searched_pages: 2,
         truncated: true,
@@ -281,11 +277,46 @@ describe("slackUserLookup", () => {
       });
 
       expect(result).toMatchObject({
-        ok: true,
         count: 2,
         searched_pages: 2,
         truncated: false,
       });
+    });
+
+    it("reports a missing user scope with repair guidance", async () => {
+      queueSlackApiError("users.list", {
+        error: "missing_scope",
+        needed: "users:read",
+        provided: "chat:write",
+      });
+
+      const tool = createSlackUserLookupTool();
+      await expect(executeTool(tool, { query: "alice" })).rejects.toMatchObject(
+        {
+          name: "ToolInputError",
+          message:
+            "Slack user lookup is unavailable because this installation is missing the `users:read` scope.",
+          cause: {
+            name: "SlackActionError",
+            code: "missing_scope",
+            needed: "users:read",
+            provided: "chat:write",
+          },
+        },
+      );
+    });
+
+    it("leaves internal Slack failures unexpected", async () => {
+      queueSlackApiError("users.list", { error: "fatal_error" });
+
+      const tool = createSlackUserLookupTool();
+      await expect(executeTool(tool, { query: "alice" })).rejects.toMatchObject(
+        {
+          name: "SlackActionError",
+          code: "internal_error",
+          apiError: "fatal_error",
+        },
+      );
     });
 
     it("skips deleted users", async () => {
@@ -314,25 +345,16 @@ describe("slackUserLookup", () => {
   describe("input validation", () => {
     it("rejects when no input provided", async () => {
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {});
-
-      expect(result).toMatchObject({
-        ok: false,
-        error: expect.stringContaining("Provide exactly one"),
-      });
+      await expect(executeTool(tool, {})).rejects.toThrow(
+        "Provide exactly one",
+      );
     });
 
     it("rejects when multiple inputs provided", async () => {
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
-        user_id: "U123",
-        query: "alice",
-      });
-
-      expect(result).toMatchObject({
-        ok: false,
-        error: expect.stringContaining("Only one of"),
-      });
+      await expect(
+        executeTool(tool, { user_id: "U123", query: "alice" }),
+      ).rejects.toThrow("Only one of");
     });
   });
 

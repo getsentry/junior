@@ -59,8 +59,6 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
         supports: (toolName: string) => toolName === "bash",
         execute: async () => {
           return {
-            ok: false,
-            status: "error",
             auth_required: {
               authorization: {
                 provider: "eval-oauth",

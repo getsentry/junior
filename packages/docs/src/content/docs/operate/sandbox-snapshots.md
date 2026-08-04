@@ -56,7 +56,7 @@ The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLO
 
 ## Build resources
 
-Snapshot builds use the same `SANDBOX_VCPUS` setting as runtime sandboxes. Set it when dependency installation or agent work needs more CPU or memory than the Vercel Sandbox default. Each vCPU provides 2 GB of memory, so `SANDBOX_VCPUS=4` creates 8 GB sandboxes.
+Snapshot builds use `SANDBOX_VCPUS` because `junior snapshot create` runs before app initialization. Set it when dependency installation needs more CPU or memory than the Vercel Sandbox default. Runtime sandboxes should normally use `createApp({ sandbox: { vcpus } })`. Each vCPU provides 2 GB of memory, so a value of `4` creates an 8 GB sandbox.
 
 Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
 

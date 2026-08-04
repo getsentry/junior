@@ -66,7 +66,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ]),
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "scheduler_slackScheduleCreateTask",
+      "slackScheduleCreateTask",
     );
   });
 
@@ -138,7 +138,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ]),
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "scheduler_slackScheduleCreateTask",
+      "slackScheduleCreateTask",
     );
   });
 

@@ -13,39 +13,18 @@ export const juniorToolBoundContinuationSchema =
     tool_name: z.string().min(1),
   });
 
-export const juniorToolErrorSchema = z
+/** Shared optional fields for canonical Junior tool outputs. */
+export const juniorToolOutputSchema = z
   .object({
-    kind: z.string().min(1),
-    message: z.string().min(1),
-    retryable: z.boolean().optional(),
-  })
-  .strict();
-
-export const juniorToolResultSchema = z
-  .object({
-    ok: z.boolean(),
-    status: z.enum(["success", "error"]),
     target: z.string().min(1).optional(),
-    data: z.unknown().optional(),
     truncated: z.boolean().optional(),
     continuation: juniorToolContinuationSchema.optional(),
-    error: z.union([juniorToolErrorSchema, z.string()]).optional(),
   })
   .passthrough();
 
-export const juniorToolResultWithBoundContinuationSchema =
-  juniorToolResultSchema.extend({
-    continuation: juniorToolBoundContinuationSchema.optional(),
-  });
+export type JuniorToolOutput = z.output<typeof juniorToolOutputSchema>;
 
-export type JuniorToolResult = z.output<typeof juniorToolResultSchema>;
-export type JuniorToolResultWithBoundContinuation = z.output<
-  typeof juniorToolResultWithBoundContinuationSchema
->;
-
-export interface JuniorToolResultEnvelope<
-  TDetails extends JuniorToolResult = JuniorToolResult,
-> {
+export interface JuniorToolOutputEnvelope<TDetails = unknown> {
   content: [TextContent, ...(TextContent | ImageContent)[]];
   details: TDetails;
 }
@@ -71,50 +50,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Bind continuation metadata to the exposed runtime tool name. */
 export function injectContinuationToolName(
-  details: JuniorToolResult,
+  details: unknown,
   toolName: string,
-): JuniorToolResult | JuniorToolResultWithBoundContinuation {
-  const parsed = juniorToolResultSchema.parse(details);
-  if (!isRecord(parsed.continuation)) {
-    return parsed;
+): unknown {
+  if (!isRecord(details) || !isRecord(details.continuation)) {
+    return details;
   }
-  return juniorToolResultWithBoundContinuationSchema.parse({
-    ...parsed,
-    continuation: {
-      ...parsed.continuation,
+  return {
+    ...details,
+    continuation: juniorToolBoundContinuationSchema.parse({
+      ...details.continuation,
       tool_name: toolName,
-    },
-  });
+    }),
+  };
 }
 
-export interface JuniorTextToolResultEnvelope<
-  TDetails extends JuniorToolResult = JuniorToolResult,
-> {
+export interface JuniorTextToolOutputEnvelope<TDetails = unknown> {
   content: [TextContent];
   details: TDetails;
 }
 
-/** Create the Pi-compatible transport envelope from one structured result object. */
-export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
+/**
+ * Project one canonical tool output onto Pi's native result channels.
+ *
+ * This follows the Codex tool-result model: `details` remains the authoritative
+ * typed value, while `content` is its model-facing serialization. Telemetry and
+ * execution success or failure are separate runtime projections and must not be
+ * embedded in the tool output.
+ */
+export function makeStructuredToolOutput<TDetails>(
   details: TDetails,
-): JuniorTextToolResultEnvelope<TDetails>;
-export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
+): JuniorTextToolOutputEnvelope<TDetails>;
+export function makeStructuredToolOutput<TDetails>(
   details: TDetails,
   options: { content: Array<TextContent | ImageContent> },
-): JuniorToolResultEnvelope<TDetails>;
-export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
+): JuniorToolOutputEnvelope<TDetails>;
+export function makeStructuredToolOutput<TDetails>(
   details: TDetails,
   options: { content?: Array<TextContent | ImageContent> } = {},
-): JuniorToolResultEnvelope<TDetails> | JuniorTextToolResultEnvelope<TDetails> {
-  const parsed = juniorToolResultSchema.parse(details) as TDetails;
+): JuniorToolOutputEnvelope<TDetails> | JuniorTextToolOutputEnvelope<TDetails> {
   return {
     content: [
       {
         type: "text",
-        text: JSON.stringify(sortJsonValue(parsed)),
+        text: JSON.stringify(sortJsonValue(details)),
       },
       ...(options.content ?? []),
     ],
-    details: parsed,
+    details,
   };
 }

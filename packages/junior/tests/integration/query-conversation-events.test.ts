@@ -123,8 +123,6 @@ describe("queryConversationEvents", () => {
     });
 
     expect(page).toMatchObject({
-      ok: true,
-      status: "success",
       conversation_id: CURRENT_CONVERSATION_ID,
       has_older: true,
       has_newer: false,

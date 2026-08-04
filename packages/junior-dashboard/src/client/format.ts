@@ -53,11 +53,15 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps with a stable empty fallback. */
-export function formatTime(value: string | undefined): string {
+/** Format absolute dashboard timestamps in the configured display timezone. */
+export function formatTime(
+  value: string | undefined,
+  options?: Intl.DateTimeFormatOptions,
+): string {
   const time = parseTime(value);
   if (time == null) return "none";
   return new Date(time).toLocaleString(undefined, {
+    ...options,
     timeZone: displayTimeZone(),
   });
 }

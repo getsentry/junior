@@ -1,14 +1,14 @@
 # Event tasks
 
 Core stores durable Slack-destination tasks that match normalized resource
-events by namespace, identifier, and event type. Plugins own webhook
+events by Slack workspace, namespace, identifier, and event type. Plugins own webhook
 verification, provider-scope validation, and event normalization; core binds
 their namespace when they publish an event. Plugins do not know which
 conversations or tasks consume it.
 
-One task selector has one namespace, one identifier, and one or more event
-types. Multiple tasks may use the same selector. `resourceType` and `label` are
-presentation metadata, not match keys.
+One task selector has one Slack workspace, one namespace, one identifier, and
+one or more event types. Multiple tasks may use the same selector.
+`resourceType` and `label` are presentation metadata, not match keys.
 
 `searchResourceEventTypes` exposes the same enabled plugin catalog used by
 resource subscriptions and event tasks. Create and update tools accept only
@@ -24,7 +24,9 @@ provider retries do not execute the same task twice. Distinct matching events
 are not silently dropped by a task-level quota. Task management is bound to the
 Slack channel or DM where the task was created. Threads in the same channel
 share event-task management; temporary resource watches remain thread-bound.
-One Junior deployment serves one Slack workspace. A task matched before a
+Creation and delivery require single-workspace Slack mode so core can verify the
+team that owns provider events. Multi-workspace mode fails closed until plugins
+can provide a real provider-to-workspace binding. A task matched before a
 concurrent update or deletion dispatches from that matched snapshot; later
 events use the current stored task. Event tasks exist only while configured:
 deletion removes the stored task, and there is no pause state or separate

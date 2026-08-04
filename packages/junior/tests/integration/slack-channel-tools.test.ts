@@ -207,7 +207,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       count: 1,
     });
@@ -242,7 +241,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       count: 1,
     });
@@ -271,7 +269,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       count: 1,
     });
@@ -289,16 +286,9 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
-      latest: "slack:C123:not-a-timestamp",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error:
-        "Invalid `latest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
-    });
+    await expect(
+      executeTool(tool, { latest: "slack:C123:not-a-timestamp" }),
+    ).rejects.toThrow("Invalid `latest` Slack timestamp");
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
@@ -307,16 +297,9 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
-      oldest: "   ",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error:
-        "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
-    });
+    await expect(executeTool(tool, { oldest: "   " })).rejects.toThrow(
+      "Invalid `oldest` Slack timestamp",
+    );
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
@@ -325,16 +308,11 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
-      oldest: "slack:C0OTHER:1710000000.000000",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error:
-        "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
-    });
+    await expect(
+      executeTool(tool, {
+        oldest: "slack:C0OTHER:1710000000.000000",
+      }),
+    ).rejects.toThrow("Invalid `oldest` Slack timestamp");
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
@@ -352,12 +330,8 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: {
-        channel_id: "C123",
-        file_count: 1,
-      },
+      channel_id: "C123",
+      file_count: 1,
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -394,9 +368,7 @@ describe("slack channel tools", () => {
       length: String(imageBytes.byteLength),
     });
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: { file_count: 1 },
+      file_count: 1,
     });
   });
 
@@ -419,13 +391,9 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: {
-        channel_id: "D123",
-        thread_ts: "1700000000.321",
-        file_count: 1,
-      },
+      channel_id: "D123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
@@ -451,13 +419,9 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: {
-        channel_id: "C123",
-        thread_ts: "1700000000.321",
-        file_count: 1,
-      },
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -491,13 +455,9 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      status: "success",
-      data: {
-        channel_id: "C123",
-        thread_ts: "1700000000.321",
-        file_count: 1,
-      },
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
@@ -547,9 +507,7 @@ describe("slack channel tools", () => {
     });
 
     expect(second).toMatchObject({
-      ok: true,
-      status: "success",
-      data: { deduplicated: true },
+      deduplicated: true,
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal"),
@@ -605,7 +563,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       count: 2,
     });
@@ -633,17 +590,9 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
-      cursor: "expired-cursor",
-      limit: 10,
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error:
-        "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
-    });
+    await expect(
+      executeTool(tool, { cursor: "expired-cursor", limit: 10 }),
+    ).rejects.toThrow("supplied Slack history cursor is no longer valid");
 
     const historyCalls = getCapturedSlackApiCalls("conversations.history");
     expect(historyCalls).toHaveLength(1);
@@ -667,7 +616,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       message_ts: "1700000000.321",
       emoji: "wave",
@@ -695,7 +643,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       channel_id: "C123",
       message_ts: "1700000000.321",
       emoji: "wave",
@@ -717,7 +664,6 @@ describe("slack channel tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       emoji: "thumbsup::skin-tone-6",
     });
     const reactionCalls = getCapturedSlackApiCalls("reactions.add");
@@ -744,11 +690,9 @@ describe("slack channel tools", () => {
     });
 
     expect(first).toMatchObject({
-      ok: true,
       emoji: "thumbsup",
     });
     expect(second).toMatchObject({
-      ok: true,
       emoji: "thumbsup",
       deduplicated: true,
     });

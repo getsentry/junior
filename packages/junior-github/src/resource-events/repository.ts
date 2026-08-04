@@ -1,5 +1,9 @@
 import type { SubscribableResource } from "@sentry/junior-plugin-api";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
+import {
+  GITHUB_PULL_REQUEST_EVENTS,
+  GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+} from "./pull-request.js";
 
 /** Build the stable repository identity shared by tools and webhooks. */
 export function gitHubRepositoryResource(input: {
@@ -19,8 +23,12 @@ export function gitHubRepositorySubscribable(input: {
   if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
   return {
     ...gitHubRepositoryResource(input),
-    suggestedEvents: ["issue.opened", ...GITHUB_ISSUE_SUGGESTED_EVENTS],
-    supportedEvents: GITHUB_ISSUE_EVENTS,
+    suggestedEvents: [
+      "issue.opened",
+      ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+      ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+    ],
+    supportedEvents: [...GITHUB_ISSUE_EVENTS, ...GITHUB_PULL_REQUEST_EVENTS],
     type: "repository",
   };
 }

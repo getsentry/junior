@@ -74,23 +74,24 @@ You can also provide the same authorization policy through deployment environmen
 
 The dashboard package owns these routes:
 
-| Route                           | Purpose                                 |
-| ------------------------------- | --------------------------------------- |
-| `/`                             | Personal conversation workspace.        |
-| `/conversations`                | Redirect to the personal workspace.     |
-| `/conversations/:conversation`  | Workspace with a selected transcript.   |
-| `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.    |
-| `/system`                       | Aggregate runtime and model metrics.    |
-| `/system/people`                | Actor activity directory.               |
-| `/system/people/:email`         | Actor activity profile.                 |
-| `/system/locations`             | Public location activity directory.     |
-| `/system/locations/:location`   | Public location activity detail.        |
-| `/system/plugins`               | Loaded plugin and skill inventory.      |
-| `/system/plugins/:plugin`       | Plugin details and operational reports. |
-| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle. |
-| `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.     |
-| `/auth/login`                   | Dashboard Google login starter.         |
-| `/api/auth/*`                   | Better Auth Google login and callbacks. |
+| Route                           | Purpose                                     |
+| ------------------------------- | ------------------------------------------- |
+| `/`                             | Personal conversation workspace.            |
+| `/conversations`                | Redirect to the personal workspace.         |
+| `/conversations/:conversation`  | Workspace with a selected transcript.       |
+| `/tasks`                        | Signed-in user's scheduled and event tasks. |
+| `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.        |
+| `/system`                       | Aggregate runtime and model metrics.        |
+| `/system/people`                | Actor activity directory.                   |
+| `/system/people/:email`         | Actor activity profile.                     |
+| `/system/locations`             | Public location activity directory.         |
+| `/system/locations/:location`   | Public location activity detail.            |
+| `/system/plugins`               | Loaded plugin and skill inventory.          |
+| `/system/plugins/:plugin`       | Plugin details and operational reports.     |
+| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.     |
+| `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.         |
+| `/auth/login`                   | Dashboard Google login starter.             |
+| `/api/auth/*`                   | Better Auth Google login and callbacks.     |
 
 When the GitHub plugin is enabled, open `/system/plugins/github` for its pull
 request and issue analytics.
@@ -110,6 +111,8 @@ The current authenticated product API slices are:
 | `/api/plugins/:plugin/*`                  | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
 | `/api/user-pages`                         | Safe navigation metadata for registered plugin pages.                                                       |
 | `/api/user-pages/:plugin/:page`           | Viewer-authorized metrics and records for one plugin page.                                                  |
+| `/api/tasks`                              | Viewer-owned scheduled and resource-event tasks.                                                            |
+| `/api/tasks/:kind/:task`                  | Deletes one viewer-owned scheduled or event task.                                                           |
 | `/api/skills`                             | Discovered skill list.                                                                                      |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
 | `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                         |
@@ -125,7 +128,7 @@ The current authenticated product API slices are:
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Conversation summary resources report that match through `isParticipant`; event-page resources apply the same authorization decision through their projected events and `eventHistory`. Other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Each `/system/plugins/:plugin` page shows that plugin's details and operational summaries. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. System always remains the last primary navigation item. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/tasks` combines the signed-in user's scheduled and resource-event tasks. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Each `/system/plugins/:plugin` page shows that plugin's details and operational summaries. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. System always remains the last primary navigation item. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.
 When dashboard auth is explicitly disabled for local or demo use, the workspace shows the global feed because there is no authenticated actor to filter by.
 The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail returns the latest 500 reporting events by default and a `previousCursor` when earlier events remain. The `limit` query parameter can select between 1 and 1,000 events. Cursors are signed for one conversation; consumers should treat them as opaque.

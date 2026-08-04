@@ -1,10 +1,7 @@
 /** Project viewer-visible memories into Junior's core-rendered user page. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
 import { createViewerMemories } from "./personal";
-import type {
-  MemoryVisibility,
-  PersonalMemoryRecord,
-} from "./personal-store";
+import type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
 import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
@@ -53,10 +50,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     description:
       "Personal and public memories Junior can use across conversations.",
     async read(ctx, input) {
-      const memories = createViewerMemories(
-        ctx.db as MemoryDb,
-        ctx.viewer.actors,
-      );
+      const memories = createViewerMemories(ctx.db as MemoryDb, ctx.viewer);
       const page = await memories.list({
         cursor: input.cursor,
         ...pageFilter(input.filter),

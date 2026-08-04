@@ -32,7 +32,7 @@ related:
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                                                 |
 | `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                                                             |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                                                                      |
-| `SANDBOX_VCPUS`                             | No          | vCPUs for newly created Vercel Sandboxes; each vCPU provides 2 GB of memory. Defaults to the Vercel Sandbox resource setting.                                                                    |
+| `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory.                      |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.                             |
 | `JUNIOR_BASE_URL`                           | No          | Canonical base URL for callback/auth URL generation.                                                                                                                                             |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                                            |
@@ -151,9 +151,23 @@ const app = await createApp({
 
 Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
 
-## Sandbox egress trace propagation
+## Sandbox configuration
 
-Pass `sandbox.egressTracePropagationDomains` to `createApp()` when sandboxed commands should keep Sentry trace context across sandbox network egress:
+Pass sandbox sizing to `createApp()`. Each vCPU provides 2 GB of memory, so this creates 8 GB runtime sandboxes:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  sandbox: {
+    vcpus: 4,
+  },
+});
+```
+
+The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+
+Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 
 ```ts
 import { createApp } from "@sentry/junior";

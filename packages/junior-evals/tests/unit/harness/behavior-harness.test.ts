@@ -205,8 +205,8 @@ describe("behavior harness", () => {
       }
     }
 
-    expect(shortResult).toMatchObject({ ok: true, truncated: true });
-    expect(longResult).toMatchObject({ ok: true, truncated: true });
+    expect(shortResult).toMatchObject({ truncated: true });
+    expect(longResult).toMatchObject({ truncated: true });
     const shortContent = (shortResult as { content: string }).content;
     const longContent = (longResult as { content: string }).content;
     expect(shortContent.length).toBeLessThanOrEqual(1_003);

@@ -9,6 +9,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
+    resourceEvents: { canSubscribe: true },
   } as unknown as ToolRegistrationHookContext;
   return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
 }

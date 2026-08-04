@@ -23,10 +23,6 @@ export default defineConfig({
         __dirname,
         "../junior-memory/src/index.ts",
       ),
-      "@sentry/junior-scheduler": path.resolve(
-        __dirname,
-        "../junior-scheduler/src/index.ts",
-      ),
     },
   },
   test: {

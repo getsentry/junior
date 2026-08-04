@@ -386,6 +386,27 @@ function slackDestination(context: ReturnType<typeof slackContext>) {
   };
 }
 
+function viewerUser(actors: Actor[], email = "person@example.com") {
+  return {
+    email,
+    id: `user:${email}`,
+    identities: actors.flatMap((actor) =>
+      actor.platform === "system"
+        ? []
+        : [
+            {
+              id: `identity:${actor.platform}:${actor.platform === "slack" ? `${actor.teamId}:` : ""}${actor.userId}`,
+              provider: actor.platform,
+              providerSubjectId: actor.userId,
+              ...(actor.platform === "slack"
+                ? { providerTenantId: actor.teamId }
+                : {}),
+            },
+          ],
+    ),
+  };
+}
+
 function localContext(
   overrides: { conversationId?: string; userId?: string } = {},
 ) {
@@ -2146,10 +2167,7 @@ ORDER BY created_at_ms ASC
           db: memoryDb(fixture),
           log: noopLogger,
           plugin: { name: "memory" },
-          viewer: {
-            actors: [actorContext.actor],
-            email: "person@example.com",
-          },
+          viewer: viewerUser([actorContext.actor]),
         },
         { limit: 20 },
       );
@@ -2202,10 +2220,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: {
-              actors: [actorContext.actor],
-              email: "person@example.com",
-            },
+            viewer: viewerUser([actorContext.actor]),
           },
           { filter: "private", limit: 20 },
         ),
@@ -2218,10 +2233,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: {
-              actors: [actorContext.actor],
-              email: "person@example.com",
-            },
+            viewer: viewerUser([actorContext.actor]),
           },
           { filter: "public", limit: 20 },
         ),
@@ -2234,7 +2246,7 @@ ORDER BY created_at_ms ASC
             db: memoryDb(fixture),
             log: noopLogger,
             plugin: { name: "memory" },
-            viewer: { actors: [], email: "new@example.com" },
+            viewer: viewerUser([], "new@example.com"),
           },
           { limit: 20 },
         ),
@@ -2349,9 +2361,9 @@ ORDER BY created_at_ms ASC
         idempotencyKey: "session:api:private",
         kind: "knowledge",
       });
-      const actors = [firstContext.actor!, secondContext.actor!];
+      const viewer = viewerUser([firstContext.actor!, secondContext.actor!]);
+      const resolveUser = vi.fn(async () => viewer);
       const api = createMemoryApi({
-        actors: async () => actors,
         db: memoryDb(fixture),
         eventStats: {
           async costsByDay({ days, eventName }) {
@@ -2375,6 +2387,7 @@ ORDER BY created_at_ms ASC
             }));
           },
         },
+        users: { resolve: resolveUser },
       });
       const requestContext = pluginApiRouteRequestContextSchema.parse({
         auth: {
@@ -2385,6 +2398,18 @@ ORDER BY created_at_ms ASC
         },
         pluginName: "memory",
       });
+
+      const unknownRouteResponse = await api.fetch(
+        new Request("http://localhost/unknown"),
+        requestContext,
+      );
+      expect(unknownRouteResponse.status).toBe(404);
+      const invalidMethodResponse = await api.fetch(
+        new Request("http://localhost/memories", { method: "POST" }),
+        requestContext,
+      );
+      expect(invalidMethodResponse.status).toBe(405);
+      expect(resolveUser).not.toHaveBeenCalled();
 
       const firstPageResponse = await api.fetch(
         new Request("http://localhost/memories?limit=2"),
@@ -3514,7 +3539,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-personal" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Prefers terse status updates.",
@@ -3568,7 +3592,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-conversation" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Incident notes live in Linear.",
@@ -3594,7 +3617,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.listMemories.execute({ limit: 10 }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Incident notes live in Linear.",
@@ -3607,7 +3629,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.searchMemories.execute({ query: "incident notes" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Incident notes live in Linear.",
@@ -3628,7 +3649,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memory: {
           id: personal!.id,
           content: "Prefers terse status updates.",
@@ -3636,7 +3656,7 @@ WHERE id = '${superseded.memory.id}'
       });
       await expect(
         tools.searchMemories.execute({ query: "terse status" }, {}),
-      ).resolves.toMatchObject({ ok: true, memories: [] });
+      ).resolves.toMatchObject({ memories: [] });
 
       await expect(
         createMemoryCreateTool({
@@ -3674,7 +3694,6 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-valid-expiration" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: {
           content: "Prefers valid expiration to be stored.",
@@ -3735,14 +3754,12 @@ WHERE id = '${superseded.memory.id}'
           { toolCallId: "tool-create-personal" },
         ),
       ).resolves.toMatchObject({
-        ok: true,
         created: true,
         memory: { content: "Prefers duplicate-safe retries." },
       });
       await expect(
         tools.searchMemories.execute({ query: "duplicate-safe retries" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "Prefers duplicate-safe retries.",

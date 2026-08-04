@@ -337,7 +337,7 @@ describe("Pi tool adapter", () => {
     );
   });
 
-  it("activates an MCP provider before reviewing the dispatched action", async () => {
+  it("reviews the MCP dispatcher before activating the requested provider", async () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({
       content: [{ type: "text" as const, text: "deleted" }],
@@ -402,19 +402,30 @@ describe("Pi tool adapter", () => {
           arguments: { workspace: "preview-42" },
         },
         tool: expect.objectContaining({
-          annotations: managedTool.annotations,
-          description: managedTool.description,
-          dispatcherName: "callMcpTool",
-          name: managedTool.name,
+          annotations: {
+            destructiveHint: true,
+            idempotentHint: false,
+            openWorldHint: true,
+            readOnlyHint: false,
+          },
+          name: "callMcpTool",
         }),
       }),
       {},
     );
-    expect(activateProvider.mock.invocationCallOrder[0]).toBeLessThan(
-      review.mock.invocationCallOrder[0]!,
-    );
+    expect(activateProvider).toHaveBeenCalledWith("demo");
     expect(review.mock.invocationCallOrder[0]).toBeLessThan(
+      activateProvider.mock.invocationCallOrder[0]!,
+    );
+    expect(activateProvider.mock.invocationCallOrder[0]).toBeLessThan(
       execute.mock.invocationCallOrder[0]!,
+    );
+    expect(execute).toHaveBeenCalledWith(
+      { workspace: "preview-42" },
+      {
+        conversationPrivacy: "private",
+        toolCallId: "tool-mcp",
+      },
     );
   });
 
@@ -622,7 +633,7 @@ describe("Pi tool adapter", () => {
     expect(onFatal).toHaveBeenCalledOnce();
   });
 
-  it("reports structured tool error results to observers", async () => {
+  it("reports thrown tool errors to observers", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolResult = vi.fn();
     const [demoTool] = createPiAgentTools(
@@ -630,14 +641,9 @@ describe("Pi tool adapter", () => {
         demo: {
           description: "demo",
           inputSchema: {} as any,
-          execute: async () => ({
-            ok: false,
-            status: "error",
-            error: {
-              kind: "not_found",
-              message: "Thing not found.",
-            },
-          }),
+          execute: async () => {
+            throw new Error("Thing not found.");
+          },
         },
       },
       sandbox,
@@ -651,15 +657,14 @@ describe("Pi tool adapter", () => {
       onToolResult,
     );
 
-    await demoTool!.execute("tool-demo", { id: "missing" });
+    await expect(
+      demoTool!.execute("tool-demo", { id: "missing" }),
+    ).rejects.toThrow("Thing not found.");
 
     expect(onToolResult).toHaveBeenCalledWith({
       ok: false,
       params: { id: "missing" },
-      result: expect.objectContaining({
-        ok: false,
-        status: "error",
-      }),
+      error: "Thing not found.",
       toolCallId: "tool-demo",
       toolName: "demo",
     });

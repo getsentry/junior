@@ -1,8 +1,8 @@
 import {
   definePluginTool,
   PluginToolInputError,
-  pluginToolResultSchema,
-  type PluginToolResult,
+  pluginToolOutputSchema,
+  type PluginToolOutput,
   type SubscribableResource,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
@@ -60,18 +60,12 @@ const pullRequestSchema = z.object({
   url: z.string(),
 });
 type PullRequest = z.output<typeof pullRequestSchema>;
-interface Result extends PluginToolResult, PullRequest {
-  ok: true;
-  status: "success";
+interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
-  data: PullRequest;
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequest"),
-  data: pullRequestSchema,
   ...pullRequestSchema.shape,
 });
 
@@ -181,10 +175,12 @@ export function createGitHubUpdatePullRequestTool(
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = gitHubPullRequestSubscribable({
-        number: providerResult.number,
-        repo: repo.ref,
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? gitHubPullRequestSubscribable({
+            number: providerResult.number,
+            repo: repo.ref,
+          })
+        : undefined;
       const data: PullRequest = {
         base: providerResult.base.ref,
         body: providerResult.body,
@@ -196,10 +192,7 @@ export function createGitHubUpdatePullRequestTool(
         url: providerResult.html_url,
       };
       return {
-        ok: true,
-        status: "success",
         target: "updatePullRequest",
-        data,
         ...data,
       };
     },

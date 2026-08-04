@@ -46,8 +46,6 @@ describe("createPiAgentTools telemetry", () => {
         description: "Inspect a private value.",
         inputSchema: { type: "object", properties: {} },
         execute: async () => ({
-          ok: true,
-          status: "success",
           secret: "private result",
         }),
       },
@@ -77,8 +75,6 @@ describe("createPiAgentTools telemetry", () => {
     );
     expect(endAttributes.value["gen_ai.tool.call.result.size"]).toBe(
       JSON.stringify({
-        ok: true,
-        status: "success",
         secret: "private result",
       }).length,
     );
@@ -89,7 +85,7 @@ describe("createPiAgentTools telemetry", () => {
       grep: {
         description: "Search files.",
         inputSchema: { type: "object", properties: {} },
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ matches: 3 }),
       },
     };
     const sandboxTools: SandboxTools = {
@@ -100,7 +96,7 @@ describe("createPiAgentTools telemetry", () => {
         });
         return {
           content: [{ type: "text", text: "matches" }],
-          details: { ok: true, status: "success" },
+          details: { matches: 3 },
         };
       },
     };

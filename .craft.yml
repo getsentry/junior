@@ -41,9 +41,6 @@ targets:
     id: "@sentry/junior-notion"
     includeNames: /^sentry-junior-notion-\d.*\.tgz$/
   - name: npm
-    id: "@sentry/junior-scheduler"
-    includeNames: /^sentry-junior-scheduler-\d.*\.tgz$/
-  - name: npm
     id: "@sentry/junior-sentry"
     includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
   - name: npm

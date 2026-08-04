@@ -16,6 +16,10 @@ conversation.
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
+- Core resolves the single-workspace Slack bot token to a verified team ID and
+  includes that team in every subscription match. Resource-event creation and
+  delivery are disabled in multi-workspace Slack mode until plugins can provide
+  a real provider-to-workspace binding.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares
@@ -33,9 +37,9 @@ conversation.
   safe notification summary rather than a raw webhook payload.
 - Ingestion appends a system-authored conversation message and sends a normal
   task-execution wake-up.
-- A subscription selector is one namespace, one identifier, and one or more
-  event types. `resourceType` and `label` are presentation metadata, not match
-  keys.
+- A subscription selector is one Slack workspace, one namespace, one
+  identifier, and one or more event types. `resourceType` and `label` are
+  presentation metadata, not match keys.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.

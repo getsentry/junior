@@ -55,7 +55,7 @@ Set these values in the host environment:
 | `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                        |
 | `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                                 |
 | `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.     |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment, pull request, and issue events. |
+| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment, pull request, release, and issue events. |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
 `GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
@@ -119,6 +119,7 @@ Create and install a GitHub App before you verify GitHub workflows:
    - Pull request
    - Pull request review
    - Pull request review comment
+   - Release
 6. Install the app on the repository or organization Junior should access.
 7. Copy the App ID, OAuth client ID/secret, installation ID, bot name, bot noreply email, and, if you enabled webhooks, the webhook secret into your deployment environment.
 
@@ -132,11 +133,16 @@ That only helps when those repositories are covered by the same GitHub App insta
 ## React to pull request and issue events
 
 When `GITHUB_WEBHOOK_SECRET` is configured, GitHub tools can return subscribable
-pull request and issue resources. Junior can use those resources in two ways. A
+pull request, issue, and release resources. Junior can use those resources in two ways. A
 temporary resource watch sends matching updates back to the current Slack
 thread. A durable event task runs a stored instruction whenever its selected
 events occur and remains configured for the Slack channel until someone deletes
 it.
+
+Resource watches and event tasks require a single-workspace Slack deployment
+configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource
+events in multi-workspace Slack mode because a provider webhook does not carry a
+verified Slack workspace binding.
 
 Both forms run headlessly as Junior, not as the webhook sender. Resource watches
 use the plugin's scoped installation credentials. Event tasks make their
@@ -156,16 +162,41 @@ Supported GitHub webhook deliveries become these Junior resource events:
 | `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
 | `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
 | `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |
+| `release` published                   | `release.published`                                                                                      |
 
 `pull_request.merged` and `pull_request.closed_unmerged` complete a temporary
 pull request watch after Junior accepts the event. Other watch events remain
 active until the watch expires or is cancelled. Event tasks do not complete
 after a terminal event; they remain configured until deleted.
 
-Issue events can target one issue with `owner/repo#number` or every issue in a
-repository with `owner/repo`. Webhook events use normal queued delivery. They do
-not interrupt active work, bypass Slack routing, or act as user-authored
-commands.
+Issue and pull request events can target one item with `owner/repo#number` or
+every item of that kind in a repository with `owner/repo`. Webhook events use
+normal queued delivery. They do not interrupt active work, bypass Slack routing,
+or act as user-authored commands.
+
+## Watch release events
+
+Use `github_getRelease` when Junior should inspect or watch GitHub releases for
+an exact repository. Supply a tag to limit the lookup and watch to that release,
+or omit it to watch every published release in the repository. The result
+includes the latest matching release when GitHub has created one. It also remains
+subscribable before the release exists, which lets Junior wait for a publish that
+has not happened yet.
+
+The GitHub App needs `Contents: read` (already required for repository access),
+and its webhook must subscribe to Release. Junior maps those deliveries to this
+resource event:
+
+| GitHub delivery     | Junior event types  |
+| ------------------- | ------------------- |
+| `release` published | `release.published` |
+
+For a tag-specific watch, `release.published` completes the subscription after
+Junior accepts the event. A repository-wide release watch remains active across
+publishes so later tags can also notify the conversation; it ends through
+cancellation or its configured TTL. Draft releases are ignored. Release tag,
+name, and body values are provider-controlled and only appear in untrusted event
+text.
 
 ## Watch deployment events
 
@@ -270,9 +301,11 @@ expected follow-up in the original conversation.
 - PR creation works but Junior never offers to watch the PR: `GITHUB_WEBHOOK_SECRET` is missing from the deployment environment. Set it, redeploy, and create a new PR through Junior.
 - `github_getDeployment` returns `403`: grant the GitHub App `Deployments: read`, approve the updated permission on its installation, and retry.
 - Deployment metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing. Set it, redeploy, and run `github_getDeployment` again.
+- Release metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing, or the GitHub App webhook is not subscribed to Release. Set the secret, add the Release event, redeploy, and run `github_getRelease` again.
 - GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
-- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but belongs to another GitHub App installation, or it does not map to a supported deployment, pull request, or issue event. Confirm `GITHUB_INSTALLATION_ID` and use one of the configured event types above.
+- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but belongs to another GitHub App installation, or it does not map to a supported deployment, pull request, release, or issue event. Confirm `GITHUB_INSTALLATION_ID` and use one of the configured event types above.
 - GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has a resource watch, or the Slack destination has an event task, for the same identifier and event type. A successful webhook alone does not create either one.
+- Resource watches or event tasks are unavailable in Slack OAuth mode: resource-event delivery currently requires a single-workspace `SLACK_BOT_TOKEN` deployment. Use that deployment mode or wait until the provider installation can be bound to a Slack workspace.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.
 - Private OAuth prompt for a human-identity operation such as a pull request review: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.

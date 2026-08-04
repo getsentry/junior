@@ -73,8 +73,6 @@ describe("createWebSearchTool", () => {
       }),
     );
     expect(result).toEqual({
-      ok: true,
-      status: "success",
       model: "anthropic/claude-sonnet-4.6",
       query: "vercel ai gateway",
       result_count: 1,
@@ -88,7 +86,7 @@ describe("createWebSearchTool", () => {
     });
   });
 
-  it("wraps AI SDK errors in web search error message", async () => {
+  it("propagates AI SDK errors", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error('400 Invalid input: expected "function"'),
     );
@@ -100,19 +98,10 @@ describe("createWebSearchTool", () => {
 
     await expect(
       tool.execute({ query: "test query" }, {} as never),
-    ).resolves.toEqual({
-      ok: false,
-      status: "error",
-      query: "test query",
-      result_count: 0,
-      results: [],
-      error: 'web search failed: 400 Invalid input: expected "function"',
-      timeout: false,
-      retryable: true,
-    });
+    ).rejects.toThrow('400 Invalid input: expected "function"');
   });
 
-  it("returns a retryable timeout error instead of throwing", async () => {
+  it("throws when search times out", async () => {
     vi.useFakeTimers();
     vi.mocked(generateText).mockImplementation(
       () =>
@@ -126,17 +115,16 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = tool.execute({ query: "test query" }, {} as never);
+    const pending = Promise.resolve(
+      tool.execute({ query: "test query" }, {} as never),
+    );
+    const settled = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(60_000);
-    await expect(pending).resolves.toEqual({
-      ok: false,
-      status: "error",
-      query: "test query",
-      result_count: 0,
-      results: [],
-      error: "web search failed: webSearch timed out",
-      timeout: true,
-      retryable: true,
+    await expect(settled).resolves.toMatchObject({
+      message: "webSearch timed out",
     });
     vi.useRealTimers();
   });
@@ -158,10 +146,18 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = tool.execute({ query: "slow query" }, {} as never);
+    const pending = Promise.resolve(
+      tool.execute({ query: "slow query" }, {} as never),
+    );
+    const settled = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     expect(capturedSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(60_000);
-    await pending;
+    await expect(settled).resolves.toMatchObject({
+      message: "webSearch timed out",
+    });
     expect(capturedSignal?.aborted).toBe(true);
     vi.useRealTimers();
   });
@@ -214,21 +210,24 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = tool.execute({ query: "boom query" }, {} as never);
+    const pending = Promise.resolve(
+      tool.execute({ query: "boom query" }, {} as never),
+    );
+    const settled = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(60_000);
-    const result = await pending;
+    await expect(settled).resolves.toMatchObject({
+      message: "webSearch timed out",
+    });
 
     globalThis.AbortController = originalAC;
 
-    expect(result).toMatchObject({
-      ok: false,
-      timeout: true,
-      error: "web search failed: webSearch timed out",
-    });
     vi.useRealTimers();
   });
 
-  it("marks authentication failures as non-retryable", async () => {
+  it("propagates authentication failures", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error(
         "AI Gateway authentication failed: No authentication provided.",
@@ -240,18 +239,8 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
-      {
-        ok: false,
-        status: "error",
-        query: "test",
-        result_count: 0,
-        results: [],
-        error:
-          "web search failed: AI Gateway authentication failed: No authentication provided.",
-        timeout: false,
-        retryable: false,
-      },
+    await expect(tool.execute({ query: "test" }, {} as never)).rejects.toThrow(
+      "AI Gateway authentication failed: No authentication provided.",
     );
   });
 });

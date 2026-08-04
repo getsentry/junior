@@ -1,9 +1,9 @@
 import {
   definePluginTool,
   PluginToolInputError,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   subscribableResourceSchema,
-  type PluginToolResult,
+  type PluginToolOutput,
   type SubscribableResource,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
@@ -24,18 +24,12 @@ const repositorySchema = z.object({
   url: z.string(),
 });
 type Repository = z.output<typeof repositorySchema>;
-interface Result extends PluginToolResult, Repository {
-  ok: true;
-  status: "success";
+interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
-  data: Repository;
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("getRepository"),
-  data: repositorySchema,
   ...repositorySchema.shape,
 });
 
@@ -102,9 +96,11 @@ export function createGitHubGetRepositoryTool(
           private: z.boolean(),
         })
         .parse(parsed);
-      const subscribable = gitHubRepositorySubscribable({
-        repo: providerResult.full_name,
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? gitHubRepositorySubscribable({
+            repo: providerResult.full_name,
+          })
+        : undefined;
       const data: Repository = {
         defaultBranch: providerResult.default_branch,
         description: providerResult.description,
@@ -114,10 +110,7 @@ export function createGitHubGetRepositoryTool(
         url: providerResult.html_url,
       };
       return {
-        ok: true,
-        status: "success",
         target: "getRepository",
-        data,
         ...data,
       };
     },

@@ -20,7 +20,7 @@ describe("memory conversation events", () => {
     ).toBeUndefined();
   });
 
-  it("bounds a single-memory preview to the presentation contract", () => {
+  it("uses a count-aware title and keeps the full memory in details", () => {
     const content = `Long memory ${"x".repeat(1_000)}`;
 
     const presentation = memoriesCapturedEvent.renderEvent({
@@ -35,8 +35,31 @@ describe("memory conversation events", () => {
       ],
     });
 
-    expect(presentation?.preview).toHaveLength(500);
-    expect(presentation?.preview).toMatch(/\.\.\.$/);
+    expect(presentation?.title).toBe("1 memory captured");
+    expect(presentation?.preview).toBeUndefined();
     expect(presentation?.details?.[0]?.title).toBe(content);
+  });
+
+  it("pluralizes captured memory counts", () => {
+    const presentation = memoriesCapturedEvent.renderEvent({
+      memories: [
+        {
+          content: "Use pnpm.",
+          id: "memory-1",
+          kind: "preference",
+          observedAtMs: 1,
+          scope: "personal",
+        },
+        {
+          content: "Keep events expandable.",
+          id: "memory-2",
+          kind: "knowledge",
+          observedAtMs: 2,
+          scope: "conversation",
+        },
+      ],
+    });
+
+    expect(presentation?.title).toBe("2 memories captured");
   });
 });

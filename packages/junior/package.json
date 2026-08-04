@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.127.0",
+  "version": "0.130.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -100,7 +100,6 @@
     "@emnapi/runtime": "^1.10.0",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
-    "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",

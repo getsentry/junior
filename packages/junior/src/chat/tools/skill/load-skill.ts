@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   sandboxSkillDir,
   sandboxSkillFile,
@@ -13,10 +14,6 @@ import {
 } from "@/chat/skills";
 
 export type LoadSkillResult = {
-  ok: boolean;
-  status: "error" | "success";
-  error?: string;
-  available_skills?: string[];
   skill_name?: string;
   description?: string;
   skill_dir?: string;
@@ -38,7 +35,6 @@ function toLoadedSkill(
   availableSkills: SkillMetadata[],
 ): Skill | null {
   if (
-    result.ok !== true ||
     typeof result.skill_name !== "string" ||
     typeof result.description !== "string" ||
     typeof result.skill_dir !== "string" ||
@@ -71,12 +67,11 @@ async function loadSkillFromHost(
     (entry) => entry.name.toLowerCase() === requested,
   );
   if (!skill) {
-    return {
-      ok: false,
-      status: "error",
-      error: `Unknown skill: ${skillName}`,
-      available_skills: availableSkills.map((entry) => entry.name),
-    };
+    throw new ToolInputError(
+      `Unknown skill: ${skillName}. Available skills: ${availableSkills
+        .map((entry) => entry.name)
+        .join(", ")}`,
+    );
   }
 
   const skillDir = sandboxSkillDir(skill.name);
@@ -87,8 +82,6 @@ async function loadSkillFromHost(
   }
 
   return {
-    ok: true,
-    status: "success",
     skill_name: skill.name,
     description: skill.description,
     skill_dir: skillDir,
@@ -123,7 +116,7 @@ export function createLoadSkillTool(
         .min(1)
         .describe("Skill name to load, without the leading slash."),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ skill_name }) => {
       const result = await loadSkillFromHost(availableSkills, skill_name);
       const loadedSkill = toLoadedSkill(result, availableSkills);

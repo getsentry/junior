@@ -28,15 +28,17 @@ contradictory or unsafe requests.
   their runtime boundary: `zodTool(...)` for host-owned Junior tools and the
   plugin API's Zod helper for first-party plugin package tools. Do not add new
   raw object tool definitions for first-party tools.
-- First-party tools should use structured Zod mode by default: declare an
-  `outputSchema` extending the shared result object (`ok`, `status`, and common
-  optional fields) instead of replacing it with a raw payload shape. Use
-  tool-specific extensions for stable payload fields; a shared base schema is
-  acceptable for transitional host tools and bridge/catalog tools whose payload
-  shape is intentionally generic.
+- First-party tools should use structured Zod mode by default. Each
+  `outputSchema` describes the tool's canonical successful value. Shared
+  optional fields such as `target`, `truncated`, and `continuation` may be
+  extended when they carry real tool semantics; do not add generic `ok`,
+  `status`, or `data` envelopes.
+- Return every tool-specific payload field once, at the canonical output root.
+  Duplicating or generically wrapping the payload increases model context and
+  transcript size without adding information.
 - Structured Zod tool executors return the schema-shaped details object
-  directly. The helper and runtime adapters own the Pi-compatible
-  model-visible content projection for those details.
+  directly. The helper and runtime adapters derive Pi-compatible model content,
+  transcript details, telemetry, and success metadata from that one value.
 - Use native content Zod mode only for multimodal/provider bridge tools where
   native model content is the contract, such as MCP image output. Native content
   tools do not declare a Junior `outputSchema` and return `{ content }` only;

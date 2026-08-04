@@ -83,6 +83,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onQueryChange={setQuery}
           query={query}
           selectedId={selectedId}
+          timeZone={props.data.config.timeZone}
         />
       </div>
       <section

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LocalActor, PluginContext, SlackActor } from "./context";
+import type { PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
@@ -124,9 +124,9 @@ export interface RouteRegistrationHookContext extends PluginContext {
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
   eventStats: PluginConversationEventStats;
-  viewer: {
-    /** Resolve every runtime actor linked to one authenticated viewer email. */
-    actors(email: string): Promise<Array<LocalActor | SlackActor>>;
+  users: {
+    /** Resolve or create the canonical user for one verified email. */
+    resolve(email: string): Promise<User | undefined>;
   };
 }
 

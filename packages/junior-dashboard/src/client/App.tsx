@@ -26,6 +26,7 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
+import { TasksPage } from "./pages/tasks/TasksPage";
 import {
   PluginUserPageRoute,
   pluginUserPagePath,
@@ -141,6 +142,11 @@ export function DashboardShell() {
             >
               Conversations
             </Link>
+            {loggedIn ? (
+              <NavLink className={navLinkClass} to="/tasks">
+                Tasks
+              </NavLink>
+            ) : null}
             {primaryUserPages.map((page) => (
               <NavLink
                 className={navLinkClass}
@@ -168,6 +174,18 @@ export function DashboardShell() {
       </header>
 
       <Routes>
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading tasks" />
+            ) : loggedIn ? (
+              <TasksPage enabled={loggedIn} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks"
+        />
         <Route
           element={<LegacySystemRedirect section="locations" />}
           path="/locations"

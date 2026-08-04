@@ -347,8 +347,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
           await acquire();
           return {
-            ok: true,
-            status: "success",
             command: "pwd",
             cwd: "/workspace",
             exit_code: 0,

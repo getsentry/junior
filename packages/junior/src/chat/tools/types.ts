@@ -1,12 +1,14 @@
 import type { FileUpload } from "chat";
 import type {
   Destination,
+  Identity,
   LocalDestination,
   LocalSource,
   PluginEgress,
   SlackDestination,
   SlackSource,
   Source,
+  User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -14,7 +16,7 @@ import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
-import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
+import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
@@ -37,14 +39,14 @@ export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
     max_chars?: number;
-  }) => Promise<JuniorToolResult> | JuniorToolResult;
+  }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
 export interface WebSearchToolDeps {
   execute?: (input: {
     query: string;
     max_results?: number;
-  }) => Promise<JuniorToolResult> | JuniorToolResult;
+  }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
 /** Optional host image reader for deterministic tool execution without sandbox I/O. */
@@ -88,6 +90,9 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor;
+  resolveActorIdentity?: () => Promise<
+    { identity: Identity; user?: User } | undefined
+  >;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */

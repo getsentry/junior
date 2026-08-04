@@ -28,8 +28,8 @@ function plugin() {
           return {
             type: "list" as const,
             emptyText: "No personal memories yet.",
-            records: ctx.viewer.actors.map((actor) => ({
-              id: `${actor.platform}:${actor.userId}`,
+            records: ctx.viewer.identities.map((identity) => ({
+              id: `${identity.provider}:${identity.providerSubjectId}`,
               title: ctx.viewer.email,
             })),
           };
@@ -126,7 +126,7 @@ describe("plugin user page API", () => {
     expect(invalid.status).toBe(400);
   });
 
-  test("passes only actors linked to the authenticated viewer", async () => {
+  test("passes only identities linked to the authenticated viewer", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
@@ -176,7 +176,7 @@ describe("plugin user page API", () => {
         records: [
           {
             id: "slack:U123",
-            title: "VIEWER@example.com",
+            title: "viewer@example.com",
           },
         ],
       });

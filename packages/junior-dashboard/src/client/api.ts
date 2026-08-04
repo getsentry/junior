@@ -11,6 +11,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  taskListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -97,6 +98,17 @@ export function useConversationsData(actorEmail?: string) {
         signal,
       );
     },
+    retry: false,
+  });
+}
+
+/** Fetch the signed-in viewer's scheduled and event tasks. */
+export function useTasksData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "tasks"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
     retry: false,
   });
 }

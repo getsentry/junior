@@ -163,3 +163,45 @@ export async function dispatchEventTask(args: {
     plugin,
   });
 }
+
+/** Create and enqueue one core-owned scheduled task dispatch. */
+export async function dispatchScheduledTask(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+  options: Omit<SlackDispatchOptions, "credentialSubject"> & {
+    credentialSubject?: {
+      allowedWhen: "scheduled-task";
+      taskId: string;
+      type: "user";
+      userId: string;
+    };
+  };
+}) {
+  const plugin = "scheduler";
+  const { credentialSubject, ...unboundOptions } = args.options;
+  validateDispatchOptions({ ...unboundOptions });
+  const boundSubject = credentialSubject
+    ? bindScheduledTaskCredentialSubject({
+        plugin,
+        subject: credentialSubject,
+      })
+    : undefined;
+  if (credentialSubject && !boundSubject) {
+    throw new Error("Dispatch credentialSubject is not valid for this action");
+  }
+  const options: BoundDispatchOptions = {
+    ...unboundOptions,
+    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+  };
+  return await dispatch({
+    conversationWorkQueue: args.conversationWorkQueue,
+    nowMs: args.nowMs,
+    options,
+    plugin,
+  });
+}
+
+/** Read the bounded outcome for one core-owned scheduled task dispatch. */
+export async function getScheduledTaskDispatch(id: string) {
+  return await getPluginDispatchProjection({ plugin: "scheduler", id });
+}

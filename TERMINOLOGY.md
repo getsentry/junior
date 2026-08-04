@@ -12,8 +12,14 @@ Canonical words used across Junior's code and documentation.
 - **Location**: the optional provider place associated with a conversation,
   such as a Slack thread, including the stable provider coordinates and
   visibility needed for context and reporting.
-- **Resource event**: one normalized change published by a plugin, identified
-  by namespace, identifier, event type, and an idempotency key.
+- **User**: one person-level record. A user may have several linked identities.
+- **Identity**: one provider account, such as a Slack account in one workspace,
+  optionally linked to a user.
+- **Actor**: the runtime participant for one source invocation. Actor ids are
+  provider-scoped and are not canonical user ids.
+- **Resource event**: one normalized change published by a plugin, delivered
+  within a verified workspace and identified by namespace, identifier, event
+  type, and an idempotency key.
 - **Resource subscription**: a temporary conversation association that delivers
   matching resource events back into that conversation.
 - **Event task**: a durable instruction that dispatches when a matching

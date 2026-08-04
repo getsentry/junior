@@ -3,8 +3,6 @@ import { z } from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
-const MAX_EVENT_PREVIEW_CHARS = 500;
-
 const capturedMemorySchema = z
   .object({
     content: z.string().min(1),
@@ -14,12 +12,6 @@ const capturedMemorySchema = z
     scope: z.enum(MEMORY_SCOPES),
   })
   .strict();
-
-function eventPreview(content: string): string {
-  const trimmed = content.trim();
-  if (trimmed.length <= MAX_EVENT_PREVIEW_CHARS) return trimmed;
-  return `${trimmed.slice(0, MAX_EVENT_PREVIEW_CHARS - 3).trimEnd()}...`;
-}
 
 const capturedMemoriesSchema = z
   .object({
@@ -42,11 +34,7 @@ function renderCapturedMemories(
   if (count === 0) return undefined;
   return {
     icon: "brain" as const,
-    title: count === 1 ? "Memory captured" : "Memories captured",
-    preview:
-      count === 1
-        ? eventPreview(event.memories[0]!.content)
-        : `${count} memories`,
+    title: `${count} ${count === 1 ? "memory" : "memories"} captured`,
     details: event.memories.map((memory) => ({
       title: memory.content,
       metadata: [memory.kind, memory.scope],

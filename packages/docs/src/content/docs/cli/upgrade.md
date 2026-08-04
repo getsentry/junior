@@ -56,11 +56,10 @@ An already-current database reports its migrations as existing:
 
 ```text
 Checking database migrations...
-  junior: up to date (7 migrations)
+  junior: up to date (8 migrations)
   junior-github: up to date (4 migrations)
   junior-memory: up to date (5 migrations)
-  junior-scheduler: up to date (2 migrations)
-Database is up to date (18 migrations).
+Database is up to date (17 migrations).
 ```
 
 ## Failure behavior

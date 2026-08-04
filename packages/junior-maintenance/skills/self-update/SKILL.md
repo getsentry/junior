@@ -125,6 +125,12 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
+When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
+
+## Automatic updates from GitHub releases
+
+When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event task on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event task for ongoing automation; use a temporary watch only when following one manually initiated update.
+
 ## Stop conditions
 
 - Any Junior package lacks the target version on npm.

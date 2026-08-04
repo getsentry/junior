@@ -64,6 +64,7 @@ describeEval("Skill Providers", slackEvals, (it) => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "callMcpTool",
+          status: "ok",
           arguments: expect.objectContaining({
             tool_name: "mcp__eval-mcp__handbook-search",
             arguments: expect.objectContaining({
@@ -81,6 +82,7 @@ describeEval("Skill Providers", slackEvals, (it) => {
         }),
       ]),
     );
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when an MCP tool has mutually exclusive filters, use only the provided filter", async ({

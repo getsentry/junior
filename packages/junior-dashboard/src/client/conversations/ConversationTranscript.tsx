@@ -1,10 +1,25 @@
-import { Fragment, type ClipboardEventHandler, type ReactNode } from "react";
 import {
+  Fragment,
+  useRef,
+  type ClipboardEventHandler,
+  type ReactNode,
+} from "react";
+import {
+  Activity,
   Bot,
+  Brain,
+  Calendar,
+  Check,
   CircleAlert,
+  Database,
   Diff,
+  Info,
+  KeyRound,
+  Link,
   Minimize2,
   Send,
+  Sparkles,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -67,6 +82,7 @@ import {
   HighlightText,
   useTranscriptSearch,
 } from "./transcriptSearch";
+import { ActiveIndicator } from "../components/ActiveIndicator";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -101,7 +117,7 @@ export function ConversationTranscriptView(props: {
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 py-3">
       <div className="flex flex-col items-center pt-1.5" aria-hidden="true">
-        <span className={turnMarkerClass(status)} />
+        <TurnMarker status={status} />
         <span className="mt-2 w-px flex-1 bg-cyan-300/15" />
       </div>
       <div className="min-w-0">
@@ -135,14 +151,21 @@ function TypingIndicator() {
   );
 }
 
-function turnMarkerClass(
-  status: ReturnType<typeof visualStatusForSummary>,
-): string {
-  return cn(
-    "size-2.5 shrink-0 rounded-full border",
-    status === "active" && "border-emerald-300 bg-emerald-300",
-    status === "failed" && "border-rose-300 bg-rose-300",
-    status === "idle" && "border-cyan-300/60 bg-cyan-300/40",
+function TurnMarker(props: {
+  status: ReturnType<typeof visualStatusForSummary>;
+}) {
+  if (props.status === "active") {
+    return <ActiveIndicator className="size-2.5 border border-emerald-300" />;
+  }
+
+  return (
+    <span
+      className={cn(
+        "size-2.5 shrink-0 rounded-full border",
+        props.status === "failed" && "border-rose-300 bg-rose-300",
+        props.status === "idle" && "border-cyan-300/60 bg-cyan-300/40",
+      )}
+    />
   );
 }
 
@@ -334,10 +357,15 @@ function VisibleTranscriptEntries(props: {
         )
       }
       renderStructuredEvent={(entry) => (
-        <TranscriptStructuredEventView
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+        <TranscriptRailEvent
+          icon={structuredEventIcon(entry.part.presentation.icon)}
+          kind="structured_event"
+        >
+          <TranscriptStructuredEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderSubagent={(entry) => (
         <TranscriptRailEvent kind="subagent">
@@ -377,6 +405,8 @@ function TranscriptEntryList(props: {
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 }) {
   const search = useTranscriptSearch();
+  const toolRunKeys = useRef(new Map<string, string>());
+  const claimedToolRunKeys = new Set<string>();
   const rows: ReactNode[] = [];
 
   for (let index = 0; index < props.entries.length; ) {
@@ -399,11 +429,17 @@ function TranscriptEntryList(props: {
           )
         : runEntries;
       if (visibleEntries.length > 0) {
+        const toolRunKey = stableToolRunKey({
+          claimedKeys: claimedToolRunKeys,
+          entries: runEntries,
+          keyPrefix: props.keyPrefix,
+          knownKeys: toolRunKeys.current,
+        });
         rows.push(
           <TranscriptToolRun
             autoCollapse={index < props.entries.length}
             entries={visibleEntries}
-            key={`${props.keyPrefix}:tool-run:${runEntries.at(-1)!.key}`}
+            key={toolRunKey}
             renderReasoning={props.renderReasoning}
             renderTool={props.renderTool}
           />,
@@ -437,6 +473,27 @@ function TranscriptEntryList(props: {
   }
 
   return <>{rows}</>;
+}
+
+/** Keep one tool run mounted while new or historical events extend either edge. */
+function stableToolRunKey(args: {
+  claimedKeys: Set<string>;
+  entries: Array<RenderedReasoningEntry | RenderedToolEntry>;
+  keyPrefix: string;
+  knownKeys: Map<string, string>;
+}): string {
+  const entryKeys = args.entries.map(
+    (entry) => `${args.keyPrefix}:${entry.key}`,
+  );
+  const knownKey = entryKeys
+    .map((entryKey) => args.knownKeys.get(entryKey))
+    .find((key) => key !== undefined && !args.claimedKeys.has(key));
+  const runKey =
+    knownKey ?? `${args.keyPrefix}:tool-run:${args.entries[0]!.key}`;
+
+  args.claimedKeys.add(runKey);
+  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, runKey));
+  return runKey;
 }
 
 function TranscriptFailureView(props: {
@@ -480,15 +537,17 @@ type TranscriptRailEventKind =
   | "compaction"
   | "handoff"
   | "resource_event"
+  | "structured_event"
   | "subagent";
 
 /** Anchor noteworthy transcript events to the same visual rail as turn markers. */
 function TranscriptRailEvent(props: {
   children: ReactNode;
+  icon?: LucideIcon;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);
-  const Icon = marker.icon;
+  const Icon = props.icon ?? marker.icon;
 
   return (
     <div className="relative min-w-0" data-transcript-rail-event={props.kind}>
@@ -517,6 +576,12 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: Diff,
     };
   }
+  if (kind === "structured_event") {
+    return {
+      className: "border-violet-300/35 text-violet-200",
+      icon: Activity,
+    };
+  }
   if (kind === "subagent") {
     return {
       className: "border-cyan-300/35 text-cyan-200",
@@ -533,6 +598,28 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     className: "border-amber-300/35 text-amber-200",
     icon: Minimize2,
   };
+}
+
+const structuredEventIcons: Record<
+  NonNullable<TranscriptStructuredEventEntry["part"]["presentation"]["icon"]>,
+  LucideIcon
+> = {
+  activity: Activity,
+  brain: Brain,
+  calendar: Calendar,
+  check: Check,
+  database: Database,
+  info: Info,
+  key: KeyRound,
+  link: Link,
+  sparkles: Sparkles,
+  warning: TriangleAlert,
+};
+
+function structuredEventIcon(
+  icon: TranscriptStructuredEventEntry["part"]["presentation"]["icon"],
+): LucideIcon {
+  return icon ? structuredEventIcons[icon] : Activity;
 }
 
 function RedactedTranscriptView(props: {
@@ -577,10 +664,15 @@ function RedactedTranscriptView(props: {
         )
       }
       renderStructuredEvent={(entry) => (
-        <TranscriptStructuredEventView
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+        <TranscriptRailEvent
+          icon={structuredEventIcon(entry.part.presentation.icon)}
+          kind="structured_event"
+        >
+          <TranscriptStructuredEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderSubagent={(entry) => (
         <TranscriptRailEvent kind="subagent">

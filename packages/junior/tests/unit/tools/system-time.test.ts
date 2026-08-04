@@ -10,8 +10,6 @@ describe("systemTime", () => {
     );
 
     expect(systemTime.privateTraceResult?.(result)).toEqual({
-      ok: true,
-      status: "success",
       unix_ms: result.unix_ms,
       iso_utc: result.iso_utc,
       iso_local: result.iso_local,

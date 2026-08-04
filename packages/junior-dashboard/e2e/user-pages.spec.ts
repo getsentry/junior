@@ -91,21 +91,51 @@ test("opens a registered plugin page from primary navigation", async ({
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps other plugin pages on the generic renderer", async ({ page }) => {
+test("opens scheduled and event tasks in the native Tasks view", async ({
+  page,
+}) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
-  await page
-    .getByRole("button", { name: "Open profile menu for Dashboard User" })
-    .click();
-  await page.getByRole("link", { name: "Scheduled tasks" }).click();
+  await page.getByRole("link", { name: "Tasks" }).click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/plugins/scheduler/tasks`);
-  await expect(
-    page.getByRole("heading", { name: "Scheduled tasks" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByLabel("Scheduled task")).toBeVisible();
+  await expect(page.getByLabel("GitHub event task")).toBeVisible();
+  await expect(page.getByText("#project-updates").first()).toBeVisible();
+  await expect(page.getByText("Assigned to")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "you" }).first()).toHaveAttribute(
+    "href",
+    "/system/people/morgan%40sentry.io",
+  );
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "event", exact: true }).click();
+  await expect(
+    page.getByText("Send the weekly project summary"),
+  ).not.toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await page.getByRole("button", { name: /^Public/ }).click();
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).toBeVisible();
+  await expect(page.getByText("#incident-response")).toBeVisible();
+  const creatorLink = page.getByRole("link", { name: "Avery Chen" });
+  await expect(creatorLink).toHaveAttribute(
+    "href",
+    "/system/people/avery%40sentry.io",
+  );
+  await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
+  await creatorLink.click();
+  await expect(page).toHaveURL(
+    `${server.baseURL}/system/people/avery%40sentry.io`,
+  );
+  await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 

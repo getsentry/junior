@@ -30,6 +30,7 @@ function toolContext(response?: Response) {
     },
     conversationId: "slack:C123:123.456",
     egress: { fetch },
+    resourceEvents: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },

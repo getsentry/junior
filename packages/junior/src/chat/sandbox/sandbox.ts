@@ -58,7 +58,7 @@ import {
   sliceFileContent,
 } from "@/chat/tools/sandbox/read-file";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 // Policies: policies/security.md and policies/observability.md.
 export interface SandboxToolCall {
@@ -518,14 +518,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
     );
 
-    return makeStructuredToolResult({
-      ok: true,
-      status: "success",
+    return makeStructuredToolOutput({
       target: filePath,
-      data: {
-        bytes_written: Buffer.byteLength(content, "utf8"),
-        path: filePath,
-      },
       path: filePath,
       bytes_written: Buffer.byteLength(content, "utf8"),
     }) as T;

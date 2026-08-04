@@ -1,17 +1,15 @@
 /**
  * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity is one verified viewer. Linked platform actors are resolved
- * behind the route boundary and used only to authorize personal and public
- * workspace scopes.
+ * HTTP identity is one verified user whose linked identities authorize
+ * personal and public workspace scopes.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventStats,
-  type PluginApiRouteRequestContext,
   type PluginRouteApp,
-  type PluginUserPageActor,
+  type User,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
@@ -94,9 +92,11 @@ const memoryListQuerySchema = z
   .strict();
 
 interface MemoryApiOptions {
-  actors(email: string): Promise<PluginUserPageActor[]>;
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
+  users: {
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -122,9 +122,7 @@ function apiMemory(
   };
 }
 
-function viewerEmail(
-  context: PluginApiRouteRequestContext | undefined,
-): string | undefined {
+function viewerEmail(context: unknown): string | undefined {
   const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
   if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
     return undefined;
@@ -148,14 +146,17 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       if (!isCollection && !isDashboard && !memoryPath) {
         return json({ error: "Not found." }, 404);
       }
+      const isRead = request.method === "GET" || request.method === "HEAD";
+      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+        return json({ error: "Method not allowed." }, 405);
+      }
 
-      const actors = await options.actors(email);
-      const memories = createViewerMemories(options.db, actors);
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
+
+      const memories = createViewerMemories(options.db, user);
       try {
-        if (
-          isDashboard &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
             memories.stats(),
             memories.timeline({ days: 90 }),
@@ -183,10 +184,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (
-          isCollection &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (isCollection && isRead) {
           const query = memoryListQuerySchema.parse({
             cursor: url.searchParams.get("cursor") ?? undefined,
             limit: url.searchParams.get("limit") ?? undefined,
@@ -209,10 +207,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (
-          memoryPath &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (memoryPath && isRead) {
           const memory = memoryApiSchema.parse(
             apiMemory(await memories.get(decodeURIComponent(memoryPath[1]!))),
           );

@@ -67,13 +67,13 @@ import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-c
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   createSchedulerSqlStore,
-  schedulerPlugin,
   type ScheduledTask,
   type SchedulerDb,
-} from "@sentry/junior-scheduler";
+} from "@/chat/scheduled-tasks";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
+import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
@@ -95,7 +95,7 @@ import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import { DEFAULT_MAX_CHARS, MAX_FETCH_CHARS } from "@/chat/tools/web/constants";
 import { truncateWebFetchContent } from "@/chat/tools/web/fetch-content";
@@ -521,8 +521,8 @@ function createReplayWebFetchDeps(
           }),
         },
       });
-      const parsed = juniorToolResultSchema.parse(result);
-      if (parsed.ok !== true || typeof parsed.content !== "string") {
+      const parsed = juniorToolOutputSchema.parse(result);
+      if (typeof parsed.content !== "string") {
         return parsed;
       }
       const limited = truncateWebFetchContent(
@@ -581,7 +581,7 @@ function createReplayWebSearchDeps(
           }),
         },
       });
-      return juniorToolResultSchema.parse(result);
+      return juniorToolOutputSchema.parse(result);
     },
   };
 }
@@ -1846,17 +1846,9 @@ function buildRuntimeServices(
             const nowMs = Date.now();
             const toolCallId = "eval-timeout-resume-tool-call";
             const unknownOutcome = {
-              ok: false,
-              status: "error",
               target: timeoutResume.tool_name,
-              data: {
-                aborted: true,
-              },
-              error: {
-                kind: "outcome_unknown",
-                message: "Command outcome was not confirmed.",
-                retryable: false,
-              },
+              aborted: true,
+              message: "Command outcome was not confirmed.",
             };
             const deadlineResult = annotateTurnDeadlineToolResult({
               content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
@@ -2329,6 +2321,7 @@ async function processEvents(args: {
       conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
+      creatorIdentityId: `eval:slack:${TEST_USER_ID}`,
       credentialMode: event.credential_mode ?? "system",
       destination: createEvalDestination(
         thread,
@@ -2360,7 +2353,7 @@ async function processEvents(args: {
     );
     await schedulerStore.saveTask(task);
 
-    await runPluginHeartbeats({
+    await runScheduledTaskHeartbeat({
       conversationWorkQueue,
       nowMs,
     });
@@ -2436,6 +2429,7 @@ async function processEvents(args: {
           nowMs,
           queue: conversationWorkQueue,
           state: env.stateAdapter,
+          teamId: EVAL_SLACK_TEAM_ID,
         },
       );
     }
@@ -2480,6 +2474,7 @@ async function processEvents(args: {
       {
         nowMs,
         queue: conversationWorkQueue,
+        teamId: task.destination.teamId,
       },
     );
     if (result.dispatched !== 1) {
@@ -2674,12 +2669,9 @@ export async function runEvalScenario(
     );
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
-      schedulerPlugin(),
       ...runtimePlugins,
       ...currentPlugins.filter(
-        (plugin) =>
-          plugin.manifest.name !== "scheduler" &&
-          !runtimePluginNames.has(plugin.manifest.name),
+        (plugin) => !runtimePluginNames.has(plugin.manifest.name),
       ),
     ]);
     const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });

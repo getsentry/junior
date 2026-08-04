@@ -1,9 +1,8 @@
-import { logWarn } from "@/chat/logging";
 import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { normalizeCanvasMarkdown } from "@/chat/slack/tools/canvas/markdown";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
@@ -14,6 +13,7 @@ import {
   type TextReplacement,
 } from "@/chat/tools/sandbox/text-edits";
 import type { ToolState } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function prepareCanvasEditArguments(input: unknown): {
   canvas: string;
@@ -32,7 +32,7 @@ const editReplacementSchema = z.object({
   newText: z.string().describe("Replacement Canvas markdown for this edit."),
 });
 
-const slackCanvasEditOutputSchema = juniorToolResultSchema
+const slackCanvasEditOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
@@ -75,7 +75,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
     execute: async ({ canvas, edits }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return { ...target, status: "error" as const };
+        throw new ToolInputError(target.error);
       }
 
       const operationKey = createOperationKey("slackCanvasEdit", {
@@ -83,8 +83,6 @@ export function createSlackCanvasEditTool(state: ToolState) {
         edits,
       });
       const cached = state.getOperationResult<{
-        ok: true;
-        status: "success";
         canvas_id: string;
         diff: string;
         first_changed_line?: number;
@@ -97,55 +95,38 @@ export function createSlackCanvasEditTool(state: ToolState) {
         };
       }
 
-      try {
-        const current = await readCanvas(target.canvasId);
-        const normalizedContent = normalizeToLf(current.content);
-        const { baseContent, newContent } = validateAndApplyTextEdits(
-          normalizedContent,
-          edits,
-          target.canvasId,
-        );
-        const written = await writeCanvasMarkdown({
-          canvasId: target.canvasId,
-          markdown: newContent,
-        });
-        await state.patchArtifactState({
-          lastCanvasId: target.canvasId,
-          lastCanvasUrl: current.permalink ?? state.artifactState.lastCanvasUrl,
-        });
+      const current = await readCanvas(target.canvasId);
+      const normalizedContent = normalizeToLf(current.content);
+      const { baseContent, newContent } = validateAndApplyTextEdits(
+        normalizedContent,
+        edits,
+        target.canvasId,
+      );
+      const written = await writeCanvasMarkdown({
+        canvasId: target.canvasId,
+        markdown: newContent,
+      });
+      await state.patchArtifactState({
+        lastCanvasId: target.canvasId,
+        lastCanvasUrl: current.permalink ?? state.artifactState.lastCanvasUrl,
+      });
 
-        const diff = buildCompactDiff(
-          normalizeCanvasMarkdown(baseContent).markdown,
-          written.markdown,
-        );
-        const response = {
-          ok: true,
-          status: "success" as const,
-          canvas_id: target.canvasId,
-          title: current.title,
-          permalink: current.permalink,
-          diff: diff.diff,
-          first_changed_line: diff.firstChangedLine,
-          replacements: edits.length,
-          normalized_heading_count: written.normalizedHeadingCount,
-          summary: `Edited canvas ${target.canvasId}`,
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "canvas edit failed";
-        logWarn("slack.canvas.edit.failed", {
-          "gen_ai.tool.name": "slackCanvasEdit",
-          "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
-        });
-        return {
-          ok: false,
-          status: "error" as const,
-          canvas_id: target.canvasId,
-          error: message,
-        };
-      }
+      const diff = buildCompactDiff(
+        normalizeCanvasMarkdown(baseContent).markdown,
+        written.markdown,
+      );
+      const response = {
+        canvas_id: target.canvasId,
+        title: current.title,
+        permalink: current.permalink,
+        diff: diff.diff,
+        first_changed_line: diff.firstChangedLine,
+        replacements: edits.length,
+        normalized_heading_count: written.normalizedHeadingCount,
+        summary: `Edited canvas ${target.canvasId}`,
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     },
   });
 }

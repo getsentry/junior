@@ -206,6 +206,13 @@ describe("GitHub webhook resource events", () => {
         terminal: true,
         trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
       },
+      {
+        eventKey: "github:delivery-merge:pull_request.merged",
+        eventType: "pull_request.merged",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior",
+        trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
+      },
     ]);
   });
 
@@ -341,7 +348,15 @@ describe("GitHub webhook resource events", () => {
           deliveryId: "delivery-event",
           eventName: testCase.eventName,
         }),
-      ).toEqual(testCase.expected);
+      ).toEqual(
+        testCase.expected.flatMap((event) => [
+          event,
+          {
+            ...event,
+            identifier: "getsentry/junior",
+          },
+        ]),
+      );
     }
   });
 
@@ -914,7 +929,15 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
       expect(published).toEqual([
-        expect.objectContaining({ eventType: "pull_request.merged" }),
+        expect.objectContaining({
+          eventType: "pull_request.merged",
+          identifier: "getsentry/junior#946",
+          terminal: true,
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.merged",
+          identifier: "getsentry/junior",
+        }),
       ]);
     } finally {
       await fixture.close();
@@ -1449,7 +1472,15 @@ describe("GitHub-owned pull request outcomes", () => {
         fixture.db().select().from(juniorGitHubPullRequests),
       ).resolves.toEqual([]);
       expect(published).toEqual([
-        expect.objectContaining({ eventType: "pull_request.closed_unmerged" }),
+        expect.objectContaining({
+          eventType: "pull_request.closed_unmerged",
+          identifier: "getsentry/junior#946",
+          terminal: true,
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.closed_unmerged",
+          identifier: "getsentry/junior",
+        }),
       ]);
     } finally {
       await fixture.close();

@@ -1,8 +1,8 @@
 import {
   definePluginTool,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   subscribableResourceSchema,
-  type PluginToolResult,
+  type PluginToolOutput,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -36,17 +36,11 @@ const deploymentSourceSchema = z.object({
 
 type DeploymentSource = z.output<typeof deploymentSourceSchema>;
 
-interface Result extends PluginToolResult, DeploymentSource {
-  data: DeploymentSource;
-  ok: true;
-  status: "success";
+interface Result extends PluginToolOutput, DeploymentSource {
   target: "deploymentSource";
 }
 
-const outputSchema = pluginToolResultSchema.extend({
-  data: deploymentSourceSchema,
-  ok: z.literal(true),
-  status: z.literal("success"),
+const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("deploymentSource"),
   ...deploymentSourceSchema.shape,
 });
@@ -100,12 +94,14 @@ export function createVercelDeploymentSourceTool(
       }
       const projectId = z.object({ id: projectIdSchema }).parse(parsed).id;
       const commitSha = input.commitSha.toLowerCase();
-      const subscribable = vercelDeploymentSourceSubscribable({
-        commitSha,
-        projectId,
-        target: input.target,
-        webhookSecret: vercelWebhookSecret(),
-      });
+      const subscribable = ctx.resourceEvents.canSubscribe
+        ? vercelDeploymentSourceSubscribable({
+            commitSha,
+            projectId,
+            target: input.target,
+            webhookSecret: vercelWebhookSecret(),
+          })
+        : undefined;
       const data: DeploymentSource = {
         commitSha,
         deploymentTarget: input.target,
@@ -113,9 +109,6 @@ export function createVercelDeploymentSourceTool(
         ...(subscribable ? { subscribable } : {}),
       };
       return {
-        data,
-        ok: true,
-        status: "success",
         target: "deploymentSource",
         ...data,
       };

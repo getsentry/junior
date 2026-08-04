@@ -116,7 +116,6 @@ describe("createImageGenerateTool", () => {
       modalities: ["image"],
     });
     expect(result).toMatchObject({
-      ok: true,
       model: "openai/dall-e-3",
       image_count: 1,
       delivery: expect.stringContaining("no file-send tool"),
@@ -167,7 +166,6 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
 
     expect(result).toMatchObject({
-      ok: true,
       image_count: 1,
       delivery: expect.stringContaining(
         "pass the returned image objects unchanged",

@@ -15,9 +15,14 @@ import {
   setSlackReactionConfig,
 } from "@/chat/config";
 import { getDb } from "@/chat/db";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
+import {
+  getSandboxResourceConfig,
+  setSandboxResourceConfig,
+  type SandboxResourceConfig,
+} from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,
@@ -74,6 +79,7 @@ import {
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 
@@ -102,7 +108,7 @@ export interface JuniorAppOptions {
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
-  sandbox?: {
+  sandbox?: SandboxResourceConfig & {
     /**
      * Egress domains allowed to carry Sentry trace propagation headers.
      * Entries may be exact domains or leading wildcard domains such as
@@ -385,6 +391,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     `${pagePath("locations")}/*`,
     peoplePath,
     `${peoplePath}/*`,
+    pagePath("tasks"),
     pagePath("system"),
     `${pagePath("system")}/*`,
     pagePath("plugins"),
@@ -409,6 +416,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/plugin-reports",
     "/api/user-pages",
     "/api/user-pages/*",
+    "/api/tasks",
+    "/api/tasks/*",
     "/api/skills",
     "/api/stats",
     "/api/conversations",
@@ -587,21 +596,33 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
+  const previousSandboxResources = getSandboxResourceConfig();
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
+  const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
   const resourceEvents: { publish(event: ResourceEvent): Promise<void> } = {
     async publish(event) {
+      const teamId = await resolveResourceEventTeamId();
+      if (!teamId) {
+        logWarn("resource_event.delivery.unavailable", {
+          "app.resource_event.namespace": event.namespace,
+          "app.resource_event.reason": "multi_workspace",
+        });
+        return;
+      }
       const conversationWork = getConversationWorkOptions();
       const queue = conversationWork.queue ?? getVercelConversationWorkQueue();
       await Promise.all([
         ingestResourceEvent(event, {
           queue,
           state: conversationWork.state,
+          teamId,
         }),
         ingestEventTasks(event, {
           queue,
+          teamId,
         }),
       ]);
     },
@@ -612,6 +633,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
+    setSandboxResourceConfig(options?.sandbox);
     setConfigDefaults(options?.configDefaults);
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
@@ -633,6 +655,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     setSlackReactionConfig(previousSlackReactionConfig);
+    setSandboxResourceConfig(previousSandboxResources);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
     throw error;
   }

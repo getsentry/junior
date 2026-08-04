@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
@@ -12,8 +12,8 @@ describe("zodTool", () => {
       describeProposal: ({ recordId }) => `Delete record ${recordId}.`,
       description: "Delete a record.",
       inputSchema: z.object({ recordId: z.coerce.string() }),
-      outputSchema: juniorToolResultSchema,
-      execute: async () => ({ ok: true, status: "success" as const }),
+      outputSchema: juniorToolOutputSchema,
+      execute: async () => ({ record_id: "42" }),
     });
 
     expect(tool.approvalMode).toBe("approve");
@@ -34,13 +34,10 @@ describe("zodTool", () => {
       inputSchema: z.object({
         count: z.coerce.number().int(),
       }),
-      outputSchema: juniorToolResultSchema,
+      outputSchema: juniorToolOutputSchema,
       execute: async (input, options) => {
         await execute(input, options);
-        return {
-          ok: true,
-          status: "success" as const,
-        };
+        return { count: input.count };
       },
     });
 
@@ -61,7 +58,7 @@ describe("zodTool", () => {
   });
 
   it("preserves a typed private trace result projector", async () => {
-    const resultSchema = juniorToolResultSchema.extend({
+    const resultSchema = juniorToolOutputSchema.extend({
       visible: z.string(),
       secret: z.string(),
     });
@@ -71,8 +68,6 @@ describe("zodTool", () => {
       outputSchema: resultSchema,
       privateTraceResult: (result) => ({ visible: result.visible }),
       execute: async () => ({
-        ok: true,
-        status: "success" as const,
         visible: "catalog metadata",
         secret: "private value",
       }),
@@ -91,8 +86,8 @@ describe("zodTool", () => {
       inputSchema: z.object({
         count: z.coerce.number().int(),
       }),
-      outputSchema: juniorToolResultSchema,
-      execute: async () => ({ ok: true, status: "success" as const }),
+      outputSchema: juniorToolOutputSchema,
+      execute: async () => ({ count: 1 }),
     });
 
     expect(() => tool.prepareArguments?.({ count: "nope" })).toThrow(
@@ -114,8 +109,8 @@ describe("zodTool", () => {
           name: (args as { rawName: string }).rawName.trim(),
         };
       },
-      outputSchema: juniorToolResultSchema,
-      execute: async () => ({ ok: true, status: "success" as const }),
+      outputSchema: juniorToolOutputSchema,
+      execute: async () => ({ name: "Ada" }),
     });
 
     expect(tool.prepareArguments?.({ rawName: " Ada " })).toEqual({
@@ -130,20 +125,17 @@ describe("zodTool", () => {
     const tool = zodTool({
       description: "Return result.",
       inputSchema: z.object({ value: z.string() }),
-      outputSchema: juniorToolResultSchema.extend({
-        ok: z.literal(true),
-        status: z.literal("success"),
+      outputSchema: juniorToolOutputSchema.extend({
+        count: z.number(),
       }),
-      execute: async () =>
-        ({ ok: true, status: "error", error: "wrong status" }) as never,
+      execute: async () => ({ count: "one" }) as never,
     });
 
     expect(tool.outputSchema).toMatchObject({
       properties: {
-        ok: expect.any(Object),
-        status: expect.any(Object),
+        count: expect.any(Object),
       },
-      required: ["ok", "status"],
+      required: ["count"],
       type: "object",
     });
     const parsed = tool.prepareArguments!({ value: "test" });
@@ -156,19 +148,13 @@ describe("zodTool", () => {
     const tool = zodTool({
       description: "Return result.",
       inputSchema: z.object({ value: z.string() }),
-      outputSchema: juniorToolResultSchema.extend({
-        data: z.object({
-          value: z.string(),
-        }),
+      outputSchema: juniorToolOutputSchema.extend({
+        value: z.string(),
       }),
       execute: async (input) => ({
         content: [{ type: "text" as const, text: `value: ${input.value}` }],
         details: {
-          ok: true,
-          status: "success" as const,
-          data: {
-            value: input.value,
-          },
+          value: input.value,
         },
       }),
     });
@@ -178,9 +164,7 @@ describe("zodTool", () => {
     ).resolves.toEqual({
       content: [{ type: "text", text: "value: hello" }],
       details: {
-        ok: true,
-        status: "success",
-        data: { value: "hello" },
+        value: "hello",
       },
     });
   });
@@ -223,7 +207,7 @@ describe("zodTool", () => {
       execute: async () =>
         ({
           content: [{ type: "text" as const, text: "hello" }],
-          details: { ok: true, status: "success" as const },
+          details: { value: "hello" },
         }) as never,
     });
 
@@ -241,8 +225,8 @@ describe("zodTool", () => {
         inputSchema: z.object({
           value: z.string().transform((value) => value.trim()),
         }),
-        outputSchema: juniorToolResultSchema,
-        execute: async () => ({ ok: true, status: "success" as const }),
+        outputSchema: juniorToolOutputSchema,
+        execute: async () => ({ value: "hello" }),
       }),
     ).toThrow("zodTool() inputSchema must be representable as JSON Schema.");
   });

@@ -20,10 +20,12 @@ import {
   formatElapsedDuration,
   formatPayloadSize,
   formatRuntime,
+  formatTime,
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
   slackLocationLabel,
+  setDashboardTimeZone,
   summarizeMessages,
   summarizeToolCalls,
   summarizeTurns,
@@ -31,7 +33,10 @@ import {
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  setDashboardTimeZone("America/Los_Angeles");
+});
 
 function event(
   seq: number,
@@ -114,6 +119,18 @@ describe("dashboard conversation formatting", () => {
     expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
     expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
     expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
+  });
+
+  it("formats absolute timestamps in the configured dashboard timezone", () => {
+    const value = "2026-08-10T16:00:00.000Z";
+    const options: Intl.DateTimeFormatOptions = {
+      dateStyle: "medium",
+      timeStyle: "short",
+    };
+    setDashboardTimeZone("UTC");
+    expect(formatTime(value, options)).toContain("4:00 PM");
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatTime(value, options)).toContain("9:00 AM");
   });
 
   it("formats conversation duration from cumulative execution time", () => {

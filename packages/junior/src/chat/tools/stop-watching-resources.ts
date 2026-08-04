@@ -8,7 +8,7 @@ import {
   requireResourceWatchConversation,
   RESOURCE_WATCH_TOOL_SOURCE,
 } from "@/chat/resource-events/tool-support";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -20,13 +20,9 @@ const resultDataSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolResultSchema
+const outputSchema = juniorToolOutputSchema
   .extend({
-    ok: z.literal(true),
-    status: z.literal("success"),
-    data: resultDataSchema,
-    watching_status: z.literal("stopped"),
-    stoppedIds: z.array(z.string().min(1)),
+    ...resultDataSchema.shape,
   })
   .strict();
 
@@ -73,9 +69,6 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         stoppedIds,
       };
       return {
-        ok: true as const,
-        status: "success" as const,
-        data: details,
         ...details,
       };
     },

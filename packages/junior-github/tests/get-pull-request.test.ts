@@ -5,7 +5,7 @@ import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
-function toolContext() {
+function toolContext(canSubscribe = true) {
   const adapter = createGitHubApiTestAdapter([
     {
       body: {
@@ -22,6 +22,7 @@ function toolContext() {
   ]);
   const ctx = {
     egress: adapter.egress,
+    resourceEvents: { canSubscribe },
   } as unknown as ToolRegistrationHookContext;
   return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }
@@ -64,6 +65,19 @@ describe("getPullRequest", () => {
     const result = await tool.execute?.(
       { repo: "getsentry/junior", number: 691 },
       { toolCallId: "get-pr" },
+    );
+
+    expect(result).not.toHaveProperty("subscribable");
+    expect(result).not.toHaveProperty("data.subscribable");
+  });
+
+  it("omits the hint when the host cannot create subscriptions", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    const { tool } = toolContext(false);
+
+    const result = await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-pr-without-subscriptions" },
     );
 
     expect(result).not.toHaveProperty("subscribable");

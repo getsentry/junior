@@ -82,7 +82,6 @@ describe("loadSkill tool", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
       skill_name: "sentry",
     });
     expect(result).not.toHaveProperty("mcp_provider");
@@ -137,7 +136,6 @@ describe("loadSkill tool", () => {
     }).execute!({ skill_name: "linear" }, {});
 
     expect(result).toMatchObject({
-      ok: true,
       skill_name: "linear",
       mcp_provider: "linear",
       available_tool_count: 2,

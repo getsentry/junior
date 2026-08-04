@@ -52,15 +52,9 @@ describe("slack list tools", () => {
   it("returns an actionable error when list context is unavailable", async () => {
     const tool = createSlackListGetItemsTool(createToolState());
 
-    const result = await executeTool(tool, {
-      limit: 10,
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: "error",
-      error: "No active list found in artifact context",
-    });
+    await expect(executeTool(tool, { limit: 10 })).rejects.toThrow(
+      "No active list found in artifact context",
+    );
     expect(getCapturedSlackApiCalls("slackLists.items.list")).toHaveLength(0);
   });
 
@@ -87,7 +81,6 @@ describe("slack list tools", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
       list_id: "LIST_123",
       items: [
         { id: "ROW_1", fields: [] },

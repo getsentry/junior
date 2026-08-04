@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { modelProfileSchema } from "@/chat/model-profile";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -12,7 +12,7 @@ export function createHandoffTool(
   handoff: NonNullable<ToolRuntimeContext["handoff"]>,
 ) {
   const profileSchema = z.enum(handoff.profiles);
-  const handoffResultSchema = juniorToolResultSchema.extend({
+  const handoffResultSchema = juniorToolOutputSchema.extend({
     model_profile: modelProfileSchema,
   });
   const profileNames = handoff.profiles
@@ -43,8 +43,6 @@ export function createHandoffTool(
         toolCallId: options.toolCallId,
       });
       return {
-        ok: true,
-        status: "success" as const,
         model_profile: profile,
       };
     },

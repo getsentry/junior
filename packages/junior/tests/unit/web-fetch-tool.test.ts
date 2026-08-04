@@ -43,8 +43,6 @@ describe("web fetch tool", () => {
       }),
     );
     extractWebFetchResponseMock.mockResolvedValue({
-      ok: true,
-      status: "success",
       url: safeUrl.toString(),
       content: "hello",
     });
@@ -57,8 +55,6 @@ describe("web fetch tool", () => {
     );
 
     expect(result).toEqual({
-      ok: true,
-      status: "success",
       url: safeUrl.toString(),
       content: "hello",
     });
@@ -108,7 +104,6 @@ describe("web fetch tool", () => {
       },
     ]);
     expect(result).toMatchObject({
-      ok: true,
       url: safeUrl.toString(),
       media_type: "image/png",
       images: [
@@ -150,7 +145,6 @@ describe("web fetch tool", () => {
 
     expect(JSON.stringify(result)).not.toContain("sendFiles");
     expect(result).toMatchObject({
-      ok: true,
       delivery: expect.stringContaining("no file-send tool"),
     });
   });

@@ -69,6 +69,8 @@ The selected events correspond to `deployment.succeeded`, `deployment.error`, an
 
 Deployment watches match Vercel's canonical `prj_...` project ID. Users can name a project or supply its ID; Junior resolves the canonical ID through Vercel's authenticated project API. Include the team slug or ID when projects with the same name may exist in more than one account.
 
+Deployment watches require a single-workspace Slack deployment configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource events in multi-workspace Slack mode because a provider webhook does not carry a verified Slack workspace binding.
+
 The webhook payload must contain a deployment ID, a production or staging target (or Vercel's `null` preview target), and a full Git commit SHA. Deployments without Git commit metadata are accepted by the endpoint but cannot match a watch.
 
 Configuring the account webhook does not create a conversation watch. Ask Junior to monitor the deployment before its terminal event occurs; unmatched webhook deliveries are not replayed into subscriptions created later.
@@ -128,7 +130,7 @@ If deployment webhooks are enabled, also verify one signed delivery:
 - Empty logs: confirm the environment, deployment, branch, and time window before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and should be stopped once enough evidence is captured.
 - Mutation requests: the plugin is read-only and the skill will decline these.
-- Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`, redeploy, and provide a project name or configure `vercel.project` for the conversation.
+- Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET` and `SLACK_BOT_TOKEN`, redeploy, and provide a project name or configure `vercel.project` for the conversation. Multi-workspace Slack OAuth mode does not support resource-event delivery yet.
 - Webhook delivery returns `401`: the Vercel account webhook secret does not match `VERCEL_WEBHOOK_SECRET`, or the request lacks `x-vercel-signature`.
 - Webhook delivery returns `202 Ignored`: the signed event is unsupported or does not contain a valid project ID, deployment ID, target, and full Git commit SHA.
 - Webhook delivery cannot reach Junior: confirm the endpoint uses the production Junior domain and is not blocked by deployment protection, login, or another access-control layer.

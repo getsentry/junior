@@ -1,6 +1,6 @@
 import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -28,7 +28,7 @@ const exposedToolSummarySchema = z
   })
   .strict();
 
-const searchMcpToolsOutputSchema = juniorToolResultSchema
+const searchMcpToolsOutputSchema = juniorToolOutputSchema
   .extend({
     query: z.string().nullable(),
     provider: z.string().nullable(),
@@ -255,8 +255,6 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       .strict(),
     outputSchema: searchMcpToolsOutputSchema,
     privateTraceResult: (result) => ({
-      ok: result.ok,
-      status: result.status,
       total_active_tools: result.total_active_tools,
       returned_tools: result.returned_tools,
       execution_tool: result.execution_tool,
@@ -281,7 +279,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
             mcpToolManager.getAvailableProviderCatalog(),
             query ?? "",
           ).slice(0, maxResults);
-      const data = {
+      return {
         query: query ?? null,
         provider: provider ?? null,
         total_active_tools: catalog.length,
@@ -289,12 +287,6 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
         execution_tool: "callMcpTool" as const,
         available_providers: providers,
         tools: matches.map(toExposedToolSummary),
-      };
-      return {
-        ok: true,
-        status: "success" as const,
-        data,
-        ...data,
       };
     },
   });

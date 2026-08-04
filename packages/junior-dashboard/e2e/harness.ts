@@ -112,14 +112,6 @@ export async function mockDashboardApis(page: Page) {
           pluginDisplayName: "Memory",
           pluginName: "memory",
         },
-        {
-          description: "Recurring work Junior runs for you.",
-          id: "tasks",
-          label: "Scheduled tasks",
-          navigation: "profile",
-          pluginDisplayName: "Scheduler",
-          pluginName: "scheduler",
-        },
       ],
     });
   });
@@ -188,18 +180,68 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
-  await page.route("**/api/user-pages/scheduler/tasks", async (route) => {
+  await page.route("**/api/tasks", async (route) => {
     await route.fulfill({
       json: {
-        type: "list",
-        emptyText: "No scheduled tasks yet.",
-        records: [
+        tasks: [
           {
-            id: "task-1",
-            title: "Send the weekly project summary",
-            metadata: [{ label: "Schedule", value: "Every Monday" }],
+            createdAt: "2026-07-28T16:00:00.000Z",
+            createdBy: "Morgan",
+            createdByEmail: "morgan@sentry.io",
+            destination: {
+              channelId: "C123",
+              label: "#project-updates",
+              teamId: "T123",
+              visibility: "public",
+            },
+            id: "scheduled-1",
+            instruction: "Send the weekly project summary",
+            kind: "scheduled",
+            nextRunAt: "2026-08-10T16:00:00.000Z",
+            ownedByViewer: true,
+            schedule: "Every Monday at 9:00 AM",
+            status: "active",
+          },
+          {
+            createdAt: "2026-07-29T16:00:00.000Z",
+            createdBy: "Morgan",
+            createdByEmail: "morgan@sentry.io",
+            destination: {
+              channelId: "C123",
+              label: "#project-updates",
+              teamId: "T123",
+              visibility: "public",
+            },
+            events: ["issue.closed"],
+            id: "event-1",
+            instruction: "Summarize the closed issue",
+            kind: "event",
+            ownedByViewer: true,
+            resource: "Issue · ACME-42",
+            source: "github",
+            triggerAvailable: true,
+          },
+          {
+            createdAt: "2026-07-30T16:00:00.000Z",
+            createdBy: "Avery Chen",
+            createdByEmail: "avery@sentry.io",
+            destination: {
+              channelId: "C456",
+              label: "#incident-response",
+              teamId: "T123",
+              visibility: "public",
+            },
+            events: ["incident.updated"],
+            id: "event-2",
+            instruction: "Notify responders when the incident changes",
+            kind: "event",
+            ownedByViewer: false,
+            resource: "Incident · INC-17",
+            source: "pagerduty",
+            triggerAvailable: false,
           },
         ],
+        truncated: false,
       },
     });
   });

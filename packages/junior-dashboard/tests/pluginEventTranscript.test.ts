@@ -54,8 +54,7 @@ describe("plugin event transcript projection", () => {
           turnId: "turn-1",
           presentation: {
             icon: "brain",
-            title: "Memories captured",
-            preview: "2 memories",
+            title: "2 memories captured",
             details: [
               {
                 title: "Use pnpm.",
@@ -91,14 +90,13 @@ describe("plugin event transcript projection", () => {
           version: 1,
           turnId: "turn-1",
           presentation: {
-            title: "Memory captured",
-            preview: "Use pnpm.",
+            title: "1 memory captured",
           },
         }),
       ]),
     );
 
-    expect(markdown).toContain("### Memory captured");
+    expect(markdown).toContain("### 1 memory captured");
     expect(markdown).toContain("2026-01-01T00:00:01.000Z - +1.0s");
   });
 
