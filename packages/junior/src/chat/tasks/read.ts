@@ -21,7 +21,7 @@ import {
   listPublicScheduledTasksForTeams,
 } from "@/chat/scheduled-tasks/store";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
-import { juniorDestinations } from "@/db/schema";
+import { juniorDestinations, juniorIdentities, juniorUsers } from "@/db/schema";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
@@ -39,6 +39,52 @@ function creatorLabel(creator: {
     creator.fullName?.trim() ||
     (creator.userName?.trim() ? `@${creator.userName.trim()}` : "") ||
     creator.slackUserId
+  );
+}
+
+function creatorKey(teamId: string, slackUserId: string): string {
+  return `${teamId}:${slackUserId}`;
+}
+
+async function creatorProfileEmails(
+  candidates: TaskCandidate[],
+): Promise<Map<string, string>> {
+  const selectors = new Map(
+    candidates.map(({ task }) => {
+      const teamId = task.destination.teamId;
+      const slackUserId = task.createdBy.slackUserId;
+      return [
+        creatorKey(teamId, slackUserId),
+        { slackUserId, teamId },
+      ] as const;
+    }),
+  );
+  if (selectors.size === 0) return new Map();
+  const rows = await getDb()
+    .select({
+      email: juniorUsers.primaryEmailNormalized,
+      slackUserId: juniorIdentities.providerSubjectId,
+      teamId: juniorIdentities.providerTenantId,
+    })
+    .from(juniorIdentities)
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.emailVerified, true),
+        or(
+          ...[...selectors.values()].map((selector) =>
+            and(
+              eq(juniorIdentities.providerTenantId, selector.teamId),
+              eq(juniorIdentities.providerSubjectId, selector.slackUserId),
+            ),
+          ),
+        ),
+      ),
+    );
+  return new Map(
+    rows.map((row) => [creatorKey(row.teamId, row.slackUserId), row.email]),
   );
 }
 
@@ -165,25 +211,37 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       right.task.id.localeCompare(left.task.id),
   );
   const selected = candidates.slice(0, TASK_LIST_LIMIT);
-  const labels = await destinationLabels(
-    selected.map(({ task }) => task.destination),
-  );
+  const [labels, creatorEmails] = await Promise.all([
+    destinationLabels(selected.map(({ task }) => task.destination)),
+    creatorProfileEmails(selected),
+  ]);
   const eventCatalog = getResourceEventCatalog();
   const tasks = selected.map((candidate): TaskSummary => {
     const label =
       labels.get(destinationKey(candidate.task.destination)) ??
       `Channel ${candidate.task.destination.channelId}`;
+    const createdByEmail = creatorEmails.get(
+      creatorKey(
+        candidate.task.destination.teamId,
+        candidate.task.createdBy.slackUserId,
+      ),
+    );
     if (candidate.kind === "scheduled") {
-      return scheduledTaskSummary(
+      const summary = scheduledTaskSummary(
         candidate.task,
         candidate.ownedByViewer,
         label,
       );
+      return {
+        ...summary,
+        ...(createdByEmail ? { createdByEmail } : {}),
+      };
     }
     const task = candidate.task;
     return {
       createdAt: new Date(task.createdAtMs).toISOString(),
       createdBy: creatorLabel(task.createdBy),
+      ...(createdByEmail ? { createdByEmail } : {}),
       destination: {
         channelId: task.destination.channelId,
         label,

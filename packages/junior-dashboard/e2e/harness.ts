@@ -187,6 +187,7 @@ export async function mockDashboardApis(page: Page) {
           {
             createdAt: "2026-07-28T16:00:00.000Z",
             createdBy: "Morgan",
+            createdByEmail: "morgan@sentry.io",
             destination: {
               channelId: "C123",
               label: "#project-updates",
@@ -204,6 +205,7 @@ export async function mockDashboardApis(page: Page) {
           {
             createdAt: "2026-07-29T16:00:00.000Z",
             createdBy: "Morgan",
+            createdByEmail: "morgan@sentry.io",
             destination: {
               channelId: "C123",
               label: "#project-updates",
@@ -221,7 +223,8 @@ export async function mockDashboardApis(page: Page) {
           },
           {
             createdAt: "2026-07-30T16:00:00.000Z",
-            createdBy: "Aisha Patel",
+            createdBy: "Avery Chen",
+            createdByEmail: "avery@sentry.io",
             destination: {
               channelId: "C456",
               label: "#incident-response",

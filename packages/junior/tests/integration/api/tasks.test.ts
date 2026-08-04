@@ -206,6 +206,7 @@ describe("Tasks API", () => {
         tasks: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
+            createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
               visibility: "public",
@@ -217,6 +218,7 @@ describe("Tasks API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
+            createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
               visibility: "public",
@@ -226,6 +228,7 @@ describe("Tasks API", () => {
             ownedByViewer: false,
           }),
           expect.objectContaining({
+            createdByEmail: "viewer@example.com",
             id: "event_tasks_api",
             kind: "event",
             ownedByViewer: true,
@@ -233,6 +236,7 @@ describe("Tasks API", () => {
             triggerAvailable: false,
           }),
           expect.objectContaining({
+            createdByEmail: "viewer@example.com",
             destination: expect.objectContaining({
               label: "#project-updates",
             }),

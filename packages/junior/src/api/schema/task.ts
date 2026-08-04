@@ -12,6 +12,7 @@ const taskDestinationSchema = z
 const taskSummaryBaseSchema = z.object({
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
+  createdByEmail: z.string().trim().email().optional(),
   destination: taskDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),

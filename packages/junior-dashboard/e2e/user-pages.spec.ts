@@ -106,6 +106,11 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").first()).toBeVisible();
+  await expect(page.getByText("Assigned to")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "you" }).first()).toHaveAttribute(
+    "href",
+    "/system/people/morgan%40sentry.io",
+  );
   await expect(
     page.getByText("Notify responders when the incident changes"),
   ).not.toBeVisible();
@@ -119,9 +124,18 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     page.getByText("Notify responders when the incident changes"),
   ).toBeVisible();
   await expect(page.getByText("#incident-response")).toBeVisible();
-  await expect(page.getByText("Created by Aisha Patel")).toBeVisible();
+  const creatorLink = page.getByRole("link", { name: "Avery Chen" });
+  await expect(creatorLink).toHaveAttribute(
+    "href",
+    "/system/people/avery%40sentry.io",
+  );
   await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
+  await creatorLink.click();
+  await expect(page).toHaveURL(
+    `${server.baseURL}/system/people/avery%40sentry.io`,
+  );
+  await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 

@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
+import { Link } from "react-router";
 import {
   CalendarClock,
   Globe2,
@@ -15,6 +16,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
+import { peoplePath } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 
 type TaskFilter = "all" | TaskSummary["kind"];
@@ -272,7 +274,6 @@ function TaskRow(props: {
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <MapPin aria-hidden="true" className="text-cyan-300/70" size={14} />
-          <span className="text-dashboard-text-muted">Assigned to</span>
           <span className="font-medium text-dashboard-text">
             {task.destination.label}
           </span>
@@ -298,7 +299,21 @@ function TaskRow(props: {
           )}
         </div>
         <div className="mt-3 flex flex-wrap gap-x-2 text-xs text-dashboard-text-muted">
-          <span>Created by {task.ownedByViewer ? "you" : task.createdBy}</span>
+          <span>
+            Created by{" "}
+            {task.createdByEmail ? (
+              <Link
+                className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+                to={peoplePath(task.createdByEmail)}
+              >
+                {task.ownedByViewer ? "you" : task.createdBy}
+              </Link>
+            ) : task.ownedByViewer ? (
+              "you"
+            ) : (
+              task.createdBy
+            )}
+          </span>
           <span aria-hidden="true">·</span>
           <span>{formatDate(task.createdAt)}</span>
         </div>
