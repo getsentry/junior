@@ -57,12 +57,12 @@ html:root[data-theme="light"] {
 }
 
 body:has(.jr-home) {
-  background: #0a0a0f;
+  background: var(--ve-bg);
   color: var(--jr-cream);
 }
 
 body:has(.jr-home) .header {
-  background: #0d0d14;
+  background: var(--ve-bg-soft);
   border-bottom: 4px solid var(--jr-acid);
 }
 
@@ -74,17 +74,17 @@ body:has(.jr-home) site-search button {
 }
 
 body:has(.jr-home) site-search button {
-  background: #15151d;
-  border: 1px solid #34343f;
+  background: var(--ve-surface-raised);
+  border: 1px solid var(--ve-line);
   border-radius: 0.5rem;
   box-shadow: none;
 }
 
 body:has(.jr-home) .page {
-  background-color: #0a0a0f;
+  background-color: var(--ve-bg);
   background-image: radial-gradient(
     circle,
-    rgba(204, 255, 0, 0.16) 1px,
+    var(--ve-accent-soft) 1px,
     transparent 1px
   );
   background-size: 17px 17px;
