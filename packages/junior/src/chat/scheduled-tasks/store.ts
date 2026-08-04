@@ -108,7 +108,8 @@ const taskRecordFields = {
   originalRequest: z.string().optional(),
   runNowAtMs: z.number().optional(),
   schedule: taskScheduleSchema,
-  // Accept legacy paused rows until migration 0017 tombstones them.
+  // TODO(v0.131.0): Remove paused decoding and SQL list filtering after
+  // v0.129.x workers can no longer overlap upgrades.
   status: z.enum(["active", "blocked", "deleted", "paused"]),
   statusReason: z.string().optional(),
   task: taskSpecSchema,
@@ -615,7 +616,10 @@ function present<T>(value: T | undefined): value is T {
   return value !== undefined;
 }
 
-/** Drop tombstones after parse so legacy paused rows never surface in listings. */
+/**
+ * Drop tombstones after parse so legacy paused rows never surface in listings.
+ * See the v0.131.0 removal TODO on taskRecordFields.status.
+ */
 function listedScheduledTask(
   task: ScheduledTask | undefined,
 ): task is ScheduledTask {
