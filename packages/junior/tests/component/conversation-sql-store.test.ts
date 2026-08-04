@@ -31,6 +31,86 @@ import {
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
+  it("binds one provider thread to an existing durable conversation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "agent-dispatch:dispatch-1",
+        destination: inboundMessage("binding").destination,
+        nowMs: 1_000,
+      });
+
+      await store.bindProviderThread({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerThreadId: "1700000000.100000",
+      });
+
+      await expect(
+        store.getConversationIdByProviderThread({
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerThreadId: "1700000000.100000",
+        }),
+      ).resolves.toBe("agent-dispatch:dispatch-1");
+      await expect(
+        store.bindProviderThread({
+          conversationId: "agent-dispatch:dispatch-1",
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerThreadId: "1700000000.100000",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects provider thread rebinding to another conversation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      for (const conversationId of [
+        "agent-dispatch:dispatch-1",
+        "agent-dispatch:dispatch-2",
+      ]) {
+        await store.recordActivity({
+          conversationId,
+          destination: inboundMessage(conversationId).destination,
+          nowMs: 1_000,
+        });
+      }
+      await store.bindProviderThread({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerThreadId: "1700000000.100000",
+      });
+
+      await expect(
+        store.bindProviderThread({
+          conversationId: "agent-dispatch:dispatch-2",
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerThreadId: "1700000000.100000",
+        }),
+      ).rejects.toThrow("already bound to another conversation");
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects updates to a child whose parent has no persisted root", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

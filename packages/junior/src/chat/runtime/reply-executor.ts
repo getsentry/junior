@@ -1128,6 +1128,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     conversationId,
                   }),
             );
+            await options.onTurnStatePersisted?.();
           } catch (error) {
             logException(
               new Error("Accepted assistant message persistence failed"),

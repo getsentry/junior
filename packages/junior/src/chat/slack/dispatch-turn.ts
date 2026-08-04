@@ -12,6 +12,7 @@ import {
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
+import { getConversationStore } from "@/chat/db";
 
 interface DispatchReplyToThread {
   (
@@ -23,6 +24,7 @@ interface DispatchReplyToThread {
       execution: DispatchTurnContext;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
       onTurnOutcome?: (result: DispatchTurnResult) => void;
+      onTurnStatePersisted?: () => Promise<void>;
       shouldYield?: () => boolean;
       skipBackfill?: boolean;
     },
@@ -114,6 +116,18 @@ export function createSlackDispatchTurnRunner(options: {
       },
       onTurnDeliveryAccepted: (messageId) => {
         resultMessageTs = messageId;
+      },
+      onTurnStatePersisted: async () => {
+        if (!resultMessageTs) return;
+        const bindProviderThread = getConversationStore().bindProviderThread;
+        if (!bindProviderThread) return;
+        await bindProviderThread({
+          conversationId,
+          provider: "slack",
+          providerDestinationId: dispatch.destination.channelId,
+          providerTenantId: dispatch.destination.teamId,
+          providerThreadId: resultMessageTs,
+        });
       },
       onTurnOutcome: (result) => {
         outcome = result.outcome;
