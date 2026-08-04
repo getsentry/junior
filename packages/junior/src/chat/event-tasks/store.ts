@@ -1,6 +1,7 @@
 import { type ResourceEvent, type User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorDestinations } from "@/db/schema/destinations";
 import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { eventTaskSchema, type EventTask } from "./types";
 
@@ -127,7 +128,7 @@ export async function listEventTasksCreatedBy(
   return rows.map((row) => parseTask(row.task));
 }
 
-/** List a bounded newest-first page of public event tasks in Slack workspaces. */
+/** List event tasks whose current Slack destination is public. */
 export async function listPublicEventTasksForTeams(
   db: JuniorDatabase,
   teamIds: string[],
@@ -137,10 +138,18 @@ export async function listPublicEventTasksForTeams(
   const rows = await db
     .select({ task: juniorEventTasks.task })
     .from(juniorEventTasks)
+    .innerJoin(
+      juniorDestinations,
+      and(
+        eq(juniorDestinations.provider, "slack"),
+        eq(juniorDestinations.providerTenantId, juniorEventTasks.teamId),
+        sql`${juniorDestinations.providerDestinationId} = ${juniorEventTasks.task}->'destination'->>'channelId'`,
+      ),
+    )
     .where(
       and(
         inArray(juniorEventTasks.teamId, teamIds),
-        sql`${juniorEventTasks.task}->>'destinationVisibility' = 'public'`,
+        eq(juniorDestinations.visibility, "public"),
       ),
     )
     .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))

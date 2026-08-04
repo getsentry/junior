@@ -278,6 +278,35 @@ describe("Tasks API", () => {
       ).toEqual(["event_tasks_api", "sched_tasks_api"]);
       expect(crowdedList.truncated).toBe(true);
 
+      await conversationStore.recordActivity({
+        conversationId: "slack:C456:tasks-api-private",
+        actor: {
+          email: "aisha@example.com",
+          fullName: "Aisha Patel",
+          platform: "slack",
+          slackUserId: "U456",
+          teamId: "T123",
+        },
+        channelName: "incident-response",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        title: "Private tasks fixture",
+        visibility: "private",
+      });
+      const privateResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks");
+      expect(privateResponse.status).toBe(200);
+      const privateList = taskListSchema.parse(await privateResponse.json());
+      expect(privateList.tasks.map((task) => task.id)).toEqual([
+        "event_tasks_api",
+        "sched_tasks_api",
+      ]);
+      expect(privateList.tasks.every((task) => task.ownedByViewer)).toBe(true);
+
       const deniedPublicDelete = await authenticatedApi(
         "viewer@example.com",
       ).request("http://localhost/api/tasks/event/event_public_tasks_api", {

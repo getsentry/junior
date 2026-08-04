@@ -27,14 +27,18 @@ const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
 
 type TaskCandidate =
-  | { kind: "event"; ownedByViewer: boolean; task: EventTask }
-  | { kind: "scheduled"; ownedByViewer: boolean; task: ScheduledTask };
-
-function taskIsPublic(candidate: TaskCandidate): boolean {
-  return candidate.kind === "scheduled"
-    ? candidate.task.conversationAccess.visibility === "public"
-    : candidate.task.destinationVisibility === "public";
-}
+  | {
+      kind: "event";
+      ownedByViewer: boolean;
+      publicToViewer: boolean;
+      task: EventTask;
+    }
+  | {
+      kind: "scheduled";
+      ownedByViewer: boolean;
+      publicToViewer: boolean;
+      task: ScheduledTask;
+    };
 
 function creatorLabel(creator: {
   fullName?: string;
@@ -98,9 +102,14 @@ function destinationKey(destination: SlackDestination): string {
   return `${destination.teamId}:${destination.channelId}`;
 }
 
-async function destinationLabels(
+type DestinationDetails = {
+  label: string;
+  visibility: "private" | "public";
+};
+
+async function destinationDetails(
   destinations: SlackDestination[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, DestinationDetails>> {
   const selectors = new Map(
     destinations.map((destination) => [
       destinationKey(destination),
@@ -114,6 +123,7 @@ async function destinationLabels(
       kind: juniorDestinations.kind,
       providerDestinationId: juniorDestinations.providerDestinationId,
       providerTenantId: juniorDestinations.providerTenantId,
+      visibility: juniorDestinations.visibility,
     })
     .from(juniorDestinations)
     .where(
@@ -139,7 +149,13 @@ async function destinationLabels(
           : row.kind === "group"
             ? "Group message"
             : `Channel ${row.providerDestinationId}`;
-      return [`${row.providerTenantId}:${row.providerDestinationId}`, label];
+      return [
+        `${row.providerTenantId}:${row.providerDestinationId}`,
+        {
+          label,
+          visibility: row.visibility === "public" ? "public" : "private",
+        },
+      ];
     }),
   );
 }
@@ -147,7 +163,7 @@ async function destinationLabels(
 function scheduledTaskSummary(
   task: ScheduledTask,
   ownedByViewer: boolean,
-  destinationLabel: string,
+  destination: DestinationDetails,
 ): TaskSummary {
   if (task.status === "deleted") {
     throw new Error("Deleted scheduled tasks cannot enter the Tasks view");
@@ -158,9 +174,9 @@ function scheduledTaskSummary(
     createdBy: creatorLabel(task.createdBy),
     destination: {
       channelId: task.destination.channelId,
-      label: destinationLabel,
+      label: destination.label,
       teamId: task.destination.teamId,
-      visibility: task.conversationAccess.visibility,
+      visibility: destination.visibility,
     },
     id: task.id,
     instruction: task.task.text,
@@ -197,10 +213,13 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
     ]);
   const candidatesById = new Map<string, TaskCandidate>();
+  const publicScheduledIds = new Set(publicScheduled.map((task) => task.id));
+  const publicEventTaskIds = new Set(publicEventTasks.map((task) => task.id));
   for (const task of [...scheduledPage.tasks, ...publicScheduled]) {
     candidatesById.set(`scheduled:${task.id}`, {
       kind: "scheduled",
       ownedByViewer: identityIds.has(task.creatorIdentityId),
+      publicToViewer: publicScheduledIds.has(task.id),
       task,
     });
   }
@@ -208,6 +227,7 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
     candidatesById.set(`event:${task.id}`, {
       kind: "event",
       ownedByViewer: eventTaskBelongsToUser(task, user),
+      publicToViewer: publicEventTaskIds.has(task.id),
       task,
     });
   }
@@ -219,7 +239,9 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   const ownedCandidates = candidates.filter(
     (candidate) => candidate.ownedByViewer,
   );
-  const publicCandidates = candidates.filter(taskIsPublic);
+  const publicCandidates = candidates.filter(
+    (candidate) => candidate.publicToViewer,
+  );
   const selectedCandidates = new Set([
     ...ownedCandidates.slice(0, TASK_LIST_LIMIT),
     ...publicCandidates.slice(0, TASK_LIST_LIMIT),
@@ -227,15 +249,24 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   const selected = candidates.filter((candidate) =>
     selectedCandidates.has(candidate),
   );
-  const [labels, creatorEmails] = await Promise.all([
-    destinationLabels(selected.map(({ task }) => task.destination)),
+  const [destinations, creatorEmails] = await Promise.all([
+    destinationDetails(selected.map(({ task }) => task.destination)),
     creatorProfileEmails(selected),
   ]);
   const eventCatalog = getResourceEventCatalog();
-  const tasks = selected.map((candidate): TaskSummary => {
-    const label =
-      labels.get(destinationKey(candidate.task.destination)) ??
-      `Channel ${candidate.task.destination.channelId}`;
+  const visible = selected.filter(
+    (candidate) =>
+      candidate.ownedByViewer ||
+      destinations.get(destinationKey(candidate.task.destination))
+        ?.visibility === "public",
+  );
+  const tasks = visible.map((candidate): TaskSummary => {
+    const destination = destinations.get(
+      destinationKey(candidate.task.destination),
+    ) ?? {
+      label: `Channel ${candidate.task.destination.channelId}`,
+      visibility: "private" as const,
+    };
     const createdByEmail = creatorEmails.get(
       creatorKey(
         candidate.task.destination.teamId,
@@ -246,7 +277,7 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       const summary = scheduledTaskSummary(
         candidate.task,
         candidate.ownedByViewer,
-        label,
+        destination,
       );
       return {
         ...summary,
@@ -260,9 +291,9 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       ...(createdByEmail ? { createdByEmail } : {}),
       destination: {
         channelId: task.destination.channelId,
-        label,
+        label: destination.label,
         teamId: task.destination.teamId,
-        visibility: task.destinationVisibility,
+        visibility: destination.visibility,
       },
       events: task.trigger.events,
       id: task.id,

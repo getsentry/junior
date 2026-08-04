@@ -22,6 +22,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
+import { juniorDestinations } from "@/db/schema/destinations";
 import * as schedulerSqlSchema from "@/db/schema/scheduled-tasks";
 import {
   juniorSchedulerRuns,
@@ -1354,7 +1355,7 @@ async function listTasksForTeamFromSql(
   return rows.map(parseSqlTaskRow).filter(present);
 }
 
-/** List a bounded newest-first page of public scheduled tasks in Slack workspaces. */
+/** List scheduled tasks whose current Slack destination is public. */
 export async function listPublicScheduledTasksForTeams(
   db: SchedulerDb,
   teamIds: string[],
@@ -1367,11 +1368,19 @@ export async function listPublicScheduledTasksForTeams(
       record: juniorSchedulerTasks.record,
     })
     .from(juniorSchedulerTasks)
+    .innerJoin(
+      juniorDestinations,
+      and(
+        eq(juniorDestinations.provider, "slack"),
+        eq(juniorDestinations.providerTenantId, juniorSchedulerTasks.teamId),
+        sql`${juniorDestinations.providerDestinationId} = ${juniorSchedulerTasks.record}->'destination'->>'channelId'`,
+      ),
+    )
     .where(
       and(
         inArray(juniorSchedulerTasks.teamId, teamIds),
         ne(juniorSchedulerTasks.status, "deleted"),
-        sql`${juniorSchedulerTasks.record}->'conversationAccess'->>'visibility' = 'public'`,
+        eq(juniorDestinations.visibility, "public"),
       ),
     )
     .orderBy(

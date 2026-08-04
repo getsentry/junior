@@ -6,9 +6,10 @@ This module projects the two native durable task kinds for signed-in users:
 - tasks assigned to public destinations in the viewer's linked Slack workspaces.
 
 The projection is newest-first and independently bounded for owned and public
-tasks so activity in one scope cannot crowd the other out. Destination labels
-come from the persisted destination directory, with provider ids used only as a
-fallback. It does not merge the persistence models or dispatch paths:
+tasks so activity in one scope cannot crowd the other out. Public access and
+destination labels come from the current persisted destination directory;
+missing or non-public directory entries fail closed, with provider ids used
+only as label fallbacks. It does not merge the persistence models or dispatch paths:
 scheduled work is claimed by the heartbeat, while event work is matched during
 resource-event ingestion. The dashboard API may delete only a task that belongs
 to the resolved viewer; visibility grants read access, not mutation authority.
