@@ -314,9 +314,6 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  if (args.message.threadId !== threadId) {
-    (args.message as unknown as { threadId: string }).threadId = threadId;
-  }
   const isMention =
     args.event.type === "app_mention" ||
     textMentionsBot(args.event, args.adapter.botUserId);
