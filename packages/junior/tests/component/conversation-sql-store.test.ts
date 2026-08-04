@@ -245,6 +245,40 @@ describe("conversation SQL store", () => {
       expect(localConversation).toBeDefined();
       expect(localConversation).not.toHaveProperty("location");
 
+      // Dispatch-style cutover: local origin, Slack destination, no location.
+      const dispatchConversationId = "agent-dispatch:location-cutover";
+      await store.recordActivity({
+        conversationId: dispatchConversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        nowMs: 4_500,
+        sessionSource: {
+          platform: "local",
+          visibility: "private",
+          conversationId: "local:cli:dispatch-origin",
+        },
+        source: "scheduler",
+        visibility: "private",
+      });
+      const dispatchConversation = await store.get({
+        conversationId: dispatchConversationId,
+      });
+      expect(dispatchConversation).toMatchObject({
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        sessionSource: {
+          platform: "local",
+          conversationId: "local:cli:dispatch-origin",
+        },
+      });
+      expect(dispatchConversation).not.toHaveProperty("location");
+
       await fixture.sql
         .db()
         .update(juniorConversations)

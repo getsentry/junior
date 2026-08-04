@@ -26,10 +26,9 @@ export function locationFromConversation(args: {
   visibility?: ConversationPrivacy;
 }): Location | undefined {
   const { destination, source } = args;
+  // Local origins have no provider location. Scheduled/plugin dispatch can keep a
+  // local sessionSource while delivering to a Slack destination.
   if (!source || source.platform === "local") {
-    if (source?.platform === "local" && destination?.platform === "slack") {
-      throw new Error("Conversation location platform is inconsistent");
-    }
     return undefined;
   }
   if (destination?.platform === "local") {
