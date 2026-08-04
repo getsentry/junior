@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { sameDestination } from "@/chat/destination";
+import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
-import { locationFromConversation } from "@/chat/location";
 import {
   normalizeSessionSource,
   parseSessionSource,
@@ -31,13 +30,10 @@ import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
 } from "@/db/schema/destinations";
-import {
-  destinationFromRow,
-  privacyFromDestinationRow,
-  type DestinationRow,
-} from "./destination";
+import { locationFromRow, privacyFromLocationRow } from "./location";
 
 type ConversationRow = typeof juniorConversations.$inferSelect;
+type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
 interface ConversationReadRow {
@@ -258,10 +254,29 @@ function actorFromIdentityRow(
   };
 }
 
+function destinationFromRow(
+  destination: DestinationRow | null,
+): Destination | undefined {
+  const value =
+    destination?.provider === "slack"
+      ? {
+          platform: "slack",
+          teamId: destination.providerTenantId,
+          channelId: destination.providerDestinationId,
+        }
+      : destination?.provider === "local"
+        ? {
+            platform: "local",
+            conversationId: destination.providerDestinationId,
+          }
+        : undefined;
+  return parseDestination(value);
+}
+
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = privacyFromDestinationRow(readRow.destination);
+  const visibility = privacyFromLocationRow(readRow.destination);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -276,6 +291,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     readRow.actorIdentity,
     readRow.actorUserDisplayName,
   );
+  if (readRow.destination !== null && !destination) {
+    throw new Error("Conversation record destination is invalid");
+  }
   const source =
     row.source === undefined || row.source === null
       ? undefined
@@ -302,11 +320,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
   };
-  const location = locationFromConversation({
-    destination,
-    source: sessionSource,
-    visibility,
-  });
+  const location = locationFromRow(readRow.destination);
 
   return {
     schemaVersion: 1,

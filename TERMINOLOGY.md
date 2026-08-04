@@ -9,9 +9,9 @@ Canonical words used across Junior's code and documentation.
 - **Source**: where an inbound event came from, such as Slack, local CLI,
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
-- **Location**: the optional provider place associated with a conversation,
-  such as a Slack thread, including the stable provider coordinates and
-  visibility needed for context and reporting.
+- **Location**: the optional provider container associated with a conversation,
+  such as a Slack channel, group, or direct message, including the stable
+  provider coordinates and visibility needed for context and reporting.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.

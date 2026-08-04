@@ -104,25 +104,6 @@ describe("conversation list API", () => {
         channelName: "Direct Message",
         displayTitle: "Direct Message",
       });
-
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          sessionSource: {
-            platform: "slack",
-            visibility: "public",
-            teamId: "T123",
-            channelId: "C999",
-            threadTs: "1700000000.000100",
-          },
-        })
-        .where(
-          eq(juniorConversations.conversationId, "slack:C123:source-link"),
-        );
-      await expect(readConversationFeedFromSql()).rejects.toThrow(
-        "Conversation Slack location is inconsistent",
-      );
     } finally {
       await fixture.close();
     }

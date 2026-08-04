@@ -13,6 +13,7 @@ import {
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
+import { slackIdFromText } from "../fixtures/slack/factories/ids";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
@@ -27,15 +28,6 @@ if (!TEST_DATABASE_URL) {
   throw new Error(
     "DATABASE_URL is required for dashboard reporting integration tests",
   );
-}
-
-function slackChannelIdForConversation(conversationId: string): string {
-  const suffix =
-    conversationId
-      .replace(/[^A-Z0-9]/gi, "")
-      .toUpperCase()
-      .slice(0, 20) || "FALLBACK";
-  return `C${suffix}`;
 }
 
 async function recordRoot(
@@ -53,7 +45,7 @@ async function recordRoot(
     destination: {
       platform: "slack",
       teamId: "TREPORTING",
-      channelId: slackChannelIdForConversation(conversationId),
+      channelId: slackIdFromText("C", conversationId),
     },
     nowMs: 1,
     ...(actor ? { actor: { platform: "slack" as const, ...actor } } : {}),

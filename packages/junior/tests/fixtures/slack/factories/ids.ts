@@ -28,3 +28,15 @@ export function slackId(
   const suffix = String(Math.max(1, sequence)).padStart(3, "0");
   return `${prefix}_TEST_${suffix}`;
 }
+
+/** Build a deterministic fixture Slack id from descriptive test text. */
+export function slackIdFromText(
+  prefix: "C" | "D" | "U" | "F" | "L" | "S",
+  value: string,
+): string {
+  const suffix = value
+    .replace(/[^A-Z0-9]/gi, "")
+    .toUpperCase()
+    .slice(0, 20);
+  return `${prefix}${suffix || "FALLBACK"}`;
+}

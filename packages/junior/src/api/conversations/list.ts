@@ -1,11 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
-import {
-  destinationFromRow,
-  privacyFromDestinationRow,
-} from "@/chat/conversations/sql/destination";
-import { locationFromConversation } from "@/chat/location";
+import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -100,13 +96,7 @@ function conversationFromRow(row: ConversationRow): Conversation {
           ...(row.identityTenantId ? { teamId: row.identityTenantId } : {}),
         }
       : undefined;
-  const destination = destinationFromRow(row.destination);
-  const visibility = privacyFromDestinationRow(row.destination);
-  const location = locationFromConversation({
-    destination,
-    source: sessionSource,
-    visibility,
-  });
+  const location = locationFromRow(row.destination);
   return {
     schemaVersion: 1,
     conversationId: value.conversationId,

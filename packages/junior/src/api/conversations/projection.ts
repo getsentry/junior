@@ -31,8 +31,8 @@ type ConversationProjectionSource = Pick<
   | "createdAtMs"
   | "execution"
   | "lastActivityAtMs"
-  | "location"
   | "source"
+  | "sessionSource"
   | "title"
   | "updatedAtMs"
 >;
@@ -74,10 +74,13 @@ function sourceUrlFromConversation(
   conversation: ConversationProjectionSource,
   canViewPrivateContent: boolean,
 ): string | undefined {
-  if (!canViewPrivateContent || conversation.location?.provider !== "slack") {
+  if (
+    !canViewPrivateContent ||
+    conversation.sessionSource?.platform !== "slack"
+  ) {
     return undefined;
   }
-  return buildSlackSourceUrl(conversation.location);
+  return buildSlackSourceUrl(conversation.sessionSource);
 }
 
 function actorIdentityReport(
