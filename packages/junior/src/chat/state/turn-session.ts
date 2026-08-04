@@ -883,11 +883,14 @@ export async function upsertAgentTurnSessionRecord(args: {
   // History commits can adopt concurrent same-prefix writes. Re-check the
   // session record before overwriting metadata so a delayed running checkpoint
   // cannot clobber awaiting_resume/completed/failed that landed meanwhile.
+  // Prefer the caller-owned base version when present: a fresh store read at
+  // upsert entry would mask a stale `existing` and skip this guard entirely.
   const liveAfterCommit = await getStoredAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
-  const expectedVersion = storedRecord?.version ?? existingRecord?.version;
+  const expectedVersion =
+    args.existing?.version ?? storedRecord?.version ?? existingRecord?.version;
   if (
     liveAfterCommit &&
     expectedVersion !== undefined &&
