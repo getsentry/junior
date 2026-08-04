@@ -490,8 +490,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         options.execution?.destinationVisibility ??
         conversationVisibilityFromSlackChannelType(slackChannelType),
     });
-    const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
+    const threadTs =
+      getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
     const messageTs = getMessageTs(message);
     const teamId = destination.teamId;
     const source =
