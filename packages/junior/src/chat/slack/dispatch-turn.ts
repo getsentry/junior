@@ -119,9 +119,9 @@ export function createSlackDispatchTurnRunner(options: {
       },
       onTurnStatePersisted: async () => {
         if (!resultMessageTs) return;
-        const bindProviderThread = getConversationStore().bindProviderThread;
-        if (!bindProviderThread) return;
-        await bindProviderThread({
+        const conversationStore = getConversationStore();
+        if (!conversationStore.bindProviderThread) return;
+        await conversationStore.bindProviderThread({
           conversationId,
           provider: "slack",
           providerDestinationId: dispatch.destination.channelId,
