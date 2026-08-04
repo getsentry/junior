@@ -1782,7 +1782,8 @@ export async function recordEmptyWakeFailure(args: {
           ...(terminal
             ? {
                 lease: undefined,
-                status: pendingMessages(current).length > 0 ? "pending" : "failed",
+                status:
+                  pendingMessages(current).length > 0 ? "pending" : "failed",
               }
             : {}),
         },

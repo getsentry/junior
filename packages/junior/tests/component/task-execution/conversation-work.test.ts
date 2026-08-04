@@ -1332,22 +1332,26 @@ describe("conversation work execution", () => {
       nowMs: 1_000,
     });
 
+    const results: Array<{ status: string }> = [];
     for (let attempt = 0; attempt < CONVERSATION_WORK_MAX_EMPTY_WAKES; attempt++) {
       currentNowMs = 2_000 + attempt;
-      const result = await processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs,
-        queue,
-        run: async () => {
-          currentNowMs += 1;
-          return { status: "lost_lease" };
-        },
-      });
-      if (attempt < CONVERSATION_WORK_MAX_EMPTY_WAKES - 1) {
-        expect(result).toEqual({ status: "lost_lease" });
-      } else {
-        expect(result).toEqual({ status: "failed" });
-      }
+      results.push(
+        await processConversationWork(conversationQueueMessage(), {
+          nowMs: () => currentNowMs,
+          queue,
+          run: async () => {
+            currentNowMs += 1;
+            return { status: "lost_lease" };
+          },
+        }),
+      );
     }
+    expect(results.slice(0, -1)).toEqual(
+      Array.from({ length: CONVERSATION_WORK_MAX_EMPTY_WAKES - 1 }, () => ({
+        status: "lost_lease",
+      })),
+    );
+    expect(results.at(-1)).toEqual({ status: "failed" });
 
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,

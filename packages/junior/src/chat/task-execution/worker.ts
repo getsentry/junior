@@ -577,14 +577,13 @@ async function processConversationWorkInContext(
           status: recovery === "terminal" ? "failed" : "lost_lease",
         };
       }
-      if (!emptyWake) {
-        await clearEmptyWakeCount({
-          conversationId,
-          leaseToken: lease.leaseToken,
-          nowMs: now(options),
-          state: options.state,
-        });
-      }
+      // Successful slices (including empty continue resumes) made progress.
+      await clearEmptyWakeCount({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        nowMs: now(options),
+        state: options.state,
+      });
       if (result.status === "yielded") {
         const resumeRequested = await requestConversationContinuation({
           conversationId,
@@ -669,36 +668,6 @@ async function processConversationWorkInContext(
         countPendingConversationMessages(next) === 0
       ) {
         break;
-      }
-      // Continue/resume wakes with nothing left to ack must not loop forever.
-      if (attemptMessageIds.length === 0) {
-        const emptyFailure = await recordEmptyWakeFailure({
-          conversationId,
-          leaseToken: lease.leaseToken,
-          nowMs: now(options),
-          state: options.state,
-        });
-        if (emptyFailure.status === "lost_lease") {
-          return { status: "lost_lease" };
-        }
-        if (emptyFailure.terminal) {
-          logWarn("conversation.work.empty_wake.terminal", {
-            "app.conversation.empty_wake_count": "max",
-          });
-          return { status: "failed" };
-        }
-        const resumeRequested = await requestConversationContinuation({
-          conversationId,
-          destination,
-          leaseToken: lease.leaseToken,
-          conversationStore: options.conversationStore,
-          nowMs: now(options),
-          state: options.state,
-        });
-        if (!resumeRequested) {
-          return { status: "lost_lease" };
-        }
-        return await yieldWork();
       }
     }
 
