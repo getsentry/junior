@@ -107,6 +107,10 @@ type DestinationDetails = {
   visibility: "private" | "public";
 };
 
+function displayText(value: string, fallback: string): string {
+  return value.trim() || fallback;
+}
+
 async function destinationDetails(
   destinations: SlackDestination[],
 ): Promise<Map<string, DestinationDetails>> {
@@ -179,13 +183,13 @@ function scheduledTaskSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction: task.task.text,
+    instruction: displayText(task.task.text, "Untitled scheduled task"),
     kind: "scheduled",
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
       : {}),
     ownedByViewer,
-    schedule: task.schedule.description,
+    schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
   };
 }

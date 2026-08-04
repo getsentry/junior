@@ -107,7 +107,7 @@ describe("Tasks API", () => {
         },
         nextRunAtMs: nowMs + 60_000,
         schedule: {
-          description: "Daily at noon",
+          description: "",
           kind: "recurring",
           recurrence: {
             frequency: "daily",
@@ -118,7 +118,7 @@ describe("Tasks API", () => {
           timezone: "UTC",
         },
         status: "active",
-        task: { text: "Post the daily digest." },
+        task: { text: "" },
         updatedAtMs: nowMs,
       };
       const scheduledStore = createSchedulerSqlStore(fixture.sql.db());
@@ -224,6 +224,7 @@ describe("Tasks API", () => {
               visibility: "public",
             }),
             id: "sched_public_tasks_api",
+            schedule: "Schedule unavailable",
             kind: "scheduled",
             ownedByViewer: false,
           }),
@@ -241,8 +242,10 @@ describe("Tasks API", () => {
               label: "#project-updates",
             }),
             id: "sched_tasks_api",
+            instruction: "Untitled scheduled task",
             kind: "scheduled",
             ownedByViewer: true,
+            schedule: "Schedule unavailable",
             status: "active",
           }),
         ],
