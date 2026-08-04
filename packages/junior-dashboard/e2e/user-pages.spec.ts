@@ -109,7 +109,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "you" }).first()).toHaveAttribute(
     "href",
-    "/system/people/morgan%40sentry.io",
+    "/people/morgan%40sentry.io",
   );
   await expect(
     page.getByText("Notify responders when the incident changes"),
@@ -127,14 +127,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   const creatorLink = page.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
     "href",
-    "/system/people/avery%40sentry.io",
+    "/people/avery%40sentry.io",
   );
   await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
   await creatorLink.click();
-  await expect(page).toHaveURL(
-    `${server.baseURL}/system/people/avery%40sentry.io`,
-  );
+  await expect(page).toHaveURL(`${server.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });

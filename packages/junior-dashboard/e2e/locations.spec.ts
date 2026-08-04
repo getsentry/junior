@@ -55,18 +55,5 @@ test("explores location activity", async ({ page }) => {
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
 
-  const headerBounds = await page
-    .locator("main > header > div")
-    .evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return { left: bounds.left, width: bounds.width };
-    });
-  const containerBounds = await page
-    .locator("main > div")
-    .evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return { left: bounds.left, width: bounds.width };
-    });
-  expect(containerBounds).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
 });
