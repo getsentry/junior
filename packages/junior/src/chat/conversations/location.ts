@@ -1,7 +1,4 @@
-import {
-  nonBlankStringSchema,
-  sourceVisibilitySchema,
-} from "@sentry/junior-plugin-api";
+import { nonBlankStringSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 /** Provider-neutral container associated with a conversation. */
@@ -15,8 +12,6 @@ export const locationSchema = z
     tenantId: nonBlankStringSchema.optional(),
     /** Provider-native identifier for the container within its tenant scope. */
     providerId: nonBlankStringSchema,
-    /** Normalized exposure used by conversation privacy and reporting. */
-    visibility: sourceVisibilitySchema,
   })
   .strict();
 

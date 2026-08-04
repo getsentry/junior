@@ -5,9 +5,10 @@ This module owns Junior's durable conversation record, search, and retention.
 ## Location Read Model
 
 `Conversation.location` is the provider-location read model for new code. A
-location keeps Junior's id, the provider's tenant and location identifiers, and
-current visibility. Provider-specific event attribution, such as Slack
-`threadTs` and `messageTs`, remains in `sessionSource`.
+location keeps Junior's id plus the provider's tenant and location identifiers.
+Conversation privacy remains in `Conversation.visibility`. Provider-specific
+event attribution, such as Slack `threadTs` and `messageTs`, remains in
+`sessionSource`.
 
 During the destination cutover, the linked destination row remains the durable
 location authority. Local conversations have no provider location.

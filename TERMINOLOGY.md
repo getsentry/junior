@@ -10,8 +10,7 @@ Canonical words used across Junior's code and documentation.
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
 - **Location**: the optional provider container associated with a conversation,
-  identified by Junior and provider ids plus the visibility needed for context
-  and reporting.
+  identified by Junior and provider ids. Conversation visibility is separate.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
@@ -68,6 +67,11 @@ Canonical words used across Junior's code and documentation.
 
 ## Naming Guidance
 
+- Use `provider` on provider-owned references such as Identity and Location; it
+  names the namespace that owns their provider ids.
+- For new Source unions, use one discriminant for what produced the work. Keep
+  provider-native identifiers inside that provider's Source branch rather than
+  adding a second generic provider or thread field.
 - Use `turn`, `run`, and `slice` only with the meanings above.
 - Use `message` for platform chat content. Use `user_message`,
   `assistant_message`, and `tool_result` for replayable agent history.

@@ -14,7 +14,6 @@ export function locationFromRow(row: LocationRow | null): Location | undefined {
     provider: row.provider,
     ...(row.providerTenantId ? { tenantId: row.providerTenantId } : {}),
     providerId: row.providerDestinationId,
-    visibility: row.visibility === "public" ? "public" : "private",
   });
 }
 

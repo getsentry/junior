@@ -121,7 +121,6 @@ describe("conversation SQL store", () => {
             provider: "slack",
             tenantId: "T123",
             providerId: "C123",
-            visibility: "public",
           },
           actor: {
             platform: "slack",
@@ -214,7 +213,6 @@ describe("conversation SQL store", () => {
           provider: "slack",
           tenantId: "T123",
           providerId: "C123",
-          visibility: "public",
         },
         actor: {
           platform: "slack",
