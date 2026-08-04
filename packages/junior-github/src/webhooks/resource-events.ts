@@ -3,6 +3,7 @@ import { z } from "zod";
 import { gitHubDeploymentSourceResource } from "../resource-events/deployment.js";
 import { gitHubIssueResource } from "../resource-events/issue.js";
 import { gitHubPullRequestResource } from "../resource-events/pull-request.js";
+import { gitHubReleaseSourceResource } from "../resource-events/release.js";
 import { gitHubRepositoryResource } from "../resource-events/repository.js";
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {
@@ -504,6 +505,72 @@ function normalizePullRequestEvent(
   };
 }
 
+const releaseWebhookSchema = z
+  .object({
+    action: z.string(),
+    release: z
+      .object({
+        body: z.string().optional().nullable(),
+        draft: z.boolean().optional(),
+        id: z.number(),
+        name: z.string().optional().nullable(),
+        prerelease: z.boolean().optional(),
+        published_at: z.string().optional().nullable(),
+        tag_name: z.string().min(1),
+      })
+      .passthrough(),
+    repository: repositorySchema,
+  })
+  .passthrough();
+
+/** Address one release through both its exact tag and its repository. */
+function releaseSourceTargets(input: { repo: string; tag: string }) {
+  return [
+    {
+      completeOnTerminalEvent: true,
+      resource: gitHubReleaseSourceResource(input),
+    },
+    {
+      completeOnTerminalEvent: false,
+      resource: gitHubReleaseSourceResource({ repo: input.repo }),
+    },
+  ];
+}
+
+/** Normalize a published GitHub release for tag and repository watches. */
+function normalizeReleaseEvent(
+  deliveryId: string,
+  body: unknown,
+): ResourceEventInput[] {
+  const parsed = releaseWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "published") return [];
+  if (parsed.data.release.draft) return [];
+  const eventType = "release.published";
+  const repo = parsed.data.repository.full_name;
+  const tag = parsed.data.release.tag_name;
+  const untrustedParts = [
+    tag ? `Tag: ${tag}` : undefined,
+    parsed.data.release.name?.trim()
+      ? `Name: ${parsed.data.release.name.trim()}`
+      : undefined,
+    parsed.data.release.body?.trim() || undefined,
+  ].filter((part): part is string => part !== undefined);
+  const untrustedText =
+    untrustedParts.length > 0 ? untrustedParts.join("\n\n") : undefined;
+  return releaseSourceTargets({ repo, tag }).map(
+    ({ completeOnTerminalEvent, resource }) => ({
+      eventKey: gitHubEventKey(deliveryId, eventType),
+      eventType,
+      occurredAtMs:
+        providerTime(parsed.data.release.published_at) ?? Date.now(),
+      identifier: resource.identifier,
+      ...(completeOnTerminalEvent ? { terminal: true } : {}),
+      trustedSummary: `${resource.label} was published (release ${parsed.data.release.id}).`,
+      ...(untrustedText ? { untrustedText } : {}),
+    }),
+  );
+}
+
 /** Normalize one verified GitHub delivery into conversation resource events. */
 export function normalizeGitHubResourceEvents(args: {
   body: unknown;
@@ -540,6 +607,8 @@ export function normalizeGitHubResourceEvents(args: {
     }
     case "check_suite":
       return normalizeCheckSuiteEvents(args.deliveryId, args.body);
+    case "release":
+      return normalizeReleaseEvent(args.deliveryId, args.body);
     default:
       return [];
   }

@@ -508,6 +508,17 @@ describe("github plugin", () => {
     });
   });
 
+  it("registers release source watches", () => {
+    const releaseSource = githubPlugin().resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "release_source",
+    );
+
+    expect(releaseSource).toMatchObject({
+      supportedEvents: ["release.published"],
+      suggestedEvents: ["release.published"],
+    });
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({

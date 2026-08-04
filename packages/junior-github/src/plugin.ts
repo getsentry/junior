@@ -30,6 +30,10 @@ import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
 } from "./resource-events/pull-request.js";
+import {
+  GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_SUGGESTED_EVENTS,
+} from "./resource-events/release.js";
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
@@ -641,6 +645,11 @@ export function githubPlugin(
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
         },
         {
+          type: "release_source",
+          supportedEvents: [...GITHUB_RELEASE_EVENTS],
+          suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+        },
+        {
           type: "repository",
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: ["issue.opened", ...GITHUB_ISSUE_SUGGESTED_EVENTS],
@@ -653,7 +662,7 @@ export function githubPlugin(
       name: "github",
       displayName: "GitHub",
       description:
-        "GitHub deployment, issue, pull request, and repository workflows via GitHub App",
+        "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {

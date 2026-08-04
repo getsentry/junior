@@ -79,8 +79,8 @@ the App bot login from that email. Set the GitHub App webhook URL to
 and Issues events. The secret in GitHub must match the deployment environment.
 
 Conversation watches additionally use Check suite, Deployment, Deployment
-status, Issue comment, Pull request review, and Pull request review comment
-events.
+status, Issue comment, Pull request review, Pull request review comment, and
+Release events.
 
 `github_getDeployment` reads the latest deployment and status for an exact
 repository and commit SHA, optionally limited to one environment. When
@@ -90,6 +90,13 @@ environment watches deployments for that commit across environments. The
 subscription remains available when GitHub has not created the deployment yet.
 Commit-wide watches remain active across terminal outcomes so later
 environments for the same commit can also notify the conversation.
+
+`github_getRelease` reads a release for an exact repository, optionally limited
+to one tag. When webhooks are configured, its result can subscribe the current
+conversation to `release.published`. Omitting the tag watches every published
+release in the repository. The subscription remains available when GitHub has
+not published the release yet. Tag-specific watches complete after publish;
+repository-wide release watches remain active across later tags.
 
 ```bash
 vercel env add GITHUB_WEBHOOK_SECRET production
