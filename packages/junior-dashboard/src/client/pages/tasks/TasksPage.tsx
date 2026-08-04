@@ -1,16 +1,25 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
-import { CalendarClock, Radio, Search, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Globe2,
+  MapPin,
+  Radio,
+  Search,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
-import { dashboardContainerClass } from "../../styles";
+import { cn, dashboardContainerClass } from "../../styles";
 
 type TaskFilter = "all" | TaskSummary["kind"];
+type TaskScope = "mine" | "public";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -21,9 +30,12 @@ function formatDate(value: string): string {
 
 function taskMatches(task: TaskSummary, search: string): boolean {
   const haystack = [
-    task.instruction,
+    task.createdBy,
     task.destination.channelId,
+    task.destination.label,
     task.destination.teamId,
+    task.instruction,
+    task.kind,
     task.kind === "scheduled" ? task.schedule : task.resource,
     ...(task.kind === "event" ? task.events : []),
   ]
@@ -32,22 +44,36 @@ function taskMatches(task: TaskSummary, search: string): boolean {
   return haystack.includes(search);
 }
 
-/** Render viewer-owned scheduled and resource-event tasks in one native view. */
+/** Render viewer-owned and public-workspace tasks in one native view. */
 export function TasksPage(props: { enabled: boolean }) {
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<TaskFilter>("all");
+  const [scope, setScope] = useState<TaskScope>("mine");
   const [searchText, setSearchText] = useState("");
   const search = searchText.trim().toLowerCase();
   const tasks = query.data?.tasks ?? [];
+  const mineCount = tasks.filter((task) => task.ownedByViewer).length;
+  const publicCount = tasks.filter(
+    (task) => task.destination.visibility === "public",
+  ).length;
+  const scopedTasks = useMemo(
+    () =>
+      tasks.filter((task) =>
+        scope === "mine"
+          ? task.ownedByViewer
+          : task.destination.visibility === "public",
+      ),
+    [scope, tasks],
+  );
   const visibleTasks = useMemo(
     () =>
-      tasks.filter(
+      scopedTasks.filter(
         (task) =>
           (filter === "all" || task.kind === filter) &&
           (!search || taskMatches(task, search)),
       ),
-    [filter, search, tasks],
+    [filter, scopedTasks, search],
   );
   const deletion = useMutation({
     mutationFn: async (task: TaskSummary) => {
@@ -64,29 +90,36 @@ export function TasksPage(props: { enabled: boolean }) {
     return <LoadingView label="Loading tasks" />;
   }
 
-  const scheduledCount = tasks.filter(
-    (task) => task.kind === "scheduled",
-  ).length;
-  const eventCount = tasks.length - scheduledCount;
-
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-5xl gap-6">
+      <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
-          description="Durable work Junior runs on a schedule or when a registered resource event occurs."
+          description="Scheduled and event-driven work across your Slack destinations."
           eyebrow="Automation"
           title="Tasks"
         />
-        <section
-          aria-label="Task overview"
-          className="grid gap-3 sm:grid-cols-3"
-        >
-          <TaskMetric label="Total" value={tasks.length} />
-          <TaskMetric label="Scheduled" value={scheduledCount} />
-          <TaskMetric label="Event" value={eventCount} />
-        </section>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-2" role="group" aria-label="Task type">
+        <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
+          <TaskFilterGroup label="Scope">
+            <ToggleButton
+              className="inline-flex items-center gap-1.5"
+              onClick={() => setScope("mine")}
+              pressed={scope === "mine"}
+              variant="pill"
+            >
+              <UserRound aria-hidden="true" size={13} />
+              Mine <span className="opacity-65">{mineCount}</span>
+            </ToggleButton>
+            <ToggleButton
+              className="inline-flex items-center gap-1.5"
+              onClick={() => setScope("public")}
+              pressed={scope === "public"}
+              variant="pill"
+            >
+              <Globe2 aria-hidden="true" size={13} />
+              Public <span className="opacity-65">{publicCount}</span>
+            </ToggleButton>
+          </TaskFilterGroup>
+          <TaskFilterGroup label="Type">
             {(["all", "scheduled", "event"] as const).map((kind) => (
               <ToggleButton
                 key={kind}
@@ -97,22 +130,34 @@ export function TasksPage(props: { enabled: boolean }) {
                 {kind}
               </ToggleButton>
             ))}
-          </div>
-          <label className="relative min-w-56 flex-1">
+          </TaskFilterGroup>
+          <label className="relative min-w-0">
+            <span className="mb-2 block font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+              Search
+            </span>
             <Search
               aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dashboard-text-muted"
+              className="pointer-events-none absolute bottom-[0.68rem] left-3 text-dashboard-text-muted"
               size={15}
             />
-            <span className="sr-only">Search tasks</span>
             <input
-              className="w-full rounded border border-white/15 bg-black py-2 pr-3 pl-9 text-sm text-dashboard-text placeholder:text-dashboard-text-muted focus:border-cyan-300/50 focus:outline-none"
+              className="h-9 w-full rounded border border-white/15 bg-black pr-3 pl-9 text-sm text-dashboard-text placeholder:text-dashboard-text-muted focus:border-cyan-300/50 focus:outline-none"
               onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Search tasks"
+              placeholder="Instruction, location, or creator"
               type="search"
               value={searchText}
             />
           </label>
+        </Card>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+          <p className="m-0 font-display text-lg text-dashboard-text">
+            {visibleTasks.length} {visibleTasks.length === 1 ? "task" : "tasks"}
+          </p>
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            {scope === "mine"
+              ? "Tasks you created, including private destinations."
+              : "All tasks assigned to public destinations in your linked workspaces."}
+          </p>
         </div>
         {query.error ? (
           <Card padding="md">
@@ -123,32 +168,32 @@ export function TasksPage(props: { enabled: boolean }) {
         ) : visibleTasks.length === 0 ? (
           <Card padding="md">
             <p className="m-0 text-sm text-dashboard-text-muted">
-              {tasks.length === 0
-                ? "You have not created any tasks."
-                : "No tasks matched these filters."}
+              {emptyText({ filter, mineCount, publicCount, scope, search })}
             </p>
           </Card>
         ) : (
-          <div className="grid gap-3">
-            {visibleTasks.map((task) => (
-              <TaskCard
-                deleting={
-                  deletion.isPending && deletion.variables?.id === task.id
-                }
-                key={`${task.kind}:${task.id}`}
-                onDelete={() => {
-                  if (window.confirm(`Delete this ${task.kind} task?`)) {
-                    deletion.mutate(task);
+          <Card>
+            <div className="divide-y divide-white/[0.07]" role="list">
+              {visibleTasks.map((task) => (
+                <TaskRow
+                  deleting={
+                    deletion.isPending && deletion.variables?.id === task.id
                   }
-                }}
-                task={task}
-              />
-            ))}
-          </div>
+                  key={`${task.kind}:${task.id}`}
+                  onDelete={() => {
+                    if (window.confirm(`Delete this ${task.kind} task?`)) {
+                      deletion.mutate(task);
+                    }
+                  }}
+                  task={task}
+                />
+              ))}
+            </div>
+          </Card>
         )}
         {query.data?.truncated ? (
           <p className="m-0 text-center text-xs text-dashboard-text-muted">
-            Showing the 100 most recent tasks.
+            Showing the 100 most recent tasks available to you.
           </p>
         ) : null}
         {deletion.error ? (
@@ -161,20 +206,43 @@ export function TasksPage(props: { enabled: boolean }) {
   );
 }
 
-function TaskMetric(props: { label: string; value: number }) {
+function emptyText(input: {
+  filter: TaskFilter;
+  mineCount: number;
+  publicCount: number;
+  scope: TaskScope;
+  search: string;
+}): string {
+  if (input.search || input.filter !== "all") {
+    return "No tasks matched these filters.";
+  }
+  if (input.scope === "mine" && input.mineCount === 0) {
+    return "You have not created any tasks.";
+  }
+  if (input.scope === "public" && input.publicCount === 0) {
+    return "No tasks are assigned to public destinations in your linked workspaces.";
+  }
+  return "No tasks are available.";
+}
+
+function TaskFilterGroup(props: { children: ReactNode; label: string }) {
   return (
-    <Card className="p-4">
-      <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+    <div>
+      <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </div>
-      <div className="mt-3 font-display text-2xl font-light text-dashboard-text">
-        {props.value}
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={props.label}
+      >
+        {props.children}
       </div>
-    </Card>
+    </div>
   );
 }
 
-function TaskCard(props: {
+function TaskRow(props: {
   deleting: boolean;
   onDelete(): void;
   task: TaskSummary;
@@ -182,69 +250,94 @@ function TaskCard(props: {
   const { task } = props;
   const Icon = task.kind === "scheduled" ? CalendarClock : Radio;
   return (
-    <Card padding="md">
-      <div className="flex items-start gap-4">
-        <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75">
-          <Icon aria-hidden="true" size={16} />
+    <article
+      className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-4 p-4 sm:p-5"
+      role="listitem"
+    >
+      <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75">
+        <Icon aria-hidden="true" size={17} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <TaskTag>{task.kind}</TaskTag>
+          {task.kind === "scheduled" ? (
+            <TaskTag tone={task.status === "active" ? "success" : "warning"}>
+              {task.status}
+            </TaskTag>
+          ) : (
+            <TaskTag tone={task.triggerAvailable ? "success" : "warning"}>
+              {task.triggerAvailable ? "trigger ready" : "trigger unavailable"}
+            </TaskTag>
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-3">
-            <h3 className="m-0 min-w-0 flex-1 font-display text-base font-medium text-dashboard-text">
-              {task.instruction}
-            </h3>
-            <Button
-              aria-label={`Delete: ${task.instruction}`}
-              disabled={props.deleting}
-              onClick={props.onDelete}
-              size="icon"
-              title="Delete task"
-            >
-              <Trash2 aria-hidden="true" size={15} />
-            </Button>
-          </div>
-          <div className="mt-2 text-sm text-dashboard-text-muted">
-            {task.kind === "scheduled" ? task.schedule : task.resource}
-          </div>
-          <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
-            <TaskDetail label="Type" value={task.kind} />
-            {task.kind === "scheduled" ? (
-              <>
-                <TaskDetail label="Status" value={task.status} />
-                <TaskDetail
-                  label="Next run"
-                  value={task.nextRunAt ? formatDate(task.nextRunAt) : "None"}
-                />
-              </>
-            ) : (
-              <>
-                <TaskDetail label="Events" value={task.events.join(", ")} />
-                <TaskDetail
-                  label="Trigger"
-                  value={task.triggerAvailable ? "Available" : "Unavailable"}
-                />
-              </>
-            )}
-            <TaskDetail
-              label="Destination"
-              value={task.destination.channelId}
-            />
-            <TaskDetail label="Created" value={formatDate(task.createdAt)} />
-          </dl>
+        <h3 className="mt-2 mb-0 font-display text-base font-medium text-dashboard-text sm:text-lg">
+          {task.instruction}
+        </h3>
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <MapPin aria-hidden="true" className="text-cyan-300/70" size={14} />
+          <span className="text-dashboard-text-muted">Assigned to</span>
+          <span className="font-medium text-dashboard-text">
+            {task.destination.label}
+          </span>
+          {task.destination.visibility === "public" ? (
+            <span className="text-xs text-dashboard-text-muted">· Public</span>
+          ) : null}
+        </div>
+        <div className="mt-3 text-sm text-dashboard-text-muted">
+          {task.kind === "scheduled" ? (
+            <>
+              <span className="text-dashboard-text">{task.schedule}</span>
+              <span className="mx-2 opacity-45">·</span>
+              {task.nextRunAt
+                ? `Next run ${formatDate(task.nextRunAt)}`
+                : "No next run"}
+            </>
+          ) : (
+            <>
+              <span className="text-dashboard-text">{task.resource}</span>
+              <span className="mx-2 opacity-45">·</span>
+              {task.events.join(", ")}
+            </>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-2 text-xs text-dashboard-text-muted">
+          <span>Created by {task.ownedByViewer ? "you" : task.createdBy}</span>
+          <span aria-hidden="true">·</span>
+          <span>{formatDate(task.createdAt)}</span>
         </div>
       </div>
-    </Card>
+      {task.ownedByViewer ? (
+        <Button
+          aria-label={`Delete: ${task.instruction}`}
+          className="self-start justify-self-end"
+          disabled={props.deleting}
+          onClick={props.onDelete}
+          size="icon"
+          title="Delete task"
+        >
+          <Trash2 aria-hidden="true" size={15} />
+        </Button>
+      ) : null}
+    </article>
   );
 }
 
-function TaskDetail(props: { label: string; value: string }) {
+function TaskTag(props: {
+  children: ReactNode;
+  tone?: "default" | "success" | "warning";
+}) {
   return (
-    <div>
-      <dt className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
-        {props.label}
-      </dt>
-      <dd className="mt-1 ml-0 font-mono text-[0.72rem] text-dashboard-text-muted">
-        {props.value}
-      </dd>
-    </div>
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 font-mono text-[0.62rem] uppercase tracking-[0.08em]",
+        props.tone === "success"
+          ? "border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-200/80"
+          : props.tone === "warning"
+            ? "border-amber-300/20 bg-amber-300/[0.06] text-amber-200/80"
+            : "border-white/10 bg-white/[0.03] text-dashboard-text-muted",
+      )}
+    >
+      {props.children}
+    </span>
   );
 }

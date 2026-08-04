@@ -1,4 +1,5 @@
-import type { User } from "@sentry/junior-plugin-api";
+import type { SlackDestination, User } from "@sentry/junior-plugin-api";
+import { and, eq, or } from "drizzle-orm";
 import type { TaskList, TaskSummary } from "@/api/schema/task";
 import { getDb } from "@/chat/db";
 import {
@@ -6,28 +7,108 @@ import {
   eventTaskBelongsToUser,
   getEventTask,
   listEventTasksCreatedBy,
+  listPublicEventTasksForTeams,
 } from "@/chat/event-tasks/store";
 import { eventTaskTriggerAvailable } from "@/chat/event-tasks/tool-support";
+import type { EventTask } from "@/chat/event-tasks/types";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 import {
   createViewerScheduledTasks,
   PersonalScheduledTaskNotFoundError,
 } from "@/chat/scheduled-tasks/personal";
-import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
+import {
+  createSchedulerSqlStore,
+  listPublicScheduledTasksForTeams,
+} from "@/chat/scheduled-tasks/store";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
+import { juniorDestinations } from "@/db/schema";
 
 const TASK_LIST_LIMIT = 100;
+const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
 
-function scheduledTaskSummary(task: ScheduledTask): TaskSummary {
+type TaskCandidate =
+  | { kind: "event"; ownedByViewer: boolean; task: EventTask }
+  | { kind: "scheduled"; ownedByViewer: boolean; task: ScheduledTask };
+
+function creatorLabel(creator: {
+  fullName?: string;
+  slackUserId: string;
+  userName?: string;
+}): string {
+  return (
+    creator.fullName?.trim() ||
+    (creator.userName?.trim() ? `@${creator.userName.trim()}` : "") ||
+    creator.slackUserId
+  );
+}
+
+function destinationKey(destination: SlackDestination): string {
+  return `${destination.teamId}:${destination.channelId}`;
+}
+
+async function destinationLabels(
+  destinations: SlackDestination[],
+): Promise<Map<string, string>> {
+  const selectors = new Map(
+    destinations.map((destination) => [
+      destinationKey(destination),
+      destination,
+    ]),
+  );
+  if (selectors.size === 0) return new Map();
+  const rows = await getDb()
+    .select({
+      displayName: juniorDestinations.displayName,
+      kind: juniorDestinations.kind,
+      providerDestinationId: juniorDestinations.providerDestinationId,
+      providerTenantId: juniorDestinations.providerTenantId,
+    })
+    .from(juniorDestinations)
+    .where(
+      or(
+        ...[...selectors.values()].map((destination) =>
+          and(
+            eq(juniorDestinations.provider, "slack"),
+            eq(juniorDestinations.providerTenantId, destination.teamId),
+            eq(juniorDestinations.providerDestinationId, destination.channelId),
+          ),
+        ),
+      ),
+    );
+  return new Map(
+    rows.map((row) => {
+      const name = row.displayName?.trim();
+      const label = name
+        ? row.kind === "channel"
+          ? `#${name.replace(/^#/, "")}`
+          : name
+        : row.kind === "dm"
+          ? "Direct message"
+          : row.kind === "group"
+            ? "Group message"
+            : `Channel ${row.providerDestinationId}`;
+      return [`${row.providerTenantId}:${row.providerDestinationId}`, label];
+    }),
+  );
+}
+
+function scheduledTaskSummary(
+  task: ScheduledTask,
+  ownedByViewer: boolean,
+  destinationLabel: string,
+): TaskSummary {
   if (task.status === "deleted") {
     throw new Error("Deleted scheduled tasks cannot enter the Tasks view");
   }
   const nextRunAtMs = task.runNowAtMs ?? task.nextRunAtMs;
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
+    createdBy: creatorLabel(task.createdBy),
     destination: {
       channelId: task.destination.channelId,
+      label: destinationLabel,
       teamId: task.destination.teamId,
+      visibility: task.conversationAccess.visibility,
     },
     id: task.id,
     instruction: task.task.text,
@@ -35,45 +116,97 @@ function scheduledTaskSummary(task: ScheduledTask): TaskSummary {
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
       : {}),
+    ownedByViewer,
     schedule: task.schedule.description,
     status: task.status,
   };
 }
 
-/** Read one bounded, newest-first Tasks projection for a signed-in user. */
+/** Read viewer-owned and public-workspace tasks as one bounded newest-first projection. */
 export async function readViewerTasks(user: User): Promise<TaskList> {
   const db = getDb();
-  const [scheduledPage, eventTasks] = await Promise.all([
-    createViewerScheduledTasks(createSchedulerSqlStore(db), user).list({
-      limit: TASK_LIST_LIMIT + 1,
-    }),
-    listEventTasksCreatedBy(db, user, TASK_LIST_LIMIT + 1),
-  ]);
-  const eventCatalog = getResourceEventCatalog();
-  const tasks: TaskSummary[] = [
-    ...scheduledPage.tasks.map(scheduledTaskSummary),
-    ...eventTasks.map(
-      (task): TaskSummary => ({
-        createdAt: new Date(task.createdAtMs).toISOString(),
-        destination: {
-          channelId: task.destination.channelId,
-          teamId: task.destination.teamId,
-        },
-        events: task.trigger.events,
-        id: task.id,
-        instruction: task.task.text,
-        kind: "event",
-        resource: `${task.trigger.label} · ${task.trigger.identifier}`,
-        triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
-      }),
+  const schedulerStore = createSchedulerSqlStore(db);
+  const identityIds = new Set(user.identities.map((identity) => identity.id));
+  const teamIds = [
+    ...new Set(
+      user.identities
+        .filter((identity) => identity.provider === "slack")
+        .map((identity) => identity.providerTenantId)
+        .filter((teamId): teamId is string => Boolean(teamId)),
     ),
-  ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  ];
+  const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
+    await Promise.all([
+      createViewerScheduledTasks(schedulerStore, user).list({
+        limit: TASK_FETCH_LIMIT,
+      }),
+      listPublicScheduledTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
+      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT),
+      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
+    ]);
+  const candidatesById = new Map<string, TaskCandidate>();
+  for (const task of [...scheduledPage.tasks, ...publicScheduled]) {
+    candidatesById.set(`scheduled:${task.id}`, {
+      kind: "scheduled",
+      ownedByViewer: identityIds.has(task.creatorIdentityId),
+      task,
+    });
+  }
+  for (const task of [...eventTasks, ...publicEventTasks]) {
+    candidatesById.set(`event:${task.id}`, {
+      kind: "event",
+      ownedByViewer: eventTaskBelongsToUser(task, user),
+      task,
+    });
+  }
+  const candidates = [...candidatesById.values()].sort(
+    (left, right) =>
+      right.task.createdAtMs - left.task.createdAtMs ||
+      right.task.id.localeCompare(left.task.id),
+  );
+  const selected = candidates.slice(0, TASK_LIST_LIMIT);
+  const labels = await destinationLabels(
+    selected.map(({ task }) => task.destination),
+  );
+  const eventCatalog = getResourceEventCatalog();
+  const tasks = selected.map((candidate): TaskSummary => {
+    const label =
+      labels.get(destinationKey(candidate.task.destination)) ??
+      `Channel ${candidate.task.destination.channelId}`;
+    if (candidate.kind === "scheduled") {
+      return scheduledTaskSummary(
+        candidate.task,
+        candidate.ownedByViewer,
+        label,
+      );
+    }
+    const task = candidate.task;
+    return {
+      createdAt: new Date(task.createdAtMs).toISOString(),
+      createdBy: creatorLabel(task.createdBy),
+      destination: {
+        channelId: task.destination.channelId,
+        label,
+        teamId: task.destination.teamId,
+        visibility: task.destinationVisibility,
+      },
+      events: task.trigger.events,
+      id: task.id,
+      instruction: task.task.text,
+      kind: "event",
+      ownedByViewer: candidate.ownedByViewer,
+      resource: `${task.trigger.label} · ${task.trigger.identifier}`,
+      triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
+    };
+  });
   return {
-    tasks: tasks.slice(0, TASK_LIST_LIMIT),
+    tasks,
     truncated:
       Boolean(scheduledPage.nextCursor) ||
+      publicScheduled.length > TASK_LIST_LIMIT ||
       eventTasks.length > TASK_LIST_LIMIT ||
-      tasks.length > TASK_LIST_LIMIT,
+      publicEventTasks.length > TASK_LIST_LIMIT ||
+      candidates.length > TASK_LIST_LIMIT,
   };
 }
 

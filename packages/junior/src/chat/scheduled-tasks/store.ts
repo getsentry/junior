@@ -1354,6 +1354,34 @@ async function listTasksForTeamFromSql(
   return rows.map(parseSqlTaskRow).filter(present);
 }
 
+/** List a bounded newest-first page of public scheduled tasks in Slack workspaces. */
+export async function listPublicScheduledTasksForTeams(
+  db: SchedulerDb,
+  teamIds: string[],
+  limit: number,
+): Promise<ScheduledTask[]> {
+  if (teamIds.length === 0) return [];
+  const rows = await db
+    .select({
+      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+      record: juniorSchedulerTasks.record,
+    })
+    .from(juniorSchedulerTasks)
+    .where(
+      and(
+        inArray(juniorSchedulerTasks.teamId, teamIds),
+        ne(juniorSchedulerTasks.status, "deleted"),
+        sql`${juniorSchedulerTasks.record}->'conversationAccess'->>'visibility' = 'public'`,
+      ),
+    )
+    .orderBy(
+      desc(juniorSchedulerTasks.createdAtMs),
+      desc(juniorSchedulerTasks.id),
+    )
+    .limit(limit);
+  return rows.map(parseSqlTaskRow).filter(present);
+}
+
 async function listIncompleteRunsForTasksFromSql(
   db: SchedulerDb,
   tasks: ScheduledTask[],

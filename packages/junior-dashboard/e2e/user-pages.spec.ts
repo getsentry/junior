@@ -103,11 +103,21 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByText("Send the weekly project summary")).toBeVisible();
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByText("#project-updates").first()).toBeVisible();
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).not.toBeVisible();
   await page.getByRole("button", { name: "event", exact: true }).click();
   await expect(
     page.getByText("Send the weekly project summary"),
   ).not.toBeVisible();
   await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await page.getByRole("button", { name: /^Public/ }).click();
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).toBeVisible();
+  await expect(page.getByText("#incident-response")).toBeVisible();
+  await expect(page.getByText("Created by Aisha Patel")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
   expect(browserErrors).toEqual([]);
 });

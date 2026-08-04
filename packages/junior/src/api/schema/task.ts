@@ -3,15 +3,19 @@ import { z } from "zod";
 const taskDestinationSchema = z
   .object({
     channelId: z.string().min(1),
+    label: z.string().min(1),
     teamId: z.string().min(1),
+    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
 const taskSummaryBaseSchema = z.object({
   createdAt: z.string().datetime(),
+  createdBy: z.string().min(1),
   destination: taskDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  ownedByViewer: z.boolean(),
 });
 
 export const scheduledTaskSummarySchema = taskSummaryBaseSchema

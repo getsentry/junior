@@ -29,7 +29,7 @@ describe("Tasks API", () => {
     expect(response.status).toBe(401);
   });
 
-  test("lists and deletes viewer-owned scheduled and event tasks", async () => {
+  test("lists owned and public tasks but only deletes viewer-owned tasks", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -47,7 +47,26 @@ describe("Tasks API", () => {
           platform: "slack",
           teamId: "T123",
         },
+        channelName: "project-updates",
         title: "Tasks API fixture",
+        visibility: "public",
+      });
+      await conversationStore.recordActivity({
+        conversationId: "slack:C456:tasks-api",
+        actor: {
+          email: "aisha@example.com",
+          fullName: "Aisha Patel",
+          platform: "slack",
+          slackUserId: "U456",
+          teamId: "T123",
+        },
+        channelName: "incident-response",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        title: "Public tasks fixture",
         visibility: "public",
       });
       const user = await resolveViewerUserFromSql(
@@ -61,6 +80,17 @@ describe("Tasks API", () => {
           candidate.providerSubjectId === "U123",
       );
       expect(identity).toBeDefined();
+      const otherUser = await resolveViewerUserFromSql(
+        fixture.sql.db(),
+        "aisha@example.com",
+      );
+      const otherIdentity = otherUser?.identities.find(
+        (candidate) =>
+          candidate.provider === "slack" &&
+          candidate.providerTenantId === "T123" &&
+          candidate.providerSubjectId === "U456",
+      );
+      expect(otherIdentity).toBeDefined();
 
       const nowMs = Date.parse("2026-08-03T12:00:00.000Z");
       const scheduledTask: ScheduledTask = {
@@ -93,6 +123,20 @@ describe("Tasks API", () => {
       };
       const scheduledStore = createSchedulerSqlStore(fixture.sql.db());
       await scheduledStore.saveTask(scheduledTask);
+      await scheduledStore.saveTask({
+        ...scheduledTask,
+        id: "sched_public_tasks_api",
+        createdAtMs: nowMs + 2,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        task: { text: "Post the public incident digest." },
+        updatedAtMs: nowMs + 2,
+      });
       await createEventTask(fixture.sql.db(), {
         id: "event_tasks_api",
         createdAtMs: nowMs + 1,
@@ -113,6 +157,46 @@ describe("Tasks API", () => {
           resourceType: "issue",
         },
       });
+      await createEventTask(fixture.sql.db(), {
+        id: "event_public_tasks_api",
+        createdAtMs: nowMs + 3,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        credentialMode: "system",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        destinationVisibility: "public",
+        task: { text: "Notify responders when the incident changes." },
+        trigger: {
+          events: ["incident.updated"],
+          identifier: "INC-17",
+          label: "Incident",
+          namespace: "pagerduty",
+          resourceType: "incident",
+        },
+      });
+      await createEventTask(fixture.sql.db(), {
+        id: "event_private_tasks_api",
+        createdAtMs: nowMs + 4,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        credentialMode: "system",
+        destination: {
+          channelId: "CPRIVATE",
+          platform: "slack",
+          teamId: "T123",
+        },
+        destinationVisibility: "private",
+        task: { text: "This private task must stay hidden." },
+        trigger: {
+          events: ["incident.updated"],
+          identifier: "INC-PRIVATE",
+          label: "Incident",
+          namespace: "pagerduty",
+          resourceType: "incident",
+        },
+      });
 
       const response = await authenticatedApi("VIEWER@example.com").request(
         "http://localhost/api/tasks",
@@ -121,18 +205,50 @@ describe("Tasks API", () => {
       expect(taskListSchema.parse(await response.json())).toEqual({
         tasks: [
           expect.objectContaining({
+            createdBy: "Aisha Patel",
+            destination: expect.objectContaining({
+              label: "#incident-response",
+              visibility: "public",
+            }),
+            id: "event_public_tasks_api",
+            kind: "event",
+            ownedByViewer: false,
+          }),
+          expect.objectContaining({
+            createdBy: "Aisha Patel",
+            destination: expect.objectContaining({
+              label: "#incident-response",
+              visibility: "public",
+            }),
+            id: "sched_public_tasks_api",
+            kind: "scheduled",
+            ownedByViewer: false,
+          }),
+          expect.objectContaining({
             id: "event_tasks_api",
             kind: "event",
+            ownedByViewer: true,
             triggerAvailable: false,
           }),
           expect.objectContaining({
+            destination: expect.objectContaining({
+              label: "#project-updates",
+            }),
             id: "sched_tasks_api",
             kind: "scheduled",
+            ownedByViewer: true,
             status: "active",
           }),
         ],
         truncated: false,
       });
+
+      const deniedPublicDelete = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks/event/event_public_tasks_api", {
+        method: "DELETE",
+      });
+      expect(deniedPublicDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",
