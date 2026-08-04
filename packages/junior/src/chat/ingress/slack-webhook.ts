@@ -296,7 +296,7 @@ async function routeParsedMessage(args: {
   }
 
   const canonicalThreadId = normalizeMessageThreadId(args.message);
-  const threadId = await resolveSlackConversationId({
+  const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
     conversationStore: args.conversationStore,
     installation: args.installation,
@@ -311,7 +311,7 @@ async function routeParsedMessage(args: {
   const route: SlackConversationRoute | undefined =
     isDmEvent(args.event) || isMention
       ? "mention"
-      : (await args.state.isSubscribed(threadId))
+      : (await args.state.isSubscribed(canonicalThreadId))
         ? "subscribed"
         : undefined;
   if (!route) {
@@ -322,7 +322,7 @@ async function routeParsedMessage(args: {
     adapter: args.adapter,
     installation: args.installation,
     message: args.message,
-    conversationId: threadId,
+    conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,
     receivedAtMs: args.receivedAtMs,

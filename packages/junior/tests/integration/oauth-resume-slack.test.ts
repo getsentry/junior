@@ -232,7 +232,7 @@ describe("oauth resume slack integration", () => {
     const { hydrateConversationMessages } =
       await import("@/chat/conversations/messages");
     const threadTs = "1700000000.007";
-    const conversationId = `slack:T123:C123:${threadTs}`;
+    const conversationId = "agent-dispatch:resume-binding";
     const turnId = "turn-resume-without-user-history";
 
     await resumeSlackTurn({
@@ -247,6 +247,7 @@ describe("oauth resume slack integration", () => {
             actor: { type: "user", userId: "U123" },
           },
           destination: TEST_SLACK_DESTINATION,
+          dispatch: { id: "resume-binding" },
           source: testSlackSource(threadTs),
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
@@ -267,6 +268,15 @@ describe("oauth resume slack integration", () => {
     ]);
     expectBlocksIncludeConversationId(postCalls[0]!.params, conversationId);
     expectBlocksIncludeConversationId(postCalls[1]!.params, conversationId);
+    const { getConversationStore } = await import("@/chat/db");
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: threadTs,
+      }),
+    ).resolves.toBe(conversationId);
     const conversation = coerceThreadConversationState(
       await getPersistedThreadState(`slack:C123:${threadTs}`),
     );

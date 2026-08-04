@@ -147,11 +147,14 @@ describe("Slack webhook persistence contract", () => {
       providerConversationId: threadTs,
     });
 
+    const canonicalThreadId = `slack:C123:${threadTs}`;
+    await state.subscribe(canonicalThreadId);
+
     const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           eventType: "message",
-          text: `<@${SLACK_BOT_USER_ID}> follow up`,
+          text: "follow up without another mention",
           threadTs,
           ts: "1712345.001000",
         }),
